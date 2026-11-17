@@ -761,6 +761,10 @@ export abstract class BaseBotAdapter {
           },
           accepted.conversation_id,
           accepted.seq,
+          {
+            delivered_seq: accepted.after_seq,
+            partial_reply: accepted.partial_reply ?? null,
+          },
           this.followSurface(
             surface,
             accepted.conversation_id,

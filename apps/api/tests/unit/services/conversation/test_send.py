@@ -145,6 +145,10 @@ def _world(effects: RecordingEffects) -> Iterator[World]:
         patch(f"{SEND}.BotService", bots),
         patch(f"{SEND}.charge_bot_turn", world.charge),
         patch(f"{SEND}.create_bot_session_token", world.token),
+        patch(
+            "app.services.conversation.bot_followers.bot_session_repository.get_by_conversation_id",
+            AsyncMock(return_value=None),
+        ),
     ):
         yield world
 
@@ -334,7 +338,11 @@ async def test_a_bot_message_lands_in_its_session_under_its_platform_message_id(
     accepted = await submit_bot_message(_bot_request(file_ids=["f1"]), world.user)
 
     assert accepted == BotMessageAccepted(
-        conversation_id=CONVERSATION, message_id="telegram:77", seq=1, session_token="session-token"
+        conversation_id=CONVERSATION,
+        message_id="telegram:77",
+        seq=1,
+        session_token="session-token",
+        after_seq=0,
     )
     assert await world.entries() == [
         UserMessage(

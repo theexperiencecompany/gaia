@@ -26,6 +26,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.bot_service import BotService, charge_bot_turn
 from app.services.bot_token_service import create_bot_session_token
+from app.services.conversation.bot_followers import follow_start
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.title import title_conversation
@@ -237,7 +238,13 @@ async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> B
     token = create_bot_session_token(
         user_id=user_id, platform=platform, platform_user_id=body.platform_user_id
     )
-    return BotMessageAccepted(**sent.accepted.model_dump(), session_token=token)
+    start = await follow_start(conversation_id, sent.accepted.seq)
+    return BotMessageAccepted(
+        **sent.accepted.model_dump(),
+        session_token=token,
+        after_seq=start.delivered_seq,
+        partial_reply=start.partial_reply,
+    )
 
 
 async def submit_barge_in(

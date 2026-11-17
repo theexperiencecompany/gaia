@@ -36,3 +36,12 @@ async def _undelivered_from(head: SweepHead) -> BotDelivery:
     entries = await runtime_ports().log.read_after(head.conversation_id, head.user_id, since)
     settled = [logged.seq for logged in entries if isinstance(logged.entry, ReplySettled)]
     return BotDelivery(delivered_seq=max(settled, default=since))
+
+
+async def follow_start(conversation_id: str, seq: int) -> BotDelivery:
+    """Return where a follow of message seq starts: the session's cursor while it owes anything, else just before seq."""
+    session = await bot_session_repository.get_by_conversation_id(conversation_id)
+    delivery = None if session is None else session.delivery
+    if delivery is not None and delivery.owes:
+        return delivery
+    return BotDelivery(delivered_seq=seq - 1)

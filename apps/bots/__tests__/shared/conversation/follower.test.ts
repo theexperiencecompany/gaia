@@ -244,9 +244,9 @@ describe.each([
     const followers = new ConversationFollowers(source, options, NOT_KEPT);
     const ctx = { platform: options.platform, platformUserId: "7" };
 
-    followers.follow(ctx, "c1", 1, surface);
-    followers.follow(ctx, "c1", 2, surface);
-    followers.follow(ctx, "c1", 3, surface);
+    followers.follow(ctx, "c1", 1, cursorAt(0), surface);
+    followers.follow(ctx, "c1", 2, cursorAt(1), surface);
+    followers.follow(ctx, "c1", 3, cursorAt(2), surface);
     release();
     await followers.idle();
 
@@ -923,7 +923,7 @@ describe("a follow the server woke", () => {
     const followers = new ConversationFollowers(source, NON_EDITING, NOT_KEPT);
     const ctx = { platform: NON_EDITING.platform, platformUserId: "7" };
 
-    followers.follow(ctx, "c1", 1, surface);
+    followers.follow(ctx, "c1", 1, cursorAt(0), surface);
     await followers.idle();
     // The wakes for the reply and the notice, consumed after that follow ended.
     followers.resume(ctx, "c1", cursorAt(1), surface);
@@ -933,6 +933,28 @@ describe("a follow the server woke", () => {
 
     expect(screen(calls)).toEqual(["Done."]);
     expect(calls.filter((call) => call.op === "notice")).toHaveLength(1);
+  });
+
+  it("delivers a notice owed from before the user's message when the user writes first", async () => {
+    const { surface, calls } = recorder();
+    // The reminder at seq 2 was logged while the bot was down, and its wake was lost.
+    const source: ConversationEventSource = async function* () {
+      yield screenFrame([
+        inbound("u1", 1, "11"),
+        noticeItem("n1", 2, "Your reminder: call the bank"),
+        inbound("u2", 3, "12"),
+      ]);
+      yield* answer(4, "r1", "Done.");
+      yield stateFrame(4, "idle");
+    };
+    const followers = new ConversationFollowers(source, NON_EDITING, NOT_KEPT);
+    const ctx = { platform: NON_EDITING.platform, platformUserId: "7" };
+
+    followers.follow(ctx, "c1", 3, cursorAt(1), surface);
+    await followers.idle();
+
+    expect(calls.filter((call) => call.op === "notice")).toHaveLength(1);
+    expect(screen(calls)).toEqual(["Done."]);
   });
 });
 
