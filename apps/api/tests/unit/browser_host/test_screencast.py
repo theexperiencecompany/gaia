@@ -304,6 +304,14 @@ async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_pag
         return await send_raw(method, params, session_id)
 
     monkeypatch.setattr(run.mux, "send_raw", _slow_evaluate)
+    # The stale read starts on a page that was itself navigated to, so each visit must be its own.
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/old"}},
+        }
+    )
     run.mux.emit(
         {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}}
     )
