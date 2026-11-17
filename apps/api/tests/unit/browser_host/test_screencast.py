@@ -282,6 +282,84 @@ async def test_the_tab_names_the_page_on_screen_while_the_engines_record_of_it_l
     )
 
 
+@pytest.mark.regression
+async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_page() -> None:
+    run = _Run()
+    await run.start()
+    answer_stale_read = asyncio.Event()
+    send_raw = run.mux.send_raw
+
+    async def _slow_evaluate(
+        method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        if method == "Runtime.evaluate":
+            await answer_stale_read.wait()
+            return {
+                "result": {
+                    "value": {"url": "https://example.com/old", "title": "Old", "favicon": None}
+                }
+            }
+        return await send_raw(method, params, session_id)
+
+    run.mux.send_raw = _slow_evaluate  # type: ignore[method-assign]
+    run.mux.emit(
+        {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}}
+    )
+    await _settle()
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"url": "https://example.com/new"}},
+        }
+    )
+    answer_stale_read.set()
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert (run.viewer.sent[0]["url"], run.viewer.sent[0]["title"]) == (
+        "https://example.com/new",
+        "Ex",
+    )
+
+
+@pytest.mark.regression
+async def test_a_page_restored_from_the_back_forward_cache_is_reread_without_a_dom_content_event() -> (
+    None
+):
+    run = _Run()
+    await run.start()
+    run.mux.responses["Runtime.evaluate"] = {
+        "result": {
+            "value": {"url": "https://example.com/back", "title": "Back", "favicon": _FAVICON}
+        }
+    }
+
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {
+                "frame": {"url": "https://example.com/back"},
+                "type": "BackForwardCacheRestore",
+            },
+        }
+    )
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert (run.viewer.sent[0]["url"], run.viewer.sent[0]["title"]) == (
+        "https://example.com/back",
+        "Back",
+    )
+
+
 async def test_a_navigation_that_names_no_address_keeps_the_last_one_until_the_tab_is_reread() -> (
     None
 ):

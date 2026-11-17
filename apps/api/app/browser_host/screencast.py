@@ -71,6 +71,8 @@ _SCREENCAST_FRAME_EVENT = "Page.screencastFrame"
 _FRAME_NAVIGATED_EVENT = "Page.frameNavigated"
 # The main frame's document is parsed: its title and icon can be read.
 _DOM_CONTENT_EVENT = "Page.domContentEventFired"
+# A page restored from the back/forward cache is already loaded, so it fires no DOMContentLoaded.
+_BFCACHE_RESTORE = "BackForwardCacheRestore"
 _DETACHED_EVENT = "Target.detachedFromTarget"
 
 _EventHandler = Callable[[dict[str, Any]], None]
@@ -107,6 +109,8 @@ class _Stream:
     detached: asyncio.Event = field(default_factory=asyncio.Event)
     # Set when this stream ended to follow another page rather than for the viewer leaving.
     retargeted: bool = False
+    # Counts main-frame navigations, so a tab read begun before one is not written after it.
+    navigations: int = 0
 
 
 async def run_live_view(host: BrowserHost, session: HostSession, client_ws: WebSocket) -> None:
@@ -225,7 +229,10 @@ def _route_event(
         _on_screencast_frame(mux, stream, frames, background, params)
     elif method == _FRAME_NAVIGATED_EVENT and params.get("frame", {}).get("parentId") is None:
         # The new page's frames can arrive before its title is parsed; they must not name the old page.
+        stream.navigations += 1
         stream.meta.url = params.get("frame", {}).get("url", stream.meta.url)
+        if params.get("type") == _BFCACHE_RESTORE:
+            _spawn(background, _refresh_meta(mux, stream))
     elif method == _DOM_CONTENT_EVENT:
         _spawn(background, _refresh_meta(mux, stream))
     elif method == _DETACHED_EVENT:
@@ -287,6 +294,7 @@ async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
     A page mid-navigation (or blocking evaluation) is reread at its next
     DOMContentLoaded; its address meanwhile follows Page.frameNavigated.
     """
+    navigations = stream.navigations
     try:
         result = await cdp_call(
             mux,
@@ -300,7 +308,7 @@ async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
         )
         return
     value = result.get("result", {}).get("value")
-    if not isinstance(value, dict):
+    if not isinstance(value, dict) or stream.navigations != navigations:
         return
     stream.meta.url = _text(value.get("url"))
     stream.meta.title = _text(value.get("title"))

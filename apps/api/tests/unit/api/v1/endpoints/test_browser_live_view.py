@@ -414,6 +414,7 @@ async def test_a_viewer_gone_mid_frame_ends_the_proxy_without_an_error(
     assert viewer.close_code is None
 
 
+@pytest.mark.regression
 async def test_a_viewer_that_leaves_ends_the_proxy_without_closing_its_socket_again(
     fake_redis: fakeredis.aioredis.FakeRedis, host: _HostStream
 ) -> None:
