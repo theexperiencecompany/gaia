@@ -1,17 +1,28 @@
 """Advance every lifecycle by one accepted log entry; the head keeps only what is still live."""
 
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import NamedTuple
+
 from app.models.conversation_lifecycle_models import (
+    Approval,
     ApprovalCancelled,
     ApprovalWithdrawn,
+    AttemptFailed,
+    AttemptSettled,
     InputOrigin,
     Lifecycles,
+    Message,
+    ReplyAttempt,
     WithdrawReason,
+    WorkRun,
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     Entry,
     IntegrationConnected,
+    LoggedEntry,
     Reply,
     ReplySettled,
     StopRequested,
@@ -23,8 +34,68 @@ from app.models.conversation_log_models import (
 from app.services.conversation.lifecycle import approvals, attempt, messages, runs
 
 
+@dataclass(frozen=True)
+class Window:
+    """Every member a run of log entries touched, by id, in its last status; head is what stays live."""
+
+    head: Lifecycles
+    messages: Mapping[str, Message] = field(default_factory=dict)
+    attempts: Mapping[str, ReplyAttempt] = field(default_factory=dict)
+    approvals: Mapping[str, Approval] = field(default_factory=dict)
+    runs: Mapping[str, WorkRun] = field(default_factory=dict)
+
+
+class _Step(NamedTuple):
+    """One entry's transitions before the head drops what ended; ended is the attempt it settled."""
+
+    moved: Lifecycles
+    ended: AttemptSettled | AttemptFailed | None
+
+
 def advance(lifecycles: Lifecycles, seq: int, entry: Entry) -> Lifecycles:
     """Return the lifecycles after the entry the log accepted at seq."""
+    return _live(_step(lifecycles, seq, entry).moved)
+
+
+def fold_window(start: Lifecycles, entries: Sequence[LoggedEntry]) -> Window:
+    """Fold consecutive accepted entries from start, keeping each member's terminal status too.
+
+    Everything an entry causes is logged after it, so a window opening at an entry's seq
+    holds every status that entry and its work reach.
+    """
+    head = start
+    messages = {message.id: message for message in start.messages}
+    attempts: dict[str, ReplyAttempt] = {}
+    if start.attempt is not None:
+        attempts[start.attempt.reply_id] = start.attempt
+    approvals = {approval.approval_id: approval for approval in start.approvals}
+    runs = {run.task_id: run for run in start.runs}
+    for logged in entries:
+        moved, ended = _step(head, logged.seq, logged.entry)
+        messages |= {message.id: message for message in moved.messages}
+        approvals |= {approval.approval_id: approval for approval in moved.approvals}
+        runs |= {run.task_id: run for run in moved.runs}
+        if moved.attempt is not None:
+            attempts[moved.attempt.reply_id] = moved.attempt
+        if ended is not None:
+            attempts[ended.reply_id] = ended
+        head = _live(moved)
+    return Window(head=head, messages=messages, attempts=attempts, approvals=approvals, runs=runs)
+
+
+def _step(lifecycles: Lifecycles, seq: int, entry: Entry) -> _Step:
+    return _Step(moved=_moved(lifecycles, seq, entry), ended=_ended_attempt(lifecycles, entry))
+
+
+def _ended_attempt(lifecycles: Lifecycles, entry: Entry) -> AttemptSettled | AttemptFailed | None:
+    """Return how the open reply ended when entry settles it."""
+    match entry:
+        case ReplySettled(imported=False) if lifecycles.attempt is not None:
+            return attempt.settled(entry)
+    return None
+
+
+def _moved(lifecycles: Lifecycles, seq: int, entry: Entry) -> Lifecycles:
     current = lifecycles
     match entry:
         case UserMessage(first_contact=False, imported=False):
@@ -47,7 +118,7 @@ def advance(lifecycles: Lifecycles, seq: int, entry: Entry) -> Lifecycles:
             current = current.model_copy(update={"attempt": attempt.opened(seq, entry)})
         case ReplySettled(imported=False):
             current = _settled(current, entry)
-    return _live(current)
+    return current
 
 
 def _opened(lifecycles: Lifecycles, seq: int, entry_id: str, origin: InputOrigin) -> Lifecycles:

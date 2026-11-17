@@ -42,7 +42,7 @@ def _reply(entry_id: str, reply_id: str, text: str) -> Reply:
 def _outcome(entries: Sequence[Entry]) -> EntryOutcome | None:
     state, _ = fold(entries)
     log: list[LoggedEntry] = [logged(seq, entry) for seq, entry in enumerate(entries, start=1)]
-    return entry_outcome("wf", 1, log, state)
+    return entry_outcome("wf", log, state)
 
 
 def test_an_entry_answered_with_no_work_is_final_with_its_reply() -> None:
@@ -129,7 +129,7 @@ def test_a_reply_to_another_input_does_not_finish_the_entry() -> None:
     ]
     state, _ = fold(entries)
     log = [logged(seq, entry) for seq, entry in enumerate(entries, start=1)]
-    assert entry_outcome("wf", 2, log, state) is None
+    assert entry_outcome("wf", log[1:], state) is None
 
 
 @pytest.mark.usefixtures("fake_redis")

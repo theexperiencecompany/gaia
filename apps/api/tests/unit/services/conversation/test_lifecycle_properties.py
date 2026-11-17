@@ -3,6 +3,8 @@
 from hypothesis import given, strategies as st
 
 from app.models.conversation_lifecycle_models import (
+    AttemptFailed,
+    AttemptStreaming,
     Lifecycles,
     RunAwaitingApproval,
     RunParked,
@@ -12,11 +14,13 @@ from app.models.conversation_log_models import (
     ConversationState,
     Entry,
     LiveWork,
+    LoggedEntry,
+    ReplySettled,
     Transition,
     WorkOutcome,
     WorkStarted,
 )
-from app.services.conversation.lifecycle import views
+from app.services.conversation.lifecycle import fold, views
 from app.services.conversation.reducer import reduce
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
@@ -148,19 +152,53 @@ def _assert_agrees(state: ConversationState) -> None:
         assert views.display(lifecycles) == state.display
 
 
-@given(st.data())
-def test_the_lifecycles_agree_with_the_legacy_fields_on_every_prefix(data: st.DataObject) -> None:
+def _generated_log(data: st.DataObject) -> list[tuple[ConversationState, LoggedEntry]]:
+    """Draw an accepted log; each entry comes with the state after it."""
     state = FOLDED
     ids: dict[int, str] = {}
+    folded: list[tuple[ConversationState, LoggedEntry]] = []
     for _ in range(data.draw(st.integers(1, 40))):
         seq = state.head + 1
-        entry = _next_entry(data, state, seq, ids)
-        result = reduce(state, logged(seq, entry))
+        entry = logged(seq, _next_entry(data, state, seq, ids))
+        result = reduce(state, entry)
         assert isinstance(result, Transition), (entry, result)
         state = result.state
-        if entry.kind == "user_message":
-            ids[seq] = entry.id
+        if entry.entry.kind == "user_message":
+            ids[seq] = entry.entry.id
+        folded.append((state, entry))
+    return folded
+
+
+@given(st.data())
+def test_the_lifecycles_agree_with_the_legacy_fields_on_every_prefix(data: st.DataObject) -> None:
+    for state, _ in _generated_log(data):
         _assert_agrees(state)
+
+
+@given(st.data())
+def test_a_window_ends_where_the_head_does_and_keeps_what_left_it_terminal(
+    data: st.DataObject,
+) -> None:
+    folded = _generated_log(data)
+    entries = [entry for _, entry in folded]
+    head = folded[-1][0].lifecycles
+    cut = data.draw(st.integers(0, len(entries)))
+    first = fold.fold_window(Lifecycles(), entries[:cut])
+    window = fold.fold_window(Lifecycles(), entries)
+    assert fold.fold_window(first.head, entries[cut:]).head == window.head == head
+    assert head is not None
+    live = {*(m.id for m in head.messages), *(r.task_id for r in head.runs)}
+    assert all(m.live is (m.id in live) for m in window.messages.values())
+    assert all(r.live is (r.task_id in live) for r in window.runs.values())
+    settles = [e.entry for e in entries if isinstance(e.entry, ReplySettled)]
+    assert {s.reply_id: s.outcome is ReplyOutcome.FAILED for s in settles} == {
+        reply_id: isinstance(attempt, AttemptFailed)
+        for reply_id, attempt in window.attempts.items()
+        if not isinstance(attempt, AttemptStreaming)
+    }
+    assert [a.reply_id for a in window.attempts.values() if isinstance(a, AttemptStreaming)] == (
+        [] if head.attempt is None else [head.attempt.reply_id]
+    )
 
 
 def test_a_head_folded_before_lifecycles_keeps_none() -> None:

@@ -113,6 +113,34 @@ class AttemptStreaming(_Status):
     quote_target: str | None
 
 
+class AttemptSettled(_Status):
+    """The reply ended on its own terms; answers are the inputs it closed."""
+
+    status: Literal["settled"] = "settled"
+    reply_id: str
+    outcome: Literal[
+        ReplyOutcome.ANSWERED,
+        ReplyOutcome.SILENT,
+        ReplyOutcome.TRUNCATED,
+        ReplyOutcome.INTERIM,
+        ReplyOutcome.STOPPED,
+    ]
+    answers: tuple[str, ...]
+
+
+class AttemptFailed(_Status):
+    """The reply broke off; the inputs it owed stay retryable."""
+
+    status: Literal["failed"] = "failed"
+    reply_id: str
+    reason: FailureReason
+
+
+ReplyAttempt = Annotated[
+    AttemptStreaming | AttemptSettled | AttemptFailed, Field(discriminator="status")
+]
+
+
 class WithdrawReason(StrEnum):
     """Why GAIA closed an approval nobody decided."""
 
