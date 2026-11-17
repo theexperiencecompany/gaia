@@ -72,6 +72,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingSubdocument,
 )
+from app.services.hil.pending import PendingApproval
 from app.utils.artifact_utils import FILE_LINKS
 
 
@@ -1652,8 +1653,9 @@ class TestOpenPendingsBlock:
         )
 
     async def _render(self, docs: list[MagicMock]) -> str:
+        numbered = [PendingApproval(number=number, row=doc) for number, doc in enumerate(docs, 1)]
         with patch(
-            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=docs)
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=numbered)
         ) as pending:
             text = await build_open_pendings_block(self._ctx())
         pending.assert_awaited_once_with("c1", "u1")

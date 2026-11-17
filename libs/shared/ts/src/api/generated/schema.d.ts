@@ -6198,6 +6198,8 @@ export interface components {
              * @constant
              */
             kind: "approval_requested";
+            /** Number */
+            number: number | null;
             /** Task Id */
             task_id: string;
             /**

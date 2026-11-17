@@ -822,6 +822,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -844,7 +856,8 @@
           "integration_name",
           "args_preview",
           "auto_reason",
-          "always_asks"
+          "always_asks",
+          "number"
         ],
         "title": "ApprovalRequested",
         "type": "object"

@@ -52,7 +52,7 @@ from app.services.conversation.ports import (
     TurnAnalytics,
     Unsettled,
 )
-from app.services.conversation.reducer import amend_refusal, reduce
+from app.services.conversation.reducer import amend_refusal, reduce, stamped
 from shared.py.analytics import Dedupe
 from shared.py.analytics.context import AnalyticsContext
 from shared.py.approvals import ApprovalDecider
@@ -237,7 +237,11 @@ class InMemoryConversationLog:
             return Appended(
                 logged=first.logged, previous=state, state=state, effects=(), duplicate=True
             )
-        logged = LoggedEntry(seq=conversation.state.head + 1, at=self._clock(), entry=entry)
+        logged = LoggedEntry(
+            seq=conversation.state.head + 1,
+            at=self._clock(),
+            entry=stamped(conversation.state, entry),
+        )
         result = reduce(conversation.state, logged)
         if isinstance(result, Rejected):
             raise EntryRejected(result.reason)

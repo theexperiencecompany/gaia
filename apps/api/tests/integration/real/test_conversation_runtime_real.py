@@ -3724,6 +3724,66 @@ async def _ask_on_a_bot(rig: Rig, model: GatedModel) -> str:
     return approval_id
 
 
+async def _ask_again_in_t1(rig: Rig, title: str) -> str:
+    """Leave one more approval of t1 pending, as the gate asks it: in the log, then on the ledger."""
+    approval_id = new_approval_id()
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            description=described(f"Create todo {title}"),
+            expires_at=None,
+        ),
+    )
+    await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-todo-{title}",
+            tool_name="create_todo",
+            args={"title": title},
+            summary=f"Create todo {title}",
+            owner_agent=f"todos_{rig.conversation_id}",
+            task_id="t1",
+        ),
+        approval_id,
+    )
+    return approval_id
+
+
+@pytest.mark.service
+async def test_approval_numbers_stay_put_when_one_of_them_is_decided(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression: after "yes 1" the server renumbered the rest, so "no 2" fell out of range and #2 waited forever."""
+    model = gated("on it", "unused", "unused")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    first = await _ask_on_a_bot(rig, model)
+    second = await _ask_again_in_t1(rig, "bread")
+
+    with (
+        _jev_out_of_credit(),
+        patch.object(executor_runner, "_spawn_detached_run", _Spawned(rig).spawn),
+    ):
+        await rig.send("m2", "yes 1", ConversationSource.TELEGRAM)
+        await rig.settle()
+        await rig.send("m3", "no 2", ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    assert [(r.approval_id, r.number) for r in await rig.of(ApprovalRequested)] == [
+        (first, 1),
+        (second, 2),
+    ]
+    assert {d.approval_id: d.outcome for d in await rig.of(ApprovalDecided)} == {
+        first: ApprovalOutcome.APPROVED,
+        second: ApprovalOutcome.DENIED,
+    }
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
 @pytest.mark.service
 @pytest.mark.parametrize("reply", ["yes", "Yes!"])
 async def test_a_plain_yes_on_a_bot_decides_its_approval_with_the_classifier_down(

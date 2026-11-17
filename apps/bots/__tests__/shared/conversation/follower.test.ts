@@ -532,7 +532,8 @@ describe("an approval the work waits on", () => {
     expect(follower.finished).toBe(false);
   });
 
-  it("names only the new approval, under its number among every one still open", async () => {
+  it("names only the new approval, under the number the server gave it", async () => {
+    // Regression: after #1 was decided the invoice was shown as "2", the number the flight still had.
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(
       startAfter(0),
@@ -540,18 +541,23 @@ describe("an approval the work waits on", () => {
       surface,
       "c1",
     );
+    const [first, second, third] = [
+      { ...sam, number: 1 },
+      { ...flight, number: 2 },
+      { ...invoice, number: 3 },
+    ];
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
-      asking(sam),
-      asking(sam, flight),
-      asking(flight),
-      asking(flight, invoice),
+      asking(first),
+      asking(first, second),
+      asking(second),
+      asking(second, third),
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
       SAM_PROMPT,
       '*One more needs your OK:*\n2. Book the 9am flight\n\nReply by number: "yes 2" or "no 2".',
-      '*One more needs your OK:*\n2. Pay the invoice\n\nReply by number: "yes 2" or "no 2".',
+      '*One more needs your OK:*\n3. Pay the invoice\n\nReply by number: "yes 3" or "no 3".',
     ]);
   });
 
