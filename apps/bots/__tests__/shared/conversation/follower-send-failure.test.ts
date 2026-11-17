@@ -150,7 +150,7 @@ describe("a send to a chat that no longer exists", () => {
     expect(liveSent.at(-1)).toBe("Your flight is booked.");
   });
 
-  it("ends the follow on a send that still fails, instead of reopening the stream into a closed follow", async () => {
+  it("ends the follow on a send the platform refuses for good, instead of reopening the stream into a closed follow", async () => {
     let opened = 0;
     const source: ConversationEventSource = async function* () {
       opened += 1;
@@ -163,7 +163,7 @@ describe("a send to a chat that no longer exists", () => {
       "stale",
       1,
       { delivered_seq: 0, partial_reply: null },
-      surface([], () => grammyError(502, "Bad Gateway")),
+      surface([], () => grammyError(400, "Bad Request: message is too long")),
     );
     const ended = await Promise.race([
       followers.idle().then(() => true),
@@ -334,6 +334,86 @@ describe("an events stream the API answers with a 4xx", () => {
 
     expect(opened).toBe(1);
     expect(sent).toEqual([]);
+  });
+});
+
+describe("a platform outage longer than one send's retries", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("starts the follow again from its cursor until the reply lands, sent once", async () => {
+    vi.useFakeTimers();
+    // Three times PLATFORM_SEND's budget: every follow's send gives up at least twice.
+    let outage = 3 * (RETRY_POLICY.PLATFORM_SEND.retries + 1);
+    const sent: string[] = [];
+    const platform = surface(sent, null);
+    const send: FollowSurface["send"] = (text, replyTo) =>
+      retryTransientPlatformCall(async () => {
+        if (outage > 0) {
+          outage -= 1;
+          throw grammyError(502, "Bad Gateway");
+        }
+        return platform.send(text, replyTo);
+      });
+    const source: ConversationEventSource = async function* () {
+      yield* conversation("r1", "Your flight is booked.");
+    };
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      { ...platform, send },
+    );
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 3_600 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    expect(ended).toBe(true);
+    expect(outage).toBe(0);
+    expect(sent.at(-1)).toBe("Your flight is booked.");
+    expect(sent.filter((text) => text.startsWith("Your"))).toHaveLength(
+      sent.length,
+    );
+  });
+
+  it("ends without retrying when the platform says the chat is gone", async () => {
+    vi.useFakeTimers();
+    let tries = 0;
+    const sent: string[] = [];
+    const platform = surface(sent, null);
+    const send: FollowSurface["send"] = () => {
+      tries += 1;
+      return Promise.reject(chatNotFound());
+    };
+    const source: ConversationEventSource = async function* () {
+      yield* conversation("r1", "Your flight is booked.");
+    };
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      { ...platform, send },
+    );
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 120 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    expect(ended).toBe(true);
+    expect(tries).toBe(1);
   });
 });
 

@@ -168,22 +168,26 @@ describe("a bot that boots before the API listens", () => {
     expect(adapter.sent).toEqual(["Your flight is booked."]);
   });
 
-  it("gives up once the OWN_API retries are spent, instead of asking forever", async () => {
+  it("keeps asking on a capped backoff for as long as the API is down, then delivers", async () => {
     const { adapter, listActiveConversations } = restarted([target(3)]);
-    listActiveConversations.mockRejectedValue(refused());
+    for (let refusal = 0; refusal < 20; refusal += 1) {
+      listActiveConversations.mockRejectedValueOnce(refused());
+    }
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const resumed = adapter.resume();
-      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      // 20 waits capped at UNTIL_IT_LANDS.maxTimeout, jittered up to twice that.
+      await vi.advanceTimersByTimeAsync(
+        20 * 2 * RETRY_POLICY.UNTIL_IT_LANDS.maxTimeout,
+      );
       await resumed;
     } finally {
       vi.useRealTimers();
     }
+    await adapter.conversationsIdle();
 
-    expect(listActiveConversations).toHaveBeenCalledTimes(
-      RETRY_POLICY.OWN_API.retries + 1,
-    );
-    expect(adapter.sent).toEqual([]);
+    expect(listActiveConversations).toHaveBeenCalledTimes(21);
+    expect(adapter.sent).toEqual(["Your flight is booked."]);
   });
 
   it("does not ask again when the API refuses the bot for good", async () => {

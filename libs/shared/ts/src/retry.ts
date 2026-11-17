@@ -1,8 +1,8 @@
 /**
  * The one retry rule for TypeScript clients: a bounded policy per kind of call, run by p-retry.
  *
- * Mirrors libs/shared/py/retry.py tier for tier. Nothing retries forever: past a tier's
- * last attempt the failure is thrown, and what follows is the caller's to decide.
+ * libs/shared/py/retry.py holds the tiers Python uses at the same values. Every tier but
+ * UNTIL_IT_LANDS is bounded; that one retries only failures the caller calls transient.
  */
 import pRetry from "p-retry";
 
@@ -21,6 +21,15 @@ export const RETRY_POLICY = {
   OWN_API: { retries: 5, minTimeout: 500, maxTimeout: 10_000 },
   /** Reopening a live event stream. */
   STREAM_RECONNECT: { retries: 8, minTimeout: 500, maxTimeout: 10_000 },
+  /**
+   * Work that must reach the user (a reply to deliver, the conversations to resume): a
+   * transient failure is retried until it lands; only a permanent one, or shutdown, ends it.
+   */
+  UNTIL_IT_LANDS: {
+    retries: Number.POSITIVE_INFINITY,
+    minTimeout: 1_000,
+    maxTimeout: 30_000,
+  },
 } as const satisfies Record<string, RetryPolicy>;
 
 const HTTP_REQUEST_TIMEOUT = 408;

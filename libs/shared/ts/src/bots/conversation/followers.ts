@@ -5,15 +5,26 @@
  *
  * A dropped connection reconnects and opens on a fresh screen (the follower is
  * idempotent, so an item it already rendered renders nothing). A server
- * that refuses the stream (4xx) ends the follow; anything else is retried.
+ * that refuses the stream (4xx) ends the follow; anything else is retried. A follow
+ * a transient failure ended (a platform outage, a stream that would not reopen)
+ * starts again from its delivery cursor under UNTIL_IT_LANDS, so no reply is dropped.
  * Each follower reports how far it delivered through record, which the server
  * keeps, so a restarted bot resumes from that cursor.
  */
 
 import type { ConversationFrame } from "../../conversation/types";
-import { isRetryableStatus, RETRY_POLICY, reconnectDelayMs } from "../../retry";
+import {
+  isRetryableStatus,
+  RETRY_POLICY,
+  reconnectDelayMs,
+  withRetry,
+} from "../../retry";
 import type { BotUserContext } from "../types";
-import { recordBotFailure } from "../utils/failure-reasons";
+import {
+  classifyBotFailure,
+  isTransientBotFailure,
+  recordBotFailure,
+} from "../utils/failure-reasons";
 import {
   getHttpStatus,
   hashLogIdentifier,
@@ -48,6 +59,14 @@ interface Followed {
   abort: AbortController;
 }
 
+/** A follow a transient failure ended: what it delivered is on its cursor, and the rest is still owed. */
+class FollowInterrupted extends Error {
+  constructor(readonly failure: unknown) {
+    super("the follow ended on a transient failure");
+    this.name = "FollowInterrupted";
+  }
+}
+
 export class ConversationFollowers {
   private readonly active = new Map<string, Followed>();
   /** The cursor a follow of each conversation started from or delivered to, so a late wake repeats nothing. */
@@ -55,6 +74,8 @@ export class ConversationFollowers {
   private readonly runs = new Set<Promise<void>>();
   /** Waiters woken after a follow renders a frame, so settled re-checks what the follows wait on. */
   private readonly changes = new Set<() => void>();
+  /** Aborted on shutdown: ends the waits between a follow's restarts. */
+  private readonly stopping = new AbortController();
 
   constructor(
     private readonly events: ConversationEventSource,
@@ -96,13 +117,67 @@ export class ConversationFollowers {
     this.start(ctx, conversationId, from, surface);
   }
 
-  /** Start a follow at the server's cursor, never before what an earlier follow here reached. */
+  /**
+   * Start a follow at the server's cursor, never before what an earlier follow here reached,
+   * and start it again from where it delivered to each time a transient failure ends it.
+   */
   private start(
     ctx: BotUserContext,
     conversationId: string,
     from: DeliveryCursor,
     surface: FollowSurface,
   ): ConversationFollower {
+    let next: Followed | null = this.open(ctx, conversationId, from, surface);
+    const { follower } = next;
+    const run = withRetry(
+      RETRY_POLICY.UNTIL_IT_LANDS,
+      async () => {
+        const followed = next ?? this.reopen(ctx, conversationId, surface);
+        next = null;
+        // A follow a newer message started carries the conversation on.
+        if (followed) await this.run(ctx, conversationId, followed);
+      },
+      {
+        transient: (error) => error instanceof FollowInterrupted,
+        onRetry: (error, attempt) =>
+          wideLog.warning("conversation_follow_restarting", {
+            ...sanitizeErrorForLog(
+              error instanceof FollowInterrupted ? error.failure : error,
+            ),
+            conversation_id: conversationId,
+            attempt,
+          }),
+        signal: this.stopping.signal,
+      },
+    )
+      .catch((error: unknown) => {
+        if (this.stopping.signal.aborted) return;
+        throw error;
+      })
+      .finally(() => {
+        this.runs.delete(run);
+      });
+    this.runs.add(run);
+    return follower;
+  }
+
+  /** A follow from where the last one here delivered to; null when another follow already runs. */
+  private reopen(
+    ctx: BotUserContext,
+    conversationId: string,
+    surface: FollowSurface,
+  ): Followed | null {
+    const reached = this.reached.get(conversationId);
+    if (this.active.has(conversationId) || !reached) return null;
+    return this.open(ctx, conversationId, reached, surface);
+  }
+
+  private open(
+    ctx: BotUserContext,
+    conversationId: string,
+    from: DeliveryCursor,
+    surface: FollowSurface,
+  ): Followed {
     const reached = this.reached.get(conversationId);
     const start =
       reached && reached.delivered_seq > from.delivered_seq ? reached : from;
@@ -122,11 +197,7 @@ export class ConversationFollowers {
     );
     const followed = { follower, abort: new AbortController() };
     this.active.set(conversationId, followed);
-    const run = this.run(ctx, conversationId, followed).finally(() => {
-      this.runs.delete(run);
-    });
-    this.runs.add(run);
-    return follower;
+    return followed;
   }
 
   private reach(conversationId: string, cursor: DeliveryCursor): void {
@@ -170,6 +241,7 @@ export class ConversationFollowers {
 
   /** End every follow, for shutdown. */
   async stopAll(): Promise<void> {
+    this.stopping.abort();
     for (const { abort } of this.active.values()) abort.abort();
     await this.idle();
   }
@@ -230,7 +302,9 @@ export class ConversationFollowers {
       } catch (error) {
         if (abort.signal.aborted) return;
         if (follower.deliveryFailed) {
-          // The platform refused a send, not the stream: reconnecting replays into the same refusal.
+          // The platform failed a send, not the stream: reconnecting replays into the same failure.
+          if (isTransientBotFailure(classifyBotFailure(error)))
+            throw new FollowInterrupted(error);
           recordBotFailure("conversation_delivery_failed", error, {
             conversation_id: conversationId,
             user_hash: hashLogIdentifier(ctx.platformUserId),
@@ -239,12 +313,13 @@ export class ConversationFollowers {
         }
         const status = getHttpStatus(error);
         failures += 1;
-        const refused = status !== undefined && !isRetryableStatus(status);
-        if (refused || failures > RETRY_POLICY.STREAM_RECONNECT.retries) {
-          // The follow is over; its replies stay in the log for the next follow and the web app.
+        if (status !== undefined && !isRetryableStatus(status)) {
+          // A refusal is over; its replies stay in the log for the next follow and the web app.
           recordBotFailure("conversation_follow_failed", error, { failures });
           return;
         }
+        if (failures > RETRY_POLICY.STREAM_RECONNECT.retries)
+          throw new FollowInterrupted(error);
         wideLog.warning("conversation_follow_reconnecting", {
           ...sanitizeErrorForLog(error),
           failures,
