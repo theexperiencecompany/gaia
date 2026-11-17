@@ -1616,17 +1616,17 @@ class TestDecideLedgerBatchOutcomes:
             BatchDecisionOutcome(approval_id="ap_3", resolved=False, reason="error"),
             BatchDecisionOutcome(approval_id="ap_4", resolved=True),
             BatchDecisionOutcome(
-                approval_id="ap_5", resolved=False, reason="not_found", outcome=None
+                approval_id="ap_5", resolved=False, reason="already_decided", outcome=None
             ),
             BatchDecisionOutcome(
                 approval_id="ap_6",
                 resolved=False,
-                reason="not_found",
+                reason="already_decided",
                 outcome=ApprovalOutcome.DENIED,
             ),
         ]
         assert _warned(seams.log.error) == {
-            f"{LogTag.HIL} Ledger batch decision failed for": {
+            f"{LogTag.HIL} Ledger batch decision failed; that item stays pending": {
                 "approval_id": "ap_3",
                 "error": "mongo down",
                 "error_type": "RuntimeError",

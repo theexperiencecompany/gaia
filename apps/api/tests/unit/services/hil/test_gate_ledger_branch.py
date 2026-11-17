@@ -865,12 +865,11 @@ class TestLedgerAutoMode:
         _assert_pending(result)
         assert gate_seams.requested.await_args.args[2].auto_reason is None
 
-    async def test_unreadable_memory_and_prefs_are_reported_and_judged_without(
+    async def test_unreadable_memory_is_reported_and_judged_without(
         self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.ledger.recent_tool_outcomes.side_effect = RuntimeError("mongo down")
-        gate_seams.prefs.side_effect = ConnectionError("prefs down")
 
         await gate.decide_tool_call(gated_request())
 
@@ -882,11 +881,20 @@ class TestLedgerAutoMode:
                 "error": "mongo down",
                 "error_type": "RuntimeError",
             },
-            f"{LogTag.HIL} never-auto list unreadable; judging without it": {
-                "error": "prefs down",
-                "error_type": "ConnectionError",
-            },
         }
+
+    async def test_an_unreadable_deny_rule_list_denies_the_call_instead_of_judging_it(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Regression for review finding 23: the judge ran without the deny rules, so a never-auto tool could be auto-approved."""
+        gate_seams.policy.return_value = "auto"
+        gate_seams.prefs.side_effect = ConnectionError("prefs down")
+
+        result = await gate.decide_tool_call(gated_request())
+
+        gate_seams.judge.assert_not_awaited()
+        gate_seams.ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
 
 
 @pytest.mark.unit

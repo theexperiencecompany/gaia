@@ -40,6 +40,7 @@ from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     BatchDecisionItem,
     BatchDecisionOutcome,
+    DecisionRefusal,
 )
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import (
@@ -224,27 +225,29 @@ async def decide_ledger_batch(
         except ApprovalRequestNotFoundError:
             outcomes.append(
                 BatchDecisionOutcome(
-                    approval_id=item.approval_id, resolved=False, reason="not_found"
+                    approval_id=item.approval_id, resolved=False, reason=DecisionRefusal.NOT_FOUND
                 )
             )
             continue
         except ApprovalRequestForbiddenError:
             outcomes.append(
                 BatchDecisionOutcome(
-                    approval_id=item.approval_id, resolved=False, reason="forbidden"
+                    approval_id=item.approval_id, resolved=False, reason=DecisionRefusal.FORBIDDEN
                 )
             )
             continue
         except Exception as e:  # one item's infra failure must not strand the rest
             log.error(
-                f"{LogTag.HIL} Ledger batch decision failed for",
+                f"{LogTag.HIL} Ledger batch decision failed; that item stays pending",
                 approval_id=item.approval_id,
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,
             )
             outcomes.append(
-                BatchDecisionOutcome(approval_id=item.approval_id, resolved=False, reason="error")
+                BatchDecisionOutcome(
+                    approval_id=item.approval_id, resolved=False, reason=DecisionRefusal.ERROR
+                )
             )
             continue
         if outcome.committed:
@@ -254,7 +257,7 @@ async def decide_ledger_batch(
                 BatchDecisionOutcome(
                     approval_id=item.approval_id,
                     resolved=False,
-                    reason="not_found",
+                    reason=DecisionRefusal.ALREADY_DECIDED,
                     outcome=outcome.outcome,
                     action=outcome.action,
                 )

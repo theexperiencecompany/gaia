@@ -2,11 +2,7 @@
 
 import { Input, Modal } from "@heroui/react";
 import { ShieldIcon } from "@icons";
-import type {
-  ApprovalDecision,
-  ApprovalRequestData,
-  BatchDecisionOutcome,
-} from "@shared/chat";
+import type { ApprovalDecision, ApprovalRequestData } from "@shared/chat";
 import { approvalAgeSeconds, formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
@@ -14,7 +10,7 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
+import { isSettledOutcome } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 
 interface SheetDecision {
@@ -27,10 +23,6 @@ interface ApprovalReviewSheetProps {
   open: boolean;
   onClose: () => void;
 }
-
-/** Whether the server took this decision or found it already made: either way the sheet lets go of it. */
-const isSettled = (outcome: BatchDecisionOutcome): boolean =>
-  outcome.resolved || outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND;
 
 /**
  * Bottom sheet for 3+ pending approvals. Same rows as the inline cards, one
@@ -90,11 +82,9 @@ export default function ApprovalReviewSheet({
         });
       };
       for (const outcome of response.outcomes) {
-        if (isSettled(outcome)) removeDecision(outcome.approval_id);
+        if (isSettledOutcome(outcome)) removeDecision(outcome.approval_id);
       }
-      const kept = response.outcomes.filter(
-        (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
-      );
+      const kept = response.outcomes.filter((o) => !isSettledOutcome(o));
       if (kept.length > 0) {
         toast.error("Some approvals couldn't be submitted — please try again");
       }

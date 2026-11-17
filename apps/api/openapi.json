@@ -484,13 +484,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "success": {
             "title": "Success",
@@ -1606,13 +1605,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "resolved": {
             "title": "Resolved",
@@ -5754,6 +5752,17 @@
           "member_removed"
         ],
         "title": "DeactivationReason",
+        "type": "string"
+      },
+      "DecisionRefusal": {
+        "description": "Why a decision did not commit.",
+        "enum": [
+          "already_decided",
+          "not_found",
+          "forbidden",
+          "error"
+        ],
+        "title": "DecisionRefusal",
         "type": "string"
       },
       "DegradedHealthResponse": {

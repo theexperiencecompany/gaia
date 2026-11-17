@@ -1,18 +1,12 @@
 """The HIL approval gate: it decides whether a tool call may run, and never runs one.
 
-One entry point, decide_tool_call — the only place a tool can run from. A call the
-user has not answered pauses here; siblings are unaffected since each tool call is
-its own node task (fanned via Send) and LangGraph persists completed tasks' writes
-across an interrupt, as long as the checkpoint gets written (see subagent_runner's
-drain note: durability="exit" breaking the stream early used to re-run siblings).
+One entry point, decide_tool_call. A call the user has not answered is asked in the
+conversation log, registered on the ledger, and answered to the model as pending at
+once; the decision wakes the work later, so nothing here pauses the run.
 
 The gate orchestrates, not decides or renders: unpack (utils.py), resolve policy
-(policy.py), judge intent (intent.py), publish card + record (bridge.py), speak to
-the model (prompts.py). interrupt() raises GraphInterrupt as control flow, never
-caught here nor by the wrappers above (the GraphBubbleUp guards in middleware/executor.py
-and LangGraph's ToolNode). A decision is a record, not a resume payload, so one decision can
-wake a run with several approvals outstanding; everything before a pause re-runs
-on replay, re-reading the record instead of remembering.
+(policy.py), judge intent (intent.py), publish the card (bridge.py), speak to the model
+(prompts.py). Any failure denies the call: the gate fails closed.
 """
 
 from collections.abc import Awaitable, Callable
@@ -24,7 +18,6 @@ from typing import Any
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
-from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from pydantic_core import to_jsonable_python
 
@@ -141,11 +134,9 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
 
     try:
         policy = await resolve_policy(request, context.user_id, call.name)
-    except GraphBubbleUp:
-        raise
     except Exception as e:  # an approval gate must fail closed
         log.error(
-            f"{LogTag.HIL} Gate check failed for ; denying",
+            f"{LogTag.HIL} Gate policy check failed; denying",
             name=call.name,
             error=str(e),
             error_type=type(e).__name__,
@@ -287,8 +278,6 @@ async def _decide_ledger(
             f"{deny_note}{auto_note}",
             "pending",
         )
-    except GraphBubbleUp:
-        raise
     except Exception as e:  # an approval gate must fail closed
         log.error(
             f"{LogTag.HIL} Ledger gate failed; denying",
@@ -345,9 +334,9 @@ async def _judge(
     """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
-    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
-        context.user_id
-    )
+    # A deny rule is a security input: unreadable, the gate fails closed rather than judging without it.
+    prefs = await get_hil_preferences(context.user_id)
+    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in prefs.never_auto_tools
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
@@ -379,24 +368,6 @@ async def _judge(
             ),
         )
     return decision
-
-
-async def _never_auto_tools(user_id: str) -> frozenset[str]:
-    """Return the user's deny-rule set, or empty when prefs cannot be read.
-
-    Empty-on-failure mirrors _auto_history: prefs were already read for policy
-    resolution, so a blip here skips one refinement, never the call.
-    """
-    try:
-        prefs = await get_hil_preferences(user_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} never-auto list unreadable; judging without it",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return frozenset()
-    return frozenset(prefs.never_auto_tools)
 
 
 async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:

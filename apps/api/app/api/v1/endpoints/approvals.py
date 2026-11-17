@@ -11,6 +11,7 @@ from app.schemas.hil_schemas import (
     ApprovalDecisionResponse,
     BatchApprovalDecisionRequest,
     BatchApprovalDecisionResponse,
+    DecisionRefusal,
     HILPreferencesResponse,
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
@@ -49,7 +50,7 @@ async def post_approval_decision(
         )
     return ApprovalDecisionResponse(
         success=False,
-        reason="not_found",
+        reason=DecisionRefusal.ALREADY_DECIDED,
         outcome=outcome.outcome,
         action=outcome.action,
     )
