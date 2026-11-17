@@ -5,7 +5,6 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.briefing import BRIEF_RUN_DAYS, DAILY_BRIEFING_WORKFLOW_KEY
-from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.constants.waits import WaitCondition
@@ -33,6 +32,7 @@ from app.models.workflow_models import (
     WorkflowWithIntegrations,
     public_workflow_steps,
 )
+from app.services.briefing.errors import BriefsOffError
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.wait_service import report_wait_met
@@ -68,30 +68,13 @@ _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
 
 
-BRIEFS_OFF_FIX = "Choose Tell me now or Don't notify me, or turn on daily briefs in Settings"
-
-
-class BriefsOffError(AppError):
-    """A workflow cannot send its results to the brief while the user gets no daily brief."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            message="You get no daily brief, so a workflow cannot add its results to one",
-            why="Results wait only for a daily brief, so they would go nowhere",
-            fix=BRIEFS_OFF_FIX,
-            status_code=409,
-            code=BRIEFS_OFF,
-        )
-
-
-def delivers_to_a_missing_brief(
-    owner: AuthenticatedUser, delivery: WorkflowDelivery | None
-) -> bool:
-    """Report whether delivery is the brief while the owner gets no daily brief to carry it."""
-    return (
+def refuse_a_missing_brief(owner: AuthenticatedUser, delivery: WorkflowDelivery | None) -> None:
+    """Raise BriefsOffError when delivery is the brief and the owner gets no daily brief to carry it."""
+    if (
         delivery is WorkflowDelivery.BRIEF
         and DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[owner.briefing_schedule.frequency]
-    )
+    ):
+        raise BriefsOffError()
 
 
 def _slug_suffix() -> str:
@@ -227,8 +210,7 @@ class WorkflowService:
 
         # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
         owner = await require_owner(user_id)
-        if delivers_to_a_missing_brief(owner, request.delivery):
-            raise BriefsOffError()
+        refuse_a_missing_brief(owner, request.delivery)
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -647,10 +629,8 @@ class WorkflowService:
             current_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not current_workflow:
                 return None
-            if request.delivery is WorkflowDelivery.BRIEF and delivers_to_a_missing_brief(
-                await require_owner(user_id), request.delivery
-            ):
-                raise BriefsOffError()
+            if request.delivery is WorkflowDelivery.BRIEF:
+                refuse_a_missing_brief(await require_owner(user_id), request.delivery)
 
             # `model_fields_set` is what the client actually sent — the same
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
