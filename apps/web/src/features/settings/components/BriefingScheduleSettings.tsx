@@ -9,6 +9,7 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LoadError } from "@/components/shared/LoadError";
+import { hasDailyBrief, quietHoursLanding } from "@/features/briefing";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
@@ -16,10 +17,7 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
-import {
-  formatHour,
-  isQuietHour,
-} from "@/features/settings/utils/quietHoursAxis";
+import { formatHour } from "@/features/settings/utils/quietHoursAxis";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 /** The next daily brief, on the reader's clock: "Mon 16 Nov, 7 AM". */
@@ -33,12 +31,6 @@ const FREQUENCIES: { frequency: BriefingFrequency; label: string }[] = [
   { frequency: "weekly_only", label: "Weekly digest only" },
   { frequency: "off", label: "Off" },
 ];
-
-/** Frequencies that send a daily brief, so its hour means something. */
-const WITH_DAILY_BRIEF: ReadonlySet<BriefingFrequency> = new Set([
-  "daily",
-  "weekdays",
-]);
 
 /**
  * "Schedule": how often GAIA sends briefs and the hour the daily one lands,
@@ -58,14 +50,9 @@ export function BriefingScheduleSettings() {
   const { hours: quietHours } = useQuietHours();
   const { hasEverSubscribed } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  const hasDailyBrief =
-    schedule?.frequency !== undefined &&
-    WITH_DAILY_BRIEF.has(schedule.frequency);
-  const isHeldByQuietHours =
-    hasDailyBrief &&
-    schedule?.hour !== undefined &&
-    !!quietHours &&
-    isQuietHour(quietHours, schedule.hour);
+  const sendsDailyBrief = !!schedule && hasDailyBrief(schedule);
+  const landsAt =
+    schedule && quietHours ? quietHoursLanding(schedule, quietHours) : null;
 
   return (
     <SettingsSection
@@ -132,9 +119,9 @@ export function BriefingScheduleSettings() {
         label="Daily brief at"
         description={
           [
-            isHeldByQuietHours && quietHours
-              ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
-              : null,
+            landsAt === null
+              ? null
+              : `Lands at ${formatHour(landsAt)}, when your quiet hours end.`,
             schedule?.next_daily_brief_at
               ? `Next one ${format(parseISO(schedule.next_daily_brief_at), NEXT_BRIEF_FORMAT)}.`
               : null,
@@ -147,7 +134,7 @@ export function BriefingScheduleSettings() {
           className={inputVariants({ size: "sm", className: "w-44" })}
           aria-label="Daily brief hour"
           value={schedule?.hour !== undefined ? String(schedule.hour) : null}
-          isDisabled={!schedule || saving || !hasDailyBrief}
+          isDisabled={!schedule || saving || !sendsDailyBrief}
           onChange={(key) => {
             if (key != null) update({ hour: Number(key) });
           }}

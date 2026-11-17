@@ -1,9 +1,4 @@
-import type { BriefPoolItem } from "@shared/api/generated";
-
 import type { StandalonePageBack } from "@/components/layout/StandalonePage";
-
-/** Rows an edition prints per items block or calendar; the rest wait on the full brief page. Mirrors EDITION_ROWS_SHOWN in apps/api/app/constants/briefing.py. */
-export const EDITION_ROWS_SHOWN = 3;
 
 /**
  * What stopping a brief's link cannot take back: the edition image is a
@@ -26,15 +21,6 @@ export {
 export const BACK_TO_BRIEFINGS: StandalonePageBack = {
   href: "/briefings",
   label: "Briefings",
-};
-
-/** Where a brief item stands, in a few words. Mirrors BRIEFING_ITEM_STATES in apps/api/app/models/briefing_models.py. */
-export const BRIEF_ITEM_STATES: Record<BriefPoolItem["kind"], string> = {
-  you: "Waiting on you",
-  gaia: "In progress",
-  lookback: "Done",
-  failed: "Failed",
-  note: "Note",
 };
 
 /** Briefs the archive reads per page. */

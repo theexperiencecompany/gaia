@@ -14,7 +14,11 @@ import type { ReactNode } from "react";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { cn } from "@/lib/utils";
 
-import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "../constants";
+import {
+  BRIEF_ITEM_STATES,
+  hiddenEvents,
+  leftOutItems,
+} from "../utils/editionLeftOut";
 
 /** An item as this view reads it: its words, its state and where it opens. */
 type EditionItem = Pick<BriefingItem, "text" | "kind"> &
@@ -84,21 +88,6 @@ function undrawnLines(payload: BriefingEditionPayload): string[] {
   return (payload.undrawn ?? [])
     .map(undrawnLine)
     .filter((line): line is string => line !== null);
-}
-
-/** What the full page lists for a brief that has an edition: every item the image left out. */
-function leftOutItems(payload: BriefingEditionPayload): EditionItem[] {
-  const drawnOverflow = (payload.blocks ?? []).flatMap((block) =>
-    block.kind === "items"
-      ? (payload.sections[block.section]?.items ?? []).slice(EDITION_ROWS_SHOWN)
-      : [],
-  );
-  const undrawnSections = (payload.undrawn ?? []).flatMap((block) =>
-    block.kind === "lead" || block.kind === "items"
-      ? (payload.sections[block.section]?.items ?? [])
-      : [],
-  );
-  return [...undrawnSections, ...drawnOverflow];
 }
 
 function ItemRow({ text, href }: { text: string; href: string | null }) {
@@ -338,7 +327,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const uncomposed = payload.uncomposed ?? [];
   const undrawn = undrawnLines(payload);
   const leftOut = leftOutItems(payload);
-  const hiddenEvents = (payload.calendar ?? []).slice(EDITION_ROWS_SHOWN);
+  const pastRows = hiddenEvents(payload.calendar);
   return (
     <div className="w-full space-y-8">
       <Image
@@ -355,16 +344,14 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
       <div className="sr-only">
         <BriefingText payload={payload} letterOnly />
       </div>
-      {(undrawn.length > 0 ||
-        leftOut.length > 0 ||
-        hiddenEvents.length > 0) && (
+      {(undrawn.length > 0 || leftOut.length > 0 || pastRows.length > 0) && (
         <BelowEdition id="brief-more-from-gaia" title="More from GAIA">
           {undrawn.map((line) => (
             <li key={line} className="py-3 text-sm text-zinc-300">
               {line}
             </li>
           ))}
-          {hiddenEvents.map((event) => (
+          {pastRows.map((event) => (
             <li
               key={`${event.start ?? "all-day"}-${event.title}`}
               className="py-3 text-sm text-zinc-300"

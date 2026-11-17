@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "./constants";
+import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "./editionLeftOut";
 
 const API_CONSTANTS = resolve(
   __dirname,
-  "../../../../api/app/constants/briefing.py",
+  "../../../../../api/app/constants/briefing.py",
 );
 
 const API_MODELS = resolve(
   __dirname,
-  "../../../../api/app/models/briefing_models.py",
+  "../../../../../api/app/models/briefing_models.py",
 );
 
 describe("BRIEF_ITEM_STATES", () => {

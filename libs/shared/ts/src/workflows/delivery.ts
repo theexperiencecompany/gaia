@@ -1,4 +1,4 @@
-import type { BriefingFrequency, WorkflowDelivery } from "../api/generated";
+import type { WorkflowDelivery } from "../api/generated";
 
 /** Every delivery mode, in the order the workflow modal offers them. */
 export const WORKFLOW_DELIVERIES = [
@@ -38,21 +38,6 @@ export const WORKFLOW_DELIVERY_COPY: Record<
     label: "Don't notify me",
     description: "Results stay in the workflow. You only hear about failures.",
   },
-};
-
-/**
- * What "Add to my brief" promises under each briefing frequency: the next
- * daily brief, which carries the results, or null when there is none. The
- * weekly digest carries no workflow results.
- */
-export const BRIEF_DELIVERY_DESCRIPTION: Record<
-  BriefingFrequency,
-  string | null
-> = {
-  daily: WORKFLOW_DELIVERY_COPY.brief.description,
-  weekdays: WORKFLOW_DELIVERY_COPY.brief.description,
-  weekly_only: null,
-  off: null,
 };
 
 export const NO_DAILY_BRIEF_DELIVERY_REASON =

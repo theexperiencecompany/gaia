@@ -30,3 +30,4 @@ export {
   notificationBrief,
   payloadBrief,
 } from "./utils/briefCard";
+export { hasDailyBrief, quietHoursLanding } from "./utils/briefSchedule";

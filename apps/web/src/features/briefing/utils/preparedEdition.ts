@@ -131,6 +131,8 @@ async function decodeAndSlice(
     height: image.naturalHeight,
   };
   // A marked paper box is exact; only an unmarked edition is read for its desk.
+  // INTEGRATION(P-api2): once every edition carries the box Chromium measures, this
+  // branch, straighten() and all of paperBounds.ts are deleted.
   const asDrawn = paper ? markedSheet(image, paper) : findPaper(drawn);
   // A sheet set at an angle on its desk is turned square first, so its border survives the crop.
   const edition = asDrawn.tilt ? straighten(image, asDrawn) : drawn;

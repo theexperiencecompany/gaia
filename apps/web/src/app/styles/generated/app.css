@@ -466,6 +466,8 @@
 @source "../../../features/briefing/hooks/useNightGlobeBasemap.ts";
 @source "../../../features/briefing/hooks/useOpenBrief.ts";
 @source "../../../features/briefing/utils/briefCard.ts";
+@source "../../../features/briefing/utils/briefSchedule.ts";
+@source "../../../features/briefing/utils/editionLeftOut.ts";
 @source "../../../features/briefing/utils/frontPaper.ts";
 @source "../../../features/briefing/utils/paperBounds.ts";
 @source "../../../features/briefing/utils/preparedEdition.ts";
