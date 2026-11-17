@@ -26,7 +26,12 @@ from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingEvent, BriefingModel, BriefingTallies
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingModel,
+    BriefingMood,
+    BriefingTallies,
+)
 from app.models.user_models import UserDocument
 from app.services.briefing import context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
@@ -250,7 +255,7 @@ async def _weekly(user_id: str) -> BriefingRunOutcome:
         Prose(voice, draft, links),
         facts,
         kicker=WEEKLY_KICKER,
-        mood="weekly",
+        mood=BriefingMood.WEEKLY,
         family=WEEKLY_FAMILY,
     ).model_copy(
         update={

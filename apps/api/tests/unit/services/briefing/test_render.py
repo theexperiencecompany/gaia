@@ -8,7 +8,7 @@ from dataclasses import FrozenInstanceError
 import io
 from typing import Any
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 import pytest
 
 from app.services.briefing import render as render_module
@@ -369,7 +369,7 @@ class TestTrimToContent:
     def test_every_side_is_cut_to_the_same_margin_of_desk(self) -> None:
         png = _desk_with_paper((300, 400), (50, 70, 200, 330))
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (150 + 20, 260 + 20)
         assert trimmed.getpixel((9, 9)) == _DESK
@@ -380,7 +380,7 @@ class TestTrimToContent:
     def test_a_visible_shadow_counts_as_paper(self) -> None:
         png = _desk_with_paper((300, 400), (50, 70, 200, 300), shadow_below=12)
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (170, 230 + 12 + 20)
         assert trimmed.getpixel((80, 10 + 230 + 5)) == _SHADOW
@@ -388,7 +388,7 @@ class TestTrimToContent:
     def test_a_side_already_inside_the_margin_is_left_as_captured(self) -> None:
         png = _desk_with_paper((300, 400), (4, 70, 200, 330))
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (196 + 4 + 10, 280)
         assert trimmed.getpixel((0, 100)) == _DESK
@@ -399,19 +399,21 @@ class TestTrimToContent:
         out = io.BytesIO()
         gray.save(out, format="PNG")
 
-        trimmed = Image.open(io.BytesIO(trim_to_content(out.getvalue(), 10, ImageRenderOptions())))
+        trimmed = Image.open(
+            io.BytesIO(trim_to_content(out.getvalue(), 10, ImageRenderOptions())[0])
+        )
 
         assert trimmed.size == (170, 280)
 
     def test_a_blank_capture_is_returned_untouched(self) -> None:
         png = _desk_with_paper((40, 40), (0, 0, 0, 0))
 
-        assert trim_to_content(png, 10, ImageRenderOptions()) == png
+        assert trim_to_content(png, 10, ImageRenderOptions())[0] == png
 
     def test_a_jpeg_capture_stays_a_jpeg(self) -> None:
         png = _desk_with_paper((300, 400), (50, 70, 200, 330))
 
-        trimmed = trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg", quality=80))
+        trimmed = trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg", quality=80))[0]
 
         assert trimmed[:3] == b"\xff\xd8\xff"
 
@@ -427,7 +429,7 @@ class TestTrimToContent:
     def test_every_side_already_inside_the_margin_keeps_the_whole_capture(self) -> None:
         png = _desk_with_paper((300, 400), (4, 3, 297, 398))
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (300, 400)
         assert trimmed.getpixel((0, 0)) == _DESK
@@ -436,7 +438,7 @@ class TestTrimToContent:
     def test_content_in_the_first_row_is_seen_by_the_column_walk(self) -> None:
         png = _desk_with_paper((300, 400), (100, 0, 101, 1))
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (21, 11)
         assert trimmed.getpixel((10, 0)) == _PAPER
@@ -444,7 +446,7 @@ class TestTrimToContent:
     def test_content_in_the_first_column_is_seen_by_the_row_walk(self) -> None:
         png = _desk_with_paper((300, 400), (0, 100, 1, 101))
 
-        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(png, 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (11, 21)
         assert trimmed.getpixel((0, 10)) == _PAPER
@@ -457,7 +459,7 @@ class TestTrimToContent:
         draw.rectangle((20, 20, 279, 379), fill=faint)
         draw.rectangle((50, 70, 199, 329), fill=visible)
 
-        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions())[0])
 
         assert trimmed.size == (170, 280)
 
@@ -470,7 +472,7 @@ class TestTrimToContent:
         draw.rectangle((2, 0, 299, 399), fill=far_drift)
         draw.rectangle((150, 70, 199, 329), fill=_PAPER)
 
-        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 0, ImageRenderOptions()))
+        trimmed = _opened(trim_to_content(_saved(image, format="PNG"), 0, ImageRenderOptions())[0])
 
         assert trimmed.size == (200 - 2, 260)
         assert trimmed.getpixel((0, 0)) == far_drift
@@ -479,7 +481,7 @@ class TestTrimToContent:
         image = _clear_with_paper()
 
         trimmed = Image.open(
-            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions())[0])
         )
 
         assert trimmed.mode == "RGBA"
@@ -493,7 +495,7 @@ class TestTrimToContent:
         ImageDraw.Draw(image).rectangle((50, 330, 199, 359), fill=faintest)
 
         trimmed = Image.open(
-            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions())[0])
         )
 
         assert trimmed.size == (170, 280 + 30)
@@ -504,7 +506,7 @@ class TestTrimToContent:
         ImageDraw.Draw(image).rectangle((0, 0, 299, 30), fill=(255, 255, 255, 0))
 
         trimmed = Image.open(
-            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions()))
+            io.BytesIO(trim_to_content(_saved(image, format="PNG"), 10, ImageRenderOptions())[0])
         )
 
         assert trimmed.size == (170, 280)
@@ -516,7 +518,7 @@ class TestTrimToContent:
         paletted.info["transparency"] = 0
 
         trimmed = Image.open(
-            io.BytesIO(trim_to_content(_saved(paletted, format="PNG"), 10, ImageRenderOptions()))
+            io.BytesIO(trim_to_content(_saved(paletted, format="PNG"), 10, ImageRenderOptions())[0])
         )
 
         assert trimmed.size == (170, 280)
@@ -529,19 +531,19 @@ class TestTrimToContent:
         png = _saved(_clear_with_paper(), format="PNG")
 
         trimmed = Image.open(
-            io.BytesIO(trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg")))
+            io.BytesIO(trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg"))[0])
         )
 
         assert (trimmed.format, trimmed.mode, trimmed.size) == ("JPEG", "RGB", (170, 280))
 
-    def test_a_png_is_saved_optimized(self) -> None:
+    def test_a_png_is_cut_losslessly_and_names_the_box_it_kept(self) -> None:
         png = _noisy_desk_with_paper()
         expected = _opened(png).crop((40, 60, 210, 340))
 
-        trimmed = trim_to_content(png, 10, ImageRenderOptions())
+        trimmed, box = trim_to_content(png, 10, ImageRenderOptions())
 
-        assert trimmed == _saved(expected, format="PNG", optimize=True)
-        assert trimmed != _saved(expected, format="PNG")
+        assert box == (40, 60, 210, 340)
+        assert ImageChops.difference(_opened(trimmed), expected).getbbox() is None
 
     @pytest.mark.parametrize(("quality", "saved_quality"), [(30, 30), (None, 75)])
     def test_a_jpeg_is_cropped_and_saved_at_the_requested_quality(
@@ -550,7 +552,9 @@ class TestTrimToContent:
         png = _noisy_desk_with_paper()
         expected = _opened(png).crop((40, 60, 210, 340))
 
-        trimmed = trim_to_content(png, 10, ImageRenderOptions(image_format="jpeg", quality=quality))
+        trimmed = trim_to_content(
+            png, 10, ImageRenderOptions(image_format="jpeg", quality=quality)
+        )[0]
 
         assert trimmed == _saved(expected, format="JPEG", quality=saved_quality)
         assert trimmed != _saved(expected, format="JPEG", quality=saved_quality + 1)

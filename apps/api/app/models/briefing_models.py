@@ -39,9 +39,18 @@ from app.schemas.errors import ErrorEnvelope
 
 BriefingKind = Literal["daily", "weekly"]
 
+
 # ``mood`` keys the hero treatment (gradient + typographic emphasis) client-side.
 # A closed set so renderers can switch on it; the prompt is held to these values.
-BriefingMood = Literal["clear", "packed", "idle", "winback", "weekly"]
+class BriefingMood(StrEnum):
+    """The hero treatment a brief is drawn with; the voice picks one of the daily moods."""
+
+    CLEAR = "clear"
+    PACKED = "packed"
+    IDLE = "idle"
+    WINBACK = "winback"
+    WEEKLY = "weekly"
+
 
 # ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
 # user ask, a look-back note, work that failed, a plain highlight). The kind is

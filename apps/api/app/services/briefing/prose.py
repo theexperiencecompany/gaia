@@ -273,7 +273,7 @@ def plain_voice(writing: Writing) -> BriefVoice:
     while len(_draft_message(message, writing)) > MAX_BRIEF_MESSAGE_CHARS and "\n" in message:
         message = message.rsplit("\n", 1)[0]
     return BriefVoice(
-        headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood="clear", message=message
+        headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood=BriefingMood.CLEAR, message=message
     )
 
 

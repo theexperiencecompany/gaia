@@ -2436,6 +2436,18 @@
         "title": "BriefingListResponse",
         "type": "object"
       },
+      "BriefingMood": {
+        "description": "The hero treatment a brief is drawn with; the voice picks one of the daily moods.",
+        "enum": [
+          "clear",
+          "packed",
+          "idle",
+          "winback",
+          "weekly"
+        ],
+        "title": "BriefingMood",
+        "type": "string"
+      },
       "BriefingPayload": {
         "description": "The structured briefing the run emits and every channel renders.",
         "properties": {
@@ -2562,15 +2574,7 @@
             "title": "Message"
           },
           "mood": {
-            "enum": [
-              "clear",
-              "packed",
-              "idle",
-              "winback",
-              "weekly"
-            ],
-            "title": "Mood",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingMood"
           },
           "new_stamp": {
             "anyOf": [
@@ -16678,15 +16682,7 @@
             "type": "string"
           },
           "mood": {
-            "enum": [
-              "clear",
-              "packed",
-              "idle",
-              "winback",
-              "weekly"
-            ],
-            "title": "Mood",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingMood"
           },
           "sections": {
             "items": {

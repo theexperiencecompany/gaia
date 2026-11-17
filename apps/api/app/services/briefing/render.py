@@ -3,6 +3,7 @@
 Each call owns a fresh browser (app.services.render.chromium).
 """
 
+import asyncio
 from dataclasses import dataclass
 import io
 from typing import Literal
@@ -138,14 +139,13 @@ async def render_html_to_image(
         paper_px = await _paper_px(page, options, clip)
         if options.trim_margin_px is not None:
             margin = options.trim_margin_px * options.device_scale_factor
-            box = content_box(Image.open(io.BytesIO(image)), margin)
+            image, box = await asyncio.to_thread(trim_to_content, image, margin, options)
             if box is not None:
                 if fold_px is not None:
                     fold_px -= box[1]
                 if paper_px is not None:
                     x0, y0, x1, y1 = paper_px
                     paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
-            image = trim_to_content(image, margin, options)
         log.debug(
             f"{LogTag.TOOL} Rendered HTML to image",
             image_format=options.image_format,
@@ -274,21 +274,24 @@ def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int]
     )
 
 
-def trim_to_content(image_bytes: bytes, margin_px: int, options: ImageRenderOptions) -> bytes:
-    """Cut each side's background run down to margin_px device pixels; a blank image is returned unchanged.
+def trim_to_content(
+    image_bytes: bytes, margin_px: int, options: ImageRenderOptions
+) -> tuple[bytes, tuple[int, int, int, int] | None]:
+    """Cut each side's background run down to margin_px device pixels; return the image and the box cut to.
 
-    A PNG keeps its alpha; a JPEG, which has none, is flattened.
+    A blank image is returned unchanged, with no box. A PNG keeps its alpha; a JPEG, which has
+    none, is flattened.
     """
     image = Image.open(io.BytesIO(image_bytes))
     box = content_box(image, margin_px)
     if box is None:
-        return image_bytes
+        return image_bytes, None
     cropped = image.crop(box)
     if options.image_format == "jpeg":
         cropped = cropped.convert("RGB")
-    save_options: dict[str, int | bool] = (
-        {"quality": options.quality or 75} if options.image_format == "jpeg" else {"optimize": True}
+    save_options: dict[str, int] = (
+        {"quality": options.quality or 75} if options.image_format == "jpeg" else {}
     )
     out = io.BytesIO()
     cropped.save(out, format=options.image_format, **save_options)
-    return out.getvalue()
+    return out.getvalue(), box

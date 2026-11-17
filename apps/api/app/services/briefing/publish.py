@@ -38,6 +38,7 @@ from app.models.briefing_models import (
     BriefDelivery,
     BriefingKind,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     UnreadSource,
 )
@@ -253,7 +254,7 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
         headline=QUIET_NOTE_UNREAD_HEADLINE if facts.unread else QUIET_NOTE_HEADLINES[kind],
         lede="",
         caption="",
-        mood="idle",
+        mood=BriefingMood.IDLE,
         template_family="",
         message="\n".join(lines),
         sources_unavailable=facts.unread,

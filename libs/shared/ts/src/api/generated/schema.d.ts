@@ -7217,6 +7217,12 @@ export interface components {
             next_cursor: string | null;
         };
         /**
+         * BriefingMood
+         * @description The hero treatment a brief is drawn with; the voice picks one of the daily moods.
+         * @enum {string}
+         */
+        BriefingMood: "clear" | "packed" | "idle" | "winback" | "weekly";
+        /**
          * BriefingPayload
          * @description The structured briefing the run emits and every channel renders.
          */
@@ -7268,11 +7274,7 @@ export interface components {
              * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
              */
             message: string | null;
-            /**
-             * Mood
-             * @enum {string}
-             */
-            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            mood: components["schemas"]["BriefingMood"];
             /** @description Set when this brief's stamp is one the user had not collected before. */
             new_stamp: components["schemas"]["NewStamp"] | null;
             /**
@@ -13908,11 +13910,7 @@ export interface components {
             kicker: string;
             /** Lede */
             lede: string;
-            /**
-             * Mood
-             * @enum {string}
-             */
-            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            mood: components["schemas"]["BriefingMood"];
             /** Sections */
             sections: components["schemas"]["PublicBriefingSection"][];
             /** Stats */
@@ -18122,6 +18120,7 @@ export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingMood = components['schemas']['BriefingMood'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
 export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
 export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];

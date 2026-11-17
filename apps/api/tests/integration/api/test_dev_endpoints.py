@@ -3,14 +3,13 @@
 from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
 import io
-import json
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 import zipfile
 
 from bson import ObjectId
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
@@ -24,7 +23,12 @@ from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
+from app.schemas.dev_schemas import (
+    DevAgentRunResponse,
+    DevBriefingRunResponse,
+    SeedDevDataRequest,
+    SeedDevDataResponse,
+)
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.errors import AppError
@@ -933,12 +937,9 @@ class TestDevBriefingRun:
         get_by_email.assert_awaited_once_with(DEV_EMAIL)
         run_daily.assert_awaited_once_with("u-brief")
         run_weekly.assert_not_awaited()
-        assert json.loads(response.body) == {
-            "user_id": "u-brief",
-            "kind": "daily",
-            "status": "completed",
-            "outcome": "sent",
-        }
+        assert response == DevBriefingRunResponse(
+            user_id="u-brief", kind="daily", outcome=BriefingRunOutcome.SENT
+        )
         assert event["dev"] == {
             "operation": "run_briefing",
             "kind": "daily",
@@ -947,7 +948,7 @@ class TestDevBriefingRun:
             "outcome": "sent",
         }
 
-    async def test_an_unknown_kind_is_a_400_through_the_mounted_route(self, monkeypatch):
+    async def test_an_unknown_kind_is_refused_by_the_route_itself(self, monkeypatch):
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
@@ -955,10 +956,7 @@ class TestDevBriefingRun:
         async with client:
             response = await client.post(f"/api/v1/dev/briefing/monthly/{DEV_EMAIL}")
 
-        assert (response.status_code, response.json()["message"]) == (
-            400,
-            "kind must be 'daily' or 'weekly'",
-        )
+        assert response.status_code == 422
 
     async def test_an_unknown_email_is_a_404_naming_how_to_mint_it(self):
         run_daily = AsyncMock()
@@ -969,13 +967,14 @@ class TestDevBriefingRun:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            pytest.raises(HTTPException) as caught,
+            pytest.raises(AppError) as caught,
         ):
             await run_briefing_now("daily", "ghost@gaia.local")
 
         assert caught.value.status_code == 404
-        assert caught.value.detail == (
-            "No GAIA user exists for 'ghost@gaia.local' — mint it via POST /api/v1/dev/users"
+        assert (caught.value.message, caught.value.fix) == (
+            "No GAIA user exists for 'ghost@gaia.local'",
+            "Mint it via POST /api/v1/dev/users",
         )
         run_daily.assert_not_awaited()
 

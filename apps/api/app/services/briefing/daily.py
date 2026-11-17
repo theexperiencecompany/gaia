@@ -24,6 +24,7 @@ from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     BriefingTallies,
     UnreadSource,
@@ -305,7 +306,7 @@ async def _daily(user_id: str) -> BriefingRunOutcome:
         Prose(voice, draft, links),
         facts,
         kicker=DAILY_KICKER,
-        mood="winback" if winback.is_winback else draft.mood,
+        mood=BriefingMood.WINBACK if winback.is_winback else draft.mood,
         family=edition.family.member,
     ).model_copy(
         update={

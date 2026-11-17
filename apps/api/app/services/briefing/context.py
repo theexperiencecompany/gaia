@@ -413,8 +413,8 @@ async def compute_winback_state(user: UserDocument, recent: int = 10) -> Winback
             break
         unacknowledged += 1
 
-    last_mood: BriefingMood | str = briefings[0].payload.mood
-    return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_mood == "winback")
+    last_was_winback = briefings[0].payload.mood is BriefingMood.WINBACK
+    return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_was_winback)
 
 
 def _to_event(event: GoogleCalendarEventResource, tz: tzinfo) -> BriefingEvent | None:

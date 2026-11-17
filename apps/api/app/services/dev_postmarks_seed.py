@@ -92,7 +92,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Two signatures and a quiet afternoon",
         lede="The Northwind contract is ready to sign, and nothing is booked after 2 PM.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Sign early, then take the afternoon back.",
         needs_you=(
             (BriefAction.APPROVE, "Northwind services agreement"),
@@ -108,7 +108,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="A packed Thursday, mostly meetings",
         lede="Five calls back to back; I moved the 1:1 with Sam so you get lunch.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Eat before the 1 PM.",
         needs_you=((BriefAction.REPLY, "Offsite venue, by noon"),),
         events=(
@@ -127,7 +127,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The invoice went out, the bug did not come back",
         lede="Acme paid overnight and the login fix held through the weekend traffic.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="A clean slate for Monday.",
         needs_you=((BriefAction.REVIEW, "Draft pricing page copy"),),
         events=(_SeedEvent("14:00", "Pricing sync", "Zoom"),),
@@ -141,7 +141,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Your flight to Lisbon is on time",
         lede="Boarding at 6:40 PM from gate B12; the hotel confirmed early check-in.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Pack the charger this time.",
         needs_you=((BriefAction.REVIEW, "Return flight seat"),),
         events=(
@@ -157,7 +157,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Three replies are waiting on you",
         lede="Recruiting, the landlord and the conference talk all need a yes or no.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Ten minutes clears all three.",
         needs_you=(
             (BriefAction.REPLY, "Jordan's senior engineer offer"),
@@ -171,7 +171,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Nothing on the calendar, plenty done",
         lede="A free Saturday; overnight I cleared the reading list and booked the dentist.",
-        mood="idle",
+        mood=BriefingMood.IDLE,
         caption="Enjoy the slow one.",
         needs_you=(),
         events=(),
@@ -184,7 +184,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The board deck needs your numbers",
         lede="Slides 4 to 9 are drafted; the revenue chart is waiting on the final close.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Numbers first, polish later.",
         needs_you=(
             (BriefAction.REVIEW, "Board deck revenue slide"),
@@ -201,7 +201,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Your mother's birthday is Sunday",
         lede="The flowers are ordered for Saturday delivery; the card still needs your words.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Write it from the heart.",
         needs_you=((BriefAction.ATTEND, "Birthday card, before Friday"),),
         events=(_SeedEvent("19:00", "Dinner with Alex", "Osteria Nove"),),
@@ -214,7 +214,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The release shipped while you slept",
         lede="Version 2.4 is live for everyone, and the changelog went out at 6 AM.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Celebrate the team at standup.",
         needs_you=((BriefAction.APPROVE, "Blog post about 2.4"),),
         events=(_SeedEvent("09:30", "Standup"), _SeedEvent("15:00", "Retro", "Zoom")),
@@ -228,7 +228,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="A renewal is due before Friday",
         lede="The insurance policy lapses on the 3rd; the cheaper quote is ready to compare.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="One decision, then you are covered.",
         needs_you=((BriefAction.APPROVE, "Home insurance renewal"),),
         events=(_SeedEvent("11:00", "Call with the accountant"),),
@@ -242,7 +242,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Gym at seven, deep work until noon",
         lede="I blocked the morning for the proposal and muted Slack until 12.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Protect the morning.",
         needs_you=(),
         events=(
@@ -259,7 +259,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="One payment failed overnight",
         lede="The card on the design tool expired; everything else renewed fine.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Update the card and it retries.",
         needs_you=((BriefAction.APPROVE, "New card for Figma billing"),),
         events=(_SeedEvent("13:00", "Lunch and learn", "Kitchen"),),
@@ -421,7 +421,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
             ),
         ],
         blocks=_section_blocks(2),
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Two decisions and the week is closed.",
         hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),
         template_family=WEEKLY_FAMILY,
