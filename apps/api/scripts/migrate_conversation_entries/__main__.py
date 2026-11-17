@@ -85,12 +85,13 @@ def _scans(*, every_embedded: bool) -> tuple[_Scan, _Scan]:
     )
 
 
-async def _migrate(args: argparse.Namespace) -> int:
+async def migrate_all(*, apply: bool) -> int:
+    """Migrate every head the log lags; 1 while any conversation raced or was refused."""
     actions: Counter[MigrationAction] = Counter()
     totals = _Totals()
     for scan in _scans(every_embedded=False):
         async for ref in _heads(scan):
-            outcome = await conversation_entries_migration.migrate(ref, apply=args.apply)
+            outcome = await conversation_entries_migration.migrate(ref, apply=apply)
             actions[outcome.action] += 1
             totals.written += outcome.written
             totals.rewritten += outcome.rewritten
@@ -115,18 +116,18 @@ async def _migrate(args: argparse.Namespace) -> int:
             f"  {totals.not_kept} messages carry fields the log does not keep "
             f"({', '.join(NOT_KEPT_FIELDS)})."
         )
-    given = await conversation_source_backfill.backfill(apply=args.apply)
+    given = await conversation_source_backfill.backfill(apply=apply)
     print(
         "Sources: "
         + ", ".join(f"{count} given {source.value}" for source, count in given.items())
         + "."
     )
-    if not args.apply:
+    if not apply:
         print("Dry run only. Re-run with --apply to write.")
     return 1 if any(actions[action] for action in _FAILED) else 0
 
 
-async def _verify() -> int:
+async def verify_all() -> int:
     """Verify every head with an embedded array or message entries, printing each mismatch."""
     verified = failed = 0
     for scan in _scans(every_embedded=True):
@@ -145,8 +146,8 @@ async def _verify() -> int:
 
 async def _run(args: argparse.Namespace) -> int:
     if args.verify:
-        return await _verify()
-    return await _migrate(args)
+        return await verify_all()
+    return await migrate_all(apply=args.apply)
 
 
 def _parser() -> argparse.ArgumentParser:
