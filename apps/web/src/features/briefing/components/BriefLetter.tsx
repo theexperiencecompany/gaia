@@ -9,11 +9,11 @@ import { cn } from "@/lib/utils";
 
 import {
   type EditionLayout,
+  holdEdition,
   LETTER_MAX_WIDTH,
   LETTER_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   type PreparedEdition,
-  prepareEdition,
 } from "../utils/preparedEdition";
 import { PanelFace } from "./EditionUnfold";
 
@@ -132,7 +132,8 @@ export function BriefLetter({
     if (!isNear || !imageUrl) return;
     let isCurrent = true;
     setIsFailed(false);
-    prepareEdition(imageUrl, layout)
+    const hold = holdEdition(imageUrl, layout);
+    hold.edition
       .then((prepared) => {
         if (isCurrent) setEdition(prepared);
       })
@@ -142,6 +143,7 @@ export function BriefLetter({
       });
     return () => {
       isCurrent = false;
+      hold.release();
     };
   }, [isNear, imageUrl, layout]);
 

@@ -9,7 +9,10 @@ vi.mock("@/features/briefing/utils/preparedEdition", () => ({
   LETTER_MAX_WIDTH: 400,
   LETTER_PERSPECTIVE_PX: 800,
   LETTER_TILT_DEG: 2,
-  prepareEdition: (url: string) => prepareEdition(url),
+  holdEdition: (url: string) => ({
+    edition: prepareEdition(url),
+    release: () => undefined,
+  }),
 }));
 
 vi.mock("@/features/briefing/components/EditionUnfold", () => ({

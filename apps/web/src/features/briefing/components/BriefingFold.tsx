@@ -4,7 +4,14 @@ import { ArrowExpand01Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   LETTER_CONTROL_PROPS,
@@ -17,7 +24,9 @@ import { cn } from "@/lib/utils";
 import { BRIEF_LETTER_WIDTH } from "../constants";
 import { briefingQuery } from "../hooks/useBriefingQuery";
 import {
+  type EditionHold,
   type EditionLayout,
+  holdEdition,
   type PreparedEdition,
   prepareEdition,
 } from "../utils/preparedEdition";
@@ -84,7 +93,21 @@ export function BriefingFold({
   const [isPreparing, setIsPreparing] = useState(false);
   const [origin, setOrigin] = useState<DOMRect | null>(null);
   const [isLifted, setIsLifted] = useState(false);
+  // The open letter's edition stays prepared, its bitmaps open, until the next open or unmount.
+  const heldEdition = useRef<EditionHold | null>(null);
   const settleLetter = useCallback(() => setIsLifted(false), []);
+
+  useEffect(() => () => heldEdition.current?.release(), []);
+
+  const hold = async (
+    src: string,
+    editionLayout: EditionLayout,
+  ): Promise<PreparedEdition> => {
+    const next = holdEdition(src, editionLayout);
+    heldEdition.current?.release();
+    heldEdition.current = next;
+    return next.edition;
+  };
 
   const warmEdition = () => {
     if (!imageUrl) return;
@@ -97,7 +120,7 @@ export function BriefingFold({
     // The edition it carries is already cut, so it opens at once; the brief is still
     // fetched alongside, which is what marks it opened.
     if (content.briefingId && !content.payload && imageUrl) {
-      const edition = await prepareEdition(imageUrl, layout).catch(() => null);
+      const edition = await hold(imageUrl, layout).catch(() => null);
       if (edition) {
         void queryClient.prefetchQuery(briefingQuery(content.briefingId));
         return { kind: "edition", edition };
@@ -123,7 +146,7 @@ export function BriefingFold({
       try {
         return {
           kind: "edition",
-          edition: await prepareEdition(src, editionLayout),
+          edition: await hold(src, editionLayout),
         };
       } catch (error) {
         // The stored edition no longer loads; the brief's text is the same content.

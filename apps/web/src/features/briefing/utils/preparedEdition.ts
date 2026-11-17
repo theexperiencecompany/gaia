@@ -49,7 +49,22 @@ export interface PreparedEdition {
   isDarkPaper: boolean;
 }
 
-const prepared = new Map<string, Promise<PreparedEdition>>();
+/** Prepared editions nobody holds that are kept for a quick reopen; each holds ~25 MB of bitmaps. */
+const IDLE_EDITIONS_KEPT = 3;
+
+interface Preparation {
+  edition: Promise<PreparedEdition>;
+  holders: number;
+}
+
+/** Every preparation by key, least recently used first. */
+const preparations = new Map<string, Preparation>();
+
+/** An edition kept prepared until released; its bitmaps stay open while any hold remains. */
+export interface EditionHold {
+  edition: Promise<PreparedEdition>;
+  release: () => void;
+}
 
 /** The back of the edition's paper: its own colour, shaded toward the crease it hangs from. */
 export function paperBackGradient(paper: string): string {
@@ -103,6 +118,7 @@ function markedSheet(image: HTMLImageElement, paper: number[]): PaperSheet {
 async function decodeAndSlice(
   src: string,
   { fold, paper }: EditionLayout,
+  width: number,
 ): Promise<PreparedEdition> {
   const image = new window.Image();
   // The edition CDN allows any origin, so the paper can be read back from the pixels.
@@ -129,7 +145,6 @@ async function decodeAndSlice(
       ? null
       : (fold * image.naturalHeight - turnLift - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
-  const width = fittedWidth();
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
   const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
   const starts = shares.map((_, index) =>
@@ -164,19 +179,63 @@ async function decodeAndSlice(
   };
 }
 
+function closeBitmaps(edition: PreparedEdition): void {
+  edition.sheet.close();
+  for (const panel of edition.panels) panel.close();
+}
+
+/** Drop the least recently used editions nobody holds, past the few kept, and free their bitmaps. */
+function evictIdle(): void {
+  const idle = [...preparations].filter(([, entry]) => entry.holders === 0);
+  for (const [key, entry] of idle.slice(0, -IDLE_EDITIONS_KEPT)) {
+    preparations.delete(key);
+    // A failed preparation has nothing to free; its holders already saw the error.
+    entry.edition.then(closeBitmaps, () => undefined);
+  }
+}
+
 /**
- * Decode the edition and cut its panels once per viewport width, so opening only
- * composites small bitmaps. A failed preparation is forgotten and retried next time.
+ * Decode the edition and cut its panels once per display width, so opening only
+ * composites small bitmaps. Every viewport wider than the letter shares one width.
+ * A failed preparation is forgotten and retried next time.
  */
-export function prepareEdition(
+export function holdEdition(src: string, layout: EditionLayout): EditionHold {
+  const width = fittedWidth();
+  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${width}`;
+  let entry = preparations.get(key);
+  if (entry) {
+    preparations.delete(key);
+  } else {
+    const created: Preparation = {
+      edition: decodeAndSlice(src, layout, width),
+      holders: 0,
+    };
+    created.edition.catch(() => {
+      if (preparations.get(key) === created) preparations.delete(key);
+    });
+    entry = created;
+  }
+  preparations.set(key, entry);
+  entry.holders += 1;
+  const held = entry;
+  let isReleased = false;
+  return {
+    edition: held.edition,
+    release: () => {
+      if (isReleased) return;
+      isReleased = true;
+      held.holders -= 1;
+      evictIdle();
+    },
+  };
+}
+
+/** Ready an edition ahead of a press; it stays prepared while there is room for it. */
+export async function prepareEdition(
   src: string,
   layout: EditionLayout,
-): Promise<PreparedEdition> {
-  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${window.innerWidth}`;
-  const cached = prepared.get(key);
-  if (cached) return cached;
-  const pending = decodeAndSlice(src, layout);
-  prepared.set(key, pending);
-  pending.catch(() => prepared.delete(key));
-  return pending;
+): Promise<void> {
+  const hold = holdEdition(src, layout);
+  hold.release();
+  await hold.edition;
 }
