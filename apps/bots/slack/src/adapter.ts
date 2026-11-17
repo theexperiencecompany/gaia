@@ -32,6 +32,7 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
+  ReplyPlaceholder,
   type RichMessage,
   type RichMessageTarget,
   recordBotFailure,
@@ -39,6 +40,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
@@ -192,6 +194,7 @@ export class SlackAdapter extends BaseBotAdapter {
   protected async registerEvents(): Promise<void> {
     // Channel @mentions
     this.app.event("app_mention", async ({ event, client, context }) => {
+      const receivedAt = Date.now();
       const botMention = context.botUserId
         ? new RegExp(`<@${context.botUserId}>`, "g")
         : null;
@@ -217,12 +220,14 @@ export class SlackAdapter extends BaseBotAdapter {
         userId,
         content,
         false,
+        receivedAt,
         event.ts,
       );
     });
 
     // DM messages
     this.app.message(async ({ message, client }) => {
+      const receivedAt = Date.now();
       const msg = message as SlackMessageEvent;
 
       if (msg.subtype) return;
@@ -235,6 +240,7 @@ export class SlackAdapter extends BaseBotAdapter {
         msg.user,
         msg.text,
         true,
+        receivedAt,
         msg.ts,
       );
     });
@@ -375,6 +381,7 @@ export class SlackAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
+      const receivedAt = Date.now();
       await ack();
 
       const userId = command.user_id;
@@ -396,6 +403,7 @@ export class SlackAdapter extends BaseBotAdapter {
         userId,
         message,
         channelId.startsWith("D"),
+        receivedAt,
       );
     });
   }
@@ -404,7 +412,9 @@ export class SlackAdapter extends BaseBotAdapter {
    * Shared streaming handler for `/gaia`, @mentions, and DMs.
    *
    * Posts an initial "Thinking..." message, then updates it via
-   * `chat.update` as chunks arrive from the streaming API.
+   * `chat.update` as chunks arrive from the streaming API. The placeholder is
+   * posted alongside the API request ({@link ReplyPlaceholder}); a reply whose
+   * placeholder never posted opens a message of its own.
    */
   private async handleSlackStreaming(
     client: SlackWebClient,
@@ -412,40 +422,22 @@ export class SlackAdapter extends BaseBotAdapter {
     userId: string,
     message: string,
     isDm: boolean,
+    receivedAt: number,
     inboundTs?: string,
   ): Promise<void> {
-    const result = await client.chat.postMessage({
-      channel: channelId,
-      text: "Thinking...",
-    });
-
-    const ts = (result as { ts?: string }).ts;
-    if (!ts) {
-      this.adapterLogger.warn("post_message_missing_ts", {
-        user_hash: hashLogIdentifier(userId),
-        channel_hash: hashLogIdentifier(channelId),
-      });
-      try {
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: "Something went wrong processing your message. Please try again.",
-        });
-      } catch (fallbackErr) {
-        this.adapterLogger.error(
-          "post_ephemeral_fallback_failed",
-          {
-            user_hash: hashLogIdentifier(userId),
-            channel_hash: hashLogIdentifier(channelId),
-          },
-          fallbackErr,
-        );
-      }
-      return;
-    }
-
-    let currentTs = ts;
+    const analytics = this.analyticsFor(userId);
+    const placeholder = ReplyPlaceholder.post(
+      () => this.postPlaceholder(client, channelId),
+      (err) =>
+        this.adapterLogger.warn("placeholder_post_failed", {
+          user_hash: hashLogIdentifier(userId),
+          channel_hash: hashLogIdentifier(channelId),
+          ...sanitizeErrorForLog(err),
+        }),
+    );
     const removePlaceholder = async (): Promise<void> => {
+      const ts = await placeholder.posted();
+      if (ts === null) return;
       try {
         await client.chat.delete({ channel: channelId, ts });
       } catch (err) {
@@ -467,11 +459,12 @@ export class SlackAdapter extends BaseBotAdapter {
         channelId,
         isDm,
         platformMessageId: inboundTs,
+        receivedAt,
       },
       async (text: string) => {
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts: await placeholder.current(),
           text,
         });
       },
@@ -481,12 +474,12 @@ export class SlackAdapter extends BaseBotAdapter {
           text,
         });
         if ((newMessage as { ts?: string }).ts) {
-          currentTs = (newMessage as { ts: string }).ts;
+          placeholder.moveTo((newMessage as { ts: string }).ts);
         }
         return async (updatedText: string) => {
           await client.chat.update({
             channel: channelId,
-            ts: currentTs,
+            ts: await placeholder.current(),
             text: updatedText,
           });
         };
@@ -502,7 +495,7 @@ export class SlackAdapter extends BaseBotAdapter {
         if (channelId.startsWith("D")) {
           await client.chat.update({
             channel: channelId,
-            ts: currentTs,
+            ts: await placeholder.current(),
             text: authMessage,
           });
           return;
@@ -511,7 +504,7 @@ export class SlackAdapter extends BaseBotAdapter {
         // deliver the link as an ephemeral only the requesting user can see.
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts: await placeholder.current(),
           text: "🔒 Authentication required. Check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
@@ -523,12 +516,12 @@ export class SlackAdapter extends BaseBotAdapter {
       async (errMsg: string) => {
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts: await placeholder.current(),
           text: errMsg,
         });
       },
       STREAMING_DEFAULTS.slack,
-      await this.analyticsFor(userId),
+      analytics,
       async (emoji: string) => {
         // A slash command has no inbound message to react to.
         if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
@@ -544,6 +537,22 @@ export class SlackAdapter extends BaseBotAdapter {
       },
       removePlaceholder,
     );
+  }
+
+  /** Posts the "Thinking..." placeholder a streamed reply fills in, resolving to its `ts`. */
+  private async postPlaceholder(
+    client: SlackWebClient,
+    channelId: string,
+  ): Promise<string> {
+    const result = await client.chat.postMessage({
+      channel: channelId,
+      text: "Thinking...",
+    });
+    const ts = (result as { ts?: string }).ts;
+    if (!ts) {
+      throw new Error("Slack returned no ts for the Thinking... placeholder");
+    }
+    return ts;
   }
 
   // ---------------------------------------------------------------------------

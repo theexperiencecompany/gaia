@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
-import { type ReactNode, Suspense } from "react";
+import type { ReactNode } from "react";
 import { defaultFont, getAllFontVariables } from "@/app/fonts";
 import { AgentationProvider } from "@/components/dev/AgentationProvider";
 import { ChunkErrorRecovery } from "@/components/shared/ChunkErrorRecovery";
@@ -190,9 +190,7 @@ export default async function LocaleLayout({ children, params }: Props) {
       <body className={`dark ${defaultFont.className}`}>
         <NextIntlClientProvider locale={locale} messages={{}}>
           <div id="app-root">
-            <RootProviders>
-              <Suspense fallback={null}>{children}</Suspense>
-            </RootProviders>
+            <RootProviders>{children}</RootProviders>
           </div>
         </NextIntlClientProvider>
 

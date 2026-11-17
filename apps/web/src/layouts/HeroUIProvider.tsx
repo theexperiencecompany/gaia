@@ -1,11 +1,9 @@
-// app/HeroUIProvider.tsx
 "use client";
 
-import { HeroUIProvider as HeroUIProviderComponent } from "@heroui/system";
 import { useRouter } from "next/navigation";
+import { RouterProvider } from "react-aria-components";
 
-// Only if using TypeScript
-declare module "@react-types/shared" {
+declare module "react-aria-components" {
   interface RouterConfig {
     routerOptions: NonNullable<
       Parameters<ReturnType<typeof useRouter>["push"]>[1]
@@ -13,12 +11,9 @@ declare module "@react-types/shared" {
   }
 }
 
+/** Route HeroUI's href props (Link, Menu.Item, Tabs.Tab) through the Next.js router instead of a full page load. */
 export function HeroUIProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
-  return (
-    <HeroUIProviderComponent navigate={router.push}>
-      {children}
-    </HeroUIProviderComponent>
-  );
+  return <RouterProvider navigate={router.push}>{children}</RouterProvider>;
 }

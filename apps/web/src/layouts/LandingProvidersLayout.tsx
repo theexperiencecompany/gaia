@@ -3,6 +3,7 @@
 import { type ReactNode, Suspense } from "react";
 
 import { Toaster } from "@/components/ui/Toaster";
+import { SessionHintGateProvider } from "@/features/auth/hooks/useCurrentUser";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 
@@ -12,6 +13,7 @@ import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
  * (RootProviders), so this only adds GlobalAuth, GlobalInterceptor, and
  * Toaster. Intentionally excludes app-only concerns: interceptor toasts,
  * notifications/websocket, GlobalIntegrationModal, ElectronRouteGuard, KeyboardShortcutsProvider.
+ * Every reader of the current user below asks /me only for a browser that may be signed in.
  */
 export default function LandingProvidersLayout({
   children,
@@ -19,7 +21,7 @@ export default function LandingProvidersLayout({
   children: ReactNode;
 }) {
   return (
-    <>
+    <SessionHintGateProvider value>
       {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
       <Suspense fallback={<></>}>
         <GlobalAuth />
@@ -33,6 +35,6 @@ export default function LandingProvidersLayout({
       </Suspense>
       <Toaster position="bottom-right" />
       {children}
-    </>
+    </SessionHintGateProvider>
   );
 }

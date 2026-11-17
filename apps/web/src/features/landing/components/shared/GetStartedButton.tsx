@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
 import { track } from "@/lib/analytics";
 
 export default function GetStartedButton({
@@ -10,7 +11,7 @@ export default function GetStartedButton({
   text = "Get Started",
   btnColor = "#00bbff",
   classname = "",
-  href = "/signup",
+  href = signupCtaHref(),
 }: {
   small_text?: boolean;
   text?: ReactNode;

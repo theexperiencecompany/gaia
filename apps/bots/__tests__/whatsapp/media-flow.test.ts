@@ -100,6 +100,7 @@ import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
 // ---------------------------------------------------------------------------
 
 const WA_ID = "15551234567";
+const RECEIVED_AT = 1_700_000_000_000;
 const MOCK_CONFIG = {
   kapsoApiKey: "test-api-key", // pragma: allowlist secret
   kapsoPhoneNumberId: "test-phone-id",
@@ -123,8 +124,8 @@ type MediaOutcome =
 interface MediaInternals {
   waClient: typeof mockWaClientInstance;
   waConfig: typeof MOCK_CONFIG;
-  linkedUsers: Set<string>;
-  welcomeSent: Set<string>;
+  /** The mocked base adapter's once-per-user welcome gate. */
+  _welcomed: Set<string>;
   resolveIncomingMedia: ReturnType<typeof vi.fn>;
 }
 
@@ -134,8 +135,7 @@ function buildAdapter(): WhatsAppAdapter {
   inner.waClient = mockWaClientInstance;
   inner.waConfig = MOCK_CONFIG;
   // Skip the welcome gate so these tests focus on media routing only.
-  inner.linkedUsers = new Set([WA_ID]);
-  inner.welcomeSent = new Set([WA_ID]);
+  inner._welcomed.add(WA_ID);
   return adapter;
 }
 
@@ -208,9 +208,10 @@ function callHandle(
         waId: string,
         media: ExtractedMedia,
         messageId: string,
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).handleMediaMessage(WA_ID, m, messageId);
+  ).handleMediaMessage(WA_ID, m, messageId, RECEIVED_AT);
 }
 
 function lastSentBody(): string {
@@ -225,6 +226,7 @@ function getChatRequest(): {
   fileData?: { fileId: string; url: string }[];
   platform: string;
   platformUserId: string;
+  receivedAt: number;
 } {
   const mocked = vi.mocked(handleStreamingChat);
   return mocked.mock.calls.at(-1)![1] as ReturnType<typeof getChatRequest>;
@@ -398,6 +400,7 @@ describe("WhatsAppAdapter - media routing", () => {
     expect(req.message).toBe("Please describe this image.");
     expect(req.fileIds).toEqual(["file-1"]);
     expect(req.fileData![0].url).toBe("https://cdn.example/photo.png");
+    expect(req.receivedAt).toBe(RECEIVED_AT);
     expect(mockSendText).not.toHaveBeenCalled();
   });
 

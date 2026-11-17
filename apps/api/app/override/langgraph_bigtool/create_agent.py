@@ -62,7 +62,7 @@ from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import COMMS_AGENT_NAME, FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
@@ -150,9 +150,12 @@ def _prepare_fallback(
     fallback_lane = lane.fallback() if lane else None
     if fallback_lane is None:
         return None
-    # cast rather than an attr-defined suppression: the registry genuinely holds a
-    # tool-binding chat model, LanguageModelLike just doesn't declare bind_tools.
-    bindable = cast(BaseChatModel, llm)
+    # Selected before bind_tools, as the primary is: on the bare alternatives
+    # bind_tools binds the DEFAULT provider, re-running the one that just failed.
+    # cast: the registry holds a tool-binding chat model LanguageModelLike doesn't declare.
+    bindable = cast(
+        BaseChatModel, llm.with_config(configurable=fallback_lane.rebind(model_configurations))
+    )
     return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
 
 
@@ -290,7 +293,7 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
-    if agent_name == "comms_agent" and isinstance(response.content, str):
+    if agent_name == COMMS_AGENT_NAME and isinstance(response.content, str):
         response.content = normalize_message_breaks(response.content)
 
     if not response.tool_calls and not response.content:

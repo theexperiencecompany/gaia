@@ -1,17 +1,22 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
 import {
+  Description,
+  FieldError,
+  Input,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Tab, Tabs } from "@heroui/tabs";
+  Tabs,
+  TextArea,
+  TextField,
+} from "@heroui/react";
 import { Github01Icon } from "@icons";
 import { useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { toast } from "@/lib/toast";
 import { skillsApi } from "../api/skillsApi";
@@ -29,6 +34,12 @@ import {
 } from "../constants";
 import { SkillImportForm } from "./SkillImportForm";
 import { SkillTargetSelect } from "./SkillTargetSelect";
+
+const sourceTabs = tabsVariants({
+  variant: "solid",
+  color: "accent",
+  shape: "pill",
+});
 
 interface SkillEditorModalProps {
   isOpen: boolean;
@@ -66,24 +77,32 @@ function InstructionsField({
       <div className="flex items-center justify-between">
         <span className="text-sm text-zinc-300">Instructions</span>
         <Tabs
-          size="sm"
-          radius="full"
+          className={shapeVariants({ shape: "pill" })}
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as "write" | "preview")}
         >
-          <Tab key="write" title="Write" />
-          <Tab key="preview" title="Preview" />
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Instructions view">
+              <Tabs.Tab id="write">
+                Write
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="preview">
+                Preview
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
         </Tabs>
       </div>
       {tab === "write" ? (
-        <Textarea
+        <TextArea
           aria-label="Instructions"
           placeholder={"# Triage inbox\n\n1. Fetch unread mail\n2. ..."}
           value={value}
-          onValueChange={onChange}
-          minRows={8}
-          maxRows={18}
-          classNames={{ input: "font-mono text-xs" }}
+          onChange={(e) => onChange(e.target.value)}
+          rows={10}
+          className="font-mono text-xs"
         />
       ) : (
         <div className="min-h-44 rounded-xl bg-zinc-900/60 p-4">
@@ -119,14 +138,14 @@ async function saveSkill(
 
 function SkillEditorHeader({ isEdit }: Readonly<{ isEdit: boolean }>) {
   return (
-    <ModalHeader className="flex-col items-start gap-1">
-      <span>{isEdit ? "Edit skill" : "New skill"}</span>
+    <Modal.Header className="flex-col items-start gap-1">
+      <Modal.Heading>{isEdit ? "Edit skill" : "New skill"}</Modal.Heading>
       <span className="text-xs font-normal text-zinc-500">
         {isEdit
           ? "Update what this skill does and where it runs."
           : "Teach your assistant a reusable workflow it can follow."}
       </span>
-    </ModalHeader>
+    </Modal.Header>
   );
 }
 
@@ -165,22 +184,21 @@ function SkillEditorFooter({
   onSave: () => void;
 }>) {
   return (
-    <ModalFooter>
-      <Button variant="light" className="rounded-xl" onPress={onClose}>
+    <Modal.Footer>
+      <GaiaButton variant="ghost" onPress={onClose}>
         {isWriting ? "Cancel" : "Done"}
-      </Button>
+      </GaiaButton>
       {isWriting && (
-        <Button
-          color="primary"
-          className="rounded-xl"
+        <GaiaButton
           onPress={onSave}
-          isLoading={isSaving}
+          isPending={isSaving}
           isDisabled={!isValid}
+          variant="primary"
         >
           {isEdit ? "Save changes" : "Create skill"}
-        </Button>
+        </GaiaButton>
       )}
-    </ModalFooter>
+    </Modal.Footer>
   );
 }
 
@@ -237,29 +255,35 @@ function SkillEditorForm({
 
   const writeForm = (
     <div className="flex flex-col gap-4">
-      <Input
-        label="Name"
-        placeholder="triage-inbox"
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={name}
-        onValueChange={setName}
+        onChange={setName}
         isDisabled={isEdit}
-        description={
-          isEdit
-            ? "The name is the skill's identity and can't be changed."
-            : "Lowercase, hyphenated. This is how the agent refers to it."
-        }
         isInvalid={!!nameError}
-        errorMessage={nameError}
-      />
-      <Input
-        label="Description"
-        placeholder="Sort, label, and draft replies for new mail"
+      >
+        <Label>Name</Label>
+        <Input placeholder="triage-inbox" />
+        <Description>
+          {isEdit
+            ? "The name is the skill's identity and can't be changed."
+            : "Lowercase, hyphenated. This is how the agent refers to it."}
+        </Description>
+        <FieldError>{nameError}</FieldError>
+      </TextField>
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={description}
-        onValueChange={setDescription}
-        description="What it does and when to use it: the agent sees this at all times."
+        onChange={setDescription}
         isInvalid={!!descriptionError}
-        errorMessage={descriptionError}
-      />
+      >
+        <Label>Description</Label>
+        <Input placeholder="Sort, label, and draft replies for new mail" />
+        <Description>
+          What it does and when to use it: the agent sees this at all times.
+        </Description>
+        <FieldError>{descriptionError}</FieldError>
+      </TextField>
       <SkillTargetSelect
         targets={targets}
         value={target}
@@ -272,35 +296,42 @@ function SkillEditorForm({
   return (
     <>
       <SkillEditorHeader isEdit={isEdit} />
-      <ModalBody>
+      <Modal.Body>
         {isEdit ? (
           writeForm
         ) : (
           <Tabs
-            radius="full"
-            variant="solid"
-            color="primary"
             selectedKey={mode}
             onSelectionChange={(key) => setMode(key as "write" | "import")}
-            classNames={{ base: "mb-1" }}
+            className={sourceTabs.base({
+              className: shapeVariants({ shape: "pill", className: "mb-1" }),
+            })}
           >
-            <Tab key="write" title="Write your own">
-              {writeForm}
-            </Tab>
-            <Tab
-              key="import"
-              title={
-                <div className="flex items-center gap-1.5">
-                  <Github01Icon className="size-4" />
-                  <span>Import from GitHub</span>
-                </div>
-              }
-            >
+            <Tabs.ListContainer>
+              <Tabs.List
+                aria-label="Skill source"
+                className={sourceTabs.tabList()}
+              >
+                <Tabs.Tab id="write" className={sourceTabs.tab()}>
+                  Write your own
+                  <Tabs.Indicator className={sourceTabs.tabIndicator()} />
+                </Tabs.Tab>
+                <Tabs.Tab id="import" className={sourceTabs.tab()}>
+                  <div className="flex items-center gap-1.5">
+                    <Github01Icon className="size-4" />
+                    <span>Import from GitHub</span>
+                  </div>
+                  <Tabs.Indicator className={sourceTabs.tabIndicator()} />
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs.ListContainer>
+            <Tabs.Panel id="write">{writeForm}</Tabs.Panel>
+            <Tabs.Panel id="import">
               <SkillImportForm targets={targets} onInstalled={onSaved} />
-            </Tab>
+            </Tabs.Panel>
           </Tabs>
         )}
-      </ModalBody>
+      </Modal.Body>
       <SkillEditorFooter
         isEdit={isEdit}
         isWriting={isEdit || mode === "write"}
@@ -325,16 +356,23 @@ export function SkillEditorModal({
   const formKey = `${isOpen ? "open" : "closed"}-${skill?.id ?? "new"}`;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
-      <ModalContent>
-        <SkillEditorForm
-          key={formKey}
-          onClose={onClose}
-          onSaved={onSaved}
-          targets={targets}
-          skill={skill}
-        />
-      </ModalContent>
+    <Modal isOpen={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog
+            className={modalVariants({ size: "2xl", className: "max-w-2xl" })}
+          >
+            <Modal.CloseTrigger aria-label="Close" />
+            <SkillEditorForm
+              key={formKey}
+              onClose={onClose}
+              onSaved={onSaved}
+              targets={targets}
+              skill={skill}
+            />
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

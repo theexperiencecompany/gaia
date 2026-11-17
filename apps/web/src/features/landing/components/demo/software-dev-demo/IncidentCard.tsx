@@ -9,13 +9,13 @@ const TIMELINE_ITEMS = [
     id: "inc-2",
     time: "14:33",
     text: "GAIA: Linked to deploy abc1234 (feat/payments-stripe, merged 14:28)",
-    dotColor: "bg-primary",
+    dotColor: "bg-accent",
   },
   {
     id: "inc-3",
     time: "14:34",
     text: "GAIA: Alerted #oncall and @alex-m (commit author)",
-    dotColor: "bg-primary",
+    dotColor: "bg-accent",
   },
   {
     id: "inc-4",
@@ -52,7 +52,7 @@ export default function IncidentCard() {
         ))}
       </div>
       <div className="mt-3 border-t border-zinc-700 pt-3">
-        <span className="text-xs font-medium text-primary">
+        <span className="text-xs font-medium text-accent">
           Rollback PR ready: 1 click to merge
         </span>
       </div>
