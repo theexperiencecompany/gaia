@@ -254,6 +254,12 @@ class TestAccessLevels:
         stored = await _stored(slug)
         assert stored.access is LinkAccess.PEOPLE
         assert stored.grantees == ["Friend@example.com"]
+        # The page's server-side read is no viewer's open: only the browser's /opened counts a denial.
+        assert _names(captured).count("ShortLinkDenied") == 0
+        for denied_viewer in (None, STRANGER):
+            viewer.user = denied_viewer
+            opened = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+            assert opened.status_code in (401, 403)
         assert _names(captured).count("ShortLinkDenied") == 2
 
     async def test_an_unlisted_link_opens_for_anyone_and_says_so(

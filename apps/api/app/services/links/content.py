@@ -45,6 +45,7 @@ from app.constants.short_links import (
 from app.db.redis import redis_cache
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
     LinkContent,
     LinkSnapshot,
@@ -61,6 +62,7 @@ from app.utils.image_codec import ImageCodec
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
+    ShortLinkContentRestricted,
     ShortLinkPublishRejected,
 )
 from shared.py.wide_events import log
@@ -148,17 +150,16 @@ def _extension(filename: str) -> str:
 
 async def _restriction(
     owner_id: str, filename: str, data: bytes, render: RenderMode
-) -> tuple[LinkAccess, PublishRejection] | None:
-    """Return the widest level these bytes may be served at, when something narrows it."""
+) -> tuple[LinkAccess, ContentRestriction] | None:
+    """Return the widest level these bytes may be served at, and why, when something narrows it."""
     if _extension(filename) in EXECUTABLE_EXTENSIONS:
-        return LinkAccess.OWNER, PublishRejection.RESTRICTED_TYPE
+        return LinkAccess.OWNER, ContentRestriction.EXECUTABLE
     if render is not RenderMode.FRAME_ACTIVE:
         return None
-    if (
-        _SENSITIVE_INPUT.search(data)
-        or await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS
-    ):
-        return LinkAccess.PEOPLE, PublishRejection.RESTRICTED_TYPE
+    if _SENSITIVE_INPUT.search(data):
+        return LinkAccess.PEOPLE, ContentRestriction.CREDENTIAL_FORM
+    if await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS:
+        return LinkAccess.PEOPLE, ContentRestriction.REPEAT_TAKEDOWNS
     return None
 
 
@@ -303,7 +304,11 @@ async def publish(
     if restriction is not None:
         capture(
             UserId(owner_id),
-            ShortLinkPublishRejected(target_type=target_type.value, reason=restriction[1].value),
+            ShortLinkContentRestricted(
+                target_type=target_type.value,
+                reason=restriction[1].value,
+                max_access=restriction[0].value,
+            ),
         )
     return LinkSnapshot(
         filename=source.filename,

@@ -125,6 +125,7 @@ export type ServerEventName =
   | "settings:quiet_hours_updated"
   | "short_link:access_changed"
   | "short_link:content_published"
+  | "short_link:content_restricted"
   | "short_link:created"
   | "short_link:denied"
   | "short_link:opened"
@@ -1398,6 +1399,14 @@ export interface EventProperties {
     "render_mode": "frame_active" | "image" | "image_svg" | "pdf" | "text" | "media" | "download";
     "size_bucket": "lt_100kb" | "lt_1mb" | "lt_10mb" | "gte_10mb";
   };
+  "short_link:content_restricted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "executable" | "credential_form" | "repeat_takedowns";
+    "max_access": "public" | "unlisted" | "people" | "owner";
+  };
   "short_link:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1427,7 +1436,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
-    "reason": "too_large" | "restricted_type" | "quota";
+    "reason": "too_large" | "quota";
   };
   "short_link:reported": {
     "actor": "user" | "agent";

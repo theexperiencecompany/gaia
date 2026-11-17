@@ -10,6 +10,7 @@ failure costs only the link, never the message carrying it.
 Per-type facts live in the registry; nothing here branches on a target type.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import secrets
 
@@ -447,15 +448,7 @@ def _day_dedupe(slug: str, viewer: LinkViewer, what: str) -> Dedupe:
     )
 
 
-def _deny(link: ShortLink | None, viewer: LinkViewer, denial: LinkDenial) -> LinkDeniedError:
-    """Build the error a denial raises, counted for the owner whenever the link exists."""
-    if link is not None:
-        reason = denial.value.removeprefix("link_")
-        capture(
-            UserId(link.user_id),
-            ShortLinkDenied(target_type=link.target_type.value, reason=reason),
-            _day_dedupe(link.slug, viewer, reason),
-        )
+def _denied(viewer: LinkViewer, denial: LinkDenial) -> LinkDeniedError:
     signed_in_as = viewer.signed_in_as if denial is LinkDenial.FORBIDDEN else None
     return LinkDeniedError.for_denial(denial, signed_in_as=signed_in_as)
 
@@ -464,69 +457,102 @@ async def get_link(slug: str) -> ShortLink | None:
     return await short_link_repository.get_by_slug(slug)
 
 
-async def _granted_view(
-    link: ShortLink | None, viewer: LinkViewer
-) -> tuple[ShortLink, LinkViewerKind, PublicShortLinkView]:
+@dataclass(frozen=True, slots=True)
+class _GrantedView:
+    link: ShortLink
+    viewer_kind: LinkViewerKind
+    view: PublicShortLinkView
+
+
+async def _decide(link: ShortLink | None, viewer: LinkViewer) -> _GrantedView | LinkDenial:
+    """Return what viewer sees of link, or why they may not open it."""
     if link is None:
-        raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
+        return LinkDenial.NOT_FOUND
     decision = evaluate(link, viewer, _now())
     if isinstance(decision, Denied):
-        raise _deny(link, viewer, decision.denial)
+        return decision.denial
     served = _served(link)
     view = await REGISTRY[link.target_type].project(link.user_id, link.target_id, served.snapshot)
     if view is None:
-        raise _deny(link, viewer, LinkDenial.TARGET_DELETED)
-    return served, decision.viewer_kind, view
+        return LinkDenial.TARGET_DELETED
+    return _GrantedView(served, decision.viewer_kind, view)
+
+
+async def _granted_view(link: ShortLink | None, viewer: LinkViewer) -> _GrantedView:
+    decided = await _decide(link, viewer)
+    if isinstance(decided, LinkDenial):
+        raise _denied(viewer, decided)
+    return decided
 
 
 async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
-    """Open a link for viewer, or raise the denial they see. A read: never counts an open.
+    """Open a link for viewer, or raise the denial they see. A read: counts neither an open nor a denial.
 
     The target is read under the owner on the link doc, only through its type's
     projection. A target the owner has since deleted is TARGET_DELETED.
     """
-    granted, kind, view = await _granted_view(link, viewer)
-    return _envelope(granted, kind, view)
+    return _envelope(await _granted_view(link, viewer))
 
 
-def _envelope(granted: ShortLink, kind: LinkViewerKind, view: PublicShortLinkView) -> LinkEnvelope:
+def _envelope(granted: _GrantedView) -> LinkEnvelope:
+    link, kind = granted.link, granted.viewer_kind
     return LinkEnvelope(
-        access=granted.access,
-        target_type=granted.target_type,
-        view=view,
-        content=framed_content(granted.snapshot, granted.access),
-        downloadable=servable(granted.snapshot, granted.access),
+        access=link.access,
+        target_type=link.target_type,
+        view=granted.view,
+        content=framed_content(link.snapshot, link.access),
+        downloadable=servable(link.snapshot, link.access),
         is_owner=kind is LinkViewerKind.OWNER,
-        owner_target_id=granted.target_id if kind is LinkViewerKind.OWNER else None,
+        owner_target_id=link.target_id if kind is LinkViewerKind.OWNER else None,
+    )
+
+
+def _count_denial(link: ShortLink, viewer: LinkViewer, denial: LinkDenial) -> None:
+    reason = denial.value.removeprefix("link_")
+    capture(
+        UserId(link.user_id),
+        ShortLinkDenied(target_type=link.target_type.value, reason=reason),
+        _day_dedupe(link.slug, viewer, reason),
+    )
+
+
+def _count_open(granted: _GrantedView, viewer: LinkViewer) -> None:
+    link = granted.link
+    capture(
+        UserId(link.user_id),
+        ShortLinkOpened(
+            target_type=link.target_type.value,
+            access=link.access.value,
+            viewer_signed_in=viewer.user_id is not None,
+        ),
+        _day_dedupe(link.slug, viewer, "opened"),
     )
 
 
 async def record_open(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
-    """Open a link from the viewer's browser, counted for its owner at most once a day per viewer.
+    """Open a link from the viewer's browser: the one read that counts an open or a denial for its owner.
 
-    Only the browser carries the viewer's session, so this is the open that tells
-    the owner apart; the owner and unfurl bots are never counted.
+    Only the browser carries the viewer's session, so only it tells a viewer
+    apart; every other read (the page's server render, unfurls, tokens,
+    downloads) counts nothing. A recipient's open and a denial count at most
+    once a day per viewer; the owner and unfurl bots never count.
     """
-    granted, kind, view = await _granted_view(link, viewer)
-    log.set(short_link={"viewer_kind": kind.value})
-    if kind is LinkViewerKind.RECIPIENT:
-        capture(
-            UserId(granted.user_id),
-            ShortLinkOpened(
-                target_type=granted.target_type.value,
-                access=granted.access.value,
-                viewer_signed_in=viewer.user_id is not None,
-            ),
-            _day_dedupe(granted.slug, viewer, "opened"),
-        )
-    return _envelope(granted, kind, view)
+    decided = await _decide(link, viewer)
+    if isinstance(decided, LinkDenial):
+        if link is not None:
+            _count_denial(link, viewer, decided)
+        raise _denied(viewer, decided)
+    log.set(short_link={"viewer_kind": decided.viewer_kind.value})
+    if decided.viewer_kind is LinkViewerKind.RECIPIENT:
+        _count_open(decided, viewer)
+    return _envelope(decided)
 
 
 async def openable_link(
     link: ShortLink | None, viewer: LinkViewer, target_type: ShortLinkTargetType | None = None
 ) -> ShortLink:
     """Return the link when viewer may open it (and it points at target_type, when given); raise the denial otherwise."""
-    granted, _, _ = await _granted_view(link, viewer)
+    granted = (await _granted_view(link, viewer)).link
     if target_type is not None and granted.target_type is not target_type:
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
     return granted

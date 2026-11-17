@@ -6801,6 +6801,47 @@
       }
     },
     {
+      "event": "short_link:content_restricted",
+      "class": "ShortLinkContentRestricted",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file was published, but may be served only to narrower access than the widest.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file was published, but may be served only to narrower access than the widest.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["executable", "credential_form", "repeat_takedowns"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "max_access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "Max Access",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "reason", "max_access"],
+        "title": "ShortLinkContentRestricted",
+        "type": "object"
+      }
+    },
+    {
       "event": "short_link:created",
       "class": "ShortLinkCreated",
       "owner": "server",
@@ -6933,14 +6974,14 @@
       "class": "ShortLinkPublishRejected",
       "owner": "server",
       "domain": "short_link",
-      "description": "A shared file was not published, or was published only for narrower access.",
+      "description": "A shared file's bytes were not published; its link shows only its name and size.",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A shared file was not published, or was published only for narrower access.",
+        "description": "A shared file's bytes were not published; its link shows only its name and size.",
         "properties": {
           "target_type": {
             "enum": [
@@ -6954,7 +6995,7 @@
             "type": "string"
           },
           "reason": {
-            "enum": ["too_large", "restricted_type", "quota"],
+            "enum": ["too_large", "quota"],
             "title": "Reason",
             "type": "string"
           }

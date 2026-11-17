@@ -34,6 +34,7 @@ from app.constants.short_links import (
     THUMBNAIL_SIZE,
 )
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
     LinkSnapshot,
     PublishRejection,
@@ -57,6 +58,7 @@ from app.services.links.spec import SnapshotSource
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
+    ShortLinkContentRestricted,
     ShortLinkPublishRejected,
 )
 from tests.helpers import captured_wide_event
@@ -280,7 +282,7 @@ class TestPublish:
         snapshot = await publish(OWNER, SESSION, _source("login.html", "text/html", html))
         assert snapshot.content_id is not None
         assert snapshot.max_access is LinkAccess.PEOPLE
-        assert snapshot.restricted_by is PublishRejection.RESTRICTED_TYPE
+        assert snapshot.restricted_by is ContentRestriction.CREDENTIAL_FORM
 
     @pytest.mark.parametrize(
         "filename", ["setup.exe", "App.DMG", "run.ps1", "tool.jar", "notes.v2.exe"]
@@ -292,6 +294,7 @@ class TestPublish:
             OWNER, SESSION, _source(filename, "application/octet-stream", b"MZ\x90")
         )
         assert snapshot.max_access is LinkAccess.OWNER
+        assert snapshot.restricted_by is ContentRestriction.EXECUTABLE
         assert snapshot.render is RenderMode.DOWNLOAD
 
     async def test_an_owner_with_repeated_takedowns_shares_html_only_with_people(
@@ -301,6 +304,7 @@ class TestPublish:
         snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", b"<p>hi</p>"))
         no_takedowns.assert_awaited_once_with(OWNER)
         assert snapshot.max_access is LinkAccess.PEOPLE
+        assert snapshot.restricted_by is ContentRestriction.REPEAT_TAKEDOWNS
 
     async def test_one_takedown_does_not_narrow_html(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
@@ -434,7 +438,9 @@ class TestPublish:
             ),
             call(
                 UserId(OWNER),
-                ShortLinkPublishRejected(target_type=SESSION.value, reason="restricted_type"),
+                ShortLinkContentRestricted(
+                    target_type=SESSION.value, reason="executable", max_access="owner"
+                ),
             ),
         ]
 

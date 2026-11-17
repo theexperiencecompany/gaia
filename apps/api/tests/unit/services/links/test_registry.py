@@ -5,6 +5,7 @@ from typing import get_args
 import pytest
 
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
     LinkDenial,
     PublishRejection,
@@ -51,6 +52,7 @@ def test_a_type_with_two_specs_refuses_to_build() -> None:
         (catalog.ShortLinkRevokeReason, {member.value for member in RevokeReason}),
         (catalog.ShortLinkRenderMode, {member.value for member in RenderMode}),
         (catalog.ShortLinkPublishRejection, {member.value for member in PublishRejection}),
+        (catalog.ShortLinkContentRestriction, {member.value for member in ContentRestriction}),
         (catalog.ShortLinkReportReason, {member.value for member in ReportReason}),
         # A denial event never fires for an unknown slug: there is no owner to count it for.
         (

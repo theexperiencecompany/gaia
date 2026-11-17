@@ -383,8 +383,10 @@ def link_share(stack: Stack) -> None:
             ),
             HTTPStatus.OK,
         )
+        # A denial counts only from the browser's /opened, never from a server-side read.
         _expect(
-            api.get(f"/l/{slug}", headers={DEV_USER_HEADER: LINK_STRANGER}), HTTPStatus.FORBIDDEN
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: LINK_STRANGER}),
+            HTTPStatus.FORBIDDEN,
         )
         rotated = _expect(
             api.post(f"/l/{slug}/rotate", headers=stack.browser()), HTTPStatus.OK

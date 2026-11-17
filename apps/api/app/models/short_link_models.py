@@ -95,8 +95,18 @@ class PublishRejection(StrEnum):
     """Why a file's bytes were not published; the link then shows only the file's name and size."""
 
     TOO_LARGE = "too_large"
-    RESTRICTED_TYPE = "restricted_type"
     QUOTA = "quota"
+
+
+class ContentRestriction(StrEnum):
+    """What narrowed who a published file's bytes may be served to."""
+
+    # An installer or script: its owner only.
+    EXECUTABLE = "executable"
+    # HTML that looks like it asks for a password or a card: named people only.
+    CREDENTIAL_FORM = "credential_form"
+    # HTML from an owner GAIA has taken links down for before: named people only.
+    REPEAT_TAKEDOWNS = "repeat_takedowns"
 
 
 class ReportReason(StrEnum):
@@ -145,7 +155,7 @@ class LinkSnapshot(BaseModel):
     has_thumbnail: bool = False
     rejected: PublishRejection | None = None
     max_access: LinkAccess = LinkAccess.PUBLIC
-    restricted_by: PublishRejection | None = None
+    restricted_by: ContentRestriction | None = None
     published_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

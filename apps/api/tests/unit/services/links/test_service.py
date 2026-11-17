@@ -20,6 +20,7 @@ import time_machine
 from app.config.settings import settings
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
     LinkContent,
     LinkEnvelope,
@@ -28,7 +29,6 @@ from app.models.short_link_models import (
     LinkSnapshot,
     LinkViewer,
     PublicTodoDeliverable,
-    PublishRejection,
     RenderMode,
     RevokeReason,
     ShortLink,
@@ -907,14 +907,14 @@ class TestResolve:
         assert (raised.value.code, raised.value.status_code) == ("link_not_found", 404)
         capture.assert_not_called()
 
-    async def test_a_dead_link_is_denied_and_counted_once_a_day_per_viewer(
+    async def test_a_browser_open_of_a_dead_link_is_denied_and_counted_once_a_day_per_viewer(
         self, specs: Specs, frozen: None
     ) -> None:
         link = _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER)
         viewer = LinkViewer(user_id=None, email=None, ip=IP, user_agent=UA, signed_in_as="me@x.com")
 
         with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
-            await resolve(link, viewer)
+            await record_open(link, viewer)
 
         assert (raised.value.code, raised.value.public) == ("link_revoked", {})
         capture.assert_called_once_with(
@@ -933,7 +933,7 @@ class TestResolve:
         )
 
         with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
-            await resolve(link, viewer)
+            await record_open(link, viewer)
 
         assert (raised.value.code, raised.value.public) == (
             "link_forbidden",
@@ -945,13 +945,13 @@ class TestResolve:
             _denied_dedupe("s1", "u-eve", "forbidden"),
         )
 
-    async def test_a_target_the_owner_deleted_is_denied_as_deleted(
+    async def test_a_browser_open_of_a_deleted_target_is_denied_and_counted(
         self, specs: Specs, frozen: None
     ) -> None:
         specs.todo_project.return_value = None
 
         with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
-            await resolve(_link("s1"), RECIPIENT)
+            await record_open(_link("s1"), RECIPIENT)
 
         assert raised.value.code == "link_target_deleted"
         capture.assert_called_once_with(
@@ -959,6 +959,22 @@ class TestResolve:
             ShortLinkDenied(target_type=TODO.value, reason="target_deleted"),
             _denied_dedupe("s1", hash_link_viewer(IP, UA), "target_deleted"),
         )
+
+    @pytest.mark.parametrize(
+        "link",
+        [
+            _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER),
+            _link("s1", access=LinkAccess.OWNER),
+            _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"]),
+        ],
+    )
+    async def test_a_server_side_read_is_denied_but_counts_nothing(
+        self, specs: Specs, frozen: None, link: ShortLink
+    ) -> None:
+        with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError):
+            await resolve(link, RECIPIENT)
+
+        capture.assert_not_called()
 
     async def test_a_recipient_sees_the_view_and_none_of_the_owners_controls(
         self, specs: Specs, frozen: None
@@ -1092,7 +1108,7 @@ class TestLinkResponse:
             snapshot=_snap(
                 "c" * 26,
                 max_access=LinkAccess.PEOPLE,
-                restricted_by=PublishRejection.RESTRICTED_TYPE,
+                restricted_by=ContentRestriction.EXECUTABLE,
             ),
         )
 

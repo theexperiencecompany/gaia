@@ -7,6 +7,7 @@ from shared.py.analytics.catalog.base import ServerEvent
 __all__ = [
     "ShortLinkAccessChanged",
     "ShortLinkContentPublished",
+    "ShortLinkContentRestricted",
     "ShortLinkCreated",
     "ShortLinkDenied",
     "ShortLinkOpened",
@@ -33,7 +34,8 @@ ShortLinkDenialReason = Literal[
 ShortLinkRenderMode = Literal[
     "frame_active", "image", "image_svg", "pdf", "text", "media", "download"
 ]
-ShortLinkPublishRejection = Literal["too_large", "restricted_type", "quota"]
+ShortLinkPublishRejection = Literal["too_large", "quota"]
+ShortLinkContentRestriction = Literal["executable", "credential_form", "repeat_takedowns"]
 ShortLinkReportReason = Literal["phishing", "malware", "harassment", "illegal", "other"]
 
 
@@ -118,13 +120,24 @@ class ShortLinkContentPublished(ServerEvent):
 
 
 class ShortLinkPublishRejected(ServerEvent):
-    """A shared file was not published, or was published only for narrower access."""
+    """A shared file's bytes were not published; its link shows only its name and size."""
 
     event: ClassVar[str] = "short_link:publish_rejected"
     budget_per_user_day: ClassVar[int] = 500
 
     target_type: ShortLinkTarget
     reason: ShortLinkPublishRejection
+
+
+class ShortLinkContentRestricted(ServerEvent):
+    """A shared file was published, but may be served only to narrower access than the widest."""
+
+    event: ClassVar[str] = "short_link:content_restricted"
+    budget_per_user_day: ClassVar[int] = 500
+
+    target_type: ShortLinkTarget
+    reason: ShortLinkContentRestriction
+    max_access: ShortLinkAccess
 
 
 class ShortLinkReported(ServerEvent):
