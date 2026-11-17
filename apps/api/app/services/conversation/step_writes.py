@@ -69,7 +69,7 @@ async def end_above(ports: RuntimePorts, attempt: Attempt, covers: Sequence[Logg
 async def end_interim(ports: RuntimePorts, attempt: Attempt) -> None:
     """End the shown reply naming no message; nothing it covered counts answered."""
     if isinstance(attempt.progress, Showing):
-        await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.INTERIM)
+        await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.INTERIM, ())
         next_segment(attempt)
 
 
@@ -89,13 +89,11 @@ async def _settle_named(
         return None
     await end_above(ports, attempt, [logged for logged in attempt.handed if logged.seq in named])
     riders = () if still_open(attempt.ledger) else _riders(attempt)
-    attempt.covers = tuple(
-        logged for logged in attempt.handed if logged.seq in named or logged in riders
-    )
+    covers = tuple(logged for logged in attempt.handed if logged.seq in named or logged in riders)
     reply = base_reply(attempt)
     worded = bool(reply.text or reply.tool_data)
     stored = await conclude(
-        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT
+        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT, covers
     )
     next_segment(attempt)
     return stored
@@ -157,21 +155,17 @@ async def conclude(
     attempt: Attempt,
     reply: Reply,
     settled_as: ReplyOutcome,
+    covers: Sequence[LoggedEntry],
     failure: FailureReason | None = None,
 ) -> LoggedEntry:
-    """Save the reply's final content, settle it as answering the segment's covers, and return it."""
+    """Save the reply's final content, settle it as answering exactly covers, and return it."""
+    attempt.covers = tuple(covers)
     stored = await put_reply(ports, attempt, reply)
     answers, quote = await _answers_and_quote(ports, attempt, stored.seq)
     if settled_as is ReplyOutcome.SILENT:
         quote = None
     settled = settled_entry(attempt, settled_as, answers, attempt.through, quote, failure)
-    await settle_inputs(
-        ports,
-        attempt.claim,
-        attempt.covers or attempt.unanswered or attempt.handed,
-        settled,
-        attempt.view,
-    )
+    await settle_inputs(ports, attempt.claim, attempt.covers, settled, attempt.view)
     attempt.last_settle = settled.id
     return stored
 
@@ -200,18 +194,6 @@ async def _answers_and_quote(
             attempt.claim.conversation_id, attempt.claim.user_id, since
         )
     return answers, quote_in(answers, reply_seq, known)
-
-
-async def quoted_target(
-    ports: RuntimePorts,
-    claim: StepClaim,
-    answers: tuple[str, ...],
-    first: LoggedEntry,
-    reply_seq: int,
-) -> str | None:
-    """Return what the reply quotes of the entries from first, the oldest input it answers."""
-    after = await ports.log.read_after(claim.conversation_id, claim.user_id, first.seq)
-    return quote_in(answers, reply_seq, [first, *after])
 
 
 async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> LoggedEntry:
@@ -271,15 +253,19 @@ async def settle_inputs(
     settled: ReplySettled,
     view: StepView | None,
 ) -> None:
-    """Settle a reply on the inputs it covered, and count it the first time it lands; view takes the settle in."""
+    """Settle a reply on the inputs it covered, and count it the first time it lands; view takes the settle in.
+
+    A settle that covers nothing (a reply ended interim) answered no one, so nothing is counted.
+    """
     appended = await ports.log.append_fenced(claim, settled)
     await publish_appended(ports.frames, claim.conversation_id, appended)
     if appended.duplicate:
         return
-    known = None
     if view is not None:
         view.appended(appended)
-        known = view.entries_after(covers[0].seq, appended.logged.seq)
+    if not covers:
+        return
+    known = None if view is None else view.entries_after(covers[0].seq, appended.logged.seq)
     since = (
         known
         if known is not None

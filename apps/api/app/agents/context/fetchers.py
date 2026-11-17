@@ -624,8 +624,8 @@ async def build_open_pendings_block(ctx: SectionContext) -> str:
         return ""
     shown = pendings[:10]
     lines = [
-        f"- {doc.approval_id} | {doc.tool_name} | {_pending_age(doc.created_at)} | {doc.summary}"
-        for doc in shown
+        f"- {row.approval_id} | {row.tool_name} | {_pending_age(row.created_at)} | {row.summary}"
+        for row in (pending.row for pending in shown)
     ]
     if len(pendings) > len(shown):
         lines.append(f"(+{len(pendings) - len(shown)} more open)")

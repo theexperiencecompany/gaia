@@ -187,6 +187,7 @@ const ApprovalRequestedSchema = z.object({
   args_preview: z.record(z.string(), z.unknown()).default({}),
   auto_reason: z.string().nullable().default(null),
   always_asks: z.boolean().default(false),
+  number: z.number().int().min(1).nullable().default(null),
 }) satisfies z.ZodType<ApprovalRequested>;
 
 const APPROVAL_OUTCOMES = [

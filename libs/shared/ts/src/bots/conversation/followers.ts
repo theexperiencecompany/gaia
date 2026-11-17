@@ -69,12 +69,13 @@ export class ConversationFollowers {
 
   /**
    * Follow a conversation until message seq is answered: joins the follower already
-   * running for it, or starts one replaying from just before seq.
+   * running for it, or starts one from the server's cursor for that message.
    */
   follow(
     ctx: BotUserContext,
     conversationId: string,
     seq: number,
+    from: DeliveryCursor,
     surface: FollowSurface,
   ): void {
     const running = this.active.get(conversationId);
@@ -82,19 +83,13 @@ export class ConversationFollowers {
       running.follower.expect(seq);
       return;
     }
-    this.start(
-      ctx,
-      conversationId,
-      { delivered_seq: seq - 1, partial_reply: null },
-      surface,
-    ).expect(seq);
+    this.start(ctx, conversationId, from, surface).expect(seq);
   }
 
   /**
    * Follow a conversation from the server's delivery cursor until it is idle: one a
    * restarted bot finds still answering or undelivered, or one the server woke for
-   * something logged there. Nothing when a follow runs, and never from before what
-   * an earlier follow here reached.
+   * something logged there. Nothing when a follow runs.
    */
   resume(
     ctx: BotUserContext,
@@ -103,23 +98,24 @@ export class ConversationFollowers {
     surface: FollowSurface,
   ): void {
     if (this.active.has(conversationId)) return;
-    const reached = this.reached.get(conversationId);
-    const start =
-      reached && reached.delivered_seq > from.delivered_seq ? reached : from;
-    this.start(ctx, conversationId, start, surface);
+    this.start(ctx, conversationId, from, surface);
   }
 
+  /** Start a follow at the server's cursor, never before what an earlier follow here reached. */
   private start(
     ctx: BotUserContext,
     conversationId: string,
     from: DeliveryCursor,
     surface: FollowSurface,
   ): ConversationFollower {
-    this.reach(conversationId, from);
+    const reached = this.reached.get(conversationId);
+    const start =
+      reached && reached.delivered_seq > from.delivered_seq ? reached : from;
+    this.reach(conversationId, start);
     const follower = new ConversationFollower(
       {
-        floor: from.delivered_seq,
-        partialReply: from.partial_reply,
+        floor: start.delivered_seq,
+        partialReply: start.partial_reply,
         record: async (cursor) => {
           this.reach(conversationId, cursor);
           await this.record(ctx, conversationId, cursor);

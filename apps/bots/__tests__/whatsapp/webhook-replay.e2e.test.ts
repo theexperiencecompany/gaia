@@ -96,6 +96,7 @@ async function buildHarness(): Promise<Harnessed> {
       message_id: "m1",
       seq: 1,
       session_token: "session",
+      after_seq: 0,
     })),
     // The conversation is already idle with the message answered, so the follow ends at once.
     conversationEvents: vi.fn(async function* () {

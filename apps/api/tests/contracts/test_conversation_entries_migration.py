@@ -34,7 +34,9 @@ from app.db.repositories.conversation_migration_guard import (
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import LoggedEntry
 from app.models.conversation_models import LogPage
+from app.services.conversation.reply_files import reply_files
 from app.utils.errors import UnmigratedConversationError
+from shared.py.conversation_wire import ReplyFile
 
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
@@ -189,7 +191,7 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
 
     report = await migration.verify(ref)
     assert report.ok, report.mismatches
-    assert report.messages == len(expected_messages(array)) == 11
+    assert report.messages == len(expected_messages(array, datetime.now(UTC))) == 11
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
     shown = {m.message_id: m for m in shown_messages(doc)}
@@ -621,3 +623,248 @@ async def test_the_boot_check_finds_a_sourceless_head_through_an_index(raw_colle
     plan = await raw_collection.find(SOURCELESS_HEADS).explain()
 
     assert "IXSCAN" in str(plan["queryPlanner"]["winningPlan"])
+
+
+_STARTED = "2025-12-31T08:00:00+00:00"
+
+
+async def _bson_size(raw_collection: Any, ref: HeadRef) -> int:
+    [row] = await raw_collection.aggregate(
+        [{"$match": {"_id": ObjectId(ref.head_id)}}, {"$project": {"n": {"$bsonSize": "$$ROOT"}}}]
+    ).to_list(None)
+    return int(row["n"])
+
+
+async def _at_the_size_limit(raw_collection: Any, *, spare: int) -> HeadRef:
+    """Insert a head of 64 messages whose BSON size is spare bytes under Mongo's 16 MB limit."""
+    limit, pairs = 16 * 1024 * 1024, 32
+    chunk = limit // (2 * pairs) - 400
+    messages = [
+        _message(n, "user" if n % 2 else "bot", response="x" * chunk)
+        for n in range(1, 2 * pairs + 1)
+    ]
+    ref = await _legacy(raw_collection, messages)
+    short = limit - spare - await _bson_size(raw_collection, ref)
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)}, {"$set": {"messages.0.response": "x" * (chunk + short)}}
+    )
+    assert await _bson_size(raw_collection, ref) == limit - spare
+    return ref
+
+
+async def test_a_head_too_full_for_the_log_pointer_moves_its_array_aside_and_still_verifies(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    small = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+
+    code, out = await _cli(capsys, "--apply")
+
+    assert code == 0, out
+    assert any(full.conversation_id in line and "moved to the archive" in line for line in out)
+    head = await _head(raw_collection, full)
+    assert "messages" not in head and isinstance(head["messages_archived"], int)
+    assert head["log_head"] == 96 and await _bson_size(raw_collection, full) < 1024
+    assert len(await _entries(entries_collection, small)) == 3
+    assert (await _cli(capsys, "--verify"))[0] == 0
+    await refuse_unmigrated_conversations()
+    code, out = await _cli(capsys, "--apply")
+    assert code == 0 and not any(full.conversation_id in line for line in out)
+
+    entry_of = {"user_id": USER, "conversation_id": full.conversation_id}
+    await entries_collection.update_one({**entry_of, "id": "m3"}, {"$set": {"text": "lost"}})
+    code, out = await _cli(capsys, "--verify")
+    assert code == 1 and any(f"MISMATCH {full.conversation_id}: history" in line for line in out)
+
+
+async def test_a_head_with_room_keeps_its_array_and_is_only_marked(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    roomy = await _at_the_size_limit(raw_collection, spare=2048)
+
+    outcome = await migration.migrate(roomy, apply=True)
+
+    assert (outcome.action, outcome.relocated) == (MigrationAction.COPIED, False)
+    head = await _head(raw_collection, roomy)
+    assert len(head["messages"]) == 64 and "messages_archived" not in head
+    assert (await migration.verify(roomy)).ok
+
+
+async def test_a_conversation_whose_write_fails_is_reported_left_whole_and_refused_at_boot(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    bad = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    for ref in (good, bad):
+        await raw_collection.update_one(
+            {"_id": ObjectId(ref.head_id)},
+            {"$push": {"messages": {"$each": [_message(3), _message(4, "bot")]}}},
+        )
+    # The server rejects this one conversation's head write, as it rejected the 16 MB head's.
+    rejects_bad = {
+        "$or": [{"conversation_id": {"$ne": bad.conversation_id}}, {"log_head": {"$lte": 3}}]
+    }
+    await raw_collection.database.command("collMod", raw_collection.name, validator=rejects_bad)
+
+    code, out = await _cli(capsys, "--apply")
+
+    assert code == 1
+    assert any(
+        line.startswith(f"  [failed] {bad.conversation_id}: ConversationStoreError") for line in out
+    )
+    assert len(await _entries(entries_collection, good)) == 6
+    assert [e["seq"] for e in await _entries(entries_collection, bad)] == [1, 2, 3]
+    with pytest.raises(UnmigratedConversationError) as refused:
+        await refuse_unmigrated_conversations()
+    assert refused.value.message.startswith(
+        f"conversation {bad.conversation_id} still holds a failed migration pass"
+    )
+
+    await raw_collection.database.command("collMod", raw_collection.name, validator={})
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    assert len(await _entries(entries_collection, bad)) == 6
+    await refuse_unmigrated_conversations()
+    assert (await _cli(capsys, "--verify"))[0] == 0
+
+
+async def test_a_card_from_a_per_tool_field_is_stamped_with_its_message_time_so_verify_can_pass(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    undated = {"type": "bot", "response": "sunny", "message_id": "m3", "weather_data": {"t": 21}}
+    ref = await _legacy(
+        raw_collection,
+        [_message(1), _message(2, "bot", search_results={"q": "x"}), undated],
+        createdAt=_STARTED,
+    )
+
+    await migration.migrate(ref, apply=True)
+
+    by_id = {e["id"]: e for e in await _entries(entries_collection, ref)}
+    assert [c["timestamp"] for c in by_id["m2"]["tool_data"]] == [_DATE]
+    assert [c["timestamp"] for c in by_id["m3"]["tool_data"]] == [_STARTED]
+    report = await migration.verify(ref)
+    assert report.ok, report.mismatches
+
+
+async def test_an_undated_card_in_a_head_with_no_creation_date_takes_the_heads_id_time(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    undated = {"type": "bot", "response": "sunny", "message_id": "m2", "weather_data": {"t": 21}}
+    ref = await _legacy(raw_collection, [_message(1), undated], createdAt=None)
+
+    await migration.migrate(ref, apply=True)
+
+    reply = await entries_collection.find_one({"conversation_id": ref.conversation_id, "id": "m2"})
+    [card] = reply["tool_data"]
+    assert datetime.fromisoformat(card["timestamp"]) == ObjectId(ref.head_id).generation_time
+    assert (await migration.verify(ref)).ok
+
+
+async def test_the_upload_ids_on_a_bot_message_are_kept_and_verify_compares_them(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    ref = await _legacy(
+        raw_collection, [_message(1, fileIds=["f9"]), _message(2, "bot", fileIds=["f9"])]
+    )
+
+    await migration.migrate(ref, apply=True)
+
+    entry_of = {"user_id": USER, "conversation_id": ref.conversation_id}
+    assert (await entries_collection.find_one({**entry_of, "id": "m2"}))["file_ids"] == ["f9"]
+    assert (await migration.verify(ref)).ok
+    await entries_collection.update_one({**entry_of, "id": "m2"}, {"$set": {"file_ids": []}})
+    assert (await migration.verify(ref)).mismatches[0].startswith("history differs at message 1")
+
+
+async def test_an_artifact_card_from_the_first_artifacts_build_reads_as_the_file_it_wrote(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    written = {
+        "path": "/sessions/c1/.user-visible/report.md",
+        "filename": "report.md",
+        "content_type": "text/markdown",
+        "size_bytes": 12,
+    }
+    card = {"tool_name": "artifact_data", "data": written, "timestamp": _DATE}
+    ref = await _legacy(raw_collection, [_message(1), _message(2, "bot", tool_data=[card])])
+
+    await migration.migrate(ref, apply=True)
+
+    reply = await entries_collection.find_one({"conversation_id": ref.conversation_id, "id": "m2"})
+    assert reply["tool_data"][0]["data"] == {**written, "event": "upsert"}
+    assert reply_files(reply["tool_data"]) == (
+        ReplyFile(path=written["path"], content_type="text/markdown"),
+    )
+    report = await migration.verify(ref)
+    assert report.ok, report.mismatches
+    assert await _history(ref) == [("user", "m1", "message 1"), ("bot", "m2", "message 2")]
+
+
+async def test_a_conversation_verify_cannot_read_is_reported_and_the_rest_still_verified(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    bad = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    await entries_collection.update_one(
+        {"conversation_id": bad.conversation_id, "id": "m1"}, {"$set": {"kind": "unknown"}}
+    )
+
+    code, out = await _cli(capsys, "--verify")
+
+    assert code == 1
+    assert any(line.startswith(f"  MISMATCH {bad.conversation_id}: crashed: ") for line in out)
+    assert not any(good.conversation_id in line for line in out)
+    assert "Verified 2 conversations: 1 with mismatches." in out
+
+
+async def test_restoring_an_archived_head_gives_back_the_original_head_and_it_migrates_again(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    original = await _head(raw_collection, full)
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    archived = await _head(raw_collection, full)
+    assert "messages" not in archived
+
+    code, out = await _cli(capsys, "--restore-archived")
+    assert code == 0 and out[-2:] == [
+        "Restore: 1 restored.",
+        "Dry run only. Re-run with --apply to write.",
+    ]
+    assert await _head(raw_collection, full) == archived
+
+    assert (await _cli(capsys, "--restore-archived", "--apply"))[0] == 0
+    restored = await _head(raw_collection, full)
+    assert {k: v for k, v in restored.items() if k != "updatedAt"} == {
+        k: v for k, v in original.items() if k != "updatedAt"
+    }
+    archive = raw_collection.database[f"{raw_collection.name}_conversation_archived_messages"]
+    assert await archive.count_documents({}) == 0
+    code, out = await _cli(capsys, "--restore-archived", "--apply")
+    assert code == 0 and out[0] == "Restore: nothing archived."
+    assert await _head(raw_collection, full) == restored
+
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    assert (await _cli(capsys, "--verify"))[0] == 0
+
+
+async def test_an_archived_head_that_no_longer_fits_its_array_is_reported_and_left_archived(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    await raw_collection.update_one(
+        {"_id": ObjectId(full.head_id)}, {"$set": {"description": "x" * 4096}}
+    )
+    before = await _head(raw_collection, full)
+
+    code, out = await _cli(capsys, "--restore-archived", "--apply")
+
+    assert code == 1
+    assert any(
+        line.startswith(f"  [too_large] {full.conversation_id}: 64 messages") for line in out
+    )
+    assert await _head(raw_collection, full) == before
+    assert (await _cli(capsys, "--verify"))[0] == 0

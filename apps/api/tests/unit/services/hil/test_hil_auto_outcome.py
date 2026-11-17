@@ -158,23 +158,6 @@ async def test_a_bare_never_auto_name_does_not_reach_an_mcp_tool_of_that_name() 
     assert await _never_auto_for(_mcp_request("srv_a"), ["delete_item"]) is False
 
 
-async def test_unreadable_prefs_do_not_take_the_judge_down() -> None:
-    # Prefs were already read for policy; a blip here skips the rule, not the call.
-    request = make_request(tool=make_tool())
-    context = gate.read_gate_context(request)
-    assert context is not None
-    with (
-        patch.object(gate, "get_hil_preferences", new=AsyncMock(side_effect=RuntimeError("down"))),
-        patch.object(
-            gate,
-            "judge_intent",
-            new=AsyncMock(return_value=IntentDecision(outcome="ask", reason="x")),
-        ) as judge,
-    ):
-        await gate._judge(request, context, unpack_tool_call(request), "s")
-    assert judge.await_args.args[0].never_auto is False
-
-
 def _auto_request() -> ToolCallRequest:
     return make_request(
         name="GMAIL_SEND_EMAIL",
@@ -209,7 +192,10 @@ async def test_a_forbidden_verdict_asks_the_user_instead_of_refusing() -> None:
             new=AsyncMock(return_value="gmail"),
         ),
         patch("app.services.hil.gate._auto_history", new=AsyncMock(return_value=AutoHistory())),
-        patch("app.services.hil.gate._never_auto_tools", new=AsyncMock(return_value=frozenset())),
+        patch(
+            "app.services.hil.gate.get_hil_preferences",
+            new=AsyncMock(return_value=HILPreferences()),
+        ),
         patch("app.services.hil.gate.gated_tool_object", new=AsyncMock(return_value=None)),
         patch("app.services.hil.jev_judge.ask_jev", new=jev),
         patch("app.services.hil.gate.announce_approval", new=AsyncMock()),

@@ -264,7 +264,7 @@ class TestBotSendMessage:
         client: AsyncClient,
     ):
         mock_submit.return_value = BotMessageAccepted(
-            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok"
+            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok", after_seq=6
         )
 
         response = await client.post(f"{BOT_BASE}/messages", json=_CHAT_BODY("discord"))
@@ -275,6 +275,8 @@ class TestBotSendMessage:
             "message_id": "m-1",
             "seq": 7,
             "session_token": "tok",
+            "after_seq": 6,
+            "partial_reply": None,
         }
         mock_limit.assert_awaited_once_with("discord", "u1")
         body, user = mock_submit.await_args.args
@@ -349,7 +351,7 @@ class TestBotSendMessageWideEvent:
         request = _make_request()
         user = AuthenticatedUser(user_id=USER_ID)
         accepted = BotMessageAccepted(
-            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok"
+            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok", after_seq=6
         )
         with (
             patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),

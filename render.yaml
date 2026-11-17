@@ -120,6 +120,7 @@ services:
       # it empty to configure a provider in the browser at /setup instead.
       - key: OPENAI_API_KEY
         sync: false
+    preDeployCommand: python -m scripts.migrate_conversations
 
   - type: worker
     name: gaia-worker

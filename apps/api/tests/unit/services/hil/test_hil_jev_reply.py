@@ -22,7 +22,8 @@ from app.services.hil.prompts import JEV_REPLY_CRITERIA
 
 from .conftest import jev_reply_body, serve_jev
 
-ACTIONS = ["Send email — to: bob@example.com", "Post message — channel: #general"]
+ACTIONS = {1: "Send email — to: bob@example.com", 2: "Post message — channel: #general"}
+ONE = {1: ACTIONS[1]}
 
 
 def _verdict(choice: ReplyChoice, confidence: float = 0.99) -> JevReplyVerdict:
@@ -43,8 +44,8 @@ class TestTheDecisionsRequest:
         assert posted["state"] == {
             "reply": "just the email",
             "pending_actions": [
-                {"number": 1, "action": ACTIONS[0]},
-                {"number": 2, "action": ACTIONS[1]},
+                {"number": 1, "action": ACTIONS[1]},
+                {"number": 2, "action": ACTIONS[2]},
             ],
         }
         assert list(posted["questions"]) == ["action_1", "action_2"]
@@ -73,7 +74,7 @@ class TestTheDecisionsRequest:
             MessageDict(role="assistant", content="x" * (HIL_CLASSIFIER_MAX_ARG_CHARS + 50)),
         ]
         with serve_jev(jev_reply_body(("approve", 0.9))) as client:
-            await ask_jev_reply("yes", ACTIONS[:1], history)
+            await ask_jev_reply("yes", ONE, history)
 
         turns = client.post.await_args.kwargs["json"]["state"]["recent_conversation"]
         assert turns[0] == {"role": "user", "content": "email bob the deck"}
@@ -95,7 +96,7 @@ class TestTheDecisionsRequest:
     async def test_an_answer_without_confidence_reads_as_zero_and_never_runs(self) -> None:
         body = {"answers": {"action_1": {"type": "choice", "choice": "approve"}}}
         with serve_jev(body):
-            verdicts, _, _ = await ask_jev_reply("yes", ACTIONS[:1], None)
+            verdicts, _, _ = await ask_jev_reply("yes", ONE, None)
 
         assert (verdicts[0].confidence, verdicts[0].probabilities) == (0.0, {})
         assert settle_reply(verdicts) == [ReplyChoice.LEAVE]
@@ -106,7 +107,7 @@ class TestAMalformedAnswerRaises:
 
     async def test_an_unknown_choice_is_refused_by_name(self) -> None:
         with serve_jev(jev_reply_body(("maybe", 0.9))), pytest.raises(ValueError) as caught:
-            await ask_jev_reply("yes", ACTIONS[:1], None)
+            await ask_jev_reply("yes", ONE, None)
 
         assert str(caught.value) == "unknown JEV reply choice: 'maybe'"
 
@@ -120,11 +121,11 @@ class TestAMalformedAnswerRaises:
     async def test_a_non_choice_answer_is_refused(self) -> None:
         body = {"answers": {"action_1": {"type": "score", "choice": "approve"}}}
         with serve_jev(body), pytest.raises(ValueError, match="^non-choice JEV reply answer"):
-            await ask_jev_reply("yes", ACTIONS[:1], None)
+            await ask_jev_reply("yes", ONE, None)
 
     async def test_a_transport_failure_propagates(self) -> None:
         with serve_jev(httpx.ConnectError("down")), pytest.raises(httpx.ConnectError):
-            await ask_jev_reply("yes", ACTIONS[:1], None)
+            await ask_jev_reply("yes", ONE, None)
 
 
 class TestSettle:

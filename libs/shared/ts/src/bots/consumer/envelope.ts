@@ -15,7 +15,7 @@
  */
 
 import { z } from "zod";
-import type { ActiveBotConversation } from "../../api/generated";
+import type { ActiveBotConversation, PartialReply } from "../../api/generated";
 import { isOwnApiUrl } from "../utils/own-api";
 
 /**
@@ -74,7 +74,17 @@ export function outboundAttachmentSchemaFor(ownApiOrigin: string | undefined) {
   ]);
 }
 
-/** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */
+/** A reply cut mid-delivery: final bubbles plus the open bubble's messages. Mirrors bot_models.PartialReply. */
+const partialReplySchema = z
+  .object({
+    reply_id: z.string().min(1),
+    bubbles: z.number().int().min(0),
+    open_message_ids: z.array(z.string().min(1)).default([]),
+  })
+  .refine((p) => p.bubbles > 0 || p.open_message_ids.length > 0, {
+    message: "a partial reply has a final bubble or an open message",
+  }) satisfies z.ZodType<PartialReply>;
+
 /** A wake: the bot conversation to follow, from the delivered-through cursor its follower recorded. */
 const conversationFollowSchema = z.object({
   conversation_id: z.string().min(1),
@@ -82,12 +92,10 @@ const conversationFollowSchema = z.object({
   channel_id: z.string().nullable(),
   is_dm: z.boolean(),
   after_seq: z.number().int().min(0),
-  partial_reply: z
-    .object({ reply_id: z.string().min(1), bubbles: z.number().int().min(1) })
-    .nullable()
-    .default(null),
+  partial_reply: partialReplySchema.nullable().default(null),
 }) satisfies z.ZodType<ActiveBotConversation>;
 
+/** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */
 export function outboundMessageEnvelopeSchemaFor(
   ownApiOrigin: string | undefined,
 ) {

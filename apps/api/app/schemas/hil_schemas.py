@@ -1,5 +1,7 @@
 """Request/response schemas for HIL approval + preference endpoints."""
 
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
 from app.constants.hil import ApprovalDecision
@@ -16,13 +18,22 @@ class ApprovalDecisionRequest(BaseModel):
     scope: ApprovalScope = "once"
 
 
+class DecisionRefusal(StrEnum):
+    """Why a decision did not commit."""
+
+    # The log already holds a decision (another tap, an expiry, a stop): outcome says which.
+    ALREADY_DECIDED = "already_decided"
+    NOT_FOUND = "not_found"
+    FORBIDDEN = "forbidden"
+    ERROR = "error"
+
+
 class ApprovalDecisionResponse(BaseModel):
     """Result of relaying an approval decision to the awaiting gate."""
 
     success: bool
-    # Why success is False ("not_found": already decided or gone) with how the approval
-    # stands; a committed tap carries the outcome it committed.
-    reason: str | None = None
+    # Why success is False, with how the approval stands; a committed tap carries the outcome it committed.
+    reason: DecisionRefusal | None = None
     outcome: ApprovalOutcome | None = None
     action: ActionResult | None = None
 
@@ -46,8 +57,8 @@ class BatchDecisionOutcome(BaseModel):
 
     approval_id: str
     resolved: bool
-    # Set when resolved is False: "not_found" (already decided/expired), "forbidden", or "error".
-    reason: str | None = None
+    # Set when resolved is False.
+    reason: DecisionRefusal | None = None
     # How the approval stands when the item did not commit.
     outcome: ApprovalOutcome | None = None
     action: ActionResult | None = None

@@ -15,6 +15,7 @@ from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     BatchDecisionItem,
     BatchDecisionOutcome,
+    DecisionRefusal,
 )
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
@@ -77,7 +78,7 @@ class TestPostApprovalDecision:
         assert resp.status_code == 200
         assert resp.json() == {
             "success": False,
-            "reason": "not_found",
+            "reason": "already_decided",
             "outcome": "expired",
             "action": None,
         }
@@ -90,7 +91,7 @@ class TestPostApprovalDecision:
         resp = await client.post(f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "deny"})
         assert resp.json() == {
             "success": False,
-            "reason": "not_found",
+            "reason": "already_decided",
             "outcome": "approved",
             "action": "executed",
         }
@@ -165,7 +166,7 @@ class TestPostBatchDecision:
             BatchDecisionOutcome(
                 approval_id="ap_2",
                 resolved=False,
-                reason="not_found",
+                reason=DecisionRefusal.ALREADY_DECIDED,
                 outcome=ApprovalOutcome.EXPIRED,
             ),
         ]

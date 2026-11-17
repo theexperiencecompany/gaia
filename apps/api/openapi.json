@@ -484,13 +484,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "success": {
             "title": "Success",
@@ -822,6 +821,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -844,7 +855,8 @@
           "integration_name",
           "args_preview",
           "auto_reason",
-          "always_asks"
+          "always_asks",
+          "number"
         ],
         "title": "ApprovalRequested",
         "type": "object"
@@ -1593,13 +1605,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "resolved": {
             "title": "Resolved",
@@ -2301,8 +2312,13 @@
         "type": "object"
       },
       "BotMessageAccepted": {
-        "description": "A bot message accepted, with the token the bot follows the events stream with.",
+        "description": "A bot message accepted, with the token the bot follows the events stream with.\n\nafter_seq and partial_reply are where the follow starts: the session's delivery cursor while\nit still owes anything, else just before the message.",
         "properties": {
+          "after_seq": {
+            "minimum": 0.0,
+            "title": "After Seq",
+            "type": "integer"
+          },
           "conversation_id": {
             "title": "Conversation Id",
             "type": "string"
@@ -2310,6 +2326,16 @@
           "message_id": {
             "title": "Message Id",
             "type": "string"
+          },
+          "partial_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartialReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "seq": {
             "title": "Seq",
@@ -2324,7 +2350,9 @@
           "conversation_id",
           "message_id",
           "seq",
-          "session_token"
+          "session_token",
+          "after_seq",
+          "partial_reply"
         ],
         "title": "BotMessageAccepted",
         "type": "object"
@@ -5724,6 +5752,17 @@
           "member_removed"
         ],
         "title": "DeactivationReason",
+        "type": "string"
+      },
+      "DecisionRefusal": {
+        "description": "Why a decision did not commit.",
+        "enum": [
+          "already_decided",
+          "not_found",
+          "forbidden",
+          "error"
+        ],
+        "title": "DecisionRefusal",
         "type": "string"
       },
       "DegradedHealthResponse": {

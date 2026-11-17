@@ -781,6 +781,42 @@ describe("OutboundConsumer message handling", () => {
     await flush();
     expect(order).toEqual(["text:chat-b", "photo:chat-a", "text:chat-a"]);
   });
+
+  it("follows a wake for a reply cut inside its first bubble with its open messages", async () => {
+    const follow = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      follow,
+    );
+    const msg = msgFor({
+      id: "wake-1",
+      platform: "telegram",
+      destination_id: "42",
+      follow: {
+        conversation_id: "conv-1",
+        platform_user_id: "42",
+        channel_id: null,
+        is_dm: true,
+        after_seq: 3,
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(follow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        partial_reply: { reply_id: "r1", bubbles: 0, open_message_ids: ["9"] },
+      }),
+    );
+    expect(channel.ack).toHaveBeenCalledWith(msg);
+    expect(channel.nack).not.toHaveBeenCalled();
+  });
 });
 
 describe("OutboundConsumer outside a platform's messaging window", () => {

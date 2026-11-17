@@ -2,8 +2,8 @@
 
 Live runs get the ticket through the executor inbox; background runs have no live
 run, so approvals re-enqueue the owner carrying the ticket and denials leave a
-trace where the owner looks. Claim-guarded, and a resume that cannot be queued
-raises to the tap.
+trace where the owner looks. A resume that cannot be queued raises,
+so the decision's hand-off is retried.
 """
 
 from collections.abc import Iterator
@@ -15,7 +15,6 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.services.hil import resume as resume_module
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
 from app.services.hil.resume import (
     _resume_todo,
@@ -51,41 +50,22 @@ def _row(**overrides: Any) -> MagicMock:
 
 
 class TestResumeAfterApproval:
-    async def test_lost_claim_means_another_tap_already_resumed(self) -> None:
-        with (
-            patch(f"{MODULE}.approval_ledger_repository") as repo,
-            patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume,
-        ):
-            repo.claim_resume = AsyncMock(return_value=False)
-            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"))
-        resume.assert_not_awaited()
-
     async def test_todo_resume_logs_and_reenqueues(self) -> None:
-        with (
-            patch.object(resume_module, "approval_ledger_repository") as repo,
-            patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume,
-        ):
-            repo.claim_resume = AsyncMock(return_value=True)
+        with patch(f"{MODULE}._resume_todo", new=AsyncMock()) as resume:
             await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-1"))
         resume.assert_awaited_once()
 
     async def test_an_unknown_owner_type_raises(self) -> None:
-        with patch(f"{MODULE}.approval_ledger_repository") as repo:
-            repo.claim_resume = AsyncMock(return_value=True)
-            with pytest.raises(
-                UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'cron'$"
-            ):
-                await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"))
+        with pytest.raises(
+            UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'cron'$"
+        ):
+            await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"))
 
     async def test_a_resume_failure_raises_to_the_tap(self) -> None:
-        with (
-            patch(f"{MODULE}.approval_ledger_repository") as repo,
-            patch(
-                f"{MODULE}._resume_workflow",
-                new=AsyncMock(side_effect=RuntimeError("redis down")),
-            ),
+        with patch(
+            f"{MODULE}._resume_workflow",
+            new=AsyncMock(side_effect=RuntimeError("redis down")),
         ):
-            repo.claim_resume = AsyncMock(return_value=True)
             with pytest.raises(RuntimeError, match="redis down"):
                 await resume_owner_after_approval(_row(owner_run_type="workflow", owner_id="wf-1"))
 
@@ -202,7 +182,6 @@ class TestResumedEvent:
 class ResumeSeams:
     """The resume driver's seams, each answering only for the parked row's own ids."""
 
-    claim: AsyncMock
     log: MagicMock
     pool: MagicMock
     enqueue: AsyncMock
@@ -215,16 +194,12 @@ class ResumeSeams:
 def seams() -> Iterator[ResumeSeams]:
     pool = MagicMock()
 
-    async def _claim(approval_id: str) -> bool:
-        return approval_id == "ap_bg1"
-
     async def _brief(workflow_id: str, user_id: str) -> str:
         return (
             "last run drafted the briefing" if (workflow_id, user_id) == ("wf-7", USER_ID) else ""
         )
 
     with (
-        patch(f"{MODULE}.approval_ledger_repository") as repo,
         patch(f"{MODULE}.log") as log,
         patch(f"{MODULE}.RedisPoolManager.get_pool", new=AsyncMock(return_value=pool)),
         patch(f"{MODULE}.enqueue_worker_job", new=AsyncMock()) as enqueue,
@@ -235,9 +210,7 @@ def seams() -> Iterator[ResumeSeams]:
         patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
         patch(f"{MODULE}.capture"),
     ):
-        repo.claim_resume = AsyncMock(side_effect=_claim)
         yield ResumeSeams(
-            claim=repo.claim_resume,
             log=log,
             pool=pool,
             enqueue=enqueue,
@@ -253,7 +226,6 @@ class TestResumeRouting:
     ) -> None:
         await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
 
-        seams.claim.assert_awaited_once_with("ap_bg1")
         seams.enqueue.assert_awaited_once_with(
             seams.pool, "resume_tracked_todo", "todo-9", "conv-bg", "ap_bg1", "Send briefing"
         )
@@ -262,7 +234,7 @@ class TestResumeRouting:
     async def test_a_todo_grant_is_logged_on_that_todo_at_the_decision(
         self, seams: ResumeSeams
     ) -> None:
-        """Logged here, under the resume claim, not by the resume job, which a busy chat defers and reruns."""
+        """Logged here, at the hand-off, not by the resume job, which a busy chat defers and reruns."""
         await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
 
         seams.append_activity.assert_awaited_once_with(
@@ -309,14 +281,6 @@ class TestResumeRouting:
                 "error_type": "RuntimeError",
             }
         }
-
-    async def test_a_failed_claim_raises_and_resumes_nothing(self, seams: ResumeSeams) -> None:
-        seams.claim.side_effect = ConnectionError("mongo down")
-
-        with pytest.raises(ConnectionError, match="mongo down"):
-            await resume_owner_after_approval(_row(owner_run_type="todo", owner_id="todo-9"))
-
-        seams.enqueue.assert_not_awaited()
 
     async def test_a_failed_enqueue_raises(self, seams: ResumeSeams) -> None:
         seams.enqueue.side_effect = RuntimeError("redis down")

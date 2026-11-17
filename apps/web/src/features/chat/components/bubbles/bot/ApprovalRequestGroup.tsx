@@ -5,7 +5,7 @@ import type { ApprovalDecision, ApprovalRequestData } from "@shared/chat";
 import { useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
+import { isSettledOutcome } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 import ApprovalRequestSection from "./ApprovalRequestSection";
 import ApprovalReviewSheet from "./ApprovalReviewSheet";
@@ -61,11 +61,7 @@ export default function ApprovalRequestGroup({
         })),
       });
       // A decided card ends when the server's screen updates its item.
-      if (
-        response.outcomes.some(
-          (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
-        )
-      ) {
+      if (response.outcomes.some((o) => !isSettledOutcome(o))) {
         toast.error("Some approvals couldn't be submitted, please try again");
       }
     } catch {

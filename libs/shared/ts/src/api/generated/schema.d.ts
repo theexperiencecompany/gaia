@@ -6113,8 +6113,7 @@ export interface components {
         ApprovalDecisionResponse: {
             action?: components["schemas"]["ActionResult"] | null;
             outcome?: components["schemas"]["ApprovalOutcome"] | null;
-            /** Reason */
-            reason?: string | null;
+            reason?: components["schemas"]["DecisionRefusal"] | null;
             /** Success */
             success: boolean;
         };
@@ -6198,6 +6197,8 @@ export interface components {
              * @constant
              */
             kind: "approval_requested";
+            /** Number */
+            number: number | null;
             /** Task Id */
             task_id: string;
             /**
@@ -6522,8 +6523,7 @@ export interface components {
             /** Approval Id */
             approval_id: string;
             outcome?: components["schemas"]["ApprovalOutcome"] | null;
-            /** Reason */
-            reason?: string | null;
+            reason?: components["schemas"]["DecisionRefusal"] | null;
             /** Resolved */
             resolved: boolean;
         };
@@ -6841,12 +6841,18 @@ export interface components {
         /**
          * BotMessageAccepted
          * @description A bot message accepted, with the token the bot follows the events stream with.
+         *
+         *     after_seq and partial_reply are where the follow starts: the session's delivery cursor while
+         *     it still owes anything, else just before the message.
          */
         BotMessageAccepted: {
+            /** After Seq */
+            after_seq: number;
             /** Conversation Id */
             conversation_id: string;
             /** Message Id */
             message_id: string;
+            partial_reply: components["schemas"]["PartialReply"] | null;
             /** Seq */
             seq: number;
             /** Session Token */
@@ -8394,6 +8400,12 @@ export interface components {
          * @enum {string}
          */
         DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed";
+        /**
+         * DecisionRefusal
+         * @description Why a decision did not commit.
+         * @enum {string}
+         */
+        DecisionRefusal: "already_decided" | "not_found" | "forbidden" | "error";
         /**
          * DegradedHealthResponse
          * @description The 503 body returned when the event loop is lagged past the threshold.
@@ -17249,6 +17261,7 @@ export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
+export type DecisionRefusal = components['schemas']['DecisionRefusal'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
 export type DeleteMemoryResponse = components['schemas']['DeleteMemoryResponse'];

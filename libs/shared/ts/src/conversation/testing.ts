@@ -198,6 +198,7 @@ export const approvalAsked = (
   args_preview: {},
   auto_reason: null,
   always_asks: false,
+  number: null,
 });
 
 export const workItem = (
