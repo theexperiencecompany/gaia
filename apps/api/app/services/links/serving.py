@@ -2,7 +2,8 @@
 
 The content origin (a per-snapshot host such as <content_id>.heygaia.link) is
 cross-site from GAIA's app and carries no cookie, so active HTML can run there
-without reaching anything of the viewer's. The CSP sandbox still gives every
+without reaching anything of the viewer's; it can still send its own content
+out and show a convincing page, so it is isolation, not vetting. The CSP sandbox still gives every
 document an opaque origin; frame-ancestors pins framing to the app; HTML is only
 ever served into an iframe, so the content domain is never a landing page.
 """
@@ -29,8 +30,9 @@ SNAPSHOT_CACHE_CONTROL = "private, max-age=600"
 THUMBNAIL_CACHE_CONTROL = "public, max-age=3600"
 _INERT_CSP = "default-src 'none'; sandbox"
 _DOWNLOAD_MIME = "application/octet-stream"
-# Scripts, styles and fonts from any CDN (agent reports draw charts), but no way to send
-# anything anywhere: no fetch/XHR/WebSocket/beacon, no form post, no nested frame or worker.
+# Scripts, styles and fonts from any CDN (agent reports draw charts); no fetch, form post or frame.
+# Not silent: script/image/font URLs reach any https host and popups escape, so the page can
+# send out what it holds. It holds nothing of the viewer's (opaque origin, no cookie).
 _FRAME_ACTIVE_CSP = (
     "sandbox allow-scripts allow-forms allow-modals allow-popups "
     "allow-popups-to-escape-sandbox allow-downloads; "

@@ -100,7 +100,9 @@ _SIZE_CAPS: dict[RenderMode, int] = {
     RenderMode.FRAME_ACTIVE: MAX_HTML_SNAPSHOT_BYTES,
     RenderMode.IMAGE_SVG: MAX_SVG_SNAPSHOT_BYTES,
 }
-_SENSITIVE_INPUT = re.compile(
+# A hint that narrows the obvious credential forms, not a phishing guard: an obfuscated or
+# script-built form passes it. The content origin's isolation and reports are the guard.
+_LOOKS_LIKE_CREDENTIAL_FORM = re.compile(
     rb"""<input\b[^>]*\btype\s*=\s*["']?password|autocomplete\s*=\s*["']?cc-""", re.IGNORECASE
 )
 _SIZE_BUCKETS = ((100 * 1024, "lt_100kb"), (1024 * 1024, "lt_1mb"), (10 * 1024 * 1024, "lt_10mb"))
@@ -156,7 +158,7 @@ async def _restriction(
         return LinkAccess.OWNER, ContentRestriction.EXECUTABLE
     if render is not RenderMode.FRAME_ACTIVE:
         return None
-    if _SENSITIVE_INPUT.search(data):
+    if _LOOKS_LIKE_CREDENTIAL_FORM.search(data):
         return LinkAccess.PEOPLE, ContentRestriction.CREDENTIAL_FORM
     if await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS:
         return LinkAccess.PEOPLE, ContentRestriction.REPEAT_TAKEDOWNS
