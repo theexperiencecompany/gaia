@@ -156,6 +156,8 @@ WORK_LOST_REPORT = (
 )
 # Past its expiry by this much, an approval the HIL sweep has not timed out is the conversation sweep's to settle.
 APPROVAL_EXPIRY_GRACE = timedelta(minutes=5)
+# The gate asks in the log, then registers the row: a request older than this with no row never will have one.
+APPROVAL_REGISTER_GRACE = timedelta(minutes=1)
 # How long a shutting-down process lets its running conversation steps finish.
 STEP_DRAIN_GRACE_SECONDS = 20.0
 # How far back a connect looks for work waiting on that integration.

@@ -158,6 +158,7 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
         patch(f"{MODULE}.record_approval_decided", new=AsyncMock(side_effect=_decide)),
         patch(f"{MODULE}.logged_decision", new=AsyncMock(side_effect=_read)),
         patch(f"{MODULE}.record_approved_action_ended", new=AsyncMock(side_effect=_acted)),
+        patch(f"{MODULE}.logged_request", new=AsyncMock(return_value=None)),
     ):
         yield decided
 
@@ -199,9 +200,27 @@ def _decision_events(capture: MagicMock) -> list[tuple[UserId, HilDecisionSubmit
     ]
 
 
+def _leasing(repo: MagicMock) -> AsyncMock:
+    """Serve claim_delivery as the repo does for a pending row: the row, its hand-off begun now."""
+
+    async def _claim(approval_id: str, now: datetime, lease: timedelta) -> object:
+        read = repo.get_by_approval_id
+        row = await read.side_effect(approval_id) if read.side_effect else read.return_value
+        if row is None or row.outcome is not None:
+            return None
+        if isinstance(row, ApprovalLedgerDocument):
+            return row.model_copy(update={"delivering_since": now})
+        row.delivering_since = now
+        return row
+
+    return AsyncMock(side_effect=_claim)
+
+
 def _repo(row: Any = None) -> MagicMock:
     repo = MagicMock()
     repo.get_by_approval_id = AsyncMock(return_value=row)
+    repo.claim_delivery = _leasing(repo)
+    repo.finish_delivery = AsyncMock()
     repo.settle = AsyncMock(return_value=True)
     repo.finish_action = AsyncMock(return_value=True)
     repo.list_stalled_executing = AsyncMock(return_value=[])
@@ -1309,6 +1328,8 @@ def seams(logged_decisions: dict[str, ApprovalDecided]) -> Iterator[LedgerSeams]
 
     repo = MagicMock()
     repo.get_by_approval_id = AsyncMock(side_effect=_get)
+    repo.claim_delivery = _leasing(repo)
+    repo.finish_delivery = AsyncMock()
     repo.settle = AsyncMock(return_value=True)
     repo.finish_action = AsyncMock(return_value=True)
     repo.claim_executing = AsyncMock(return_value=True)
@@ -1382,7 +1403,10 @@ class TestDecideLedgerOutcomes:
         assert outcome == LedgerDecision(
             committed=False, approval_id="ap_1", outcome=ApprovalOutcome.DENIED, action=None
         )
-        seams.repo.settle.assert_not_awaited()
+        # The row the log's decision never reached follows it now, with the decision that stands.
+        seams.repo.settle.assert_awaited_once_with(
+            "ap_1", ApprovalOutcome.DENIED, decided_by=USER_ID, feedback=None
+        )
         seams.capture.assert_not_called()
 
     async def test_a_ledger_row_that_drifted_from_the_log_is_raised_loudly(
@@ -1492,7 +1516,12 @@ class TestDecideLedgerOutcomes:
             AuthenticatedUser(user_id=USER_ID),
             f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}",
         )
-        seams.record_deny.assert_awaited_once_with(row, "nope")
+        [(denied, note)] = [call.args for call in seams.record_deny.await_args_list]
+        assert (denied.approval_id, denied.outcome, note) == (
+            "ap_1",
+            ApprovalOutcome.DENIED,
+            "nope",
+        )
         stands = seams.decisions["ap_1"]
         assert stands.outcome is ApprovalOutcome.DENIED
         assert stands.feedback == "nope"
@@ -1828,7 +1857,9 @@ class TestRevokeMessages:
         assert await self._revoke() == (
             "Cannot revoke 'ap_1': already approved. Report that to the user instead of retrying."
         )
-        seams.repo.settle.assert_not_awaited()
+        seams.repo.settle.assert_awaited_once_with(
+            "ap_1", ApprovalOutcome.APPROVED, decided_by=None, feedback=None
+        )
 
     async def test_a_revoke_tombstones_the_card_it_withdrew(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()

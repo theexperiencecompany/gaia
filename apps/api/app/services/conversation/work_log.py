@@ -201,6 +201,17 @@ async def logged_decision(
     return (acted or decisions or [None])[0]
 
 
+async def logged_request(
+    conversation_id: str, user_id: str, approval_id: str
+) -> ApprovalRequested | None:
+    """Return the approval's request as the log asked it; None when the log never did."""
+    logged = await conversation_log_repository.read_log(
+        conversation_id, user_id=user_id, ids=[f"approval:{approval_id}"]
+    )
+    requests = [item.entry for item in logged or () if isinstance(item.entry, ApprovalRequested)]
+    return requests[0] if requests else None
+
+
 def _acted_id(approval_id: str) -> str:
     return f"approval:{approval_id}:acted"
 
