@@ -5,7 +5,6 @@ session, and PyJWT's key client. Only the JWKS network fetch is faked, so these
 pin that caching the keys changed how often they are fetched, never what passes.
 """
 
-import asyncio
 import base64
 from collections.abc import Iterator
 import contextlib
@@ -16,7 +15,7 @@ import json
 import threading
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 import urllib.error
 import urllib.request
@@ -57,8 +56,19 @@ KEY_1, KEY_2, FORGER = (
 )
 
 
-def _jwk(kid: str, key: RSAPrivateKey) -> dict[str, Any]:
-    return {**json.loads(RSAAlgorithm.to_jwk(key.public_key())), "kid": kid, "alg": "RS256"}
+class _Jwk(TypedDict):
+    """One RSA public key as a JWKS endpoint serves it."""
+
+    kty: str
+    n: str
+    e: str
+    kid: str
+    alg: str
+
+
+def _jwk(kid: str, key: RSAPrivateKey) -> _Jwk:
+    public = RSAAlgorithm.to_jwk(key.public_key(), as_dict=True)
+    return _Jwk(kty=public["kty"], n=public["n"], e=public["e"], kid=kid, alg="RS256")
 
 
 def _token(key: RSAPrivateKey, kid: str, *, expires_in: int = 300) -> str:
@@ -96,12 +106,12 @@ class _Jwks:
     the set, starting the refresh cooldown), which is exactly what is under test.
     """
 
-    def __init__(self, *keys: dict[str, Any], wait_for: threading.Event | None = None) -> None:
+    def __init__(self, *keys: _Jwk) -> None:
         self.keys = list(keys)
         self.fetches = 0
         self.down = False
         self.timeouts: list[float] = []
-        self._wait_for = wait_for
+        self.threads: list[int] = []
 
     def build_opener(self, *_handlers: object) -> "_Jwks":
         return self
@@ -110,8 +120,7 @@ class _Jwks:
         self, _request: object, timeout: float
     ) -> contextlib.AbstractContextManager[io.BytesIO]:
         self.timeouts.append(timeout)
-        if self._wait_for is not None and not self._wait_for.wait(timeout=2):
-            raise TimeoutError("the event loop was blocked during the key fetch")
+        self.threads.append(threading.get_ident())
         if self.down:
             raise urllib.error.URLError("WorkOS JWKS endpoint unreachable")
         self.fetches += 1
@@ -287,17 +296,14 @@ def test_sessions_of_one_client_share_its_key_cache_and_other_clients_get_their_
 
 
 @pytest.mark.usefixtures("known_user", "refresh")
-async def test_a_key_fetch_never_blocks_the_event_loop() -> None:
-    loop_ran = threading.Event()
-
-    async def other_request() -> None:
-        loop_ran.set()
-
-    # The fetch answers only once another coroutine has run: on the loop thread it would starve it.
-    with _serving(_Jwks(_jwk("key-1", KEY_1), wait_for=loop_ran)):
-        user, _ = await asyncio.gather(_authenticate(_token(KEY_1, "key-1")), other_request())
+async def test_a_key_fetch_never_runs_on_the_event_loop_thread() -> None:
+    loop_thread = threading.get_ident()
+    with _serving(_Jwks(_jwk("key-1", KEY_1))) as jwks:
+        user = await _authenticate(_token(KEY_1, "key-1"))
 
     assert user is not None
+    assert len(jwks.threads) == 1
+    assert jwks.threads[0] != loop_thread
 
 
 @pytest.mark.usefixtures("known_user", "refresh")
