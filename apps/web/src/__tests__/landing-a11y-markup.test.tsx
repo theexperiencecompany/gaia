@@ -139,6 +139,17 @@ function nameMismatches(doc: Document): string[] {
   });
 }
 
+// Link names squirrelscan's a11y/link-text-generic flags: they say nothing of where the link goes.
+const GENERIC_LINK_NAMES = new Set([
+  "click here",
+  "here",
+  "read more",
+  "learn more",
+  "more",
+  "link",
+  "download",
+]);
+
 const AUTHOR = { name: "Aryan", role: "Founder", avatar: "/a.png" };
 
 const blog = (slug: string, featured: boolean): BlogPostMeta => ({
@@ -170,6 +181,13 @@ describe("landing markup accessibility", () => {
   it("names every footer and contact social link with its visible text", () => {
     expect(nameMismatches(parse(<Footer />))).toEqual([]);
     expect(nameMismatches(parse(<ContactSidebar />))).toEqual([]);
+  });
+
+  it("names no footer link with text that is generic out of context", () => {
+    const names = [...parse(<Footer />).querySelectorAll("a")].map((link) =>
+      normalize(link.getAttribute("aria-label") ?? link.textContent),
+    );
+    expect(names.filter((name) => GENERIC_LINK_NAMES.has(name))).toEqual([]);
   });
 
   it("gives the landing shell one main, reached by a leading skip link", () => {
