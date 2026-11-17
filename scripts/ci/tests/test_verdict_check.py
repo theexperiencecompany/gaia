@@ -177,6 +177,30 @@ def test_a_python_traceback_is_reported_by_the_exception_it_ended_with() -> None
     ]
 
 
+@pytest.mark.parametrize("raised", ["Exception: failed", "StopIteration", "KeyboardInterrupt"])
+def test_a_traceback_is_reported_by_its_exception_whatever_the_class_is_named(raised: str) -> None:
+    text = f'Traceback (most recent call last):\n  File "x.py", line 3, in <module>\n    run()\n{raised}\n'
+    (found,) = output_findings.read(text)
+    assert found["message"] == raised
+    assert found["detail"].splitlines()[-1] == raised
+
+
+def test_an_exception_named_line_outside_a_traceback_does_not_replace_the_first_error() -> None:
+    (found,) = output_findings.read("fatal: deployment failed\nCacheError: recovered, continuing\n")
+    assert found["message"] == "fatal: deployment failed"
+
+
+def test_a_traceback_exception_stays_in_the_detail_after_many_earlier_errors() -> None:
+    raised = "RuntimeError: worker died with <Signals.SIGSEGV: 11>."
+    earlier = "".join(f"error: step {n} failed\n" for n in range(25))
+    text = f'{earlier}Traceback (most recent call last):\n  File "x.py", line 3, in <module>\n{raised}\n'
+    (found,) = output_findings.read(text)
+    assert found["message"] == raised
+    detail = found["detail"].splitlines()
+    assert len(detail) == output_findings.DETAIL_LINES
+    assert detail[-1] == raised
+
+
 def test_a_fallback_pins_a_location_less_result_to_the_manifest() -> None:
     (found,) = output_findings.read("x react 19.1.0 -> 19.2.3 failed\n", fallback="package.json")
     assert (found["file"], found["line"]) == ("package.json", 1)
