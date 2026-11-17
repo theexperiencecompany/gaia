@@ -1,4 +1,4 @@
-import { Link } from "@heroui/link";
+import { Link } from "@heroui/react";
 import { Github01Icon } from "@icons";
 
 import {
@@ -16,15 +16,18 @@ export function SelfHostedSupportNotice() {
       </p>
       <p>Report bugs and request features on GitHub instead.</p>
       <div className="flex flex-wrap gap-4">
-        <Link href={GAIA_GITHUB_ISSUES_URL} isExternal showAnchorIcon size="sm">
+        <Link
+          href={GAIA_GITHUB_ISSUES_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <Github01Icon width={14} height={14} className="mr-1" />
           Open an issue
         </Link>
         <Link
           href={GAIA_GITHUB_DISCUSSIONS_URL}
-          isExternal
-          showAnchorIcon
-          size="sm"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           <Github01Icon width={14} height={14} className="mr-1" />
           Start a discussion

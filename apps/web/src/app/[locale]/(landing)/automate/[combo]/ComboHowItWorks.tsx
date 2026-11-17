@@ -15,7 +15,7 @@ export function ComboHowItWorks({ data, t }: ComboSectionProps) {
       <ol className="space-y-6">
         {data.howItWorks.map((step, index) => (
           <li key={step.step} className="flex gap-5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/20 font-semibold text-primary">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/20 font-semibold text-accent">
               {index + 1}
             </div>
             <div>

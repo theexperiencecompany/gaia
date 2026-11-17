@@ -5,7 +5,7 @@ import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
 import Image from "next/image";
-import { useTransition } from "react";
+import { type ReactNode, useTransition } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -15,13 +15,15 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
-import type { Workflow } from "@/features/workflows/api/workflowApi";
+import type {
+  CommunityWorkflow,
+  Workflow,
+} from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import {
   DEFAULT_WORKFLOW_ICON_COLOR,
   WORKFLOW_ICON_BG_ALPHA,
-  WORKFLOW_ICON_MAP,
-} from "@/features/workflows/constants/workflowIconCatalog";
+} from "@/features/workflows/constants/workflowIconStyle";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
 import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
@@ -31,6 +33,9 @@ interface UseCaseDetailClientProps {
   useCase: UseCase | null;
   communityWorkflow: Workflow | null;
   slug: string;
+  relatedUseCases: readonly CommunityWorkflow[];
+  /** The workflow's catalog icon in its color, rendered by the server page. */
+  heroIconElement?: ReactNode;
 }
 
 function buildWorkflowRequest(
@@ -81,18 +86,17 @@ function buildWorkflowRequest(
 
 /** The workflow's chosen icon, on its own tinted tile, beside the page title. */
 function renderHeroIcon(
-  icon: string | null | undefined,
+  iconElement: ReactNode | undefined,
   iconColor: string | null | undefined,
 ) {
-  const def = icon ? WORKFLOW_ICON_MAP.get(icon) : undefined;
-  if (!def) return undefined;
+  if (!iconElement) return undefined;
   const color = iconColor ?? DEFAULT_WORKFLOW_ICON_COLOR;
   return (
     <div
       className="flex size-12 shrink-0 items-center justify-center rounded-xl"
       style={{ backgroundColor: `${color}${WORKFLOW_ICON_BG_ALPHA}` }}
     >
-      <def.Icon size={26} style={{ color }} />
+      {iconElement}
     </div>
   );
 }
@@ -195,6 +199,7 @@ function UseCaseMetaInfo({
                   width={100}
                   height={100}
                   className="object-contain"
+                  loading="eager"
                 />
               ) : (
                 <UserCircle02Icon className="h-6 w-6 text-zinc-300" />
@@ -215,6 +220,7 @@ function UseCaseMetaInfo({
             width: 28,
             height: 28,
             showBackground: false,
+            loading: "eager",
           })}
           label="Included with"
           value={integrationLabel}
@@ -236,6 +242,7 @@ function UseCaseMetaInfo({
                   width: 20,
                   height: 20,
                   showBackground: false,
+                  loading: "eager",
                 })
               : undefined
           }
@@ -284,6 +291,7 @@ function deriveDetail(
   useCase: UseCaseDetailClientProps["useCase"],
   communityWorkflow: UseCaseDetailClientProps["communityWorkflow"],
   slug: string,
+  heroIconElement: ReactNode | undefined,
 ) {
   const data = useCase || communityWorkflow;
   if (!data) return null;
@@ -303,7 +311,7 @@ function deriveDetail(
     workflowPrompt: useCase?.prompt || communityWorkflow?.prompt,
     sourceIntegration:
       useCase?.source_integration ?? communityWorkflow?.source_integration,
-    heroIcon: renderHeroIcon(data.icon, data.icon_color),
+    heroIcon: renderHeroIcon(heroIconElement, data.icon_color),
     currentSlug: useCase?.slug ?? communityWorkflow?.slug ?? slug,
     breadcrumbs: [
       { label: "Home", href: "/" },
@@ -331,6 +339,8 @@ export default function UseCaseDetailClient({
   useCase,
   communityWorkflow,
   slug,
+  relatedUseCases,
+  heroIconElement,
 }: UseCaseDetailClientProps) {
   const { isCreating, handleCreateWorkflow } = useCreateFromUseCase(
     useCase,
@@ -339,7 +349,12 @@ export default function UseCaseDetailClient({
   const { integrations } = useIntegrations();
   const { getIntegrationName } = useIntegrationLookup();
 
-  const detail = deriveDetail(useCase, communityWorkflow, slug);
+  const detail = deriveDetail(
+    useCase,
+    communityWorkflow,
+    slug,
+    heroIconElement,
+  );
   if (!detail) return null;
   const {
     title,
@@ -414,7 +429,7 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
-        categories={useCase?.categories || []}
+        relatedUseCases={relatedUseCases}
       />
       <FinalSection />
     </div>

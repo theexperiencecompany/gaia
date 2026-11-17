@@ -374,7 +374,7 @@ class TestGetCurrentUserWsLocalSession:
                     await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
 
         assert exc.value.code == status.WS_1008_POLICY_VIOLATION
-        assert exc.value.reason == "local session token rejected"
+        assert exc.value.reason == "local session check unavailable"
         assert [e["msg"] for e in event["errors"]] == [
             f"{LogTag.API} local session verification error"
         ]

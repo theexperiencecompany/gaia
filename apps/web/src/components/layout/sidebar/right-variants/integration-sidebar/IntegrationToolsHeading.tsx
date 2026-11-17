@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { Settings01Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
 
 interface IntegrationToolsHeadingProps {
   toolCount: number;
@@ -38,26 +39,27 @@ export function IntegrationToolsHeading({
               rather than the default pill, and longer counts grow. */}
           <Chip
             size="sm"
-            variant="flat"
-            radius="full"
-            classNames={{
-              base: "h-5 min-w-5 px-0",
-              content: "px-1.5 text-xs",
-            }}
+            variant="secondary"
+            className={shapeVariants({
+              shape: "pill",
+              className: "h-5 min-w-5",
+            })}
           >
-            {toolCount}
+            <Chip.Label className="text-xs">{toolCount}</Chip.Label>
           </Chip>
         </div>
         {isConnected && (
-          <Button
+          <GaiaButton
             size="sm"
-            variant="light"
-            className="h-7 shrink-0 px-2 text-xs text-zinc-400"
-            startContent={<Settings01Icon className="size-3.5" />}
+            variant="ghost"
+            tone="muted"
+            inset="tight"
+            className="h-7 shrink-0 text-xs"
             onPress={onOpenPermissions}
           >
+            <Settings01Icon className="size-3.5" />
             Permissions
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>

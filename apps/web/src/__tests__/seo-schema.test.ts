@@ -264,6 +264,30 @@ describe("schema entity identity", () => {
     expect(useCase.author).toEqual(organizationRef);
   });
 
+  it("declares no Person for a community creator it can say nothing about but a name", () => {
+    const useCase = generateUseCaseStructuredData({
+      title: "Inbox Triage",
+      slug: "inbox-triage",
+      creator: { id: "6650a1b2c3d4e5f6a7b8c9d0", name: "Joel Strong" },
+    } as UseCase);
+    expect(useCase.author).toBeUndefined();
+  });
+
+  it("keeps two use cases with one title two HowTo entities", () => {
+    const howTo = (slug: string) =>
+      generateUseCaseStructuredData({
+        title: "Auto-Draft Replies",
+        slug,
+      } as UseCase) as unknown as Record<string, unknown>;
+    const template = howTo("auto-draft-replies");
+    const copy = howTo("auto-draft-replies-3c3bbe");
+
+    expect(template["@id"]).toBe(
+      "https://heygaia.io/use-cases/auto-draft-replies#howto",
+    );
+    expect(copy["@id"]).not.toBe(template["@id"]);
+  });
+
   it("describes a founder the same way in every node that names them", () => {
     const organization = generateOrganizationSchema() as unknown as Record<
       string,

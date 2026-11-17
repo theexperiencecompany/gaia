@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import "../../../../styles/marketing.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -8,8 +8,7 @@ import JsonLd from "@/components/seo/JsonLd";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { RelatedComparisonsGrid } from "@/components/seo/RelatedComparisonsGrid";
 import { SiteLink } from "@/components/seo/SiteLink";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import type { CommunityIntegration } from "@/features/integrations/types";
+import { IntegrationChipLink } from "@/features/integrations/components/IntegrationChipLink";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   AGENCY_FAQS,
@@ -208,7 +207,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "agency-owners": {
     metaTitle: "GAIA for Agency Owners: Automate Client Reports",
     metaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
+      "GAIA monitors every client project, writes your weekly status reports and keeps your pipeline active. Scale your agency without scaling your overhead.",
     schemaDescription:
       "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically.",
     keywords: [
@@ -286,29 +285,6 @@ export async function generateMetadata({
   });
 }
 
-function IntegrationBadge({
-  integration,
-}: {
-  readonly integration: CommunityIntegration;
-}) {
-  return (
-    <SiteLink href={`/marketplace/${integration.slug}`}>
-      <Chip
-        variant="flat"
-        size="md"
-        className="bg-zinc-800 text-zinc-300"
-        startContent={getToolCategoryIcon(
-          integration.integrationId,
-          { size: 16, width: 16, height: 16, showBackground: false },
-          integration.iconUrl,
-        )}
-      >
-        {integration.name}
-      </Chip>
-    </SiteLink>
-  );
-}
-
 async function RelatedRoles({
   persona,
   locale,
@@ -332,7 +308,7 @@ async function RelatedRoles({
             href={`/for/${role.slug}`}
             className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
-            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+            <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
               {t("ai_assistant_for", { role: role.role })}
             </h3>
           </SiteLink>
@@ -508,7 +484,7 @@ export default async function PersonaPage({ params }: PageProps) {
           </p>
           <div className="flex flex-wrap gap-3">
             {integrations.map((integration) => (
-              <IntegrationBadge
+              <IntegrationChipLink
                 key={integration.slug}
                 integration={integration}
               />
@@ -542,7 +518,7 @@ export default async function PersonaPage({ params }: PageProps) {
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
                 {t("personas.see_how_compares")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
@@ -553,7 +529,7 @@ export default async function PersonaPage({ params }: PageProps) {
               href="/learn"
               className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
                 {t("personas.learn_ai_concepts")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">

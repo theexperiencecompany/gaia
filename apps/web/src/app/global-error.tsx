@@ -4,7 +4,6 @@
 // Placing it in the `app/` directory automatically applies it to the entire
 // application, so you don't need to manually wrap your pages or layouts.
 
-import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
 import { useEffect, useState } from "react";
 
@@ -13,6 +12,7 @@ import {
   isChunkLoadError,
   recoverFromChunkError,
 } from "@/lib/chunkErrorRecovery";
+import { reportToSentry } from "@/lib/observability/reportToSentry";
 
 interface GlobalErrorProps {
   error: Error & { digest?: string };
@@ -36,7 +36,7 @@ function GlobalErrorView({ error }: GlobalErrorProps) {
     setRecovering(false);
     if (isChunk) return;
 
-    Sentry.captureException(error);
+    reportToSentry(error);
     captureException(error);
     // Full diagnostics go through Sentry/captureException above; error
     // message/stack can carry user content, so analytics only gets the stable

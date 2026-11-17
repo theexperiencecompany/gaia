@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Download01Icon, File01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 
+import { LinkButton } from "@/components/shared/LinkButton";
 import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { shortLinkFileUrl } from "@/features/short-links/api/shortLinksApi";
@@ -39,16 +39,15 @@ export function PublicSessionArtifactView({
             {formatFileSize(view.size_bytes)}
           </p>
         </div>
-        <Button
-          as="a"
+        <LinkButton
           href={fileUrl}
           download={view.filename}
-          variant="flat"
+          variant="default-soft"
           size="sm"
-          startContent={<Download01Icon size={16} />}
         >
+          <Download01Icon size={16} />
           Download
-        </Button>
+        </LinkButton>
       </div>
 
       {canRender ? (

@@ -10,10 +10,11 @@
  * comes from the query cache persister (see `layouts/QueryProvider.tsx`).
  */
 
-import { type QueryClient, useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { type Query, type QueryClient, useQuery } from "@tanstack/react-query";
+import { createContext, useContext, useSyncExternalStore } from "react";
 
 import { authApi, type UserInfo } from "@/features/auth/api/authApi";
+import { hasSessionHint } from "@/features/auth/utils/sessionHint";
 import {
   type CurrentUser,
   toCurrentUser,
@@ -49,9 +50,37 @@ const UNKNOWN_USER: CurrentUser = Object.freeze({
   role: undefined,
 });
 
+type CurrentUserQuery = Query<
+  UserInfo,
+  Error,
+  UserInfo,
+  typeof CURRENT_USER_QUERY_KEY
+>;
+
+/**
+ * True inside the marketing tree, where most visitors never signed in: there every
+ * reader of the current user asks /me only when the browser may have a session.
+ */
+const SessionHintGateContext = createContext(false);
+export const SessionHintGateProvider = SessionHintGateContext.Provider;
+
+/**
+ * Whether /me is worth asking: always in the app; on marketing pages only with the
+ * API's signed-in hint, or a user cached before the API issued the hint.
+ */
+export const useMayHaveSession = (): ((query: CurrentUserQuery) => boolean) => {
+  const gated = useContext(SessionHintGateContext);
+  return (query) =>
+    !gated || hasSessionHint() || query.state.data !== undefined;
+};
+
 /** The raw query, for the few callers that need status/error, not just data. */
 const useCurrentUserQuery = () =>
-  useQuery({ ...currentUserQueryOptions, select: toCurrentUser });
+  useQuery({
+    ...currentUserQueryOptions,
+    enabled: useMayHaveSession(),
+    select: toCurrentUser,
+  });
 
 const noSubscription = () => () => {
   // Hydration state never changes after the first client render.

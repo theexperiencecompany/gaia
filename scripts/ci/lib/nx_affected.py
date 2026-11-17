@@ -88,15 +88,25 @@ def _target(task: str) -> str:
     return task.split(":", 1)[1]
 
 
+class NxFailedError(RuntimeError):
+    """Raised when an nx command fails, carrying what nx said and how to recover."""
+
+
 def _nx(*args: str) -> str:
-    return subprocess.run(
+    done = subprocess.run(
         ["pnpm", "exec", "nx", *args],
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout
+        check=False,
+    )
+    if done.returncode == 0:
+        return done.stdout
+    # A fresh worktree has no node_modules: nx then fails to load the repo's own plugins.
+    hint = "" if (REPO_ROOT / "node_modules").is_dir() else "\nNo node_modules: run `pnpm install`."
+    said = (done.stderr + done.stdout).strip()
+    raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}{hint}")
 
 
 def _json_after_banner(out: str, opener: str) -> object:

@@ -1,9 +1,10 @@
-import { Avatar } from "@heroui/avatar";
+import { Avatar } from "@heroui/react";
 import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  LayersIcon,
+  Key01Icon,
+  Tag01Icon,
   UserCircle02Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
@@ -32,7 +33,7 @@ function MetaCard({ children }: { children: ReactNode }) {
 function CategoryCard({ category }: { category: string }) {
   return (
     <MetaCard>
-      <LayersIcon width={24} height={24} className="text-zinc-400" />
+      <Tag01Icon width={24} height={24} className="text-zinc-400" />
       <div>
         <div className="text-xs text-zinc-500">Category</div>
         <div className="text-sm text-zinc-300">
@@ -53,6 +54,7 @@ function NativeCreatorCard() {
           width={100}
           height={100}
           className="object-contain"
+          loading="eager"
         />
       </div>
       <div>
@@ -62,7 +64,7 @@ function NativeCreatorCard() {
           <CheckmarkBadge01Icon
             width={15}
             height={15}
-            className="text-primary"
+            className="text-accent"
           />
         </div>
       </div>
@@ -78,13 +80,16 @@ function CommunityCreatorCard({
   return (
     <MetaCard>
       {creator?.picture ? (
-        <Avatar
-          src={creator.picture || undefined}
-          name={creator.name || undefined}
-          size="sm"
-          className="h-6 w-6"
-          imgProps={{ width: 24, height: 24 }}
-        />
+        <Avatar size="sm" className="h-6 w-6">
+          <Avatar.Image
+            src={creator.picture || undefined}
+            alt={creator.name || "Creator"}
+            width={24}
+            height={24}
+            loading="eager"
+          />
+          <Avatar.Fallback>{creator.name?.charAt(0) ?? "?"}</Avatar.Fallback>
+        </Avatar>
       ) : (
         <UserCircle02Icon width={24} height={24} className="text-zinc-400" />
       )}
@@ -115,7 +120,7 @@ function UsersCard({
 function AuthCard({ authType }: Pick<PublicIntegrationResponse, "authType">) {
   return (
     <MetaCard>
-      <LayersIcon width={24} height={24} className="text-zinc-400" />
+      <Key01Icon width={24} height={24} className="text-zinc-400" />
       <div>
         <div className="text-xs text-zinc-500">Auth</div>
         <div className="text-sm text-zinc-300">
