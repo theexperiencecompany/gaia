@@ -181,18 +181,24 @@ class TestShare:
 class TestGaiaAttachedLinks:
     @pytest.mark.parametrize(
         "failure",
-        [
-            ServerSelectionTimeoutError("no primary"),
-            AppError(message="storage down", status_code=503),
-        ],
+        [ServerSelectionTimeoutError("no primary"), ShortLinkExhaustedError("no slug")],
     )
-    async def test_a_failure_costs_only_the_link(self, repo, failure):
+    async def test_a_failed_mint_costs_only_the_link(self, repo, failure):
         repo.get_latest_for_target.side_effect = failure
 
         async with captured_wide_event() as event:
             assert await optional_short_link(OWNER, TODO, "t1") is None
 
         assert event["errors"][0]["msg"] == "short_link.mint_failed"
+
+    async def test_a_storage_outage_is_not_swallowed_as_a_failed_mint(self, repo):
+        outage = AppError(message="storage down", status_code=503, code="workspace_storage_offline")
+        repo.get_latest_for_target.side_effect = outage
+
+        with pytest.raises(AppError) as raised:
+            await optional_short_link(OWNER, TODO, "t1")
+
+        assert raised.value is outage
 
     async def test_a_first_attachment_mints_as_gaia_attached(self, repo, capture):
         repo.create.side_effect = lambda link: link
@@ -575,7 +581,7 @@ class TestGaiaAttachedSharingRules:
         store.links.create.assert_not_awaited()
 
     async def test_a_failed_mint_logs_what_failed_and_where(self, store: Store) -> None:
-        store.links.get_latest_for_target.side_effect = AppError(message="storage down")
+        store.links.get_latest_for_target.side_effect = ServerSelectionTimeoutError("no primary")
 
         async with captured_wide_event() as event:
             assert await optional_short_link(OWNER, TODO, "t1") is None
@@ -585,8 +591,8 @@ class TestGaiaAttachedSharingRules:
                 "msg": "short_link.mint_failed",
                 "user_id": OWNER,
                 "target_type": TODO.value,
-                "error_type": "AppError",
-                "error": "storage down",
+                "error_type": "ServerSelectionTimeoutError",
+                "error": "no primary",
             }
         ]
 

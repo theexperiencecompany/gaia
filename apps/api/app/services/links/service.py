@@ -79,6 +79,10 @@ class ShortLinkExhaustedError(RuntimeError):
     """A unique slug could not be minted within MAX_SLUG_ATTEMPTS."""
 
 
+# What failing to mint looks like; reading the target (a storage outage) is not one, and propagates.
+_MINT_ERRORS = (PyMongoError, ShortLinkExhaustedError)
+
+
 def _random_slug() -> str:
     return "".join(secrets.choice(SLUG_ALPHABET) for _ in range(SLUG_LENGTH))
 
@@ -271,8 +275,8 @@ async def optional_short_link(
 
     A file's live link moves to the file as it is now. None when sharing is off
     for the target (its newest link was revoked by the owner, expired or taken
-    down; that sticks until they share it themselves), or when minting fails: an
-    error event that costs only the link.
+    down; that sticks until they share it themselves), or when the mint itself
+    fails: an error event that costs only the link. Failing to read the target raises.
     """
     try:
         latest = await short_link_repository.get_latest_for_target(user_id, target_type, target_id)
@@ -291,7 +295,7 @@ async def optional_short_link(
                 return build_url(latest.slug)
         link = await share(user_id, target_type, target_id, LinkSettings(), gaia_attached=True)
         return build_url(link.slug)
-    except (PyMongoError, ShortLinkExhaustedError, AppError) as exc:
+    except _MINT_ERRORS as exc:
         log.error(
             "short_link.mint_failed",
             user_id=user_id,
