@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.agents.core.background.executor_queue import break_holder_lock, try_acquire_lock
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_writes import with_message_ids
+from app.constants.agents import COMMS_AGENT_NAME
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
@@ -39,10 +40,12 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
         return
     try:
         recorded = await try_record_platform_delivery(conversation_id, text)
-    except Exception:  # the message is already sent: the retrying job below takes over
+    except Exception as exc:  # the message is already sent: the retrying job below takes over
         log.warning(
             f"{LogTag.AGENT} Recording a delivered message failed; retrying in a job",
             conversation_id=conversation_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
         )
         recorded = False
     if not recorded:
@@ -67,7 +70,7 @@ async def try_record_platform_delivery(conversation_id: str, text: str) -> bool:
     if not await try_acquire_lock(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", holder):
         return False
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(COMMS_AGENT_NAME)
         state = await comms_graph.aget_state({"configurable": {"thread_id": conversation_id}})
         if any(task.interrupts for task in state.tasks):
             return False
@@ -96,22 +99,16 @@ async def record_exchange_in_thread(conversation_id: str, user_message: str, rep
 
 
 async def append_to_thread(conversation_id: str, messages: list[BaseMessage]) -> None:
-    """Write messages into the comms thread with a silent aupdate_state, no model call; never raises."""
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        # as_node="tools", not "agent": the agent node's should_continue needs
-        # a store aupdate_state can't inject; the tools->agent edge needs none.
-        await comms_graph.aupdate_state(
-            {"configurable": {"thread_id": conversation_id}},
-            {"messages": with_message_ids(messages)},
-            as_node="tools",
-        )
-        log.info(
-            f"{LogTag.AGENT} Recorded messages in conversation thread",
-            conversation_id=conversation_id,
-        )
-    except Exception:  # what it records already reached the user; never break the caller
-        log.error(
-            f"{LogTag.AGENT} Failed to record messages in conversation thread",
-            conversation_id=conversation_id,
-        )
+    """Write messages into the comms thread with a silent aupdate_state, no model call; raises on failure."""
+    comms_graph = await GraphManager.get_graph(COMMS_AGENT_NAME)
+    # as_node="tools", not "agent": the agent node's should_continue needs
+    # a store aupdate_state can't inject; the tools->agent edge needs none.
+    await comms_graph.aupdate_state(
+        {"configurable": {"thread_id": conversation_id}},
+        {"messages": with_message_ids(messages)},
+        as_node="tools",
+    )
+    log.info(
+        f"{LogTag.AGENT} Recorded messages in conversation thread",
+        conversation_id=conversation_id,
+    )

@@ -11,9 +11,8 @@ from langchain_core.messages import HumanMessage
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.background.thread_record import append_to_thread
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
-from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import COMMS_AGENT_NAME, AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -44,7 +43,7 @@ async def narrate_executor_result(
     or an empty string on failure.
     """
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(COMMS_AGENT_NAME)
     except GraphUnavailableError as e:
         # Degrade contract: background narration must never crash the executor
         # flow — drop the narration but log the real cause loudly.
@@ -64,7 +63,7 @@ async def narrate_executor_result(
             identity=AgentIdentity(
                 conversation_id=conversation_id,
                 user=agent_user_context(user),
-                agent_name="comms_agent",
+                agent_name=COMMS_AGENT_NAME,
             ),
             lane=AgentLane(role=AgentRole.COMMS),
             turn=AgentTurn(
@@ -96,13 +95,31 @@ def _executor_report(result_text: str, msg_type: str, preamble: str = "") -> Hum
     )
 
 
+async def _record_best_effort(conversation_id: str, message: HumanMessage, what: str) -> None:
+    """Append one executor record to the comms thread; a failed write is logged, never raised.
+
+    Both callers finalize a run that has already ended: its delivery or cancel must
+    complete whether or not the thread can be written.
+    """
+    try:
+        await append_to_thread(conversation_id, [message])
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} Failed to record an executor message in the comms thread",
+            conversation_id=conversation_id,
+            record=what,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
 async def record_executor_report(conversation_id: str, result_text: str, msg_type: str) -> None:
     """Append a background run's report to the comms thread, for a run comms never narrated.
 
     A narrated report reaches the thread through narration; one nobody is told
     of must still be known to the chat's next turn, which sees it on screen.
     """
-    await append_to_thread(conversation_id, [_executor_report(result_text, msg_type)])
+    await _record_best_effort(conversation_id, _executor_report(result_text, msg_type), "report")
 
 
 async def record_executor_cancellation(
@@ -113,8 +130,7 @@ async def record_executor_cancellation(
     """Append an <executor_cancelled> record to the comms thread's checkpoint.
 
     Without this, comms' last knowledge of the task stays "Handed to the executor...
-    I'm on it", and a later turn believes the work is still running. Silent
-    aupdate_state write, no model call. Best-effort.
+    I'm on it", and a later turn believes the work is still running.
     """
     marker = HumanMessage(
         content=wrap_agent_payload(
@@ -125,22 +141,4 @@ async def record_executor_cancellation(
         ),
         name=BACKGROUND_EXECUTOR_NAME,
     )
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        await comms_graph.aupdate_state(
-            {"configurable": {"thread_id": conversation_id}},
-            {"messages": with_message_ids([marker])},
-            as_node="tools",
-        )
-        log.info(
-            f"{LogTag.AGENT} Recorded executor cancellation in comms checkpoint",
-            conversation_id=conversation_id,
-            task_id=task_id,
-        )
-    except Exception as e:  # cancel finalize must proceed regardless
-        log.error(
-            f"{LogTag.AGENT} Failed to record executor cancellation",
-            conversation_id=conversation_id,
-            task_id=task_id,
-            error=str(e),
-        )
+    await _record_best_effort(conversation_id, marker, "cancellation")

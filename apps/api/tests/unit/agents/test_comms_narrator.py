@@ -26,6 +26,7 @@ from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import AgentTag, TimeHorizon, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
+from tests.helpers import captured_wide_event
 from tests.tool_helpers import tool_coroutine
 
 MODULE = "app.agents.core.background.comms_narrator"
@@ -224,11 +225,15 @@ class TestRecordExecutorCancellation:
         content = graph.aupdate_state.await_args.args[1]["messages"][0].content
         assert "(unknown id)" in content
 
-    async def test_failure_to_record_is_swallowed(self) -> None:
+    async def test_a_failed_record_does_not_stop_the_cancel_and_is_reported(self) -> None:
         graph = _fake_comms_graph()
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
-            await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+            async with captured_wide_event() as event:
+                await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+
+        (error,) = event["errors"]
+        assert (error["record"], error["error_type"]) == ("cancellation", "RuntimeError")
 
 
 class TestNarrationResolvesItsOwnCommsLane:
