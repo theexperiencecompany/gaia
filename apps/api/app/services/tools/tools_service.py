@@ -16,6 +16,7 @@ from app.agents.tools.core.registry import (
 )
 from app.config.oauth_config import all_integrations
 from app.constants.cache import ONE_DAY_TTL
+from app.constants.integrations import INTEGRATION_STATUS_CONNECTED
 from app.constants.log_tags import LogTag
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
@@ -90,7 +91,7 @@ async def _workspace_integration_ids(user_id: str | None) -> tuple[set[str], set
         if not iid:
             continue
         added.add(str(iid).lower())
-        if record.get("status") == "connected":
+        if record.get("status") == INTEGRATION_STATUS_CONNECTED:
             connected.add(str(iid).lower())
     return added, connected
 

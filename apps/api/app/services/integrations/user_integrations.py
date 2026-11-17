@@ -6,7 +6,11 @@ from typing import Any, Literal, TypedDict, cast
 
 from app.config.oauth_config import canonical_integration_id, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
+from app.constants.integrations import (
+    INTEGRATION_STATUS_CONNECTED,
+    INTEGRATION_STATUS_CREATED,
+    INTEGRATION_STATUS_EXPIRED,
+)
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
@@ -21,6 +25,7 @@ from app.models.integration_models import (
     UserIntegrationDocument,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
+    UserIntegrationStatus,
 )
 from app.services.integrations.marketplace import (
     CreatorDoc,
@@ -42,7 +47,7 @@ class UserIntegrationRecord(TypedDict, total=False):
     """Persisted user-integration fields read downstream (dumped document shape)."""
 
     integration_id: str
-    status: str
+    status: UserIntegrationStatus
 
 
 class _StoredIntegrationDoc(TypedDict, total=False):
@@ -137,7 +142,7 @@ async def get_user_integration_records(user_id: str) -> list[UserIntegrationReco
     integration_ids = [
         str(record["integration_id"])
         for record in records
-        if record.get("status") == "connected"
+        if record.get("status") == INTEGRATION_STATUS_CONNECTED
         and record.get("integration_id")
         and (integration := get_integration_by_id(str(record["integration_id"])))
         and integration.managed_by == "mcp"
@@ -147,7 +152,7 @@ async def get_user_integration_records(user_id: str) -> list[UserIntegrationReco
     unresolved_ids = [
         str(record["integration_id"])
         for record in records
-        if record.get("status") == "connected"
+        if record.get("status") == INTEGRATION_STATUS_CONNECTED
         and record.get("integration_id")
         and get_integration_by_id(str(record["integration_id"])) is None
     ]
@@ -162,7 +167,7 @@ async def get_user_integration_records(user_id: str) -> list[UserIntegrationReco
         return records
 
     return [
-        {**record, "status": "created"}
+        {**record, "status": INTEGRATION_STATUS_CREATED}
         if str(record.get("integration_id")) in stale_ids
         else record
         for record in records
@@ -187,7 +192,7 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
     return {
         str(d["integration_id"])
         for d in docs
-        if d.get("status") == "connected" and d.get("integration_id")
+        if d.get("status") == INTEGRATION_STATUS_CONNECTED and d.get("integration_id")
     }
 
 
