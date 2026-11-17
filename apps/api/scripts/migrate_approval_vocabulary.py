@@ -29,6 +29,7 @@ import argparse
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Protocol
 
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
@@ -52,6 +53,13 @@ from scripts.approval_vocabulary import (
     USER,
 )
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+
+
+class Collections(Protocol):
+    """The rewrite reads its collections by name and nothing else from the database."""
+
+    def __getitem__(self, name: str) -> AsyncIOMotorCollection: ...
+
 
 LEDGER = "approval_ledger"
 RECORDS = "hil_approvals"
@@ -158,7 +166,7 @@ async def _rename_entry_fields(
     )
 
 
-async def rewrite(db: AsyncIOMotorDatabase, *, apply: bool) -> Report:
+async def rewrite(db: Collections, *, apply: bool) -> Report:
     """Count every old value and, with apply, rewrite it; returns the counts seen."""
     report = Report()
     ledger, records, entries = db[LEDGER], db[RECORDS], db[CONVERSATION_ENTRIES_COLLECTION]

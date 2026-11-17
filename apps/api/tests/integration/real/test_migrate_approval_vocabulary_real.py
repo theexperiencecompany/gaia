@@ -7,12 +7,11 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import JsonValue
 import pytest
+from scripts.approval_vocabulary import CARD_STATUSES, RECORD_STATUSES
 from scripts.migrate_approval_vocabulary import (
-    CARD_STATUSES,
     LEDGER,
     LEDGER_STATES,
     LOG_DECISIONS,
-    RECORD_STATUSES,
     RECORDS,
     rewrite,
     unreadable_entries,
