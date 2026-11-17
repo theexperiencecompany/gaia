@@ -224,6 +224,7 @@ def settled_entry(
         quote_target=quote,
         failure=failure,
         narrates=_narrated(attempt),
+        answered_seqs=tuple(logged.seq for logged in attempt.covers),
     )
 
 

@@ -357,6 +357,9 @@ class ReplySettled(_Entry):
     narrates: tuple[str, ...] = ()
     # Settles an imported Reply, which never opened; old history may hold a reply to nothing.
     imported: bool = False
+    # The seqs of the inputs this reply answered, as its closures named them; None on a settle
+    # written before, which settles every input through.
+    answered_seqs: tuple[int, ...] | None = None
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":

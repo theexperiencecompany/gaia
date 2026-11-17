@@ -303,16 +303,32 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
     if entry.answers and state.open_reply_seq is not None and entry.through > state.open_reply_seq:
         # through is the newest input it answers: a reply never sits above what it answers.
         return Rejected(reason=RejectReason.REPLY_ABOVE_ITS_INPUT)
-    settled = max(state.settled_through, entry.through)
-    finished = _drop_waking_through(state, settled).model_copy(
-        update={
-            "comms": CommsPhase.IDLE,
-            "open_reply": None,
-            "open_reply_seq": None,
-            "settled_through": settled,
-        }
+    answered = _answered(state, entry)
+    finished = answered.model_copy(
+        update={"comms": CommsPhase.IDLE, "open_reply": None, "open_reply_seq": None}
     )
     return Transition(state=finished, effects=())
+
+
+def _answered(state: ConversationState, entry: ReplySettled) -> ConversationState:
+    """Settle the inputs the reply answered; the settled mark stops below the oldest one still open.
+
+    A settle that names no seqs was written before they were recorded: it settles every input through.
+    """
+    if entry.answered_seqs is None:
+        settled = max(state.settled_through, entry.through)
+        return _drop_waking_through(state, settled).model_copy(update={"settled_through": settled})
+    answered = frozenset(entry.answered_seqs)
+    left = state.model_copy(
+        update={
+            "unsettled_waking": tuple(w for w in state.unsettled_waking if w not in answered),
+            "unsettled_fires": tuple(f for f in state.unsettled_fires if f not in answered),
+            "finished_work": tuple(w for w in state.finished_work if w.seq not in answered),
+        }
+    )
+    open_below = min(left.unsettled_waking, default=entry.through + 1) - 1
+    settled = max(state.settled_through, min(entry.through, open_below))
+    return left.model_copy(update={"settled_through": settled})
 
 
 def _settle_imported(

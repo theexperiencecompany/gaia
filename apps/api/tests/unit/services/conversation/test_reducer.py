@@ -450,6 +450,15 @@ def test_reply_settled_sets_comms_idle_and_settles_through_its_newest_answer() -
     assert result.effects == ()
 
 
+def test_a_settle_naming_its_answered_seqs_leaves_an_earlier_input_it_did_not_answer_open() -> None:
+    state, _ = fold([user("u1"), user("u2"), user("u3"), opened("o")])
+    answered = settled("r", ["u2"], 2).model_copy(update={"answered_seqs": (2,)})
+    result = _accept(state, 5, answered)
+    assert result.state.unsettled_waking == (1, 3)
+    # The settled mark stays below u1, so the step still reads it.
+    assert result.state.settled_through == 0
+
+
 @pytest.mark.parametrize("outcome", list(ReplyOutcome))
 def test_every_settled_outcome_settles(outcome: ReplyOutcome) -> None:
     state, _ = fold([user("u1"), opened("o")])

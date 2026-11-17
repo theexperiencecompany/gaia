@@ -368,6 +368,37 @@ class StepScenarios:
         assert [settled.quote_target for settled in await settles(rt)] == [None, None, "u1"]
         await assert_quiet(rt)
 
+    async def test_a_side_question_answered_while_research_runs_leaves_the_research_open(
+        self, rt: Runtime
+    ) -> None:
+        """Regression for live-run #1/#15: the side question's settle names only its own message."""
+        open_while_researching: list[tuple[int, ...]] = []
+
+        async def research_still_open() -> None:
+            state = await rt.log.state(CONVERSATION, USER)
+            open_while_researching.append(state.unsettled_waking)
+
+        rt.runner.script(
+            [
+                ModelOutput(True),
+                card(),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                text("36"),
+                Close(seqs=(3,)),
+                ModelOutput(True),
+                Do(research_still_open),
+                text("the summary"),
+                Close(seqs=(1,)),
+                Finished(Replied("the summary")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert open_while_researching == [(1,)]
+        assert [settled.answered_seqs for settled in await settles(rt)] == [(), (3,), (1,)]
+        await assert_quiet(rt)
+
     async def test_one_reply_naming_two_messages_answers_both(self, rt: Runtime) -> None:
         rt.runner.script(
             [
