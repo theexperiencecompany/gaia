@@ -1,3 +1,5 @@
+import { FIXED_LOCALE, formatDate, formatTime } from "@shared/utils";
+
 /**
  * Utilities for handling datetime-local format without timezone conversion issues
  *
@@ -70,44 +72,20 @@ export const dateTimeLocalToISO = (dateTimeLocalStr: string): string => {
   return date.toISOString();
 };
 
-/**
- * Format datetime-local string for display
- *
- * @param dateTimeLocalStr - datetime-local format string
- * @param options - Intl.DateTimeFormatOptions
- * @returns formatted string
- */
-export const formatDateTimeLocal = (
-  dateTimeLocalStr: string,
-  options: Intl.DateTimeFormatOptions = {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  },
-): string => {
+/** A datetime-local value as a date and time: "November 16, 2026, 3:45 PM". */
+export const formatDateTimeLocal = (dateTimeLocalStr: string): string => {
   if (!dateTimeLocalStr) return "";
-
   const date = fromDateTimeLocalString(dateTimeLocalStr);
   if (Number.isNaN(date.getTime())) return "";
-
-  return date.toLocaleString("en-US", options);
+  return `${formatDate(date, "long", { locale: FIXED_LOCALE })}, ${formatTime(date, { locale: FIXED_LOCALE })}`;
 };
 
-/**
- * Format date (without time) for display
- *
- * @param dateTimeLocalStr - datetime-local format string
- * @returns formatted date string
- */
+/** A datetime-local value's day: "November 16, 2026". */
 export const formatDateLocal = (dateTimeLocalStr: string): string => {
-  return formatDateTimeLocal(dateTimeLocalStr, {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  if (!dateTimeLocalStr) return "";
+  const date = fromDateTimeLocalString(dateTimeLocalStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return formatDate(date, "long", { locale: FIXED_LOCALE });
 };
 
 /**

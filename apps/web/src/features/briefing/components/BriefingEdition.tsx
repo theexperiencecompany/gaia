@@ -7,13 +7,13 @@ import type {
   BriefingSection,
   BriefPoolItem,
 } from "@shared/api/generated";
+import { formatClockTime } from "@shared/utils";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { MarkdownRenderer } from "@/features/chat";
 import { cn } from "@/lib/utils";
-import { formatClockTime } from "@/utils/date/clock";
 
 import {
   BRIEF_PAGE_COLUMN_CLASS,

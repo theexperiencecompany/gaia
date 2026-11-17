@@ -18,9 +18,9 @@ vi.mock("@/lib/timezone", () => ({
   getUserHomeTimezone: () => "Asia/Kolkata",
 }));
 
+import { formatHour } from "@shared/utils";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { fromAxis, toAxis } from "@/features/settings/utils/quietHoursAxis";
-import { formatHour } from "@/utils/date/clock";
 
 const NIGHT = { enabled: true, start_hour: 22, end_hour: 8 };
 

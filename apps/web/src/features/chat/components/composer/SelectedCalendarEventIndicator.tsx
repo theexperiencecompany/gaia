@@ -1,6 +1,7 @@
 "use client";
 
 import { Cancel01Icon } from "@icons";
+import { FIXED_LOCALE, formatTimeRange } from "@shared/utils";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -23,15 +24,7 @@ const formatEventTime = (
     const startDate = new Date(start.dateTime);
     const endDate = new Date(end.dateTime);
 
-    const formatTime = (date: Date) => {
-      return date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-    };
-
-    return `${formatTime(startDate)} - ${formatTime(endDate)}`;
+    return formatTimeRange(startDate, endDate, FIXED_LOCALE);
   }
 
   return "Time not specified";

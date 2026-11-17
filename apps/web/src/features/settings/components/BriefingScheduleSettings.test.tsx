@@ -161,7 +161,9 @@ describe("when the next daily brief lands", () => {
       next_daily_brief_at: next,
     });
 
-    expect(await screen.findByText("Next one Mon 16 Nov, 9 AM.")).toBeTruthy();
+    expect(
+      await screen.findByText("Next one Mon, Nov 16, 9:00 AM."),
+    ).toBeTruthy();
   });
 
   it("names none while no daily brief runs", async () => {

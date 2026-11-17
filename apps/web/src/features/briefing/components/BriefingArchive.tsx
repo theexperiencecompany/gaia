@@ -4,9 +4,9 @@ import { Skeleton } from "@heroui/react";
 import { News01Icon } from "@icons";
 import type { BriefingView } from "@shared/api/generated";
 import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
+import { formatDate } from "@shared/utils";
 import {
   endOfWeek,
-  format,
   isSameWeek,
   isSameYear,
   parseISO,
@@ -17,7 +17,6 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 import { cn } from "@/lib/utils";
-import { RANGE_DAY_FORMAT } from "@/utils/date/clock";
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
 import { foldedBrief, viewCard } from "../utils/briefCard";
 import { BriefingFold } from "./BriefingFold";
@@ -63,8 +62,8 @@ function weekTitle(start: Date, now: Date): string | null {
 
 function weekRange(start: Date, now: Date): string {
   const end = endOfWeek(start, WEEK_OPTIONS);
-  const range = `${format(start, RANGE_DAY_FORMAT)} – ${format(end, RANGE_DAY_FORMAT)}`;
-  return isSameYear(end, now) ? range : `${range}, ${format(end, "yyyy")}`;
+  const range = `${formatDate(start, "short")} – ${formatDate(end, "short")}`;
+  return isSameYear(end, now) ? range : `${range}, ${end.getFullYear()}`;
 }
 
 /** Pinned while its week scrolls by, so the reader always knows which week they are in. */

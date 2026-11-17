@@ -260,7 +260,7 @@ describe("briefing notification", () => {
       .join(" ");
     expect(description).toContain("4 waiting");
     expect(description).toContain("Air Mail, Bogotá");
-    expect(description).toMatch(/Oct/);
+    expect(description).toContain("Thu, Oct 22");
   });
 
   it("says a deleted brief isn't available anymore", async () => {

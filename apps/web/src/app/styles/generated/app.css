@@ -277,8 +277,6 @@
 @source "../../../utils/calendar/eventPayloadBuilders.ts";
 @source "../../../utils/calendar/eventTypeGuards.ts";
 @source "../../../utils/date/calendarDateUtils.ts";
-@source "../../../utils/date/clock.ts";
-@source "../../../utils/date/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiClient.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiError.ts";

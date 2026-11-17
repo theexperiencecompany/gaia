@@ -2,6 +2,7 @@
 
 import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
+import { formatHour } from "@shared/utils";
 import { sliderVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
@@ -15,7 +16,6 @@ import {
 } from "@/features/settings/utils/quietHoursAxis";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
-import { formatHour } from "@/utils/date/clock";
 
 const QUIET_HOURS_DESCRIPTION =
   "During quiet hours GAIA holds anything that can wait until they end, and only interrupts you for what can't.";

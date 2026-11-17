@@ -2,7 +2,8 @@
 
 import { Chip } from "@heroui/react";
 import { NewsIcon } from "@icons";
-import { format, parseISO } from "date-fns";
+import { formatDate, formatDay, TODAY } from "@shared/utils";
+import { parseISO } from "date-fns";
 import Image from "next/image";
 import { useId } from "react";
 
@@ -12,7 +13,6 @@ import {
   surfaceVariants,
 } from "@/components/shared/surfaceVariants";
 import { cn } from "@/lib/utils";
-import { DAY_FORMAT, relativeDay, TODAY } from "@/utils/date/clock";
 
 import type { BriefTriggerState } from "../hooks/useOpenBrief";
 import type { FoldedBriefSummary } from "../utils/briefCard";
@@ -35,8 +35,8 @@ interface FoldedBriefCardProps {
 function dateLabel(brief: FoldedBriefSummary): string | null {
   if (!brief.date) return null;
   const date = parseISO(brief.date);
-  if (brief.kind === "weekly") return `Week to ${format(date, DAY_FORMAT)}`;
-  return relativeDay(date);
+  if (brief.kind === "weekly") return `Week to ${formatDate(date, "day")}`;
+  return formatDay(date, "day");
 }
 
 function editionLabel(brief: FoldedBriefSummary): string | null {
