@@ -9,12 +9,14 @@ the bucket; authentication never reads it.
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-import inspect
 import ipaddress
+import math
 import re
 import secrets
+import time
 
 from fastapi import FastAPI
+from fastapi.responses import UJSONResponse
 from fastapi.routing import APIRoute, iter_route_contexts
 from limits import RateLimitItem, RateLimitItemPerMinute
 from limits.errors import StorageError
@@ -23,17 +25,15 @@ from limits.strategies import FixedWindowRateLimiter, RateLimiter
 from redis.exceptions import RedisError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
-from slowapi.wrappers import Limit
-from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Match
 from starlette.types import Scope
 
 from app.config.settings import settings
-from app.constants.http import INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
+from app.constants.http import INTERNAL_CALLER_HEADER, RETRY_AFTER_HEADER, VIEWER_IP_HEADER
 from app.constants.openui_artifacts import PUBLIC_PDF_PATH_PATTERN
 from app.constants.request_limits import (
     ANONYMOUS_VIEWER_PER_MINUTE,
@@ -43,6 +43,8 @@ from app.constants.request_limits import (
 )
 from app.db.redis import redis_cache
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import ErrorEnvelope, error_response
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log
 
 
@@ -180,12 +182,61 @@ def _spend(limiter_for_app: Limiter, charge: BucketCharge) -> bool:
 _PROBE_PATHS = frozenset({"/health", "/metrics"})
 
 
-class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
-    """Charge each routed request to its caller's bucket; refuse it once one is exhausted.
+RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
 
-    The refusal goes through the app's sync RateLimitExceeded handler, which
-    renders the envelope with a real Retry-After.
+
+def _retry_after_seconds(request: Request) -> int | None:
+    """Whole seconds until the window that refused this request reopens.
+
+    RateLimitExceeded carries no retry hint; the limiter records the window on
+    request.state just before raising, and the full window length is the correct
+    upper bound when storage cannot answer. Read the limiter off request.app.state
+    — the module-level one queries a storage that never saw the request.
     """
+    current_limit: tuple[RateLimitItem, list[str]] | None = getattr(
+        request.state, "view_rate_limit", None
+    )
+    if current_limit is None:
+        return None
+    request_limiter: Limiter = request.app.state.limiter
+    window, identifiers = current_limit
+    try:
+        reset_time, _remaining = request_limiter.limiter.get_window_stats(window, *identifiers)
+    except (StorageError, RedisError):
+        return window.get_expiry()
+    return max(1, math.ceil(reset_time - time.time()))
+
+
+def _refusal(request: Request, message: str) -> UJSONResponse:
+    """Render a rate-limit refusal as the envelope, with a real Retry-After."""
+    retry_after = _retry_after_seconds(request)
+    log.warning(
+        RATE_LIMIT_EXCEEDED_CODE,
+        client_ip=request.client.host
+        if request.client
+        else request.headers.get("x-forwarded-for", "unknown"),
+        path=loggable_request_path(request),
+        method=request.method,
+        retry_after=retry_after,
+    )
+    return error_response(
+        429,
+        ErrorEnvelope(message=message, code=RATE_LIMIT_EXCEEDED_CODE),
+        headers=None if retry_after is None else {RETRY_AFTER_HEADER: str(retry_after)},
+    )
+
+
+def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> UJSONResponse:
+    """Answer a per-route decorator limit's refusal the way the bucket middleware answers its own.
+
+    Deliberately sync: slowapi answers a decorator limit through sync_check_limits,
+    which discards a coroutine handler and silently falls back to its own error body.
+    """
+    return _refusal(request, str(exc.detail))
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Charge each routed request to its caller's bucket; refuse it once one is exhausted."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Count this request against its caller's ceilings, then hand it to the route."""
@@ -207,8 +258,5 @@ class RouterAwareSlowAPIMiddleware(SlowAPIMiddleware):
             window = BUCKET_LIMITS[charge.bucket]
             request.state.view_rate_limit = (window, [_GLOBAL_SCOPE, charge.bucket, charge.key])
             log.set(rate_limit={"bucket": charge.bucket.value})
-            refuse = app.exception_handlers[RateLimitExceeded]
-            limit = Limit(window, viewer_ip, _GLOBAL_SCOPE, False, None, None, None, 1, False)
-            refused = refuse(request, RateLimitExceeded(limit))
-            return await refused if inspect.isawaitable(refused) else refused
+            return _refusal(request, str(window))
         return await call_next(request)
