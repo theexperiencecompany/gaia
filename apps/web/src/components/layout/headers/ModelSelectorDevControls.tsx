@@ -1,17 +1,13 @@
 "use client";
 
-import {
-  Button,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-  Select,
-  SelectItem,
-  Switch,
-} from "@heroui/react";
+import { ListBox, Popover, Select, Switch } from "@heroui/react";
 import { CpuIcon } from "@icons";
 import Image from "next/image";
-
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { toneVariants } from "@/components/shared/tone";
 import { DEV_MODEL_OPTIONS } from "@/features/chat/constants/devModels";
 import { isDevelopment } from "@/lib/environment";
 import { useComposerModelSelection } from "@/stores/composerStore";
@@ -56,46 +52,37 @@ function ModelSelect({
         {label}
       </span>
       <Select
-        size="sm"
         aria-label={`${label} agent model`}
-        selectedKeys={new Set([selectedId])}
-        onSelectionChange={(keys) => {
-          const k = Array.from(keys)[0];
-          if (typeof k === "string") onSelect(k);
+        selectedKey={selectedId}
+        onSelectionChange={(key) => {
+          if (typeof key === "string") onSelect(key);
         }}
         isDisabled={isDisabled}
-        disallowEmptySelection
-        variant="flat"
+        variant="secondary"
         className="w-full"
-        popoverProps={{ classNames: { content: "bg-zinc-800" } }}
-        classNames={{
-          trigger:
-            "h-9 min-h-9 cursor-pointer bg-zinc-800 data-[hover=true]:bg-zinc-700",
-          value: "text-xs font-medium text-zinc-200",
-          selectorIcon: "text-zinc-500",
-        }}
-        startContent={
-          current ? (
-            <ModelLogo src={current.logo} alt={current.provider} size={16} />
-          ) : null
-        }
-        renderValue={() => (
-          <span className="truncate">{current?.name ?? "Model"}</span>
-        )}
       >
-        {DEV_MODEL_OPTIONS.map((m) => (
-          <SelectItem
-            key={m.id}
-            textValue={m.name}
-            classNames={{
-              base: "gap-2 rounded-lg data-[hover=true]:bg-zinc-700/60",
-              title: "text-xs text-zinc-200",
-            }}
-            startContent={<ModelLogo src={m.logo} alt={m.provider} size={18} />}
-          >
-            {m.name}
-          </SelectItem>
-        ))}
+        <Select.Trigger className="h-9 min-h-9 cursor-pointer">
+          {current ? (
+            <ModelLogo src={current.logo} alt={current.provider} size={16} />
+          ) : null}
+          <GaiaSelectValue>{current?.name ?? "Model"}</GaiaSelectValue>
+          <Select.Indicator className={toneVariants({ tone: "faint" })} />
+        </Select.Trigger>
+        <Select.Popover className={overlayVariants({ surface: "raised" })}>
+          <ListBox>
+            {DEV_MODEL_OPTIONS.map((m) => (
+              <GaiaListBoxItem
+                key={m.id}
+                id={m.id}
+                textValue={m.name}
+                className="gap-2"
+              >
+                <ModelLogo src={m.logo} alt={m.provider} size={18} />
+                <span className="text-xs text-zinc-200">{m.name}</span>
+              </GaiaListBoxItem>
+            ))}
+          </ListBox>
+        </Select.Popover>
       </Select>
     </div>
   );
@@ -116,27 +103,22 @@ export default function ModelSelectorDevControls() {
   if (!isDevelopment()) return null;
 
   return (
-    <Popover placement="bottom-end" offset={8}>
-      <PopoverTrigger>
-        <Button
-          isIconOnly
-          size="sm"
-          radius="full"
-          variant="light"
-          aria-label="Dev model selector"
-          // Tint primary when a non-default model is pinned, so it's obvious at a
-          // glance that the dev override is active.
-          className={
-            useDefaultModels
-              ? "text-zinc-400 hover:text-primary"
-              : "text-primary"
-          }
-        >
-          <CpuIcon width={20} height={20} />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[260px] bg-zinc-900 p-3">
-        <div className="flex w-full flex-col gap-3">
+    <Popover>
+      <GaiaButton
+        shape="pill"
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        aria-label="Dev model selector"
+        // Tint accent when a non-default model is pinned, so it's obvious at a
+        // glance that the dev override is active.
+        tone={useDefaultModels ? "muted" : "accent"}
+        hoverTone="accent"
+      >
+        <CpuIcon width={20} height={20} />
+      </GaiaButton>
+      <Popover.Content placement="bottom end" offset={8} className="w-[260px]">
+        <div className="flex w-full flex-col gap-3 p-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold tracking-wide text-zinc-300 uppercase">
               Dev models
@@ -144,11 +126,15 @@ export default function ModelSelectorDevControls() {
             <Switch
               size="sm"
               isSelected={useDefaultModels}
-              onValueChange={setUseDefaultModels}
+              onChange={setUseDefaultModels}
               aria-label="Use plan-default models"
-              classNames={{ label: "text-[11px] text-zinc-400" }}
             >
-              Defaults
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                <span className="text-[11px] text-zinc-400">Defaults</span>
+              </Switch.Content>
             </Switch>
           </div>
           <ModelSelect
@@ -164,7 +150,7 @@ export default function ModelSelectorDevControls() {
             isDisabled={useDefaultModels}
           />
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }

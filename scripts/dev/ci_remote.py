@@ -67,6 +67,7 @@ from gaia_gh import (
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
 MAX_PARALLEL_FETCHES = 8
+TRUNK = "master"
 VERDICT_PREFIX = "verdict-"
 FALLBACK_TAIL_LINES = 40  # kept in --json; the human render shows the last SHOWN_TAIL_LINES
 SHOWN_TAIL_LINES = 20
@@ -929,7 +930,7 @@ def parse_greptile(pr_state: dict) -> Greptile:
 
 def build_stack(repo: Repo, payload: dict) -> list[StackRow]:
     branches = payload.get("branches") or []
-    trunk = payload.get("trunk") or "master"
+    trunk = payload.get("trunk") or TRUNK
     numbers = [b["pr"]["number"] for b in branches if b.get("pr")]
     states = fetch_stack_states(repo, numbers)
     rows: list[StackRow] = []
@@ -1224,6 +1225,11 @@ def state_advice(report: dict, branch: str) -> list[str]:
     counts = report["counts"]
     if pr["mergeable"] == "CONFLICTING":
         advice.append(f"Merge conflicts with '{pr['base']}' — `git merge origin/{pr['base']}`.")
+        if pr["base"] != TRUNK:
+            advice.append(
+                f"A stacked PR is also checked against {TRUNK}: if the head already contains "
+                f"'{pr['base']}', merge origin/{TRUNK} into the stack's bottom branch and up."
+            )
     if report["unresolved_thread_count"]:
         advice.append(
             f"{plural(report['unresolved_thread_count'], 'unresolved review thread')}: "
@@ -1383,20 +1389,25 @@ COMPACT_TAIL_LINES = 12
 def compact_report(report: dict) -> dict:
     """Return only what a reader must act on: red lanes, their verdicts, their modules.
 
-    The full `--json` report also carries passing checks, every lane's sources,
-    the stack and the whole log-tail window. An agent that already knows what to
-    do with a red lane pays for all of it on every poll. `mise ci:status` is
-    this object: same PR state, same findings, nothing to scroll past.
+    This is what mise ci:status prints. The full JSON report also carries passing
+    checks, every lane's sources, the stack and the whole log-tail window.
     """
     red = [c for c in report["checks"] if c["status"] in FAILING]
+    explained = red + early_failures(report)
+    # A verdict a check claims is that check's to show (rollups dropped); only
+    # the unclaimed failures are added, as render_failures prints them.
+    claimed = {id(v) for c in explained for v in matching_failing_verdicts(c, report["verdicts"])}
+    orphans = [
+        v for v in report["verdicts"] if v.get("status") in VERDICT_BAD and id(v) not in claimed
+    ]
     verdicts: list[dict] = []
     seen: set[tuple[str, str]] = set()
-    for check in red:
-        for verdict in explaining_verdicts(check, report["verdicts"]):
-            key = (str(verdict.get("lane")), str(verdict.get("artifact")))
-            if key not in seen:
-                seen.add(key)
-                verdicts.append(verdict)
+    candidates = [v for c in explained for v in explaining_verdicts(c, report["verdicts"])]
+    for verdict in candidates + orphans:
+        key = (str(verdict.get("lane")), str(verdict.get("artifact")))
+        if key not in seen:
+            seen.add(key)
+            verdicts.append(verdict)
     shards = []
     for check in red:
         shard = shard_for_check(check, report["shards"])
@@ -1471,7 +1482,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--compact",
         action="store_true",
-        help="with --json, drop passing lanes and tails: the actionable red-lane report",
+        help="with --json, keep only red lanes, their findings and the last log lines",
     )
     parser.add_argument(
         "--verbose", action="store_true", help="full finding details + passing lanes"

@@ -393,6 +393,30 @@ class TestMessages:
         assert fetched is not None
         assert [m.response for m in fetched.messages] == ["m1", "m2"]  # oldest sliced off
 
+    async def test_recent_messages_returns_only_the_newest_oldest_first(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response=f"m{i}") for i in range(5)],
+        )
+
+        recent = await repo.recent_messages(doc.conversation_id, user_id=doc.user_id, limit=2)
+
+        assert [m.response for m in recent] == ["m3", "m4"]
+
+    async def test_recent_messages_is_scoped_to_the_owner(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="user", response="private")],
+        )
+
+        assert await repo.recent_messages(doc.conversation_id, user_id=_uid(), limit=5) == []
+
     async def test_pin_and_list_and_get_message(self, repo):
         doc = _doc()
         await repo.create(doc)

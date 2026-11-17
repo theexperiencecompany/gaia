@@ -146,40 +146,53 @@ Types are split into three directories:
 
 - TailwindCSS v4 (PostCSS plugin, not the Vite plugin).
 - Use `tailwind-merge` (`twMerge`) to merge conditional class names; use `clsx` for conditionals.
-- `class-variance-authority` (CVA) for variant-based component APIs.
+- `tailwind-variants` (`tv()`) for variant-based component APIs; never `cva`.
 - HeroUI and Radix UI are both present — prefer HeroUI for standard UI primitives before reaching for Radix directly.
-- **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/spinner` for loading states, or `<Skeleton>` from `@heroui/skeleton` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
+- **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/react` for loading states, or `<Skeleton>` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
 - Use Framer Motion (`motion/react`) for transitions; `AnimatePresence` is required for exit animations.
-- Design tokens, the chat tool-card contract, status colors, `cn()` / `cva`, animation classes and easing live in **`DESIGN.md`** at the repo root — read it before writing UI, do not restate it here.
+- Design tokens, the chat tool-card contract, status colors, `cn()` / `tv()`, animation classes and easing live in **`DESIGN.md`** at the repo root — read it before writing UI, do not restate it here. Its **"How to write frontend code"** section is the one way to style a HeroUI component: a GAIA wrapper where one exists, layout classes, and the documented variants.
 
 ### HeroUI Components
 
-Always use HeroUI over raw HTML or custom implementations. HeroUI handles accessibility, keyboard navigation, focus management, and theming for you. Only reach for raw HTML when there is no HeroUI equivalent. Docs: https://v2.heroui.com/docs/guide/introduction
+Always use HeroUI over raw HTML or custom implementations. HeroUI handles accessibility, keyboard navigation, focus management, and theming for you. Only reach for raw HTML when there is no HeroUI equivalent. Everything imports from the one package, `@heroui/react` (v3, compound components). Docs: https://heroui.com/docs/react/getting-started.
 
-| Need | HeroUI component | Never use |
+| Need | HeroUI component (`@heroui/react`) | Never use |
 |---|---|---|
-| Button / icon button | `<Button>`, `<Button isIconOnly>` from `@heroui/button` | `<button>` |
-| Link | `<Link>` from `@heroui/link` (or Next.js `Link`) | `<a>` |
-| Dropdown menu | `<Dropdown>` + `<DropdownTrigger>` + `<DropdownMenu>` + `<DropdownItem>` from `@heroui/dropdown` | Manual state + click-outside handler |
-| Tooltip | `<Tooltip>` from `@heroui/tooltip` | Custom hover state |
-| Modal / dialog | `<Modal>` + `<ModalContent>` from `@heroui/modal` | Custom overlay + z-index |
-| Divider | `<Divider>` from `@heroui/divider` | `<hr>` |
-| Loading spinner | `<Spinner>` from `@heroui/spinner` | Icon with `animate-spin` |
-| Skeleton placeholder | `<Skeleton>` from `@heroui/skeleton` | Custom shimmer div |
-| Select / combobox | `<Select>` + `<SelectItem>` from `@heroui/select` | `<select>` |
-| Input / textarea | `<Input>` / `<Textarea>` from `@heroui/input` | `<input>` / `<textarea>` |
-| Checkbox | `<Checkbox>` from `@heroui/checkbox` | `<input type="checkbox">` |
-| Tabs | `<Tabs>` + `<Tab>` from `@heroui/tabs` | Manual active-tab state |
-| Accordion | `<Accordion>` + `<AccordionItem>` from `@heroui/accordion` | Manual expand state |
+| Button / icon button | `<GaiaButton variant=… onPress={…} isPending={…}>`, `<GaiaButton isIconOnly>` (`@/components/shared/GaiaButton`) | `<button>`, bare HeroUI `<Button>` |
+| Button that navigates | `<LinkButton href=… variant=…>` (`@/components/shared/LinkButton`) | `<a>` styled as a button |
+| Link | `<Link>` (or Next.js `Link`) | `<a>` |
+| Dropdown menu | `<Dropdown>` + `<Dropdown.Trigger>` + `<Dropdown.Popover>` + `<Menu>` / `<Menu.Item id textValue>` | Manual state + click-outside handler |
+| Tooltip | `<Tooltip>` + `<Tooltip.Trigger>` + `<Tooltip.Content>` | Custom hover state |
+| Modal / dialog | `<Modal>` + `<Modal.Backdrop>` / `<Modal.Container>` / `<Modal.Dialog>` + `Header` / `Body` / `Footer` | Custom overlay + z-index |
+| Open/close state | `useOverlayState` | Hand-rolled `isOpen` booleans for overlays |
+| Divider | `<Separator>` | `<hr>` |
+| Loading spinner | `<Spinner>` | Icon with `animate-spin` |
+| Skeleton placeholder | `<Skeleton>` | Custom shimmer div |
+| Select / combobox | `<Select>` + `<Select.Trigger>` with `<GaiaSelectValue>` / `<Select.Popover>` + `<GaiaListBoxItem id textValue>`; `<ComboBox>` + `<ComboBoxInput>` | `<select>`, bare `Select.Value` / `ListBox.Item` |
+| Input / textarea | `<TextField>` + `<Label>` + `<Input>` / `<TextArea>` + `<FieldError>` | `<input>` / `<textarea>` |
+| Checkbox | `<Checkbox>` + `<Checkbox.Control>` + `<Checkbox.Indicator>` | `<input type="checkbox">` |
+| Tabs | `<Tabs>` + `<Tabs.List>` / `<Tabs.Tab id>` / `<Tabs.Panel id>` | Manual active-tab state |
+| Accordion | `<Accordion>` + `<Accordion.Item>` / `Heading` / `Trigger` / `Panel` | Manual expand state |
 
-**`DropdownTrigger` rule** — always pass a HeroUI `<Button>` (or a component using `useButton`) as the child, never a raw `<button>` or `<div>`. HeroUI propagates `onPress`, `ref`, and ARIA attributes to its own Button; raw elements miss the keyboard/accessibility wiring.
+v3 has no `color` on Button (colour folds into `variant`), no `radius`, no `classNames` (style the sub-component's `className`), no `startContent`/`endContent` (icons are children), `onPress` not `onClick`, `isPending` not `isLoading`.
 
-**Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
+**`Dropdown.Trigger` rule** — `Dropdown.Trigger` is itself a pressable; put its content inside it (or a `<GaiaButton>`), never a raw `<button>` or `<div>` with its own click handler. Press events stop propagation by default, so no `stopPropagation` wrapper is needed.
+
+**Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where `<GaiaButton>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
 - Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 - Clickable rows/cards converted from `div onClick` for Sonar S1082 (click without keyboard support): landing demo rows (DemoSidebar integrations, DemoIntegrationsView, DemoTodosView, DummySlashCommandDropdown tools), the CLI install page's click-to-copy code block, and the WorkflowDraftCard body — same full-row layout constraint as above. Where the row also holds a HeroUI control, only the non-interactive part is the `<button>` and the control stays its sibling (never a button inside a button).
 
-**Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
+**Do not override HeroUI's look at the call site.** Colour, background, border colour, radius and padding come from the variants in `components/shared/` (DESIGN.md, "How to write frontend code"); a className or style on a HeroUI component carries layout only. A look with no variant gets one, added once, never a per-site class or a constant holding classes.
+
+Two lint checks hold this, and each names the fix when it fails:
+
+- `node scripts/ci/checks.mjs heroui-style-overrides` rejects a `className`/`style` on a HeroUI component or GAIA wrapper that sets colour, background, border colour, `rounded-*` or padding, written inline or held in a constant (same file or imported). Overrides that predate it are in `scripts/ci/baselines/heroui-style-overrides.txt`, each group with its reason; the file only shrinks.
+- `node scripts/ci/checks.mjs heroui-usage` rejects v2 HeroUI APIs (`@heroui/<component>` imports, `isLoading`/`onClick`/`startContent`/`endContent`/`radius`/`color` on Button, `classNames`, `labelPlacement` as a prop, the v2 variant names, `useDisclosure`/`HeroUIProvider`), a self-closing `Switch` or `Checkbox`, and a bare `Button`, `Select.Value` or `ListBox.Item` where a GAIA wrapper replaces it.
+
+`src/__tests__/css-token-completeness.test.ts` compiles `base.css` plus each area sheet and fails on any fallback-less `var(--x)` with no definition in both light and dark: a new token goes in `app/styles/tokens.css`; one HeroUI's react-aria layer sets inline is listed, with its source, in `HEROUI_RUNTIME_TOKENS`. `src/__tests__/tailwind-source-globs.test.ts` fails when `styles/generated/*.css` is stale (run `pnpm area-css`) or a page imports no area stylesheet or two.
+
+**Before merging a UI-heavy change, run the whole-app visual review:** `mise web:visual:review <base-ref> [head-ref]` (head defaults to `HEAD`). It seeds one local API, production-builds both refs, screenshots every app route and UI state, and writes `review.html` with each diff. It wraps the review harness's `run.sh`, and needs the full stack (run it on the M4, not a throttled laptop). `mise web:visual` is the narrower marketing-page pixel diff on the Cloudflare worker build.
 
 **OpenUI components** must render **outside** the `imessage-bubble` wrapper, never inside it. Both use `bg-zinc-800`, so rendering inside makes them invisible against the bubble. See `apps/web/src/config/openui/CLAUDE.md` for the full OpenUI lifecycle and component checklist.
 

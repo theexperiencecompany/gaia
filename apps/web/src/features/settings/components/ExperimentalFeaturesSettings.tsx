@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { ExperimentalFeatureRow } from "@/features/settings/components/ExperimentalFeatureRow";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";

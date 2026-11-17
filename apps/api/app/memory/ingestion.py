@@ -36,7 +36,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
-from app.memory import cap_counter, chroma_store, pg_store
+from app.memory import cap_counter, chroma_store, pg_store, vector_index
 from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, MemoryVectorItem
 from app.memory.consolidation import infer_doc_types, render_agenda_document, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
@@ -672,6 +672,9 @@ async def _apply_reconciled(
         for record, fact in inserted
     ]
     await chroma_store.upsert_memories(vector_items)
+    await vector_index.index_memories(
+        user_id, [(record.id, record.content) for record, _ in inserted]
+    )
 
     entities_linked, edges_added = await _apply_graph(user_id, inserted)
 

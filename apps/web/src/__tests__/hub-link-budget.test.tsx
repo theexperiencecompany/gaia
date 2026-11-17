@@ -15,7 +15,14 @@ import {
 import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
-import { getAllComboSlugs } from "@/features/integrations/data/combosData";
+import {
+  getAllComboSlugs,
+  getAllCombos,
+} from "@/features/integrations/data/combosData";
+import {
+  comboAppGroups,
+  comboAppsOf,
+} from "@/features/integrations/lib/comboApps";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import { locales, stripLocalePrefix } from "@/i18n/config";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
@@ -94,16 +101,29 @@ interface Hub {
   readonly groupRoute?: string;
   /** Every page the hub owns linking to; absent for hubs that only curate. */
   readonly children?: () => Promise<string[]>;
-  /** How many distinct group pages must link each child. */
-  readonly minGroupLinks?: number;
+  /** How many distinct group pages must link each child, or how many a given child needs. */
+  readonly minGroupLinks?: number | ((child: string) => number);
 }
+
+const COMBOS = await getAllCombos();
+const APPS_WITH_PAGES = new Set(comboAppGroups(COMBOS).map((app) => app.slug));
+/** A combo belongs to the page of each of its apps that has one. */
+const COMBO_APP_PAGES = new Map(
+  COMBOS.map((combo) => [
+    `/automate/${combo.slug}`,
+    comboAppsOf(combo).filter((app) => APPS_WITH_PAGES.has(app.slug)).length,
+  ]),
+);
 
 const HUBS: readonly Hub[] = [
   {
     path: "/automate",
     groupRoute: "with/[app]",
-    // A combo belongs to both its apps' pages.
-    minGroupLinks: 2,
+    minGroupLinks: (child) => {
+      const pages = COMBO_APP_PAGES.get(child);
+      if (pages === undefined) throw new Error(`${child} is not a combo`);
+      return pages;
+    },
     children: async () =>
       (await getAllComboSlugs()).map((slug) => `/automate/${slug}`),
   },
@@ -243,8 +263,29 @@ async function renderHubPages(
   return pages;
 }
 
+function requiredGroupLinks(hub: Hub, child: string): number {
+  return typeof hub.minGroupLinks === "function"
+    ? hub.minGroupLinks(child)
+    : (hub.minGroupLinks ?? 0);
+}
+
 function localesOf(hub: Hub): readonly string[] {
   return isTranslatedPath(hub.path) ? locales : ["en"];
+}
+
+/** Each href a hub's pages link to, with the group pages among them that link it. */
+function linkingGroupPages(
+  pages: Awaited<ReturnType<typeof renderHubPages>>,
+): Map<string, Set<string>> {
+  const linking = new Map<string, Set<string>>();
+  for (const page of pages) {
+    for (const href of page.hrefs.map(stripLocalePrefix)) {
+      const from = linking.get(href) ?? new Set<string>();
+      if (page.isGroupPage) from.add(page.label);
+      linking.set(href, from);
+    }
+  }
+  return linking;
 }
 
 describe("hub link budget", () => {
@@ -270,17 +311,12 @@ describe("hub link budget", () => {
       if (!hub.children) continue;
       const children = await hub.children();
       for (const locale of localesOf(hub)) {
-        const groupPagesLinking = new Map<string, Set<string>>();
-        for (const page of await renderHubPages(hub, locale)) {
-          for (const href of page.hrefs.map(stripLocalePrefix)) {
-            const from = groupPagesLinking.get(href) ?? new Set<string>();
-            if (page.isGroupPage) from.add(page.label);
-            groupPagesLinking.set(href, from);
-          }
-        }
+        const groupPagesLinking = linkingGroupPages(
+          await renderHubPages(hub, locale),
+        );
         const missing = children.filter((child) => {
           const from = groupPagesLinking.get(child);
-          return !from || from.size < (hub.minGroupLinks ?? 0);
+          return !from || from.size < requiredGroupLinks(hub, child);
         });
         if (missing.length > 0) {
           unlinked.push(`${locale} ${hub.path}: ${missing.join(", ")}`);

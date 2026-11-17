@@ -98,18 +98,13 @@ describe("IntegrationRelatedIntegrations SSR", () => {
   it("renders real marketplace anchors from initial data with no fetch", () => {
     render(
       <Providers>
-        <IntegrationRelatedIntegrations
-          currentSlug="slack"
-          category="productivity"
-          initialIntegrations={RELATED}
-        />
+        <IntegrationRelatedIntegrations integrations={RELATED} />
       </Providers>,
     );
     const links = screen.getAllByRole("link");
     const hrefs = links.map((link) => link.getAttribute("href"));
     expect(hrefs).toContain("/marketplace/notion");
     expect(hrefs).toContain("/marketplace/todoist");
-    expect(hrefs).not.toContain("/marketplace/slack");
   });
 });
 

@@ -200,7 +200,7 @@ class _ConversationOwnerRow(_ConversationIdRow):
 
 
 class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+    """A projected slice of messages: one positional match, or the newest few."""
 
     model_config = ConfigDict(extra="ignore")
 

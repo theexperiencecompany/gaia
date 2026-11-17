@@ -215,12 +215,11 @@ class BotService:
         conversation_id: str, user_id: str, limit: int = 20
     ) -> list[MessageDict]:
         """Return up to limit recent messages as role/content dicts, oldest first."""
-        conversation = await conversation_repository.get(conversation_id, user_id=user_id)
-        if conversation is None or not conversation.messages:
-            return []
-
+        messages = await conversation_repository.recent_messages(
+            conversation_id, user_id=user_id, limit=limit
+        )
         history: list[MessageDict] = []
-        for msg in conversation.messages[-limit:]:
+        for msg in messages:
             if msg.type == "user":
                 history.append(MessageDict(role="user", content=msg.response or ""))
             elif msg.type == "bot":

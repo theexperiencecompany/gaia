@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-
 import { usePopupCheckout } from "../hooks/usePopupCheckout";
 
 /**
@@ -37,16 +36,16 @@ export default function PopupPaywallNotice() {
         </p>
       )}
 
-      <Button
+      <GaiaButton
+        shape="pill"
         size="sm"
-        color="primary"
-        radius="full"
-        className="font-medium text-black"
-        isLoading={isOpeningCheckout}
+        className="font-medium"
+        isPending={isOpeningCheckout}
         onPress={() => void openCheckout()}
+        variant="primary"
       >
         Subscribe in your browser
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
