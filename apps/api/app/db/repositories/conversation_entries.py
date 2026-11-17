@@ -16,6 +16,7 @@ from datetime import datetime
 from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
+from app.models.conversation_lifecycle_models import Lifecycles
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -69,6 +70,7 @@ EMPTY_LOG_STATE = ConversationState(
     comms=CommsPhase.IDLE,
     open_reply=None,
     work=(),
+    lifecycles=Lifecycles(),
 )
 #: The kinds that open what a later entry completes: a reply its settle, a task its finish, an approval its decision.
 OPENER_KINDS: frozenset[str] = frozenset(

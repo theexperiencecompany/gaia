@@ -32,18 +32,8 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from shared.py.approvals import ApprovalOutcome
-
-#: Decisions the decision path hands on: it starts the work that carries them out or reports the skip.
-#: A withdrawal is made by a live run (a revoke) or delivered to one (the sweep's, for a lost request).
-CONTINUED_DECISIONS = frozenset(
-    {
-        ApprovalOutcome.APPROVED,
-        ApprovalOutcome.DENIED,
-        ApprovalOutcome.EXPIRED,
-        ApprovalOutcome.WITHDRAWN,
-    }
-)
+from app.services.conversation.lifecycle import fold
+from app.services.conversation.lifecycle.approvals import CONTINUED_DECISIONS
 
 
 def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Rejected:
@@ -52,12 +42,15 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
     if seq != state.head + 1:
         return Rejected(reason=RejectReason.OUT_OF_ORDER)
     result = _apply(state.model_copy(update={"head": seq}), seq, logged.entry)
-    if isinstance(result, Transition) and result.state.approvals_asked and not result.state.asking:
+    if not isinstance(result, Transition):
+        return result
+    update: dict[str, object] = {}
+    if result.state.approvals_asked and not result.state.asking:
         # None open: the next approval asked is number 1 again.
-        return result.model_copy(
-            update={"state": result.state.model_copy(update={"approvals_asked": 0})}
-        )
-    return result
+        update["approvals_asked"] = 0
+    if state.lifecycles is not None:
+        update["lifecycles"] = fold.advance(state.lifecycles, seq, logged.entry)
+    return result.model_copy(update={"state": result.state.model_copy(update=update)})
 
 
 def stamped(state: ConversationState, entry: Entry) -> Entry:

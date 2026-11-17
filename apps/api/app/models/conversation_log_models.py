@@ -7,6 +7,7 @@ from pydantic import AwareDatetime, BaseModel, Field, JsonValue, model_validator
 
 from app.constants.chat import ConversationSource
 from app.models.chat_models import ReactionBy
+from app.models.conversation_lifecycle_models import Lifecycles
 from app.models.hil_models import ApprovalDescription
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
@@ -465,6 +466,8 @@ class ConversationState(BaseModel):
     unsettled_fires: tuple[int, ...] = ()
     # How many approvals were asked since none was open: the next request takes the number after it.
     approvals_asked: int = Field(default=0, ge=0)
+    # Every live lifecycle, advanced by reduce; None on a head folded before lifecycles existed.
+    lifecycles: Lifecycles | None = None
 
     @property
     def owed_answers(self) -> frozenset[str]:
