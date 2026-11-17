@@ -33,7 +33,9 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.db.repositories.briefings import briefing_repository
+from app.models.brief_composition_models import ChartBlock
 from app.models.briefing_models import (
+    BriefDelivery,
     BriefingKind,
     BriefingModel,
     BriefingPayload,
@@ -68,11 +70,13 @@ class PoolCounts:
 
 @dataclass(frozen=True)
 class Push:
-    """Whether a brief goes beyond in-app, how many app signals it carried, and what its pool held."""
+    """Whether a brief goes beyond in-app, what it carried and what its pool held."""
 
     push: bool
     pool: PoolCounts
     signal_count: int = 0
+    #: The held results the brief accounts for, consumed once it is delivered.
+    held_ids: list[str] = field(default_factory=list)
 
 
 #: The family a quiet note reports: it is drawn in none.
@@ -99,23 +103,24 @@ async def publish_brief(
 ) -> BriefingModel:
     """Draw the stamp or painting, render and store the brief, deliver it and report where it went.
 
-    store_brief mints the link the edition encodes, then renders and stores it, so a
-    render failure stores and sends nothing; the one image serves the in-app page, the email and the chat post. A brief
-    that is not pushed (sending.push False) goes in-app only and spends no shuffle-bag draw;
-    otherwise the draws (the family's and the stamp's or painting's) persist after delivery.
+    A render failure stores and sends nothing. A brief that is not pushed goes in-app only and
+    spends no shuffle-bag draw; otherwise the draws persist after delivery.
     """
-    push = sending.push
     spent = [*draws, *draw_stamp_or_artwork(user, payload)]
     if payload.stamp_city is not None:
         payload.new_stamp = await new_stamp(user.id, payload.stamp_city)
     payload.recipient_name = display_name(user)
-    stored = await store_brief(user.id, clock.date_str, kind, payload)
-    channels = await deliver_brief(user, stored, payload, _NOTIFICATION_KINDS[kind], push=push)
-    await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
-    if push:
+    plan = BriefDelivery(
+        push=sending.push, notification_kind=_NOTIFICATION_KINDS[kind], held_ids=sending.held_ids
+    )
+    stored = await store_brief(user.id, clock.date_str, kind, payload, plan)
+    channels = await deliver_brief(user, stored)
+    if sending.push:
         await persist_draws(user.id, spent)
-    capture(
-        UserId(user.id),
+    _record_sent(
+        user,
+        stored,
+        channels,
         BriefingSent(
             kind=kind,
             form=BriefForm.EDITION.value,
@@ -126,14 +131,43 @@ async def publish_brief(
             signal_count=sending.signal_count,
             stamp_collected=payload.new_stamp is not None,
             block_kinds=[block.kind for block in payload.blocks],
-            chart_count=sum(1 for block in payload.blocks if block.kind == "chart"),
+            chart_count=sum(1 for block in payload.blocks if isinstance(block, ChartBlock)),
             pool_item_count=sending.pool.items,
             series_count=sending.pool.series,
             source_count=len(payload.sources_read),
         ),
     )
-    log.set_ns("briefing", kind=kind, form=BriefForm.EDITION.value, channels=channels, pushed=push)
-    return stored.briefing
+    return stored
+
+
+def _record_sent(
+    user: UserDocument, stored: BriefingModel, channels: list[str], sent: BriefingSent
+) -> None:
+    """Report a delivered brief to analytics and its run's wide event."""
+    capture(UserId(user.id), sent)
+    plan = stored.delivery
+    log.set_ns(
+        "briefing",
+        kind=stored.kind,
+        form=sent.form,
+        channels=channels,
+        pushed=plan.push if plan is not None else False,
+    )
+
+
+async def finish_started_delivery(user: UserDocument, clock: UserClock, kind: BriefingKind) -> bool:
+    """Finish today's brief of kind when a run died part-way through delivering it; say whether one was.
+
+    The steps already done are not repeated and nothing is regenerated: the user gets exactly the
+    brief its first channels showed. Its analytics event went unsent with the run that died.
+    """
+    stored = await briefing_repository.find_for_date(user.id, clock.date_str, kind)
+    plan = stored.delivery if stored is not None else None
+    if stored is None or plan is None or not plan.done or plan.completed_at is not None:
+        return False
+    channels = await deliver_brief(user, stored)
+    log.set_ns("briefing", kind=kind, resumed=True, channels=channels, pushed=plan.push)
+    return True
 
 
 @dataclass(frozen=True)
@@ -231,16 +265,18 @@ async def publish_quiet_note(
     clock: UserClock,
     kind: BriefingKind,
     payload: BriefingPayload,
-    pool: PoolCounts,
+    sending: Push,
 ) -> BriefingModel:
     """Store and deliver a quiet brief's note: no edition is drawn, rendered or spent."""
-    stored = await store_note(user.id, clock.date_str, kind, payload)
-    channels = await deliver_brief(
-        user, stored, payload, NOTIFICATION_KIND_BRIEFING_NOTE, push=True
+    plan = BriefDelivery(
+        push=True, notification_kind=NOTIFICATION_KIND_BRIEFING_NOTE, held_ids=sending.held_ids
     )
-    await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
-    capture(
-        UserId(user.id),
+    stored = await store_note(user.id, clock.date_str, kind, payload, plan)
+    channels = await deliver_brief(user, stored)
+    _record_sent(
+        user,
+        stored,
+        channels,
         BriefingSent(
             kind=kind,
             form=BriefForm.QUIET_NOTE.value,
@@ -252,12 +288,9 @@ async def publish_quiet_note(
             stamp_collected=False,
             block_kinds=[],
             chart_count=0,
-            pool_item_count=pool.items,
-            series_count=pool.series,
+            pool_item_count=sending.pool.items,
+            series_count=sending.pool.series,
             source_count=0,
         ),
     )
-    log.set_ns(
-        "briefing", kind=kind, form=BriefForm.QUIET_NOTE.value, channels=channels, pushed=True
-    )
-    return stored.briefing
+    return stored

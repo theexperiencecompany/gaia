@@ -15,7 +15,14 @@ import pytest
 from app.constants.briefing import BRIEFING_KIND_DAILY, BRIEFING_KIND_WEEKLY, BriefForm
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, EditionRender
+from app.models.briefing_models import (
+    BriefDelivery,
+    BriefingKind,
+    BriefingModel,
+    BriefingPayload,
+    DeliveryStep,
+    EditionRender,
+)
 from tests.helpers import local_timezone
 
 
@@ -34,6 +41,7 @@ def _payload(**overrides: object) -> BriefingPayload:
 
 
 _EDITION = EditionRender(key="edition-key")
+_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily", held_ids=["h1"])
 _FRESH = timedelta(minutes=1)
 
 
@@ -51,15 +59,27 @@ async def _upsert(
     edition: EditionRender | None,
 ) -> BriefingModel:
     """Store the brief the way store_brief does: under the id briefing_id_for gives."""
-    briefing_id = await repo.briefing_id_for(user_id, date, kind)
     return await repo.upsert_briefing(
-        user_id,
-        date,
-        kind,
-        payload,
-        briefing_id=briefing_id,
-        edition=edition,
+        BriefingModel(
+            id=await repo.briefing_id_for(user_id, date, kind),
+            user_id=user_id,
+            date=date,
+            kind=kind,
+            payload=payload,
+            edition=edition,
+            delivery=_PLAN,
+        )
     )
+
+
+async def _deliver(
+    repo: BriefingsRepository, user_id: str, date: str, kind: BriefingKind, channels: list[str]
+) -> None:
+    """Record the brief's notification as reaching channels, then complete its delivery."""
+    brief = await repo.find_for_date(user_id, date, kind)
+    assert brief is not None
+    await repo.record_step(user_id, brief.id, DeliveryStep.NOTIFICATION, channels)
+    await repo.complete_delivery(user_id, brief.id)
 
 
 @pytest.fixture
@@ -187,12 +207,9 @@ class TestBriefingsUpsert:
 
         with pytest.raises(DuplicateKeyError):
             await repo.upsert_briefing(
-                "u-race",
-                "2026-08-06",
-                BRIEFING_KIND_DAILY,
-                _payload(headline="late"),
-                briefing_id="brief_000000000000",
-                edition=_EDITION,
+                stored.model_copy(
+                    update={"id": "brief_000000000000", "payload": _payload(headline="late")}
+                )
             )
         assert await repo.get(stored.id, user_id="u-race") == stored
 
@@ -394,7 +411,7 @@ class TestBriefingsReads:
             (user_id, "2026-08-07"),
             ("other-user", "2026-08-04"),
         ]:
-            await repo.set_delivered_channels(owner, date, BRIEFING_KIND_DAILY, ["inapp"])
+            await _deliver(repo, owner, date, BRIEFING_KIND_DAILY, ["inapp"])
 
         stamped = await repo.list_stamped(user_id)
 
@@ -438,16 +455,18 @@ class TestBriefingsReads:
         )
         assert await repo.has_daily_briefing(user_id) is True
 
-    async def test_was_delivered_needs_a_channel_on_that_date_and_kind(self, repo):
+    async def test_was_delivered_needs_its_delivery_completed_on_that_date_and_kind(self, repo):
         user_id = "u-delivered"
         assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
-        await _upsert(
+        stored = await _upsert(
             repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        # Stored but delivered nowhere: a retry may still send it.
+        # Stored, then delivered part-way: a retry still finishes it.
+        assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
+        await repo.record_step(user_id, stored.id, DeliveryStep.NOTIFICATION, ["inapp"])
         assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
 
-        await repo.set_delivered_channels(user_id, "2026-08-06", BRIEFING_KIND_DAILY, ["inapp"])
+        await repo.complete_delivery(user_id, stored.id)
 
         assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is True
         assert await repo.was_delivered(user_id, "2026-08-07", BRIEFING_KIND_DAILY) is False
@@ -475,18 +494,33 @@ class TestBriefingsMarkOpened:
         assert await repo.mark_opened(user_id, "brief_missing") is None
 
 
-class TestBriefingsDeliveredChannels:
-    async def test_set_delivered_channels(self, repo):
+class TestBriefingsDeliverySteps:
+    async def test_each_step_and_each_channel_it_reached_is_recorded_once(self, repo):
         user_id = "u-channels"
         stored = await _upsert(
             repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.set_delivered_channels(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, ["inapp", "telegram"]
-        )
+        await repo.record_step(user_id, stored.id, DeliveryStep.NOTIFICATION, ["inapp", "email"])
+        await repo.record_step(user_id, stored.id, DeliveryStep.CHAT, ["telegram"])
+        await repo.record_step(user_id, stored.id, DeliveryStep.CHAT, ["telegram"])
+        await repo.record_step("attacker", stored.id, DeliveryStep.CONVERSATION, ["inapp"])
+
         fetched = await repo.get(stored.id, user_id=user_id)
-        assert fetched is not None
-        assert fetched.delivered_channels == ["inapp", "telegram"]
+
+        assert fetched is not None and fetched.delivery is not None
+        assert fetched.delivered_channels == ["inapp", "email", "telegram"]
+        assert fetched.delivery.done == [DeliveryStep.NOTIFICATION, DeliveryStep.CHAT]
+        assert (fetched.delivery.held_ids, fetched.delivery.completed_at) == (["h1"], None)
+
+    async def test_a_rerun_before_any_step_replans_its_delivery(self, repo):
+        stored = await _upsert(
+            repo, "u-replan", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+        replanned = await repo.upsert_briefing(
+            stored.model_copy(update={"delivery": _PLAN.model_copy(update={"held_ids": ["h2"]})})
+        )
+
+        assert replanned.delivery is not None and replanned.delivery.held_ids == ["h2"]
 
 
 class _CachedBriefingsRepository(BriefingsRepository):
@@ -530,8 +564,8 @@ class TestWritesUnderACachePolicy:
     async def test_recording_delivery_refreshes_the_cached_brief(self, cached_repo):
         stored = await self._cached_brief(cached_repo, "u-cache-channels")
 
-        await cached_repo.set_delivered_channels(
-            "u-cache-channels", "2026-08-06", BRIEFING_KIND_DAILY, ["inapp"]
+        await _deliver(
+            cached_repo, "u-cache-channels", "2026-08-06", BRIEFING_KIND_DAILY, ["inapp"]
         )
 
         fetched = await cached_repo.get(stored.id, user_id="u-cache-channels")

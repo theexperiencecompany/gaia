@@ -21,12 +21,13 @@ import pytest
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
+from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
 from app.constants.short_links import MAX_RESOLVE_MISSES
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
-from app.models.briefing_models import BriefingPayload
+from app.models.briefing_models import BriefDelivery, BriefingPayload
 from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -946,15 +947,22 @@ class TestTheBriefsLink:
             patch.object(brief_store, "render_edition_png", AsyncMock(return_value=rendered)),
             patch.object(brief_store, "store_edition", AsyncMock(return_value="edition-key")),
         ):
-            stored = await brief_store.store_brief(OWNER.user_id, "2026-11-09", "daily", payload)
+            stored = await brief_store.store_brief(
+                OWNER.user_id,
+                "2026-11-09",
+                "daily",
+                payload,
+                BriefDelivery(push=True, notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY),
+            )
 
-        slug = stored.link.removeprefix("https://heygaia.link/") if stored.link else ""
+        link_url = stored.payload.link or ""
+        slug = link_url.removeprefix("https://heygaia.link/")
         link = await _stored(slug)
         assert (link.target_type, link.target_id) == (
             ShortLinkTargetType.BRIEFING,
-            stored.briefing.id,
+            stored.id,
         )
-        assert stored.briefing.payload.link == stored.link
+        assert link_url.startswith("https://heygaia.link/")
         viewer.user = OWNER
         opened = await _open(client, slug)
         assert opened.status_code == 200, opened.text

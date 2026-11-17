@@ -6,13 +6,14 @@ The real explorer templates and stamp catalogue (cities.json) are read.
 from app.config.settings import settings
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import (
+    BriefingEvent,
     BriefingItem,
     BriefingModel,
     BriefingPayload,
     BriefingSection,
     EditionRender,
 )
-from app.services.briefing.view import briefing_view
+from app.services.briefing.view import briefing_view, public_view
 
 
 def _brief(
@@ -99,3 +100,25 @@ async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() 
     assert view.edition.image_url.startswith(f"{settings.HOST}/api/v1/briefings/editions/k1/png?t=")
     assert (view.edition.fold, view.edition.paper) == (0.3, None)
     assert (await briefing_view(_brief(template_family=""))).edition is None
+
+
+async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar() -> None:
+    owned = _brief(
+        template_family="memo",
+        sections=[
+            BriefingSection(
+                numeral="I",
+                title="Waiting on you",
+                items=[BriefingItem(text="Reply to Priya", action=BriefAction.REPLY, kind="you")],
+            )
+        ],
+    )
+    owned.payload.calendar = [BriefingEvent(date="2026-10-21", start="11:00", title="Therapy")]
+    owned = owned.model_copy(update={"edition": EditionRender(key="k1")})
+
+    seen = (await public_view(owned)).model_dump_json()
+
+    assert "Three things wait on you" in seen
+    assert "k1/png?t=" in seen
+    for private in ("Reply to Priya", "Waiting on you", "Therapy", "user-1", "brief_1"):
+        assert private not in seen

@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, SECTION_NUMERALS
+from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, LEAD_OFFERS, SECTION_NUMERALS
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import (
     BriefBlock,
@@ -82,11 +82,12 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
 
 def _section(block: ComposedLead | ComposedItems, pool: FactPool, numeral: str) -> BriefingSection:
     if isinstance(block, ComposedLead):
-        offer = block.offer.strip() or None
+        candidate = pool.items[block.item.id]
+        action = candidate.action or block.item.action
         return BriefingSection(
             numeral=numeral,
             title=LEAD_HEADING,
-            items=[_item(block.item, pool.items[block.item.id], offer)],
+            items=[_item(block.item, candidate, LEAD_OFFERS[action] if action else None)],
         )
     return BriefingSection(
         numeral=numeral,

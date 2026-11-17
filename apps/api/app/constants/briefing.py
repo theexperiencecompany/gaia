@@ -5,8 +5,10 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final, Literal
 
 # Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
@@ -55,6 +57,20 @@ class BriefAction(StrEnum):
     ATTEND = "attend"
 
 
+#: What GAIA offers to do about the lead, by what it asks of the reader: a fixed act GAIA really
+#: does, never words a model wrote over the item's third-party text.
+LEAD_OFFERS: Final[Mapping[BriefAction, str]] = MappingProxyType(
+    {
+        BriefAction.APPROVE: "Walk you through it before you approve",
+        BriefAction.REPLY: "Draft the reply for you to send",
+        BriefAction.REVIEW: "Pull together what you need to review it",
+        BriefAction.RETRY: "Run it again and tell you how it went",
+        BriefAction.READ: "Sum it up for you",
+        BriefAction.ATTEND: "Prepare your notes for it",
+    }
+)
+
+
 class BriefOutcome(StrEnum):
     """The state a reported brief item reached; set only on items that need nothing from the reader."""
 
@@ -99,7 +115,6 @@ BRIEF_HEADING_MAX_CHARS: Final[int] = 40
 BRIEF_CHART_TITLE_MAX_CHARS: Final[int] = 48
 BRIEF_TAKEAWAY_MAX_CHARS: Final[int] = 140
 BRIEF_NOTE_MAX_CHARS: Final[int] = 240
-BRIEF_OFFER_MAX_CHARS: Final[int] = 90
 # A line or spark chart reads a trend only over at least this many days; a bar reads at most this many bars.
 MIN_TREND_POINTS: Final[int] = 5
 #: Lines one chart may draw: every family's two line styles, then the same two dotted.
@@ -373,6 +388,10 @@ EDITION_JPG_QUALITY: Final[int] = 85
 EDITION_URL_TTL_DAYS: Final[int] = 365
 # How long a browser may reuse an edition image: a same-day re-render keeps its URL.
 EDITION_IMAGE_MAX_AGE_SECONDS: Final[int] = 3_600
+# A brief's notification ranks just below an urgent one (1 is highest).
+BRIEF_NOTIFICATION_PRIORITY: Final[int] = 2
+BRIEF_NOTIFICATION_ACTION_LABEL: Final[str] = "Open briefing"
+
 # An edition key's length in hex characters: 128 bits, unguessable.
 EDITION_KEY_CHARS: Final[int] = 32
 # Signs edition URLs apart from every other use of the instance secret.

@@ -13,7 +13,6 @@ from app.constants.briefing import (
     BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEF_NOTE_MAX_CHARS,
-    BRIEF_OFFER_MAX_CHARS,
     BRIEF_TAKEAWAY_MAX_CHARS,
     MAX_BAR_CATEGORIES,
     MAX_BRIEF_CHARTS,
@@ -42,7 +41,7 @@ from app.services.briefing.slots import SlotError, SlotValues, render_slots, slo
 
 #: The strings each kind of block writes.
 WRITTEN_FIELDS: dict[BriefBlockKind, tuple[str, ...]] = {
-    "lead": ("offer",),
+    "lead": (),
     "items": ("heading",),
     "chart": ("title", "takeaway"),
     "quote": (),
@@ -166,24 +165,22 @@ def _chart_problems(
     return problems
 
 
-def _lead_problems(
-    where: str, index: int, block: ComposedLead, pool: FactPool, values: SlotValues
-) -> list[str]:
+def _lead_problems(where: str, index: int, block: ComposedLead, pool: FactPool) -> list[str]:
     problems = [] if index == 0 else [f"{where}: a lead opens the brief, so it is block 1"]
     if block.item.action is None:
         problems.append(f"{where}: a lead is something to act on, so its item has an action")
     candidate = pool.items.get(block.item.id)
     if candidate is not None and not candidate.gaia_acts:
         problems.append(
-            f"{where}: GAIA can only read {candidate.app}, so it cannot do what the offer "
-            f"says on item {block.item.id}; lead with something GAIA can act on, or with nothing"
+            f"{where}: GAIA can only read {candidate.app}, so it cannot help with item "
+            f"{block.item.id}; lead with something GAIA can act on, or with nothing"
         )
     if candidate is not None and candidate.backlog:
         problems.append(
             f"{where}: item {block.item.id} is an undated todo on their list, background "
             "that never leads; lead with something that needs them today, or with nothing"
         )
-    return problems + _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
+    return problems
 
 
 # The outcomes each group state holds; a needs_you group holds actions instead.
@@ -228,7 +225,7 @@ def _own_problems(
     """Name what breaks the block's own kind of contract, its items aside."""
     where = _where(index, block)
     if isinstance(block, ComposedLead):
-        return _lead_problems(where, index, block, pool, values)
+        return _lead_problems(where, index, block, pool)
     if isinstance(block, ComposedItems):
         heading = _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
         return heading + _state_problems(where, block)

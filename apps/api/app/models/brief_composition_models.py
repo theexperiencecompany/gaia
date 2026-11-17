@@ -45,11 +45,10 @@ class ComposedItem(BaseModel):
 
 
 class ComposedLead(BaseModel):
-    """The one thing to start on, and what GAIA will do about it."""
+    """The one thing to start on; GAIA's offer on it is code's, from the item's action (LEAD_OFFERS)."""
 
     kind: Literal["lead"]
     item: ComposedItem
-    offer: str = Field(description="What GAIA does when the user says yes, one short sentence")
 
 
 class GroupState(StrEnum):

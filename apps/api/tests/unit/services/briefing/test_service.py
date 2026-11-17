@@ -40,6 +40,7 @@ from app.constants.briefing import (
     DUE_TODO_CANDIDATES_LIMIT,
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
+    LEAD_OFFERS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_VOICE_ATTEMPTS,
     NO_CALENDAR_CONNECTED,
@@ -90,6 +91,7 @@ from app.models.briefing_models import (
     BriefingWeek,
     BriefingWeekDay,
     BriefVoice,
+    DeliveryStep,
     EditionRender,
     NewStamp,
 )
@@ -407,7 +409,6 @@ class World:
     agent: AsyncMock
     upsert: AsyncMock
     mint: AsyncMock
-    set_channels: AsyncMock
     notify: AsyncMock
     post: AsyncMock
     render: AsyncMock
@@ -419,7 +420,8 @@ class World:
     recent: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     stamped: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=[]))
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
-    was_delivered: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=False))
+    #: The briefings collection: each stored brief by id, as the run left it.
+    briefs: dict[str, BriefingModel] = field(default_factory=dict)
     clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
     enter_dormancy: AsyncMock = field(default_factory=AsyncMock)
     goal_asked: AsyncMock = field(default_factory=AsyncMock)
@@ -594,18 +596,8 @@ def _voice_call(agent: AsyncMock) -> Callable[..., Awaitable[BriefVoice]]:
 def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
-        upsert=AsyncMock(
-            side_effect=lambda user_id, date, kind, payload, *, briefing_id, edition: BriefingModel(
-                id=briefing_id,
-                user_id=user_id,
-                date=date,
-                kind=kind,
-                payload=payload,
-                edition=edition,
-            )
-        ),
+        upsert=AsyncMock(),
         mint=AsyncMock(return_value=_BRIEF_LINK),
-        set_channels=AsyncMock(),
         notify=AsyncMock(
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
         ),
@@ -627,7 +619,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         return w.user
 
     monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=get_user))
-    monkeypatch.setattr(briefing_repository, "was_delivered", w.was_delivered)
+    _store_briefs(monkeypatch, w)
     monkeypatch.setattr(user_repository, "clear_briefing_bootstrap", w.clear_bootstrap)
     monkeypatch.setattr(dormancy, "clear_dormancy", w.clear_dormancy)
     monkeypatch.setattr(dormancy, "enter_dormancy", w.enter_dormancy)
@@ -638,9 +630,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(prose, "ainvoke_structured", _voice_call(w.agent))
     monkeypatch.setattr(briefing_repository, "list_recent", w.recent)
     monkeypatch.setattr(briefing_repository, "list_stamped", w.stamped)
-    monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
     monkeypatch.setattr(briefing_repository, "briefing_id_for", AsyncMock(return_value=_BRIEF_ID))
-    monkeypatch.setattr(briefing_repository, "set_delivered_channels", w.set_channels)
     monkeypatch.setattr(prose, "optional_short_link", w.mint)
     monkeypatch.setattr(store, "optional_short_link", w.mint)
     _seam(monkeypatch, w, briefing_repository, "has_daily_briefing", AsyncMock(return_value=True))
@@ -725,9 +715,68 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         yield w
 
 
+def _store_briefs(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
+    """Keep the briefings collection in memory, written and read the way the repository does."""
+
+    async def upsert(brief: BriefingModel) -> BriefingModel:
+        before = w.briefs.get(brief.id)
+        w.briefs[brief.id] = brief.model_copy(
+            update={
+                "payload": brief.payload.model_copy(deep=True),
+                "delivery": brief.delivery.model_copy(deep=True) if brief.delivery else None,
+                "delivered_channels": before.delivered_channels if before else [],
+            }
+        )
+        return w.briefs[brief.id]
+
+    async def record_step(
+        user_id: str, briefing_id: str, step: DeliveryStep, reached: list[str]
+    ) -> None:
+        brief = w.briefs[briefing_id]
+        assert brief.user_id == user_id and brief.delivery is not None
+        brief.delivery.done.append(step)
+        brief.delivered_channels.extend(c for c in reached if c not in brief.delivered_channels)
+
+    async def complete_delivery(user_id: str, briefing_id: str) -> None:
+        delivery = w.briefs[briefing_id].delivery
+        assert delivery is not None
+        delivery.completed_at = _NOW
+
+    def find_for_date(user_id: str, date: str, kind: BriefingKind) -> BriefingModel | None:
+        return next(
+            (b for b in w.briefs.values() if (b.user_id, b.date, b.kind) == (user_id, date, kind)),
+            None,
+        )
+
+    async def was_delivered(user_id: str, date: str, kind: BriefingKind) -> bool:
+        brief = find_for_date(user_id, date, kind)
+        return (
+            brief is not None
+            and brief.delivery is not None
+            and brief.delivery.completed_at is not None
+        )
+
+    async def find(user_id: str, date: str, kind: BriefingKind) -> BriefingModel | None:
+        return find_for_date(user_id, date, kind)
+
+    w.upsert.side_effect = upsert
+    monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
+    monkeypatch.setattr(briefing_repository, "record_step", record_step)
+    monkeypatch.setattr(briefing_repository, "complete_delivery", complete_delivery)
+    monkeypatch.setattr(briefing_repository, "find_for_date", find)
+    monkeypatch.setattr(briefing_repository, "was_delivered", AsyncMock(side_effect=was_delivered))
+
+
+def _delivered_to(w: World, kind: BriefingKind = "daily") -> list[str]:
+    """Return the channels the stored brief of kind reached, once its delivery completed."""
+    [brief] = [b for b in w.briefs.values() if b.kind == kind]
+    assert brief.delivery is not None and brief.delivery.completed_at is not None
+    return brief.delivered_channels
+
+
 def _stored_payload(w: World) -> BriefingPayload:
     w.upsert.assert_awaited()
-    return w.upsert.await_args.args[3]
+    return w.upsert.await_args.args[0].payload
 
 
 def _prompt(w: World) -> str:
@@ -785,7 +834,7 @@ class TestDailyBrief:
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
         message = "Approve the Priya reply\nInvestor update\nSequoia"
         assert payload.message == message
-        assert world.upsert.await_args.kwargs["edition"] == EditionRender(
+        assert world.upsert.await_args.args[0].edition == EditionRender(
             key=_EDITION_KEY, fold=0.3, paper=[0.1, 0.2, 0.9, 0.8]
         )
         world.store_edition.assert_awaited_once_with(_USER, _BRIEF_ID, _RENDERED.image)
@@ -814,8 +863,7 @@ class TestDailyBrief:
             "Your morning, sorted",
             f"{message}\n\nFull brief: {_BRIEF_LINK}",
         ]
-        world.set_channels.assert_awaited_once()
-        assert world.set_channels.await_args.args[3] == [*_ORCHESTRATED, "telegram"]
+        assert _delivered_to(world) == [*_ORCHESTRATED, "telegram"]
 
     async def test_without_a_chat_platform_nothing_is_posted(self, world: World) -> None:
         world.chat = None
@@ -824,12 +872,15 @@ class TestDailyBrief:
 
         world.render.assert_awaited_once()
         world.post.assert_not_awaited()
-        assert world.set_channels.await_args.args[3] == _ORCHESTRATED
+        assert _delivered_to(world) == _ORCHESTRATED
 
     async def test_a_rerun_stores_its_edition_over_the_one_its_brief_had(
         self, world: World
     ) -> None:
-        await daily.run_daily_briefing(_USER)
+        world.notify.side_effect = RuntimeError("orchestrator down")
+        with pytest.raises(RuntimeError, match="orchestrator down"):
+            await daily.run_daily_briefing(_USER)
+        world.notify.side_effect = None
         await daily.run_daily_briefing(_USER)
 
         stored = [c.args[:2] for c in world.store_edition.await_args_list]
@@ -954,7 +1005,7 @@ class TestDailyBrief:
             "Nothing new needs you today, and your calendar is clear.\n"
             "I'll flag anything that comes in."
         )
-        assert world.upsert.await_args.kwargs["edition"] is None
+        assert world.upsert.await_args.args[0].edition is None
         request = world.notify.await_args.args[0]
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_NOTE
         assert request.content.rich_content is None
@@ -1437,7 +1488,7 @@ class TestDailyBrief:
             "Running 2",
         ]
 
-    async def test_the_composers_lead_opens_the_brief_with_its_offer(self, world: World) -> None:
+    async def test_the_composers_lead_opens_the_brief_with_gaias_offer(self, world: World) -> None:
         world.work = _brief_work()
         world.composer.side_effect = _composed(
             {"Done overnight": ["Investor update"]},
@@ -1448,9 +1499,9 @@ class TestDailyBrief:
 
         lead, work = _stored_payload(world).sections
         assert (lead.title, lead.numeral) == ("First up", "I")
-        assert [(i.text, i.kind, i.offer) for i in lead.items] == [
-            ("Approve the Priya reply", "you", "Send the reply once you approve")
-        ]
+        [item] = lead.items
+        assert (item.text, item.kind) == ("Approve the Priya reply", "you")
+        assert item.action is not None and item.offer == LEAD_OFFERS[item.action]
         assert [(i.text, i.offer) for i in work.items] == [("Investor update", None)]
         assert _stored_payload(world).blocks[0] == SectionBlock(kind="lead", section=0)
 
@@ -1597,7 +1648,7 @@ class TestDailyBrief:
             await daily.run_daily_briefing(_USER)
 
         world.upsert.assert_awaited()
-        world.set_channels.assert_not_awaited()
+        assert all(b.delivered_channels == [] for b in world.briefs.values())
         world.post.assert_not_awaited()
 
     async def test_only_channels_that_reached_the_user_are_recorded_and_counted(
@@ -1616,19 +1667,44 @@ class TestDailyBrief:
 
         await daily.run_daily_briefing(_USER)
 
-        assert world.set_channels.await_args.args[3] == ["inapp"]
+        assert _delivered_to(world) == ["inapp"]
         sent = world.capture.call_args.args[1]
         assert sent.channel_count == 1
 
     async def test_a_brief_already_delivered_today_is_not_sent_again(self, world: World) -> None:
-        world.was_delivered.return_value = True
+        await daily.run_daily_briefing(_USER)
+        world.agent.reset_mock()
+        world.upsert.reset_mock()
+        world.notify.reset_mock()
+        world.post.reset_mock()
 
         outcome = await daily.run_daily_briefing(_USER)
 
         assert outcome is BriefingRunOutcome.ALREADY_DELIVERED
-        world.was_delivered.assert_awaited_once_with(_USER, _DATE, "daily")
         world.agent.assert_not_awaited()
         _assert_nothing_sent(world)
+
+    async def test_a_run_that_died_mid_delivery_is_finished_not_resent_or_dropped(
+        self, world: World
+    ) -> None:
+        """A killed worker's retry once saw no delivered channel, rebuilt the brief and sent it twice."""
+        world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
+        world.post.side_effect = RuntimeError("worker killed")
+        with pytest.raises(RuntimeError, match="worker killed"):
+            await daily.run_daily_briefing(_USER)
+        world.consume.assert_not_awaited()
+        world.post.side_effect = None
+
+        outcome = await daily.run_daily_briefing(_USER)
+
+        assert outcome is BriefingRunOutcome.SENT
+        world.render.assert_awaited_once()
+        world.notify.assert_awaited_once()
+        world.brief_message.assert_awaited_once()
+        assert world.post.await_count == 2
+        world.consume.assert_awaited_once_with(_USER, ["h1"])
+        assert _delivered_to(world) == [*_ORCHESTRATED, "telegram"]
+        assert await daily.run_daily_briefing(_USER) is BriefingRunOutcome.ALREADY_DELIVERED
 
     async def test_a_sent_brief_reports_it_was_sent(self, world: World) -> None:
         assert await daily.run_daily_briefing(_USER) is BriefingRunOutcome.SENT
@@ -1700,7 +1776,7 @@ class TestWeeklyRecap:
         payload = _stored_payload(world)
         # Masthead, date and mood come from code, whatever the model wrote.
         assert (payload.kicker, payload.date, payload.mood) == (WEEKLY_KICKER, _DATE, "weekly")
-        assert world.upsert.await_args.args[2] == "weekly"
+        assert world.upsert.await_args.args[0].kind == "weekly"
         assert payload.template_family == "weekly"
         assert payload.week == world.week.return_value
         assert payload.tallies == BriefingTallies(done_by_you=7, done_by_gaia=14)
@@ -1713,11 +1789,14 @@ class TestWeeklyRecap:
         world.consume.assert_not_awaited()
 
     async def test_a_recap_already_delivered_today_is_not_sent_again(self, world: World) -> None:
-        world.was_delivered.return_value = True
+        await weekly.run_weekly_digest(_USER)
+        world.agent.reset_mock()
+        world.upsert.reset_mock()
+        world.notify.reset_mock()
+        world.post.reset_mock()
 
         assert await weekly.run_weekly_digest(_USER) is BriefingRunOutcome.ALREADY_DELIVERED
 
-        world.was_delivered.assert_awaited_once_with(_USER, _DATE, "weekly")
         world.agent.assert_not_awaited()
         _assert_nothing_sent(world)
 
@@ -1936,7 +2015,7 @@ class TestTheWeeklyAnswersTheWeek:
         world.agent.assert_not_awaited()
         world.render.assert_not_awaited()
         payload = _stored_payload(world)
-        assert world.upsert.await_args.args[2] == "weekly"
+        assert world.upsert.await_args.args[0].kind == "weekly"
         assert (payload.form, payload.kicker, payload.headline) == (
             BriefForm.QUIET_NOTE,
             WEEKLY_KICKER,
@@ -2213,8 +2292,7 @@ class TestTheWeeklyReadsThisUsersWeek:
         ]
         payload = _stored_payload(world)
         assert (payload.lede, payload.caption, payload.template_family) == ("", "", "")
-        channels = world.set_channels.await_args.args[3]
-        world.set_channels.assert_awaited_once_with(_USER, _DATE, "weekly", channels)
+        channels = _delivered_to(world, "weekly")
         assert channels
         assert world.capture.call_args.args == (
             UserId(_USER),
@@ -2923,6 +3001,7 @@ class TestTheDailyRunWiring:
 
         sent, failed = count("sent"), count("failed")
         await daily.run_daily_briefing(_USER)
+        world.briefs.clear()
         world.notify.side_effect = RuntimeError("orchestrator down")
         with pytest.raises(RuntimeError, match="orchestrator down"):
             await daily.run_daily_briefing(_USER)
@@ -3123,8 +3202,7 @@ class TestTheDailyRunWiring:
         await daily.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        channels = [*_ORCHESTRATED, "telegram"]
-        world.set_channels.assert_awaited_once_with(_USER, _DATE, "daily", channels)
+        assert _delivered_to(world) == [*_ORCHESTRATED, "telegram"]
         world.capture.assert_called_once_with(
             UserId(_USER),
             BriefingSent(
@@ -3388,6 +3466,7 @@ class TestTheFactsTheModelVoices:
         )
 
         world.calendar = []
+        world.briefs.clear()
         await daily.run_daily_briefing(_USER)
         assert _facts_shown(_prompt(world)).endswith(
             "is empty.\nThe user's calendar has nothing today."

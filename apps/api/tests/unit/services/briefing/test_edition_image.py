@@ -24,7 +24,7 @@ from app.constants.briefing import (
     EditionVariant,
 )
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingModel, BriefingPayload
+from app.models.briefing_models import BriefDelivery, BriefingModel, BriefingPayload
 from app.services.briefing import edition_email, store
 from app.services.briefing.edition_image import delete_edition, edition_url
 from app.services.briefing.render import RenderedImage
@@ -34,6 +34,7 @@ _USER = "64f1c0ffee0000000000abcd"
 _DATE = "2026-10-14"
 _BRIEF_ID = "brief_0123456789ab"
 _NOW = datetime(2026, 10, 14, 7, 0, tzinfo=UTC)
+_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily")
 
 
 def _png(width: int, height: int) -> bytes:
@@ -71,14 +72,9 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Briefing
     )
     docs: dict[str, BriefingModel] = {}
 
-    async def upsert(
-        user_id: str, date: str, kind: str, payload: BriefingPayload, **kwargs: object
-    ) -> BriefingModel:
-        doc = BriefingModel(
-            id=_BRIEF_ID, user_id=user_id, date=date, kind="daily", payload=payload
-        ).model_copy(update={"edition": kwargs["edition"]})
-        docs[doc.id] = doc
-        return doc
+    async def upsert(brief: BriefingModel) -> BriefingModel:
+        docs[brief.id] = brief
+        return brief
 
     async def owner_of_edition(key: str) -> str | None:
         owners = [
@@ -102,13 +98,13 @@ def _path(url: str) -> str:
 async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_url(
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
-    stored = await store.store_brief(_USER, _DATE, "daily", _payload())
-    view = await briefing_view(stored.briefing)
+    stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    view = await briefing_view(stored)
 
     assert view.edition is not None
     app_image = await client.get(_path(view.edition.image_url))
-    assert stored.briefing.edition is not None
-    chat_url = await edition_url(stored.briefing.edition.key, EditionVariant.JPG, _NOW)
+    assert stored.edition is not None
+    chat_url = await edition_url(stored.edition.key, EditionVariant.JPG, _NOW)
     chat_image = await client.get(_path(chat_url))
 
     assert app_image.status_code == 200
@@ -124,12 +120,12 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
 async def test_a_rerun_overwrites_the_one_image_its_brief_has(
     world: dict[str, BriefingModel], tmp_path: Path
 ) -> None:
-    first = await store.store_brief(_USER, _DATE, "daily", _payload())
-    second = await store.store_brief(_USER, _DATE, "daily", _payload())
+    first = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    second = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
 
-    assert first.briefing.edition is not None and second.briefing.edition is not None
-    key = first.briefing.edition.key
-    assert second.briefing.edition.key == key
+    assert first.edition is not None and second.edition is not None
+    key = first.edition.key
+    assert second.edition.key == key
     assert sorted(p.name for p in (tmp_path / _USER).iterdir()) == [
         f"brief-edition-{key}.jpg",
         f"brief-edition-{key}.png",
@@ -140,8 +136,8 @@ async def test_a_rerun_overwrites_the_one_image_its_brief_has(
 async def test_a_url_serves_nothing_once_tampered_retargeted_expired_or_deleted(
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
-    stored = await store.store_brief(_USER, _DATE, "daily", _payload())
-    view = await briefing_view(stored.briefing)
+    stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    view = await briefing_view(stored)
     assert view.edition is not None
     url = _path(view.edition.image_url)
 
@@ -149,8 +145,8 @@ async def test_a_url_serves_nothing_once_tampered_retargeted_expired_or_deleted(
     retargeted = await client.get(url.replace("/png?", "/jpg?"))
     with time_machine.travel(_NOW + timedelta(days=EDITION_URL_TTL_DAYS + 2), tick=False):
         expired = await client.get(url)
-    assert stored.briefing.edition is not None
-    await delete_edition(_USER, stored.briefing.edition.key)
+    assert stored.edition is not None
+    await delete_edition(_USER, stored.edition.key)
     deleted = await client.get(url)
 
     assert [r.status_code for r in (tampered, retargeted, expired, deleted)] == [404] * 4

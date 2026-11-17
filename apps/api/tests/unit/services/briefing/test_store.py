@@ -3,12 +3,17 @@
 Faked seams: the briefing repository, the short-link mint, the render and the edition store.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.briefing_models import (
+    BriefDelivery,
+    BriefingModel,
+    BriefingPayload,
+    EditionRender,
+)
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing import store
 from app.services.briefing.render import RenderedImage
@@ -16,6 +21,7 @@ from app.services.briefing.render import RenderedImage
 _USER = "64f1c0ffee0000000000abcd"
 _DATE = "2026-10-14"
 _BRIEF_ID = "brief-1"
+_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily")
 
 
 def _payload() -> BriefingPayload:
@@ -30,11 +36,15 @@ def _payload() -> BriefingPayload:
     )
 
 
+async def _upserted(brief: BriefingModel) -> BriefingModel:
+    return brief
+
+
 @pytest.fixture
 def seams(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     fakes = {
         "briefing_id_for": AsyncMock(return_value=_BRIEF_ID),
-        "upsert_briefing": AsyncMock(return_value=MagicMock(id=_BRIEF_ID)),
+        "upsert_briefing": AsyncMock(side_effect=_upserted),
         "optional_short_link": AsyncMock(return_value="https://heygaia.link/abc"),
         "render_edition_png": AsyncMock(
             return_value=RenderedImage(image=b"png", fold=0.4, paper=(0.1, 0.2, 0.9, 0.8))
@@ -55,7 +65,7 @@ class TestStoreBrief:
     ) -> None:
         payload = _payload()
 
-        stored = await store.store_brief(_USER, _DATE, "daily", payload)
+        stored = await store.store_brief(_USER, _DATE, "daily", payload, _PLAN)
 
         seams["briefing_id_for"].assert_awaited_once_with(_USER, _DATE, "daily")
         seams["optional_short_link"].assert_awaited_once_with(
@@ -64,12 +74,18 @@ class TestStoreBrief:
         assert payload.link == "https://heygaia.link/abc"
         assert seams["render_edition_png"].await_args.args == (payload,)
         seams["store_edition"].assert_awaited_once_with(_USER, _BRIEF_ID, b"png")
-        assert seams["upsert_briefing"].await_args.args == (_USER, _DATE, "daily", payload)
-        assert seams["upsert_briefing"].await_args.kwargs == {
-            "briefing_id": _BRIEF_ID,
-            "edition": EditionRender(key="edition-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]),
-        }
-        assert (stored.briefing.id, stored.link) == (_BRIEF_ID, "https://heygaia.link/abc")
+        [brief] = seams["upsert_briefing"].await_args.args
+        assert (brief.id, brief.user_id, brief.date, brief.kind) == (
+            _BRIEF_ID,
+            _USER,
+            _DATE,
+            "daily",
+        )
+        assert (brief.payload, brief.delivery) == (payload, _PLAN)
+        assert brief.edition == EditionRender(
+            key="edition-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
+        )
+        assert (stored.id, stored.payload.link) == (_BRIEF_ID, "https://heygaia.link/abc")
 
     async def test_the_brief_exists_before_its_link_is_minted(
         self, seams: dict[str, AsyncMock]
@@ -77,9 +93,9 @@ class TestStoreBrief:
         """Simulator: the link was minted to a brief not yet stored ("Target not found"), so it fell back."""
         order: list[str] = []
 
-        async def stored(*_a: object, edition: EditionRender | None, **_k: object) -> MagicMock:
-            order.append("stored" if edition is None else "stored with its edition")
-            return MagicMock(id=_BRIEF_ID)
+        async def stored(brief: BriefingModel) -> BriefingModel:
+            order.append("stored" if brief.edition is None else "stored with its edition")
+            return brief
 
         async def minted(*_a: object) -> str:
             order.append("minted")
@@ -88,7 +104,7 @@ class TestStoreBrief:
         seams["upsert_briefing"].side_effect = stored
         seams["optional_short_link"].side_effect = minted
 
-        await store.store_brief(_USER, _DATE, "daily", _payload())
+        await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
 
         assert order == ["stored", "minted", "stored with its edition"]
 
@@ -100,18 +116,18 @@ class TestStoreBrief:
             "app.services.briefing.message.settings.FRONTEND_URL", "https://app.test"
         )
 
-        stored = await store.store_brief(_USER, _DATE, "daily", _payload())
+        stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
 
-        assert stored.link == "https://app.test/brief/brief-1"
+        assert stored.payload.link == "https://app.test/brief/brief-1"
 
     async def test_an_edition_without_a_fold_or_paper_box_stores_neither(
         self, seams: dict[str, AsyncMock]
     ) -> None:
         seams["render_edition_png"].return_value = RenderedImage(image=b"png")
 
-        await store.store_brief(_USER, _DATE, "weekly", _payload())
+        await store.store_brief(_USER, _DATE, "weekly", _payload(), _PLAN)
 
-        assert seams["upsert_briefing"].await_args.kwargs["edition"] == EditionRender(
+        assert seams["upsert_briefing"].await_args.args[0].edition == EditionRender(
             key="edition-key"
         )
 
@@ -125,14 +141,12 @@ class TestStoreNote:
         )
         payload = _payload()
 
-        stored = await store.store_note(_USER, _DATE, "weekly", payload)
+        stored = await store.store_note(_USER, _DATE, "weekly", payload, _PLAN)
 
-        assert seams["upsert_briefing"].await_args.args == (_USER, _DATE, "weekly", payload)
-        assert seams["upsert_briefing"].await_args.kwargs == {
-            "briefing_id": _BRIEF_ID,
-            "edition": None,
-        }
+        [brief] = seams["upsert_briefing"].await_args.args
+        assert (brief.id, brief.kind, brief.payload) == (_BRIEF_ID, "weekly", payload)
+        assert (brief.edition, brief.delivery) == (None, _PLAN)
         seams["optional_short_link"].assert_not_awaited()
         seams["render_edition_png"].assert_not_awaited()
         seams["store_edition"].assert_not_awaited()
-        assert (stored.briefing.id, stored.link) == (_BRIEF_ID, None)
+        assert (stored.id, stored.payload.link) == (_BRIEF_ID, None)

@@ -104,7 +104,7 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
 
 
 def _as_group(lead: ComposedLead) -> ComposedItems:
-    """Turn a lead whose offer cannot stand into a one-item group: the item still matters."""
+    """Turn a lead that cannot stand into a one-item group: the item still matters."""
     return ComposedItems(
         kind="items",
         state=GroupState.NEEDS_YOU,
@@ -116,7 +116,7 @@ def _as_group(lead: ComposedLead) -> ComposedItems:
 def _sound(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> ComposedBlock | None:
-    """Return the block once it holds its contract, its heading or offer given way if need be; else None."""
+    """Return the block once it holds its contract, its heading or its lead given way if need be; else None."""
     if not block_problems(index, block, pool, values):
         return block
     if isinstance(block, ComposedLead):

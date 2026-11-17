@@ -63,6 +63,7 @@ from app.services.briefing.prose import (
 from app.services.briefing.publish import (
     PoolCounts,
     Push,
+    finish_started_delivery,
     publish_brief,
     publish_quiet_note,
     quiet_facts,
@@ -118,7 +119,7 @@ async def _send_quiet_week(
         clock,
         BRIEFING_KIND_WEEKLY,
         quiet_note(clock, BRIEFING_KIND_WEEKLY, facts),
-        PoolCounts.of(pool),
+        Push(push=True, pool=PoolCounts.of(pool)),
     )
 
 
@@ -135,6 +136,8 @@ async def _weekly(user_id: str) -> BriefingRunOutcome:
     clock = context.resolve_clock(user.timezone)
     if await already_delivered(user_id, clock, BRIEFING_KIND_WEEKLY):
         return BriefingRunOutcome.ALREADY_DELIVERED
+    if await finish_started_delivery(user, clock, BRIEFING_KIND_WEEKLY):
+        return BriefingRunOutcome.SENT
 
     # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
     dstate = dormancy.state_from_user(user)

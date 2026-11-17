@@ -19,7 +19,6 @@ from app.constants.briefing import (
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
-from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.briefing_models import (
@@ -74,6 +73,7 @@ from app.services.briefing.publish import (
     PoolCounts,
     Push,
     QuietFacts,
+    finish_started_delivery,
     last_was_quiet,
     publish_brief,
     publish_quiet_note,
@@ -178,6 +178,8 @@ async def _daily(user_id: str) -> BriefingRunOutcome:
     clock = context.resolve_clock(user.timezone)
     if await already_delivered(user_id, clock, BRIEFING_KIND_DAILY):
         return BriefingRunOutcome.ALREADY_DELIVERED
+    if await finish_started_delivery(user, clock, BRIEFING_KIND_DAILY):
+        return BriefingRunOutcome.SENT
 
     dstate = await wake_or_skip(user)
     if dstate is None:
@@ -331,12 +333,13 @@ async def _daily(user_id: str) -> BriefingRunOutcome:
             push=not _is_empty_day(payload) or ladder.wind_down is not None or winback.is_winback,
             signal_count=len(remembered),
             pool=PoolCounts.of(pool),
+            held_ids=carried_ids(gathered.pool, gathered.duplicate_held_ids),
         ),
     )
     await mark_placed_shown(
         user_id, [c for picked in laid.chosen.picked for _, c in picked], datetime.now(UTC)
     )
-    await _settle(user, ladder, gathered)
+    await _settle(user, ladder)
     return BriefingRunOutcome.SENT
 
 
@@ -361,19 +364,18 @@ async def _quiet_day(
         clock,
         BRIEFING_KIND_DAILY,
         quiet_note(clock, BRIEFING_KIND_DAILY, facts),
-        PoolCounts.of(pool),
+        Push(
+            push=True,
+            pool=PoolCounts.of(pool),
+            held_ids=carried_ids(gathered.pool, gathered.duplicate_held_ids),
+        ),
     )
-    await _settle(user, ladder, gathered)
+    await _settle(user, ladder)
     return BriefingRunOutcome.SENT
 
 
-async def _settle(
-    user: UserDocument, ladder: dormancy.IdleLadder, gathered: GatheredCandidates
-) -> None:
-    """Close a sent run: clear the held results it accounted for, the bootstrap and the ladder's rung."""
-    carried = carried_ids(gathered.pool, gathered.duplicate_held_ids)
-    if carried:
-        await pending_brief_items_repository.consume(user.id, carried)
+async def _settle(user: UserDocument, ladder: dormancy.IdleLadder) -> None:
+    """Close a sent run: clear the bootstrap and the ladder's rung."""
     await clear_bootstrap(user)
     await dormancy.leave_idle_ladder(user.id, ladder)
 

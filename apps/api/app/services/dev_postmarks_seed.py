@@ -8,7 +8,7 @@ editions draws one per other daily family, plus a weekly recap. Fixed dates key 
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -23,10 +23,15 @@ from app.constants.briefing import (
     BriefOutcome,
     hue_for_day,
 )
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import (
+    NOTIFICATION_KIND_BRIEFING_DAILY,
+    NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    NotificationChannel,
+)
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.briefing_models import (
+    BriefDelivery,
     BriefingEvent,
     BriefingItem,
     BriefingKind,
@@ -36,6 +41,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    DeliveryStep,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -45,6 +51,10 @@ from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
+_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+}
 # Anchored, not today-relative: a today-relative range would add a brief on every new day.
 _LAST_SEEDED_DATE = date(2026, 10, 1)
 # Editions run forward from the day after the last postmark; the recap closes their week.
@@ -430,6 +440,14 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
 
 
 async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
-    """Store the brief with its rendered edition, marked delivered in-app and by email."""
-    await store_brief(user.id, payload.date, kind, payload)
-    await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)
+    """Store the brief with its rendered edition, its delivery done in-app and by email."""
+    delivered = BriefDelivery(
+        push=True,
+        notification_kind=_SEEDED_NOTIFICATION_KINDS[kind],
+        done=list(DeliveryStep),
+        completed_at=datetime.now(UTC),
+    )
+    stored = await store_brief(user.id, payload.date, kind, payload, delivered)
+    await briefing_repository.record_step(
+        user.id, stored.id, DeliveryStep.NOTIFICATION, _SEEDED_CHANNELS
+    )

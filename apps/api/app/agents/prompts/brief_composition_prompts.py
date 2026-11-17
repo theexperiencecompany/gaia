@@ -47,9 +47,8 @@ open; never lead with it when anything new needs the user.
 
 ## The blocks
 - lead: at most one, and only as block 1. The one thing most worth starting the day on, something
-  the user acts on (its item carries an action), and only when GAIA can concretely help with it. offer is what GAIA does when they say "Let's do it": one
-  short sentence naming the act, at most {offer_max} characters ("Draft the reply to Priya"). No
-  lead is better than a lead for its own sake. A person waiting, money overdue or something broken
+  the user acts on (its item carries an action), and only when GAIA can concretely help with it:
+  GAIA offers its one act for that action under the lead. No lead is better than a lead for its own sake. A person waiting, money overdue or something broken
   outranks a meeting; a routine meeting (a standup, a 1:1, a recurring sync) never leads.
 - items: a group of 1 to {items_per_block} items, all in one state, under a heading you write,
   at most {heading_max}
@@ -101,7 +100,7 @@ open; never lead with it when anything new needs the user.
   their days, spark one); bar draws one series of at most {max_bars} points; stacked_bar stacks
   two or more series of one unit that share their days or categories.
 - At most {max_blocks} blocks, {max_items} items in all and {max_charts} charts.
-- In headings, offers, chart titles, takeaways and notes you never type a figure, a time or a
+- In headings, chart titles, takeaways and notes you never type a figure, a time or a
   date. Write a slot and code fills it: [[fact:N]] is item N's title, [[fact:N.time]] its time
   (only on an item whose line shows "at" or "due"), [[series:ID.FIELD]] one of the figures
   listed on series ID (total, latest, peak, peak_at, low). Counting in words what you placed
@@ -148,13 +147,14 @@ Calendar] calendar event: Weekly sync | at 10:00 AM · q1 | Lena Ortiz, in Slack
 live at noon. Which hero line do you want?" · stripe_open_invoice_usd | open invoice, by category:
 INV-31 Hooli 2000 · INV-32 Pied Piper 350
 {{"blocks": [
-  {{"kind": "lead", "items": [{{"id": 2, "action": "reply", "title": "Northwind hero line",
-    "detail": "Lena ships at noon and needs your pick"}}], "offer": "Send Lena the reply I drafted"}},
+  {{"kind": "lead", "item": {{"id": 2, "action": "reply", "title": "Northwind hero line",
+    "detail": "Lena ships at noon and needs your pick"}}}},
   {{"kind": "quote", "quote_id": "q1"}},
   {{"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
     {{"id": 5, "action": "review", "title": "Webhook retries bug", "detail": null}}]}}
 ]}}
-Why: Lena is waiting and live at noon, so she leads, in her own words. Item 7 is the lead's offer.
+Why: Lena is waiting and live at noon, so she leads, in her own words; item 7, the reply GAIA
+drafted, is what her lead offers.
 The receipt is noise, the weekly sync is routine, and two invoices read fine without a chart.
 
 2. A quiet day for a writer with a goal. Pool, in part: 3. [GAIA] done: Agent query letter
@@ -176,9 +176,8 @@ Wednesday, low 3, latest 19 · 6. [Shopify] waiting on you, important: Checkout 
 | 31 failed orders since 6:00 | action review · 8. [Google Calendar] calendar event: Standup |
 at 9:30 AM · 11. [GAIA] in progress: Restock order for the linen line | outcome started
 {{"blocks": [
-  {{"kind": "lead", "items": [{{"id": 6, "action": "review", "title": "Mobile checkout errors",
-    "detail": "Orders have been failing since early morning"}}],
-    "offer": "Pull the failing orders and draft a customer note"}},
+  {{"kind": "lead", "item": {{"id": 6, "action": "review", "title": "Mobile checkout errors",
+    "detail": "Orders have been failing since early morning"}}}},
   {{"kind": "chart", "series_ids": ["zendesk_tickets"], "chart": "line",
     "title": "Support tickets this week",
     "takeaway": "[[series:zendesk_tickets.latest]] today against a usual handful: the checkout errors are reaching customers."}},

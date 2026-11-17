@@ -7,6 +7,7 @@ from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
     BriefingCardData,
     BriefingModel,
+    BriefingPublicView,
     BriefingView,
     EditionImage,
 )
@@ -65,4 +66,20 @@ def briefing_card(view: BriefingView) -> BriefingCardData:
         edition_name=view.edition_name,
         stamp_city_name=view.stamp_city_name,
         needs_you_count=view.needs_you_count,
+    )
+
+
+async def public_view(briefing: BriefingModel) -> BriefingPublicView:
+    """Project the brief for a viewer who is not its owner: the edition and its front page alone."""
+    payload = briefing.payload
+    return BriefingPublicView(
+        kind=briefing.kind,
+        kicker=payload.kicker,
+        date=payload.date,
+        headline=payload.headline,
+        lede=payload.lede,
+        caption=payload.caption,
+        mood=payload.mood,
+        hue=payload.hue,
+        edition=await edition_image(briefing),
     )

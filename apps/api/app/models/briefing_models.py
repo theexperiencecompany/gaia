@@ -7,6 +7,7 @@ are persisted in the ``briefings`` collection, one per user/date/kind.
 """
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Literal, Self
 import uuid
 
@@ -405,6 +406,29 @@ class EditionImage(EditionLayout):
     image_url: str = Field(description="A signed URL that loads the edition image for a year.")
 
 
+class DeliveryStep(StrEnum):
+    """One way a brief goes out; each is recorded on the brief the moment it succeeds."""
+
+    #: The notification orchestrator: in-app, plus email when wanted.
+    NOTIFICATION = "notification"
+    #: GAIA's message in the user's Briefings conversation.
+    CONVERSATION = "conversation"
+    #: The edition posted into the user's chat app.
+    CHAT = "chat"
+
+
+class BriefDelivery(BaseModel):
+    """How a stored brief goes out and how far it got, so a retried run finishes it instead of resending it."""
+
+    #: Whether it goes beyond in-app: email when wanted, and the chat app.
+    push: bool
+    notification_kind: str
+    #: The held results it carries, consumed in the step that completes its delivery.
+    held_ids: list[str] = Field(default_factory=list)
+    done: list[DeliveryStep] = Field(default_factory=list)
+    completed_at: datetime | None = None
+
+
 class BriefingModel(UserScopedDocument):
     """Persisted briefing document (``briefings`` collection).
 
@@ -426,6 +450,8 @@ class BriefingModel(UserScopedDocument):
     delivered_channels: list[str] = Field(default_factory=list)
     #: The stored edition render; None for a quiet day's note, which has none.
     edition: EditionRender | None = None
+    #: None only on a brief whose delivery was never planned (a seed, a legacy row).
+    delivery: BriefDelivery | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -465,6 +491,26 @@ class BriefingView(BaseModel):
     needs_you_count: int = Field(
         ge=0, description="Items in the brief's Needs you section, as its edition lists them."
     )
+
+
+class BriefingPublicView(BaseModel):
+    """What anyone holding a brief's link sees: its edition and its front page, never its items or calendar.
+
+    The owner sees the whole brief (BriefingView); a public viewer sees what the edition prints
+    on its face, so no item text, calendar title or link beyond the image reaches them.
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    kind: BriefingKind
+    kicker: str
+    date: str
+    headline: str
+    lede: str
+    caption: str
+    mood: BriefingMood
+    hue: int
+    edition: EditionImage | None
 
 
 class BriefingCardData(BaseModel):

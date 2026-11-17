@@ -22,7 +22,7 @@ from app.constants.briefing import (
 )
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
-from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.briefing_models import BriefingPayload, DeliveryStep, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -50,10 +50,10 @@ class Seeded:
 
     def stored(self) -> list[_Call]:
         """Return the upserts that store each brief with its edition, not the earlier one its link needs."""
-        return [call for call in self.upsert.await_args_list if call.kwargs["edition"]]
+        return [call for call in self.upsert.await_args_list if call.args[0].edition]
 
     def payloads(self) -> list[BriefingPayload]:
-        return [call.args[3] for call in self.stored()]
+        return [call.args[0].payload for call in self.stored()]
 
 
 @pytest.fixture
@@ -85,10 +85,11 @@ def seeded() -> Iterator[Seeded]:
             f"{MODULE}.briefing_repository.briefing_id_for",
             AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),
         ),
-        patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
         patch(
-            f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock
-        ) as deliver,
+            f"{MODULE}.briefing_repository.upsert_briefing",
+            AsyncMock(side_effect=lambda brief: brief),
+        ) as upsert,
+        patch(f"{MODULE}.briefing_repository.record_step", new_callable=AsyncMock) as deliver,
     ):
         yield Seeded(rendered, owners, upsert, deliver)
 
@@ -127,18 +128,24 @@ async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_i
         seeded.deliver.await_args_list,
         strict=True,
     ):
-        assert first_call.args == upsert_call.args
-        assert first_call.kwargs == {"briefing_id": f"brief_{payload.date}", "edition": None}
-        assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
+        first, brief = first_call.args[0], upsert_call.args[0]
+        assert first.edition is None
+        assert (first.id, first.user_id, first.kind) == (brief.id, brief.user_id, brief.kind)
+        assert (brief.user_id, brief.date, brief.kind) == (user.id, payload.date, "daily")
+        assert brief.payload == payload
         assert payload.link == SHORT_LINK
-        assert upsert_call.kwargs == {
-            "briefing_id": f"brief_{payload.date}",
-            "edition": EditionRender(key=f"key-brief_{payload.date}"),
-        }
+        assert brief.id == f"brief_{payload.date}"
+        assert brief.edition == EditionRender(key=f"key-brief_{payload.date}")
+        delivered = brief.delivery
+        assert delivered is not None
+        assert (set(delivered.done), delivered.completed_at is not None) == (
+            set(DeliveryStep),
+            True,
+        )
         assert deliver_call.args == (
             user.id,
-            payload.date,
-            BRIEFING_KIND_DAILY,
+            f"brief_{payload.date}",
+            DeliveryStep.NOTIFICATION,
             [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value],
         )
 
@@ -205,7 +212,7 @@ NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
 async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
     await seed_dev_editions(user, 4)
 
-    kinds = [call.args[2] for call in seeded.stored()]
+    kinds = [call.args[0].kind for call in seeded.stored()]
     payloads = seeded.payloads()
     assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
     assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]
