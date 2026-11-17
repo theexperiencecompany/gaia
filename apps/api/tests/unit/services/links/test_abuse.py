@@ -7,6 +7,7 @@ one-per-reporter index runs over real Mongo in tests/contracts/test_link_reports
 
 from collections.abc import Awaitable, Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, _Call, call, patch
 
@@ -21,6 +22,7 @@ from app.constants.short_links import (
     RESOLVE_MISS_KEY,
     RESOLVE_MISS_LOCKOUT_SECONDS,
     RESOLVE_MISS_WINDOW_SECONDS,
+    TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS,
 )
 from app.models.short_link_models import (
     LinkAccess,
@@ -32,6 +34,7 @@ from app.models.short_link_models import (
     ShortLinkTargetType,
     ShortLinkUpdate,
 )
+from app.models.user_models import UserDocument
 from app.services.email.models import EmailMessage
 from app.services.links import abuse
 from app.services.support_service import SUPPORT_EMAILS
@@ -120,9 +123,17 @@ class TestGuessingLockout:
 class Seams:
     reports: MagicMock
     links: MagicMock
+    users: MagicMock
     capture: MagicMock
     send_email: AsyncMock
     delete_snapshot: AsyncMock
+
+
+ESTABLISHED = UserDocument(
+    email="r@example.com",
+    created_at=datetime.now(UTC) - timedelta(days=TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS + 1),
+)
+FRESH = UserDocument(email="new@example.com", created_at=datetime.now(UTC) - timedelta(hours=1))
 
 
 @pytest.fixture
@@ -130,15 +141,18 @@ def seams() -> Iterator[Seams]:
     with (
         patch(f"{_MODULE}.link_report_repository") as reports,
         patch(f"{_MODULE}.short_link_repository") as links,
+        patch(f"{_MODULE}.user_repository") as users,
         patch(f"{_MODULE}.capture") as capture,
         patch(f"{_MODULE}.send_email", AsyncMock()) as send_email,
         patch(f"{_MODULE}.delete_snapshot", AsyncMock()) as delete_snapshot,
     ):
         reports.add = AsyncMock(return_value=True)
         reports.signed_in_reporters = AsyncMock(return_value=1)
+        reports.trusted_reporters = AsyncMock(return_value=1)
+        users.get = AsyncMock(return_value=ESTABLISHED)
         links.update = AsyncMock()
         links.revoke = AsyncMock()
-        yield Seams(reports, links, capture, send_email, delete_snapshot)
+        yield Seams(reports, links, users, capture, send_email, delete_snapshot)
 
 
 def _reported(signed_in: bool = True) -> _Call:
@@ -157,30 +171,59 @@ def _suspended() -> _Call:
     )
 
 
+async def _report(link: ShortLink, reporter_id: str | None = "reporter-1") -> None:
+    await abuse.report(
+        link, ReportReason.PHISHING, reporter_id or "address", reporter_id=reporter_id
+    )
+
+
 class TestReport:
-    async def test_a_report_is_recorded_and_counted(self, seams: Seams) -> None:
-        await abuse.report(_link(), ReportReason.PHISHING, "reporter-1", signed_in=False)
+    async def test_a_signed_out_report_is_recorded_and_counted_but_weighs_nothing(
+        self, seams: Seams
+    ) -> None:
+        await _report(_link(), reporter_id=None)
 
         (stored,) = seams.reports.add.await_args.args
-        assert (stored.slug, stored.reason, stored.reporter_key, stored.signed_in) == (
+        assert (
+            stored.slug,
+            stored.reason,
+            stored.reporter_key,
+            stored.signed_in,
+            stored.trusted,
+        ) == (
             SLUG,
             ReportReason.PHISHING,
-            "reporter-1",
+            "address",
+            False,
             False,
         )
         assert seams.capture.call_args_list == [_reported(signed_in=False)]
-        seams.reports.signed_in_reporters.assert_awaited_once_with(SLUG)
+        seams.reports.trusted_reporters.assert_not_awaited()
         seams.links.update.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("account", "trusted"),
+        [(ESTABLISHED, True), (FRESH, False), (None, False), (UserDocument(), False)],
+    )
+    async def test_a_reporter_is_trusted_only_with_an_established_account(
+        self, seams: Seams, account: UserDocument | None, trusted: bool
+    ) -> None:
+        seams.users.get.return_value = account
+
+        await _report(_link())
+
+        seams.users.get.assert_awaited_once_with("reporter-1")
+        assert seams.reports.add.await_args.args[0].trusted is trusted
 
     async def test_a_repeat_report_from_the_same_reporter_changes_nothing(
         self, seams: Seams
     ) -> None:
         seams.reports.add.return_value = False
 
-        await abuse.report(_link(), ReportReason.PHISHING, "reporter-1", signed_in=True)
+        await _report(_link())
 
         seams.capture.assert_not_called()
-        seams.reports.signed_in_reporters.assert_not_awaited()
+        seams.reports.trusted_reporters.assert_not_awaited()
         seams.links.update.assert_not_awaited()
 
     @pytest.mark.parametrize(
@@ -193,7 +236,7 @@ class TestReport:
             (None, LinkAccess.PUBLIC, 5),
         ],
     )
-    async def test_the_threshold_th_signed_in_reporter_suspends_the_link(
+    async def test_the_threshold_th_trusted_reporter_suspends_the_link(
         self,
         seams: Seams,
         snapshot: LinkSnapshot | None,
@@ -201,31 +244,58 @@ class TestReport:
         threshold: int,
     ) -> None:
         link = _link(snapshot=snapshot, access=access)
-        seams.reports.signed_in_reporters.return_value = threshold - 1
-        await abuse.report(link, ReportReason.PHISHING, "reporter-1", signed_in=True)
+        seams.reports.trusted_reporters.return_value = threshold - 1
+        await _report(link)
         seams.links.update.assert_not_awaited()
 
-        seams.reports.signed_in_reporters.return_value = threshold
-        await abuse.report(link, ReportReason.PHISHING, "reporter-2", signed_in=True)
+        seams.reports.trusted_reporters.return_value = threshold
+        await _report(link, "reporter-2")
 
         seams.links.update.assert_awaited_once_with(
             SLUG, user_id=OWNER, update=ShortLinkUpdate(suspended=True)
         )
         assert seams.capture.call_args_list == [_reported(), _reported(), _suspended()]
 
-    async def test_a_suspended_link_is_not_suspended_again(self, seams: Seams) -> None:
-        seams.reports.signed_in_reporters.return_value = 10
+    async def test_fresh_accounts_reaching_the_threshold_queue_one_review(
+        self, seams: Seams
+    ) -> None:
+        seams.users.get.return_value = FRESH
+        seams.reports.trusted_reporters.return_value = 0
+        seams.reports.signed_in_reporters.return_value = 3
 
-        await abuse.report(_link(suspended=True), ReportReason.PHISHING, "r", signed_in=True)
+        async with captured_wide_event() as event:
+            await _report(_link(snapshot=_snapshot(RenderMode.FRAME_ACTIVE)))
+        seams.reports.signed_in_reporters.return_value = 4
+        await _report(_link(snapshot=_snapshot(RenderMode.FRAME_ACTIVE)), "reporter-4")
+
+        seams.links.update.assert_not_awaited()
+        assert event["warnings"] == [
+            {
+                "msg": "short_link.review_requested",
+                "user_id": OWNER,
+                "target_type": "session_artifact",
+                "slug_hash": hash_short_link_slug(SLUG),
+                "reporters": 3,
+            }
+        ]
+        assert {c.args[0].subject for c in seams.send_email.await_args_list} == {
+            "A shared GAIA link needs review"
+        }
+        assert seams.send_email.await_count == len(SUPPORT_EMAILS)
+
+    async def test_a_suspended_link_is_not_suspended_again(self, seams: Seams) -> None:
+        seams.reports.trusted_reporters.return_value = 10
+
+        await _report(_link(suspended=True))
 
         seams.links.update.assert_not_awaited()
         seams.send_email.assert_not_awaited()
 
     async def test_a_suspension_emails_every_support_inbox(self, seams: Seams) -> None:
-        seams.reports.signed_in_reporters.return_value = 5
+        seams.reports.trusted_reporters.return_value = 5
 
         async with captured_wide_event() as event:
-            await abuse.report(_link(), ReportReason.PHISHING, "r", signed_in=True)
+            await _report(_link())
 
         assert event["errors"] == [
             {
@@ -258,9 +328,9 @@ class TestReport:
         self, seams: Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
-        seams.reports.signed_in_reporters.return_value = 5
+        seams.reports.trusted_reporters.return_value = 5
 
-        await abuse.report(_link(), ReportReason.PHISHING, "r", signed_in=True)
+        await _report(_link())
 
         seams.links.update.assert_awaited_once()
         seams.send_email.assert_not_awaited()

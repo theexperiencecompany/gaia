@@ -299,7 +299,7 @@ async def report_link_route(
     link = await openable_link(await get_link(slug), viewer)
     # One report per account, or per address for a signed-out reporter, however their browser varies.
     reporter_key = viewer.user_id or hash_link_viewer(viewer.ip, "")
-    await abuse.report(link, body.reason, reporter_key, signed_in=viewer.user_id is not None)
+    await abuse.report(link, body.reason, reporter_key, reporter_id=viewer.user_id)
 
 
 @router.get(

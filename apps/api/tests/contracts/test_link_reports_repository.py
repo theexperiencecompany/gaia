@@ -12,9 +12,15 @@ from app.db.repositories.link_reports import LinkReportsRepository
 from app.models.short_link_models import LinkReport, ReportReason
 
 
-def _report(slug: str, reporter_key: str, *, signed_in: bool = True) -> LinkReport:
+def _report(
+    slug: str, reporter_key: str, *, signed_in: bool = True, trusted: bool = False
+) -> LinkReport:
     return LinkReport(
-        slug=slug, reason=ReportReason.PHISHING, reporter_key=reporter_key, signed_in=signed_in
+        slug=slug,
+        reason=ReportReason.PHISHING,
+        reporter_key=reporter_key,
+        signed_in=signed_in,
+        trusted=trusted,
     )
 
 
@@ -62,3 +68,14 @@ async def test_only_signed_in_reporters_of_that_link_are_counted(
 
     assert await repo.signed_in_reporters("s1") == 2
     assert await repo.signed_in_reporters("unreported") == 0
+
+
+async def test_only_trusted_reporters_of_that_link_are_counted_as_trusted(
+    repo: LinkReportsRepository,
+) -> None:
+    await repo.add(_report("s1", "user-a", trusted=True))
+    await repo.add(_report("s1", "user-b"))
+    await repo.add(_report("s2", "user-c", trusted=True))
+
+    assert await repo.trusted_reporters("s1") == 1
+    assert await repo.signed_in_reporters("s1") == 2

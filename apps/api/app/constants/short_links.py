@@ -57,6 +57,8 @@ RESOLVE_MISS_LOCKOUT_SECONDS = 3600
 RESOLVE_MISS_KEY = "short_link:misses:{viewer}"
 RESOLVE_LOCKOUT_KEY = "short_link:lockout:{viewer}"
 
-# Reports: distinct reporters that suspend a link with active or downloadable content, and any other.
+# Reports: distinct trusted reporters that suspend a link with active or downloadable content, and any other.
 ACTIVE_CONTENT_REPORT_THRESHOLD = 3
 REPORT_THRESHOLD = 5
+#: Only accounts at least this old count toward suspension; younger ones' reports queue a review instead.
+TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS = 30

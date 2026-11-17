@@ -462,8 +462,9 @@ class LinkReport(MongoDocument):
     reason: ReportReason
     #: The signed-in reporter's user id, else a keyed hash of their address and browser.
     reporter_key: str
-    #: Only signed-in reports suspend a link: accounts cost more to fake than addresses.
     signed_in: bool
+    #: The reporter's account is old enough to count toward suspension; fresh accounts are cheap.
+    trusted: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from bson import ObjectId
 from fastapi import FastAPI
 from httpx import AsyncClient, Response
 from PIL import Image
@@ -21,7 +22,7 @@ import pytest
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
-from app.constants.short_links import MAX_RESOLVE_MISSES
+from app.constants.short_links import MAX_RESOLVE_MISSES, TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
@@ -808,15 +809,50 @@ class TestSharedFiles:
         assert (await client.get(thumb_path, headers={"host": f"{cid}.u.test"})).status_code == 404
 
 
+async def _accounts(mongo_db, users: list[AuthenticatedUser], age: timedelta) -> None:
+    """Store users as accounts made age ago."""
+    created_at = datetime.now(UTC) - age
+    await mongo_db["users"].delete_many({"_id": {"$in": [ObjectId(u.user_id) for u in users]}})
+    await mongo_db["users"].insert_many(
+        [{"_id": ObjectId(u.user_id), "email": u.email, "created_at": created_at} for u in users]
+    )
+
+
+ESTABLISHED = timedelta(days=TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS + 1)
+
+
 class TestReportsAndTakedown:
-    async def test_three_reporters_suspend_an_active_file_link(
+    async def test_three_fresh_accounts_queue_a_review_but_never_suspend(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        store: LocalVolumeBlobStore,
+        mongo_db,
+    ) -> None:
+        await _accounts(mongo_db, REPORTERS, timedelta(hours=1))
+        slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
+
+        with patch("app.services.links.abuse.send_email", AsyncMock()) as send_email:
+            for reporter in REPORTERS:
+                viewer.user = reporter
+                await client.post(f"/api/v1/l/{slug}/report", json={"reason": "phishing"})
+
+        assert (await _stored(slug)).suspended is False
+        assert (await _open(client, slug)).status_code == 200
+        (sent,) = {c.args[0].subject for c in send_email.await_args_list}
+        assert sent == "A shared GAIA link needs review"
+
+    async def test_three_established_reporters_suspend_an_active_file_link(
         self,
         client: AsyncClient,
         viewer: Viewer,
         workspace: Workspace,
         store: LocalVolumeBlobStore,
         captured: list,
+        mongo_db,
     ) -> None:
+        await _accounts(mongo_db, REPORTERS, ESTABLISHED)
         slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
 
         for reporter in [REPORTERS[0], REPORTERS[0], REPORTERS[1]]:
@@ -847,20 +883,23 @@ class TestReportsAndTakedown:
         ).status_code == 204
         link = await _stored(slug)
         for n in range(5):
-            await abuse.report(link, ReportReason.PHISHING, f"address-{n}", signed_in=False)
+            await abuse.report(link, ReportReason.PHISHING, f"address-{n}", reporter_id=None)
         assert (await _stored(slug)).suspended is False
 
     async def test_a_link_without_active_content_needs_five_reporters(
-        self, client: AsyncClient, viewer: Viewer
+        self, client: AsyncClient, viewer: Viewer, mongo_db
     ) -> None:
+        reporters = [
+            AuthenticatedUser(user_id=f"507f1f77bcf86cd7994391{n:02d}", auth_provider="workos")
+            for n in range(5)
+        ]
+        await _accounts(mongo_db, reporters, ESTABLISHED)
         slug = (await _share(client, TODO, await _todo()))["slug"]
-        for n in range(4):
-            viewer.user = AuthenticatedUser(
-                user_id=f"507f1f77bcf86cd7994391{n:02d}", auth_provider="workos"
-            )
+        for reporter in reporters[:4]:
+            viewer.user = reporter
             await client.post(f"/api/v1/l/{slug}/report", json={"reason": "other"})
         assert (await _stored(slug)).suspended is False
-        viewer.user = AuthenticatedUser(user_id="507f1f77bcf86cd799439199", auth_provider="workos")
+        viewer.user = reporters[4]
         await client.post(f"/api/v1/l/{slug}/report", json={"reason": "other"})
         assert (await _stored(slug)).suspended is True
 

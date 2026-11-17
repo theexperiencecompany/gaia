@@ -1,5 +1,7 @@
 """Guessing lockout, reports, automatic suspension and admin takedown of heygaia.link links."""
 
+from datetime import UTC, datetime, timedelta
+
 from app.config.settings import settings
 from app.constants.email import SUPPORT_SENDER
 from app.constants.short_links import (
@@ -10,10 +12,12 @@ from app.constants.short_links import (
     RESOLVE_MISS_KEY,
     RESOLVE_MISS_LOCKOUT_SECONDS,
     RESOLVE_MISS_WINDOW_SECONDS,
+    TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS,
 )
 from app.db.redis import redis_cache
 from app.db.repositories.link_reports import link_report_repository
 from app.db.repositories.short_links import short_link_repository
+from app.db.repositories.users import user_repository
 from app.models.short_link_models import (
     LinkAccess,
     LinkReport,
@@ -31,6 +35,7 @@ from app.services.links.service import build_url
 from app.services.support_service import SUPPORT_EMAILS
 from app.utils.errors import AppError
 from app.utils.log_identifiers import hash_short_link_slug
+from app.utils.timezone import as_utc
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import ShortLinkReported, ShortLinkTakenDown
 from shared.py.wide_events import log
@@ -75,8 +80,40 @@ def _threshold(link: ShortLink) -> int:
     return REPORT_THRESHOLD
 
 
-async def _notify_support(link: ShortLink, reporters: int) -> None:
-    """Tell GAIA's support inbox a link was suspended; self-host has no inbox, so it only logs."""
+async def _email_support(subject: str, opening: str, link: ShortLink) -> None:
+    """Email GAIA's support inboxes about a link; self-host has none, so the caller's log is all."""
+    if not settings.deployment.gaia_support:
+        return
+    html = (
+        f"<p>{build_url(link.slug)} {opening}</p>"
+        f"<p>Owner: {link.user_id}. Type: {link.target_type.value}.</p>"
+        "<p>Restore it with <code>apps/api/scripts/link_takedown.py --slug SLUG --restore</code>, "
+        "or take it down with <code>--reason admin</code>.</p>"
+    )
+    for address in SUPPORT_EMAILS:
+        await send_email(
+            EmailMessage(sender=SUPPORT_SENDER, to=[address], subject=subject, html=html)
+        )
+
+
+async def _is_trusted(reporter_id: str | None) -> bool:
+    """Whether a reporter's account is old enough that three of them are not cheap to make."""
+    if reporter_id is None:
+        return False
+    account = await user_repository.get(reporter_id)
+    created = as_utc(account.created_at) if account is not None else None
+    established = datetime.now(UTC) - timedelta(days=TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS)
+    return created is not None and created <= established
+
+
+async def _suspend(link: ShortLink, reporters: int) -> None:
+    await short_link_repository.update(
+        link.slug, user_id=link.user_id, update=ShortLinkUpdate(suspended=True)
+    )
+    capture(
+        UserId(link.user_id),
+        ShortLinkTakenDown(target_type=link.target_type.value, reason="reports_threshold"),
+    )
     log.error(
         "short_link.suspended",
         user_id=link.user_id,
@@ -84,35 +121,45 @@ async def _notify_support(link: ShortLink, reporters: int) -> None:
         slug_hash=hash_short_link_slug(link.slug),
         reporters=reporters,
     )
-    if not settings.deployment.gaia_support:
-        return
-    html = (
-        f"<p>{build_url(link.slug)} was suspended after {reporters} reports.</p>"
-        f"<p>Owner: {link.user_id}. Type: {link.target_type.value}.</p>"
-        "<p>Restore it with <code>apps/api/scripts/link_takedown.py --slug SLUG --restore</code>, "
-        "or take it down with <code>--reason admin</code>.</p>"
+    await _email_support(
+        "A shared GAIA link was suspended", f"was suspended after {reporters} reports.", link
     )
-    for address in SUPPORT_EMAILS:
-        await send_email(
-            EmailMessage(
-                sender=SUPPORT_SENDER,
-                to=[address],
-                subject="A shared GAIA link was suspended",
-                html=html,
-            )
-        )
+
+
+async def _queue_review(link: ShortLink, reporters: int) -> None:
+    log.warning(
+        "short_link.review_requested",
+        user_id=link.user_id,
+        target_type=link.target_type.value,
+        slug_hash=hash_short_link_slug(link.slug),
+        reporters=reporters,
+    )
+    await _email_support(
+        "A shared GAIA link needs review",
+        f"was reported by {reporters} accounts too new to suspend it; it is still live.",
+        link,
+    )
 
 
 async def report(
-    link: ShortLink, reason: ReportReason, reporter_key: str, *, signed_in: bool
+    link: ShortLink, reason: ReportReason, reporter_key: str, *, reporter_id: str | None
 ) -> None:
-    """Record a report; the threshold-th distinct signed-in reporter suspends the link.
+    """Record a report from reporter_id's account (None when signed out); enough trusted reporters suspend the link.
 
-    A signed-out report is kept and counted in analytics but never suspends: three
-    addresses are cheap, three accounts are not.
+    Only accounts at least TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS old count toward
+    suspension. When the threshold is reached by signed-in reporters who are not all
+    trusted, the link stays live and support is asked to review it, once.
     """
+    trusted = await _is_trusted(reporter_id)
+    signed_in = reporter_id is not None
     added = await link_report_repository.add(
-        LinkReport(slug=link.slug, reason=reason, reporter_key=reporter_key, signed_in=signed_in)
+        LinkReport(
+            slug=link.slug,
+            reason=reason,
+            reporter_key=reporter_key,
+            signed_in=signed_in,
+            trusted=trusted,
+        )
     )
     if not added:
         return
@@ -122,17 +169,16 @@ async def report(
             target_type=link.target_type.value, reason=reason.value, reporter_signed_in=signed_in
         ),
     )
-    reporters = await link_report_repository.signed_in_reporters(link.slug)
-    if link.suspended or reporters < _threshold(link):
+    if link.suspended or not signed_in:
         return
-    await short_link_repository.update(
-        link.slug, user_id=link.user_id, update=ShortLinkUpdate(suspended=True)
-    )
-    capture(
-        UserId(link.user_id),
-        ShortLinkTakenDown(target_type=link.target_type.value, reason="reports_threshold"),
-    )
-    await _notify_support(link, reporters)
+    threshold = _threshold(link)
+    trusted_reporters = await link_report_repository.trusted_reporters(link.slug)
+    if trusted_reporters >= threshold:
+        await _suspend(link, trusted_reporters)
+        return
+    signed_in_reporters = await link_report_repository.signed_in_reporters(link.slug)
+    if not trusted and signed_in_reporters == threshold:
+        await _queue_review(link, signed_in_reporters)
 
 
 async def take_down(link: ShortLink) -> None:
