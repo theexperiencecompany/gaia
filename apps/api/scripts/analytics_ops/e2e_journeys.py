@@ -265,11 +265,16 @@ def chat(stack: Stack) -> None:
             raise JourneyError("/chat-stream ended without its [DONE] frame")
 
 
-#: A brief the artifact model turns into a small grounded dashboard (real model: the sim stub
-#: speaks chat completions only, and create_artifact calls the Responses API).
+#: The program the sim stub's Responses route writes for the brief: grounded in its figures.
+ARTIFACT_PROGRAM = (
+    'root = Artifact("Analytics e2e launch", "Week one", [], [callout1])\n'
+    'callout1 = Callout("good", "Sign-ups beat the target", '
+    '"Sign-ups reached 1,840 against a target of 1,500.")'
+)
+#: A brief create_artifact's model turns into a small grounded dashboard, scripting its reply.
 ARTIFACT_BRIEF = (
     "Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: "
-    "310, 420, 270, 230, 210, 190, 210. Paid: 96."
+    f"310, 420, 270, 230, 210, 190, 210. Paid: 96. [[say:{ARTIFACT_PROGRAM}]]"
 )
 #: Someone other than the owner opening the shared link: the owner's own opens never count.
 ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"

@@ -4,18 +4,19 @@ GAIA Cloud's usercontent Worker (on *.heygaia.link) and a self-host's Caddy
 site block forward here. A request is served only when the host it arrived on
 is its snapshot's content-origin host, so the same path reached on the API or
 app host (which carry the session cookie) serves nothing. The Worker cannot
-keep the browser's Host, so it names it in X-Gaia-Content-Host beside the
-internal token; a direct caller without the token cannot.
+keep the browser's Host, so it names it in X-Gaia-Content-Host beside
+LINK_CONTENT_EDGE_TOKEN, a secret only it holds; any other caller cannot.
 """
 
 from datetime import UTC, datetime
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.v1.middleware.rate_limiter import carries_internal_token
-from app.constants.http import CONTENT_HOST_HEADER
+from app.config.settings import settings
+from app.constants.http import CONTENT_EDGE_HEADER, CONTENT_HOST_HEADER
 from app.constants.short_links import THUMBNAIL_PATH
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import LinkAccess, ShortLink
@@ -43,10 +44,18 @@ def _not_found() -> AppError:
     return AppError(message="Not found", status_code=404, code="link_content_not_found")
 
 
-def _arrived_on_origin(request: Request, content_id: str) -> bool:
-    forwarded = (
-        request.headers.get(CONTENT_HOST_HEADER) if carries_internal_token(request) else None
+def _from_content_edge(request: Request) -> bool:
+    expected = settings.LINK_CONTENT_EDGE_TOKEN
+    presented = request.headers.get(CONTENT_EDGE_HEADER)
+    return (
+        expected is not None
+        and presented is not None
+        and secrets.compare_digest(presented.encode(), expected.encode())
     )
+
+
+def _arrived_on_origin(request: Request, content_id: str) -> bool:
+    forwarded = request.headers.get(CONTENT_HOST_HEADER) if _from_content_edge(request) else None
     host = forwarded or request.headers.get("host")
     return host is not None and host.lower() == content_origin_host(content_id)
 

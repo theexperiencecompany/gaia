@@ -595,8 +595,10 @@ def test_an_arq_job_failure_is_left_to_the_arq_integration() -> None:
     cap_exc.assert_not_called()
 
 
-@pytest.mark.parametrize("name", ["x-gaia-internal", "X-Gaia-Internal"])
-def test_the_internal_api_token_never_reaches_sentry(name: str) -> None:
+@pytest.mark.parametrize(
+    "name", ["x-gaia-internal", "X-Gaia-Internal", "x-gaia-content-edge", "X-Gaia-Content-Edge"]
+)
+def test_a_shared_secret_header_never_reaches_sentry(name: str) -> None:
     """send_default_pii keeps unknown headers, and the SDK scrubber matches no such name."""
     raw = _event(extra={"trace_id": "t1"})
     raw["request"] = {"headers": {name: "the-token", "user-agent": "node"}}

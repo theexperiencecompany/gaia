@@ -27,7 +27,9 @@ Wire it into GAIA (development only) with the one canonical switch:
                            # stub address (defaults to http://localhost:9797/api/v1)
 
 Both ``/chat/completions`` and ``/api/v1/chat/completions`` are served so the
-override URL works with or without the ``/api/v1`` suffix.
+override URL works with or without the ``/api/v1`` suffix. The OpenAI Responses
+API (``/responses``, ``/api/v1/responses``) answers ``create_artifact``'s model
+call the same way, from the directives in its ``input``: text only.
 
 Unit tests (parser + turn-counting + wire shapes), no repo project needed:
 
@@ -46,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from directives import (
     ChatRequest,
     DirectiveError,
+    Response,
     SayResponse,
     _last_user_index,
     _script_message_index,
@@ -53,10 +56,13 @@ from directives import (
     message_text,
     parse_directives,
     parse_request,
+    parse_responses_request,
     resolve_response,
+    resolve_text_response,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from responses_wire import build_response, response_sse_lines
 import uvicorn
 from wire import build_chat_completion, prompt_tokens, sse_lines
 
@@ -112,40 +118,51 @@ def _log_request(parsed: ChatRequest) -> None:
     )
 
 
-# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
-async def _complete(request: Request) -> JSONResponse | StreamingResponse:
-    body = await request.json()
-    parsed = parse_request(body)
-    _log_request(parsed)
+def _directive_error(exc: DirectiveError) -> JSONResponse:
+    # Fail loud: a malformed directive is an authoring bug, never a silent default.
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"message": str(exc), "type": "directive_error"}},
+    )
+
+
+def _unstreamable_fault(response: Response, stream: bool) -> JSONResponse | None:
+    """Return the scripted fault as the whole response when no text streams before it breaks."""
+    if not isinstance(response, SayResponse) or response.fail is None:
+        return None
+    if stream and response.text:
+        return None
+    # Shaped as OpenRouter's error body (its SDK rejects one without a code).
+    return JSONResponse(
+        status_code=SCRIPTED_FAULT_STATUS,
+        content={
+            "error": {
+                "message": response.fail,
+                "type": "scripted_fault",
+                "code": SCRIPTED_FAULT_STATUS,
+            }
+        },
+    )
+
+
+async def _think() -> None:
     delay_ms = _state["response_delay_ms"]
     if delay_ms:
         await asyncio.sleep(delay_ms / 1000)
+
+
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
+async def _complete(request: Request) -> JSONResponse | StreamingResponse:
+    parsed = parse_request(await request.json())
+    _log_request(parsed)
+    await _think()
     try:
         response = resolve_response(parsed.messages, parsed.available_tools)
     except DirectiveError as exc:
-        # Fail loud: a malformed directive is an authoring bug, never a silent default.
-        return JSONResponse(
-            status_code=500,
-            content={"error": {"message": str(exc), "type": "directive_error"}},
-        )
-
-    if (
-        isinstance(response, SayResponse)
-        and response.fail is not None
-        and (not parsed.stream or not response.text)
-    ):
-        # Nothing to stream first, so the fault is the whole response, shaped as
-        # OpenRouter's error body (its SDK rejects one without a code).
-        return JSONResponse(
-            status_code=SCRIPTED_FAULT_STATUS,
-            content={
-                "error": {
-                    "message": response.fail,
-                    "type": "scripted_fault",
-                    "code": SCRIPTED_FAULT_STATUS,
-                }
-            },
-        )
+        return _directive_error(exc)
+    fault = _unstreamable_fault(response, parsed.stream)
+    if fault is not None:
+        return fault
 
     request_tokens = prompt_tokens(parsed.messages)
     if parsed.stream:
@@ -156,8 +173,32 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
+async def _respond(request: Request) -> JSONResponse | StreamingResponse:
+    try:
+        parsed = parse_responses_request(await request.json())
+        _log_request(parsed)
+        await _think()
+        response = resolve_text_response(parsed.messages, parsed.available_tools)
+    except DirectiveError as exc:
+        return _directive_error(exc)
+    fault = _unstreamable_fault(response, parsed.stream)
+    if fault is not None:
+        return fault
+
+    request_tokens = prompt_tokens(parsed.messages)
+    if parsed.stream:
+        return StreamingResponse(
+            response_sse_lines(parsed.model, response, request_tokens),
+            media_type="text/event-stream",
+        )
+    return JSONResponse(content=build_response(parsed.model, response, request_tokens))
+
+
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)
 app.add_api_route("/api/v1/chat/completions", _complete, methods=["POST"], response_model=None)
+app.add_api_route("/responses", _respond, methods=["POST"], response_model=None)
+app.add_api_route("/api/v1/responses", _respond, methods=["POST"], response_model=None)
 
 
 def main() -> None:

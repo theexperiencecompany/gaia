@@ -140,6 +140,26 @@ def test_the_inline_caddyfile_holds_no_compose_interpolation(
     assert "reverse_proxy gaia-backend:8000" in content
 
 
+def test_the_inline_caddyfile_drops_the_share_domain_blocks(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    """Coolify has no `gaia up --link-domain`: the blocks only ever bound *.gaia.invalid there."""
+    content = _coolify(compose, secrets)["services"]["proxy"]["volumes"][0]["content"]
+
+    assert ".invalid" not in content
+    assert "--link-domain" not in content
+    assert "/api/v1/usercontent/" not in content
+    assert content.count("{") == content.count("}")
+    assert "http://localhost, http://host.docker.internal {" in content
+
+
+def test_a_share_domain_block_split_across_paragraphs_fails_loud() -> None:
+    split = "{$GAIA_X_SITE_ADDRESS:http://x.gaia.invalid} {\n\trespond 404\n\n}\n"
+
+    with pytest.raises(SystemExit, match="share-domain"):
+        dt._without_share_domains(split)
+
+
 @pytest.mark.parametrize(
     ("image", "full"),
     [

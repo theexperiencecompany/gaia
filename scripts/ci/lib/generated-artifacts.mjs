@@ -3,9 +3,9 @@
 // differs from what is committed, which catches a missed `mise <task>`.
 // `--write` regenerates without the diff, and is what each mise task runs.
 // Reached through `checks.mjs api-schema | analytics-catalog |
-// cli-config-schema | deploy-templates`; never run directly.
+// cli-config-schema | deploy-templates | link-constants`; never run directly.
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const OPENAPI_JSON = "apps/api/openapi.json";
@@ -13,6 +13,11 @@ const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
 const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
 const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
 const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
+const LINK_CONSTANTS = [
+  "apps/usercontent-worker/src/link-constants.generated.json",
+  "packages/cli/src/lib/link-constants.generated.json",
+];
+const SELFHOST_CADDYFILE = "packages/cli/selfhost/Caddyfile";
 const DEPLOY_TEMPLATES = [
   "deploy/coolify/gaia.yaml",
   "render.yaml",
@@ -150,5 +155,38 @@ export function cmdDeployTemplates(argv) {
     drift:
       "The deploy templates drifted from the self-host compose file — run `mise deploy:templates` and commit",
     ok: "The deploy templates match the self-host compose file.",
+  });
+}
+
+/** The Caddyfile lines that spell a link constant; Caddy cannot read the generated JSON. */
+function caddyLinkLines({ contentRoute, shortLinkWebRoute }) {
+  return [
+    `handle ${contentRoute}/* {`,
+    `redir https://{$GAIA_SITE_ADDRESS}${shortLinkWebRoute}{uri} 307`,
+  ];
+}
+
+export function cmdLinkConstants(argv) {
+  const json = execFileSync(
+    "uv",
+    ["run", "--frozen", "python", "-m", "scripts.dump_link_constants"],
+    { cwd: "apps/api", encoding: "utf8", env: QUIET_ENV },
+  );
+  for (const path of LINK_CONSTANTS) writeFileSync(path, json);
+  const caddyfile = readFileSync(SELFHOST_CADDYFILE, "utf8");
+  const missing = caddyLinkLines(JSON.parse(json)).filter(
+    (line) => !caddyfile.includes(line),
+  );
+  if (missing.length > 0) {
+    for (const line of missing) console.log(`  ${SELFHOST_CADDYFILE}: no \`${line}\``);
+    console.error(
+      "❌ The self-host Caddyfile drifted from apps/api/app/constants/short_links.py — fix those lines",
+    );
+    process.exit(1);
+  }
+  failOnDrift(argv, LINK_CONSTANTS, {
+    drift:
+      "The Worker's or CLI's link constants drifted from the API — run `mise links:constants` and commit",
+    ok: "The Worker, CLI and Caddyfile link constants match the API.",
   });
 }

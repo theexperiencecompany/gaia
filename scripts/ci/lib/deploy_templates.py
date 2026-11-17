@@ -268,10 +268,29 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
 
 
 _CADDY_PLACEHOLDER_RE = re.compile(r"\{\$(\w+)(?::([^}]*))?\}")
+#: A share-domain site block's address: filled by `gaia up --link-domain` /
+#: `--usercontent-domain`, idle on its .invalid default. Coolify has no `gaia up`.
+_SHARE_DOMAIN_SITE_RE = re.compile(r"^\{\$\w+:http://[\w.-]+\.invalid\} \{$", re.MULTILINE)
+_PARAGRAPH_BREAK = "\n\n"
+
+
+def _without_share_domains(caddyfile: str) -> str:
+    """Drop each share-domain site block, which the Caddyfile keeps in one paragraph with its comment."""
+    kept: list[str] = []
+    for paragraph in caddyfile.split(_PARAGRAPH_BREAK):
+        if _SHARE_DOMAIN_SITE_RE.search(paragraph) is None:
+            kept.append(paragraph)
+        elif paragraph.count("{") != paragraph.count("}"):
+            raise SystemExit(
+                "deploy_templates: a share-domain site block must be one paragraph "
+                "(no blank line inside it) so the Coolify template can drop it whole"
+            )
+    # A dropped last block takes the file's final newline with it.
+    return _PARAGRAPH_BREAK.join(kept).rstrip("\n") + "\n"
 
 
 def _coolify_caddyfile() -> Block:
-    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values."""
+    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values, share domains dropped."""
 
     def value(match: re.Match[str]) -> str:
         name, default = match.group(1), match.group(2)
@@ -283,7 +302,7 @@ def _coolify_caddyfile() -> Block:
             )
         return default
 
-    text = _CADDY_PLACEHOLDER_RE.sub(value, CADDYFILE.read_text())
+    text = _CADDY_PLACEHOLDER_RE.sub(value, _without_share_domains(CADDYFILE.read_text()))
     # Tabs become spaces: a YAML block scalar cannot carry a tab indent.
     return Block("\n".join(line.rstrip() for line in text.replace("\t", "    ").split("\n")))
 

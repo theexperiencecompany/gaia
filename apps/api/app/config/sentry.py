@@ -16,7 +16,7 @@ from sentry_sdk.types import Event, Hint
 from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
-from app.constants.http import INTERNAL_CALLER_HEADER
+from app.constants.http import CONTENT_EDGE_HEADER, INTERNAL_CALLER_HEADER
 from app.constants.log_tags import LogTag
 from shared.py.logging import (
     ARQ_LOGGER_DISPLAY_NAME,
@@ -226,20 +226,23 @@ class _EventRequest(BaseModel):
 
 
 class _EventWithRequest(BaseModel):
-    """The captured request on a Sentry event, the one part _drop_internal_token rewrites."""
+    """The captured request on a Sentry event, the one part _drop_shared_secrets rewrites."""
 
     request: _EventRequest | None = None
 
 
-def _drop_internal_token(event: Event) -> None:
-    """Remove the web server's INTERNAL_API_TOKEN header from a captured request."""
+_SHARED_SECRET_HEADERS = frozenset({INTERNAL_CALLER_HEADER.lower(), CONTENT_EDGE_HEADER.lower()})
+
+
+def _drop_shared_secrets(event: Event) -> None:
+    """Remove the INTERNAL_API_TOKEN and LINK_CONTENT_EDGE_TOKEN headers from a captured request."""
     request = _EventWithRequest.model_validate(event).request
     if request is None:
         return
     request.headers = {
         name: value
         for name, value in request.headers.items()
-        if name.lower() != INTERNAL_CALLER_HEADER.lower()
+        if name.lower() not in _SHARED_SECRET_HEADERS
     }
     event["request"] = request.model_dump()
 
@@ -249,7 +252,7 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     event = _drop_llm_attempt_errors(event, hint)
     if event is None:
         return None
-    _drop_internal_token(event)
+    _drop_shared_secrets(event)
     try:
         _attribute_user(event)
         fingerprint = _stable_fingerprint(event)

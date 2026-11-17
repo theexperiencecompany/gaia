@@ -324,11 +324,7 @@ def build_journeys(transcript: Path) -> list[Journey]:
             (
                 Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
                 *_agent_turn(BROWSER, True, web),
-                # Twice under sim only: the stub re-reads the request the executor's result
-                # echoes and dispatches it again; live comms makes one artifact per request.
-                Expect(
-                    ArtifactCreated.event, BROWSER_AGENT, True, (("kind", "dashboard"),), count=2
-                ),
+                Expect(ArtifactCreated.event, BROWSER_AGENT, True, (("kind", "dashboard"),)),
                 Expect(ShortLinkOpened.event, None, False, (("target_type", "openui_artifact"),)),
                 Expect(ArtifactPdfExported.event, None, False, (("kind", "dashboard"),)),
             ),

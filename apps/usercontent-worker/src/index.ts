@@ -3,21 +3,28 @@
  *
  * The API's /api/v1/usercontent route owns every serving rule (headers, the
  * Sec-Fetch-Dest gate, tokens, liveness). This Worker only proves the host,
- * names it in X-Gaia-Content-Host beside the internal token, and keeps cookies
- * out in both directions.
+ * names it in X-Gaia-Content-Host beside the content-edge token, and keeps
+ * cookies out in both directions.
  */
+
+// Generated from apps/api/app/constants/short_links.py by `mise links:constants`.
+import linkConstants from "./link-constants.generated.json";
 
 export interface Env {
   /** The API's origin, e.g. https://api.heygaia.io (wrangler var). */
   API_ORIGIN: string;
-  /** The API's INTERNAL_API_TOKEN (wrangler secret); vouches for X-Gaia-Content-Host. */
+  /** The API's INTERNAL_API_TOKEN (wrangler secret); counts each viewer apart in its rate limits. */
   INTERNAL_API_TOKEN: string;
+  /** The API's LINK_CONTENT_EDGE_TOKEN (wrangler secret); the only vouch for X-Gaia-Content-Host. */
+  LINK_CONTENT_EDGE_TOKEN: string;
 }
 
 const CONTENT_HOST_SUFFIX = ".heygaia.link";
-const CONTENT_ID_PATTERN = /^[a-z2-7]{26}$/;
-const CONTENT_ROUTE = "/api/v1/usercontent";
-const THUMBNAIL_PATH = "/thumb.jpg";
+const CONTENT_ID_PATTERN = new RegExp(
+  `^[${linkConstants.contentIdAlphabet}]{${linkConstants.contentIdLength}}$`,
+);
+const CONTENT_ROUTE = linkConstants.contentRoute;
+const THUMBNAIL_PATH = `/${linkConstants.thumbnailPath}`;
 const ALLOWED_METHODS = ["GET", "HEAD"];
 // Only what the API's serving rules read; Cookie and Authorization never leave the edge.
 const FORWARDED_REQUEST_HEADERS = ["Sec-Fetch-Dest", "Range", "If-None-Match"];
@@ -43,6 +50,7 @@ function upstreamHeaders(request: Request, host: string, env: Env): Headers {
     if (value !== null) headers.set(name, value);
   }
   headers.set("X-Gaia-Content-Host", host);
+  headers.set("X-Gaia-Content-Edge", env.LINK_CONTENT_EDGE_TOKEN);
   headers.set("X-Gaia-Internal", env.INTERNAL_API_TOKEN);
   const viewerIp = request.headers.get("CF-Connecting-IP");
   if (viewerIp !== null) headers.set("X-Gaia-Viewer-IP", viewerIp);

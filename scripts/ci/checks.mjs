@@ -41,6 +41,13 @@
  *                       from the API's settings groups and capability table,
  *                       then fail if it differs from what is committed.
  *                       --write is `mise cli:schema`.
+ *   link-constants [--write]
+ *                       Regenerate link-constants.generated.json for the
+ *                       usercontent Worker and the CLI from
+ *                       apps/api/app/constants/short_links.py, check the
+ *                       self-host Caddyfile spells the same routes, then fail
+ *                       if either JSON differs from what is committed.
+ *                       --write is `mise links:constants`.
  *   deploy-templates [--write]
  *                       Regenerate deploy/coolify/gaia.yaml, render.yaml and
  *                       deploy/proxy.Dockerfile from the self-host compose
@@ -94,6 +101,7 @@ import {
   cmdApiSchema,
   cmdCliConfigSchema,
   cmdDeployTemplates,
+  cmdLinkConstants,
 } from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
@@ -1056,6 +1064,7 @@ function usage() {
       "  analytics-catalog [--write]            regenerate the analytics catalog JSON + TS event types, fail on drift",
       "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
+      "  link-constants [--write]               regenerate the Worker's and CLI's link constants, check the Caddyfile, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  heroui-style-overrides                 no colour/radius/padding className or style on a HeroUI component",
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
@@ -1154,6 +1163,9 @@ function cmdFrameworkPair() {
       break;
     case "deploy-templates":
       cmdDeployTemplates(rest);
+      break;
+    case "link-constants":
+      cmdLinkConstants(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);

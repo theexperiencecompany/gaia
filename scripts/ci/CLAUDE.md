@@ -73,7 +73,7 @@ source text plus openapi.json, with the file list, baselines and reporting
 left in checks.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
-`cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
+`cli-config-schema`, `deploy-templates` and `link-constants`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
 crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run

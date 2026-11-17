@@ -48,8 +48,8 @@ http://localhost, http://host.docker.internal {
 # Optional share domains beside GAIA_DOMAIN, set by `gaia up --link-domain` /
 # `--usercontent-domain`. Unset, each address is a .invalid name over plain
 # HTTP that no request carries, so the block never serves. Compose sets the
-# fallback itself: Caddy takes an empty variable as an empty address.
-
+# fallback itself: Caddy takes an empty variable as an empty address. Each
+# block and its comment are one paragraph: the Coolify template drops them whole.
 # GAIA_LINK_DOMAIN: short links. /<slug> goes to the app's /l/<slug> page,
 # never cached, so a revoked or re-pointed link takes effect at once.
 {$GAIA_LINK_SITE_ADDRESS:http://link.gaia.invalid} {
@@ -61,7 +61,8 @@ http://localhost, http://host.docker.internal {
 # GAIA_USERCONTENT_DOMAIN: shared files' bytes, apart from GAIA's origin. Only
 # the content route is reachable here; the API serves a snapshot only when it
 # arrived on this host. No cookie or credential travels either way, and the
-# API's CSP sandbox gives every document an opaque origin.
+# API's CSP sandbox gives every document an opaque origin. Every snapshot shares
+# this one host, and a browser renders no PDF inside a sandbox, so PDFs download.
 {$GAIA_USERCONTENT_SITE_ADDRESS:http://usercontent.gaia.invalid} {
 	request_header -Cookie
 	request_header -Authorization

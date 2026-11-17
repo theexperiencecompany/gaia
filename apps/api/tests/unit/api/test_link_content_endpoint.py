@@ -14,7 +14,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
-from app.constants.http import CONTENT_HOST_HEADER, INTERNAL_CALLER_HEADER
+from app.constants.http import CONTENT_EDGE_HEADER, CONTENT_HOST_HEADER, INTERNAL_CALLER_HEADER
 from app.models.short_link_models import (
     LinkAccess,
     LinkSnapshot,
@@ -32,6 +32,7 @@ CID = "abcdefghijklmnopqrstuvwxyz"
 HOST = f"{CID}.u.heygaia.test"
 SLUG = "abcdefghijk"
 INTERNAL_TOKEN = "i" * 64
+EDGE_TOKEN = "e" * 64
 PDF_BODY = b"%PDF-1.7"
 THUMB_BODY = b"\xff\xd8jpeg"
 SNAPSHOT = LinkSnapshot(
@@ -166,10 +167,26 @@ class TestServeContent:
         assert _refused(response.json()) == NOT_FOUND
         seams.lookup.assert_not_awaited()
 
-    async def test_the_worker_names_the_host_beside_the_internal_token(
+    async def test_the_worker_names_the_host_beside_the_content_edge_token(
+        self, unauthed_client: AsyncClient, seams: Seams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", EDGE_TOKEN)
+        response = await unauthed_client.get(
+            f"{BASE}/{CID}",
+            params={"t": _token()},
+            headers={
+                "host": "api.heygaia.test",
+                CONTENT_HOST_HEADER: HOST,
+                CONTENT_EDGE_HEADER: EDGE_TOKEN,
+            },
+        )
+        assert response.status_code == 200
+
+    async def test_the_internal_token_does_not_vouch_for_a_named_host(
         self, unauthed_client: AsyncClient, seams: Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", INTERNAL_TOKEN)
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", EDGE_TOKEN)
         response = await unauthed_client.get(
             f"{BASE}/{CID}",
             params={"t": _token()},
@@ -177,18 +194,35 @@ class TestServeContent:
                 "host": "api.heygaia.test",
                 CONTENT_HOST_HEADER: HOST,
                 INTERNAL_CALLER_HEADER: INTERNAL_TOKEN,
+                CONTENT_EDGE_HEADER: INTERNAL_TOKEN,
             },
         )
-        assert response.status_code == 200
+        assert response.status_code == 404
+        seams.lookup.assert_not_awaited()
 
-    async def test_an_internal_caller_naming_no_host_is_judged_by_its_own(
+    async def test_an_unset_edge_token_vouches_for_no_named_host(
         self, unauthed_client: AsyncClient, seams: Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", INTERNAL_TOKEN)
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", None)
         response = await unauthed_client.get(
             f"{BASE}/{CID}",
             params={"t": _token()},
-            headers={"host": HOST, INTERNAL_CALLER_HEADER: INTERNAL_TOKEN},
+            headers={
+                "host": "api.heygaia.test",
+                CONTENT_HOST_HEADER: HOST,
+                CONTENT_EDGE_HEADER: "",
+            },
+        )
+        assert response.status_code == 404
+
+    async def test_an_edge_caller_naming_no_host_is_judged_by_its_own(
+        self, unauthed_client: AsyncClient, seams: Seams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", EDGE_TOKEN)
+        response = await unauthed_client.get(
+            f"{BASE}/{CID}",
+            params={"t": _token()},
+            headers={"host": HOST, CONTENT_EDGE_HEADER: EDGE_TOKEN},
         )
         assert response.status_code == 200
 
