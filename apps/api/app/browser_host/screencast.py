@@ -109,8 +109,8 @@ class _Stream:
     detached: asyncio.Event = field(default_factory=asyncio.Event)
     # Set when this stream ended to follow another page rather than for the viewer leaving.
     retargeted: bool = False
-    # Counts main-frame navigations, so a tab read begun before one is not written after it.
-    navigations: int = 0
+    # Replaced on each main-frame navigation, so a tab read begun before one is not written after it.
+    page_visit: object = field(default_factory=object)
 
 
 async def run_live_view(host: BrowserHost, session: HostSession, client_ws: WebSocket) -> None:
@@ -229,7 +229,7 @@ def _route_event(
         _on_screencast_frame(mux, stream, frames, background, params)
     elif method == _FRAME_NAVIGATED_EVENT and params.get("frame", {}).get("parentId") is None:
         # The new page's frames can arrive before its title is parsed; they must not name the old page.
-        stream.navigations += 1
+        stream.page_visit = object()
         stream.meta.url = params.get("frame", {}).get("url", stream.meta.url)
         if params.get("type") == _BFCACHE_RESTORE:
             _spawn(background, _refresh_meta(mux, stream))
@@ -294,7 +294,7 @@ async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
     A page mid-navigation (or blocking evaluation) is reread at its next
     DOMContentLoaded; its address meanwhile follows Page.frameNavigated.
     """
-    navigations = stream.navigations
+    page_visit = stream.page_visit
     try:
         result = await cdp_call(
             mux,
@@ -308,7 +308,7 @@ async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
         )
         return
     value = result.get("result", {}).get("value")
-    if not isinstance(value, dict) or stream.navigations != navigations:
+    if not isinstance(value, dict) or stream.page_visit is not page_visit:
         return
     stream.meta.url = _text(value.get("url"))
     stream.meta.title = _text(value.get("title"))

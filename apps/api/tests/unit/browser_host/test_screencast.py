@@ -283,7 +283,9 @@ async def test_the_tab_names_the_page_on_screen_while_the_engines_record_of_it_l
 
 
 @pytest.mark.regression
-async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_page() -> None:
+async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     run = _Run()
     await run.start()
     answer_stale_read = asyncio.Event()
@@ -301,7 +303,7 @@ async def test_a_tab_read_begun_before_a_navigation_never_overwrites_the_new_pag
             }
         return await send_raw(method, params, session_id)
 
-    run.mux.send_raw = _slow_evaluate  # type: ignore[method-assign]
+    monkeypatch.setattr(run.mux, "send_raw", _slow_evaluate)
     run.mux.emit(
         {"method": "Page.domContentEventFired", "sessionId": run.page_session, "params": {}}
     )
