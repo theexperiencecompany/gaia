@@ -23,15 +23,22 @@ from app.agents.workspace.paths import (
     MountRole,
     detect_content_type,
 )
-from app.models.short_link_models import ShortLinkTargetType
+from app.config.settings import settings
+from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.storage import ArtifactInfo
 
-SHORT_URL = "https://heygaia.link/abcdefghijk"
+LINK = ShortLink(
+    slug="abcdefghijk",
+    user_id="u1",
+    target_type=ShortLinkTargetType.SESSION_ARTIFACT,
+    target_id="c1/report.html",
+)
 
 
 @pytest.fixture(autouse=True)
 def mint():
-    with patch.object(_artifacts, "optional_short_link", AsyncMock(return_value=SHORT_URL)) as mint:
+    with patch.object(_artifacts, "attach_link", AsyncMock(return_value=LINK)) as mint:
         yield mint
 
 
@@ -198,15 +205,15 @@ async def test_write_and_bash_produce_identical_event_for_same_file() -> None:
 
 
 async def test_a_file_written_this_turn_carries_its_link(mint: AsyncMock) -> None:
-    """The tool hands the artifact's URL back to the agent, and the event carries it."""
+    """The card's event carries the URL; the agent gets only the link's placeholder."""
     mock, events = _capture()
     with patch.object(_artifacts, "publish_artifact_event", mock):
-        url = await publish_artifact(
+        handed = await publish_artifact(
             "u1", "c1", _artifact("report.html", 12, 1.0), "<p>hi</p>", written_this_turn=True
         )
 
-    assert url == SHORT_URL
-    assert events[0][1]["short_url"] == SHORT_URL
+    assert handed == link_placeholder(ShortLinkTargetType.SESSION_ARTIFACT, "c1/report.html")
+    assert events[0][1]["short_url"] == f"{settings.SHORTLINK_BASE_URL}/abcdefghijk"
     mint.assert_awaited_once_with("u1", ShortLinkTargetType.SESSION_ARTIFACT, "c1/report.html")
 
 
@@ -242,14 +249,9 @@ async def test_a_non_artifact_write_returns_no_link() -> None:
     assert url is None
 
 
-def test_the_links_note_names_each_file_and_its_link() -> None:
-    note = artifact_links_note({"report.html": SHORT_URL, "data.csv": "https://heygaia.link/x"})
-    assert note == (
-        "\n\nPublic link (anyone with it can open; give it to the user when "
-        "you hand the file over):\n"
-        f"- report.html: {SHORT_URL}\n"
-        "- data.csv: https://heygaia.link/x"
-    )
+def test_the_links_note_names_each_file_and_its_placeholder() -> None:
+    note = artifact_links_note({"report.html": "gaia-link:a", "data.csv": "gaia-link:b"})
+    assert note == f"\n\n{LINK_NOTE} Links:\n- report.html: gaia-link:a\n- data.csv: gaia-link:b"
 
 
 def test_no_links_means_no_note() -> None:

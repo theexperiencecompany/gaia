@@ -32,6 +32,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_voice_prompt,
     voice_unreadable_note,
 )
+from app.config.settings import settings
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
     CALENDAR_UNAVAILABLE,
@@ -108,7 +109,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import ShortLink, ShortLinkTargetType
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
@@ -169,7 +170,26 @@ _EDITION = HostedEditionImage(
     paper=(0.1, 0.2, 0.9, 0.8),
 )
 _BRIEF_ID = "brief_abc123"
-_BRIEF_LINK = "https://heygaia.link/briefabc123"
+_BRIEF_LINK = f"{settings.SHORTLINK_BASE_URL}/briefabc123"
+
+
+def _attached(
+    mint: AsyncMock,
+) -> Callable[[str, ShortLinkTargetType, str], Awaitable[ShortLink | None]]:
+    """Attach the link whose URL mint names, so a test states links as the URLs they become."""
+
+    async def attach(
+        user_id: str, target_type: ShortLinkTargetType, target_id: str
+    ) -> ShortLink | None:
+        url = await mint(user_id, target_type, target_id)
+        if url is None:
+            return None
+        slug = url.removeprefix(f"{settings.SHORTLINK_BASE_URL}/")
+        return ShortLink(slug=slug, user_id=user_id, target_type=target_type, target_id=target_id)
+
+    return attach
+
+
 _ORCHESTRATED = ["inapp", "email"]
 
 # The fake model writes its message from exactly the facts it was shown: a reply holding
@@ -638,8 +658,8 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(briefing_repository, "upsert_briefing", w.upsert)
     monkeypatch.setattr(briefing_repository, "briefing_id_for", AsyncMock(return_value=_BRIEF_ID))
     monkeypatch.setattr(briefing_repository, "set_delivered_channels", w.set_channels)
-    monkeypatch.setattr(prose, "optional_short_link", w.mint)
-    monkeypatch.setattr(store, "optional_short_link", w.mint)
+    monkeypatch.setattr(prose, "attach_link", _attached(w.mint))
+    monkeypatch.setattr(store, "attach_link", _attached(w.mint))
     _seam(monkeypatch, w, briefing_repository, "has_daily_briefing", AsyncMock(return_value=True))
     monkeypatch.setattr(notification_service, "create_notification", w.notify)
     monkeypatch.setattr(delivery, "post_brief_message", w.brief_message)
@@ -3376,7 +3396,7 @@ class TestTheFactsTheModelVoices:
 
 
 def _todo_link(todo_id: str) -> str:
-    return f"https://heygaia.link/todo-{todo_id}"
+    return f"{settings.SHORTLINK_BASE_URL}/todo-{todo_id}"
 
 
 class TestOnlyTheItemsTheBriefLinksAreShared:

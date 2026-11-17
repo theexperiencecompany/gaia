@@ -2,10 +2,12 @@
 
 Two ways a link comes to exist, with one rule between them: sharing is the
 owner's call. share is the owner asking for a link (the share menu) and always
-yields one. optional_short_link is GAIA attaching a link to something it hands
-over (a file it wrote, a finished todo, a workflow result, a brief); it never
-re-shares a target the owner turned off, let expire, or GAIA took down, and a
-failure costs only the link, never the message carrying it.
+yields one. attach_link is GAIA attaching a link to something it hands over (a
+file it wrote, a finished todo, a workflow result, a brief): it opens for the
+owner alone until they widen it, it never re-shares a target the owner turned
+off, let expire, or GAIA took down, and a failed mint costs only the link, never
+the message carrying it. What a model is told is a placeholder (placeholders.py),
+never the URL.
 
 Per-type facts live in the registry; nothing here branches on a target type.
 """
@@ -24,6 +26,7 @@ from app.db.repositories.short_links import (
 )
 from app.db.repositories.users import user_repository
 from app.models.short_link_models import (
+    LinkAccess,
     LinkDenial,
     LinkEnvelope,
     LinkSettings,
@@ -276,15 +279,17 @@ async def _refresh_snapshot(link: ShortLink) -> None:
     await _release_snapshot(link.user_id, link.snapshot if moved is not None else fresh)
 
 
-async def optional_short_link(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> str | None:
+async def attach_link(
+    user_id: str,
+    target_type: ShortLinkTargetType,
+    target_id: str,
+    access: LinkAccess = LinkAccess.OWNER,
+) -> ShortLink | None:
     """Return the link GAIA attaches to something it hands the owner, or None.
 
-    A file's live link moves to the file as it is now. None when sharing is off
-    for the target (its newest link was revoked by the owner, expired or taken
-    down; that sticks until they share it themselves), or when the mint itself
-    fails: an error event that costs only the link. Failing to read the target raises.
+    A new link opens at access (the owner alone, by default) until they widen it; a live
+    one is reused, its file moved to the file as it is now. None when sharing is off for
+    the target (revoked by the owner, expired or taken down) or the mint itself failed.
     """
     try:
         latest = await short_link_repository.get_latest_for_target(user_id, target_type, target_id)
@@ -300,9 +305,10 @@ async def optional_short_link(
                 return None
             if not latest.revoked:
                 await _refresh_snapshot(latest)
-                return build_url(latest.slug)
-        link = await share(user_id, target_type, target_id, LinkSettings(), gaia_attached=True)
-        return build_url(link.slug)
+                return latest
+        return await share(
+            user_id, target_type, target_id, LinkSettings(access=access), gaia_attached=True
+        )
     except _MINT_ERRORS as exc:
         log.error(
             "short_link.mint_failed",
@@ -390,7 +396,7 @@ async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id
     """Turn sharing off for a target on its owner's behalf: its live link dies at once.
 
     The revoked link stays on record as the target's newest, which is what
-    stops optional_short_link from handing out a fresh one. Idempotent; False
+    stops attach_link from handing out a fresh one. Idempotent; False
     when the target had no live link to revoke.
     """
     live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)

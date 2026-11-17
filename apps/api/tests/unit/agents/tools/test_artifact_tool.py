@@ -19,7 +19,8 @@ from app.constants.openui_artifacts import (
     ARTIFACT_DONE_EVENT,
 )
 from app.models.openui_artifact_models import ArtifactFailureReason, ArtifactKind
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.openui_artifacts.create import ArtifactCreationError
 from app.services.openui_artifacts.generate import ArtifactRequest
 
@@ -147,7 +148,15 @@ class TestCreateArtifact:
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=artifact)) as create,
             patch(
-                f"{_TOOL}.optional_short_link", AsyncMock(return_value="https://heygaia.link/abc")
+                f"{_TOOL}.attach_link",
+                AsyncMock(
+                    return_value=ShortLink(
+                        slug="abcdefghijk",
+                        user_id="user-1",
+                        target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
+                        target_id="a1",
+                    )
+                ),
             ) as link,
         ):
             result = await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
@@ -172,15 +181,17 @@ class TestCreateArtifact:
             "a1",
         )
         assert card["stream_id"]
+        placeholder = link_placeholder(ShortLinkTargetType.OPENUI_ARTIFACT, "a1")
         assert result == (
             'Created the report "Q3 plan". The user sees it as a card in chat and can open it '
-            "there; do not repeat its contents in your reply. Public link: https://heygaia.link/abc."
+            f"there; do not repeat its contents in your reply. {LINK_NOTE} Its link: {placeholder}"
         )
+        assert "abcdefghijk" not in result
 
     async def test_an_artifact_without_a_link_says_nothing_of_one(self, writer: MagicMock) -> None:
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             result = await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
@@ -194,7 +205,7 @@ class TestCreateArtifact:
             patch(
                 f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))
             ) as create,
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
@@ -205,7 +216,7 @@ class TestCreateArtifact:
             patch(
                 f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))
             ) as create,
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             tool = artifact_tool.create_artifact
             assert isinstance(tool, StructuredTool) and tool.coroutine is not None
@@ -225,7 +236,7 @@ class TestCreateArtifact:
         )
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(side_effect=failure)),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock()) as link,
+            patch(f"{_TOOL}.attach_link", AsyncMock()) as link,
         ):
             result = await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
@@ -247,7 +258,7 @@ class TestCreateArtifact:
 
         with (
             patch(f"{_TOOL}.create_openui_artifact", broken),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock()) as link,
+            patch(f"{_TOOL}.attach_link", AsyncMock()) as link,
             pytest.raises(ConnectionError, match="provider down"),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
@@ -265,7 +276,7 @@ class TestCreateArtifact:
 
         with (
             patch(f"{_TOOL}.create_openui_artifact", streaming),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 

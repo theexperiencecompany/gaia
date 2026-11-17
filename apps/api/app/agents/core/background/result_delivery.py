@@ -67,7 +67,7 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link, build_url
 from app.services.platform_message_service import (
     deliver_message_to_platform,
     deliver_reaction_to_platform,
@@ -329,18 +329,18 @@ async def _workflow_run_link_line(run: ExecutorRun) -> str:
     """Return the run's heygaia.link as a closing line, or "" without one.
 
     "" when the run has no execution, the owner stopped sharing it, or the mint
-    failed — the result message is delivered either way (optional_short_link).
+    failed — the result message is delivered either way (attach_link).
     Minted here because delivery runs before complete_execution; the public page
     shows the run's real status, so an early open reads as running.
     """
     if not (run.workflow_id and run.workflow_execution_id):
         return ""
-    url = await optional_short_link(
+    link = await attach_link(
         run.user.user_id, ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
     )
-    if url is None:
+    if link is None:
         return ""
-    return f"\n\n[Open this run]({url})"
+    return f"\n\n[Open this run]({build_url(link.slug)})"
 
 
 async def _narrate_and_deliver(

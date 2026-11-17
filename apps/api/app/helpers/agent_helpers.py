@@ -58,6 +58,7 @@ from app.models.stream_events import (
 )
 from app.services.delivery.presence import read_presence
 from app.services.latency_metrics import observe_comms_graph, span
+from app.services.links.placeholders import releasable_end, resolve_link_placeholders
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     NodeMessagesUpdate,
@@ -915,7 +916,9 @@ async def execute_graph_silent(
         elif stream_mode == "custom":
             _accumulate_silent_custom_event(payload, acc)
 
-    acc.complete_message = acc.held.flush(acc.complete_message)
+    acc.complete_message = await resolve_link_placeholders(
+        user_id, acc.held.flush(acc.complete_message)
+    )
 
     # Inject accumulated todo_progress as a single tool_data entry
     if acc.todo_progress:
@@ -1124,7 +1127,7 @@ async def _stream_updates(
             closing = last_ai_message(messages)
             closing_text = ""  # pragma: no mutate — no closing message, no boundary to yield it at
             if closing is not None:
-                closing_text = _finish_visible_text(state, closing.id or "")
+                closing_text = await _finish_visible_text(state, closing.id or "", user_id)
             state.complete_message, boundary_id, discarded = state.held.settle(
                 messages, state.complete_message, reply_tier=is_comms
             )
@@ -1174,19 +1177,25 @@ async def _stream_tool_message_frames(
             yield frame
 
 
-def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
-    """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
+async def _stream_visible_text(
+    state: _StreamAccumulators, message_id: str, user_id: str | None
+) -> str:
+    """Return the next piece of a streaming comms message a user may see, its link placeholders resolved."""
     visible = visible_comms_text_so_far(state.held.texts[message_id])
-    new = visible[len(state.released_text.get(message_id, "")) :]
+    releasable = visible[: releasable_end(visible)]
+    new = releasable[len(state.released_text.get(message_id, "")) :]
     if new:
-        state.released_text[message_id] = visible
-    return new
+        state.released_text[message_id] = releasable
+    return await resolve_link_placeholders(user_id, new)
 
 
-def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+async def _finish_visible_text(
+    state: _StreamAccumulators, message_id: str, user_id: str | None
+) -> str:
     """Return the rest of a finished comms message a user may see, and forget it streamed."""
     sent = state.released_text.pop(message_id, "")
-    return visible_comms_text(state.held.texts.get(message_id, ""))[len(sent) :]
+    rest = visible_comms_text(state.held.texts.get(message_id, ""))[len(sent) :]
+    return await resolve_link_placeholders(user_id, rest)
 
 
 async def _stream_messages(
@@ -1225,7 +1234,7 @@ async def _stream_messages(
                 # The client already shows the failed attempt's text; retract it
                 # before the retry streams the reply again.
                 yield message_boundary_frame(held.abandoned_id, discarded=True)
-            if visible := _stream_visible_text(state, held.message_id):
+            if visible := await _stream_visible_text(state, held.message_id, user_id):
                 yield format_sse_response(visible)
 
     # Emit tool_output when ToolMessage arrives
@@ -1392,9 +1401,11 @@ async def execute_graph_streaming(
     # A run that ends without its closing node update (cancellation, a graph that
     # never reaches the agent node again) still owes the user what it streamed.
     for message_id in list(state.held.texts):
-        if visible := _finish_visible_text(state, message_id):
+        if visible := await _finish_visible_text(state, message_id, user_id):
             yield format_sse_response(visible)
-    state.complete_message = state.held.flush(state.complete_message)
+    state.complete_message = await resolve_link_placeholders(
+        user_id, state.held.flush(state.complete_message)
+    )
     if state.pipeline_ttft_perf is not None:
         log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
 

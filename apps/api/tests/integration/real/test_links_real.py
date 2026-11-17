@@ -45,7 +45,8 @@ from app.services.briefing import store as brief_store
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.links import abuse, content as link_content
 from app.services.links.backfill import backfill_snapshots
-from app.services.links.service import optional_short_link, revoke_all_links_for_user, share
+from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
+from app.services.links.service import attach_link, revoke_all_links_for_user, share
 from app.services.storage import ArtifactInfo
 from shared.py.analytics import UserId
 from tests.conftest import FAKE_USER
@@ -392,8 +393,7 @@ class TestRevokeRotateExpire:
         assert (dead.status_code, dead.json()["code"]) == (410, "link_revoked")
         assert (await _stored(slug)).revoked_reason is RevokeReason.OWNER
         assert (
-            await optional_short_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
-            is None
+            await attach_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id) is None
         )
 
     async def test_the_owner_still_opens_what_they_stopped_sharing_or_rotated_away(
@@ -448,10 +448,8 @@ class TestRevokeRotateExpire:
         assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
         assert (await _stored(old["slug"])).revoked_reason is RevokeReason.ROTATED
         # GAIA hands over the new URL, not nothing.
-        attached = await optional_short_link(
-            OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
-        )
-        assert attached is not None and attached.endswith(new["slug"])
+        attached = await attach_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        assert attached is not None and attached.slug == new["slug"]
 
     async def test_an_expired_link_is_dead_and_sharing_again_mints_a_fresh_one(
         self, client: AsyncClient, viewer: Viewer, mongo_db
@@ -465,8 +463,7 @@ class TestRevokeRotateExpire:
         expired = await _open(client, slug)
         assert (expired.status_code, expired.json()["code"]) == (410, "link_expired")
         assert (
-            await optional_short_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
-            is None
+            await attach_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id) is None
         )
 
         fresh = await _share(client, TODO, todo_id)
@@ -704,11 +701,9 @@ class TestSharedFiles:
         assert first is not None and first.content_id is not None
 
         workspace.write("notes.md", b"# second")
-        again = await optional_short_link(
-            OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target
-        )
+        again = await attach_link(OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target)
 
-        assert again is not None and again.endswith(slug)
+        assert again is not None and again.slug == slug
         assert (await _open(client, slug)).json()["view"]["text"] == "# second"
         with pytest.raises(FileNotFoundError):
             await link_content.read_snapshot(OWNER.user_id, first.content_id)
@@ -720,7 +715,7 @@ class TestSharedFiles:
         slug = (await _share(client, SESSION, target))["slug"]
         before = (await _stored(slug)).snapshot
 
-        await optional_short_link(OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target)
+        await attach_link(OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target)
 
         assert (await _stored(slug)).snapshot == before
 
@@ -924,9 +919,7 @@ class TestReportsAndTakedown:
         with pytest.raises(FileNotFoundError):
             await link_content.read_snapshot(OWNER.user_id, link.snapshot.content_id)
         assert (
-            await optional_short_link(
-                OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, link.target_id
-            )
+            await attach_link(OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, link.target_id)
             is None
         )
 
@@ -976,6 +969,36 @@ class TestDeletingTheSource:
         assert (await _open(client, elsewhere_slug)).status_code == 200
 
 
+class TestGaiaAttachedLinks:
+    async def test_an_attached_link_opens_for_its_owner_alone_and_reaches_them_by_placeholder(
+        self, client: AsyncClient, viewer: Viewer
+    ) -> None:
+        todo_id = await _todo()
+        link = await attach_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        assert link is not None and link.access is LinkAccess.OWNER
+
+        viewer.user = OWNER
+        assert (await _open(client, link.slug)).status_code == 200
+        viewer.user = STRANGER
+        assert (await _open(client, link.slug)).status_code == 403
+
+        placeholder = link_placeholder(ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        delivered = await resolve_link_placeholders(OWNER.user_id, f"[Your plan]({placeholder})")
+        assert delivered == f"[Your plan]({settings.SHORTLINK_BASE_URL}/{link.slug})"
+        # Another user's reply cannot resolve this owner's placeholder.
+        assert await resolve_link_placeholders(STRANGER.user_id, placeholder) == ""
+
+        viewer.user = OWNER
+        rotated = (await client.post(f"/api/v1/l/{link.slug}/rotate")).json()["slug"]
+        assert await resolve_link_placeholders(OWNER.user_id, placeholder) == (
+            f"{settings.SHORTLINK_BASE_URL}/{rotated}"
+        )
+        await client.post("/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id})
+        assert await resolve_link_placeholders(OWNER.user_id, f"[Your plan]({placeholder})") == (
+            "Your plan"
+        )
+
+
 class TestRemovingTheOwner:
     async def test_revoking_all_of_a_users_links_kills_each_and_deletes_their_files(
         self,
@@ -1007,7 +1030,7 @@ class TestRemovingTheOwner:
             await link_content.read_snapshot(OWNER.user_id, cid)
         assert (await _open(client, others_slug)).status_code == 200
         assert (
-            await optional_short_link(
+            await attach_link(
                 OWNER.user_id,
                 ShortLinkTargetType.TODO_DELIVERABLE,
                 (await _stored(todo_slug)).target_id,

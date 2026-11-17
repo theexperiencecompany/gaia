@@ -47,7 +47,7 @@ from app.services.briefing.slots import (
     render_slots,
     slot_problems,
 )
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link, build_url
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
@@ -65,9 +65,9 @@ async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
     for fact_id, todo_id in facts.deliverables.items():
         if fact_id not in linked:
             continue
-        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
-        if url is not None:
-            links[fact_id] = url
+        link = await attach_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        if link is not None:
+            links[fact_id] = build_url(link.slug)
     return links
 
 

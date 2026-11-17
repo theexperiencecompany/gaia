@@ -20,7 +20,8 @@ from app.agents.workspace.paths import (
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.artifact_events import publish_artifact_event, upsert_event
-from app.services.links.service import optional_short_link
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
+from app.services.links.service import attach_link, build_url
 from app.services.links.targets.session_artifact import session_artifact_target_id
 from app.services.storage import ArtifactInfo
 
@@ -33,19 +34,19 @@ async def publish_artifact(
     *,
     written_this_turn: bool,
 ) -> str | None:
-    """Publish one artifact upsert event; return the heygaia.link it carries.
+    """Publish one artifact upsert event; return the placeholder for the link it carries.
 
     Only a file the tool wrote this turn gets a link — the one the agent hands
     the user with it. A file merely re-listed (bash's enumeration of an
     unchanged artifact) publishes without one, so listing a workspace never
     shares it. None as well when the owner stopped sharing the file or the
-    mint failed (``optional_short_link``). ``artifact.path`` is relative to the
-    session's ``artifacts/`` root; ``artifact.mtime`` must be the real post-write
-    value (the ``(event, path, size_bytes, mtime)`` dedup signature depends on it).
-    The single owner of the event shape.
+    mint failed (attach_link). The card gets the URL; the agent gets only the
+    placeholder. ``artifact.path`` is relative to the session's ``artifacts/``
+    root; ``artifact.mtime`` must be the real post-write value (the
+    ``(event, path, size_bytes, mtime)`` dedup signature depends on it).
     """
-    short_url = (
-        await optional_short_link(
+    link = (
+        await attach_link(
             user_id,
             ShortLinkTargetType.SESSION_ARTIFACT,
             session_artifact_target_id(conv_id, artifact.path),
@@ -53,21 +54,18 @@ async def publish_artifact(
         if written_this_turn
         else None
     )
+    short_url = build_url(link.slug) if link else None
     event = upsert_event(conv_id, artifact, body=inline_body, short_url=short_url)
     await publish_artifact_event(user_id, event)
-    return short_url
+    return link_placeholder(link.target_type, link.target_id) if link else None
 
 
 def artifact_links_note(links: Mapping[str, str]) -> str:
-    """The tool-result footer that hands the agent each artifact's public link,
-    so it shares a URL the user can open rather than a sandbox path."""
+    """The tool-result footer handing the agent each written file's link placeholder."""
     if not links:
         return ""
-    lines = "\n".join(f"- {name}: {url}" for name, url in links.items())
-    return (
-        "\n\nPublic link (anyone with it can open; give it to the user when "
-        f"you hand the file over):\n{lines}"
-    )
+    lines = "\n".join(f"- {name}: {placeholder}" for name, placeholder in links.items())
+    return f"\n\n{LINK_NOTE} Links:\n{lines}"
 
 
 async def publish_artifact_write(
@@ -79,7 +77,7 @@ async def publish_artifact_write(
     mtime: float,
 ) -> str | None:
     """Publish an artifact upsert when a write/edit lands under ``artifacts/``
-    and return its heygaia.link.
+    and return its link placeholder.
 
     No-op (``None``) for non-artifact paths. The tool already holds the written ``content``
     as a string, so its UTF-8 size and inline body are derived here and the rest is

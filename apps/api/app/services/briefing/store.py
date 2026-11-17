@@ -18,7 +18,7 @@ from app.models.briefing_models import (
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.message import full_brief_url
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link, build_url
 
 
 @dataclass(frozen=True)
@@ -44,9 +44,8 @@ async def store_brief(
     await briefing_repository.upsert_briefing(
         user_id, date, kind, payload, briefing_id=briefing_id, edition=None
     )
-    link = await optional_short_link(
-        user_id, ShortLinkTargetType.BRIEFING, briefing_id
-    ) or full_brief_url(briefing_id)
+    short_link = await attach_link(user_id, ShortLinkTargetType.BRIEFING, briefing_id)
+    link = build_url(short_link.slug) if short_link else full_brief_url(briefing_id)
     payload.link = link
     # A fresh random key per render: the hosted URL reaches emails and public links.
     image = await host_edition_image(payload, owner_id=user_id, render_key=uuid4().hex)

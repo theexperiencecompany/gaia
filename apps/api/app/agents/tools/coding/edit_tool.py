@@ -240,7 +240,7 @@ async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> s
 
     # Surface the edit live in chat when it lands under artifacts/ — same path
     # the write tool takes, so an edited artifact card updates during the turn.
-    short_url = await publish_artifact_write(
+    placeholder = await publish_artifact_write(
         target.user_id,
         target.role,
         target.role_conv,
@@ -249,7 +249,7 @@ async def _do_edit(sbx: AsyncSandbox, target: EditTarget, patch: EditPatch) -> s
         real_mtime,
     )
 
-    links = {posixpath.basename(target.abs_path): short_url} if short_url else {}
+    links = {posixpath.basename(target.abs_path): placeholder} if placeholder else {}
     return _emit_edit(target.abs_path, len(new_bytes), replaced, target.session_id) + (
         artifact_links_note(links)
     )

@@ -18,7 +18,8 @@ from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
 from app.models.openui_artifact_models import ArtifactKind, ArtifactStatus
 from app.models.short_link_models import ShortLinkTargetType
-from app.services.links.service import optional_short_link
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
+from app.services.links.service import attach_link
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
 from app.services.openui_artifacts.generate import ArtifactRequest
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
@@ -98,9 +99,7 @@ async def create_artifact(
         writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
         raise
     batcher.flush()
-    short_url = await optional_short_link(
-        request.user_id, ShortLinkTargetType.OPENUI_ARTIFACT, artifact.id
-    )
+    link = await attach_link(request.user_id, ShortLinkTargetType.OPENUI_ARTIFACT, artifact.id)
     writer(
         {
             ARTIFACT_DONE_EVENT: {
@@ -110,8 +109,12 @@ async def create_artifact(
             }
         }
     )
-    link = f" Public link: {short_url}." if short_url else ""
+    link_line = (
+        f" {LINK_NOTE} Its link: {link_placeholder(link.target_type, link.target_id)}"
+        if link
+        else ""
+    )
     return (
         f'Created the {kind.value} "{title}". The user sees it as a card in chat and can '
-        f"open it there; do not repeat its contents in your reply.{link}"
+        f"open it there; do not repeat its contents in your reply.{link_line}"
     )

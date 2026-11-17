@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, _Call, patch
 from bson import ObjectId
 import pytest
 
+from app.config.settings import settings
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
@@ -23,6 +24,7 @@ from app.constants.briefing import (
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
 from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.short_link_models import ShortLink, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
@@ -33,7 +35,7 @@ from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
 STORE = "app.services.briefing.store"
-SHORT_LINK = "https://heygaia.link/seededBrief"
+SHORT_LINK = f"{settings.SHORTLINK_BASE_URL}/seededBrief"
 LAST_DAY = date(2026, 10, 1)
 # Unsorted on purpose, and more cities than seed days, so the cycle and the ordering show.
 CITIES = [f"city-{n:02d}" for n in (13, 2, 7, 1, 12, 4, 9, 3, 11, 5, 14, 8, 6, 10)]
@@ -81,7 +83,17 @@ def seeded() -> Iterator[Seeded]:
     with (
         patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
         patch(f"{STORE}.host_edition_image", side_effect=fake_host),
-        patch(f"{STORE}.optional_short_link", AsyncMock(return_value=SHORT_LINK)),
+        patch(
+            f"{STORE}.attach_link",
+            AsyncMock(
+                return_value=ShortLink(
+                    slug="seededBrief",
+                    user_id="seed",
+                    target_type=ShortLinkTargetType.BRIEFING,
+                    target_id="brief",
+                )
+            ),
+        ),
         patch(
             f"{MODULE}.briefing_repository.briefing_id_for",
             AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),

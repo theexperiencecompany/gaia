@@ -42,9 +42,9 @@ from app.services.links.registry import REGISTRY
 from app.services.links.service import (
     MAX_SLUG_ATTEMPTS,
     ShortLinkExhaustedError,
+    attach_link,
     link_response,
     live_share_link,
-    optional_short_link,
     record_open,
     resolve,
     revoke_conversation_links,
@@ -187,7 +187,7 @@ class TestGaiaAttachedLinks:
         repo.get_latest_for_target.side_effect = failure
 
         async with captured_wide_event() as event:
-            assert await optional_short_link(OWNER, TODO, "t1") is None
+            assert await attach_link(OWNER, TODO, "t1") is None
 
         assert event["errors"][0]["msg"] == "short_link.mint_failed"
 
@@ -196,17 +196,29 @@ class TestGaiaAttachedLinks:
         repo.get_latest_for_target.side_effect = outage
 
         with pytest.raises(AppError) as raised:
-            await optional_short_link(OWNER, TODO, "t1")
+            await attach_link(OWNER, TODO, "t1")
 
         assert raised.value is outage
 
-    async def test_a_first_attachment_mints_as_gaia_attached(self, repo, capture):
+    async def test_a_first_attachment_mints_as_gaia_attached_for_the_owner_alone(
+        self, repo, capture
+    ):
         repo.create.side_effect = lambda link: link
 
-        url = await optional_short_link(OWNER, TODO, "t1")
+        link = await attach_link(OWNER, TODO, "t1")
 
-        assert url is not None
+        assert link is not None
+        assert link.access is LinkAccess.OWNER
         assert capture.call_args.args[1].origin == "gaia_attached"
+        assert capture.call_args.args[1].access == "owner"
+
+    async def test_a_brief_item_attaches_at_the_briefs_access(self, repo):
+        repo.create.side_effect = lambda link: link
+
+        link = await attach_link(OWNER, TODO, "t1", access=LinkAccess.UNLISTED)
+
+        assert link is not None
+        assert link.access is LinkAccess.UNLISTED
 
 
 SESSION = ShortLinkTargetType.SESSION_ARTIFACT
@@ -557,7 +569,7 @@ class TestGaiaAttachedSharingRules:
     ) -> None:
         store.links.get_latest_for_target.return_value = _link("old1", **latest)
 
-        assert await optional_short_link(OWNER, TODO, "t1") is None
+        assert await attach_link(OWNER, TODO, "t1") is None
 
         store.links.create.assert_not_awaited()
 
@@ -569,22 +581,25 @@ class TestGaiaAttachedSharingRules:
             "old1", revoked=True, revoked_reason=reason
         )
 
-        url = await optional_short_link(OWNER, TODO, "t1")
+        attached = await attach_link(OWNER, TODO, "t1")
 
-        assert url == _url(_stored(store).slug)
+        assert attached is not None
+        assert attached.slug == _stored(store).slug
         store.links.get_latest_for_target.assert_awaited_once_with(OWNER, TODO, "t1")
 
     async def test_a_live_link_is_attached_at_its_own_url(self, store: Store, frozen: None) -> None:
         store.links.get_latest_for_target.return_value = _link("live1")
 
-        assert await optional_short_link(OWNER, TODO, "t1") == _url("live1")
+        attached = await attach_link(OWNER, TODO, "t1")
+        assert attached is not None
+        assert attached.slug == "live1"
         store.links.create.assert_not_awaited()
 
     async def test_a_failed_mint_logs_what_failed_and_where(self, store: Store) -> None:
         store.links.get_latest_for_target.side_effect = ServerSelectionTimeoutError("no primary")
 
         async with captured_wide_event() as event:
-            assert await optional_short_link(OWNER, TODO, "t1") is None
+            assert await attach_link(OWNER, TODO, "t1") is None
 
         assert event["errors"] == [
             {
@@ -600,7 +615,8 @@ class TestGaiaAttachedSharingRules:
 class TestRefreshOnAttach:
     async def _attach(self, store: Store, link: ShortLink) -> str | None:
         store.links.get_latest_for_target.return_value = link
-        return await optional_short_link(OWNER, SESSION, FILE_ID)
+        attached = await attach_link(OWNER, SESSION, FILE_ID)
+        return _url(attached.slug) if attached else None
 
     async def test_an_unchanged_file_keeps_its_snapshot(self, store: Store, frozen: None) -> None:
         assert SOURCE.data is not None
