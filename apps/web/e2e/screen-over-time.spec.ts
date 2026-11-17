@@ -8,21 +8,35 @@ import {
   MODEL_ERROR_LINE,
   SIM_ENABLED,
   sendMessage,
+  WEB_BASE_URL,
   watchConversation,
 } from "./harness";
 import {
   askBefore,
   backdateApproval,
   conversationIdOf,
-  serverScreen,
 } from "./screen-fixtures";
+import {
+  BREAK,
+  expectTodos,
+  expectUserOrder,
+  finish,
+  HOLD_MS,
+  heldWork,
+  openNewChat,
+  roles,
+  SWEEP_MS,
+  sendAndOpen,
+  TURN_MS,
+  todo,
+  untilBotLine,
+} from "./screen-flows";
 import {
   botLinesReading,
   currentScreen,
   expectReloadMatches,
   expectScreenOnlyGrew,
   recordScreen,
-  type ScreenItem,
   settledScreen,
   timeline,
   toolSections,
@@ -34,72 +48,6 @@ import {
  * every DOM change, and asserts the screen only grew — nothing reordered,
  * vanished or doubled — and that a reload shows exactly what was live.
  */
-
-const TURN_MS = 90_000;
-/** The worker's conversation sweep runs every minute; an expiry lands within two. */
-const SWEEP_MS = 150_000;
-const CONVERSATION_URL = /\/c\/[0-9a-f-]{36}/;
-const BREAK = "<NEW_MESSAGE_BREAK>";
-const HOLD_MS = 15_000;
-
-const roles = (items: ScreenItem[]) => items.map((i) => i.role);
-const todo = (title: string) => `[[tool:create_todo {"title":"${title}"}]]`;
-/** Work that holds the executor between its two todos: the window a mid-work action lands in. */
-const heldWork = (prefix: string, reply: string) =>
-  `work ${todo(`${prefix}-1`)} [[wait:${HOLD_MS}]] ${todo(`${prefix}-2`)} [[say:${reply}]]`;
-
-async function openNewChat(page: Page): Promise<void> {
-  await recordScreen(page);
-  await page.goto("/c");
-}
-
-async function sendAndOpen(page: Page, text: string): Promise<void> {
-  await sendMessage(page, text);
-  await expect(page).toHaveURL(CONVERSATION_URL, { timeout: TURN_MS });
-}
-
-async function untilBotLine(
-  page: Page,
-  line: string,
-  count = 1,
-): Promise<void> {
-  await expect
-    .poll(async () => botLinesReading(await currentScreen(page), line), {
-      timeout: TURN_MS,
-    })
-    .toBeGreaterThanOrEqual(count);
-}
-
-/** Settle on `lastLine`, assert the live timeline only grew, reload, and assert the same screen comes back. */
-async function finish(page: Page, lastLine: string): Promise<ScreenItem[]> {
-  const live = await settledScreen(page, lastLine, TURN_MS);
-  await expectScreenOnlyGrew(page);
-  await expectServerOrder(page, live);
-  await expectReloadMatches(page, live, TURN_MS);
-  return live;
-}
-
-/** The rendered items are the server's screen items, in the server's seq order. */
-async function expectServerOrder(
-  page: Page,
-  live: ScreenItem[],
-): Promise<void> {
-  const server = await serverScreen(conversationIdOf(page.url()));
-  const shown = new Set(live.map((i) => i.id));
-  expect(
-    live.map((i) => `${i.kind}:${i.id}`),
-    "the web renders the server's items in the server's order",
-  ).toEqual(
-    server.filter((i) => shown.has(i.id)).map((i) => `${i.kind}:${i.id}`),
-  );
-}
-
-/** Every user item sits above the replies to it: the first item is the user's, and user items keep send order. */
-function expectUserOrder(items: ScreenItem[], sent: string[]): void {
-  expect(items[0].role).toBe("user");
-  const users = items.filter((i) => i.role === "user").map((i) => i.text);
-  expect(users).toEqual(sent.map((text) => expect.stringContaining(text)));
-}
 
 // The flows share one dev user and flip its approval preferences: one at a time, in order.
 test.describe.configure({ mode: "default" });
@@ -205,32 +153,54 @@ test.describe("screen over time — chat", () => {
     ).toBeVisible();
   });
 
-  // A burst may be answered once or per message; either way every reply sits under the message it answers.
-  test("three messages sent in a burst keep their order, each above its reply", async ({
+  // Bugs 26 and 27: a reply naming a file showed its sandbox path, linked the wrong
+  // host, and its streamed text was cut back to "Saved" when the path resolved.
+  test("a reply naming a saved file shows the file linked to the chat, never its sandbox path", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    await sendAndOpen(
+      page,
+      "save it [[pace:40]] [[say:Saved it to /workspace/sessions/s1/artifacts/notes.txt for you.]]",
+    );
+    const live = await finish(page, "Saved it to notes.txt for you.");
+    expect(
+      live.filter((i) => i.role === "bot" && i.text.includes("/workspace/")),
+      "no sandbox path on screen",
+    ).toEqual([]);
+    await expect(
+      page
+        .locator('[data-screen-item-kind="reply"]')
+        .getByRole("link", { name: "notes.txt" }),
+      "the file opens its conversation in the web app",
+    ).toHaveAttribute(
+      "href",
+      `${WEB_BASE_URL}/c/${conversationIdOf(page.url())}`,
+    );
+    // The sim stack has no file storage: the conversation still goes on.
+    await sendMessage(page, "and next? [[say:Next one.]]");
+    await finish(page, "Next one.");
+  });
+
+  // The first reply holds, so the second and third arrive before it commits: the step
+  // answers all three with one reply, under the last. A message the step drops leaves no reply.
+  test("three messages sent in a burst are answered by one reply under the last", async ({
     page,
   }) => {
     await openNewChat(page);
     const words = ["first", "second", "third"];
-    const replies = ["Reply one.", "Reply two.", "Reply three."];
-    await sendAndOpen(page, `${words[0]} [[say:${replies[0]}]]`);
-    await sendMessage(page, `${words[1]} [[say:${replies[1]}]]`);
-    await sendMessage(page, `${words[2]} [[say:${replies[2]}]]`);
-    const live = await finish(page, replies[2]);
+    await sendAndOpen(page, `${words[0]} [[wait:3000]] [[say:Reply one.]]`);
+    await sendMessage(page, `${words[1]} [[say:Reply two.]]`);
+    await sendMessage(page, `${words[2]} [[say:Reply three.]]`);
+    const live = await finish(page, "Reply three.");
     expectUserOrder(live, words);
-    words.forEach((word, n) => {
-      const asked = live.findIndex(
-        (i) => i.role === "user" && i.text.startsWith(word),
-      );
-      const answered = live.findIndex(
-        (i) => i.role === "bot" && i.text.split("\n").includes(replies[n]),
-      );
-      if (answered >= 0) {
-        expect(
-          answered,
-          `"${replies[n]}" sits under "${word}"`,
-        ).toBeGreaterThan(asked);
-      }
-    });
+    expect(roles(live), "one reply answers the burst, under it").toEqual([
+      "user",
+      "user",
+      "user",
+      "bot",
+    ]);
+    expect(live[3].text).toBe("Reply three.");
   });
 
   test("a side question during running work is answered while the work keeps its one section", async ({
@@ -241,6 +211,11 @@ test.describe("screen over time — chat", () => {
     await untilBotLine(page, "sq-1");
     await sendMessage(page, "quick question [[say:Side answer.]]");
     await untilBotLine(page, "Side answer.");
+    expect(
+      botLinesReading(await currentScreen(page), "sq-2"),
+      "the answer came while the work still ran",
+    ).toBe(0);
+    await expect(loadingRow(page)).toBeVisible();
     const live = await finish(page, "Work done.");
     expectUserOrder(live, ["work", "quick question"]);
     expect(toolSections(live), "the work is one section").toBe(1);
@@ -334,6 +309,8 @@ test.describe("screen over time — chat", () => {
     });
     const live = await finish(page, "Partial progress.");
     expect(botLinesReading(live, "ff-1")).toBe(1);
+    // The model call is retried after the break: each attempt streams the same words, shown once.
+    expect(botLinesReading(live, "Partial progress.")).toBe(1);
   });
 
   test("Retry on a failed reply resends that reply's message, not an earlier one", async ({
@@ -484,6 +461,7 @@ test.describe("screen over time — approvals", () => {
       botLinesReading(live, APPROVAL_COPY.needsApproval),
       "the card resolved",
     ).toBe(0);
+    await expectTodos(page, ["ap-1"]);
   });
 
   // Conversation 741603c7: Approve tapped while the run still wound down read "please approve" after.
@@ -507,6 +485,7 @@ test.describe("screen over time — approvals", () => {
     expect(botLinesReading(live, ask), "the decided ask is never said").toBe(0);
     expect(botLinesReading(live, done), "the work is reported once").toBe(1);
     expect(toolSections(live)).toBe(1);
+    await expectTodos(page, ["fa-1"]);
   });
 
   // A plain no is final: the card resolves and no run starts to report the skip (7f9de0cdcb).
@@ -531,6 +510,7 @@ test.describe("screen over time — approvals", () => {
     ).toBe(0);
     expect(toolSections(live)).toBeLessThanOrEqual(1);
     await expectReloadMatches(page, live, TURN_MS);
+    await expectTodos(page, [], ["dn-1"]);
   });
 
   test("an approval nobody answers expires on screen without a reload", async ({

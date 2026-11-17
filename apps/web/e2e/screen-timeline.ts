@@ -19,6 +19,8 @@ export interface ScreenItem {
   kind: string;
   role: "user" | "bot";
   text: string;
+  /** The text of each chat bubble the item shows, in order. */
+  bubbles: string[];
 }
 
 export interface ScreenSnapshot {
@@ -52,6 +54,9 @@ function readScreen(): ScreenItem[] {
         kind,
         role: kind === "user" ? "user" : "bot",
         text: bubble.innerText.trim(),
+        bubbles: [
+          ...bubble.querySelectorAll<HTMLElement>(".imessage-bubble"),
+        ].map((part) => part.innerText.trim()),
       },
     ];
   });
@@ -81,8 +86,39 @@ function startRecording(read: () => ScreenItem[]): void {
   else document.addEventListener("DOMContentLoaded", observe, { once: true });
 }
 
-/** Record every screen change on this page, across navigations and reloads (each document starts a fresh timeline). */
+/** What each recorded page threw or logged as an error, since recording began. */
+const pageErrors = new WeakMap<Page, string[]>();
+
+/**
+ * Console errors from what the sim stack does not run, not from the chat
+ * failing: PostHog (a placeholder key behind /ingest), the desktop bridge the
+ * web probes on :4747, the notifications socket, the events stream a new chat
+ * opens before its first message creates the conversation, and the dev-only
+ * stream recorder's POST a reload cuts off. Anything else,
+ * React's and the stream renderer's errors included, fails the flow.
+ */
+const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
+  /^Failed to load resource: .*\((?:https?:\/\/[^/]+\/ingest\/|http:\/\/localhost:4747\/)/,
+  /^\[PostHog\.js\]/,
+  /^\[WebSocketManager\] Connection error/,
+  /^WebSocket connection error: Error: WebSocket connection failed/,
+  /^Failed to load resource: the server responded with a status of 404 .*\/conversations\/[0-9a-f-]{36}\/events\)$/,
+  /^\[stream:sse\] connection-error \{message: Conversation [0-9a-f-]{36} does not exist yet\}/,
+  /^\[streamRecording\] sink unreachable: TypeError: Failed to fetch/,
+];
+
+/** Record every screen change on this page, across navigations and reloads (each document starts a fresh timeline), and every error the page raises. */
 export async function recordScreen(page: Page): Promise<void> {
+  const errors: string[] = [];
+  pageErrors.set(page, errors);
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const text = `${message.text()} (${message.location().url})`;
+    if (TOLERATED_CONSOLE_ERRORS.some((tolerated) => tolerated.test(text)))
+      return;
+    errors.push(`console.error: ${text}`);
+  });
   await page.addInitScript(
     `(${startRecording.toString()})(${readScreen.toString()})`,
   );
@@ -101,9 +137,15 @@ const summarize = (items: ScreenItem[]): string =>
     .map((i) => `${i.role}:${i.text.split("\n")[0].slice(0, 40)}`)
     .join(" | ");
 
+/** Whether a bubble shown before is gone or no longer starts with what it read: text a streamed reply took back. */
+function tookTextBack(before: string[], after: string[]): boolean {
+  return before.some((text, index) => !(after[index] ?? "").startsWith(text));
+}
+
 /**
  * Every violation of "the screen only grows": an item changing position
- * relative to another, an item vanishing, or one id shown twice.
+ * relative to another, an item vanishing, one id shown twice, or a bubble's
+ * text taken back (each bubble only ever grows at its end).
  */
 export function timelineViolations(frames: ScreenSnapshot[]): string[] {
   const problems: string[] = [];
@@ -124,6 +166,14 @@ export function timelineViolations(frames: ScreenSnapshot[]): string[] {
         `t=${frame.t} vanished ${summarize(gone)}\n  before: ${summarize(before.items)}\n  after:  ${summarize(frame.items)}`,
       );
     }
+    for (const item of frame.items) {
+      const was = before.items.find((i) => i.id === item.id);
+      if (was && tookTextBack(was.bubbles, item.bubbles)) {
+        problems.push(
+          `t=${frame.t} ${item.kind} ${item.id} took text back\n  before: ${JSON.stringify(was.bubbles)}\n  after:  ${JSON.stringify(item.bubbles)}`,
+        );
+      }
+    }
     const kept = before.items.map((i) => i.id).filter((id) => now.has(id));
     const keptNow = ids.filter((id) => kept.includes(id));
     if (kept.join() !== keptNow.join()) {
@@ -135,7 +185,7 @@ export function timelineViolations(frames: ScreenSnapshot[]): string[] {
   return problems;
 }
 
-/** Assert the page's timeline so far never reordered, dropped or duplicated an item. */
+/** Assert the page's timeline so far never reordered, dropped, duplicated or shrank an item, and the page raised no error. */
 export async function expectScreenOnlyGrew(
   page: Page,
 ): Promise<ScreenSnapshot[]> {
@@ -147,6 +197,7 @@ export async function expectScreenOnlyGrew(
     .attach("screen timeline", { path, contentType: "application/json" });
   expect(frames.length, "the recorder saw the conversation").toBeGreaterThan(0);
   expect(timelineViolations(frames)).toEqual([]);
+  expect(pageErrors.get(page) ?? [], "the page raised no error").toEqual([]);
   return frames;
 }
 
