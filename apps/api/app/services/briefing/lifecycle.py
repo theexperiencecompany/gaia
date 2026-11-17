@@ -10,8 +10,8 @@ from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
     BriefingKind,
 )
-from app.models.user_models import UserDocument
-from app.services.briefing import dormancy
+from app.models.user_models import BriefingDormancy, UserDocument
+from app.services.briefing import wind_down
 from app.services.briefing.context import UserClock
 from app.utils.timezone import as_utc
 from shared.py.wide_events import log
@@ -38,19 +38,18 @@ async def clear_bootstrap(user: UserDocument) -> None:
         await user_repository.clear_briefing_bootstrap(user.id)
 
 
-async def wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
+async def wake_or_skip(user: UserDocument) -> BriefingDormancy | None:
     """Wake a dormant loop on a reactivation signal (user active, any message).
 
-    Otherwise None means skip before any LLM cost. The daily run is the only writer of
-    dormancy state.
+    Otherwise None means skip before any LLM cost.
     """
-    dstate = dormancy.state_from_user(user)
+    dstate = wind_down.state_from_user(user)
     if not dstate.dormant_since:
         return dstate
-    if await dormancy.latest_activity_since(user.id, dstate.dormant_since) is not None:
+    if await wind_down.latest_activity_since(user.id, dstate.dormant_since) is not None:
         await user_repository.clear_briefing_dormancy(user.id)
         log.info("briefing.dormancy_cleared", user_id=user.id)
-        return dormancy.DormancyState(
+        return BriefingDormancy(
             idle_days=0, date=None, dormant_since=None, goal_asked_at=dstate.goal_asked_at
         )
     log.info("briefing.dormant_skip", user_id=user.id)

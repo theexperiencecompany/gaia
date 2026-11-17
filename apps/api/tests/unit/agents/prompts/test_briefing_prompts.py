@@ -29,6 +29,7 @@ from app.constants.briefing import (
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_LEDE_CHARS,
     MAX_BRIEF_MESSAGE_CHARS,
+    WindDown,
 )
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
@@ -221,8 +222,8 @@ def test_the_users_chat_messages_steer_the_lead_and_are_never_said_back() -> Non
 @pytest.mark.parametrize(
     ("situation", "expected"),
     [
-        ({"wind_down": "warn"}, _WIND_DOWN_WARN),
-        ({"wind_down": "final"}, _WIND_DOWN_FINAL),
+        ({"wind_down": WindDown.WARN}, _WIND_DOWN_WARN),
+        ({"wind_down": WindDown.FINAL}, _WIND_DOWN_FINAL),
         ({"winback": True}, _WINBACK),
         ({"is_first_briefing": True}, _FIRST_BRIEF),
         ({"first_week": True}, _FIRST_WEEK),

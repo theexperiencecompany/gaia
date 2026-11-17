@@ -343,6 +343,13 @@ class BriefingBag(StrEnum):
     ARTWORK = "artwork"
 
 
+class WindDown(StrEnum):
+    """The idle ladder's rungs: the plain warning, then the one goodbye before the loop sleeps."""
+
+    WARN = "warn"
+    FINAL = "final"
+
+
 class BriefingRunOutcome(StrEnum):
     """How one scheduled briefing run ended: sent, or skipped before any delivery."""
 

@@ -53,6 +53,7 @@ from app.constants.briefing import (
     BriefItemSource,
     BriefOutcome,
     EditionChoice,
+    WindDown,
 )
 from app.constants.desk_buckets import DeskBucket
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -123,19 +124,18 @@ from app.services.briefing import (
     context,
     daily,
     delivery,
-    dormancy,
     edition_draws,
     errors,
     prose,
     publish,
     store,
     weekly,
+    wind_down,
 )
 from app.services.briefing.candidates import pool as candidates_pool
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.composition import compose, headings as composition_headings
 from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
-from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
@@ -498,7 +498,7 @@ def _briefs_read(world: World, briefs: list[BriefingModel]) -> None:
 
 
 def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
-    """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
+    """Patch what the run gathers its context from (work, goals, wind_down, apps) and the scouts."""
     _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
     _seam(
         monkeypatch,
@@ -543,8 +543,8 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
             )
         ),
     )
-    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
-    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
+    _seam(monkeypatch, w, wind_down, "record_idle_day", AsyncMock(return_value=0))
+    _seam(monkeypatch, w, wind_down, "latest_activity_since", AsyncMock(return_value=None))
     monkeypatch.setattr(
         daily,
         "activity_status_of",
@@ -1557,9 +1557,9 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            dormancy,
+            wind_down,
             "state_from_user",
-            lambda _: DormancyState(idle_days=3, date=None, dormant_since=MagicMock()),
+            lambda _: BriefingDormancy(idle_days=3, date=None, dormant_since=MagicMock()),
         )
 
         await daily.run_daily_briefing(_USER)
@@ -2944,7 +2944,7 @@ class TestTheDailyRunWiring:
         world.reads["list_for_user"].assert_awaited_once_with(_USER, sort=[("created_at", 1)])
         world.reads["format_replies_block"].assert_awaited_once_with(_USER, _DAY_START)
         world.reads["record_idle_day"].assert_awaited_once_with(
-            _USER, dormancy.state_from_user(world.user), False, _DATE
+            _USER, wind_down.state_from_user(world.user), False, _DATE
         )
         prompt_args = world.voice_prompt.call_args.kwargs
         assert prompt_args["date_local"] == _DATE
@@ -3627,20 +3627,20 @@ def _dormant(world: World) -> None:
 
 
 class TestTheIdleLadder:
-    """Nothing to report escalates to a warning, then one goodbye, then dormancy."""
+    """Nothing to report escalates to a warning, then one goodbye, then wind_down."""
 
     async def test_a_dormant_user_who_came_back_is_woken_and_briefed(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _dormant(world)
-        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+        _seam(monkeypatch, world, wind_down, "latest_activity_since", AsyncMock(return_value=_NOW))
 
         await daily.run_daily_briefing(_USER)
 
         (user_id, since), _ = world.reads["latest_activity_since"].await_args
         assert (user_id, since) == (_USER, _DORMANT_SINCE)
         world.clear_dormancy.assert_awaited_once_with(_USER)
-        assert world.reads["record_idle_day"].await_args.args[1] == DormancyState(
+        assert world.reads["record_idle_day"].await_args.args[1] == BriefingDormancy(
             idle_days=0, date=None, dormant_since=None
         )
         world.upsert.assert_awaited()
@@ -3652,7 +3652,7 @@ class TestTheIdleLadder:
         assert world.user.briefing_dormancy is not None
         world.user.briefing_dormancy.goal_asked_at = _NOW - timedelta(days=2)
         _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
-        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+        _seam(monkeypatch, world, wind_down, "latest_activity_since", AsyncMock(return_value=_NOW))
 
         await daily.run_daily_briefing(_USER)
 
@@ -3716,7 +3716,7 @@ class TestTheIdleLadder:
         )
         goal = context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)
         _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[goal]))
-        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+        _seam(monkeypatch, world, wind_down, "latest_activity_since", AsyncMock(return_value=_NOW))
 
         await daily.run_daily_briefing(_USER)
 
@@ -3752,17 +3752,17 @@ class TestTheIdleLadder:
         assert situation.goal_asked_recently is not asks
         assert world.goal_asked.await_count == int(asks)
 
-    @pytest.mark.parametrize(("idle_days", "stage"), [(2, "warn"), (3, "final")])
+    @pytest.mark.parametrize(("idle_days", "stage"), [(2, WindDown.WARN), (3, WindDown.FINAL)])
     async def test_the_idle_streak_sets_the_wind_down_and_the_goodbye_goes_dormant(
         self, world: World, monkeypatch: pytest.MonkeyPatch, idle_days: int, stage: str
     ) -> None:
         _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
-        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
+        _seam(monkeypatch, world, wind_down, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await daily.run_daily_briefing(_USER)
 
         assert world.voice_prompt.call_args.kwargs["situation"].wind_down == stage
-        if stage == "final":
+        if stage is WindDown.FINAL:
             world.enter_dormancy.assert_awaited_once_with(_USER)
         else:
             world.enter_dormancy.assert_not_awaited()
@@ -3771,7 +3771,7 @@ class TestTheIdleLadder:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
-        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=2))
+        _seam(monkeypatch, world, wind_down, "record_idle_day", AsyncMock(return_value=2))
         world.calendar = []
 
         await daily.run_daily_briefing(_USER)
@@ -3783,7 +3783,7 @@ class TestTheIdleLadder:
     async def test_a_long_streak_with_work_to_report_does_not_wind_down(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=5))
+        _seam(monkeypatch, world, wind_down, "record_idle_day", AsyncMock(return_value=5))
 
         await daily.run_daily_briefing(_USER)
 
@@ -3810,7 +3810,7 @@ class TestTheIdleLadder:
             ),
         )
         _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
-        _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=idle_days))
+        _seam(monkeypatch, world, wind_down, "record_idle_day", AsyncMock(return_value=idle_days))
 
         await daily.run_daily_briefing(_USER)
 
@@ -3821,7 +3821,7 @@ class TestTheIdleLadder:
 def _idle_day(monkeypatch: pytest.MonkeyPatch, world: World, streak: int) -> None:
     """Make today a day with nothing to report, at the given idle streak."""
     _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
-    _seam(monkeypatch, world, dormancy, "record_idle_day", AsyncMock(return_value=streak))
+    _seam(monkeypatch, world, wind_down, "record_idle_day", AsyncMock(return_value=streak))
 
 
 class TestTheFirstWeek:
@@ -3849,7 +3849,7 @@ class TestTheFirstWeek:
         await daily.run_daily_briefing(_USER)
 
         assert world.reads["record_idle_day"].await_args.args[2] is True
-        assert world.voice_prompt.call_args.kwargs["situation"].wind_down == "final"
+        assert world.voice_prompt.call_args.kwargs["situation"].wind_down is WindDown.FINAL
         assert world.voice_prompt.call_args.kwargs["situation"].first_week is False
         world.enter_dormancy.assert_awaited_once_with(_USER)
 
@@ -4096,7 +4096,7 @@ class TestTheWeeklyRunWiring:
         _seam(
             monkeypatch,
             world,
-            dormancy,
+            wind_down,
             "latest_activity_since",
             AsyncMock(return_value=_NOW if came_back else None),
         )

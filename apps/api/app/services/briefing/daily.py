@@ -32,7 +32,7 @@ from app.models.briefing_models import (
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import ScoutSkipReason
 from app.models.user_models import UserDocument
-from app.services.briefing import chat_sync, context, dormancy
+from app.services.briefing import chat_sync, context, wind_down
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.memory import mark_placed_shown
@@ -117,7 +117,7 @@ def _is_empty_day(payload: BriefingPayload) -> bool:
     return not payload.blocks and not payload.undrawn and not payload.calendar
 
 
-def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: dormancy.IdleLadder) -> bool:
+def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: wind_down.IdleLadder) -> bool:
     """Say whether today gets the quiet note: no event, nothing the ladder says, and nothing new placed.
 
     What an earlier brief already showed as it stands is no reason for an edition, nor a
@@ -130,7 +130,7 @@ def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: dormancy.Idle
         and not shows_movement
         and not events
         and ladder.wind_down is None
-        and ladder.goal_question is dormancy.GoalQuestion.ASKED
+        and ladder.goal_question is wind_down.GoalQuestion.ASKED
     )
 
 
@@ -247,7 +247,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     # Idle ladder: nothing to report and no goal (or an ignored goal question) escalates
     # to a plain warning, one goodbye, then dormancy; the ladder also says whether today
     # asks about the goal. A new account's first week never climbs it.
-    ladder = await dormancy.climb_idle_ladder(
+    ladder = await wind_down.climb_idle_ladder(
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
     if not winback.is_winback and not is_first and _is_quiet_day(laid, day.events, ladder):
@@ -274,7 +274,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             wind_down=ladder.wind_down,
             first_week=ladder.first_week,
             offer_lighter_cadence=offer_lighter,
-            goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
+            goal_asked_recently=ladder.goal_question is wind_down.GoalQuestion.ASKED,
         ),
         recent=recent,
     )
@@ -337,7 +337,7 @@ async def _quiet_day(
     user: UserDocument,
     clock: context.UserClock,
     reads: tuple[context.DayCalendar, int],
-    run: tuple[GatheredCandidates, FactPool, dormancy.IdleLadder],
+    run: tuple[GatheredCandidates, FactPool, wind_down.IdleLadder],
     briefs: list[BriefingModel],
 ) -> BriefingRunOutcome:
     """Send the quiet note, or nothing when the last daily already was one: until something real happens."""
@@ -361,14 +361,14 @@ async def _quiet_day(
 
 
 async def _settle(
-    user: UserDocument, ladder: dormancy.IdleLadder, gathered: GatheredCandidates
+    user: UserDocument, ladder: wind_down.IdleLadder, gathered: GatheredCandidates
 ) -> None:
     """Close a sent run: clear the held results it accounted for, the bootstrap and the ladder's rung."""
     carried = carried_ids(gathered.pool, gathered.duplicate_held_ids)
     if carried:
         await pending_brief_items_repository.consume(user.id, carried)
     await clear_bootstrap(user)
-    await dormancy.leave_idle_ladder(user.id, ladder)
+    await wind_down.leave_idle_ladder(user.id, ladder)
 
 
 def _calendar_unread(

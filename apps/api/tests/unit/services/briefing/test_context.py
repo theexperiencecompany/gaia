@@ -50,7 +50,7 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services import calendar_service
-from app.services.briefing import context, dormancy
+from app.services.briefing import context, wind_down
 from app.utils.errors import AppError, IntegrationNotConnectedError
 
 _USER = "user-1"
@@ -335,7 +335,7 @@ class TestWinback:
     @pytest.fixture
     def last_active(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         read = AsyncMock(return_value=None)
-        monkeypatch.setattr(dormancy, "latest_activity_since", read)
+        monkeypatch.setattr(wind_down, "latest_activity_since", read)
         return read
 
     async def test_no_briefs_is_not_winback(
@@ -930,7 +930,7 @@ class TestWinbackReads:
         listing = AsyncMock(return_value=[_brief("clear")])
         signal = AsyncMock(return_value=None)
         monkeypatch.setattr(briefing_repository, "list_recent", listing)
-        monkeypatch.setattr(dormancy, "latest_activity_since", signal)
+        monkeypatch.setattr(wind_down, "latest_activity_since", signal)
 
         await context.compute_winback_state(_WINBACK_USER)
 

@@ -15,6 +15,7 @@ from app.constants.briefing import (
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_LEDE_CHARS,
     MAX_BRIEF_MESSAGE_CHARS,
+    WindDown,
 )
 
 # How the brief's one message reads, shared by daily and weekly: every surface
@@ -347,7 +348,7 @@ class VoiceSituation:
 
     winback: bool = False
     is_first_briefing: bool = False
-    wind_down: str | None = None
+    wind_down: WindDown | None = None
     first_week: bool = False
     offer_lighter_cadence: bool = False
     #: A brief asked about their remembered goal inside GOAL_QUESTION_REASK.
@@ -366,7 +367,7 @@ def build_briefing_voice_prompt(
     recent is what the last few briefs printed, so today's says it in fresh words.
     """
     wind_down_note = ""
-    if situation.wind_down == "warn":
+    if situation.wind_down is WindDown.WARN:
         wind_down_note = (
             "\nGAIA has had nothing to work on for days: no goal, no lanes. Say so "
             "plainly in ONE short message and warn honestly: unless they tell you "
@@ -375,7 +376,7 @@ def build_briefing_voice_prompt(
             "honesty; end on the one question that restarts everything (what are "
             "you working on right now?).\n"
         )
-    elif situation.wind_down == "final":
+    elif situation.wind_down is WindDown.FINAL:
         wind_down_note = (
             "\nThis is the goodbye brief. ONE short message only: you're pausing the daily "
             "briefs and the night work because there's nothing to work on, and one "

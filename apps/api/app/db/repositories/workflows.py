@@ -265,7 +265,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
         """Every activated workflow a user owns but the briefs: the dormancy sweep's pause set.
 
-        A brief winds itself down through its own winback and idle ladder (briefing.dormancy).
+        A brief winds itself down through its own winback and idle ladder (briefing.wind_down).
         """
         return await self._find(
             {

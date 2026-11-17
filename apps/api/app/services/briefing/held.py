@@ -21,7 +21,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
 )
-from app.services.briefing import context, dormancy
+from app.services.briefing import context, wind_down
 from app.services.briefing.lifecycle import bootstrap_holds
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
@@ -39,7 +39,7 @@ async def brief_will_carry(user_id: str) -> bool:
     user = await user_repository.get(user_id)
     if user is None:
         raise LookupError(f"Daily brief workflow {workflow.id} belongs to no user {user_id}")
-    if bootstrap_holds(user) or await dormancy.is_dormant(user):
+    if bootstrap_holds(user) or await wind_down.is_dormant(user):
         return False
     return not (await context.compute_winback_state(user)).should_back_off
 

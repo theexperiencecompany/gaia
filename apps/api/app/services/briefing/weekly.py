@@ -28,7 +28,7 @@ from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.models.briefing_models import BriefingEvent, BriefingModel, BriefingTallies
 from app.models.user_models import UserDocument
-from app.services.briefing import context, dormancy
+from app.services.briefing import context, wind_down
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.candidates.memory import mark_placed_shown
 from app.services.briefing.candidates.pool import (
@@ -184,7 +184,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         seen_at,
     )
     empty = _is_empty_week(pool)
-    await dormancy.climb_weekly_ladder(
+    await wind_down.climb_weekly_ladder(
         user, dstate, clock.date_str, has_news=not empty, has_goal=has_goal
     )
     if empty:

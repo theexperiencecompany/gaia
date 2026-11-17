@@ -47,7 +47,7 @@ from app.models.briefing_models import (
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import UserDocument
-from app.services.briefing import dormancy
+from app.services.briefing import wind_down
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -405,7 +405,7 @@ async def compute_winback_state(user: UserDocument, recent: int = 10) -> Winback
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
-    last_active = await dormancy.latest_activity_since(user.id, _aware(briefings[-1].created_at))
+    last_active = await wind_down.latest_activity_since(user.id, _aware(briefings[-1].created_at))
     unacknowledged = 0
     for briefing in briefings:
         if last_active is not None and last_active >= _aware(briefing.created_at):
