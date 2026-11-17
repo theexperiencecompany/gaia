@@ -18,8 +18,6 @@ score:Security=96
 *	perf/source-maps/source-maps-exposed	/_next/static/chunks/*.js.map
 *	perf/total-byte-weight/total-byte-weight
 *	security/csp/csp-missing
-/	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
-/about	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser
 /alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
@@ -1486,7 +1484,6 @@ score:Security=96
 /pt-br/learn/video-conferencing	content/keyword-stuffing/keyword-stuffing	reuni
 /pt-br/learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	fluxos
 /pt-br/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/signup	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /signup	content/word-count/word-count
 /thanks	content/word-count/word-count
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count

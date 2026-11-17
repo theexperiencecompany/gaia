@@ -9,6 +9,7 @@ import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
   clearCurrentUser,
   currentUserQueryOptions,
+  useMayHaveSession,
 } from "@/features/auth/hooks/useCurrentUser";
 import { usePendingCheckout } from "@/features/pricing/hooks/usePendingCheckout";
 import { usePathname } from "@/i18n/navigation";
@@ -19,25 +20,34 @@ import { HTTP_UNAUTHORIZED } from "@/lib/api/outcome";
 // can be flipped during the render-phase redirect without writing a ref.
 let hasTrackedOAuthLogin = false;
 
+const isUnauthorized = (error: Error | null): boolean =>
+  error instanceof ApiError && error.status === HTTP_UNAUTHORIZED;
+
+/** Drive the current-user query; OAuth tokens in the URL always ask /me. */
 const useFetchUser = () => {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
-  const hasClearedOnError = useRef(false);
-  const hasResetOnUnauthorized = useRef(false);
+  const hasClearedOnUnauthorized = useRef(false);
   const pendingCheckout = usePendingCheckout();
+  const accessToken = searchParams.get("access_token");
+  const refreshToken = searchParams.get("refresh_token");
+  const hasOAuthTokens = Boolean(accessToken && refreshToken);
+  const mayHaveSession = useMayHaveSession();
 
-  // The one place the current-user query is driven — the cache *is* the
-  // state, nothing is copied out. Persisted for instant paint, so this
-  // driver always re-validates on mount (one round-trip/load); others stay fresh-only.
+  // The one driver of the current-user query: re-validates the persisted user on mount.
+  // enabled reads the live query, so a user the persister restores after mount counts.
   const { data, error } = useQuery({
     ...currentUserQueryOptions,
     refetchOnMount: "always",
+    enabled: (query) => hasOAuthTokens || mayHaveSession(query),
   });
 
   useEffect(() => {
     if (!data) return;
+    // A user loaded means a live session again, so its later 401 must clear it too.
+    hasClearedOnUnauthorized.current = false;
 
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
@@ -68,22 +78,10 @@ const useFetchUser = () => {
     }
   }, [data, currentPath]);
 
-  // OAuth redirect routing, isolated from store syncing so route changes
-  // don't overwrite state with stale data. Resolved during render, not an
-  // effect, so the callback page never paints before redirecting; same as router.push.
-  const accessToken = searchParams.get("access_token");
-  const refreshToken = searchParams.get("refresh_token");
-
   // OAuth redirect resolved during render (not an effect) so the callback page
   // never paints before redirecting. Login analytics are server-side only
   // (track_login on the OAuth callback); emitting here would double-count.
-  if (
-    data &&
-    accessToken &&
-    refreshToken &&
-    !pendingCheckout &&
-    !hasTrackedOAuthLogin
-  ) {
+  if (data && hasOAuthTokens && !pendingCheckout && !hasTrackedOAuthLogin) {
     hasTrackedOAuthLogin = true;
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
@@ -101,27 +99,24 @@ const useFetchUser = () => {
     }
   }
 
-  // Clear user state on a failed /me, dropping it from the persisted cache too.
-  // Guarded by a ref: removing the query makes this observer refetch, so an
-  // unguarded effect would remove it again on the next failure, in a loop.
+  // A transient /me failure keeps the cached user (and with it the marketing gate's
+  // evidence of a session): only the API's 401 ends the session.
   useEffect(() => {
-    if (!error || hasClearedOnError.current) return;
-    hasClearedOnError.current = true;
-    console.error("Error fetching user info:", error);
+    if (error && !isUnauthorized(error)) {
+      console.error("Error fetching user info:", error);
+    }
+  }, [error]);
+
+  // A 401 drops the user from the persisted cache too. Guarded by a ref: removing the
+  // query makes an app-page observer refetch and 401 again, in a loop.
+  useEffect(() => {
+    if (!isUnauthorized(error) || hasClearedOnUnauthorized.current) return;
+    hasClearedOnUnauthorized.current = true;
     clearCurrentUser(queryClient);
     hasIdentified.current = false;
-  }, [error, queryClient]);
-
-  // Only a 401 ends the identified session, so it is guarded on its own: a 5xx
-  // that cleared the cache first must not swallow the 401 a refetch then returns.
-  useEffect(() => {
-    if (hasResetOnUnauthorized.current) return;
-    if (!(error instanceof ApiError && error.status === HTTP_UNAUTHORIZED))
-      return;
-    hasResetOnUnauthorized.current = true;
     // resetUser leaves an anonymous visitor's 401 alone.
     resetUser();
-  }, [error]);
+  }, [error, queryClient]);
 };
 
 export default useFetchUser;

@@ -48,10 +48,6 @@ TASK_FILES_ENV = "TASK_FILES_PATH"
 PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
 
 
-class NxUnavailableError(RuntimeError):
-    """nx gave no answer: the workspace is not installed, or nx failed before answering."""
-
-
 @dataclass(frozen=True)
 class Check:
     """One CI check: an nx task and its target's `metadata.ci`."""
@@ -94,13 +90,17 @@ def _target(task: str) -> str:
     return task.split(":", 1)[1]
 
 
+class NxFailedError(RuntimeError):
+    """nx gave no answer: the workspace is not installed, or the command failed and says why."""
+
+
 def _nx(*args: str) -> str:
     if not PNPM_INSTALL_MARKER.is_file():
-        raise NxUnavailableError(
+        raise NxFailedError(
             f"node_modules is not installed in {REPO_ROOT}, so nx cannot run. "
             "Run: pnpm install --frozen-lockfile"
         )
-    nx = subprocess.run(
+    done = subprocess.run(
         ["pnpm", "exec", "nx", *args],
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
@@ -108,11 +108,10 @@ def _nx(*args: str) -> str:
         text=True,
         check=False,
     )
-    if nx.returncode != 0:
-        raise NxUnavailableError(
-            f"nx {args[0]} exited {nx.returncode}:\n{(nx.stderr or nx.stdout).strip()}"
-        )
-    return nx.stdout
+    if done.returncode == 0:
+        return done.stdout
+    said = (done.stderr + done.stdout).strip()
+    raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}")
 
 
 def _json_after_banner(out: str, opener: str) -> object:

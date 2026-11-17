@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass, replace
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -79,8 +80,10 @@ LAZY_BELOW_FOLD_PAGES = re.compile(
 )
 # Images that sit below the first viewport on every page that renders them: the closing
 # section's wallpaper, the use cases' publish-a-workflow banner, and /brand's wordmarks.
+# Matched on the unquoted item: Next serves /_next/image?url=%2Fimages..., Cloudflare
+# /cdn-cgi/image/<options>/images...
 LAZY_BELOW_FOLD_IMAGES = re.compile(
-    r"%2Fwallpapers%2F(?:creation_of_adam|blueprint)\.|%2Fbrand%2Fgaia_wordmark_"
+    r"/images/wallpapers/(?:creation_of_adam|blueprint)\.|/brand/gaia_wordmark_"
 )
 # The checks an integration page fails on its tools' synced docs, not on our copy.
 SYNCED_DOC_RULES = frozenset(
@@ -184,7 +187,9 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
 
 def _lazy_below_fold(seen: Observed, _pages: frozenset[str]) -> bool:
     page = SITE_LOCALE.sub("", seen.page) or "/"
-    below = LAZY_BELOW_FOLD_PAGES.match(page) or LAZY_BELOW_FOLD_IMAGES.search(seen.finding.item)
+    below = LAZY_BELOW_FOLD_PAGES.match(page) or LAZY_BELOW_FOLD_IMAGES.search(
+        urllib.parse.unquote(seen.finding.item)
+    )
     return seen.finding.rule == "perf/lazy-above-fold" and bool(below)
 
 
@@ -595,6 +600,9 @@ def cmd_drop(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # squirrel's binary leaves the stdout it shares with us O_NONBLOCK, so a long verdict
+    # died mid-print with BlockingIOError (master run 43763653900).
+    os.set_blocking(sys.stdout.fileno(), True)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     drop = sub.add_parser("drop", help="apply the fixes a ratchet run printed to the baseline")

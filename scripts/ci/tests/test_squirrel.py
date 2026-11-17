@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import select
 import sqlite3
 import subprocess
 import sys
+import time
 
 from http_stub import Routes, serve
 import pytest
@@ -285,6 +287,9 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/faq", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fcreation_of_adam.webp&w=1920&q=75"}]),
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fbrand%2Fgaia_wordmark_black.png&w=1920&q=75"}]),
         _row("/use-cases/rent-reminder", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fblueprint.webp&w=1920&q=75"}]),
+        _row("/ai-assistant-with-memory", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/creation_of_adam.webp"}]),
+        _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/brand/gaia_wordmark_black.png"}]),
+        _row("/use-cases/rent-reminder", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/blueprint.webp"}]),
         _row("/marketplace/gmail", "perf/dom-size", "dom-max-children"),
     ],
 )  # fmt: skip
@@ -308,6 +313,8 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/faq",
         "/brand",
         "/use-cases/rent-reminder",
+        "/ai-assistant-with-memory",
+        "/features/workflows",
     ]
     proc = _ratchet(tmp_path, [row], "", pages=pages)
     assert proc.returncode == 0, proc.stdout
@@ -325,7 +332,11 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/marketplace/page/2", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Ficons%2Fgmail.webp&w=128&q=75"}]),
         _row("/blog", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fblog%2Fopen-source.webp&w=1920&q=75"}]),
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fbrand%2Fgaia_logo.svg&w=1920&q=75"}]),
+        _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/brand/gaia_logo.svg"}]),
+        _row("/about", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/ethereal_alpine_valley.webp"}]),
         _row("/pricing/team", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/brand/gaia_logo.svg"}]),
+        _row("/features/workflows", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=256,quality=75,format=auto/images/icons/github.png"}]),
+        _row("/features/event-triggers", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=128,quality=75,format=auto/images/icons/gmail.webp"}]),
         _row("/de/compare/asana", "content/word-count", "word-count"),
         _row("/de/compare/asana", "core/meta-title", "meta-title"),
         _row("/ja/compare/asana", "core/canonical", "canonical"),
@@ -356,8 +367,36 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/brand",
         "/pricing/team",
         "/marketplace/gmail",
+        "/about",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
+
+
+def test_the_verdict_survives_a_stdout_the_crawler_left_non_blocking(tmp_path: Path) -> None:
+    pages = ["/", *(f"/p{n}" for n in range(2000))]
+    home = _crawl(tmp_path, pages, [_row(f"/p{n}", "a11y/link-text", "link-text-generic", [{"id": "download"}]) for n in range(2000)], {})  # fmt: skip
+    (tmp_path / "baseline.txt").write_text("")
+    read_end, write_end = os.pipe()
+    os.set_blocking(write_end, False)
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-I", str(SCRIPT), "ratchet", "--site", SITE, "--home", str(home),
+            "--report", str(tmp_path / "report.json"), "--pages", str(tmp_path / "pages.txt"),
+            "--baseline", str(tmp_path / "baseline.txt"),
+        ],
+        stdout=write_end,
+        stderr=subprocess.STDOUT,
+    )  # fmt: skip
+    # read nothing until the pipe is full or the child is gone, so the child has hit the failing write
+    deadline = time.monotonic() + 60
+    while proc.poll() is None and select.select([], [write_end], [], 0.05)[1]:
+        assert time.monotonic() < deadline, "the report never filled the pipe"
+    os.close(write_end)
+    with os.fdopen(read_end, encoding="utf-8") as reader:
+        out = reader.read()
+    assert proc.wait() == 1
+    assert out.count("squirrel: new finding") == 2000
+    assert "squirrel: FAIL (2000 findings on 2001 pages: 2000 new" in out
 
 
 def test_a_red_full_crawl_writes_a_short_alert(tmp_path: Path) -> None:
