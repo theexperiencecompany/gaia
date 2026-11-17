@@ -132,12 +132,14 @@ describe("a send to a chat that no longer exists", () => {
       { platform: "telegram", platformUserId: "1" },
       "stale",
       1,
+      { delivered_seq: 0, partial_reply: null },
       surface(staleSent, chatNotFound),
     );
     followers.follow(
       { platform: "telegram", platformUserId: "2" },
       "live",
       1,
+      { delivered_seq: 0, partial_reply: null },
       surface(liveSent, null),
     );
     await followers.idle();
@@ -160,6 +162,7 @@ describe("a send to a chat that no longer exists", () => {
       { platform: "telegram", platformUserId: "1" },
       "stale",
       1,
+      { delivered_seq: 0, partial_reply: null },
       surface([], () => grammyError(502, "Bad Gateway")),
     );
     const ended = await Promise.race([
@@ -200,10 +203,16 @@ describe("a platform outage mid-reply", () => {
     };
     const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
 
-    followers.follow({ platform: "telegram", platformUserId: "1" }, "c1", 1, {
-      ...platform,
-      send,
-    });
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      {
+        ...platform,
+        send,
+      },
+    );
     let ended = false;
     void followers.idle().then(() => {
       ended = true;
@@ -250,10 +259,16 @@ describe("an edit during a platform outage", () => {
     };
     const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
 
-    followers.follow({ platform: "telegram", platformUserId: "1" }, "c1", 1, {
-      ...platform,
-      send,
-    });
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      {
+        ...platform,
+        send,
+      },
+    );
     let ended = false;
     void followers.idle().then(() => {
       ended = true;

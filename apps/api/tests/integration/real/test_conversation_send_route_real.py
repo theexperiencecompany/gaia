@@ -372,6 +372,53 @@ async def test_a_bot_restarted_mid_delivery_resumes_from_its_delivered_cursor_an
     assert await following() == []
 
 
+async def test_a_bot_message_follows_from_what_its_session_still_owes(sends: Sends) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    body = BotChatRequest(
+        message="anything new?",
+        platform="telegram",
+        platform_user_id=platform_user_id,
+        platform_message_id="903",
+        is_dm=True,
+    )
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        first = await submit_bot_message(body, user)
+    # Nothing was ever owed: the follow starts just before the message.
+    assert (first.after_seq, first.partial_reply) == (first.seq - 1, None)
+    assert await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=first.seq, partial_reply=None
+    )
+
+    # A reminder lands while the bot is down and its wake is lost; then the user writes.
+    install_runtime_ports(replace(runtime_ports(), frames=BotWakingFrames(RedisStreamFrames())))
+    payload = ConversationPayload(
+        conversation_id=bot_chat,
+        notification_id=f"n-{uuid4().hex[:8]}",
+        text="Your reminder: call the bank",
+        origin="reminder",
+    )
+    with patch(
+        "app.services.outbound_delivery.get_rabbitmq_publisher", AsyncMock(return_value=AsyncMock())
+    ):
+        await ConversationChannelAdapter().deliver(payload, user.user_id)
+    [notice] = [
+        logged
+        for logged in await runtime_ports().log.read_after(bot_chat, user.user_id, 0)
+        if isinstance(logged.entry, Notice)
+    ]
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        later = await submit_bot_message(
+            body.model_copy(update={"platform_message_id": "904"}), user
+        )
+
+    assert later.seq > notice.seq
+    assert (later.after_seq, later.partial_reply) == (first.seq, None)
+
+
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(
     client: AsyncClient, sends: Sends, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
