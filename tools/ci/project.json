@@ -910,7 +910,7 @@
     "harness-tests": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --frozen --isolated --only-group harness pytest tools/lints tools/llm-stub scripts/ci scripts/dev -q --durations=10 -n 4 --dist loadfile"
+        "command": "uv run --frozen --isolated --only-group harness pytest tools/lints tools/llm-stub tools/telegram-edge scripts/ci scripts/dev -q --durations=10 -n 4 --dist loadfile"
       },
       "inputs": [
         "{workspaceRoot}/**/*",

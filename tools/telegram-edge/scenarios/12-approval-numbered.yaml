@@ -1,0 +1,12 @@
+name: approval-numbered
+description: Two approvals answered "yes 1, no 2" decide exactly those; nothing is asked twice (run 3 bugs 11/12, run 6 C2).
+budgets: {first_response_s: 30}
+steps:
+  - set_tool_ask: {tool: create_todo, ask: true}
+  - send: "Add two todos for tomorrow: '{nonce} alpha' and '{nonce} beta'."
+  - wait_for: approval_prompt
+  - sleep: 8
+  - send: "yes 1, no 2"
+  - wait_reply: {quiet: 12}
+expect:
+  - approval_numbers: {tags: [alpha, beta], decisions: {1: "yes", 2: "no"}}

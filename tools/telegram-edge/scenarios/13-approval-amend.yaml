@@ -1,0 +1,14 @@
+name: approval-amend
+description: '"yes but make it high priority" re-asks once with the change, then "yes" creates it with that priority (bugs 13, 20).'
+budgets: {first_response_s: 30}
+steps:
+  - set_tool_ask: {tool: create_todo, ask: true}
+  - send: "Add a todo titled '{nonce} amend' for tomorrow."
+  - wait_for: approval_prompt
+  - send: "yes but make it high priority"
+  - wait_for: approval_prompt
+  - send: "yes"
+  - wait_reply: {quiet: 10}
+expect:
+  - prompts: 2
+  - todos: [{tag: amend, exists: true, priority: high}]

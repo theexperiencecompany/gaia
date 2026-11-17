@@ -1,0 +1,13 @@
+name: stop-mid-work
+description: /stop during research; the stop notice is the last thing said, and the chat still answers after (runs 3-6, bug 24).
+steps:
+  - send: "Research the full history of the Eiffel Tower's construction in depth, with sources."
+  - wait_for: bot_message
+  - sleep: 4
+  - send: "/stop"
+  - sleep: 40
+  - send: "What's 7 times 8?"
+  - wait_reply: {}
+expect:
+  - contains: {after: 2, pattern: '\b56\b'}
+    loose: proves the conversation still answers after a stop; the product is a fixed number

@@ -320,6 +320,10 @@ run = "pnpm nx run web:e2e"
 description = "Run the screen-over-time Playwright flows: scripted chats whose rendered items are recorded at every DOM change and must never reorder, vanish or double, and must match after a reload. Needs a running sim stack (`mise dev --sim`) plus the ARQ worker (`nx worker api`, same env) for the approval-expiry sweep. One worker: the flows share the dev user and flip its approval preferences."
 run = "pnpm nx run web:e2e-screen"
 
+[tasks."e2e:telegram"]
+description = "Live Telegram edge suite (not CI): your real Telegram account (the tgsend session in ~/.local/share/gaia-tg) talks to the dev bot of a stack you already started, with a real model. Every scenario in tools/telegram-edge/scenarios is checked against user-visible invariants. Args: scenario names, --list. Env: TG_EDGE_API (default http://localhost:8900/api/v1), TG_EDGE_BOT_STOP / TG_EDGE_BOT_START (shell commands; restart scenarios skip without them). Reports land in ~/.local/share/gaia-tg/edge-runs/."
+run = "uv run tools/telegram-edge/edge.py"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────

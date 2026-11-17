@@ -1,0 +1,12 @@
+name: approval-no
+description: One approval answered "no"; nothing is created and nothing re-asks (run 6 C1, bug 25).
+budgets: {first_response_s: 30}
+steps:
+  - set_tool_ask: {tool: create_todo, ask: true}
+  - send: "Add a todo titled '{nonce} refused' for tomorrow."
+  - wait_for: approval_prompt
+  - send: "no"
+  - wait_reply: {quiet: 10}
+expect:
+  - prompts: 1
+  - todos: [{tag: refused, exists: false}]
