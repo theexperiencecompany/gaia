@@ -165,6 +165,19 @@ class TestBasePrimitives:
             assert created.updated_at is not None
             assert after.updated_at.replace(tzinfo=UTC) > created.updated_at.replace(tzinfo=UTC)
 
+    async def test_bulk_set_with_no_updates_modifies_nothing(self, repo):
+        assert await repo._bulk_set([], user_id="u") == 0
+
+    async def test_bulk_set_leaves_updated_at_alone_when_stamping_is_off(
+        self, repo, make_doc, monkeypatch
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        monkeypatch.setattr(type(repo), "auto_stamp_timestamps", False)
+        await asyncio.sleep(0.01)
+        await repo._bulk_set([(a.id, _FixtureUpdate(title="A"))], user_id="u")
+        after = await repo.get(a.id, user_id="u")
+        assert after is not None and after.updated_at == a.updated_at
+
     async def test_bulk_set_rejects_an_update_with_no_fields_naming_the_document(
         self, repo, make_doc
     ):
