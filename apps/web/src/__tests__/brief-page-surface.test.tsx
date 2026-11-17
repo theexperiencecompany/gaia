@@ -34,11 +34,7 @@ const HEADLINE = "One payment failed overnight";
 const MESSAGE = "The Stripe retry runs at noon.";
 
 const PAYLOAD: BriefingEditionPayload = {
-  kicker: "THE MORNING BRIEF",
-  date: "2026-11-11",
   headline: HEADLINE,
-  lede: "",
-  stats: [],
   sections: [
     {
       numeral: "I",
@@ -46,9 +42,6 @@ const PAYLOAD: BriefingEditionPayload = {
       items: [{ text: "Reply to Dana", kind: "you" }],
     },
   ],
-  mood: "packed",
-  caption: "",
-  hue: 10,
   message: MESSAGE,
   calendar: [{ date: "2026-11-11", start: "13:00", title: "Lunch and learn" }],
 };

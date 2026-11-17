@@ -22,15 +22,8 @@ function payload(
   item: BriefingEditionPayload["sections"][number]["items"][number],
 ): BriefingEditionPayload {
   return {
-    kicker: "THE MORNING BRIEF",
-    date: "2026-10-14",
     headline: "Your morning",
-    lede: "",
-    stats: [],
     sections: [{ numeral: "I", title: "GAIA'S WORK", items: [item] }],
-    mood: "packed",
-    caption: "",
-    hue: 10,
   };
 }
 

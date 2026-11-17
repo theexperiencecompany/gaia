@@ -2,36 +2,42 @@
 
 import { ArrowUpRight01Icon } from "@icons";
 import type {
-  BriefingEvent,
+  BriefingItem,
   BriefingPayload,
+  BriefingSection,
   BriefPoolItem,
 } from "@shared/api/generated";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { z } from "zod";
 
-import type { briefingSchema } from "@/config/openui/promptSpecs";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { cn } from "@/lib/utils";
 
 import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "../constants";
 
-/** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
-export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
-  calendar?: BriefingEvent[];
-  message?: string | null;
-  /** What the brief read but GAIA left out of today's composition. */
-  uncomposed?: BriefPoolItem[];
-  /** The brief as composed, in reading order: the blocks its edition drew. */
-  blocks?: BriefingPayload["blocks"];
-  /** Composed blocks the day's edition could not draw in its idiom. */
-  undrawn?: BriefingPayload["undrawn"];
-};
+/** An item as this view reads it: its words, its state and where it opens. */
+type EditionItem = Pick<BriefingItem, "text" | "kind"> &
+  Partial<Pick<BriefingItem, "todo_id" | "link">>;
+
+/**
+ * The brief's fields this view reads, off the stored payload. GAIA's OpenUI
+ * Briefing component carries only the headline and sections, so the rest is
+ * optional: the calendar, GAIA's message, what the composition left out
+ * (uncomposed), the blocks the edition drew and those it could not (undrawn).
+ */
+export type BriefingEditionPayload = Pick<BriefingPayload, "headline"> & {
+  sections: (Pick<BriefingSection, "numeral" | "title"> & {
+    items: EditionItem[];
+  })[];
+} & Partial<
+    Pick<
+      BriefingPayload,
+      "calendar" | "message" | "uncomposed" | "blocks" | "undrawn"
+    >
+  >;
 
 type UndrawnBlock = BriefingPayload["undrawn"][number];
-
-type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
 
 export interface BriefingEditionProps {
   payload: BriefingEditionPayload;
