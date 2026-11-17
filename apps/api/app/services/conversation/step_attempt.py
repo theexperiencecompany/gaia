@@ -56,7 +56,7 @@ class Quiet:
 
 @dataclass(frozen=True)
 class Drafting:
-    """Committed, having streamed only hand-offs, which the work's own bubble shows: the reply has no slot yet."""
+    """Committed with nothing shown: hand-offs, which the work's own bubble shows, or text held until it is known what it answers."""
 
     reply: Reply
 

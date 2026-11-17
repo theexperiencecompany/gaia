@@ -1,8 +1,8 @@
 """What one comms attempt still owes: the user messages it was given that nothing has closed yet.
 
 The conversation runner opens a ledger per attempt under the run's comms_run key. A message
-closes only when a tool names it: answered, react, stay_silent or call_executor; or, when it is
-the only one open, when the run ends on words. Each records its closure here; the step drains
+closes only when a tool names it: answered, react, stay_silent or call_executor; or when the
+run ends on words, which answer every message still open. Each records its closure here; the step drains
 closures and settles replies from them.
 A run without that key (every run the runner did not start) has no ledger and closes nothing.
 """
@@ -83,12 +83,12 @@ def still_open(run_id: str) -> dict[int, str]:
     return {seq: ledger.given[seq] for seq in sorted(ledger.open)}
 
 
-def answer_sole(run_id: str) -> bool:
-    """Close the run's one open message as answered; False when none or several are open."""
+def answer_open(run_id: str) -> bool:
+    """Close every message still open on the run as answered; False when none is open."""
     ledger = _LEDGERS[run_id]
-    if len(ledger.open) != 1:
+    if not ledger.open:
         return False
-    ledger.closed.append(Closure(how=Closing.ANSWERED, seqs=tuple(ledger.open)))
+    ledger.closed.append(Closure(how=Closing.ANSWERED, seqs=tuple(sorted(ledger.open))))
     ledger.open.clear()
     return True
 
