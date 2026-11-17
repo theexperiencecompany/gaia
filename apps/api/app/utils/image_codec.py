@@ -121,7 +121,8 @@ class ImageCodec:
                 sniffed = MIME_BY_PILLOW_FORMAT.get(image.format or "")
                 width, height = image.size
                 image.verify()  # invalidates `image` — read anything else first
-        except (OSError, Image.DecompressionBombError) as exc:
+        # verify() reports a bad chunk checksum as SyntaxError, not OSError.
+        except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
             raise InvalidImageError(f"not a decodable image: {exc}") from exc
         if width * height > MAX_IMAGE_PIXELS:
             raise InvalidImageError(

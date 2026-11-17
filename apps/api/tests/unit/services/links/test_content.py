@@ -116,6 +116,11 @@ def _blank_png(side: int) -> bytes:
 
 
 PNG = _png()
+# 1x1, whose IDAT checksum is wrong: browsers draw it, Pillow's verify refuses it.
+BAD_CHECKSUM_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+)
 PDF = _pdf()
 WAV = _wav()
 # zinc-900, the preview card's background
@@ -486,6 +491,8 @@ class TestPublish:
         ("source", "render", "error_type"),
         [
             (_source("chart.png", "image/png", PNG[:40]), "image", "InvalidImageError"),
+            # A bad chunk checksum, which Pillow's verify reports as SyntaxError.
+            (_source("chart.png", "image/png", BAD_CHECKSUM_PNG), "image", "InvalidImageError"),
             (
                 _source("deck.pdf", "application/pdf", b"%PDF-1.7 truncated"),
                 "pdf",
