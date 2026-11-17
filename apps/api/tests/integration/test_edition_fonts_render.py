@@ -16,7 +16,7 @@ import pytest
 
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.edition_fonts import EDITION_FAMILIES
-from tests.integration.brief_compositions import COMPOSITIONS, composed_payload
+from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 from tests.integration.test_edition_families_render import (
     _DAILY,
     _QUIET,

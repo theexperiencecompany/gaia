@@ -1,6 +1,3 @@
-# /// script
-# dependencies = ["pillow==12.0.0", "resvg-py==0.5.0"]
-# ///
 """Build the app marks the brief editions print beside an item into editions/logos/logos.json.
 
 Reads the integration-logos registry (libs/shared/ts/src/icons/integration-logos.ts) and the
@@ -12,9 +9,9 @@ The mask is the mark's ink: every pixel that is not the white of its tile or kno
 Reddit's face and LinkedIn's letters stay cut out. A mark drawn in white on transparency
 (GitHub, Linear, Vercel) is its alpha instead.
 
-Usage (from the repo root)::
+Usage (from apps/api)::
 
-    uv run apps/api/scripts/build_edition_logos.py
+    uv run --group backend --group dev python -m scripts.build_edition_logos
 """
 
 import base64

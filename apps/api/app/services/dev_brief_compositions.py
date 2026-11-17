@@ -1,7 +1,8 @@
-"""Four composed briefs every edition family renders: busy, quiet with a goal, a charted spike, a week.
+"""Four composed sample briefs: busy, quiet with a goal, a charted spike, a week.
 
 Each is a BriefingPayload as the pipeline stores it after composition, with every block kind and
-chart kind between them, so each family's renderer for each kind is exercised.
+chart kind between them, so each edition family's renderer for each kind is exercised. The
+Briefing settings demo images are rendered from the busy one.
 """
 
 from datetime import date, timedelta
@@ -11,7 +12,6 @@ from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.capabilities import split_drawable
 from app.services.briefing.fact_pool.window import SeriesName
-from tests.factories import make_brief_item
 
 TODAY = "2026-11-10"
 _DAYS = [(date(2026, 11, 10) - timedelta(days=6 - n)).isoformat() for n in range(7)]
@@ -33,13 +33,27 @@ def _series(name: SeriesName, ys: list[float], days: list[str]) -> dict[str, Any
 def _ask(
     text: str, action: BriefAction, source: str, app: str, detail: str | None = None
 ) -> dict[str, Any]:
-    return make_brief_item(text, "you", action=action, source=source, app=app, detail=detail)
+    return {
+        "text": text,
+        "kind": "you",
+        "action": action,
+        "source": source,
+        "app": app,
+        "detail": detail,
+    }
 
 
 def _done(
     text: str, outcome: BriefOutcome, source: str, app: str, detail: str | None = None
 ) -> dict[str, Any]:
-    return make_brief_item(text, "lookback", outcome=outcome, source=source, app=app, detail=detail)
+    return {
+        "text": text,
+        "kind": "lookback",
+        "outcome": outcome,
+        "source": source,
+        "app": app,
+        "detail": detail,
+    }
 
 
 _BASE: dict[str, Any] = {
