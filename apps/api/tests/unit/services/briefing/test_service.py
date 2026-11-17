@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
+from prometheus_client import REGISTRY
 from pydantic import ValidationError
 import pytest
 from tests.helpers import captured_wide_event
@@ -2888,6 +2889,40 @@ class TestTheDailyRunWiring:
             await daily.run_daily_briefing(_USER)
 
         assert event["brief_composition"]["pool_items"] == 3
+
+    async def test_the_wide_event_records_where_the_brief_went(self, world: World) -> None:
+        async with captured_wide_event() as event:
+            await daily.run_daily_briefing(_USER)
+
+        assert event["briefing"]["channels"] == [*_ORCHESTRATED, "telegram"]
+        assert (event["briefing"]["pushed"], event["briefing"]["form"]) == (True, "edition")
+        assert event["briefing"]["outcome"] == "sent"
+
+    async def test_an_email_wanted_and_not_sent_is_a_warning(self, world: World) -> None:
+        world.notify.return_value = SimpleNamespace(
+            channels=[
+                _delivered("inapp"),
+                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
+            ]
+        )
+
+        async with captured_wide_event() as event:
+            await daily.run_daily_briefing(_USER)
+
+        assert [w["msg"] for w in event["warnings"]].count("briefing.email_not_sent") == 1
+
+    async def test_every_run_is_counted_by_kind_and_how_it_ended(self, world: World) -> None:
+        def count(outcome: str) -> float:
+            labels = {"kind": "daily", "outcome": outcome}
+            return REGISTRY.get_sample_value("gaia_briefing_run_total", labels) or 0.0
+
+        sent, failed = count("sent"), count("failed")
+        await daily.run_daily_briefing(_USER)
+        world.notify.side_effect = RuntimeError("orchestrator down")
+        with pytest.raises(RuntimeError, match="orchestrator down"):
+            await daily.run_daily_briefing(_USER)
+
+        assert (count("sent") - sent, count("failed") - failed) == (1.0, 1.0)
 
     @pytest.mark.parametrize(
         ("sent_days_ago", "since"),

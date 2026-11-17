@@ -60,6 +60,7 @@ from app.services.briefing.lifecycle import (
     clear_bootstrap,
     wake_or_skip,
 )
+from app.services.briefing.metrics import counted_run
 from app.services.briefing.prose import (
     Prose,
     Writing,
@@ -167,6 +168,10 @@ async def _composed_day(
 async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     """Look back, plan, and deliver one daily briefing for the user; return how it ended."""
     log.set(component="briefing", operation="run_daily_briefing", user_id=user_id)
+    return await counted_run(BRIEFING_KIND_DAILY, _daily(user_id))
+
+
+async def _daily(user_id: str) -> BriefingRunOutcome:
     user = await user_repository.get(user_id)
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")

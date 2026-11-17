@@ -132,7 +132,7 @@ async def publish_brief(
             source_count=len(payload.sources_read),
         ),
     )
-    log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
+    log.set_ns("briefing", kind=kind, form=BriefForm.EDITION.value, channels=channels, pushed=push)
     return stored.briefing
 
 
@@ -257,11 +257,7 @@ async def publish_quiet_note(
             source_count=0,
         ),
     )
-    log.info(
-        "briefing.sent",
-        user_id=user.id,
-        kind=kind,
-        channels=channels,
-        form="quiet_note",
+    log.set_ns(
+        "briefing", kind=kind, form=BriefForm.QUIET_NOTE.value, channels=channels, pushed=True
     )
     return stored.briefing

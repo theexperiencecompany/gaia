@@ -50,6 +50,7 @@ from app.services.briefing.facts import (
 from app.services.briefing.lifecycle import (
     already_delivered,
 )
+from app.services.briefing.metrics import counted_run
 from app.services.briefing.prose import (
     Prose,
     Writing,
@@ -124,6 +125,10 @@ async def _send_quiet_week(
 async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     """Zoom out on the week since Monday and the week ahead; return how it ended."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
+    return await counted_run(BRIEFING_KIND_WEEKLY, _weekly(user_id))
+
+
+async def _weekly(user_id: str) -> BriefingRunOutcome:
     user = await user_repository.get(user_id)
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")

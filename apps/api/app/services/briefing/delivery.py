@@ -34,6 +34,7 @@ from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.utils.auth_utils import build_user_context
 from app.utils.notification.channel_preferences import normalize_channel_preferences
+from shared.py.wide_events import log
 
 
 def _wants_email(user: UserDocument) -> bool:
@@ -120,6 +121,11 @@ async def deliver_brief(
     )
     await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
+    if NotificationChannel.EMAIL in channels and NotificationChannel.EMAIL not in delivered:
+        log.warning(
+            "briefing.email_not_sent",
+            statuses={c.channel_type: c.status.value for c in record.channels},
+        )
     if channel:
         result = await _post_to_chat(
             user,
