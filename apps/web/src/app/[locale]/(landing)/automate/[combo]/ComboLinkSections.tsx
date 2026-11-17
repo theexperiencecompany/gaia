@@ -1,67 +1,62 @@
 import { SiteLink } from "@/components/seo/SiteLink";
 import type { ComboSectionProps } from "./ComboSections";
 
-export function ComboIntegrationLinks({
-  data,
-  toolAHref,
-  toolBHref,
-  t,
-}: ComboSectionProps & {
-  readonly toolAHref: string;
-  readonly toolBHref: string;
-}) {
-  return (
-    <section className="mb-16">
-      <h2 className="mb-6 text-2xl font-semibold text-white">
-        {t("automate.explore_integrations")}
-      </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SiteLink
-          href={toolAHref}
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("automate.tool_integration", { tool: data.toolA })}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("automate.see_everything_gaia", { tool: data.toolA })}
-          </p>
-        </SiteLink>
-        <SiteLink
-          href={toolBHref}
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("automate.tool_integration", { tool: data.toolB })}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("automate.discover_automations", { tool: data.toolB })}
-          </p>
-        </SiteLink>
-      </div>
-    </section>
-  );
-}
-
-function CompareCard({
+/** A linked card: its title over one line of body copy. */
+function LinkCard({
   href,
-  toolName,
+  title,
+  body,
 }: {
   readonly href: string;
-  readonly toolName: string;
+  readonly title: string;
+  readonly body: string;
 }) {
   return (
     <SiteLink
       href={href}
       className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
-      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-        GAIA vs {toolName}: full comparison
+      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
+        {title}
       </h3>
-      <p className="text-sm leading-relaxed text-zinc-400">
-        See how GAIA compares to {toolName} head-to-head.
-      </p>
+      <p className="text-sm leading-relaxed text-zinc-400">{body}</p>
     </SiteLink>
+  );
+}
+
+export function ComboIntegrationLinks({
+  data,
+  toolAHref,
+  toolBHref,
+  t,
+}: ComboSectionProps & {
+  readonly toolAHref: string | null;
+  readonly toolBHref: string | null;
+}) {
+  if (!toolAHref && !toolBHref) return null;
+
+  return (
+    <section className="mb-16">
+      <h2 className="mb-6 text-2xl font-semibold text-white">
+        {t("automate.explore_integrations")}
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {toolAHref && (
+          <LinkCard
+            href={toolAHref}
+            title={t("automate.tool_integration", { tool: data.toolA })}
+            body={t("automate.see_everything_gaia", { tool: data.toolA })}
+          />
+        )}
+        {toolBHref && (
+          <LinkCard
+            href={toolBHref}
+            title={t("automate.tool_integration", { tool: data.toolB })}
+            body={t("automate.discover_automations", { tool: data.toolB })}
+          />
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -69,7 +64,8 @@ export function ComboCompareLinks({
   data,
   toolACompareHref,
   toolBCompareHref,
-}: Pick<ComboSectionProps, "data"> & {
+  t,
+}: ComboSectionProps & {
   readonly toolACompareHref: string | null;
   readonly toolBCompareHref: string | null;
 }) {
@@ -78,14 +74,22 @@ export function ComboCompareLinks({
   return (
     <section className="mb-16">
       <h2 className="mb-6 text-2xl font-semibold text-white">
-        Compare the tools
+        {t("automate.compare_tools")}
       </h2>
       <div className="grid gap-4 sm:grid-cols-2">
         {toolACompareHref && (
-          <CompareCard href={toolACompareHref} toolName={data.toolA} />
+          <LinkCard
+            href={toolACompareHref}
+            title={t("automate.compare_tool_title", { tool: data.toolA })}
+            body={t("automate.compare_tool_body", { tool: data.toolA })}
+          />
         )}
         {toolBCompareHref && (
-          <CompareCard href={toolBCompareHref} toolName={data.toolB} />
+          <LinkCard
+            href={toolBCompareHref}
+            title={t("automate.compare_tool_title", { tool: data.toolB })}
+            body={t("automate.compare_tool_body", { tool: data.toolB })}
+          />
         )}
       </div>
     </section>

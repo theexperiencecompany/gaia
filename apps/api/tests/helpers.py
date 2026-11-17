@@ -15,6 +15,7 @@ from contextlib import ExitStack, asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
+from http.cookies import Morsel, SimpleCookie
 import importlib.util
 import json
 import math
@@ -54,7 +55,9 @@ import uvicorn
 from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
+from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.auth import SESSION_HINT_COOKIE
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
@@ -63,6 +66,7 @@ from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
+from app.utils.auth_utils import session_hint_cookie_domain
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log, log_context
 
@@ -82,6 +86,28 @@ async def users_get(user_id: str) -> UserDocument | None:
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:
     """Spell the whole Set-Cookie header every session cookie (WorkOS or local) must carry."""
     header = f"{name}={value}; HttpOnly; Max-Age={max_age}; Path=/; SameSite=lax"
+    return f"{header}; Secure" if secure else header
+
+
+def session_set_cookies(name: str, value: str, max_age: int, *, secure: bool) -> list[str]:
+    """Spell the Set-Cookie pair a sign-in writes: the session, then its hint on the configured site."""
+    domain = session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL)
+    return [
+        session_set_cookie(name, value, max_age, secure=secure),
+        session_hint_set_cookie(max_age, secure=secure, domain=domain),
+    ]
+
+
+def session_cookie_morsel(set_cookie_headers: list[str], name: str) -> Morsel[str]:
+    """Parse the one Set-Cookie header that writes name out of a response's several."""
+    (header,) = (h for h in set_cookie_headers if h.startswith(f"{name}="))
+    return SimpleCookie(header)[name]
+
+
+def session_hint_set_cookie(max_age: int, *, secure: bool, domain: str | None = None) -> str:
+    """Spell the Set-Cookie header of the signed-in hint that rides with every session cookie."""
+    scope = f"; Domain={domain}" if domain else ""
+    header = f"{SESSION_HINT_COOKIE}=1{scope}; Max-Age={max_age}; Path=/; SameSite=lax"
     return f"{header}; Secure" if secure else header
 
 

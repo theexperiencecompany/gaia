@@ -12,7 +12,7 @@ Routes = dict[str, tuple[int, dict[str, str], str]]
 
 @contextmanager
 def serve(routes: Routes, posts: list[tuple[str, bytes]] | None = None) -> Iterator[str]:
-    """Answer each path (query string included) from routes for the block; record POST bodies in posts."""
+    """Answer each path (query string included) from routes for the block; record POST and PUT bodies in posts."""
 
     class Handler(BaseHTTPRequestHandler):
         def _reply(self) -> None:
@@ -28,8 +28,11 @@ def serve(routes: Routes, posts: list[tuple[str, bytes]] | None = None) -> Itera
 
         def do_POST(self) -> None:
             if posts is not None:
-                posts.append((self.path, self.rfile.read(int(self.headers["Content-Length"]))))
+                length = int(self.headers.get("Content-Length") or 0)
+                posts.append((self.path, self.rfile.read(length)))
             self._reply()
+
+        do_PUT = do_POST
 
         def log_message(self, *_args: object) -> None:
             return None

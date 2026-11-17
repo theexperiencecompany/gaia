@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Chip, Separator } from "@heroui/react";
 import {
   BookOpen01Icon,
   BrainIcon,
@@ -15,6 +13,9 @@ import {
 import type { MemoryEntry } from "@shared/api/generated";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { MemoryData } from "@/config/registries/toolRegistry";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { CORE_DOCUMENTS } from "@/features/memory/constants";
@@ -28,8 +29,8 @@ interface MemoryCardProps {
 function outcomeLabel(outcome: "new" | "updated" | "extended" | "duplicate") {
   const map = {
     new: { label: "Saved", color: "success" } as const,
-    updated: { label: "Updated", color: "primary" } as const,
-    extended: { label: "Extended", color: "primary" } as const,
+    updated: { label: "Updated", color: "accent" } as const,
+    extended: { label: "Extended", color: "accent" } as const,
     duplicate: { label: "Already known", color: "default" } as const,
   };
   return map[outcome];
@@ -112,13 +113,8 @@ function AddSection({
             </div>
           )}
         </div>
-        <Chip
-          size="sm"
-          variant="flat"
-          color={color}
-          classNames={{ content: "text-xs font-medium" }}
-        >
-          {label}
+        <Chip size="sm" variant="soft" color={color}>
+          <Chip.Label className="text-xs font-medium">{label}</Chip.Label>
         </Chip>
       </div>
       <div className="flex flex-col gap-1.5">
@@ -148,15 +144,12 @@ function SearchSection({
             </span>
           </div>
         )}
-        <Chip
-          size="sm"
-          variant="flat"
-          classNames={{
-            base: "ml-auto",
-            content: "text-xs text-zinc-400",
-          }}
-        >
-          {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
+        <Chip size="sm" variant="soft" className="ml-auto">
+          <Chip.Label
+            className={toneVariants({ tone: "muted", className: "text-xs" })}
+          >
+            {item.memories.length} result{item.memories.length === 1 ? "" : "s"}
+          </Chip.Label>
         </Chip>
       </div>
       {item.memories.length > 0 ? (
@@ -276,13 +269,8 @@ function DocumentSection({
           </span>
         </div>
         {updated && (
-          <Chip
-            size="sm"
-            variant="flat"
-            color="primary"
-            classNames={{ content: "text-xs font-medium" }}
-          >
-            Updated
+          <Chip size="sm" variant="soft" color="accent">
+            <Chip.Label className="text-xs font-medium">Updated</Chip.Label>
           </Chip>
         )}
       </div>
@@ -293,15 +281,17 @@ function DocumentSection({
           hideCodeToolbar
         />
         {hasMore && (
-          <Button
+          <GaiaButton
+            shape="pill"
             size="sm"
-            variant="light"
-            radius="full"
+            variant="text"
             onPress={() => setExpanded((v) => !v)}
-            className="mt-2 h-auto min-w-0 px-2 py-1 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300"
+            tone="faint"
+            hoverTone="dim"
+            className="mt-2 min-w-0 text-xs"
           >
             {expanded ? "Show less" : "Show more"}
-          </Button>
+          </GaiaButton>
         )}
       </div>
     </div>
@@ -329,7 +319,14 @@ export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
       <div className="flex flex-col gap-3 p-4">
         {items.map(({ item, index }) => (
           <div key={`${item.action}-${index}`}>
-            {index > 0 && <Divider className="mb-3 bg-zinc-700/50" />}
+            {index > 0 && (
+              <Separator
+                className={separatorVariants({
+                  surface: "raised",
+                  className: "mb-3",
+                })}
+              />
+            )}
             {item.action === "add" && <AddSection item={item} />}
             {item.action === "search" && <SearchSection item={item} />}
             {item.action === "update" && <UpdateSection item={item} />}

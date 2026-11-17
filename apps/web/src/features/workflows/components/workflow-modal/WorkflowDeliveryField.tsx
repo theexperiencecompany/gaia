@@ -1,8 +1,8 @@
 "use client";
 
 import { WORKFLOW_DELIVERIES, WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
-import { Button } from "@heroui/button";
 import { type Control, Controller } from "react-hook-form";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import WorkflowSection from "./WorkflowSection";
@@ -42,24 +42,20 @@ export default function WorkflowDeliveryField({
               {WORKFLOW_DELIVERIES.map((delivery, index) => {
                 const isSelected = field.value === delivery;
                 return (
-                  <Button
+                  <GaiaButton
                     key={delivery}
                     ref={index === 0 ? field.ref : undefined}
                     fullWidth
-                    radius="lg"
-                    variant="light"
+                    shape="md"
+                    variant={isSelected ? "default-solid" : "ghost"}
+                    tone={isSelected ? "strong" : "muted"}
                     aria-pressed={isSelected}
                     isDisabled={isDisabled}
                     onPress={() => field.onChange(delivery)}
-                    className={cn(
-                      "h-9 font-medium",
-                      isSelected
-                        ? "bg-zinc-700 text-zinc-100 shadow-sm data-[hover=true]:bg-zinc-700"
-                        : "text-zinc-400",
-                    )}
+                    className={cn("h-9 font-medium", isSelected && "shadow-sm")}
                   >
                     {WORKFLOW_DELIVERY_COPY[delivery].label}
-                  </Button>
+                  </GaiaButton>
                 );
               })}
             </fieldset>

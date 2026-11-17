@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { api } from "@/lib/api/typed";
 import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
 import type { PlatformLinks } from "@/types/platform";
@@ -77,26 +77,28 @@ export function NotificationConnectBanner({
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
+            <GaiaButton
+              variant="accent-soft"
               size="sm"
-              variant="flat"
-              color="primary"
-              className="rounded-xl text-xs"
+              shape="md"
+              className="text-xs"
               onPress={() => router.push("/settings/linked-accounts")}
             >
               Connect
-            </Button>
-            <Button
+            </GaiaButton>
+            <GaiaButton
+              shape="pill"
               isIconOnly
-              variant="light"
-              radius="full"
+              variant="ghost"
               size="sm"
               onPress={dismiss}
               aria-label="Dismiss"
-              className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+              tone="faint"
+              hoverTone="white"
+              className="h-6 w-6 min-w-6"
             >
               <Cancel01Icon className="h-3 w-3" />
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       </div>
@@ -118,26 +120,28 @@ export function NotificationConnectBanner({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="flat"
-          color="primary"
-          className="rounded-xl text-xs"
+          shape="md"
+          className="text-xs"
           onPress={() => router.push("/settings/linked-accounts")}
         >
           Connect
-        </Button>
-        <Button
+        </GaiaButton>
+        <GaiaButton
+          shape="pill"
           isIconOnly
-          variant="light"
-          radius="full"
+          variant="ghost"
           size="sm"
           onPress={dismiss}
           aria-label="Dismiss"
-          className="h-6 w-6 min-w-6 text-zinc-500 hover:text-white"
+          tone="faint"
+          hoverTone="white"
+          className="h-6 w-6 min-w-6"
         >
           <Cancel01Icon className="h-3 w-3" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );

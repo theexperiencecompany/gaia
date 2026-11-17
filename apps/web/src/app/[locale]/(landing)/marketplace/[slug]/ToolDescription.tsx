@@ -56,14 +56,22 @@ function remarkNoIndentedCode(this: Processor) {
   ];
 }
 
+// A lone paragraph's <p> adds no spacing (last:mb-0), only a node per tool;
+// integrations list up to ~800 tools, so its text renders straight into the card.
+const SINGLE_PARAGRAPH_COMPONENTS: Components = {
+  ...COMPONENTS,
+  p: ({ children }) => children,
+};
+
 /** Render a tool description, which the API writes as markdown for the model. */
 export function ToolDescription({ markdown }: { readonly markdown: string }) {
+  const singleParagraph = !/\n\s*\n/.test(markdown.trim());
   return (
     <ReactMarkdown
       allowedElements={ALLOWED_ELEMENTS}
       unwrapDisallowed
       remarkPlugins={[remarkNoIndentedCode]}
-      components={COMPONENTS}
+      components={singleParagraph ? SINGLE_PARAGRAPH_COMPONENTS : COMPONENTS}
     >
       {markdown}
     </ReactMarkdown>

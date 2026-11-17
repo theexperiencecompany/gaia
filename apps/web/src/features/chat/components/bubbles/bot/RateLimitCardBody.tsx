@@ -46,7 +46,7 @@ export function UpgradeRequiredBody({
       <div className="flex flex-col gap-1.5">
         {PRO_BENEFITS.map((benefit) => (
           <div key={benefit} className="flex items-start gap-2">
-            <CheckmarkCircle02Icon className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <CheckmarkCircle02Icon className="mt-0.5 size-3.5 shrink-0 text-accent" />
             <span className="text-xs text-zinc-400">{benefit}</span>
           </div>
         ))}

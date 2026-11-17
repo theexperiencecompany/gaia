@@ -1,5 +1,9 @@
 import { cache } from "react";
 
+import {
+  marketplacePath,
+  marketplaceSlug,
+} from "@/features/integrations/lib/marketplaceSlug";
 import type {
   CommunityIntegration,
   CommunityIntegrationsResponse,
@@ -59,7 +63,7 @@ export const getNativeIntegrations = cache(
 );
 
 /** One page of community integrations. */
-export async function getCommunityIntegrations(options: {
+async function getCommunityIntegrations(options: {
   readonly sort: CommunitySort;
   readonly limit: number;
   readonly offset?: number;
@@ -159,7 +163,7 @@ export async function getMarketplacePath(
 ): Promise<string | null> {
   const index = await getMarketplaceSlugIndex();
   const integration = index.get(normalizeToolSlug(toolSlug));
-  return integration === undefined ? null : `/marketplace/${integration.slug}`;
+  return integration === undefined ? null : marketplacePath(integration.slug);
 }
 
 /** The live marketplace integration with exactly this slug, or null when the marketplace has none. */
@@ -169,4 +173,20 @@ export async function getMarketplaceIntegration(
   const index = await getMarketplaceSlugIndex();
   const integration = index.get(normalizeToolSlug(slug));
   return integration?.slug === slug ? integration : null;
+}
+
+/** The API slug behind a marketplace URL slug; a slug the index does not know yet (newly published) is its own. */
+export async function marketplaceApiIdentifier(
+  urlSlug: string,
+): Promise<string> {
+  // Natives first: a native page must not depend on the community catalog being up.
+  const native = (await getNativeIntegrations()).find(
+    (item) => marketplaceSlug(item.slug) === urlSlug,
+  );
+  if (native) return native.slug;
+  const index = await getMarketplaceSlugIndex();
+  const integration = index.get(normalizeToolSlug(urlSlug));
+  return integration && marketplaceSlug(integration.slug) === urlSlug
+    ? integration.slug
+    : urlSlug;
 }

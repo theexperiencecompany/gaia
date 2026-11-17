@@ -2,12 +2,12 @@
 
 import { EMAIL_CHANNEL_DESCRIPTION, NOTIFICATION_CHANNELS } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
-import { Button } from "@heroui/button";
-import { Switch } from "@heroui/switch";
+import { Switch } from "@heroui/react";
 import { Link01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
@@ -133,9 +133,15 @@ export default function NotificationSettings() {
                 isDisabled={
                   loading || !channelPrefs || togglingPlatform === channel
                 }
-                onValueChange={(enabled) => handleToggle(channel, enabled)}
+                onChange={(enabled) => handleToggle(channel, enabled)}
                 aria-label={`Enable ${label} notifications`}
-              />
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
             </SettingsRow>
           );
         })}
@@ -155,7 +161,7 @@ export default function NotificationSettings() {
           >
             <Link
               href="/settings/linked-accounts"
-              className="text-sm text-primary"
+              className="text-sm text-accent"
             >
               Linked Accounts
             </Link>
@@ -181,16 +187,15 @@ function PreferencesError({ onRetry }: { onRetry: () => void }) {
         Your channels are unchanged — this page just couldn&apos;t reach them.
         Try again in a moment.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
-        color="primary"
-        variant="flat"
-        radius="full"
+        variant="accent-soft"
+        shape="pill"
         className="mt-1 font-medium"
         onPress={onRetry}
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

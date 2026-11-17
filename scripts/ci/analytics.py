@@ -28,13 +28,24 @@ Subcommands:
                           Update the loop insight's query and its alert's
                           threshold to what the catalog generates. A dry run
                           unless --apply is given.
+  csp-soak                Post the daily CSP soak report to Slack: the live
+                          site's CSP headers, then the report-only
+                          $csp_violation events of the last 24h (lib/csp_soak.py).
+                          Enforced: posts "soak over" once and disables its own
+                          workflow. No CSP header at all: posts a warning, exits 1.
 
 Env contract:
   POSTHOG_PERSONAL_API_KEY  A personal API key. `check` needs the READ_SCOPES
                             below; `sync-actions --apply` also needs action:write,
-                            `sync-loop-alert --apply` insight:write and alert:write.
-                            Missing, both subcommands fail and say how to make one.
+                            `sync-loop-alert --apply` insight:write and alert:write,
+                            `csp-soak` query:read.
+                            Missing, the subcommands fail and say how to make one.
   GITHUB_ACTIONS            On a runner, each failure is also an ::error annotation.
+  CSP_SITE_URL              csp-soak: the page whose headers it reads (https://heygaia.io/).
+  SLACK_WEBHOOK             csp-soak: where the report goes (required).
+  GITHUB_REPOSITORY, GH_TOKEN or GITHUB_TOKEN
+                            csp-soak, once enforced: disables CSP_SOAK_WORKFLOW
+                            (needs actions:write).
 
 The catalog is read from its generated JSON, so the script needs nothing beyond
 the standard library and runs wherever python3 does.
@@ -53,11 +64,21 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import time
 from urllib.parse import urlsplit
+import urllib.request
+
+from lib import csp_soak
+from lib.github import GitHub
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+WEBHOOK_SH = Path(__file__).resolve().parent / "lib" / "webhook.sh"
+CSP_SITE_URL = "https://heygaia.io/"
+CSP_SOAK_WORKFLOW = "csp-soak.yml"
+CSP_SOAK_SCOPES = ("query:read",)
+CSP_USER_AGENT = "gaia-ci-csp-soak"
 CATALOG_JSON = (
     REPO_ROOT
     / "libs"
@@ -1116,10 +1137,76 @@ def cmd_sync_loop_alert(args: list[str]) -> int:
     return 0
 
 
+def _site_headers(url: str) -> dict[str, str]:
+    """Fetch the page's response headers, keys lowercased and repeats joined as one policy."""
+    if urlsplit(url).scheme not in {"http", "https"}:
+        raise ValueError(f"CSP_SITE_URL must be an http(s) URL, got {url!r}")
+    request = urllib.request.Request(url, headers={"User-Agent": CSP_USER_AGENT})  # noqa: S310 -- scheme checked above
+    with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_S) as response:  # noqa: S310 -- scheme checked above
+        return {
+            key.lower(): "; ".join(response.headers.get_all(key) or []) for key in response.headers
+        }
+
+
+def _post_slack(webhook: str, text: str) -> None:
+    """Post through lib/webhook.sh's post_webhook, the deploy messages' own sender; raise on a failed delivery."""
+    print(text)
+    payload = json.dumps({"text": text})
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1" && post_webhook Slack "$2" "$3"',
+            "post_webhook",
+            WEBHOOK_SH,
+            webhook,
+            payload,
+        ],
+        stdout=subprocess.DEVNULL,
+        check=True,
+    )
+    print("csp-soak: posted to Slack")
+
+
+def cmd_csp_soak(args: list[str]) -> int:
+    """Post the day's CSP soak report; 1 when the site serves no CSP or a delivery fails."""
+    argparse.ArgumentParser(prog="analytics.py csp-soak").parse_args(args)
+    webhook = os.environ.get("SLACK_WEBHOOK", "")
+    if not webhook:
+        print(
+            "::error title=csp-soak::SLACK_WEBHOOK is not set; nothing was posted", file=sys.stderr
+        )
+        return 1
+    site = os.environ.get("CSP_SITE_URL") or CSP_SITE_URL
+    host = urlsplit(site).hostname or site
+    policy = csp_soak.policy_of(_site_headers(site))
+    print(f"csp-soak: {site} serves a {policy} CSP")
+    if policy is csp_soak.Policy.MISSING:
+        _post_slack(webhook, csp_soak.missing_message(host))
+        print(
+            f"::error title=csp-soak::{site} serves no Content-Security-Policy header",
+            file=sys.stderr,
+        )
+        return 1
+    if policy is csp_soak.Policy.ENFORCED:
+        _post_slack(webhook, csp_soak.enforced_message(host))
+        repo = os.environ["GITHUB_REPOSITORY"]
+        GitHub.from_env().send("PUT", f"repos/{repo}/actions/workflows/{CSP_SOAK_WORKFLOW}/disable")
+        print(f"csp-soak: disabled {CSP_SOAK_WORKFLOW}; the soak is over")
+        return 0
+    client = client_from_env(CSP_SOAK_SCOPES)
+    if client is None:
+        return 1
+    soak = csp_soak.soak_from_rows(client.hogql(csp_soak.QUERY, {"host": host}))
+    _post_slack(webhook, csp_soak.soak_message(soak, host))
+    return 0
+
+
 COMMANDS = {
     "check": cmd_check,
     "sync-actions": cmd_sync_actions,
     "sync-loop-alert": cmd_sync_loop_alert,
+    "csp-soak": cmd_csp_soak,
 }
 
 
