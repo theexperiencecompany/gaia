@@ -98,6 +98,7 @@ OPEN_PR_NODE: dict[str, Any] = {
     "url": "https://github.com/o/r/pull/7",
     "headRefOid": "abc123",
     "state": "OPEN",
+    "headRepositoryOwner": {"login": "o"},
 }
 
 FAILED_CHECK: dict[str, Any] = {
