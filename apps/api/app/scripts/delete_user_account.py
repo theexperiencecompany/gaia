@@ -221,9 +221,9 @@ async def _build_footprint(
         )
     ]
     edition_image_urls = [
-        str(brief["edition"]["image_url"])
+        str(brief["edition_image_url"])
         for brief in db.briefings.find(
-            {"user_id": uid, "edition.image_url": {"$ne": None}}, {"edition.image_url": 1}
+            {"user_id": uid, "edition_image_url": {"$ne": None}}, {"edition_image_url": 1}
         )
     ]
     workos_users = (await workos.user_management.list_users(email=args.email)).data
