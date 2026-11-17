@@ -1,9 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import Link from "next/link";
-
 import { StandalonePage } from "@/components/layout/StandalonePage";
+import { LinkButton } from "@/components/shared/LinkButton";
 
 /** What a heygaia.link that is stopped, expired or unknown opens to. */
 export function LinkUnavailable() {
@@ -16,9 +14,9 @@ export function LinkUnavailable() {
         <p className="max-w-sm text-sm text-pretty text-zinc-400">
           The person who shared it may have turned it off.
         </p>
-        <Button as={Link} href="/" color="primary" className="mt-3">
+        <LinkButton href="/" variant="primary" className="mt-3">
           Go to GAIA
-        </Button>
+        </LinkButton>
       </section>
     </StandalonePage>
   );

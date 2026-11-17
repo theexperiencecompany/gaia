@@ -65,8 +65,11 @@ function renderFetchUser(cachedUser: typeof SIGNED_IN_USER | null) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useFetchUser(), { wrapper });
+  return { queryClient, ...renderHook(() => useFetchUser(), { wrapper }) };
 }
+
+/** Let the rejected /me reach the hook's effects. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 connectPostHog(posthogMock);
 
@@ -96,7 +99,8 @@ describe("useFetchUser identity reset", () => {
     posthogMock._isIdentified.mockReturnValue(true);
 
     renderFetchUser(SIGNED_IN_USER);
-    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalled());
+    await settle();
     expect(posthogMock.reset).not.toHaveBeenCalled();
 
     posthogMock.__loaded = true;
@@ -116,11 +120,10 @@ describe("useFetchUser identity reset", () => {
     posthogMock._isIdentified.mockReturnValue(true);
     posthogMock.__loaded = true;
 
-    const { rerender } = renderFetchUser(SIGNED_IN_USER);
+    const { queryClient, rerender } = renderFetchUser(SIGNED_IN_USER);
     await waitFor(() => expect(console.error).toHaveBeenCalled());
     expect(posthogMock.reset).not.toHaveBeenCalled();
-    // The next render re-reads the cleared query, so /me is asked again.
-    rerender();
+    await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
 
     await waitFor(() => expect(posthogMock.reset).toHaveBeenCalledTimes(1));
     rerender();
@@ -132,7 +135,8 @@ describe("useFetchUser identity reset", () => {
     posthogMock._isIdentified.mockReturnValue(false);
 
     renderFetchUser(null);
-    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalled());
+    await settle();
     posthogMock.__loaded = true;
     flushPendingAnalytics();
 
@@ -144,11 +148,27 @@ describe("useFetchUser identity reset", () => {
     posthogMock._isIdentified.mockReturnValue(true);
 
     renderFetchUser(null);
-    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalled());
+    await settle();
     posthogMock.__loaded = true;
     flushPendingAnalytics();
 
     expect(posthogMock.reset).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useFetchUser error logging", () => {
+  it("logs no error for the 401 that means signed out", async () => {
+    fetchUserInfo.mockRejectedValue(new ApiError("anonymous", 401));
+
+    renderFetchUser(null);
+    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalled());
+    await settle();
+
+    expect(console.error).not.toHaveBeenCalledWith(
+      "Error fetching user info:",
+      expect.anything(),
+    );
   });
 });
 

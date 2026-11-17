@@ -15,7 +15,7 @@ export function Figure({ title, subtitle, children }: FigureProps) {
           <GroundedText text={title} />
         </span>
         {subtitle ? (
-          <span className="block text-sm text-default-500">
+          <span className="block text-sm text-muted">
             <GroundedText text={subtitle} />
           </span>
         ) : null}

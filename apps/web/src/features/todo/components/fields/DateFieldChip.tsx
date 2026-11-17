@@ -75,8 +75,7 @@ export default function DateFieldChip({
               type="date"
               value={value ? value.split("T")[0] : ""}
               onChange={(e) => handleDateInputChange(e, onClose)}
-              size="sm"
-              variant="flat"
+              variant="secondary"
               className="w-full"
               aria-label="Select due date"
             />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
 import { TextMorph } from "torph/react";
 
@@ -86,7 +86,7 @@ export function PricingCardPrice({
           </>
         )}
         {showSavings && (
-          <Chip color="success" size="sm" variant="flat">
+          <Chip color="success" size="sm" variant="soft">
             <MonthsFree
               monthsFree={list.monthsFree}
               offerMonthsFree={offer?.monthsFree ?? null}

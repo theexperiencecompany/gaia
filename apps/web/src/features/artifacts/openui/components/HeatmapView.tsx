@@ -19,7 +19,7 @@ export function HeatmapView(props: z.infer<typeof heatmapSchema>) {
             <tr>
               <th className="sticky left-0 z-10 bg-background" />
               {props.columns.map((column) => (
-                <th key={column} className="font-normal text-default-500">
+                <th key={column} className="font-normal text-muted">
                   {column}
                 </th>
               ))}
