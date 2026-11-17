@@ -36,6 +36,7 @@ from app.constants.short_links import (
 from app.models.short_link_models import (
     ContentRestriction,
     LinkAccess,
+    LinkContent,
     LinkSnapshot,
     PublishRejection,
     RenderMode,
@@ -765,6 +766,18 @@ def _snapshot(render: RenderMode, **overrides: object) -> LinkSnapshot:
     return LinkSnapshot.model_validate(data)
 
 
+def _framed(snapshot: LinkSnapshot | None, access: LinkAccess) -> LinkContent | None:
+    link = ShortLink(
+        slug="s1",
+        user_id=OWNER,
+        target_type=SESSION,
+        target_id="conv-1/a",
+        access=access,
+        snapshot=snapshot,
+    )
+    return framed_content(link, NOW)
+
+
 class TestPresentation:
     @pytest.mark.parametrize(
         ("render", "without_origin"),
@@ -801,26 +814,26 @@ class TestPresentation:
             settings, "LINK_CONTENT_URL_TEMPLATE", "https://u.example.com/usercontent/{content_id}"
         )
         assert presented_render(_snapshot(RenderMode.PDF)) is RenderMode.DOWNLOAD
-        assert framed_content(_snapshot(RenderMode.PDF), LinkAccess.PUBLIC) is None
+        assert _framed(_snapshot(RenderMode.PDF), LinkAccess.PUBLIC) is None
         assert presented_render(_snapshot(RenderMode.FRAME_ACTIVE)) is RenderMode.FRAME_ACTIVE
 
     @pytest.mark.parametrize("render", [RenderMode.FRAME_ACTIVE, RenderMode.PDF, RenderMode.IMAGE])
     def test_framed_content_names_the_snapshot(self, origin: None, render: RenderMode) -> None:
-        framed = framed_content(_snapshot(render), LinkAccess.UNLISTED)
+        framed = _framed(_snapshot(render), LinkAccess.UNLISTED)
         assert framed is not None
         assert framed.content_id == CID
         assert framed.render is render
 
     @pytest.mark.parametrize("render", [RenderMode.TEXT, RenderMode.DOWNLOAD])
     def test_text_and_downloads_are_never_framed(self, origin: None, render: RenderMode) -> None:
-        assert framed_content(_snapshot(render), LinkAccess.UNLISTED) is None
+        assert _framed(_snapshot(render), LinkAccess.UNLISTED) is None
 
     def test_nothing_is_framed_without_stored_bytes(self, origin: None) -> None:
-        assert framed_content(None, LinkAccess.UNLISTED) is None
+        assert _framed(None, LinkAccess.UNLISTED) is None
         unstored = _snapshot(RenderMode.FRAME_ACTIVE, content_id=None)
-        assert framed_content(unstored, LinkAccess.UNLISTED) is None
+        assert _framed(unstored, LinkAccess.UNLISTED) is None
 
     def test_a_link_wider_than_its_bytes_allow_frames_nothing(self, origin: None) -> None:
         restricted = _snapshot(RenderMode.FRAME_ACTIVE, max_access=LinkAccess.PEOPLE)
-        assert framed_content(restricted, LinkAccess.UNLISTED) is None
-        assert framed_content(restricted, LinkAccess.PEOPLE) is not None
+        assert _framed(restricted, LinkAccess.UNLISTED) is None
+        assert _framed(restricted, LinkAccess.PEOPLE) is not None

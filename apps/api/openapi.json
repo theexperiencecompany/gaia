@@ -33754,7 +33754,7 @@
     },
     "/api/v1/l/{slug}/pdf": {
       "get": {
-        "description": "The artifact behind a link as an A4 PDF, for whoever the link opens for.",
+        "description": "What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.",
         "operationId": "short_links_get_short_link_pdf_route",
         "parameters": [
           {

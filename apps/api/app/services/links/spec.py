@@ -31,6 +31,15 @@ class SnapshotSource:
 
 
 @dataclass(frozen=True, slots=True)
+class ExportedFile:
+    """A target rendered as a file to save (an artifact's PDF), with the headers that name it."""
+
+    body: bytes
+    media_type: str
+    headers: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class PreviewFacts:
     """What a public or unlisted link's chat preview shows: a real title and, where the type has one, an image."""
 
@@ -43,6 +52,7 @@ Previewer = Callable[[str, str, LinkSnapshot | None], Awaitable[PreviewFacts | N
 SourceReader = Callable[[str, str], Awaitable[SnapshotSource | None]]
 ConversationTargets = Callable[[str, str], Awaitable[list[str]]]
 CarriedTargets = Callable[[str, str], Awaitable[list[tuple[ShortLinkTargetType, str]]]]
+Exporter = Callable[[str, str], Awaitable[ExportedFile]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +75,8 @@ class LinkTargetSpec:
     in_conversation: ConversationTargets | None = None
     #: The targets this one links to (a brief's items), whose GAIA-attached links follow its access.
     carries: CarriedTargets | None = None
+    #: The target as a file to save (GET /l/{slug}/export), for types that print one.
+    export: Exporter | None = None
 
 
 def build_registry(

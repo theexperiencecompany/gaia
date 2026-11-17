@@ -9,15 +9,13 @@ say they are gone and disclose nothing else.
 from datetime import UTC, datetime
 
 from app.models.short_link_models import LinkAccess, LinkPreviewMeta, ShortLink
-from app.services.links.access import dead_state
-from app.services.links.content import servable
+from app.services.links.access import dead_state, is_open, servable_content
 from app.services.links.registry import REGISTRY
 
 DEAD_TITLE = "This link is no longer available"
 DEAD_DESCRIPTION = "Ask the person who shared it for a new one."
 GATED_TITLE = "Shared from GAIA"
 GATED_DESCRIPTION = "Sign in to view."
-_PREVIEWS_CONTENT = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
 
 
 def _dead() -> LinkPreviewMeta:
@@ -34,10 +32,11 @@ def _dead() -> LinkPreviewMeta:
 
 async def preview_meta(link: ShortLink | None) -> LinkPreviewMeta:
     """Build the preview a link shows anyone, signed in or not."""
-    if link is None or dead_state(link, datetime.now(UTC)) is not None:
+    now = datetime.now(UTC)
+    if link is None or dead_state(link, now) is not None:
         return _dead()
     spec = REGISTRY[link.target_type]
-    if link.access not in _PREVIEWS_CONTENT:
+    if not is_open(link.access):
         return LinkPreviewMeta(
             live=True,
             target_type=link.target_type,
@@ -47,8 +46,7 @@ async def preview_meta(link: ShortLink | None) -> LinkPreviewMeta:
             description=GATED_DESCRIPTION,
             image_url=None,
         )
-    snapshot = link.snapshot if servable(link.snapshot, link.access) else None
-    facts = await spec.preview(link.user_id, link.target_id, snapshot)
+    facts = await spec.preview(link.user_id, link.target_id, servable_content(link, now))
     if facts is None:
         return _dead()
     return LinkPreviewMeta(

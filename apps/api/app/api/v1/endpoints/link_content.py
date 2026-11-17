@@ -19,14 +19,13 @@ from app.config.settings import settings
 from app.constants.http import CONTENT_EDGE_HEADER, CONTENT_HOST_HEADER
 from app.constants.short_links import THUMBNAIL_PATH
 from app.db.repositories.short_links import short_link_repository
-from app.models.short_link_models import LinkAccess, ShortLink
-from app.services.links.access import dead_state
+from app.models.short_link_models import ShortLink
+from app.services.links.access import dead_state, is_open, servable_content
 from app.services.links.content import (
     active_link_content,
     content_origin_host,
     read_snapshot,
     read_thumbnail,
-    servable,
     token_valid,
 )
 from app.services.links.serving import snapshot_response, thumbnail_response
@@ -36,8 +35,6 @@ from app.utils.loggable_path import LINK_CONTENT_ROUTE_PREFIX
 from shared.py.wide_events import log
 
 router = APIRouter(prefix=LINK_CONTENT_ROUTE_PREFIX, tags=["Link Content"], include_in_schema=False)
-
-_PREVIEWABLE = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
 
 
 def _not_found() -> AppError:
@@ -79,11 +76,11 @@ async def serve_link_content_route(
     """Serve a snapshot's bytes with its render mode's headers; a missing or stale token goes back to the link."""
     log.set(short_link={"operation": "serve", "fetch_dest": sec_fetch_dest})
     link = await _live_link(request, content_id)
-    snapshot = link.snapshot
-    if snapshot is None or not servable(snapshot, link.access):
+    now = datetime.now(UTC)
+    snapshot = servable_content(link, now)
+    if snapshot is None:
         raise _not_found()
     link_url = build_url(link.slug)
-    now = datetime.now(UTC)  # pragma: no mutate — token_valid reads only the instant
     if not token_valid(link, content_id, t, now):
         log.set(short_link={"signed_url": "stale"})
         return RedirectResponse(link_url, status_code=status.HTTP_302_FOUND)
@@ -97,12 +94,7 @@ async def serve_link_thumbnail_route(request: Request, content_id: str) -> Respo
     """Serve a public or unlisted snapshot's preview image, tokenless so chat apps can fetch it."""
     log.set(short_link={"operation": "thumbnail"})
     link = await _live_link(request, content_id)
-    snapshot = link.snapshot
-    if (
-        snapshot is None
-        or not snapshot.has_thumbnail
-        or link.access not in _PREVIEWABLE
-        or not servable(snapshot, link.access)
-    ):
+    snapshot = servable_content(link, datetime.now(UTC))
+    if snapshot is None or not snapshot.has_thumbnail or not is_open(link.access):
         raise _not_found()
     return thumbnail_response(await read_thumbnail(link.user_id, content_id))

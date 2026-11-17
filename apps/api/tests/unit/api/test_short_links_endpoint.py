@@ -5,6 +5,7 @@ tests/integration/real/test_links_real.py; here it is mocked at the route's
 import so the request shape, status codes and log fields are pinned alone.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Final
 from unittest.mock import AsyncMock, patch
@@ -14,7 +15,9 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
+from app.constants.short_links import DOWNLOAD_RATE_LIMIT, PDF_EXPORT_RATE_LIMIT
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkAccess,
@@ -36,6 +39,7 @@ BASE = "/api/v1/l"
 SLUG = "abcdefghijk"
 TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
 _ENDPOINT = "app.api.v1.endpoints.short_links"
+_OPENUI_TARGET = "app.services.links.targets.openui_artifact"
 _LINK = ShortLink(slug=SLUG, user_id="owner", target_type=TODO, target_id="t1")
 _SIGNED_OUT = LinkViewer(user_id=None, email=None, ip="127.0.0.1", user_agent="Safari/605")
 _EXPIRES = datetime(2030, 1, 1, tzinfo=UTC)
@@ -381,7 +385,8 @@ class TestShortLinkPdf:
         with (
             patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=link)) as openable,
             patch(
-                f"{_ENDPOINT}.owner_artifact_pdf", AsyncMock(return_value=(artifact, b"%PDF-1.7"))
+                f"{_OPENUI_TARGET}.owner_artifact_pdf",
+                AsyncMock(return_value=(artifact, b"%PDF-1.7")),
             ) as export,
         ):
             response = await unauthed_client.get(
@@ -390,11 +395,19 @@ class TestShortLinkPdf:
 
         assert response.status_code == 200
         known_slug.assert_awaited_once_with(SLUG)
-        assert openable.await_args.args[:2] == (_LINK, _SIGNED_OUT)
+        assert openable.await_args.args == (_LINK, _SIGNED_OUT)
         assert response.content == b"%PDF-1.7"
+        assert response.headers["content-type"] == "application/pdf"
         assert response.headers["content-disposition"] == 'attachment; filename="Q3 plan.pdf"'
-        assert openable.await_args.args[2] is ShortLinkTargetType.OPENUI_ARTIFACT
         export.assert_awaited_once_with("owner", "t1")
+
+    async def test_a_type_that_prints_no_file_has_no_pdf(
+        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+    ) -> None:
+        with patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=_LINK)):
+            response = await unauthed_client.get(f"{BASE}/{SLUG}/pdf")
+
+        assert (response.status_code, response.json()["code"]) == (404, "link_not_found")
 
     async def test_a_signed_in_viewer_is_checked_as_themself(
         self, client: AsyncClient, test_app: FastAPI, known_slug: AsyncMock
@@ -416,9 +429,40 @@ class TestShortLinkPdf:
         denied = LinkDeniedError.for_denial(LinkDenial.SIGN_IN_REQUIRED)
         with (
             patch(f"{_ENDPOINT}.openable_link", AsyncMock(side_effect=denied)),
-            patch(f"{_ENDPOINT}.owner_artifact_pdf", AsyncMock()) as export,
+            patch(f"{_OPENUI_TARGET}.owner_artifact_pdf", AsyncMock()) as export,
         ):
             response = await unauthed_client.get(f"{BASE}/{SLUG}/pdf")
 
         assert response.status_code == 401
         export.assert_not_awaited()
+
+
+class TestFileRouteLimits:
+    """The routes that hand out bytes with no sign-in are bounded per viewer."""
+
+    @pytest.fixture
+    def limited(self) -> Iterator[None]:
+        limiter.reset()
+        limiter.enabled = True
+        try:
+            yield
+        finally:
+            limiter.enabled = False
+            limiter.reset()
+
+    @pytest.mark.usefixtures("limited", "known_slug")
+    @pytest.mark.parametrize(
+        ("route", "limit"), [("download", DOWNLOAD_RATE_LIMIT), ("pdf", PDF_EXPORT_RATE_LIMIT)]
+    )
+    async def test_a_viewer_past_the_limit_is_refused(
+        self, unauthed_client: AsyncClient, route: str, limit: str
+    ) -> None:
+        allowed = int(limit.split("/")[0])
+        denied = LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
+        with patch(f"{_ENDPOINT}.openable_link", AsyncMock(side_effect=denied)):
+            codes = [
+                (await unauthed_client.get(f"{BASE}/{SLUG}/{route}")).status_code
+                for _ in range(allowed + 1)
+            ]
+
+        assert codes == [404] * allowed + [429]

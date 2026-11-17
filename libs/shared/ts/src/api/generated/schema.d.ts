@@ -2302,7 +2302,7 @@ export interface paths {
         };
         /**
          * Get Short Link Pdf Route
-         * @description The artifact behind a link as an A4 PDF, for whoever the link opens for.
+         * @description What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.
          */
         get: operations["short_links_get_short_link_pdf_route"];
         put?: never;

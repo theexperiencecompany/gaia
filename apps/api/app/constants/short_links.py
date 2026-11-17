@@ -57,6 +57,9 @@ MINT_RATE_LIMIT = "60/hour;500/day"
 RESOLVE_RATE_LIMIT = "60/minute"
 CONTENT_URL_RATE_LIMIT = "600/minute"
 REPORT_RATE_LIMIT = "10/day"
+# Per viewer: a PDF render holds a browser, a download streams up to MAX_SNAPSHOT_BYTES with no sign-in.
+PDF_EXPORT_RATE_LIMIT = "6/minute"
+DOWNLOAD_RATE_LIMIT = "30/minute"
 #: Misses (unknown slugs) a viewer may make per window before every resolve is refused for the lockout.
 MAX_RESOLVE_MISSES = 20
 RESOLVE_MISS_WINDOW_SECONDS = 600

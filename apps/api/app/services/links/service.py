@@ -42,12 +42,11 @@ from app.models.short_link_models import (
     ShortLinkUpdate,
 )
 from app.services.analytics_service import analytics_day_start, capture
-from app.services.links.access import Denied, dead_state, evaluate
+from app.services.links.access import Denied, dead_state, evaluate, servable_content
 from app.services.links.content import (
     delete_snapshot,
     framed_content,
     publish,
-    servable,
     unchanged,
 )
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
@@ -489,7 +488,7 @@ def _served(link: ShortLink) -> ShortLink:
     A dead link opens only for its owner, and its bytes may already be deleted.
     """
     snapshot = link.snapshot
-    if snapshot is None or (dead_state(link, _now()) is None and servable(snapshot, link.access)):
+    if snapshot is None or servable_content(link, _now()) is not None:
         return link
     return link.model_copy(update={"snapshot": snapshot.model_copy(update={"content_id": None})})
 
@@ -553,13 +552,13 @@ async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
 
 
 def _envelope(granted: _GrantedView) -> LinkEnvelope:
-    link, kind = granted.link, granted.viewer_kind
+    link, kind, now = granted.link, granted.viewer_kind, _now()
     return LinkEnvelope(
         access=link.access,
         target_type=link.target_type,
         view=granted.view,
-        content=framed_content(link.snapshot, link.access),
-        downloadable=servable(link.snapshot, link.access),
+        content=framed_content(link, now),
+        downloadable=servable_content(link, now) is not None,
         is_owner=kind is LinkViewerKind.OWNER,
         owner_target_id=link.target_id if kind is LinkViewerKind.OWNER else None,
     )
@@ -606,11 +605,6 @@ async def record_open(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelop
     return _envelope(decided)
 
 
-async def openable_link(
-    link: ShortLink | None, viewer: LinkViewer, target_type: ShortLinkTargetType | None = None
-) -> ShortLink:
-    """Return the link when viewer may open it (and it points at target_type, when given); raise the denial otherwise."""
-    granted = (await _granted_view(link, viewer)).link
-    if target_type is not None and granted.target_type is not target_type:
-        raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
-    return granted
+async def openable_link(link: ShortLink | None, viewer: LinkViewer) -> ShortLink:
+    """Return the link when viewer may open it; raise the denial they see otherwise."""
+    return (await _granted_view(link, viewer)).link

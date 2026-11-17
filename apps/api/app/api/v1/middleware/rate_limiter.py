@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 import inspect
 import ipaddress
-import re
 import secrets
 
 from fastapi import FastAPI
@@ -34,11 +33,9 @@ from starlette.types import Scope
 
 from app.config.settings import settings
 from app.constants.http import INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
-from app.constants.openui_artifacts import PUBLIC_PDF_PATH_PATTERN
 from app.constants.request_limits import (
     ANONYMOUS_VIEWER_PER_MINUTE,
     INTERNAL_SOURCE_PER_MINUTE,
-    PUBLIC_PDF_EXPORT_PER_MINUTE,
     SIGNED_IN_USER_PER_MINUTE,
 )
 from app.db.redis import redis_cache
@@ -52,17 +49,13 @@ class RequestBucket(StrEnum):
     SIGNED_IN_USER = "signed_in_user"
     ANONYMOUS_VIEWER = "anonymous_viewer"
     INTERNAL_SOURCE = "internal_source"
-    PUBLIC_PDF_EXPORT = "public_pdf_export"
 
 
 BUCKET_LIMITS: dict[RequestBucket, RateLimitItem] = {
     RequestBucket.SIGNED_IN_USER: RateLimitItemPerMinute(SIGNED_IN_USER_PER_MINUTE),
     RequestBucket.ANONYMOUS_VIEWER: RateLimitItemPerMinute(ANONYMOUS_VIEWER_PER_MINUTE),
     RequestBucket.INTERNAL_SOURCE: RateLimitItemPerMinute(INTERNAL_SOURCE_PER_MINUTE),
-    RequestBucket.PUBLIC_PDF_EXPORT: RateLimitItemPerMinute(PUBLIC_PDF_EXPORT_PER_MINUTE),
 }
-
-_PUBLIC_PDF_PATH = re.compile(PUBLIC_PDF_PATH_PATTERN)
 
 # Keys every bucket's counters apart from the per-route limits slowapi decorators keep.
 _GLOBAL_SCOPE = "global"
@@ -116,8 +109,6 @@ def request_charges(request: Request) -> list[BucketCharge]:
     if internal:
         charges.append(BucketCharge(RequestBucket.INTERNAL_SOURCE, peer))
     viewer = _named_viewer(request) if internal else peer
-    if viewer is not None and _PUBLIC_PDF_PATH.fullmatch(request.url.path):
-        charges.append(BucketCharge(RequestBucket.PUBLIC_PDF_EXPORT, viewer))
     user = getattr(request.state, "user", None)
     if isinstance(user, AuthenticatedUser) and user.user_id:
         charges.append(BucketCharge(RequestBucket.SIGNED_IN_USER, user.user_id))

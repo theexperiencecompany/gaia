@@ -50,5 +50,3 @@ ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600
 PDF_RENDER_MAX_CONCURRENT = 2
 #: Renders allowed to wait for a turn; past it a request is refused with 429.
 PDF_RENDER_MAX_WAITING = 6
-#: The public short link's PDF route: /api/v1/l/{slug}/pdf.
-PUBLIC_PDF_PATH_PATTERN = r"/api/v1/l/[^/]+/pdf"

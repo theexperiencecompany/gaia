@@ -9,7 +9,9 @@ from app.models.short_link_models import (
     ShortLink,
     ShortLinkTargetType,
 )
-from app.services.links.spec import LinkTargetSpec, PreviewFacts
+from app.services.links.spec import ExportedFile, LinkTargetSpec, PreviewFacts
+from app.services.openui_artifacts.export import owner_artifact_pdf, pdf_download_headers
+from shared.py.wide_events import log
 
 
 async def _project(link: ShortLink, _viewer: LinkViewerKind) -> PublicOpenUIArtifact | None:
@@ -34,10 +36,19 @@ async def _preview(
     return PreviewFacts(title=artifact.title, image_url=None) if artifact else None
 
 
+async def _export(owner_id: str, target_id: str) -> ExportedFile:
+    artifact, pdf = await owner_artifact_pdf(owner_id, target_id)
+    log.set(artifact={"kind": artifact.kind.value, "pdf_bytes": len(pdf)})
+    return ExportedFile(
+        body=pdf, media_type="application/pdf", headers=pdf_download_headers(artifact)
+    )
+
+
 SPEC = LinkTargetSpec(
     type=ShortLinkTargetType.OPENUI_ARTIFACT,
     kind_line="A report or dashboard GAIA made, shared with you.",
     project=_project,
     preview=_preview,
     in_conversation=openui_artifact_repository.ids_in_conversation,
+    export=_export,
 )

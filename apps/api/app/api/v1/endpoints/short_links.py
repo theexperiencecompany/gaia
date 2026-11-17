@@ -17,7 +17,9 @@ from app.api.v1.middleware.rate_limiter import limiter, viewer_ip
 from app.config.settings import settings
 from app.constants.short_links import (
     CONTENT_URL_RATE_LIMIT,
+    DOWNLOAD_RATE_LIMIT,
     MINT_RATE_LIMIT,
+    PDF_EXPORT_RATE_LIMIT,
     REPORT_RATE_LIMIT,
     RESOLVE_RATE_LIMIT,
 )
@@ -35,21 +37,21 @@ from app.models.short_link_models import (
     ShortLinkResponse,
     ShortLinkShareState,
     ShortLinkTargetRequest,
-    ShortLinkTargetType,
     StopSharingResult,
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
 from app.services.links import abuse
+from app.services.links.access import servable_content
 from app.services.links.content import (
     active_link_content,
     framed_content,
     issue_content_url,
     read_snapshot,
-    servable,
 )
 from app.services.links.errors import LinkDeniedError
 from app.services.links.preview import preview_meta
+from app.services.links.registry import REGISTRY
 from app.services.links.service import (
     get_link,
     link_response,
@@ -63,7 +65,6 @@ from app.services.links.service import (
     update_settings,
 )
 from app.services.links.serving import download_response
-from app.services.openui_artifacts.export import owner_artifact_pdf, pdf_download_headers
 from app.services.turnstile_service import verify_turnstile_token
 from app.utils.log_identifiers import hash_link_viewer, hash_short_link_slug
 from app.utils.loggable_path import (
@@ -256,7 +257,7 @@ async def content_token_route(
     """Sign a short-lived URL that loads the link's file from the content origin, after the link's access check."""
     log.set(short_link={"operation": "content_token", "slug_hash": hash_short_link_slug(slug)})
     link = await openable_link(await get_link(slug), _viewer(request, user))
-    content = framed_content(link.snapshot, link.access) if active_link_content() else None
+    content = framed_content(link, datetime.now(UTC)) if active_link_content() else None
     if content is None:
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
     url, expires_at = issue_content_url(link, content.content_id, datetime.now(UTC))
@@ -268,6 +269,7 @@ async def content_token_route(
     response_class=Response,
     responses={200: {"content": {"application/octet-stream": {}}}, **_DENIALS},
 )
+@limiter.limit(DOWNLOAD_RATE_LIMIT)
 async def download_link_file_route(
     request: Request,
     slug: str,
@@ -276,8 +278,8 @@ async def download_link_file_route(
     """Save the file behind a link: always an attachment, so it never renders on this origin."""
     log.set(short_link={"operation": "download", "slug_hash": hash_short_link_slug(slug)})
     link = await openable_link(await get_link(slug), _viewer(request, user))
-    snapshot = link.snapshot
-    if snapshot is None or snapshot.content_id is None or not servable(snapshot, link.access):
+    snapshot = servable_content(link, datetime.now(UTC))
+    if snapshot is None or snapshot.content_id is None:
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
     return download_response(await read_snapshot(link.user_id, snapshot.content_id), snapshot)
 
@@ -307,16 +309,17 @@ async def report_link_route(
     response_class=Response,
     responses={200: {"content": {"application/pdf": {}}}, **_DENIALS},
 )
+@limiter.limit(PDF_EXPORT_RATE_LIMIT)
 async def get_short_link_pdf_route(
     request: Request,
     slug: str,
     user: Annotated[AuthenticatedUser | None, Depends(get_optional_user)],
 ) -> Response:
-    """The artifact behind a link as an A4 PDF, for whoever the link opens for."""
+    """What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for."""
     log.set(operation="pdf", short_link={"slug_hash": hash_short_link_slug(slug)})
-    link = await openable_link(
-        await get_link(slug), _viewer(request, user), ShortLinkTargetType.OPENUI_ARTIFACT
-    )
-    artifact, pdf = await owner_artifact_pdf(link.user_id, link.target_id)
-    log.set(artifact={"kind": artifact.kind.value, "pdf_bytes": len(pdf)})
-    return Response(pdf, media_type="application/pdf", headers=pdf_download_headers(artifact))
+    link = await openable_link(await get_link(slug), _viewer(request, user))
+    export = REGISTRY[link.target_type].export
+    if export is None:
+        raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
+    exported = await export(link.user_id, link.target_id)
+    return Response(exported.body, media_type=exported.media_type, headers=exported.headers)

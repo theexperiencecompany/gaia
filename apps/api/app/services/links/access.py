@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import assert_never
 
 from app.constants.short_links import UNFURL_BOT_USER_AGENT_MARKERS
 from app.models.short_link_models import (
     LinkAccess,
     LinkDenial,
+    LinkSnapshot,
     LinkViewer,
     LinkViewerKind,
     RevokeReason,
@@ -31,6 +31,8 @@ _REVOKED_DENIAL: dict[RevokeReason, LinkDenial] = {
     RevokeReason.ACCOUNT_REMOVED: LinkDenial.REVOKED,
 }
 
+_OPEN = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
+
 # Dead by the owner's own hand (stopped, rotated or expired): still theirs to open.
 _OWNER_STILL_OPENS = frozenset({LinkDenial.REVOKED, LinkDenial.EXPIRED})
 
@@ -50,6 +52,24 @@ def at_most(access: LinkAccess, cap: LinkAccess) -> bool:
     return _WIDTH[access] <= _WIDTH[cap]
 
 
+def is_open(access: LinkAccess) -> bool:
+    """Whether a link at access opens for anyone holding its URL, signed in or not."""
+    return access in _OPEN
+
+
+def servable_content(link: ShortLink, now: datetime) -> LinkSnapshot | None:
+    """Return the snapshot whose bytes link may serve now; None when dead, unpublished or wider than they allow."""
+    snapshot = link.snapshot
+    if (
+        snapshot is None
+        or snapshot.content_id is None
+        or dead_state(link, now) is not None
+        or not at_most(link.access, snapshot.max_access)
+    ):
+        return None
+    return snapshot
+
+
 def is_unfurl_bot(user_agent: str) -> bool:
     lowered = user_agent.lower()
     return any(marker in lowered for marker in UNFURL_BOT_USER_AGENT_MARKERS)
@@ -66,20 +86,22 @@ def dead_state(link: ShortLink, now: datetime) -> LinkDenial | None:
     return None
 
 
+def _is_grantee(link: ShortLink, viewer: LinkViewer) -> bool:
+    by_email = viewer.email is not None and viewer.email.lower() in {
+        grantee.lower() for grantee in link.grantees
+    }
+    return by_email or viewer.user_id in link.grantee_ids
+
+
 def _may_open(link: ShortLink, viewer: LinkViewer) -> LinkDenial | None:
-    match link.access:
-        case LinkAccess.PUBLIC | LinkAccess.UNLISTED:
-            return None
-        case LinkAccess.PEOPLE:
-            if viewer.user_id is None:
-                return LinkDenial.SIGN_IN_REQUIRED
-            by_email = viewer.email is not None and viewer.email.lower() in {
-                grantee.lower() for grantee in link.grantees
-            }
-            return None if by_email or viewer.user_id in link.grantee_ids else LinkDenial.FORBIDDEN
-        case LinkAccess.OWNER:
-            return LinkDenial.SIGN_IN_REQUIRED if viewer.user_id is None else LinkDenial.FORBIDDEN
-    assert_never(link.access)  # pragma: no mutate — reached only past every level
+    """Why viewer may not open a live link they do not own, or None when they may."""
+    if is_open(link.access):
+        return None
+    if viewer.user_id is None:
+        return LinkDenial.SIGN_IN_REQUIRED
+    if link.access is LinkAccess.PEOPLE and _is_grantee(link, viewer):
+        return None
+    return LinkDenial.FORBIDDEN
 
 
 def evaluate(link: ShortLink | None, viewer: LinkViewer, now: datetime) -> Granted | Denied:

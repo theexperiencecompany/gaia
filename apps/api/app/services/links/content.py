@@ -56,7 +56,7 @@ from app.models.short_link_models import (
 )
 from app.services.analytics_service import analytics_day_start, capture
 from app.services.blob_store import link_content_store
-from app.services.links.access import at_most
+from app.services.links.access import servable_content
 from app.services.links.spec import SnapshotSource
 from app.utils.image_codec import ImageCodec
 from shared.py.analytics import UserId
@@ -380,18 +380,10 @@ def presented_render(snapshot: LinkSnapshot) -> RenderMode:
     return _WITHOUT_ORIGIN.get(snapshot.render, RenderMode.DOWNLOAD)
 
 
-def servable(snapshot: LinkSnapshot | None, access: LinkAccess) -> bool:
-    """Whether a link at access may serve the snapshot's bytes at all."""
-    return (
-        snapshot is not None
-        and snapshot.content_id is not None
-        and at_most(access, snapshot.max_access)
-    )
-
-
-def framed_content(snapshot: LinkSnapshot | None, access: LinkAccess) -> LinkContent | None:
+def framed_content(link: ShortLink, now: datetime) -> LinkContent | None:
     """Return what the page loads from the content origin; None when it renders the view alone."""
-    if snapshot is None or snapshot.content_id is None or not servable(snapshot, access):
+    snapshot = servable_content(link, now)
+    if snapshot is None or snapshot.content_id is None:
         return None
     render = presented_render(snapshot)
     if render in (RenderMode.TEXT, RenderMode.DOWNLOAD):

@@ -19,7 +19,6 @@ from app.db.repositories.link_reports import link_report_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.users import user_repository
 from app.models.short_link_models import (
-    LinkAccess,
     LinkReport,
     RenderMode,
     ReportReason,
@@ -30,6 +29,7 @@ from app.models.short_link_models import (
 from app.services.analytics_service import capture
 from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
+from app.services.links.access import is_open
 from app.services.links.content import delete_snapshot
 from app.services.links.urls import build_url
 from app.services.support_service import SUPPORT_EMAILS
@@ -42,7 +42,6 @@ from shared.py.wide_events import log
 
 # Content that can phish or carry malware is suspended on fewer reports.
 _ACTIVE_RENDERS = frozenset({RenderMode.FRAME_ACTIVE, RenderMode.DOWNLOAD})
-_OPEN_ACCESS = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
 
 
 def _locked_out() -> AppError:
@@ -75,7 +74,7 @@ async def record_miss(viewer: str, slug: str) -> None:
 
 def _threshold(link: ShortLink) -> int:
     active = link.snapshot is not None and link.snapshot.render in _ACTIVE_RENDERS
-    if active and link.access in _OPEN_ACCESS:
+    if active and is_open(link.access):
         return ACTIVE_CONTENT_REPORT_THRESHOLD
     return REPORT_THRESHOLD
 
