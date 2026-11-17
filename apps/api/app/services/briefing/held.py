@@ -1,13 +1,19 @@
 """Results held for the daily brief: whether one may wait, and the release when none will run.
 
 A result waits only while a daily brief will run to carry it. The weekly digest zooms out
-on the week and carries no held items, so a user without a live daily brief (weekly
-only, briefs off, or a daily switched off) is sent each result now, and moving off the
-daily brief releases everything it was holding, at once, in the app.
+on the week and carries no held items, so a user whose daily brief will not run (weekly
+only, briefs off, switched off, dormant, backing off a winback, or held for a goal) is
+sent each result now, and whatever was held when the loop stops is released at once, in
+the app.
 """
 
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, HELD_RELEASE_TITLE
+from app.constants.briefing import (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    HELD_RELEASE_TITLE,
+    BriefingRunOutcome,
+)
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.notification.notification_models import (
@@ -15,14 +21,33 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
 )
+from app.services.briefing import context, dormancy
+from app.services.briefing.lifecycle import bootstrap_holds
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
 
 
-async def daily_brief_is_live(user_id: str) -> bool:
-    """Whether a daily brief will run for the user: its workflow exists and is switched on."""
+async def brief_will_carry(user_id: str) -> bool:
+    """Whether a daily brief will run to carry a held result.
+
+    Not while its workflow is off, the loop is dormant, a winback is backing off or an
+    existing user's first brief is held for a goal: each run skips before it reads the held.
+    """
     workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
-    return workflow is not None and workflow.activated
+    if workflow is None or not workflow.activated:
+        return False
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise LookupError(f"Daily brief workflow {workflow.id} belongs to no user {user_id}")
+    if bootstrap_holds(user) or await dormancy.is_dormant(user):
+        return False
+    return not (await context.compute_winback_state(user)).should_back_off
+
+
+async def release_after_daily_run(user_id: str, outcome: BriefingRunOutcome) -> None:
+    """Release what is held once a daily run leaves it behind: gone silent, or no brief will carry it."""
+    if outcome is BriefingRunOutcome.SILENT or not await brief_will_carry(user_id):
+        await release_held_items(user_id)
 
 
 async def held_items(user_id: str) -> list[PendingBriefItemDocument]:

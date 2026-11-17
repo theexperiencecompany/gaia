@@ -66,7 +66,7 @@ from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
-from tests.helpers import captured_wide_event
+from tests.helpers import brief_loop_awake, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = pytest.mark.usefixtures("fake_redis")
@@ -2836,6 +2836,7 @@ async def _deliver_run(
                 new_callable=AsyncMock,
                 return_value=MagicMock(activated=True) if seams.daily_brief_live else None,
             ) as daily_brief,
+            brief_loop_awake(),
             patch.object(
                 rd, "send_workflow_failure_notification", new_callable=AsyncMock
             ) as failed,

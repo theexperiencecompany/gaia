@@ -13,23 +13,24 @@ from app.models.briefing_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
 from app.services.briefing.context import UserClock
+from app.utils.timezone import as_utc
 from shared.py.wide_events import log
 
 
-def bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
-    """Existing-user rollout gate: hold the first briefing until a goal is known.
-
-    Returns True to skip this run entirely. Once a goal memory arrives OR the
-    grace window elapses, the run proceeds (best-effort, re-asking on grace).
-    """
+def bootstrap_holds(user: UserDocument) -> bool:
+    """Whether an existing user's first brief is held for a goal: marked, inside the grace window."""
     marker = user.briefing_bootstrap
     if marker is None or not marker.pending:
         return False
-    if has_goal:
-        return False  # goal arrived — proceed and clear the marker after sending
-    since = marker.since if marker.since.tzinfo else marker.since.replace(tzinfo=UTC)
-    # Inside the interview grace window: hold. Past it: a best-effort briefing.
-    return datetime.now(UTC) - since < timedelta(days=BOOTSTRAP_GRACE_DAYS)
+    return datetime.now(UTC) - as_utc(marker.since) < timedelta(days=BOOTSTRAP_GRACE_DAYS)
+
+
+def bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
+    """Existing-user rollout gate: skip the run while the hold stands and no goal has arrived.
+
+    Past the grace window the run proceeds as a best-effort brief, re-asking for a goal.
+    """
+    return not has_goal and bootstrap_holds(user)
 
 
 async def clear_bootstrap(user: UserDocument) -> None:
@@ -47,7 +48,7 @@ async def wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
     if not dstate.dormant_since:
         return dstate
     if await dormancy.latest_activity_since(user.id, dstate.dormant_since) is not None:
-        await dormancy.clear_dormancy(user.id)
+        await user_repository.clear_briefing_dormancy(user.id)
         log.info("briefing.dormancy_cleared", user_id=user.id)
         return dormancy.DormancyState(
             idle_days=0, date=None, dormant_since=None, goal_asked_at=dstate.goal_asked_at

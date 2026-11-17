@@ -20,6 +20,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from app.constants.briefing import (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    ENABLED_BRIEFING_KEYS,
     FIRST_WEEK_DAYS,
     GOAL_QUESTION_REASK,
     IDLE_DORMANT_DAYS,
@@ -102,6 +104,12 @@ async def latest_activity_since(user_id: str, since: datetime) -> datetime | Non
     return last_active if last_active is not None and last_active >= since else None
 
 
+async def is_dormant(user: UserDocument) -> bool:
+    """Whether the loop is dormant with no activity since: its next run skips before reading anything."""
+    since = state_from_user(user).dormant_since
+    return since is not None and await latest_activity_since(user.id, since) is None
+
+
 async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_str: str) -> int:
     """Persist today's idle/active outcome; returns the consecutive idle count.
 
@@ -156,13 +164,22 @@ async def leave_idle_ladder(user_id: str, ladder: IdleLadder) -> None:
     if ladder.goal_question is not GoalQuestion.ASKED:
         await user_repository.record_goal_question(user_id)
     if ladder.wind_down == WIND_DOWN_FINAL:
-        await enter_dormancy(user_id)
+        await user_repository.enter_briefing_dormancy(user_id)
         log.info("briefing.dormancy_entered", user_id=user_id, idle_days=ladder.idle_days)
 
 
-async def enter_dormancy(user_id: str) -> None:
-    await user_repository.enter_briefing_dormancy(user_id)
+async def climb_weekly_ladder(
+    user: UserDocument, prior: DormancyState, date_str: str, *, has_news: bool, has_goal: bool
+) -> None:
+    """Count an empty digest as idle for a user the weekly digest is the only brief of.
 
-
-async def clear_dormancy(user_id: str) -> None:
-    await user_repository.clear_briefing_dormancy(user_id)
+    Their loop goes dormant after IDLE_DORMANT_DAYS idle digests in a row; a user with a
+    daily brief climbs the ladder on it instead.
+    """
+    if DAILY_BRIEFING_WORKFLOW_KEY in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
+        return
+    idle = not has_news and not has_goal and not in_first_week(user, datetime.now(UTC))
+    idle_days = await record_idle_day(user.id, prior, idle, date_str)
+    if idle and idle_days >= IDLE_DORMANT_DAYS:
+        await user_repository.enter_briefing_dormancy(user.id)
+        log.info("briefing.dormancy_entered", user_id=user.id, idle_days=idle_days)

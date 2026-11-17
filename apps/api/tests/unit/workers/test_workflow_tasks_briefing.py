@@ -63,11 +63,13 @@ class _Pipelines:
     def __init__(self) -> None:
         self.daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
         self.weekly = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        self.release = AsyncMock()
 
     def patches(self) -> list:
         return [
             patch("app.services.briefing.daily.run_daily_briefing", self.daily),
             patch("app.services.briefing.weekly.run_weekly_digest", self.weekly),
+            patch("app.services.briefing.held.release_after_daily_run", self.release),
         ]
 
 
@@ -96,6 +98,19 @@ class TestKeyChoosesThePipeline:
         assert summary == BRIEFING_SUMMARY
         log.set_ns.assert_called_once_with("workflow", briefing_outcome="sent")
 
+    @pytest.mark.regression
+    async def test_a_daily_run_hands_its_outcome_to_the_held_release(
+        self, pipelines: _Pipelines
+    ) -> None:
+        pipelines.daily.return_value = BriefingRunOutcome.WINBACK_BACKOFF
+
+        with ExitStack() as stack:
+            for patcher in pipelines.patches():
+                stack.enter_context(patcher)
+            await _run_briefing_workflow(_briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY))
+
+        pipelines.release.assert_awaited_once_with(USER_ID, BriefingRunOutcome.WINBACK_BACKOFF)
+
     async def test_weekly_key_runs_the_weekly_digest_for_that_user(
         self, pipelines: _Pipelines
     ) -> None:
@@ -108,6 +123,7 @@ class TestKeyChoosesThePipeline:
 
         pipelines.weekly.assert_awaited_once_with(USER_ID)
         pipelines.daily.assert_not_awaited()
+        pipelines.release.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
 
 

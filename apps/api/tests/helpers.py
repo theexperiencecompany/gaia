@@ -62,6 +62,8 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.users import user_repository
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -98,6 +100,16 @@ def users_get_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[User
         )
 
     return get
+
+
+@contextmanager
+def brief_loop_awake() -> Iterator[None]:
+    """Serve brief_will_carry's reads past the workflow: a user with no goal hold, dormancy or winback."""
+    with (
+        patch.object(user_repository, "get", new=users_get_on(BriefingFrequency.DAILY)),
+        patch.object(briefing_repository, "list_recent", new=AsyncMock(return_value=[])),
+    ):
+        yield
 
 
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:

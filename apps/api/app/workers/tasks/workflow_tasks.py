@@ -1293,10 +1293,11 @@ async def _run_briefing_workflow(workflow: Workflow) -> str:
     Imported inline to avoid the agent import cycle (same reason as
     execute_workflow_as_chat).
     """
-    from app.services.briefing import daily, weekly  # noqa: PLC0415 -- agent cycle
+    from app.services.briefing import daily, held, weekly  # noqa: PLC0415 -- agent cycle
 
     if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
         outcome = await daily.run_daily_briefing(workflow.user_id)
+        await held.release_after_daily_run(workflow.user_id, outcome)
     else:
         outcome = await weekly.run_weekly_digest(workflow.user_id)
     log.set_ns("workflow", briefing_outcome=outcome.value)

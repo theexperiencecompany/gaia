@@ -163,6 +163,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     )
     monkeypatch.setattr(WorkflowService, "update_workflow", s.update)
     monkeypatch.setattr(briefing_repository, "was_delivered", s.was_delivered)
+    monkeypatch.setattr(briefing_repository, "list_recent", AsyncMock(return_value=[]))
     monkeypatch.setattr(workflow_repository, "find_system_workflow", s.daily)
     monkeypatch.setattr(pending_brief_items_repository, "list_for_user", s.held)
     monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
@@ -349,7 +350,7 @@ class TestSetBriefingSchedule:
 
         assert result is stored
         store.assert_awaited_once_with(_USER, wanted)
-        get.assert_awaited_once_with(_USER)
+        get.assert_awaited_with(_USER)
         log.audit.assert_called_once_with(
             "briefing schedule updated",
             actor=_USER,

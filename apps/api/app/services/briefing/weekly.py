@@ -47,9 +47,7 @@ from app.services.briefing.facts import (
     build_facts,
     user_todos_note,
 )
-from app.services.briefing.lifecycle import (
-    already_delivered,
-)
+from app.services.briefing.lifecycle import already_delivered, wake_or_skip
 from app.services.briefing.prose import (
     Prose,
     Writing,
@@ -130,13 +128,9 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     if await already_delivered(user_id, clock, BRIEFING_KIND_WEEKLY):
         return BriefingRunOutcome.ALREADY_DELIVERED
 
-    # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
-    dstate = dormancy.state_from_user(user)
-    if (
-        dstate.dormant_since
-        and await dormancy.latest_activity_since(user.id, dstate.dormant_since) is None
-    ):
-        log.info("briefing.weekly_dormant_skip", user_id=user_id)
+    # A dormant loop has nothing to zoom out on; activity since wakes it here as on the daily.
+    dstate = await wake_or_skip(user)
+    if dstate is None:
         return BriefingRunOutcome.DORMANT
 
     # One window for the candidates, the prose and the tallies: this week, Monday to now.
@@ -165,7 +159,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     briefs = await briefing_repository.list_recent(user_id, limit=RECENT_BRIEFS_RECALLED)
     recent = recent_lines(briefs)
     goals = await context.stated_goals(user_id, user)
-    goal_block, _ = context.format_goal_block(goals)
+    goal_block, has_goal = context.format_goal_block(goals)
     window = week_window(clock)
     past = await context.read_calendar(user_id, window.start, window.end)
     pool = await build_fact_pool(
@@ -189,7 +183,11 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         ),
         seen_at,
     )
-    if _is_empty_week(pool):
+    empty = _is_empty_week(pool)
+    await dormancy.climb_weekly_ladder(
+        user, dstate, clock.date_str, has_news=not empty, has_goal=has_goal
+    )
+    if empty:
         await _send_quiet_week(user, clock, briefs, (ahead, todos.overdue), pool)
         return BriefingRunOutcome.SENT
     composed = await compose_brief(user_id, pool, BRIEFING_KIND_WEEKLY)

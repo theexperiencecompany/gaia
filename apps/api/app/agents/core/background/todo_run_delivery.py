@@ -55,7 +55,7 @@ from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
-from app.services.briefing.held import daily_brief_is_live
+from app.services.briefing.held import brief_will_carry
 from app.services.canvas_markdown import section_body
 from app.services.delivery.chat_channel import (
     ProactiveTarget,
@@ -351,7 +351,7 @@ async def _narrate_and_deliver(
     only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
     desk_sweep = _is_desk_sweep(todo, finished)
-    may_wait = (desk_sweep or _can_wait(todo, finished)) and await daily_brief_is_live(todo.user_id)
+    may_wait = (desk_sweep or _can_wait(todo, finished)) and await brief_will_carry(todo.user_id)
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(

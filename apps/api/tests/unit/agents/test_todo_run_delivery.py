@@ -31,7 +31,7 @@ from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
-from tests.helpers import captured_wide_event
+from tests.helpers import brief_loop_awake, captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -102,6 +102,7 @@ def _seams(
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
         patch.object(workflow_repository, "find_system_workflow", seams.daily_brief),
+        brief_loop_awake(),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "create_notification", seams.in_app),

@@ -18,7 +18,7 @@ from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.user_models import AuthenticatedUser
-from app.services.briefing.held import daily_brief_is_live
+from app.services.briefing.held import brief_will_carry
 from app.services.workflow.notifications import send_workflow_completion_notification
 from shared.py.wide_events import log
 
@@ -48,7 +48,7 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
     """
     log.set(workflow_delivery=run.delivery.value)
     delivery = run.delivery
-    if delivery is WorkflowDelivery.BRIEF and not await daily_brief_is_live(user.user_id):
+    if delivery is WorkflowDelivery.BRIEF and not await brief_will_carry(user.user_id):
         log.info(
             f"{LogTag.WORKFLOW} Workflow result sent now: no daily brief will carry it",
             workflow_id=run.workflow_id,
