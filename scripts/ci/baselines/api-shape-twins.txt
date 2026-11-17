@@ -66,6 +66,8 @@ apps/mobile/src/features/workflows/types/trigger-types.ts:TriggerSchema=Workflow
 apps/mobile/src/features/workflows/types/workflow-types.ts:UpdateWorkflowPayload=CreateWorkflowRequest
 apps/mobile/src/features/workflows/types/workflow-types.ts:WorkflowExecutionsListResponse=WorkflowExecutionsResponse
 apps/mobile/src/lib/analytics.ts:UserTraits=AuthenticatedUserResponse
+# A server-rendered view model: its description is a rendered ReactNode, three generic names match.
+apps/web/src/app/[locale]/(landing)/marketplace/[slug]/ToolList.tsx:ToolListItem=UserFeatureFlagResponse
 apps/web/src/app/[locale]/(landing)/thanks/page.tsx:ToolMetadata=URLResponse
 apps/web/src/app/api/og/integration/route.tsx:OgIntegration=CommunityIntegrationItem
 apps/web/src/app/api/og/use-case/route.tsx:OgWorkflow=PersonalizationWorkflow
@@ -109,7 +111,6 @@ apps/web/src/features/skills/api/types.ts:DiscoveredSkill=DiscoveredSkillInfo
 apps/web/src/features/skills/components/SkillPreviewModal.tsx:SkillPreview=BuiltinSkillInfo
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactFormData=Body_support_submit_support_request_with_attachments
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactSupportInitialValues=Body_support_submit_support_request_with_attachments
-apps/web/src/features/team/api/teamApi.ts:TeamMember=AuthorDetails
 apps/web/src/features/thanks/components/Thanks.tsx:ToolMetadata=URLResponse
 apps/web/src/features/thanks/components/ToolCard.tsx:ToolMetadata=URLResponse
 apps/web/src/features/todo/components/shared/TodoFieldsRow.tsx:TodoFieldsRowProps=TodoModel

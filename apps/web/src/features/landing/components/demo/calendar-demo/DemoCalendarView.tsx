@@ -83,12 +83,12 @@ export default function DemoCalendarView() {
                 }}
               >
                 <span
-                  className={`text-[10px] font-medium ${isToday ? "text-primary" : "text-zinc-500"}`}
+                  className={`text-[10px] font-medium ${isToday ? "text-accent" : "text-zinc-500"}`}
                 >
                   {dayLabel}
                 </span>
                 <span
-                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${isToday ? "bg-primary text-black" : "text-zinc-400"}`}
+                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${isToday ? "bg-accent text-black" : "text-zinc-400"}`}
                 >
                   {dayNum}
                 </span>
@@ -138,8 +138,8 @@ export default function DemoCalendarView() {
             style={{ top: currentTimeTop }}
           >
             <div className="flex items-center">
-              <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-              <div className="h-[2px] flex-1 bg-primary/50" />
+              <div className="h-2.5 w-2.5 rounded-full bg-accent" />
+              <div className="h-[2px] flex-1 bg-accent/50" />
             </div>
           </div>
 

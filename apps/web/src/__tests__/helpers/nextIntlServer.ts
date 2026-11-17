@@ -8,10 +8,17 @@ const MESSAGES_DIR = path.join(process.cwd(), "src", "messages");
 /** The locale next-intl's request context answers with; a test sets it before each render. */
 export const intlRequest = { locale: "en" };
 
+const messagesByLocale = new Map<string, Record<string, unknown>>();
+
+/** A locale's message file, parsed once per test file. */
 export function readMessages(locale: string): Record<string, unknown> {
-  return JSON.parse(
+  const cached = messagesByLocale.get(locale);
+  if (cached) return cached;
+  const messages = JSON.parse(
     readFileSync(path.join(MESSAGES_DIR, `${locale}.json`), "utf8"),
   ) as Record<string, unknown>;
+  messagesByLocale.set(locale, messages);
+  return messages;
 }
 
 /** next-intl/server answered from the real message files, for the factory of vi.mock("next-intl/server"). */

@@ -1,5 +1,5 @@
-import { Button } from "@heroui/react";
 import { MinusSignIcon, PlusSignIcon, RefreshIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useMap } from "@/components/ui/map";
 
 export function MapBlockControls({
@@ -29,39 +29,39 @@ export function MapBlockControls({
 
   return (
     <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
-      <Button
+      <GaiaButton
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
+        tone="bright"
         onPress={handleZoomIn}
         aria-label="Zoom in"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <PlusSignIcon className="size-3.5" />
-      </Button>
-      <Button
+      </GaiaButton>
+      <GaiaButton
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
+        tone="bright"
         onPress={handleZoomOut}
         aria-label="Zoom out"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <MinusSignIcon className="size-3.5" />
-      </Button>
-      <Button
+      </GaiaButton>
+      <GaiaButton
         isIconOnly
         size="sm"
-        variant="flat"
-        radius="lg"
+        variant="tertiary"
+        tone="bright"
         onPress={handleReset}
         aria-label="Reset view"
-        className="bg-zinc-800/90 text-zinc-200 backdrop-blur-md data-[hover=true]:bg-zinc-700"
+        className="bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700"
       >
         <RefreshIcon className="size-3.5" />
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

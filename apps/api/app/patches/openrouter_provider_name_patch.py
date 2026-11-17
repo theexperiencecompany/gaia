@@ -25,6 +25,7 @@ from openrouter.components.chatresult import ChatResult as SDKChatResult
 from openrouter.components.chatstreamchunk import ChatStreamChunk as SDKChatStreamChunk
 from pydantic.fields import FieldInfo
 
+from app.agents.llm.stream_metadata import keep_first_response_key
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 
 #: Keys that arrive on more than one streamed chunk and would merge into a
@@ -104,7 +105,7 @@ def _convert_chunk_to_message_chunk(
 
     Patched here rather than in _stream/_astream because this is the one
     function both of them route every chunk through, and it is the only place
-    with the raw wire chunk the name arrives on. _keep_first_provider_name
+    with the raw wire chunk the name arrives on. keep_first_response_key
     then reduces the repeats to one — see its docstring for why.
     """
     message_chunk = _ORIGINAL_CONVERT_CHUNK(chunk, default_class)
@@ -121,26 +122,6 @@ def _convert_chunk_to_message_chunk(
     )
 
 
-def _keep_first_response_key(chunk: ChatGenerationChunk, key: str, kept_so_far: int) -> int:
-    """Drop key from every chunk after the first; return 1 if this one kept it.
-
-    merge_dicts concatenates repeated string keys, so provider and finish_reason double
-    ("BaiduBaidu", "stopstop"); a live 8-chunk answer carried two finish events, so
-    first-one-wins reports the earlier one if they disagree. generation_info is stripped
-    too: BaseChatModel.stream _gen_info_and_msg_metadata (chat_models.py:781/914) re-merges it.
-    """
-    if not isinstance(chunk.message, AIMessageChunk):
-        return 0
-    if key not in chunk.message.response_metadata and key not in (chunk.generation_info or {}):
-        return 0
-    if kept_so_far > 0:
-        chunk.message.response_metadata.pop(key, None)
-        if chunk.generation_info is not None:
-            chunk.generation_info.pop(key, None)
-        return 0
-    return 1
-
-
 def _stream(
     self: ChatOpenRouter,
     messages: list[BaseMessage],
@@ -151,7 +132,7 @@ def _stream(
     kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
         for key in _DEDUPED_RESPONSE_KEYS:
-            kept[key] += _keep_first_response_key(chunk, key, kept[key])
+            kept[key] += keep_first_response_key(chunk, key, kept[key])
         yield chunk
 
 
@@ -165,7 +146,7 @@ async def _astream(
     kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
         for key in _DEDUPED_RESPONSE_KEYS:
-            kept[key] += _keep_first_response_key(chunk, key, kept[key])
+            kept[key] += keep_first_response_key(chunk, key, kept[key])
         yield chunk
 
 

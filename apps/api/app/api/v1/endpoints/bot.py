@@ -19,7 +19,7 @@ from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALI
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.platform_links import Platform
-from app.core.stream_manager import stream_manager, with_heartbeat
+from app.core.stream_manager import sse_payload, stream_manager, with_heartbeat
 from app.db.redis import redis_cache
 from app.decorators import (
     SubscriptionRequiredException,
@@ -62,6 +62,7 @@ from app.services.bot.stream_frames import (
     keepalive_frame,
     message_boundary_frame,
     notice_frame,
+    reply_complete_frame,
     session_token_frame,
     stream_error_frame,
     text_frame,
@@ -72,7 +73,7 @@ from app.services.bot_service import (
     charge_bot_turn,
 )
 from app.services.bot_token_service import create_bot_session_token
-from app.services.chat.stream import run_chat_stream_background
+from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.latency_metrics import observe_sse_delivery
@@ -82,6 +83,7 @@ from app.services.platform_link_service import (
     disconnect_platform_account,
     platform_requires_upgrade,
 )
+from app.services.turn_clock import TurnClock
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -371,11 +373,7 @@ def _bot_stream_control_frame(
     if chunk.startswith(":"):
         return chunk, None, False
 
-    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...") for
-    # Last-Event-ID resume — split the id line off before the data checks, or
-    # every content frame is silently dropped.
-    if chunk.startswith("id: "):
-        _, _, chunk = chunk.partition("\n")
+    chunk = sse_payload(chunk)
 
     if not chunk.startswith("data: "):
         return None, None, False
@@ -464,6 +462,9 @@ def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
             reacts_to_message_id=data.emoji_ack.reacts_to_message_id,
         ), False
 
+    if data.main_response_complete:
+        return reply_complete_frame(), False
+
     # Skip web-only fields.
     if present & _WEB_ONLY_STREAM_FIELDS:
         return None, False
@@ -548,6 +549,7 @@ async def _forward_bot_frames(
         payload_frame, stop = await _bot_stream_payload_frame(data, upgrade_url)
         if payload_frame is not None:
             yield payload_frame
+            note_reply_delivered(stream_id, chunk)
         if stop:
             return
 
@@ -669,7 +671,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
     # Same request-accepted clock as the web endpoint, so bot turns share
     # the web turns' TTFT/E2E definition.
-    t0_perf = time.perf_counter()
+    clock = TurnClock.accepted(request)
 
     # Launch background task
     spawn_background_task(
@@ -679,7 +681,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             user=user,
             conversation_id=conversation_id,
             source=body.platform,
-            t0_perf=t0_perf,
+            clock=clock,
         ),
         on_done=_bot_stream_failure_logger(stream_id, conversation_id),
     )

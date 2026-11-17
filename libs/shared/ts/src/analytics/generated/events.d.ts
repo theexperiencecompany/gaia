@@ -5,6 +5,7 @@ export type ServerEventName =
   | "agent:run_completed"
   | "agent:run_failed"
   | "agent:run_started"
+  | "agent:wait_resumed"
   | "ai:llm_call_completed"
   | "approval:decided"
   | "bot:audio_transcribed"
@@ -281,6 +282,14 @@ export interface EventProperties {
     "task_id"?: string;
     "trigger_type"?: string;
     "source"?: string;
+  };
+  "agent:wait_resumed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "condition": string;
+    "waiter": string;
+    "waited_minutes": number;
   };
   "ai:llm_call_completed": {
     "actor": "user" | "agent";

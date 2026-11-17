@@ -90,7 +90,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
           "Describe the sprint goals and ask GAIA to generate a task list. It creates all tasks, assigns priorities, and organizes them by milestone.",
       },
     ],
-    relatedSlugs: ["calendar", "goals", "workflows"],
+    relatedSlugs: ["calendar", "goals", "dashboard"],
     demoComponent: "todos",
   },
   {
@@ -275,7 +275,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
           "Ask GAIA to scan sent mail for emails with no reply in over 5 days and create follow-up tasks for each one.",
       },
     ],
-    relatedSlugs: ["calendar", "todos", "proactive-ai"],
+    relatedSlugs: ["calendar", "todos", "dashboard"],
     demoComponent: "email",
   },
   {
@@ -472,7 +472,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
     tagline: "Save and bookmark any message for later reference",
     headline: "Never lose an important insight again.",
     subheadline:
-      "Pin any message from any conversation to save it permanently, then search and browse all your pins in one place.",
+      "Pin any message from any conversation to save it permanently, then search and browse all your pins in one place, so a useful answer is never lost.",
     benefits: [
       {
         icon: "Bookmark01Icon",

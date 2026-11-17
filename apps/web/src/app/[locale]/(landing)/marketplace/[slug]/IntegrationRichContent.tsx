@@ -1,21 +1,24 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";
+import { LinkButton } from "@/components/shared/LinkButton";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
 interface IntegrationRichContentProps {
   readonly integration: PublicIntegrationResponse;
   readonly comparisonSlug?: string;
   readonly alternativeSlug?: string;
+  /** The marketplace directory page that lists this integration. */
+  readonly directoryHref: string;
 }
 
 export function IntegrationRichContent({
   integration,
   comparisonSlug,
   alternativeSlug,
+  directoryHref,
 }: IntegrationRichContentProps) {
   const howItWorks = integration.content?.howItWorks ?? [];
   const faqs = integration.content?.faqs ?? [];
@@ -81,17 +84,10 @@ export function IntegrationRichContent({
           communication, productivity, and more, letting you build cross-tool
           automations in plain English without writing a single line of code.
         </p>
-        <Button
-          as={Link}
-          href="/marketplace"
-          variant="flat"
-          color="primary"
-          endContent={
-            <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
-          }
-        >
+        <LinkButton variant="accent-soft" href={directoryHref}>
           Browse all integrations
-        </Button>
+          <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </LinkButton>
       </section>
 
       {/* Cross-links to comparison and alternative guides when they exist */}

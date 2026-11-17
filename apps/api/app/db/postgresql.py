@@ -10,7 +10,7 @@ from typing import cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Connection, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.schema import DDL
 
@@ -70,6 +70,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("memories", "shelf_life", "varchar(20) NOT NULL DEFAULT 'durable'"),
     ("bridge_device_mcp_servers", "kind", "varchar(20) NOT NULL DEFAULT 'stdio'"),
     ("bridge_devices", "client", "varchar(20)"),
+    ("memory_vectors", "updated_at", "timestamptz NOT NULL DEFAULT now()"),
 )
 
 
@@ -126,6 +127,20 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, bool]]:
     return url, connect_args
 
 
+async def bootstrap_schema(conn: AsyncConnection) -> None:
+    """Bring the schema up to the models: create missing tables, then add and promote columns.
+
+    The advisory lock is the transaction's first statement, so concurrent starters
+    never race CREATE TYPE.
+    """
+    await conn.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
+    )
+    await conn.run_sync(Base.metadata.create_all)
+    await conn.run_sync(_ensure_added_columns)
+    await conn.run_sync(_ensure_timestamptz_columns)
+
+
 @lazy_provider(
     name="postgresql_engine",
     required_keys=[settings.POSTGRES_URL],
@@ -156,12 +171,7 @@ async def init_postgresql_engine() -> AsyncEngine:
     )
 
     async with engine.begin() as conn:
-        await conn.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": SCHEMA_BOOTSTRAP_LOCK_ID}
-        )
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_ensure_added_columns)
-        await conn.run_sync(_ensure_timestamptz_columns)
+        await bootstrap_schema(conn)
 
     log.set(db={"connection_status": "connected", "backend": "postgresql"})
     log.info(f"{LogTag.STARTUP} PostgreSQL engine initialized for database")
