@@ -60,6 +60,8 @@ class Case:
     dispatches: bool | None
     #: Phrases a reply without a dispatch must not use: claims the evidence contradicts.
     must_not_claim: tuple[str, ...] = ()
+    #: False: the thread holds no earlier hand-off, only the live status note says work runs.
+    handoff_in_thread: bool = True
 
 
 #: What a reply about work that has ended must never say: it is not running, and a
@@ -83,7 +85,19 @@ CASES = {
     "status_running": Case("running", "is it done yet?", dispatches=None),
     # Something new for the running work still reaches it.
     "add_while_running": Case("running", "oh and archive the newsletter ones too", dispatches=True),
+    # The running work cannot see the chat: a passing detail that changes its result must be handed over.
+    "detail_while_running": Case(
+        "running", "fyi the ones from my bank aren't promos", dispatches=True
+    ),
     # The acknowledgment of this turn's own dispatch must never dispatch again.
+    # The failure the prompt rule exists for: the status note says work runs but the hand-off
+    # that started it is not in the thread, so nothing in the history shows how to reach it.
+    "detail_while_running_no_handoff": Case(
+        "running",
+        "fyi the ones from my bank aren't promos",
+        dispatches=True,
+        handoff_in_thread=False,
+    ),
     "ack_after_dispatch": Case("running", None, dispatches=False),
     "chat_while_running": Case("running", "lol thanks", dispatches=False),
     # Mid-run progress comes from the status note's record, not a call.
@@ -199,7 +213,8 @@ async def _request(case: Case, dispatched: list[AnyMessage]) -> list[AnyMessage]
     else:
         built = await construct_langchain_messages(query=case.message, scope=_scope())
         # The earlier dispatch's ack, then the error the user saw, then their new message.
-        thread = [*dispatched, AIMessage(content="on it"), *built]
+        acknowledged = [AIMessage(content="on it")] if dispatched else []
+        thread = [*dispatched, *acknowledged, *built]
     ordered = manage_system_prompts_node(cast(Any, {"messages": thread}), _config(), None)
     return cast(list[AnyMessage], ordered["messages"])
 
@@ -211,7 +226,7 @@ async def test_comms_acts_on_the_live_status(
 ) -> None:
     case = CASES[case_id]
     model = _model().bind_tools(list(comms_tools().values()))
-    thread = await _own_dispatch(model)
+    thread = await _own_dispatch(model) if case.handoff_in_thread else []
     await _set_lock(fake_redis, case.lock)
 
     reply = cast(AIMessage, await model.ainvoke(await _request(case, thread)))
