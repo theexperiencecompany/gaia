@@ -831,6 +831,8 @@ class TestBriefingScheduleEndpoints:
             "hour": 8,
             "paused_for_plan": False,
             "next_daily_brief_at": "2026-10-15T02:30:00Z",
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
         }
 
     async def test_a_free_users_schedule_reads_as_paused_for_the_plan(
@@ -851,6 +853,8 @@ class TestBriefingScheduleEndpoints:
             "hour": 8,
             "paused_for_plan": True,
             "next_daily_brief_at": None,
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
         }
 
     async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
@@ -888,9 +892,15 @@ class TestBriefingScheduleEndpoints:
             "hour": 7,
             "paused_for_plan": True,
             "next_daily_brief_at": None,
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
         }
         setter.assert_awaited_once_with(
-            FAKE_USER_ID, wanted, via="settings", workflow_deliveries={}
+            FAKE_USER_ID,
+            BriefingFrequency.WEEKDAYS,
+            "settings",
+            hour=7,
+            workflow_deliveries={},
         )
         log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
 

@@ -869,7 +869,7 @@ these.
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
 | "Always do X in every chat / clear my standing instructions" | `get_user_instructions(scope="global")`, then `update_user_instructions(scope="global", content=..., based_on_revision=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
-| "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour)` | `account` |
+| "Fewer / no briefs, weekdays only, brief me at 7" | `set_briefing_schedule(frequency, hour, brief_workflows_to)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
@@ -961,7 +961,7 @@ settings - plus a set of mutation tools that change the real thing.
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
 | Standing instructions (every conversation) | `account/custom-instructions.json` | `update_user_instructions(scope="global", ...)` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
-| Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour)` |
+| Brief frequency (daily/weekdays/weekly_only/off) + daily brief hour | - | `set_briefing_schedule(frequency, hour, brief_workflows_to)` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
 Every account tool asks the user to confirm before it runs - ALWAYS, regardless

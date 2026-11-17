@@ -6,6 +6,7 @@ A schedule without a daily brief first moves every brief-delivery workflow off i
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.constants.briefing import (
@@ -38,7 +39,7 @@ from app.services.briefing.held import brief_will_carry, release_held_items
 from app.services.briefing.run_times import briefing_cron, inbox_desk_recurrence, user_brief_slots
 from app.services.todos.inbox_desk import follow_the_brief
 from app.services.workflow.service import WorkflowService
-from app.utils.errors import AppError
+from app.utils.errors import AppError, create_error
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
@@ -190,16 +191,24 @@ _UNCHOSEN_DELIVERY: dict[BriefingFrequency, BriefFreeDelivery | None] = {
 }
 
 
+@dataclass(frozen=True)
+class _BriefWorkflowMoves:
+    """Where brief-delivery workflows go when the daily brief stops: chosen per id, the rest to rest."""
+
+    chosen: Mapping[str, BriefFreeDelivery]
+    rest: BriefFreeDelivery | None
+
+
 async def _move_off_the_brief(
     user_id: str,
     frequency: BriefingFrequency,
-    chosen: Mapping[str, BriefFreeDelivery],
+    moves: _BriefWorkflowMoves,
     via: BriefingScheduleChangedVia,
 ) -> None:
     """Give every brief-delivery workflow its new delivery; refuse, changing nothing, if one has none."""
     on_brief = await workflow_repository.find_brief_delivery_for_user(user_id)
-    fallback = _UNCHOSEN_DELIVERY[frequency]
-    deliveries = {workflow.id: chosen.get(workflow.id, fallback) for workflow in on_brief}
+    fallback = moves.rest or _UNCHOSEN_DELIVERY[frequency]
+    deliveries = {workflow.id: moves.chosen.get(workflow.id, fallback) for workflow in on_brief}
     unresolved = [workflow for workflow in on_brief if deliveries[workflow.id] is None]
     if unresolved:
         capture(UserId(user_id), SettingsBriefsOffBlocked(workflow_count=len(unresolved), via=via))
@@ -224,21 +233,33 @@ async def _move_off_the_brief(
 
 async def set_briefing_schedule(
     user_id: str,
-    schedule: BriefingSchedule,
+    frequency: BriefingFrequency,
     via: BriefingScheduleChangedVia,
+    *,
+    hour: int | None = None,
     workflow_deliveries: Mapping[str, BriefFreeDelivery] | None = None,
+    brief_workflows_to: BriefFreeDelivery | None = None,
 ) -> UserDocument:
-    """Store the user's briefing schedule and move their briefing workflows onto it.
+    """Store the user's briefing frequency, and hour unless None keeps theirs, and move the briefs onto it.
 
     A schedule with no daily brief first moves each brief-delivery workflow off the brief:
-    weekly-only to Tell me now, off to its delivery in workflow_deliveries, raising
-    BriefDeliveryWorkflowsError while any has none. It also releases what was held.
+    to its delivery in workflow_deliveries, else brief_workflows_to, else (weekly-only) Tell
+    me now, raising BriefDeliveryWorkflowsError while any has none. It releases what was held.
     """
     before = await user_repository.get(user_id)
     if before is None:
-        raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
+        raise create_error(
+            message="No such user",
+            why=f"User {user_id} does not exist",
+            fix="Sign in again",
+            status_code=404,
+        )
+    schedule = BriefingSchedule(
+        frequency=frequency, hour=before.briefing_schedule.hour if hour is None else hour
+    )
     if schedule.frequency in _UNCHOSEN_DELIVERY:
-        await _move_off_the_brief(user_id, schedule.frequency, workflow_deliveries or {}, via)
+        moves = _BriefWorkflowMoves(chosen=workflow_deliveries or {}, rest=brief_workflows_to)
+        await _move_off_the_brief(user_id, schedule.frequency, moves, via)
     await user_repository.set_briefing_schedule(user_id, schedule)
     user = await user_repository.get(user_id)
     if user is None:

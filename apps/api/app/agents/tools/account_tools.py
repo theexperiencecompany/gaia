@@ -12,9 +12,8 @@ from pydantic import BaseModel, Field
 
 from app.agents.tools.core.mutations import define_mutation_tool
 from app.constants.briefing import BRIEFS_PAUSED_FOR_PLAN_NOTE, BriefingFrequency
-from app.db.repositories.users import user_repository
 from app.decorators import enforce_rate_limit
-from app.models.briefing_models import BriefingSchedule
+from app.models.briefing_models import BriefFreeDelivery
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,
@@ -73,6 +72,12 @@ class SetBriefingScheduleArgs(BaseModel):
         ge=0,
         le=23,
         description="The daily brief's hour on the user's clock (0-23). Omit to keep the current one",
+    )
+    brief_workflows_to: BriefFreeDelivery | None = Field(
+        default=None,
+        description="Turning briefs off only: where the workflows that send their results to "
+        "the brief go instead, now (Tell me now) or silent (Don't notify me). Ask the user; "
+        "without it, off is refused while any such workflow exists",
     )
 
 
@@ -138,15 +143,15 @@ set_selected_voice = define_mutation_tool(
 
 
 async def _set_briefing_schedule(
-    user_id: str, *, frequency: BriefingFrequency, hour: int | None = None
+    user_id: str,
+    *,
+    frequency: BriefingFrequency,
+    hour: int | None = None,
+    brief_workflows_to: BriefFreeDelivery | None = None,
 ) -> str:
-    user = await user_repository.get(user_id)
-    if user is None:
-        raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
-    schedule = BriefingSchedule(
-        frequency=frequency, hour=user.briefing_schedule.hour if hour is None else hour
+    updated = await briefing_schedule.set_briefing_schedule(
+        user_id, frequency, "agent", hour=hour, brief_workflows_to=brief_workflows_to
     )
-    updated = await briefing_schedule.set_briefing_schedule(user_id, schedule, via="agent")
     described = f"Briefing schedule updated: {describe_briefing_schedule(updated)}."
     if await briefing_schedule.briefs_paused_for_plan(updated):
         return f"{described} {BRIEFS_PAUSED_FOR_PLAN_NOTE}"

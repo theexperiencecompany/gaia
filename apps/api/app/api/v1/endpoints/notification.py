@@ -237,7 +237,11 @@ async def update_briefing_schedule(
     """Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs."""
     log.set(user={"id": user_id}, operation="update_briefing_schedule")
     user = await set_briefing_schedule(
-        user_id, body.schedule(), via="settings", workflow_deliveries=body.workflow_deliveries
+        user_id,
+        body.frequency,
+        "settings",
+        hour=body.hour,
+        workflow_deliveries=body.workflow_deliveries,
     )
     return await briefing_schedule_state(user)
 

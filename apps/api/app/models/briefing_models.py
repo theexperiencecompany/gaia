@@ -100,10 +100,6 @@ class BriefingScheduleUpdate(BriefingSchedule):
             raise ValueError("workflow_deliveries is only accepted when frequency is off")
         return self
 
-    def schedule(self) -> BriefingSchedule:
-        """Return the schedule to store, without the one-off deliveries."""
-        return BriefingSchedule(frequency=self.frequency, hour=self.hour)
-
 
 class BriefingEdition(BaseModel):
     """One daily edition family, and where the user put it."""
