@@ -13,6 +13,13 @@ import time
 
 from starlette.requests import Request
 
+from app.services.turn_timings import (
+    TurnPhase,
+    TurnTimings,
+    begin_turn_timings,
+    current_turn_timings,
+)
+
 #: request.state attribute LoggingMiddleware stamps on arrival.
 _RECEIVED_STATE_ATTR = "turn_received_perf"
 
@@ -24,6 +31,13 @@ class TurnMark(StrEnum):
     LLM_REQUEST = "llm_request"
     LLM_FIRST_CHUNK = "llm_first_chunk"
     FRAME_WRITTEN = "frame_written"
+
+
+#: The step-timing phase a turn enters at each stamp.
+_PHASE_AFTER: dict[TurnMark, TurnPhase] = {
+    TurnMark.T0: TurnPhase.PREP,
+    TurnMark.LLM_REQUEST: TurnPhase.CLOSED,
+}
 
 
 class TurnPath(StrEnum):
@@ -53,8 +67,9 @@ class TurnOverhead:
 
 
 def stamp_received(request: Request) -> None:
-    """Record when the request reached the outermost HTTP middleware."""
+    """Record when the request reached the outermost HTTP middleware, and begin its step timings."""
     setattr(request.state, _RECEIVED_STATE_ATTR, time.perf_counter())
+    begin_turn_timings()
 
 
 @dataclass
@@ -70,16 +85,23 @@ class TurnClock:
     delegated: bool = False
     #: Comms model calls that started before the first frame reached the client.
     comms_calls_before_text: int = 0
+    #: The request's step timings; t0 moves them to prep, the first model request closes them.
+    timings: TurnTimings | None = None
 
     @classmethod
     def accepted(cls, request: Request) -> "TurnClock":
         """Start the clock for a turn the endpoint just accepted, stamping t0 now."""
-        clock = cls(received=getattr(request.state, _RECEIVED_STATE_ATTR, None))
+        clock = cls(
+            received=getattr(request.state, _RECEIVED_STATE_ATTR, None),
+            timings=current_turn_timings(),
+        )
         clock.mark(TurnMark.T0)
         return clock
 
     def mark(self, name: TurnMark) -> None:
         self.marks.setdefault(name, time.perf_counter())
+        if self.timings is not None and (phase := _PHASE_AFTER.get(name)) is not None:
+            self.timings.enter(phase)
 
     def note_comms_call(self) -> None:
         if TurnMark.FRAME_WRITTEN not in self.marks:

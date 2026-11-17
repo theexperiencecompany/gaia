@@ -45,6 +45,7 @@ from app.services.limit_upsell import (
     schedule_limit_upsell,
 )
 from app.services.payments.payment_service import payment_service
+from app.services.turn_timings import TurnStep, turn_step
 from shared.py.analytics import UserId
 from shared.py.wide_events import log
 
@@ -382,7 +383,8 @@ def tiered_rate_limit(
                 raise HTTPException(status_code=401, detail="User ID not found")
 
             # Check rate limits before executing function
-            await enforce_tiered_limit(user_id, feature_key, origin=origin)
+            with turn_step(TurnStep.RATE_LIMIT):
+                await enforce_tiered_limit(user_id, feature_key, origin=origin)
 
             # Execute the original function
             result = await func(*args, **kwargs)
