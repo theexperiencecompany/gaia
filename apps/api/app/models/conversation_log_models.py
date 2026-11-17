@@ -317,6 +317,8 @@ class Reply(_Entry):
     follow_up_actions: tuple[str, ...] = ()
     # A generated image the reply shows, as history the entries migration rewrote stored it.
     image: ImageData | None = None
+    # The upload ids an old bot message carried, as history the entries migration rewrote stored them.
+    file_ids: tuple[str, ...] = ()
     # The user message the reply quotes, known when it opens so a first bubble can quote it.
     quote_target: str | None = None
     # The tasks whose finished work this reply narrates; their cards stay in the work's own bubble.

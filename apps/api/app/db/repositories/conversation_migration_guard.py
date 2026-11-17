@@ -1,8 +1,9 @@
 """The boot check that refuses to serve while any conversation holds a shape the build cannot read.
 
-The running app reads only the conversation log. Four marks say a conversation is not readable
+The running app reads only the conversation log. Five marks say a conversation is not readable
 yet: an embedded messages array no migration pass marked, a message-shaped entry, a head with no
-source this build knows, and an entry still holding a field this stack renamed. Every query is index-backed (see indexes.py), so the
+source this build knows, an entry still holding a field this stack renamed, and a conversation the
+last migration pass failed on. Every query is index-backed (see indexes.py), so the
 check stays a few indexed lookups however large the data grows.
 """
 
@@ -11,6 +12,7 @@ from __future__ import annotations
 from app.constants.chat import (
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
+    CONVERSATION_MIGRATION_FAILURES_COLLECTION,
     ENTRY_RENAMES_MIGRATION_SCRIPT,
     ConversationSource,
 )
@@ -74,6 +76,17 @@ class ConversationMigrationGuard(ConversationRepository):
             # pragma: no mutate end
         return None if head is None else _ConversationIdRow.model_validate(head).conversation_id
 
+    async def first_failed(self) -> str | None:
+        """Name one conversation the entries migration's last pass failed on."""
+        failures = self._sibling_collection(CONVERSATION_MIGRATION_FAILURES_COLLECTION)
+        with store_errors("migration check"):  # pragma: no mutate — error label only
+            # pragma: no mutate start — the projection only trims the read
+            failure = await failures.find_one({}, _ID_ONLY)
+            # pragma: no mutate end
+        return (
+            None if failure is None else _ConversationIdRow.model_validate(failure).conversation_id
+        )
+
     async def first_renamed(self) -> str | None:
         """Name one conversation holding an entry with a field this stack renamed."""
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
@@ -87,6 +100,12 @@ class ConversationMigrationGuard(ConversationRepository):
 async def refuse_unmigrated_conversations() -> None:
     """Refuse to boot while any conversation needs the entries migration (its messages or its source) or the entry renames."""
     guard = ConversationMigrationGuard()
+    if conversation_id := await guard.first_failed():
+        raise unmigrated(
+            conversation_id,
+            what="a failed migration pass",
+            script=CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
+        )
     if conversation_id := await guard.first_unmigrated():
         raise unmigrated(
             conversation_id,

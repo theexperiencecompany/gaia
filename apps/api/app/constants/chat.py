@@ -148,6 +148,10 @@ CONVERSATION_READ_LIMIT = 600
 
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "scripts.migrate_conversation_entries"
+# One row per conversation the entries migration's last pass failed on, cleared when a pass succeeds.
+CONVERSATION_MIGRATION_FAILURES_COLLECTION = "conversation_migration_failures"
+# One row per element of an embedded array the entries migration moved off a head too full to take the log pointer.
+CONVERSATION_ARCHIVED_MESSAGES_COLLECTION = "conversation_archived_messages"
 # Named in every refusal of a log entry still holding a field this stack renamed.
 ENTRY_RENAMES_MIGRATION_SCRIPT = "scripts.migrate_approval_vocabulary"
 
