@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 from app.constants.notifications import PRESENCE_ACTIVE_WINDOW_SECONDS
 from app.models.agent_config import ExecutionMode
 from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget, is_active_place
+from app.services.delivery.chat_channel import is_active_place
 from app.services.delivery.presence import previous_surface, surfaces_by_recency
 from shared.py.analytics.catalog.attribution import EntrySurface
 
@@ -90,13 +91,11 @@ def own_messages_phrase(target: ProactiveTarget) -> str:
     )
 
 
-def is_live_chat(source: str | None, execution_mode: ExecutionMode) -> bool:
+def is_live_chat(source: ConversationSource, execution_mode: ExecutionMode) -> bool:
     """Whether the run is a turn the user is sending right now from a real surface."""
-    surface = ConversationSource.coerce(source)
     return (
         execution_mode != "background"
-        and surface is not None
-        and SourceCategory.from_source(surface) is not SourceCategory.BG
+        and SourceCategory.from_source(source) is not SourceCategory.BG
     )
 
 
@@ -107,7 +106,7 @@ def is_presence_surface(entry_surface: EntrySurface) -> bool:
 
 def note_is_due(
     presence: PresenceSnapshot | None,
-    source: str | None,
+    source: ConversationSource,
     execution_mode: ExecutionMode,
     opens_thread: bool,
     *,
@@ -121,5 +120,4 @@ def note_is_due(
         return False
     if not is_live_chat(source, execution_mode) or opens_thread:
         return True
-    surface = ConversationSource.coerce(source)
-    return surface is not None and previous_surface(presence, surface) is not None
+    return previous_surface(presence, source) is not None

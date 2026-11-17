@@ -8,6 +8,7 @@ import pytest
 
 from app.constants.notifications import CHANNEL_TYPE_PUSH
 from app.models.chat_models import ConversationSource
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -28,7 +29,6 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------

@@ -10,13 +10,14 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
 from app.agents.context.assemble import AssembledContext
-from app.agents.core.messages import TurnContext, build_turn_context
+from app.agents.core.messages import MessageScope, TurnContext, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.chat import ConversationSource
 from app.constants.conversation import WORK_CARDS_NOTE
 from app.models.conversation_log_models import Batch, Entry, StepClaim, UserMessage
+from app.models.delivery_models import ChatChannel, InApp
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.conversation.comms_turn import build_comms_turn
@@ -59,6 +60,7 @@ class Seams:
     context: TurnContext
     log: object
     owner: AsyncMock
+    target: AsyncMock
 
 
 @pytest.fixture
@@ -82,11 +84,16 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.presence_before", AsyncMock(return_value=PRESENCE)) as presence,
         patch(f"{MODULE}.schedule_last_active_touch") as touch,
         patch(f"{MODULE}.conversation_repository") as conversations,
+        patch("app.services.delivery.reply_surface.conversation_repository", conversations),
         patch(f"{MODULE}.build_turn_context", AsyncMock(return_value=context)) as turn_context,
         patch(f"{MODULE}.build_agent_config", AsyncMock()) as agent_config,
         patch(f"{MODULE}.todo_runs_reported", AsyncMock(return_value=[])) as reported,
         patch(f"{MODULE}.write_up_note", AsyncMock(return_value="write it up")) as write_up,
         patch(f"{MODULE}.runtime_ports", return_value=SimpleNamespace(log=log)),
+        patch(
+            "app.services.delivery.reply_surface.resolve_proactive_target",
+            AsyncMock(return_value=InApp(reason="no_chat_app")),
+        ) as target,
     ):
         conversations.get_todo_id = AsyncMock(return_value=None)
         conversations.is_workflow_execution = AsyncMock(return_value=False)
@@ -104,6 +111,7 @@ def seams() -> Iterator[Seams]:
             context,
             log,
             owner,
+            target,
         )
 
 
@@ -222,7 +230,7 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
     seams.touch.assert_not_called()
     query, scope = seams.turn_context.await_args.args
     assert query == "Execute workflow: Morning brief"
-    assert (scope.execution_mode, scope.source) == ("background", "background")
+    assert (scope.execution_mode, scope.source) == ("background", ConversationSource.WEB)
     assert scope.user_dict.timezone == "Asia/Kolkata"
     agent_turn = seams.agent_config.await_args.kwargs["turn"]
     assert agent_turn.workflow_id == "wf_1"
@@ -363,3 +371,95 @@ async def test_a_spoken_turn_is_answered_with_the_voice_prompt_not_the_apps(seam
         system = (await build_turn_context("what's on today", scope)).chain[0]
     assert OPENUI_INSTRUCTIONS not in str(system.content)
     assert "read aloud" in str(system.content)
+
+
+async def _system_prompt(scope: MessageScope) -> str:
+    stable = AssembledContext(stable=SystemMessage(content="context"), volatile=None)
+    with patch("app.agents.core.messages.assemble_context", AsyncMock(return_value=stable)):
+        system = (await build_turn_context("report", scope)).chain[0]
+    return str(system.content)
+
+
+async def test_a_workflow_result_sent_to_a_chat_app_is_written_with_that_apps_prompt(
+    seams: Seams,
+) -> None:
+    seams.conversations.is_workflow_execution.return_value = True
+    seams.conversations.get_source.return_value = ConversationSource.WORKFLOW_SYSTEM
+    seams.target.return_value = ChatChannel(
+        source=ConversationSource.TELEGRAM, platform_user_id="42", basis="priority"
+    )
+
+    await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
+
+    scope = seams.turn_context.await_args.args[1]
+    assert scope.source is ConversationSource.TELEGRAM
+    assert seams.agent_config.await_args.kwargs["turn"].source is ConversationSource.TELEGRAM
+    assert OPENUI_INSTRUCTIONS not in await _system_prompt(scope)
+
+
+async def test_a_todo_run_write_up_sent_to_a_chat_app_is_written_with_that_apps_prompt(
+    seams: Seams,
+) -> None:
+    work = finished("w6", "t1")
+    seams.reported.return_value = [(work, todo_run())]
+    seams.target.return_value = ChatChannel(
+        source=ConversationSource.WHATSAPP, platform_user_id="1555", basis="recent_activity"
+    )
+
+    await build_comms_turn(CLAIM, _batch(6, [work]))
+
+    scope = seams.turn_context.await_args.args[1]
+    assert scope.source is ConversationSource.WHATSAPP
+    assert OPENUI_INSTRUCTIONS not in await _system_prompt(scope)
+
+
+async def test_a_todo_run_write_up_is_written_for_the_destination_its_wake_stored_not_a_new_one(
+    seams: Seams,
+) -> None:
+    work = finished("w6", "t1")
+    stored = ChatChannel(
+        source=ConversationSource.TELEGRAM, platform_user_id="77", basis="recent_activity"
+    )
+    seams.reported.return_value = [(work, todo_run().model_copy(update={"delivery": stored}))]
+    seams.target.return_value = InApp(reason="active_in_app")
+
+    await build_comms_turn(CLAIM, _batch(6, [work]))
+
+    seams.target.assert_not_awaited()
+    assert seams.turn_context.await_args.args[1].source is ConversationSource.TELEGRAM
+
+
+async def test_a_workflow_fire_is_written_for_the_destination_the_fire_stored(
+    seams: Seams,
+) -> None:
+    stored = ChatChannel(source=ConversationSource.SLACK, platform_user_id="U1", basis="priority")
+    entry = fired("f1", execution_id="ex_8")
+    fire = entry.model_copy(update={"run": entry.run.model_copy(update={"delivery": stored})})
+
+    await build_comms_turn(CLAIM, _batch(6, [fire]))
+
+    seams.target.assert_not_awaited()
+    assert seams.turn_context.await_args.args[1].source is ConversationSource.SLACK
+
+
+async def test_a_result_kept_in_the_app_is_written_with_the_conversations_own_prompt(
+    seams: Seams,
+) -> None:
+    seams.conversations.is_workflow_execution.return_value = True
+    seams.conversations.get_source.return_value = ConversationSource.WORKFLOW_SYSTEM
+
+    await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
+
+    seams.target.assert_awaited_once_with(USER)
+    assert seams.turn_context.await_args.args[1].source is ConversationSource.WORKFLOW_SYSTEM
+
+
+async def test_finished_work_nobody_is_sent_answers_on_the_conversations_surface_without_a_target(
+    seams: Seams,
+) -> None:
+    seams.conversations.get_source.return_value = ConversationSource.TELEGRAM
+
+    await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
+
+    seams.target.assert_not_awaited()
+    assert seams.turn_context.await_args.args[1].source is ConversationSource.TELEGRAM

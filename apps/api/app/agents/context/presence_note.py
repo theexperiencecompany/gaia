@@ -15,8 +15,9 @@ from langchain_core.messages import HumanMessage
 from app.agents.context.section_context import ExecutionMode
 from app.agents.context.slots import PRESENCE_NOTE_MARKER, mark
 from app.models.chat_models import ConversationSource
+from app.models.delivery_models import ProactiveTarget
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ProactiveTarget, resolve_proactive_target
+from app.services.delivery.chat_channel import resolve_proactive_target
 from app.services.delivery.presence import previous_surface, read_presence, surfaces_by_recency
 from app.utils.presence_utils import (
     describe_last_seen,
@@ -31,14 +32,13 @@ from shared.py.analytics.catalog.attribution import EntrySurface
 
 def presence_note(
     presence: PresenceSnapshot,
-    source: str | None,
+    surface: ConversationSource,
     execution_mode: ExecutionMode,
     target: ProactiveTarget,
 ) -> str:
     """Return the note text for a run whose gate (note_is_due) has already passed."""
     ranked = surfaces_by_recency(presence)
-    surface = ConversationSource.coerce(source)
-    if surface is None or not is_live_chat(source, execution_mode):
+    if not is_live_chat(surface, execution_mode):
         return (
             "[User presence: this is a background run, so the user sees only what it sends them. "
             f"Last seen: {describe_last_seen(ranked)}. "
@@ -63,7 +63,7 @@ def presence_note(
 async def presence_note_message(
     user_id: str | None,
     presence: PresenceSnapshot | None,
-    source: str | None,
+    source: ConversationSource,
     execution_mode: ExecutionMode,
     *,
     opens_thread: bool,

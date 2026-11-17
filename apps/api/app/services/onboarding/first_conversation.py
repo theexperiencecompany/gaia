@@ -98,18 +98,12 @@ def _connect_options(copy: WelcomeCopy) -> list[dict[str, str]]:
     ]
 
 
-def platform_label(connected_platform: str) -> str:
-    """Return the platform's friendly name for user-facing copy and prompt text."""
-    source = ConversationSource.coerce(connected_platform)
-    if source is None:
-        return connected_platform.capitalize()
-    return source.display_name
-
-
 def _handover_line(copy: WelcomeCopy, connected_platform: str | None) -> str:
     if not connected_platform:
         return copy.handover_line
-    platform = copy.platform_template.format(platform=platform_label(connected_platform))
+    platform = copy.platform_template.format(
+        platform=ConversationSource(connected_platform).display_name
+    )
     return copy.handover_line + platform
 
 

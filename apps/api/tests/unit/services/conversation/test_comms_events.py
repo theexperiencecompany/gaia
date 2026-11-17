@@ -133,10 +133,9 @@ async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
 
 @pytest.mark.parametrize(
     ("config", "emoji"),
-    [(TELEGRAM_RUN, "🔎"), (TELEGRAM_RUN, "❤️"), (TELEGRAM_RUN, "💩"), (WEB_RUN, "🖕")],
+    [(TELEGRAM_RUN, "🔎"), (TELEGRAM_RUN, "💩"), (WEB_RUN, "🖕")],
     ids=[
         "outside-telegrams-set",
-        "telegram-wants-no-fe0f",
         "offensive-on-telegram",
         "offensive-on-web",
     ],
@@ -153,10 +152,11 @@ async def test_a_reaction_the_surface_refuses_does_not_end_the_turn(
     assert not isinstance(finished.outcome, Reacted)
 
 
-async def test_a_reaction_in_telegrams_set_ends_a_telegram_turn() -> None:
+@pytest.mark.parametrize("emoji", ["👀", "❤️"], ids=["in-set", "in-set-with-fe0f"])
+async def test_a_reaction_in_telegrams_set_ends_a_telegram_turn(emoji: str) -> None:
     mapper = CommsEventMapper("u-1", TELEGRAM_RUN)
-    await mapper.map(ending(REACT_TOOL_NAME, emoji="👀", message_id=1))
-    assert mapper.finish()[-1] == Finished(outcome=Reacted(emoji="👀"))
+    await mapper.map(ending(REACT_TOOL_NAME, emoji=emoji, message_id=1))
+    assert mapper.finish()[-1] == Finished(outcome=Reacted(emoji=emoji))
 
 
 @pytest.mark.parametrize(

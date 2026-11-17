@@ -189,7 +189,8 @@ class TestBuildInitialMessages:
                 agent_name="test_agent",
                 task="Do the thing",
                 seed=ThreadSeed(
-                    tier=AgentTier.EXECUTOR, configurable={"user_timezone": "Asia/Kolkata"}
+                    tier=AgentTier.EXECUTOR,
+                    configurable={"user_timezone": "Asia/Kolkata", "conversation_source": "web"},
                 ),
             )
 
@@ -212,7 +213,9 @@ class TestBuildInitialMessages:
                 system_message=SystemMessage(content="sys"),
                 agent_name="agent",
                 task="task",
-                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={"conversation_source": "web"}
+                ),
             )
 
         assert slots_of(result) == [
@@ -231,7 +234,8 @@ class TestBuildInitialMessages:
                 agent_name="agent",
                 task="task",
                 seed=ThreadSeed(
-                    tier=AgentTier.EXECUTOR, configurable={"user_timezone": "Asia/Kolkata"}
+                    tier=AgentTier.EXECUTOR,
+                    configurable={"user_timezone": "Asia/Kolkata", "conversation_source": "web"},
                 ),
             )
 
@@ -245,7 +249,9 @@ class TestBuildInitialMessages:
                 system_message=SystemMessage(content="sys"),
                 agent_name="my_agent",
                 task="task",
-                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={"conversation_source": "web"}
+                ),
             )
 
         human_msg = next(m for m in result if m.type == "human" and m.content == "task")
@@ -258,7 +264,9 @@ class TestBuildInitialMessages:
                 system_message=SystemMessage(content="sys"),
                 agent_name="agent",
                 task="my search query",
-                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={"conversation_source": "web"}
+                ),
             )
 
         assert mock_assemble.call_args.args[0].query == "my search query"
@@ -272,7 +280,9 @@ class TestBuildInitialMessages:
                 agent_name="agent",
                 task="enhanced task with hints",
                 seed=ThreadSeed(
-                    tier=AgentTier.EXECUTOR, configurable={}, retrieval_query="original query"
+                    tier=AgentTier.EXECUTOR,
+                    configurable={"conversation_source": "web"},
+                    retrieval_query="original query",
                 ),
             )
 
@@ -288,7 +298,7 @@ class TestBuildInitialMessages:
                 task="enhanced task with hints",
                 seed=ThreadSeed(
                     tier=AgentTier.EXECUTOR,
-                    configurable={},
+                    configurable={"conversation_source": "web"},
                     retrieval_query="book the usual table",
                     request_query="can you book our usual table for Friday?",
                 ),
@@ -308,7 +318,7 @@ class TestBuildInitialMessages:
                 task="task",
                 seed=ThreadSeed(
                     tier=AgentTier.SPAWN,
-                    configurable={},
+                    configurable={"conversation_source": "web"},
                     user_id="uid-1",
                     subagent_id="github_agent",
                 ),
@@ -1142,7 +1152,11 @@ class TestPrepareExecutorExecution:
     @pytest.mark.asyncio
     async def test_the_executors_config_is_built_from_the_conversation_it_belongs_to(self):
         """The executor gets its OWN config, derived from comms's; every argument here is load-bearing."""
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         configurable = {
             "user_id": "u1",
             "thread_id": "t1",
@@ -1175,7 +1189,11 @@ class TestPrepareExecutorExecution:
     @pytest.mark.asyncio
     async def test_the_users_own_request_rides_to_the_executors_context_with_the_bare_task(self):
         """The executor recalls on the message comms already recalled on, and on the unenhanced task."""
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         graph, config, system, context = self._prepare_patches(build_config)
         with graph, config, system, context as mock_assemble:
             await prepare_executor_execution(
@@ -1196,7 +1214,11 @@ class TestPrepareExecutorExecution:
     @pytest.mark.asyncio
     async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):
         """DEV-ONLY: without this the executor silently inherits comms's lane and the header's picker does nothing."""
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         graph, config, system, context = self._prepare_patches(build_config)
         with graph, config, system, context:
             await prepare_executor_execution(
@@ -1214,7 +1236,11 @@ class TestPrepareExecutorExecution:
 
     @pytest.mark.asyncio
     async def test_an_unknown_stashed_id_selects_no_dev_option(self):
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         graph, config, system, context = self._prepare_patches(build_config)
         with graph, config, system, context:
             await prepare_executor_execution(
@@ -1242,7 +1268,9 @@ class TestPrepareExecutorExecution:
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
+                return_value={
+                    "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+                },
             ),
             patch(
                 "app.helpers.message_helpers.create_system_message",
@@ -1306,7 +1334,9 @@ class TestPrepareExecutorExecution:
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
+                return_value={
+                    "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+                },
             ),
             patch(
                 "app.helpers.message_helpers.create_system_message",
@@ -1361,7 +1391,9 @@ class TestPrepareExecutorExecution:
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
+                return_value={
+                    "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+                },
             ),
             patch(
                 "app.helpers.message_helpers.create_system_message",
@@ -1401,7 +1433,9 @@ class TestPrepareExecutorExecution:
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
+                return_value={
+                    "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+                },
             ),
             patch(
                 "app.helpers.message_helpers.create_system_message",
@@ -1439,7 +1473,9 @@ class TestPrepareExecutorExecution:
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
-                return_value={"configurable": {"thread_id": "executor_t1"}},
+                return_value={
+                    "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+                },
             ) as mock_build_config,
             patch(
                 "app.helpers.message_helpers.create_system_message",
@@ -1467,7 +1503,11 @@ class TestPrepareExecutorExecution:
     @pytest.mark.asyncio
     async def test_the_seed_carries_the_tier_the_user_and_the_unenhanced_query(self):
         """The query must stay the ORIGINAL task; the workflow section injected into enhanced_task would pollute the search."""
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         graph, config, system, context = self._prepare_patches(build_config)
         with graph, config, system, context as mock_assemble:
             ctx, error = await prepare_executor_execution(
@@ -1494,7 +1534,11 @@ class TestPrepareExecutorExecution:
     async def _task_for_category(self, tool_category: str, *known: Subagent) -> str:
         """Prepare an executor run for the category; return its task message text."""
         registry = {subagent.id: subagent for subagent in known}
-        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        build_config = AsyncMock(
+            return_value={
+                "configurable": {"thread_id": "executor_t1", "conversation_source": "web"}
+            }
+        )
         get_graph, build, system, assemble = self._prepare_patches(build_config)
         with (
             get_graph,

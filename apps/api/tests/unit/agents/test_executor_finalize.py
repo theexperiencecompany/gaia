@@ -305,7 +305,7 @@ class TestCancelStillCarriesHandedOverWork:
         boundaries.prepare.return_value = PreparedQueuedTask(
             run=_run(RunKind.QUEUED, stream_id="queued_next"),
             task="the handed-over ask",
-            configurable={"stream_id": "queued_next"},
+            configurable={"stream_id": "queued_next", "conversation_source": "web"},
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -330,7 +330,7 @@ class TestCancelStillCarriesHandedOverWork:
         boundaries.prepare.return_value = PreparedQueuedTask(
             run=_run(RunKind.QUEUED, stream_id="queued_next"),
             task="the handed-over ask",
-            configurable={"stream_id": "queued_next"},
+            configurable={"stream_id": "queued_next", "conversation_source": "web"},
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -360,7 +360,7 @@ class TestLockThenInboxHandoff:
         boundaries.prepare.return_value = PreparedQueuedTask(
             run=next_run,
             task="do the thing",
-            configurable={"stream_id": "queued_next"},
+            configurable={"stream_id": "queued_next", "conversation_source": "web"},
         )
 
         with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
@@ -370,7 +370,7 @@ class TestLockThenInboxHandoff:
         spawn.assert_awaited_once_with(
             run=next_run,
             task="do the thing",
-            configurable={"stream_id": "queued_next"},
+            configurable={"stream_id": "queued_next", "conversation_source": "web"},
         )
 
     async def test_an_empty_inbox_starts_no_second_run(self, boundaries) -> None:
@@ -681,7 +681,7 @@ class TestBuildRunItem:
     def test_every_field_survives_the_round_trip_shape(self) -> None:
         item = build_run_item(
             task="triage my inbox",
-            configurable={"user_id": "user-1", "thread_id": "conv-1"},
+            configurable={"user_id": "user-1", "thread_id": "conv-1", "conversation_source": "web"},
             identity=RunIdentity(
                 stream_id="",
                 conversation_id="conv-1",
@@ -836,7 +836,9 @@ class TestARunHandsFinalizeWhatItProduced:
         for entry_id in inbox_ids:
             await inbox.append(entry_id, f"handed over {entry_id}")
         await er.run_executor_background(
-            run=_run(RunKind.LIVE), task=TASK, configurable={"user_id": USER_ID}
+            run=_run(RunKind.LIVE),
+            task=TASK,
+            configurable={"user_id": USER_ID, "conversation_source": "web"},
         )
 
     @staticmethod

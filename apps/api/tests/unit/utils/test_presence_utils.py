@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from app.models.chat_models import ConversationSource
 from app.models.presence_models import PresenceSnapshot
 from app.utils.presence_utils import format_utc, note_is_due
 from shared.py.analytics.catalog.attribution import EntrySurface
@@ -34,7 +35,11 @@ class TestNoteIsDue:
     def test_a_background_run_is_due_a_note_even_on_the_users_last_surface(self) -> None:
         assert (
             note_is_due(
-                SAME_SURFACE, "telegram", "background", False, entry_surface=EntrySurface.WEB
+                SAME_SURFACE,
+                ConversationSource.TELEGRAM,
+                "background",
+                False,
+                entry_surface=EntrySurface.WEB,
             )
             is True
         )
@@ -42,7 +47,11 @@ class TestNoteIsDue:
     def test_a_live_turn_on_the_users_last_surface_is_not(self) -> None:
         assert (
             note_is_due(
-                SAME_SURFACE, "telegram", "interactive", False, entry_surface=EntrySurface.WEB
+                SAME_SURFACE,
+                ConversationSource.TELEGRAM,
+                "interactive",
+                False,
+                entry_surface=EntrySurface.WEB,
             )
             is False
         )
@@ -51,12 +60,24 @@ class TestNoteIsDue:
     def test_a_voice_turn_is_never_due_a_note_even_opening_a_thread(self) -> None:
         """A call arrives as a web turn and was told the user had switched to Web every time."""
         assert (
-            note_is_due(SAME_SURFACE, "web", "interactive", True, entry_surface=EntrySurface.VOICE)
+            note_is_due(
+                SAME_SURFACE,
+                ConversationSource.WEB,
+                "interactive",
+                True,
+                entry_surface=EntrySurface.VOICE,
+            )
             is False
         )
 
     def test_a_background_run_started_from_a_call_is_still_due_a_note(self) -> None:
         assert (
-            note_is_due(SAME_SURFACE, None, "background", False, entry_surface=EntrySurface.VOICE)
+            note_is_due(
+                SAME_SURFACE,
+                ConversationSource.BACKGROUND,
+                "background",
+                False,
+                entry_surface=EntrySurface.VOICE,
+            )
             is True
         )

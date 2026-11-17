@@ -81,7 +81,9 @@ class TestUserMessageTurn:
         assert turn.requester == RequesterChat(USER, ConversationSource.TELEGRAM)
 
     def test_a_web_turn_answers_in_its_own_conversation(self) -> None:
-        turn = user_message_turn({"thread_id": "conv-1", "user_id": USER})
+        turn = user_message_turn(
+            {"thread_id": "conv-1", "user_id": USER, "conversation_source": "web"}
+        )
 
         assert turn is not None
         assert (turn.reply_address, turn.requester) == ("conv-1", None)

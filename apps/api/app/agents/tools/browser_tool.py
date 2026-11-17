@@ -86,7 +86,7 @@ class _RunParams:
     stream_id: str | None
     root_request_id: str | None
     source_category: str | None
-    conversation_source: ConversationSource | None
+    conversation_source: ConversationSource
     #: The message this turn renders into, which a background run's cards fold into.
     message_id: str | None
     in_background: bool
@@ -103,13 +103,12 @@ class _RunConfigurable(BaseModel):
     stream_id: str | None = None
     root_request_id: str | None = None
     source_category: str | None = None
-    conversation_source: str | None = None
+    conversation_source: ConversationSource
     bot_message_id: str | None = None
 
 
 def _run_params(config: RunnableConfig) -> _RunParams:
     configurable = _RunConfigurable.model_validate(config.get("configurable", {}))
-    conv_source = ConversationSource.coerce(configurable.conversation_source)
     return _RunParams(
         user_id=configurable.user_id or "",
         # The USER-facing conversation, never the executor's derived thread_id
@@ -119,7 +118,7 @@ def _run_params(config: RunnableConfig) -> _RunParams:
         stream_id=configurable.stream_id,
         root_request_id=configurable.root_request_id,
         source_category=configurable.source_category,
-        conversation_source=conv_source,
+        conversation_source=configurable.conversation_source,
         message_id=configurable.bot_message_id,
         in_background=runs_in_background(True, agent_configurable(config)),
     )

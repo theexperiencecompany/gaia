@@ -16,6 +16,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.notifications import notification_repository
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
 from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
@@ -29,13 +30,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
-from app.services.delivery.chat_channel import (
-    ChatChannel,
-    InApp,
-    ProactiveTarget,
-    is_active_place,
-    resolve_proactive_target,
-)
+from app.services.delivery.chat_channel import is_active_place, resolve_proactive_target
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,

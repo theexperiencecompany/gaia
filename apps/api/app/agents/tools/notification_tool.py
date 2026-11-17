@@ -10,6 +10,7 @@ from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_config import AgentConfigurableView, read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
+from app.models.delivery_models import InApp, ProactiveTarget
 from app.models.notification.notification_models import (
     BulkActions,
     ChannelConfig,
@@ -23,12 +24,7 @@ from app.models.notification.notification_models import (
     notification_id,
 )
 from app.services.analytics_service import capture
-from app.services.delivery.chat_channel import (
-    InApp,
-    ProactiveTarget,
-    proactive_destination,
-    resolve_proactive_target,
-)
+from app.services.delivery.chat_channel import proactive_destination, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -272,9 +268,8 @@ async def mark_notifications_read(
 
 def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | None:
     """The notification channel this run's own result is delivered into, or None when it reaches no chat."""
-    # Workflow and tracked-todo runs carry no conversation_source, so source + conversation suffice.
-    source = ConversationSource.coerce(configurable.conversation_source)
-    if source is None or not configurable.conversation_id:
+    source = configurable.surface()
+    if not configurable.conversation_id:
         return None
     match SourceCategory.from_source(source):
         case SourceCategory.UI:

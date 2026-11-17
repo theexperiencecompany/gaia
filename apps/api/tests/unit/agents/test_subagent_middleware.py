@@ -49,7 +49,7 @@ def _make_tool(name: str) -> MagicMock:
 
 
 def _make_config(user_id: str = "u1") -> dict:
-    return {"configurable": {"user_id": user_id}}
+    return {"configurable": {"user_id": user_id, "conversation_source": "web"}}
 
 
 def _make_spawn_config(**configurable) -> dict:
@@ -57,6 +57,7 @@ def _make_spawn_config(**configurable) -> dict:
         "configurable": {
             "user_id": "u1",
             "conversation_id": "conv-1",
+            "conversation_source": "web",
             "email": "u1@example.com",
             "user_name": "Ada",
             **configurable,

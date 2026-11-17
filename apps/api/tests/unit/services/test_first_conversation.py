@@ -6,6 +6,8 @@ model-written part is the starting jobs, merged by with_starting_jobs; with
 no jobs the escape hatch is the only chip, never invented ones.
 """
 
+import pytest
+
 from app.models.user_models import OnboardingPreferences
 from app.services.onboarding.first_conversation import (
     CALENDAR_INTEGRATION_ID,
@@ -43,11 +45,12 @@ class TestOpeningBubble:
             "Anything you'd rather not do yourself, hand it to me. I'm on your Telegram too."
         )
 
-    def test_imessage_keeps_its_capitalisation_and_unknown_platforms_are_capitalised(self) -> None:
+    def test_imessage_keeps_its_capitalisation_and_an_unknown_platform_is_refused(self) -> None:
         assert (
             "I'm on your iMessage too." in compose_first_conversation(_prefs(), "imessage").lines[1]
         )
-        assert "I'm on your Signal too." in compose_first_conversation(_prefs(), "signal").lines[1]
+        with pytest.raises(ValueError, match="'signal' is not a valid ConversationSource"):
+            compose_first_conversation(_prefs(), "signal")
 
     def test_every_line_of_every_bubble_is_short(self) -> None:
         """A bubble may hold a bulleted list, but each line stays skimmable."""

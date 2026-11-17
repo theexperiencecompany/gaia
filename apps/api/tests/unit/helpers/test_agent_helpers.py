@@ -10,6 +10,7 @@ import pytest
 
 from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
+from app.constants.chat import ConversationSource
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -22,7 +23,7 @@ from app.helpers.agent_helpers import (
     background_authorization,
     build_agent_config,
 )
-from app.models.agent_models import AgentUserContext, run_analytics_context
+from app.models.agent_models import AgentUserContext, RunSurfaceMissingError, run_analytics_context
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -66,6 +67,7 @@ class TestBuildAgentConfig:
                 user=FAKE_USER,
                 agent_name="comms_agent",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         from app.constants.llm import AGENT_RECURSION_LIMIT
@@ -85,6 +87,7 @@ class TestBuildAgentConfig:
                 user=FAKE_USER,
                 agent_name="executor_agent",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
@@ -99,6 +102,7 @@ class TestBuildAgentConfig:
                 conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor_agent"
             ),
             thread=AgentThread(thread_id=thread_id),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["metadata"]["agent_thread_id"] == stamped
@@ -111,6 +115,7 @@ class TestBuildAgentConfig:
                 user=FAKE_USER,
                 agent_name="comms_agent",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         configurable = config["configurable"]
@@ -126,6 +131,7 @@ class TestBuildAgentConfig:
                 identity=AgentIdentity(
                     conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
         child = (
@@ -134,6 +140,7 @@ class TestBuildAgentConfig:
                     conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
                 ),
                 thread=AgentThread(base_configurable={"root_request_id": "root-req-1"}),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -154,6 +161,7 @@ class TestBuildAgentConfig:
                     identity=AgentIdentity(
                         conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
                     ),
+                    turn=AgentTurn(source=ConversationSource.WEB),
                 )
             )["configurable"]
         with analytics_context(worker_context(Trigger.SYSTEM)):
@@ -163,6 +171,7 @@ class TestBuildAgentConfig:
                         conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
                     ),
                     thread=AgentThread(base_configurable=root),
+                    turn=AgentTurn(source=ConversationSource.WEB),
                 )
             )["configurable"]
 
@@ -183,6 +192,7 @@ class TestBuildAgentConfig:
                     conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"
                 ),
                 thread=AgentThread(base_configurable={"stream_id": "stream-1"}),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -198,6 +208,7 @@ class TestBuildAgentConfig:
                 user=home_user,
                 agent_name="comms_agent",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -213,6 +224,7 @@ class TestBuildAgentConfig:
             thread=AgentThread(
                 base_configurable={"user_timezone": "Asia/Kolkata"},
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -226,6 +238,7 @@ class TestBuildAgentConfig:
             thread=AgentThread(
                 thread_id="custom-thread",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         assert config["configurable"]["thread_id"] == "custom-thread"
 
@@ -252,6 +265,7 @@ class TestBuildAgentConfig:
             thread=AgentThread(
                 base_configurable=base,
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         configurable = config["configurable"]
         # The lane is inherited WHOLE, not per-key — separate copy/inherit rules
@@ -282,6 +296,7 @@ class TestBuildAgentConfig:
             ),
             thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
             lane=AgentLane(role=AgentRole.COMMS),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert ModelLane.from_configurable(config["configurable"]["lane"]) == comms_lane
@@ -310,6 +325,7 @@ class TestBuildAgentConfig:
             identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
             thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
             lane=AgentLane(role=AgentRole.EXECUTOR),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         configurable = config["configurable"]
@@ -372,7 +388,7 @@ class TestBuildAgentConfig:
                     tool_category="child-category",
                     active_todo_id="child-todo",
                     execution_mode="interactive",
-                    source="web",
+                    source=ConversationSource.WEB,
                 ),
             )
         )["configurable"]
@@ -402,6 +418,7 @@ class TestBuildAgentConfig:
                     },
                 ),
                 turn=AgentTurn(
+                    source=ConversationSource.WEB,
                     user_messages=["the agent's paraphrase"],
                 ),
             )
@@ -429,6 +446,7 @@ class TestBuildAgentConfig:
                     },
                 ),
                 turn=AgentTurn(
+                    source=ConversationSource.WEB,
                     user_request="the agent's paraphrase",
                 ),
             )
@@ -447,6 +465,7 @@ class TestBuildAgentConfig:
                     agent_name="comms_agent",
                 ),
                 turn=AgentTurn(
+                    source=ConversationSource.WEB,
                     user_request="pls archive the junk mail",
                     user_messages=["pls archive the junk mail"],
                 ),
@@ -473,6 +492,7 @@ class TestBuildAgentConfig:
                         "writing_style": {"summary": "terse"},
                     },
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -489,6 +509,7 @@ class TestBuildAgentConfig:
                     user=FAKE_USER,
                     agent_name="executor_agent",
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -505,6 +526,7 @@ class TestBuildAgentConfig:
                     user=FAKE_USER,
                     agent_name="comms_agent",
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -523,6 +545,7 @@ class TestBuildAgentConfig:
                 thread=AgentThread(
                     base_configurable={"session_id": "conv-1"},
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -541,6 +564,7 @@ class TestBuildAgentConfig:
                 thread=AgentThread(
                     base_configurable={"session_id": None},
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
         without_key = (
@@ -553,6 +577,7 @@ class TestBuildAgentConfig:
                 thread=AgentThread(
                     base_configurable={"selected_tool": "web_search"},
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -572,6 +597,7 @@ class TestBuildAgentConfig:
                 thread=AgentThread(
                     base_configurable={"stream_id": "stream-9"},
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
         without_parent = (
@@ -581,6 +607,7 @@ class TestBuildAgentConfig:
                     user=FAKE_USER,
                     agent_name="comms_agent",
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -604,6 +631,7 @@ class TestBuildAgentConfig:
                         "workflow_notify_on_completion": False,
                     },
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
         top_level = (
@@ -613,6 +641,7 @@ class TestBuildAgentConfig:
                     user=FAKE_USER,
                     agent_name="comms_agent",
                 ),
+                turn=AgentTurn(source=ConversationSource.WEB),
             )
         )["configurable"]
 
@@ -632,6 +661,7 @@ class TestBuildAgentConfig:
             tracing=AgentTracing(
                 usage_metadata_callback=usage_cb,
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         assert usage_cb in config["callbacks"]
 
@@ -643,6 +673,7 @@ class TestBuildAgentConfig:
                 agent_name="comms_agent",
             ),
             turn=AgentTurn(
+                source=ConversationSource.WEB,
                 selected_tool="search",
                 tool_category="web",
             ),
@@ -658,7 +689,7 @@ class TestBuildAgentConfig:
                 agent_name="comms_agent",
             ),
             turn=AgentTurn(
-                source="whatsapp",
+                source=ConversationSource.WHATSAPP,
             ),
         )
         # raw channel preserved in configurable; generalized category derived
@@ -676,26 +707,22 @@ class TestBuildAgentConfig:
                 agent_name="comms_agent",
             ),
             turn=AgentTurn(
-                source="web",
+                source=ConversationSource.WEB,
             ),
         )
         assert config["configurable"]["source_category"] == "ui"
         assert config["metadata"]["source_category"] == "ui"
         assert config["metadata"]["source_channel"] == "web"
 
-    async def test_missing_source_defaults_to_background(self) -> None:
-        config = await build_agent_config(
-            identity=AgentIdentity(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="comms_agent",
-            ),
-        )
-        # no source -> BG category, channel labelled "background" in metadata
-        assert config["configurable"]["conversation_source"] is None
-        assert config["configurable"]["source_category"] == "bg"
-        assert config["metadata"]["source_category"] == "bg"
-        assert config["metadata"]["source_channel"] == "background"
+    async def test_a_run_that_names_no_surface_and_inherits_none_is_refused(self) -> None:
+        with pytest.raises(RunSurfaceMissingError):
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
+            )
 
     async def test_source_inherited_from_base_configurable(self) -> None:
         """A child agent inherits the channel from its parent and recomputes the category."""
@@ -905,6 +932,7 @@ class TestBuildAgentConfigCallbackWiring:
                 agent_name="comms_agent",
             ),
             tracing=AgentTracing(usage_metadata_callback=usage_cb),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert mock_build_callbacks.call_args.args == (usage_cb,)
@@ -925,6 +953,7 @@ class TestBuildAgentConfigLaneResolution:
                 agent_name="comms_agent",
             ),
             lane=AgentLane(role=AgentRole.COMMS, dev_option=DEV_OPTION),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         mock_resolve.assert_awaited_once_with(USER_ID, AgentRole.COMMS, DEV_OPTION)
@@ -951,6 +980,7 @@ class TestBuildAgentConfigLaneResolution:
                 agent_name="executor",
             ),
             thread=AgentThread(base_configurable={"lane": parent_lane.to_configurable()}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         mock_resolve.assert_not_awaited()
@@ -976,6 +1006,7 @@ class TestBuildAgentConfigLaneResolution:
             ),
             lane=AgentLane(role=AgentRole.SUBAGENT, dev_option=DEV_OPTION),
             thread=AgentThread(base_configurable={"lane": parent_lane.to_configurable()}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         mock_resolve.assert_awaited_once_with(USER_ID, AgentRole.SUBAGENT, DEV_OPTION)
@@ -1000,6 +1031,7 @@ class TestBuildAgentConfigLaneMetadata:
                 agent_name="executor",
             ),
             thread=AgentThread(base_configurable={"lane": lane.to_configurable()}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["metadata"]["lane_provider"] == "gemini"
@@ -1022,6 +1054,7 @@ class TestBuildAgentConfigLaneMetadata:
                 agent_name="executor",
             ),
             thread=AgentThread(base_configurable={"lane": lane.to_configurable()}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["metadata"]["lane_provider"] == "custom"
@@ -1039,6 +1072,7 @@ class TestBuildAgentConfigLangfuseWiring:
                 agent_name="comms_agent",
             ),
             tracing=AgentTracing(langfuse_trace_id="trace-abc", langfuse_tags=["tag-one"]),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["configurable"]["langfuse_trace_id"] == "trace-abc"
@@ -1063,6 +1097,7 @@ class TestBuildAgentConfigLangfuseWiring:
                     "langfuse_tags": ["parent-tag"],
                 }
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["configurable"]["langfuse_trace_id"] == "parent-trace"
@@ -1083,6 +1118,7 @@ class TestBuildAgentConfigLangfuseWiring:
                 }
             ),
             tracing=AgentTracing(langfuse_trace_id="own-trace", langfuse_tags=["own-tag"]),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert config["configurable"]["langfuse_trace_id"] == "own-trace"
@@ -1104,6 +1140,7 @@ class TestBuildAgentConfigLangfuseWiring:
                 }
             ),
             tracing=AgentTracing(langfuse_tags=[]),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         assert "langfuse_tags" not in config["configurable"]
@@ -1121,6 +1158,7 @@ class TestBuildAgentConfigWorkflowInheritance:
                 agent_name="executor",
             ),
             thread=AgentThread(base_configurable={"workflow_id": "wf_123"}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         configurable = config["configurable"]
@@ -1141,6 +1179,7 @@ class TestBuildAgentConfigPresence:
 
         config = await build_agent_config(
             identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         mock_read.assert_awaited_once_with(USER_ID)
@@ -1153,7 +1192,7 @@ class TestBuildAgentConfigPresence:
                 conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
             ),
             thread=AgentThread(base_configurable={"presence": self.STORED}),
-            turn=AgentTurn(presence=self.TURN),
+            turn=AgentTurn(source=ConversationSource.WEB, presence=self.TURN),
         )
 
         mock_read.assert_not_awaited()
@@ -1164,6 +1203,7 @@ class TestBuildAgentConfigPresence:
         config = await build_agent_config(
             identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
             thread=AgentThread(base_configurable={"presence": self.TURN}),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
 
         mock_read.assert_not_awaited()

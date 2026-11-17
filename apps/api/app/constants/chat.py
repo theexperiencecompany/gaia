@@ -48,18 +48,6 @@ class ConversationSource(str, Enum):
     WORKFLOW_SYSTEM = "workflow_system"
     BACKGROUND = "background"
 
-    @classmethod
-    def coerce(cls, value: "ConversationSource | str | None") -> "ConversationSource | None":
-        """Parse a raw source value (e.g. a stored string) into the enum.
-
-        Returns None for blank or unrecognised values so callers can compare on
-        enum members instead of raw strings.
-        """
-        try:
-            return cls(value)
-        except ValueError:
-            return None
-
     @property
     def display_name(self) -> str:
         """How this channel is spelled in user-facing copy and in prompts.
@@ -89,16 +77,11 @@ class SourceCategory(str, Enum):
     BOT = "bot"  # messaging-platform bots (whatsapp, telegram, discord, slack)
 
     @classmethod
-    def from_source(cls, source: "ConversationSource | str | None") -> "SourceCategory":
-        """Map a specific ConversationSource to its category.
-
-        Unknown or unset sources fall back to BG: only the silent background
-        paths leave the source blank.
-        """
-        channel = ConversationSource.coerce(source)
-        if channel in _UI_SOURCES:
+    def from_source(cls, source: "ConversationSource") -> "SourceCategory":
+        """Map a ConversationSource to its category; background and workflow runs are BG."""
+        if source in _UI_SOURCES:
             return cls.UI
-        if channel in BOT_CONVERSATION_SOURCES:
+        if source in BOT_CONVERSATION_SOURCES:
             return cls.BOT
         return cls.BG
 

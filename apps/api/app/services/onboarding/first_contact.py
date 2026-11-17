@@ -16,6 +16,7 @@ marks, no emoji, never a feature list.
 """
 
 from app.config.oauth_config import get_integration_by_id
+from app.constants.chat import ConversationSource
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.connect_link_service import build_connect_link_url
@@ -35,11 +36,7 @@ def compose_link_greeting(platform: str, name: str | None) -> str:
     name is the GAIA user's full name; only the first token is used, because
     a greeting that says the surname is an email, not a text.
     """
-    from app.services.onboarding.first_conversation import (  # noqa: PLC0415 -- first_conversation imports the onboarding package for its phrases; a top-level import back would be a cycle
-        platform_label,
-    )
-
-    label = platform_label(platform)
+    label = ConversationSource(platform).display_name
     tokens = (name or "").split()
     if tokens:
         return LINK_GREETING_WITH_NAME.format(name=tokens[0], platform=label)

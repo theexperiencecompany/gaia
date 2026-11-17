@@ -24,7 +24,12 @@ from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 from app.agents.context import live_work
-from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
+from app.agents.context.live_work import (
+    BROWSER_STATUS_UNAVAILABLE,
+    EXECUTOR_STATUS_UNAVAILABLE,
+    build_browser_task_block,
+    build_executor_status_block,
+)
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.executor_queue import (
@@ -62,7 +67,7 @@ def _ctx(
     *,
     conversation_id: str | None = CONV,
     user_id: str | None = USER,
-    source: str | None = None,
+    source: ConversationSource | None = None,
     execution_mode: ExecutionMode = "interactive",
 ) -> SectionContext:
     return SectionContext(
@@ -222,7 +227,7 @@ async def test_a_chat_without_a_conversation_gets_no_status(
     [(live_work, "read_executor_activity"), (RunningSubagents, "live")],
     ids=["busy-lock", "subagent-registry"],
 )
-async def test_a_failing_status_read_yields_nothing_and_says_why(
+async def test_a_failing_status_read_says_the_status_is_unknown_and_why(
     fake_redis: fakeredis.aioredis.FakeRedis,
     monkeypatch: pytest.MonkeyPatch,
     target: object,
@@ -233,7 +238,7 @@ async def test_a_failing_status_read_yields_nothing_and_says_why(
     async with captured_wide_event() as event:
         block = await build_executor_status_block(_ctx())
 
-    assert block == ""
+    assert block == EXECUTOR_STATUS_UNAVAILABLE
     [logged] = [e for e in event["errors"] if "Executor status unavailable" in e["msg"]]
     assert logged["msg"] == f"{LogTag.AGENT} Executor status unavailable"
     assert logged["error_type"] == "ConnectionError"
@@ -319,7 +324,7 @@ async def test_a_turn_without_its_chat_or_user_gets_no_block(
     read.assert_not_awaited()
 
 
-async def test_a_failed_read_yields_nothing_and_says_why(
+async def test_a_failed_read_says_the_browser_status_is_unknown_and_why(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -329,7 +334,7 @@ async def test_a_failed_read_yields_nothing_and_says_why(
     async with captured_wide_event() as event:
         block = await build_browser_task_block(_ctx())
 
-    assert block == ""
+    assert BROWSER_STATUS_UNAVAILABLE in block
     [logged] = [e for e in event["errors"] if "Browser task status unavailable" in e["msg"]]
     assert logged["msg"] == f"{LogTag.BROWSER} Browser task status unavailable"
     assert logged["error_type"] == "ConnectionError"
@@ -355,7 +360,7 @@ async def test_a_paused_run_a_newer_run_displaced_from_the_bot_chat_is_still_des
     )
 
     block = await build_browser_task_block(
-        _ctx(conversation_id="conv-dm", source=ConversationSource.TELEGRAM.value)
+        _ctx(conversation_id="conv-dm", source=ConversationSource.TELEGRAM)
     )
 
     assert block.splitlines()[1:-1] == [

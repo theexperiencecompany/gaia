@@ -195,7 +195,7 @@ async def build_configurable(
             vfs_session_id="conv-1",
         ),
         turn=AgentTurn(
-            source=HARNESS_SURFACE.value if tier is AgentTier.COMMS else None,
+            source=HARNESS_SURFACE,
             user_preferences=user.preferences or None,
             writing_style=user.writing_style or None,
         ),
@@ -375,7 +375,7 @@ async def comms_turn_messages(
     query: str, scope: MessageScope | None = None, attachments: MessageAttachments | None = None
 ) -> list[AnyMessage]:
     """Lay out one user turn's comms input as the step does: its context, the framed words, the clock."""
-    scope = scope or MessageScope()
+    scope = scope or MessageScope(source=HARNESS_SURFACE)
     attachments = attachments or MessageAttachments()
     context, content = await asyncio.gather(
         build_turn_context(query, scope), human_content(scope, attachments, query.strip())

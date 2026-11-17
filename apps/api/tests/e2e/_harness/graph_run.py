@@ -33,6 +33,7 @@ from langgraph.store.memory import InMemoryStore
 from pydantic import PrivateAttr
 
 from app.agents.core.graph_builder import build_graph as _build_graph
+from app.constants.chat import ConversationSource
 from app.models import integration_models
 from tests.helpers import BindableToolsFakeModel
 
@@ -513,7 +514,13 @@ async def run_graph(
     # `configurable` but every @tool reads `metadata["user_id"]`, so setting
     # only one makes tools silently return "user_id not found" as if they ran.
     config = {
-        "configurable": {"thread_id": thread_id, "user_id": user_id, **configurable},
+        "configurable": {
+            "thread_id": thread_id,
+            "user_id": user_id,
+            # build_agent_config always names the run's surface; a test about another passes its own.
+            "conversation_source": ConversationSource.WEB.value,
+            **configurable,
+        },
         "metadata": {"user_id": user_id},
         "recursion_limit": recursion_limit,
     }

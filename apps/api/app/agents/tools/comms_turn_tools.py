@@ -20,9 +20,9 @@ from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import LOG_SEQ
 from app.constants.reactions import (
-    EMOJI_PRESENTATION_SELECTOR,
     OFFENSIVE_REACTION_EMOJI,
     REACTION_PALETTE_BY_SURFACE,
+    surface_reaction,
 )
 from app.models.agent_config import read_agent_configurable
 from app.utils.multimodal import extract_text_content
@@ -48,14 +48,11 @@ class StaySilentArgs(BaseModel):
     )
 
 
-def reaction_refusal(emoji: str, config: RunnableConfig) -> str | None:
-    """Return why emoji cannot be this run's reaction, for the model to pick again; None when it can."""
-    if emoji in OFFENSIVE_REACTION_EMOJI:
+def reaction_refusal(surface: ConversationSource, emoji: str) -> str:
+    """Return why the surface refused emoji (surface_reaction gave None), for the model to pick again."""
+    allowed = REACTION_PALETTE_BY_SURFACE.get(surface)
+    if emoji in OFFENSIVE_REACTION_EMOJI or allowed is None:
         return f"{emoji} is not a reaction GAIA uses. Pick another emoji, or reply in words."
-    surface = ConversationSource.coerce(read_agent_configurable(config).conversation_source)
-    allowed = REACTION_PALETTE_BY_SURFACE.get(surface) if surface is not None else None
-    if allowed is None or emoji.replace(EMOJI_PRESENTATION_SELECTOR, "") in allowed:
-        return None
     return (
         f"{surface.display_name} does not accept {emoji} as a reaction. "
         f"Pick exactly one of: {' '.join(allowed)}"
@@ -109,11 +106,12 @@ async def react(emoji: str, message_id: int, config: RunnableConfig) -> str:
     It shows as a reaction on that message, or as the bare emoji where the platform has
     none. Write no text beside it.
     """
-    refusal = reaction_refusal(emoji, config)
-    if refusal is not None:
-        return refusal
-    close(config, Closing.REACTED, [message_id], emoji)
-    return f"Reacted {emoji}."
+    surface = read_agent_configurable(config).surface()
+    spelled = surface_reaction(surface, emoji)
+    if spelled is None:
+        return reaction_refusal(surface, emoji)
+    close(config, Closing.REACTED, [message_id], spelled)
+    return f"Reacted {spelled}."
 
 
 @tool(STAY_SILENT_TOOL_NAME, args_schema=StaySilentArgs)
@@ -150,10 +148,10 @@ def turn_ending(
         endings = [_ENDINGS[call["name"]].model_validate(call["args"]) for call in calls]
     except ValidationError:
         return None
-    if any(
-        isinstance(ending, ReactArgs) and reaction_refusal(ending.emoji, config)
-        for ending in endings
-    ):
-        return None
+    reactions = [ending.emoji for ending in endings if isinstance(ending, ReactArgs)]
+    if reactions:
+        surface = read_agent_configurable(config).surface()
+        if any(surface_reaction(surface, emoji) is None for emoji in reactions):
+            return None
     wordless = [ending for ending in endings if not isinstance(ending, AnsweredArgs)]
     return wordless[0] if wordless else endings[0]

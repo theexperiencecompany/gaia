@@ -22,8 +22,8 @@ from app.agents.context.tiers import AgentTier
 from app.agents.core import messages as messages_module
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import ConversationSource
+from app.models.delivery_models import ChatChannel, InApp
 from app.models.presence_models import PresenceSnapshot
-from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.utils import presence_utils
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
@@ -78,7 +78,9 @@ STAYED_ON_TELEGRAM = _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT)
 
 class TestTheNote:
     def test_a_switch_names_where_they_came_from_with_absolute_times(self) -> None:
-        note = presence_note(CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT)
+        note = presence_note(
+            CAME_FROM_WEB, ConversationSource.TELEGRAM, "interactive", TELEGRAM_RECENT
+        )
 
         assert note == (
             "[Surface change: the user is now writing from Telegram. Their previous message "
@@ -90,7 +92,9 @@ class TestTheNote:
 
     def test_a_conversations_first_turn_says_where_they_are_without_a_switch(self) -> None:
         """A new chat is a fresh thread: it has never been told where its messages land."""
-        note = presence_note(STAYED_ON_TELEGRAM, "telegram", "interactive", TELEGRAM_RECENT)
+        note = presence_note(
+            STAYED_ON_TELEGRAM, ConversationSource.TELEGRAM, "interactive", TELEGRAM_RECENT
+        )
 
         assert note == (
             "[User presence: the user is writing from Telegram. Also last seen: Web at "
@@ -101,10 +105,13 @@ class TestTheNote:
 
     def test_a_live_turn_on_a_chat_app_that_cannot_be_messaged_says_where_messages_go(self) -> None:
         note = presence_note(
-            CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_UNREACHABLE_TO_WHATSAPP
+            CAME_FROM_WEB,
+            ConversationSource.TELEGRAM,
+            "interactive",
+            TELEGRAM_UNREACHABLE_TO_WHATSAPP,
         )
         only_app = presence_note(
-            CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_UNREACHABLE_ONLY
+            CAME_FROM_WEB, ConversationSource.TELEGRAM, "interactive", TELEGRAM_UNREACHABLE_ONLY
         )
 
         assert note is not None
@@ -123,9 +130,17 @@ class TestTheNote:
 
     def test_a_background_run_for_a_user_on_a_chat_app_that_cannot_be_messaged(self) -> None:
         note = presence_note(
-            STAYED_ON_TELEGRAM, None, "background", TELEGRAM_UNREACHABLE_TO_WHATSAPP
+            STAYED_ON_TELEGRAM,
+            ConversationSource.BACKGROUND,
+            "background",
+            TELEGRAM_UNREACHABLE_TO_WHATSAPP,
         )
-        only_app = presence_note(STAYED_ON_TELEGRAM, None, "background", TELEGRAM_UNREACHABLE_ONLY)
+        only_app = presence_note(
+            STAYED_ON_TELEGRAM,
+            ConversationSource.BACKGROUND,
+            "background",
+            TELEGRAM_UNREACHABLE_ONLY,
+        )
 
         assert note is not None
         assert note.endswith(
@@ -140,7 +155,10 @@ class TestTheNote:
 
     def test_a_background_run_lists_last_seen_and_where_its_message_goes(self) -> None:
         note = presence_note(
-            _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT), None, "background", TELEGRAM_RECENT
+            _seen(telegram=TELEGRAM_AT, web=WEB_EARLIER_AT),
+            ConversationSource.BACKGROUND,
+            "background",
+            TELEGRAM_RECENT,
         )
 
         assert note == (
@@ -151,13 +169,17 @@ class TestTheNote:
         )
 
     def test_a_chat_source_on_a_background_run_is_still_background(self) -> None:
-        note = presence_note(STAYED_ON_TELEGRAM, "telegram", "background", TELEGRAM_RECENT)
+        note = presence_note(
+            STAYED_ON_TELEGRAM, ConversationSource.TELEGRAM, "background", TELEGRAM_RECENT
+        )
 
         assert note is not None
         assert note.startswith(BACKGROUND_OPENING)
 
     def test_a_target_picked_by_order_says_so(self) -> None:
-        note = presence_note(CAME_FROM_WEB, "telegram", "interactive", WHATSAPP_BY_ORDER)
+        note = presence_note(
+            CAME_FROM_WEB, ConversationSource.TELEGRAM, "interactive", WHATSAPP_BY_ORDER
+        )
 
         assert note is not None
         assert note.endswith(
@@ -167,7 +189,9 @@ class TestTheNote:
         )
 
     def test_a_background_run_with_nobody_active_names_the_first_chat_app(self) -> None:
-        note = presence_note(STAYED_ON_TELEGRAM, None, "background", WHATSAPP_BY_ORDER)
+        note = presence_note(
+            STAYED_ON_TELEGRAM, ConversationSource.BACKGROUND, "background", WHATSAPP_BY_ORDER
+        )
 
         assert note is not None
         assert note.endswith(
@@ -176,8 +200,12 @@ class TestTheNote:
         )
 
     def test_a_user_active_in_the_app_hears_from_gaia_only_in_the_app(self) -> None:
-        live = presence_note(_seen(telegram=TELEGRAM_AT), "web", "interactive", ACTIVE_IN_APP)
-        background = presence_note(_seen(web=WEB_AT), None, "background", ACTIVE_IN_APP)
+        live = presence_note(
+            _seen(telegram=TELEGRAM_AT), ConversationSource.WEB, "interactive", ACTIVE_IN_APP
+        )
+        background = presence_note(
+            _seen(web=WEB_AT), ConversationSource.BACKGROUND, "background", ACTIVE_IN_APP
+        )
 
         assert live == (
             "[Surface change: the user is now writing from Web. Their previous message was on "
@@ -191,8 +219,12 @@ class TestTheNote:
         )
 
     def test_no_chat_app_means_only_the_app(self) -> None:
-        switch = presence_note(CAME_FROM_WEB, "telegram", "interactive", NO_CHAT_APP)
-        background = presence_note(STAYED_ON_TELEGRAM, None, "background", NO_CHAT_APP)
+        switch = presence_note(
+            CAME_FROM_WEB, ConversationSource.TELEGRAM, "interactive", NO_CHAT_APP
+        )
+        background = presence_note(
+            STAYED_ON_TELEGRAM, ConversationSource.BACKGROUND, "background", NO_CHAT_APP
+        )
 
         assert switch is not None
         assert switch.endswith(
@@ -206,7 +238,9 @@ class TestTheNote:
 
     def test_the_window_comes_from_the_presence_constant(self) -> None:
         with patch.object(presence_utils, "PRESENCE_ACTIVE_WINDOW_SECONDS", 2 * 60 * 60):
-            note = presence_note(CAME_FROM_WEB, "telegram", "interactive", TELEGRAM_RECENT)
+            note = presence_note(
+                CAME_FROM_WEB, ConversationSource.TELEGRAM, "interactive", TELEGRAM_RECENT
+            )
 
         assert note is not None
         assert note.endswith("(they wrote there within the past 2 hours).]")
@@ -220,9 +254,9 @@ class TestTheNote:
             TELEGRAM_UNREACHABLE_TO_WHATSAPP,
             TELEGRAM_UNREACHABLE_ONLY,
         )
-        source_modes: tuple[tuple[str | None, ExecutionMode], ...] = (
-            ("telegram", "interactive"),
-            (None, "background"),
+        source_modes: tuple[tuple[ConversationSource, ExecutionMode], ...] = (
+            (ConversationSource.TELEGRAM, "interactive"),
+            (ConversationSource.BACKGROUND, "background"),
         )
         for note in [
             presence_note(CAME_FROM_WEB, source, mode, target)
@@ -297,7 +331,7 @@ class TestTheTargetLookup:
             message = await presence_note_module.presence_note_message(
                 "user-1",
                 STAYED_ON_TELEGRAM,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -314,7 +348,7 @@ class TestTheTargetLookup:
             live = await presence_note_module.presence_note_message(
                 "user-1",
                 presence,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=True,
                 entry_surface=EntrySurface.WEB,
@@ -334,7 +368,7 @@ class TestTheTargetLookup:
             background = await presence_note_module.presence_note_message(
                 "user-1",
                 STAYED_ON_TELEGRAM,
-                None,
+                ConversationSource.BACKGROUND,
                 "background",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -347,7 +381,7 @@ class TestTheTargetLookup:
             message = await presence_note_module.presence_note_message(
                 "",
                 CAME_FROM_WEB,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -361,7 +395,7 @@ class TestTheTargetLookup:
             message = await presence_note_module.presence_note_message(
                 "user-1",
                 None,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -383,7 +417,7 @@ class TestTheTargetLookup:
             background = await presence_note_module.presence_note_message(
                 "user-1",
                 STAYED_ON_TELEGRAM,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "background",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -391,7 +425,7 @@ class TestTheTargetLookup:
             interactive = await presence_note_module.presence_note_message(
                 "user-1",
                 STAYED_ON_TELEGRAM,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -416,7 +450,7 @@ class TestTheTargetLookup:
             message = await presence_note_module.presence_note_message(
                 "user-1",
                 STAYED_ON_TELEGRAM,
-                "web",
+                ConversationSource.WEB,
                 "background",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -438,7 +472,7 @@ class TestTheTargetLookup:
             message = await presence_note_module.presence_note_message(
                 "user-1",
                 CAME_FROM_WEB,
-                "telegram",
+                ConversationSource.TELEGRAM,
                 "interactive",
                 opens_thread=False,
                 entry_surface=EntrySurface.WEB,
@@ -478,7 +512,7 @@ class TestComms:
         note.assert_awaited_once_with(
             "user-1",
             STAYED_ON_TELEGRAM,
-            "telegram",
+            ConversationSource.TELEGRAM,
             "background",
             opens_thread=False,
             entry_surface=EntrySurface.WEB,

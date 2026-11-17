@@ -25,6 +25,7 @@ from app.models.agent_models import agent_user_context
 from app.models.conversation_log_models import (
     Batch,
     StepClaim,
+    TodoRun,
     UserMessage,
     WorkFinished,
     WorkflowFired,
@@ -32,12 +33,12 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.comms_input import work_cards_note
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
-from app.services.conversation.mongo_log_base import not_found
 from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.delivery.presence import presence_before
+from app.services.delivery.reply_surface import SentOn, resolve_reply_surface
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
@@ -56,7 +57,18 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     mode: Literal["interactive", "background"] = "interactive"
     if fired is not None:
         user, mode = user.with_timezone(fired.timezone), "background"
-    source = await _answering_surface(claim, said, fired)
+    finished = [logged.entry for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
+    reported = (
+        await todo_runs_reported(runtime_ports().log, claim.conversation_id, claim.user_id, batch)
+        if finished
+        else []
+    )
+    workflow_result = (
+        bool(finished)
+        and not reported
+        and await conversation_repository.is_workflow_execution(claim.conversation_id)
+    )
+    source = await resolve_reply_surface(claim, said, _sent_on(fired, reported, workflow_result))
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
     # Work that finished with no one asking switched no surface, so it gets no presence note.
     presence = (
@@ -94,7 +106,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             tool_category=pinned.tool_category if pinned else None,
             active_todo_id=todo_id,
             execution_mode=mode,
-            source=source.value,
+            source=source,
             user_messages=_workflow_authorization(fired) if fired else texts,
             user_request=query,
             user_preferences=user_preferences,
@@ -114,7 +126,12 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     return CommsTurn(
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
-        closing=[*await _delivery_note(claim, batch, source), context.clock],
+        closing=[
+            *await _delivery_note(
+                finished, reported, workflow_result=workflow_result, source=source
+            ),
+            context.clock,
+        ],
         analytics=_analytics(said, fired),
         run_started=AgentRunStarted(
             agent="comms",
@@ -135,22 +152,20 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
 
 
 async def _delivery_note(
-    claim: StepClaim, batch: Batch, source: ConversationSource
+    finished: list[WorkFinished],
+    reported: list[tuple[WorkFinished, TodoRun]],
+    *,
+    workflow_result: bool,
+    source: ConversationSource,
 ) -> list[AnyMessage]:
     """Tell a reply that reports finished work how to deliver it.
 
-    A todo's run is written up by its note, a workflow's work is read as plain text, and work
-    read in the app is told which of its cards are already on the screen.
+    A todo's run is written up by its note, a workflow's result is told it is all the user gets,
+    and work read in the app is told which of its cards are already on the screen.
     """
-    finished = [logged.entry for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
-    if not finished:
-        return []
-    reported = await todo_runs_reported(
-        runtime_ports().log, claim.conversation_id, claim.user_id, batch
-    )
     if reported:
         return [HumanMessage(content=await write_up_note(run)) for _work, run in reported]
-    if await conversation_repository.is_workflow_execution(claim.conversation_id):
+    if workflow_result:
         return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]
     if source in BOT_CONVERSATION_SOURCES or source is ConversationSource.VOICE:
         return []
@@ -194,18 +209,17 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
     return UNPROMPTED
 
 
-async def _answering_surface(
-    claim: StepClaim, said: list[UserMessage], fired: WorkflowRun | None
-) -> ConversationSource:
-    """Return the surface the reply is read on, which picks its prompt: the newest message's, else the conversation's own.
+def _sent_on(
+    fired: WorkflowRun | None,
+    reported: list[tuple[WorkFinished, TodoRun]],
+    workflow_result: bool,
+) -> SentOn | None:
+    """Return the destination a reply GAIA sends on was given when its run woke; None for any other reply.
 
-    A workflow fire runs in the background. Every conversation names its source (the boot check refuses one that doesn't).
+    A workflow's finished work has no fire in its batch, so its destination is resolved now.
     """
-    if said:
-        return said[-1].surface
     if fired is not None:
-        return ConversationSource.BACKGROUND
-    stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
-    if stored is None:
-        raise not_found(claim.conversation_id)
-    return stored
+        return SentOn(fired.delivery)
+    if reported:
+        return SentOn(reported[-1][1].delivery)
+    return SentOn(None) if workflow_result else None

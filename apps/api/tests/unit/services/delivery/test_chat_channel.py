@@ -3,11 +3,11 @@
 import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_SLACK,
@@ -15,14 +15,14 @@ from app.constants.notifications import (
     DEFAULT_CHAT_CHANNEL_PRIORITY,
     PRESENCE_ACTIVE_WINDOW_SECONDS,
 )
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
+from app.models.platform_models import PlatformLinkEntry
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import UserDocument
 from app.services.delivery import chat_channel
 from app.services.delivery.chat_channel import (
-    ChatChannel,
-    InApp,
-    ProactiveTarget,
     is_active_place,
     pick_chat_channel,
     proactive_destination,
@@ -31,9 +31,21 @@ from app.services.delivery.chat_channel import (
 )
 
 USER_ID = "6acc0dac0cc0a00000000001"
-LINKED = {
-    CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": "tg-1"},
-    CHANNEL_TYPE_SLACK: {"platform": "slack", "platformUserId": "sl-1"},
+
+
+def _link(platform: str, platform_user_id: str) -> PlatformLinkEntry:
+    return {
+        "platform": platform,
+        "platformUserId": platform_user_id,
+        "username": None,
+        "displayName": None,
+        "connectedAt": None,
+    }
+
+
+LINKED: dict[str, PlatformLinkEntry] = {
+    CHANNEL_TYPE_TELEGRAM: _link("telegram", "tg-1"),
+    CHANNEL_TYPE_SLACK: _link("slack", "sl-1"),
 }
 
 
@@ -149,9 +161,9 @@ class TestResolveChannelPriority:
         assert resolve_channel_priority(["carrier_pigeon"]) == list(DEFAULT_CHAT_CHANNEL_PRIORITY)
 
     def test_a_non_list_falls_back(self) -> None:
-        assert resolve_channel_priority("telegram") == list(  # type: ignore[arg-type] -- a legacy doc really can hold a bare string, and it must not crash a send
-            DEFAULT_CHAT_CHANNEL_PRIORITY
-        )
+        # A legacy doc really can hold a bare string, and it must not crash a send.
+        legacy = cast(list[str], "telegram")
+        assert resolve_channel_priority(legacy) == list(DEFAULT_CHAT_CHANNEL_PRIORITY)
 
 
 class TestPickChatChannel:
@@ -194,7 +206,7 @@ class TestPickChatChannel:
 
     def test_a_link_without_an_account_id_falls_through(self) -> None:
         linked = {
-            CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": ""},
+            CHANNEL_TYPE_TELEGRAM: _link("telegram", ""),
             CHANNEL_TYPE_SLACK: LINKED[CHANNEL_TYPE_SLACK],
         }
         picked = pick_chat_channel(
@@ -205,7 +217,9 @@ class TestPickChatChannel:
         assert picked.source is ConversationSource.SLACK
 
     def test_a_legacy_integer_account_id_is_carried_as_text(self) -> None:
-        linked = {CHANNEL_TYPE_TELEGRAM: {"platform": "telegram", "platformUserId": 6222050155}}
+        # A legacy row holds an int where the TypedDict says str; the cast carries that real shape.
+        legacy = cast(PlatformLinkEntry, {**_link("telegram", ""), "platformUserId": 6222050155})
+        linked = {CHANNEL_TYPE_TELEGRAM: legacy}
 
         assert pick_chat_channel([CHANNEL_TYPE_TELEGRAM], linked, {}, active=None) == ChatChannel(
             source=ConversationSource.TELEGRAM, platform_user_id="6222050155", basis="priority"
@@ -216,7 +230,7 @@ class TestPickChatChannel:
         assert (
             pick_chat_channel(
                 [CHANNEL_TYPE_DISCORD],
-                {CHANNEL_TYPE_DISCORD: {"platformUserId": "d"}},
+                {CHANNEL_TYPE_DISCORD: _link("discord", "d")},
                 {CHANNEL_TYPE_DISCORD: False},
                 active=None,
             )
@@ -312,13 +326,11 @@ class TestPickChatChannelBasis:
 class TestPickChatChannelRefusesNonBotSources:
     def test_a_linked_platform_that_is_not_a_bot_is_skipped(self) -> None:
         """The web is a conversation source but never a delivery channel."""
-        assert pick_chat_channel(["web"], {"web": {"platformUserId": "1"}}, {}, active=None) is None
+        assert pick_chat_channel(["web"], {"web": _link("web", "1")}, {}, active=None) is None
 
-    def test_an_unknown_platform_with_an_account_id_is_skipped(self) -> None:
-        assert (
-            pick_chat_channel(["pager"], {"pager": {"platformUserId": "1"}}, {}, active=None)
-            is None
-        )
+    def test_an_unknown_platform_with_an_account_id_is_refused_not_skipped(self) -> None:
+        with pytest.raises(ValueError, match="'pager' is not a valid ConversationSource"):
+            pick_chat_channel(["pager"], {"pager": _link("pager", "1")}, {}, active=None)
 
 
 class TestResolveProactiveTarget:
@@ -344,7 +356,7 @@ class TestResolveProactiveTarget:
             return empty
 
         no_recent_activity.side_effect = read_presence
-        with patch.object(chat_channel.user_repository, "get", side_effect=read_user):
+        with patch.object(user_repository, "get", side_effect=read_user):
             target = await chat_channel.resolve_proactive_target(USER_ID)
 
         assert isinstance(target, ChatChannel)
@@ -356,9 +368,7 @@ class TestResolveProactiveTarget:
             "captured_at": _now(),
             "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - 60},
         }
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         no_recent_activity.assert_awaited_once_with(USER_ID)
@@ -373,43 +383,22 @@ class TestResolveProactiveTarget:
             "captured_at": _now(),
             "last_seen": {CHANNEL_TYPE_TELEGRAM: _now() - PRESENCE_ACTIVE_WINDOW_SECONDS - 60},
         }
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
             source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
         )
 
-    async def test_an_unreadable_presence_signal_falls_back_to_the_stored_order(
+    async def test_an_unreadable_presence_signal_fails_the_lookup_instead_of_guessing(
         self, no_recent_activity: AsyncMock
     ) -> None:
         no_recent_activity.side_effect = ConnectionError("redis down")
         with (
-            patch.object(
-                chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-            ),
-            patch.object(chat_channel.log, "warning") as warning,
+            patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())),
+            pytest.raises(ConnectionError),
         ):
-            picked = await resolve_proactive_target(USER_ID)
-
-        assert picked == ChatChannel(
-            source=ConversationSource.SLACK, platform_user_id="sl-1", basis="priority"
-        )
-        warning.assert_called_once_with(
-            f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
-            user_id=USER_ID,
-            error_type="ConnectionError",
-            error="redis down",
-        )
-
-    async def test_an_unreadable_presence_signal_names_no_active_surface(self) -> None:
-        with (
-            patch.object(chat_channel, "read_presence", AsyncMock(side_effect=OSError("boom"))),
-            patch.object(chat_channel.log, "warning"),
-        ):
-            assert await chat_channel._active_surface_of(USER_ID) is None
+            await resolve_proactive_target(USER_ID)
 
     async def test_reads_order_links_and_preferences_off_one_document(self) -> None:
         user = UserDocument.model_validate(
@@ -423,9 +412,7 @@ class TestResolveProactiveTarget:
                 "notification_channel_prefs": {"slack": False},
             }
         )
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=user)
-        ) as read:
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)) as read:
             picked = await resolve_proactive_target(USER_ID)
 
         read.assert_awaited_once_with(USER_ID)
@@ -437,9 +424,7 @@ class TestResolveProactiveTarget:
         # Both platforms are linked and enabled, so only the stored order can
         # decide: reading the default instead would silently land the message
         # on telegram (the first default entry).
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
@@ -447,12 +432,12 @@ class TestResolveProactiveTarget:
         )
 
     async def test_an_unknown_user_has_no_chat_app(self) -> None:
-        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=None)):
+        with patch.object(user_repository, "get", AsyncMock(return_value=None)):
             assert await resolve_proactive_target(USER_ID) == InApp(reason="no_chat_app")
 
     async def test_a_user_with_nothing_linked_has_no_chat_app(self) -> None:
         user = UserDocument.model_validate({"id": USER_ID})
-        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)):
             assert await resolve_proactive_target(USER_ID) == InApp(reason="no_chat_app")
 
     async def test_a_user_active_in_the_app_is_messaged_in_the_app_not_a_chat_app(
@@ -462,9 +447,7 @@ class TestResolveProactiveTarget:
             "captured_at": _now(),
             "last_seen": {"web": _now() - 30, CHANNEL_TYPE_TELEGRAM: _now() - 600},
         }
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == InApp(reason="active_in_app")
@@ -476,9 +459,7 @@ class TestResolveProactiveTarget:
             "captured_at": _now(),
             "last_seen": {"mobile": _now() - 600, CHANNEL_TYPE_TELEGRAM: _now() - 30},
         }
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
@@ -496,7 +477,7 @@ class TestResolveProactiveTarget:
         user = _two_linked_user().model_copy(
             update={"notification_channel_prefs": {CHANNEL_TYPE_TELEGRAM: False}}
         )
-        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == ChatChannel(
@@ -519,7 +500,7 @@ class TestResolveProactiveTarget:
                 "notification_channel_prefs": {CHANNEL_TYPE_TELEGRAM: False},
             }
         )
-        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == InApp(reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM)
@@ -534,15 +515,13 @@ class TestResolveProactiveTarget:
                 "platform_links": {"telegram": {"id": "", "username": "a", "display_name": "A"}},
             }
         )
-        with patch.object(chat_channel.user_repository, "get", AsyncMock(return_value=user)):
+        with patch.object(user_repository, "get", AsyncMock(return_value=user)):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked == InApp(reason="no_chat_app", unreachable_active=ConversationSource.TELEGRAM)
 
     async def test_an_idle_user_has_no_unreachable_active_surface(self) -> None:
-        with patch.object(
-            chat_channel.user_repository, "get", AsyncMock(return_value=_two_linked_user())
-        ):
+        with patch.object(user_repository, "get", AsyncMock(return_value=_two_linked_user())):
             picked = await resolve_proactive_target(USER_ID)
 
         assert picked.unreachable_active is None

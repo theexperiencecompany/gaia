@@ -241,8 +241,8 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     sources (web OAuth links, etc.) and unsupported/unlinked platforms are
     skipped. Best-effort: never raises into the caller's linking flow.
     """
-    source = ConversationSource.coerce(platform)
-    if source is None or source not in OUTBOUND_QUEUES:
+    source = ConversationSource(platform)
+    if source not in OUTBOUND_QUEUES:
         return OutboundResult.SKIPPED
 
     display_name = source.display_name
@@ -263,9 +263,9 @@ async def publish_conversation_wake(session: BotSessionDocument) -> OutboundResu
     """
     if session.delivery is None:
         raise ValueError("a wake follows the session's delivery cursor, and it has none")
-    platform = ConversationSource.coerce(session.platform)
-    queue_name = OUTBOUND_QUEUES.get(platform) if platform is not None else None
-    if platform is None or queue_name is None:
+    platform = ConversationSource(session.platform)
+    queue_name = OUTBOUND_QUEUES.get(platform)
+    if queue_name is None:
         return OutboundResult.SKIPPED
     is_channel = session.channel_id is not None
     follow = ActiveBotConversation.of(session, session.delivery)

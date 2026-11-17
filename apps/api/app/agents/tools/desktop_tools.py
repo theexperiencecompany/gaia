@@ -78,7 +78,7 @@ async def _run_desktop_action(
     desktop session or the run carries no user.
     """
     configurable = read_agent_configurable(config)
-    source = ConversationSource.coerce(configurable.conversation_source)
+    source = configurable.surface()
     if source is not ConversationSource.DESKTOP:
         log.warning(
             f"{LogTag.TOOL} Desktop tool refused for source", tool_name=tool_name, source=source

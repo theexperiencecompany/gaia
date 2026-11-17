@@ -18,6 +18,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole, dev_option_for
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn, build_agent_config
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, AgentUserContext
@@ -60,6 +61,7 @@ async def _dev_base_configurable(
             dev_option=dev_option_for(model, use_defaults=model is None),
         ),
         turn=AgentTurn(
+            source=ConversationSource.BACKGROUND,
             user_preferences=user_preferences,
             writing_style=writing_style,
         ),

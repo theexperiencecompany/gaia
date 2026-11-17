@@ -73,6 +73,7 @@ TURN_MESSAGE = "bot-msg-e2e"
 def _configurable(**extra: Any) -> dict[str, Any]:
     return {
         "conversation_id": CONVERSATION,
+        "conversation_source": "web",
         "stream_id": STREAM,
         "bot_message_id": TURN_MESSAGE,
         **extra,
@@ -360,7 +361,14 @@ BOOK_SIGNED_IN = ScriptedStep(actions=[("click", {"index": 4})], url=SIGNED_IN_U
 async def _reply_in_chat(chat_tool: BaseTool, args: dict[str, Any]) -> None:
     """Act on the paused task as comms does on the user's chat reply, from that turn's identity."""
     await chat_tool.ainvoke(
-        args, config={"configurable": {"thread_id": CONVERSATION, "user_id": USER}}
+        args,
+        config={
+            "configurable": {
+                "thread_id": CONVERSATION,
+                "user_id": USER,
+                "conversation_source": "web",
+            }
+        },
     )
 
 
@@ -590,7 +598,11 @@ async def _executor_thread_remembering_the_last_login(brief: str) -> list[Any]:
             task=brief,
             seed=ThreadSeed(
                 tier=AgentTier.EXECUTOR,
-                configurable={"user_id": USER, "thread_id": CONVERSATION},
+                configurable={
+                    "user_id": USER,
+                    "thread_id": CONVERSATION,
+                    "conversation_source": "web",
+                },
                 user_id=USER,
             ),
         )

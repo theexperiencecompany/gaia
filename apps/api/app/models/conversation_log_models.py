@@ -8,6 +8,7 @@ from pydantic import AwareDatetime, BaseModel, Field, JsonValue, model_validator
 from app.constants.chat import ConversationSource
 from app.models.chat_models import ReactionBy
 from app.models.conversation_lifecycle_models import Lifecycles
+from app.models.delivery_models import ProactiveTarget
 from app.models.hil_models import ApprovalDescription
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
@@ -157,6 +158,8 @@ class WorkflowRun(BaseModel):
     trigger: WorkflowTriggerContext
     # Who fired it, so the run that answers the fire is attributed to its schedule, trigger or user.
     attribution: Attribution
+    # Where its result goes, resolved by the fire; None on a fire logged before destinations were stored.
+    delivery: ProactiveTarget | None = None
 
 
 class WorkflowFired(_Entry):
@@ -189,6 +192,8 @@ class TodoRun(BaseModel):
     wake: TodoRunWake
     report_form: TodoReportForm
     attribution: Attribution
+    # Where its write-up goes, resolved when it wakes; None on a run logged before destinations were stored.
+    delivery: ProactiveTarget | None = None
 
 
 class TodoWoke(_Entry):

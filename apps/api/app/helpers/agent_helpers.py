@@ -22,6 +22,7 @@ from app.models.agent_models import (
     AgentUserContext,
     ExecutionMode,
     LlmCallMetadata,
+    RunSurfaceMissingError,
     run_analytics_context,
 )
 from app.models.chat_models import ConversationSource, SourceCategory
@@ -80,7 +81,7 @@ class _TurnScope:
     subagent_id: str | None
     vfs_session_id: str | None
     active_todo_id: str | None
-    conversation_source: str | None
+    conversation_source: ConversationSource | None
     user_messages: list[str] | None
     user_request: str | None
     user_preferences: dict[str, object] | None
@@ -245,8 +246,8 @@ class AgentTurn:
     execution_mode: ExecutionMode | None = None
     """interactive vs the background modes; inherited when omitted."""
 
-    source: str | None = None
-    """The channel (web/mobile/whatsapp/...); falls back to "background" when unset."""
+    source: ConversationSource | None = None
+    """The surface the run answers on; a child inherits its parent's, and a run with neither is refused."""
 
     workflow_id: str | None = None
     """The workflow this fire belongs to, on a top-level run only. Child runs
@@ -438,11 +439,10 @@ async def build_agent_config(
         tracing.langfuse_tags if tracing.langfuse_tags is not None else inherited.langfuse_tags
     )
 
-    # Specific channel (web/mobile/whatsapp/...) and its generalized category
-    # (UI/Bot/BG). The channel falls back to "background" when unset because the
-    # only callers that omit a source are the silent background paths.
     resolved_source = resolved.conversation_source
-    source_channel = resolved_source or ConversationSource.BACKGROUND.value
+    if resolved_source is None:
+        raise RunSurfaceMissingError(f"{agent_name} run names no surface and inherits none")
+    source_channel = resolved_source.value
     source_category = SourceCategory.from_source(resolved_source).value
 
     # The agent operates in the user's HOME timezone (IANA, DST-aware). Top-level
@@ -489,7 +489,7 @@ async def build_agent_config(
         "stream_id": resolved.stream_id,
         "active_todo_id": resolved.active_todo_id,
         "execution_mode": resolved.execution_mode or "interactive",
-        "conversation_source": resolved_source,
+        "conversation_source": source_channel,
         "source_category": source_category,
         # Re-emitted in the literal below (a fresh dict — a key dropped here
         # never reaches the graph config).

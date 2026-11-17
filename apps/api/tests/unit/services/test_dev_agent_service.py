@@ -15,6 +15,7 @@ import pytest
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.llm.lane import AgentRole, dev_option_for
 from app.config.settings import settings
+from app.constants.chat import ConversationSource
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn
 from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
@@ -63,7 +64,9 @@ class TestTheParentConfigurableADirectRunBuilds:
                 role=AgentRole.EXECUTOR,
                 dev_option=dev_option_for(None, use_defaults=True),
             ),
-            "turn": AgentTurn(user_preferences=None, writing_style=None),
+            "turn": AgentTurn(
+                source=ConversationSource.BACKGROUND, user_preferences=None, writing_style=None
+            ),
         }
 
     async def test_a_passed_conversation_id_is_reused_so_turns_share_a_thread(self) -> None:

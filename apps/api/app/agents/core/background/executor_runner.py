@@ -136,7 +136,7 @@ async def _run_executor(
         # Surface the turn came from, carried so auxiliary calls inside this run
         # (handed a bare config) can still name it — without it a web turn is
         # metered as "system", undercounting COGS exactly where it matters most.
-        conversation_source=AgentConfigurableView.model_validate(configurable).conversation_source,
+        conversation_source=AgentConfigurableView.model_validate(configurable).surface().value,
         # The workflow run this executor is part of; the workflow task stamped it
         # on ITS boundary, this one is fresh. Without it every model call lands in
         # the ledger with no execution, so "what did this run cost" reads only comms.
@@ -243,7 +243,7 @@ def _queue_wait_ms(
         return None
     observe_executor_queue_wait(
         queue_wait_s,
-        source=str(configurable.get("conversation_source") or "unknown"),
+        source=AgentConfigurableView.model_validate(configurable).surface().value,
         queued=queued,
     )
     return round(queue_wait_s * 1000.0, 2)

@@ -58,6 +58,7 @@ from app.agents.prompts.new_user_prompts import (
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
@@ -83,7 +84,7 @@ def ctx(
     active_todo_id: str | None = None,
     execution_mode: ExecutionMode = "interactive",
     user_preferences: dict[str, Any] | None = None,
-    source: str | None = None,
+    source: ConversationSource | None = None,
 ) -> SectionContext:
     """Build a comms context carrying everything these sections read, minus overrides."""
     return SectionContext(

@@ -106,7 +106,7 @@ async def _platform_banner(ctx: SectionContext) -> str:
     The model cannot read configurable directly, so this is the only way it
     learns the platform. Applies to bot channels only, not web/mobile/desktop.
     """
-    source = ConversationSource.coerce(ctx.source)
+    source = ctx.source
     if source is None or source not in BOT_CONVERSATION_SOURCES:
         return ""
     name = source.display_name
@@ -137,7 +137,7 @@ async def _executor_platform(ctx: SectionContext) -> str:
     Desktop tools are named only on desktop: retrieval already gates them by
     source, so naming them for every channel cost tokens off-desktop.
     """
-    source = ConversationSource.coerce(ctx.source)
+    source = ctx.source
     if source is None or source not in _USER_PLATFORMS:
         return ""
     line = f"The user is on {source.display_name}."

@@ -529,6 +529,7 @@
     - "GAIA is doing something the user might ask about later" → create_tracked_todo
 
 [1] system markers=dynamic_context,memory_message
+    The user is on Web.
     User Name: Ada
     User Timezone: Asia/Kolkata
     User Preferences:

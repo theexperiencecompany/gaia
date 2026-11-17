@@ -12,14 +12,13 @@ its target here and nowhere else.
 
 import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
-from typing import Literal
+from dataclasses import replace
 
-from app.constants.log_tags import LogTag
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
 from app.db.repositories.users import user_repository
 from app.models.chat_channel_models import CHAT_CHANNEL_VALUES
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
+from app.models.delivery_models import ChatChannel, ChatChannelBasis, InApp, ProactiveTarget
 from app.models.platform_models import PlatformLinkEntry
 from app.models.presence_models import PresenceSnapshot
 from app.services.analytics_service import capture
@@ -29,7 +28,6 @@ from app.utils.notification.channel_preferences import normalize_channel_prefere
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.delivery import ProactiveDestination
 from shared.py.analytics.catalog.settings import SettingsChatChannelPriorityUpdated
-from shared.py.wide_events import log
 
 #: The chat platforms a priority list may contain — a stored document naming
 #: anything else is filtered out here. Includes every bot platform, not just
@@ -64,37 +62,6 @@ async def set_chat_channel_priority(user_id: str, priority: Sequence[str]) -> No
         UserId(user_id),
         SettingsChatChannelPriorityUpdated(first=priority[0], count=len(priority)),
     )
-
-
-#: Why a platform was chosen: the user wrote there within the active window, or it led their order.
-ChatChannelBasis = Literal["recent_activity", "priority"]
-
-
-@dataclass(frozen=True, slots=True)
-class ChatChannel:
-    """The platform a proactive message goes to, the account it reaches, and the rule that chose it."""
-
-    source: ConversationSource
-    platform_user_id: str
-    basis: ChatChannelBasis
-    #: The chat app the user is active on but that cannot be messaged (muted or no account id).
-    unreachable_active: ConversationSource | None = None
-
-
-#: Why nothing goes to a chat app: the user is active in the GAIA app, or no chat app is usable.
-InAppReason = Literal["active_in_app", "no_chat_app"]
-
-
-@dataclass(frozen=True, slots=True)
-class InApp:
-    """A proactive message that stays in the GAIA app, and why."""
-
-    reason: InAppReason
-    #: The chat app the user is active on but that cannot be messaged (muted or no account id).
-    unreachable_active: ConversationSource | None = None
-
-
-ProactiveTarget = ChatChannel | InApp
 
 
 def is_active_place(target: ProactiveTarget) -> bool:
@@ -136,9 +103,9 @@ def pick_chat_channel(
         entry: PlatformLinkEntry | None = linked.get(platform)
         if entry is None or not preferences.get(platform, True):
             continue
-        source = ConversationSource.coerce(platform)
+        source = ConversationSource(platform)
         platform_user_id = entry.get("platformUserId")
-        if source is None or source not in BOT_CONVERSATION_SOURCES or not platform_user_id:
+        if source not in BOT_CONVERSATION_SOURCES or not platform_user_id:
             continue
         basis: ChatChannelBasis = (
             "recent_activity" if active is not None and platform == active.value else "priority"
@@ -148,26 +115,20 @@ def pick_chat_channel(
 
 
 async def _active_surface_of(user_id: str) -> ConversationSource | None:
-    """Return the surface the user is active on now, or None when presence cannot be read."""
-    try:
-        presence: PresenceSnapshot = await read_presence(user_id)
-    except Exception as e:  # a degraded signal: the message still goes out, by priority
-        log.warning(
-            f"{LogTag.NOTIFICATION} Chat channel presence read failed; using priority order",
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        return None
+    """Return the surface the user is active on now; a presence read that fails raises, never guesses."""
+    presence: PresenceSnapshot = await read_presence(user_id)
     return active_surface(presence, presence["captured_at"])
 
 
 async def resolve_proactive_target(user_id: str) -> ProactiveTarget:
-    """Return the one place a proactive message for user_id goes; the user and presence reads run together."""
+    """Return the one place a proactive message for user_id goes; the user and presence reads run together.
+
+    A failed read raises: a destination guessed from half the facts sends the message somewhere the user is not.
+    """
     user, active = await asyncio.gather(user_repository.get(user_id), _active_surface_of(user_id))
     if user is None:
         return InApp(reason="no_chat_app")
-    if SourceCategory.from_source(active) is SourceCategory.UI:
+    if active is not None and SourceCategory.from_source(active) is SourceCategory.UI:
         return InApp(reason="active_in_app")
     channel = pick_chat_channel(
         resolve_channel_priority(user.chat_channel_priority),

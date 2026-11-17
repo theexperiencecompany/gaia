@@ -14,10 +14,18 @@ from app.agents.core.background.executor_queue import read_executor_activity
 from app.agents.core.background.running_registry import RunningSubagents
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ConversationSource
 from app.models.executor_activity_models import ExecutorActivity
 from app.services.browser.chat_task import ChatBrowserTasks, ChatTurn, chat_browser_tasks
 from shared.py.wide_events import log
+
+# A failed status read is said as unknown: a blank reads as "nothing running" and invites duplicate work.
+EXECUTOR_STATUS_UNAVAILABLE = (
+    "Whether background work is running is unknown right now: its status could not be read. "
+    "Do not start the same work again on the assumption that nothing is running."
+)
+BROWSER_STATUS_UNAVAILABLE = (
+    "Whether a browser task is running is unknown right now: its status could not be read."
+)
 
 
 def executor_status_text(activity: ExecutorActivity, task_id: str, running: bool) -> str:
@@ -52,9 +60,9 @@ async def build_executor_status_block(ctx: SectionContext) -> str:
             if progress:
                 text = f"{text} What it has done so far:\n{progress}"
         return text
-    except Exception:
-        log.error(f"{LogTag.AGENT} Executor status unavailable")
-        return ""
+    except Exception as e:
+        log.error(f"{LogTag.AGENT} Executor status unavailable", error_type=type(e).__name__)
+        return EXECUTOR_STATUS_UNAVAILABLE
 
 
 def describe_browser_tasks(tasks: ChatBrowserTasks) -> str:
@@ -83,13 +91,13 @@ async def build_browser_task_block(ctx: SectionContext) -> str:
     turn = ChatTurn(
         conversation_id=ctx.conversation_id,
         user_id=ctx.user_id,
-        source=ConversationSource.coerce(ctx.source),
+        source=ctx.source,
     )
     try:
         tasks = await chat_browser_tasks(turn)
-    except Exception:
-        log.error(f"{LogTag.BROWSER} Browser task status unavailable")
-        return ""
+    except Exception as e:
+        log.error(f"{LogTag.BROWSER} Browser task status unavailable", error_type=type(e).__name__)
+        return wrap_agent_payload(AgentTag.BROWSER_TASK, BROWSER_STATUS_UNAVAILABLE)
     if not tasks.running:
         return ""
     return wrap_agent_payload(AgentTag.BROWSER_TASK, describe_browser_tasks(tasks))

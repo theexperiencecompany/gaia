@@ -14,13 +14,13 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.core.background.executor_progress import RunProgress
+from app.models.delivery_models import InApp, ProactiveTarget
 from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
 from app.models.todo_models import TodoDocument
 from app.services.browser.chat_task import ChatBrowserTasks
-from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
 
 

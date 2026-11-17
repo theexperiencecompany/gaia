@@ -41,6 +41,7 @@ from openrouter.errors import (
 )
 
 from app.config.model_pricing import calculate_token_cost
+from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.llm import (
     OPENROUTER_PROVIDER,
     PROVIDER_NAME_METADATA_KEY,
@@ -92,10 +93,6 @@ _INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
     # Out of credits is our account being wrong, not the upstream being down.
     PaymentRequiredResponseError,
 )
-
-
-#: ``SourceCategory.BG`` — the category every non-interactive run falls into.
-_BACKGROUND_SOURCE_CATEGORY = "bg"
 
 
 class TokenUsage(TypedDict):
@@ -535,22 +532,21 @@ def resolve_channel(configurable: Mapping[str, Any], *, background: bool = False
     """Which surface originated this call, from the run's own configurable.
 
     conversation_source comes from the entry point (client-type header or bot
-    platform), inherited by every child agent. Background runs carry none;
+    platform), inherited by every child agent. A background run's is not a channel:
     workflow_id gives "workflow", else "system" if marked explicitly (keying
     only on source_category left 11/27 rows null). KNOWN GAP: voice reports "web".
     """
-    source = configurable.get("conversation_source")
-    if source:
-        return str(source)
-    # Enclosing run's boundary, for calls with a bare config (an auxiliary
+    # Else the enclosing run's boundary, for calls with a bare config (an auxiliary
     # one-shot inside an executor run) — without it a user's web turn records
     # as "system", undercounting exactly where executor COGS-by-channel matters.
-    ambient = log.get().get("conversation_source")
-    if ambient:
-        return str(ambient)
+    source = configurable.get("conversation_source") or log.get().get("conversation_source")
+    if source:
+        channel = ConversationSource(source)
+        if SourceCategory.from_source(channel) is not SourceCategory.BG:
+            return channel.value
     if configurable.get("workflow_id"):
         return "workflow"
-    if background or configurable.get("source_category") == _BACKGROUND_SOURCE_CATEGORY:
+    if background or configurable.get("source_category") == SourceCategory.BG:
         return "system"
     return None
 

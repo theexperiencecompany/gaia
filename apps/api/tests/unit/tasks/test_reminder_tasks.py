@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.chat_models import ConversationSource
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
 from app.models.notification.notification_models import notification_id
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.tasks.reminder_tasks import (
     _execute_static_reminder,
     _reminder_result_text,

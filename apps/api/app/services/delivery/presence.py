@@ -18,6 +18,9 @@ from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.conversation_log_models import UserMessage
 from app.models.presence_models import PresenceSnapshot
 
+#: The hash fields a presence stamp may carry: one per surface.
+_SURFACE_VALUES: frozenset[str] = frozenset(source.value for source in ConversationSource)
+
 
 def _presence_key(user_id: str) -> str:
     return f"{USER_PRESENCE_PREFIX}:{user_id}"
@@ -32,7 +35,7 @@ def _parse(stored: Mapping[str, str], captured_at: int) -> PresenceSnapshot:
     last_seen = {
         field: int(stamp)
         for field, stamp in stored.items()
-        if ConversationSource.coerce(field) is not None and stamp.isdecimal()
+        if field in _SURFACE_VALUES and stamp.isdecimal()
     }
     return {"captured_at": captured_at, "last_seen": last_seen}
 
@@ -67,11 +70,7 @@ async def read_presence(user_id: str) -> PresenceSnapshot:
 
 def surfaces_by_recency(snapshot: PresenceSnapshot) -> list[tuple[ConversationSource, int]]:
     """Return each known surface with its last-seen epoch, newest first."""
-    seen = [
-        (source, at)
-        for field, at in snapshot["last_seen"].items()
-        if (source := ConversationSource.coerce(field)) is not None
-    ]
+    seen = [(ConversationSource(field), at) for field, at in snapshot["last_seen"].items()]
     return sorted(seen, key=lambda entry: entry[1], reverse=True)
 
 

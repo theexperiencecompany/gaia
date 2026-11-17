@@ -16,7 +16,9 @@ from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
 
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.agents.templates.format_policy import FORMAT_POLICY_BY_SOURCE
 from app.constants.log_tags import LogTag
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -34,7 +36,9 @@ from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import TodoReportForm, TodoRun
+from app.models.delivery_models import ChatChannel, ProactiveTarget
 from app.models.notification.notification_models import (
+    ChannelConfig,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
@@ -45,7 +49,7 @@ from app.models.todo_models import TodoDocument
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import section_body
-from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
+from app.services.delivery.chat_channel import proactive_destination, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.services.todo_activity import (
     recent_run_outcomes,
@@ -104,6 +108,8 @@ class FinishedTodoRun(BaseModel):
     reply: ReplyOutcome
     #: The run's own finish_task declaration: result_text is its record, not a message.
     nothing_for_user: bool = False
+    #: Where the write-up goes, resolved when the run woke; None in a job queued before it was stored.
+    delivery: ProactiveTarget | None = None
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
@@ -262,7 +268,12 @@ async def _send(finished: FinishedTodoRun, todo: TodoDocument) -> _Resolution:
     """
     # A retelling drops the headings an as-written todo's guidance requires.
     as_written = finished.report_form is TodoReportForm.AS_WRITTEN
+    target = finished.delivery or await resolve_proactive_target(todo.user_id)
+    channels = [CHANNEL_TYPE_INAPP]
     message = finished.result_text if as_written else finished.write_up
+    if isinstance(target, ChatChannel):
+        channels.append(target.source.value)
+        message = FORMAT_POLICY_BY_SOURCE[target.source].sanitize(message, target.source)
     notified = await notification_service.notify(
         NotificationRequest(
             id=notification_id(todo.user_id, "todo_run", finished.run_id),
@@ -273,12 +284,13 @@ async def _send(finished: FinishedTodoRun, todo: TodoDocument) -> _Resolution:
             ),
             metadata={"todo_id": todo.id},
             message=message,
+            channels=[ChannelConfig(channel_type=channel) for channel in channels],
         )
     )
     if notified.record.status is not NotificationStatus.DELIVERED:
-        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)._replace(target=notified.target)
+        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)._replace(target=target)
     platform = notified.chat_app
     note = (
         f"result sent on {platform.value}" if platform else "result sent as an in-app notification"
     )
-    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, note, platform, notified.target)
+    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, note, platform, target)

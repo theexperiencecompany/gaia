@@ -49,6 +49,7 @@ from app.agents.context.slots import (
 )
 from app.agents.context.text import VOLATILE_BLOCK_TRUNC_MARKER
 from app.agents.context.tiers import AgentTier
+from app.constants.chat import ConversationSource
 from app.constants.llm import LLMProviderName
 from app.constants.log_tags import LogTag
 
@@ -292,6 +293,7 @@ COMMS_CONTEXT = SectionContext(
     user_name="Ada",
     user_timezone="Asia/Kolkata",
     query="what is on my plate?",
+    source=ConversationSource.WEB,
 )
 
 
@@ -531,10 +533,10 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
         assert record["stable_chars"] > 0
 
     async def test_the_real_channel_is_recorded_when_there_is_one(self) -> None:
-        """Web is the default for a turn with no channel, not a label stamped on every turn."""
+        """The turn's own channel is recorded, not a label stamped on every turn."""
         async with captured_wide_event() as event:
             with fake_context_sources(ContextSources()):
-                await assemble_context(replace(COMMS_CONTEXT, source="slack"))
+                await assemble_context(replace(COMMS_CONTEXT, source=ConversationSource.SLACK))
 
         assert event["dynamic_context"]["source"] == "slack"
 

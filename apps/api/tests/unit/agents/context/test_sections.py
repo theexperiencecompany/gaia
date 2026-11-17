@@ -31,6 +31,7 @@ from app.agents.context.text import (
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 
 #: A real, registered integration, the one the manifest's account records belong to.
@@ -53,7 +54,7 @@ class _CtxOverrides(TypedDict, total=False):
     user_preferences: dict[str, Any] | None
     writing_style: dict[str, Any] | None
     subagent_id: str | None
-    source: str | None
+    source: ConversationSource | None
 
 
 def ctx(tier: AgentTier = AgentTier.COMMS, **overrides: Unpack[_CtxOverrides]) -> SectionContext:
@@ -171,14 +172,16 @@ class TestPlatformBanner:
     @pytest.mark.parametrize(
         ("source", "expected_name"),
         [
-            ("telegram", "Telegram"),
-            ("whatsapp", "WhatsApp"),
-            ("discord", "Discord"),
-            ("slack", "Slack"),
-            ("imessage", "iMessage"),
+            (ConversationSource.TELEGRAM, "Telegram"),
+            (ConversationSource.WHATSAPP, "WhatsApp"),
+            (ConversationSource.DISCORD, "Discord"),
+            (ConversationSource.SLACK, "Slack"),
+            (ConversationSource.IMESSAGE, "iMessage"),
         ],
     )
-    async def test_it_names_the_messaging_app(self, source: str, expected_name: str) -> None:
+    async def test_it_names_the_messaging_app(
+        self, source: ConversationSource, expected_name: str
+    ) -> None:
         rendered = await section("platform_banner").fetch(ctx(source=source))
 
         # Exact, not a substring match: mutmut mutates a string literal by
@@ -190,20 +193,20 @@ class TestPlatformBanner:
             "tables or rich cards."
         )
 
-    @pytest.mark.parametrize("source", ["web", "mobile", "workflow_system"])
-    async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
+    @pytest.mark.parametrize(
+        "source",
+        [ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.WORKFLOW_SYSTEM],
+    )
+    async def test_the_rich_clients_get_no_banner(self, source: ConversationSource) -> None:
         """Telling the web app to write plain short text would be actively wrong — its whole point is the cards the bots cannot render."""
         assert await section("platform_banner").fetch(ctx(source=source)) == ""
 
     async def test_desktop_gets_no_messaging_banner(self) -> None:
         """Desktop renders rich UI like the web app; its tools are the executor's to use, not comms's."""
-        assert await section("platform_banner").fetch(ctx(source="desktop")) == ""
+        assert await section("platform_banner").fetch(ctx(source=ConversationSource.DESKTOP)) == ""
 
-    @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
-    async def test_an_unknown_channel_is_silent_rather_than_guessed(
-        self, source: str | None
-    ) -> None:
-        assert await section("platform_banner").fetch(ctx(source=source)) == ""
+    async def test_a_context_with_no_channel_gets_no_banner(self) -> None:
+        assert await section("platform_banner").fetch(ctx(source=None)) == ""
 
     def test_only_comms_receives_it(self) -> None:
         """The worker tiers never address the user, so channel voice is not theirs to act on — and a section they do not need still costs a fetch."""
@@ -221,20 +224,20 @@ class TestExecutorPlatform:
     @pytest.mark.parametrize(
         ("source", "expected"),
         [
-            ("web", "The user is on Web."),
-            ("mobile", "The user is on Mobile."),
-            ("telegram", "The user is on Telegram."),
-            ("whatsapp", "The user is on WhatsApp."),
-            ("imessage", "The user is on iMessage."),
+            (ConversationSource.WEB, "The user is on Web."),
+            (ConversationSource.MOBILE, "The user is on Mobile."),
+            (ConversationSource.TELEGRAM, "The user is on Telegram."),
+            (ConversationSource.WHATSAPP, "The user is on WhatsApp."),
+            (ConversationSource.IMESSAGE, "The user is on iMessage."),
         ],
     )
-    async def test_it_names_the_platform(self, source: str, expected: str) -> None:
+    async def test_it_names_the_platform(self, source: ConversationSource, expected: str) -> None:
         rendered = await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source))
         assert rendered == expected
 
     async def test_desktop_also_names_its_tools(self) -> None:
         rendered = await section("executor_platform").fetch(
-            ctx(AgentTier.EXECUTOR, source="desktop")
+            ctx(AgentTier.EXECUTOR, source=ConversationSource.DESKTOP)
         )
 
         assert rendered == (
@@ -244,8 +247,10 @@ class TestExecutorPlatform:
             "what they are currently looking at."
         )
 
-    @pytest.mark.parametrize("source", [None, "", "workflow_system", "background", "nope"])
-    async def test_no_user_platform_states_nothing(self, source: str | None) -> None:
+    @pytest.mark.parametrize(
+        "source", [None, ConversationSource.WORKFLOW_SYSTEM, ConversationSource.BACKGROUND]
+    )
+    async def test_no_user_platform_states_nothing(self, source: ConversationSource | None) -> None:
         assert (
             await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source)) == ""
         )

@@ -38,7 +38,6 @@ apps/api/tests/integration/agents/test_executor_queue_roundtrip.py	arg-type
 apps/api/tests/integration/agents/test_graph_routing.py	attr-defined
 apps/api/tests/integration/agents/test_harness_completion.py	attr-defined
 apps/api/tests/integration/agents/test_lane_reaches_the_wire.py	arg-type
-apps/api/tests/integration/agents/test_llm_call_analytics.py	attr-defined
 apps/api/tests/integration/agents/test_tool_execution.py	attr-defined
 apps/api/tests/integration/api/test_integration_endpoints.py	arg-type
 apps/api/tests/integration/api/test_share_download_flow.py	unused-ignore
@@ -230,11 +229,6 @@ apps/api/tests/unit/services/browser/test_storage_persistence.py	list-item
 apps/api/tests/unit/services/browser/test_storage_persistence.py	return-value
 apps/api/tests/unit/services/composio/test_toolkit_enablement.py	arg-type
 apps/api/tests/unit/services/composio/test_wrap_tool_output_schema.py	arg-type
-apps/api/tests/unit/services/delivery/test_chat_channel.py	arg-type
-apps/api/tests/unit/services/delivery/test_chat_channel.py	attr-defined
-apps/api/tests/unit/services/delivery/test_chat_channel.py	dict-item
-apps/api/tests/unit/services/delivery/test_chat_channel.py	syntax
-apps/api/tests/unit/services/delivery/test_chat_channel.py	typeddict-item
 apps/api/tests/unit/services/delivery_alerts/test_alerting.py	attr-defined
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	arg-type
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	attr-defined

@@ -83,6 +83,8 @@ async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
     """
     user_id, user_name, user_dict = scope.user_id, scope.user_name, scope.user_dict
     conversation_id, source = scope.conversation_id, scope.source
+    if source is None:
+        raise ValueError("a comms turn needs the surface its reply is read on")
 
     # Static per-channel main prompt, byte-identical across users on this
     # channel so the provider's implicit prompt cache matches across users.

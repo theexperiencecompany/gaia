@@ -21,6 +21,7 @@ from app.agents.core.subagents.subagent_runner import (
     compose_executor_brief,
     prepare_executor_execution,
 )
+from app.constants.chat import ConversationSource
 from app.constants.memory import MemoryKind
 from app.db.redis import redis_cache
 from app.helpers.agent_helpers import AgentIdentity, AgentTurn, build_agent_config
@@ -121,7 +122,9 @@ async def _run_turn(stores: MemoryStores, request: str, task: str) -> str:
 
         await comms_turn_messages(
             query=request,
-            scope=MessageScope(user_id=user_id, conversation_id="conv-1"),
+            scope=MessageScope(
+                user_id=user_id, conversation_id="conv-1", source=ConversationSource.WEB
+            ),
         )
         comms_config = await build_agent_config(
             identity=AgentIdentity(
@@ -129,7 +132,7 @@ async def _run_turn(stores: MemoryStores, request: str, task: str) -> str:
                 user={"user_id": user_id, "email": "ada@example.com", "name": "Ada"},
                 agent_name="comms_agent",
             ),
-            turn=AgentTurn(user_request=request),
+            turn=AgentTurn(source=ConversationSource.WEB, user_request=request),
         )
         configurable: AgentConfigurable = {**agent_models.agent_configurable(comms_config)}
         brief = compose_executor_brief(task, ["done"], verbatim_request=request)

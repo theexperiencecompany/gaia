@@ -27,6 +27,7 @@ from app.agents.core.background.executor_runner import _ExecutorResult, run_exec
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.models.agent_config import RunSurfaceMissingError
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
@@ -48,6 +49,7 @@ def _sum(name: str, labels: dict[str, str]) -> float:
 def _configurable(stream_id: str) -> AgentConfigurable:
     return {
         "stream_id": stream_id,
+        "conversation_source": "web",
         "user_message_id": "umsg-1",
         "bot_message_id": "bmsg-1",
         "user_id": USER_ID,
@@ -381,15 +383,11 @@ class TestQueueWaitMeasurement:
         run = _run("qw-unstamped")
         assert er._queue_wait_ms(run, 1.0, {"conversation_source": "web"}, queued=False) is None
 
-    def test_missing_source_falls_back_to_unknown(self) -> None:
+    def test_a_run_with_no_surface_is_refused_not_labelled_unknown(self) -> None:
         run = _run("qw-unknown", t_dispatch_perf=0.0)
-        before = _count("executor_queue_wait_seconds", {"source": "unknown", "queued": "true"})
 
-        assert er._queue_wait_ms(run, 0.123456, {}, queued=True) == 123.46
-        assert (
-            _count("executor_queue_wait_seconds", {"source": "unknown", "queued": "true"})
-            == before + 1
-        )
+        with pytest.raises(RunSurfaceMissingError):
+            er._queue_wait_ms(run, 0.123456, {}, queued=True)
 
 
 class TestExecutorTtftMeasurement:
@@ -488,7 +486,9 @@ class TestBackgroundRunExactWiring:
         run = _run("exec-stopped")
         result = _ExecutorResult("so far", "final", stopped=stopped)
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.5], result=result):
-            await run_executor_background(run=run, task="the task", configurable={})
+            await run_executor_background(
+                run=run, task="the task", configurable={"conversation_source": "web"}
+            )
             finalize = cast(AsyncMock, er._finalize_executor_run)
 
         assert finalize.await_args.kwargs == {"stopped": stopped}
@@ -530,7 +530,9 @@ class TestBackgroundRunExactWiring:
             patch.object(eq, "hold_run_alive", _hold),
             patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         assert set(held) == {("conv-1", lock_value)}
         [beat] = beats_while_running
@@ -543,7 +545,9 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
             patch.object(er, "_executor_ttft_ms", ttft),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         ttft.assert_called_once_with(run, 1000.0)
 
@@ -561,7 +565,9 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.123456]),
             patch.object(er, "log", mock_log),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         assert _count("executor_ttft_seconds", {"queued": "true"}) == true_before + 1
         assert (
@@ -583,7 +589,9 @@ class TestBackgroundRunExactWiring:
         sum_before = _sum("executor_active_seconds", {"status": "success"})
 
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.123456]):
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         assert _count("executor_active_seconds", {"status": "success"}) == before + 1
         assert (
@@ -597,7 +605,9 @@ class TestBackgroundRunExactWiring:
         sum_before = _sum("executor_active_seconds", {"status": "cancelled"})
 
         with self._env(run, perf_values=[1000.0, 1000.0, 1000.123456], is_cancelled=True) as env:
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         env.is_cancelled.assert_awaited_once_with("exec-cancelled")
         assert _count("executor_active_seconds", {"status": "cancelled"}) == before + 1
@@ -622,7 +632,9 @@ class TestBackgroundRunExactWiring:
             self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
             patch.object(er, "_run_props", _probe),
         ):
-            await run_executor_background(run=run, task="t", configurable={"user_id": USER_ID})
+            await run_executor_background(
+                run=run, task="t", configurable={"user_id": USER_ID, "conversation_source": "web"}
+            )
 
         assert captured["ttft_ms"] is None
         assert captured["active_ms"] is None

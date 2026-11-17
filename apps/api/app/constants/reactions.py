@@ -319,5 +319,28 @@ REACTION_PALETTE_BY_SURFACE: Final[Mapping[ConversationSource, Mapping[str, str]
 
 # The prompt's example reaction for a thank-you: in every surface's palette.
 THANKS_REACTION_EMOJI: Final = "🙏"
-# U+FE0F asks for emoji presentation of the same character; Telegram lists its emoji without it.
-EMOJI_PRESENTATION_SELECTOR: Final = "️"
+# U+FE0F asks for emoji presentation of the same character; a model writes "❤️" for Telegram's "❤".
+_EMOJI_PRESENTATION_SELECTOR: Final = "️"
+
+
+def _bare(emoji: str) -> str:
+    return emoji.replace(_EMOJI_PRESENTATION_SELECTOR, "")
+
+
+# Each limited palette by the bare form of its emoji, so a reaction is stored as the palette spells it.
+_PALETTE_SPELLING: Final[Mapping[ConversationSource, Mapping[str, str]]] = MappingProxyType(
+    {
+        surface: MappingProxyType({_bare(emoji): emoji for emoji in palette})
+        for surface, palette in REACTION_PALETTE_BY_SURFACE.items()
+    }
+)
+
+
+def surface_reaction(surface: ConversationSource, emoji: str) -> str | None:
+    """Return emoji as the surface's palette spells it, emoji itself where no palette limits it; None when refused."""
+    if emoji in OFFENSIVE_REACTION_EMOJI:
+        return None
+    spelling = _PALETTE_SPELLING.get(surface)
+    if spelling is None:
+        return emoji
+    return spelling.get(_bare(emoji))

@@ -21,9 +21,10 @@ import pytest
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.middleware import accounting
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.chat import ConversationSource
 from app.core.lazy_loader import providers
-from app.db.repositories.llm_calls import LLMCallDocument
-from app.helpers.agent_helpers import AgentIdentity, build_agent_config
+from app.db.repositories.llm_calls import LLMCallDocument, llm_calls_repository
+from app.helpers.agent_helpers import AgentIdentity, AgentTurn, build_agent_config
 from app.services import llm_metering
 from app.services.cost_budget import BudgetCheck
 from shared.py.analytics.catalog.agents import AiLlmCallCompleted
@@ -79,7 +80,7 @@ async def _run_one_turn(posthog: MagicMock, ledger: AsyncMock) -> None:
             AsyncMock(return_value=BudgetCheck(None, None, None)),
         ),
         patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
-        patch.object(llm_metering.llm_calls_repository, "create", ledger),
+        patch.object(llm_calls_repository, "create", ledger),
     ):
         config = await build_agent_config(
             identity=AgentIdentity(
@@ -87,6 +88,7 @@ async def _run_one_turn(posthog: MagicMock, ledger: AsyncMock) -> None:
                 user={"user_id": user_id, "email": "t@example.com", "name": "T"},
                 agent_name="comms_agent",
             ),
+            turn=AgentTurn(source=ConversationSource.WEB),
         )
         fake_llm = BindableToolsFakeModel(responses=[_reply()])
         async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:

@@ -17,6 +17,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
+from app.constants.chat import ConversationSource
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
 from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
@@ -157,7 +158,7 @@ class AgentConfigurable(TypedDict, total=False):
     execution_mode: ExecutionMode
     #: The specific channel (``ConversationSource`` value) and its generalized
     #: category (``SourceCategory`` value).
-    conversation_source: str | None
+    conversation_source: str
     source_category: str
     #: The user's resolved plan tier, stamped by ``resolve_lane`` and inherited
     #: by children; the budget wall reads it to avoid a Redis lookup, and
@@ -242,7 +243,7 @@ class AgentConfigurableView(BaseModel):
     stream_id: str | None = None
     active_todo_id: str | None = None
     execution_mode: ExecutionMode | None = None
-    conversation_source: str | None = None
+    conversation_source: ConversationSource | None = None
     source_category: str | None = None
     plan_type: str | None = None
     workflow_id: str | None = None
@@ -251,6 +252,16 @@ class AgentConfigurableView(BaseModel):
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
     conversation_step: StepTurnRef | None = None
+
+    def surface(self) -> ConversationSource:
+        """Return the surface the run answers on; RunSurfaceMissingError when the bag names none."""
+        if self.conversation_source is None:
+            raise RunSurfaceMissingError("conversation_source not found in RunnableConfig")
+        return self.conversation_source
+
+
+class RunSurfaceMissingError(ValueError):
+    """Raised when a run config names no surface: build_agent_config always sets one, so it is a wiring bug."""
 
 
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:

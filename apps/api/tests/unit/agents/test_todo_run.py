@@ -27,6 +27,7 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversation_entries import EMPTY_LOG_STATE
 from app.models.conversation_log_models import (
@@ -40,6 +41,7 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkOutcome,
 )
+from app.models.delivery_models import ChatChannel
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation.outcome import EntryOutcome
@@ -110,6 +112,11 @@ class _Seams:
         return _done(self.task_ids[-1])
 
 
+DELIVERY = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
+
+
 @pytest.fixture
 def seams() -> Iterator[_Seams]:
     found = _Seams([])
@@ -122,6 +129,9 @@ def seams() -> Iterator[_Seams]:
         stack.enter_context(patch.object(todo_run, "runtime_ports", lambda: ports))
         stack.enter_context(patch.object(todo_run, "await_outcome", found.outcome))
         stack.enter_context(patch.object(todo_run, "finish_todo_run", found.finish))
+        stack.enter_context(
+            patch.object(todo_run, "resolve_proactive_target", AsyncMock(return_value=DELIVERY))
+        )
         stack.enter_context(
             patch.object(todo_run, "_todo_run_configurable", AsyncMock(return_value=configurable))
         )
@@ -390,7 +400,11 @@ class TestARunThatFinishedHandsItsResultOn:
 
         assert names == [todo_run.TODO_EXECUTOR_TASK_NAME]
         assert live_session == [True]
-        assert seams.wake.await_args.args == (REQUEST, seams.task_ids[-1])
+        # Resolved before the run, so the write-up's prompt and its send read one destination.
+        delivered = replace(
+            REQUEST, todo_run=REQUEST.todo_run.model_copy(update={"delivery": DELIVERY})
+        )
+        assert seams.wake.await_args.args == (delivered, seams.task_ids[-1])
         kwargs = run_executor.await_args.kwargs
         assert kwargs["task"] == REQUEST.task
         assert kwargs["configurable"] == {"user_id": "user-1", "stream_id": "s"}
@@ -406,7 +420,8 @@ class TestARunThatFinishedHandsItsResultOn:
         assert (conversation_id, user_id, woke) == ("run-conv", "user-1", WOKE)
         assert timeout == BACKGROUND_EXECUTOR_WAIT_TIMEOUT
         (finished,) = seams.finish.await_args.args
-        assert finished == _finished_run(REQUEST, task_id, _done(task_id))
+        assert finished == _finished_run(delivered, task_id, _done(task_id))
+        assert finished.delivery == DELIVERY
         handed.assert_not_awaited()
 
     async def test_a_run_delivery_could_not_finish_is_handed_to_a_job(self, seams: _Seams) -> None:

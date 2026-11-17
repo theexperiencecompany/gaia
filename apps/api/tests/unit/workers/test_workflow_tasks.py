@@ -29,6 +29,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
+from app.models.delivery_models import ChatChannel, InApp
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -47,7 +48,6 @@ from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, WorkflowStep
 from app.services.conversation.outcome import EntryOutcome
-from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
 from app.services.workflow.notifications import notify_workflow_result

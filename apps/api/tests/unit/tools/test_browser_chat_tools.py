@@ -75,7 +75,14 @@ def arq(
 
 
 def _turn(conversation_id: str = CONVERSATION, **extra: Any) -> RunnableConfig:
-    return {"configurable": {"thread_id": conversation_id, "user_id": USER, **extra}}
+    return {
+        "configurable": {
+            "thread_id": conversation_id,
+            "user_id": USER,
+            "conversation_source": "web",
+            **extra,
+        }
+    }
 
 
 async def _say(chat_tool: BaseTool, args: dict[str, Any], config: RunnableConfig) -> str:

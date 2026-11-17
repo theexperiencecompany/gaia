@@ -12,7 +12,7 @@ never from a replayed checkpoint. Only an approval resume continues the thread.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 from typing import cast
 from uuid import uuid4
@@ -39,6 +39,7 @@ from app.agents.core.background.todo_run_delivery import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT, EXECUTOR_BUSY_PREFIX
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -56,6 +57,7 @@ from app.services.conversation.log import accept
 from app.services.conversation.outcome import EntryOutcome, await_outcome
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.work_log import record_work_carried
+from app.services.delivery.chat_channel import resolve_proactive_target
 from app.utils.background_tasks import spawn_background_task
 from app.utils.errors import ConversationNotFoundError
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -102,6 +104,9 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
     task_id = str(uuid4())
     conversation_id = request.conversation_id
     user_id = request.user.user_id
+    # Resolved once, before the write-up: its prompt and its send both read this destination.
+    delivery = await resolve_proactive_target(user_id)
+    request = replace(request, todo_run=request.todo_run.model_copy(update={"delivery": delivery}))
     configurable = await _todo_run_configurable(request, stream_id)
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
@@ -207,6 +212,7 @@ def _finished_run(request: TodoRunRequest, task_id: str, outcome: EntryOutcome) 
         write_up=outcome.text,
         reply=outcome.settled.outcome,
         nothing_for_user=work.nothing_for_user,
+        delivery=run.delivery,
     )
 
 
@@ -241,6 +247,7 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
         turn=AgentTurn(
             active_todo_id=request.todo_run.todo_id,
             execution_mode="background",
+            source=ConversationSource.BACKGROUND,
             # The todo's own title authorizes its gated calls the way a live
             # turn's words would; the run brief is generated and never does.
             user_messages=background_authorization(

@@ -150,9 +150,6 @@ class TestSurfacesByRecency:
             (ConversationSource.SLACK, NOW - 9000),
         ]
 
-    def test_unknown_surfaces_are_skipped(self) -> None:
-        assert surfaces_by_recency(_snapshot(carrier_pigeon=NOW)) == []
-
 
 class TestPreviousSurface:
     def test_the_newest_other_surface_is_where_they_came_from(self) -> None:
@@ -189,7 +186,7 @@ class TestActiveSurface:
         assert active_surface(snapshot, NOW) is None
 
     def test_background_stamps_are_not_a_surface_the_user_is_on(self) -> None:
-        snapshot = _snapshot(carrier_pigeon=NOW, background=NOW, discord=NOW - 30)
+        snapshot = _snapshot(background=NOW, discord=NOW - 30)
 
         assert active_surface(snapshot, NOW) is ConversationSource.DISCORD
 

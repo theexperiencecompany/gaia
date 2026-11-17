@@ -1,6 +1,7 @@
 """Reminder task handlers for static reminders only."""
 
 from app.decorators.entitlements import capture_paywall_block, is_paid
+from app.models.delivery_models import ProactiveTarget
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -14,7 +15,7 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import TaskOutcome
 from app.services.analytics_service import capture
-from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
+from app.services.delivery.chat_channel import proactive_destination
 from app.services.notification_service import notification_service
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.reminders import ReminderCompleted

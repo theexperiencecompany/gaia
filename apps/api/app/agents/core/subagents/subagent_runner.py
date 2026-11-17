@@ -244,7 +244,7 @@ async def _executor_presence_note(
     return await presence_note_message(
         ctx.user_id,
         configurable.get("presence"),
-        ctx.source,
+        AgentConfigurableView.model_validate(configurable).surface(),
         ctx.execution_mode,
         # Comms voices the result and gets the first-turn note itself.
         opens_thread=False,

@@ -23,9 +23,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
+from app.models.delivery_models import InApp
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
-from app.services.delivery.chat_channel import InApp
 from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER

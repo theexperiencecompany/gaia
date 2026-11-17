@@ -192,7 +192,9 @@ class TestALivenessFailureIsAFailedRun:
             patch("app.services.analytics_service.capture") as capture,
             pytest.raises(ConnectionError),
         ):
-            await er.run_executor_background(run=run, task="do the thing", configurable={})
+            await er.run_executor_background(
+                run=run, task="do the thing", configurable={"conversation_source": "web"}
+            )
 
         assert [
             (type(c.args[1]), getattr(c.args[1], "reason", None)) for c in capture.call_args_list

@@ -23,5 +23,5 @@ def request_client_source(request: Request) -> ConversationSource:
     """
     # Any default naming no declared client reads as WEB, so its value cannot matter.
     client_type = request.headers.get(CLIENT_TYPE_HEADER, "").strip().lower()  # pragma: no mutate
-    declared = ConversationSource.coerce(client_type)
-    return declared if declared in _DECLARED_CLIENTS else ConversationSource.WEB
+    declared = next((c for c in _DECLARED_CLIENTS if c.value == client_type), None)
+    return declared or ConversationSource.WEB

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from app.constants.browser import BROWSER_STOP_REPORTS, BrowserStopOutcome, HandoffStatus
 from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.schemas.browser_job import BrowserJobState
 from app.services.browser.handoff import (
     get_handoff,
@@ -30,7 +30,7 @@ class ChatTurn:
 
     conversation_id: str
     user_id: str
-    source: ConversationSource | None
+    source: ConversationSource
 
     @property
     def reply_address(self) -> str:
@@ -72,7 +72,7 @@ def user_message_turn(configurable: AgentConfigurable) -> ChatTurn | None:
     return ChatTurn(
         conversation_id=conversation_id,
         user_id=user_id,
-        source=ConversationSource.coerce(configurable.get("conversation_source")),
+        source=AgentConfigurableView.model_validate(configurable).surface(),
     )
 
 

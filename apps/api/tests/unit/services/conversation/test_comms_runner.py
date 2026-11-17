@@ -18,6 +18,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import RunnableConfig
 from pydantic import PrivateAttr
 import pytest
 
@@ -373,7 +374,8 @@ async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_mo
 
 
 async def test_a_turn_ending_call_tells_the_next_turn_what_the_user_got() -> None:
-    assert await react.ainvoke({"emoji": "👍", "message_id": 1}) == "Reacted 👍."
+    web: RunnableConfig = {"configurable": {"conversation_source": ConversationSource.WEB.value}}
+    assert await react.ainvoke({"emoji": "👍", "message_id": 1}, web) == "Reacted 👍."
     assert await stay_silent.ainvoke({"reason": "a routine check", "message_ids": [1]}) == (
         "Sent nothing."
     )

@@ -6,7 +6,7 @@ from inspect import iscoroutinefunction
 import math
 import re
 from types import SimpleNamespace
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, ClassVar, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import fakeredis
@@ -2740,11 +2740,15 @@ class TestAfterTools:
             ]
         )
 
+    _WEB: ClassVar[RunnableConfig] = {
+        "configurable": {"conversation_source": ConversationSource.WEB.value}
+    }
+
     def test_a_turn_ending_call_that_went_through_ends_the_turn(self) -> None:
-        assert self.route(self._reacted("👍", "success"), {}) == "end_turn"
+        assert self.route(self._reacted("👍", "success"), self._WEB) == "end_turn"
 
     def test_a_turn_ending_call_that_failed_goes_back_to_the_model(self) -> None:
-        assert self.route(self._reacted("👍", "error"), {}) == "agent"
+        assert self.route(self._reacted("👍", "error"), self._WEB) == "agent"
 
     def test_a_reaction_the_runs_surface_refuses_goes_back_to_the_model(self) -> None:
         telegram: RunnableConfig = {

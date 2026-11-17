@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.agents.context.tiers import AgentTier
-from app.models.agent_models import AgentConfigurable
+from app.models.agent_models import AgentConfigurable, AgentConfigurableView
+from app.models.chat_models import ConversationSource
 from app.models.user_models import OnboardingSubdocument
 
 ExecutionMode = Literal["interactive", "background"]
@@ -63,7 +64,7 @@ class SectionContext:
     execution_mode: ExecutionMode = "interactive"
     #: Conversation channel. Read by the comms platform banner, which names the
     #: messaging app so replies read native to it.
-    source: str | None = None
+    source: ConversationSource | None = None
 
     @classmethod
     def from_configurable(
@@ -95,5 +96,5 @@ class SectionContext:
             vfs_session_id=configurable.get("vfs_session_id"),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode="background" if mode == "background" else "interactive",
-            source=configurable.get("conversation_source"),
+            source=AgentConfigurableView.model_validate(configurable).conversation_source,
         )

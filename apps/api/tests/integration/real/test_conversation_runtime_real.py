@@ -126,6 +126,7 @@ from app.models.conversation_screen_models import (
     WorkStatus,
 )
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.delivery_models import ChatChannel
 from app.models.hil_models import ApprovalProposal
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
@@ -204,7 +205,6 @@ from app.services.conversation.work_log import (
     work_of_run,
 )
 from app.services.conversation_stop_service import press_stop
-from app.services.delivery.chat_channel import ChatChannel
 from app.services.hil import jev_client, ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
 from app.services.notification_service import notification_service

@@ -127,7 +127,7 @@ def _openui_close(text: str, start: int) -> int:
     return -1
 
 
-def _openui_ranges(text: str) -> list[tuple[int, int]]:
+def openui_ranges(text: str) -> list[tuple[int, int]]:
     """Return the [start, end) of every :::openui block; an unclosed one runs to the end."""
     ranges: list[tuple[int, int]] = []
     start = text.find(_OPENUI_OPEN)
@@ -151,7 +151,7 @@ def split_message_bubbles(text: str) -> list[str]:
     """
     if not text:
         return []
-    fenced = [*_code_fence_ranges(text), *_openui_ranges(text)]
+    fenced = [*_code_fence_ranges(text), *openui_ranges(text)]
     pieces: list[str] = []
     piece = ""
     cursor = 0  # pragma: no mutate — text[None:] is text[0:]

@@ -25,6 +25,7 @@ from app.constants.log_tags import LogTag
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import TodoRun
+from app.models.delivery_models import ChatChannel, InApp, ProactiveTarget
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRecord,
@@ -36,7 +37,6 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from app.utils import auth_utils
@@ -112,6 +112,9 @@ def _seams(
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "notify", seams.in_app),
+        patch.object(
+            trd, "resolve_proactive_target", AsyncMock(side_effect=lambda _user: target())
+        ),
     ):
         yield seams
 
@@ -157,6 +160,7 @@ async def deliver(
         write_up=seams.write_up if reply is ReplyOutcome.ANSWERED else "",
         reply=reply,
         nothing_for_user=nothing_for_user,
+        delivery=run.delivery,
     )
     if (undone := await finish_todo_run(finished)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -429,6 +433,23 @@ class TestTheEventSaysWhereTheResultWasRouted:
                 destination_basis="recent_activity",
             ),
         )
+
+    async def test_a_write_up_goes_where_its_wake_resolved_as_plain_text_without_a_second_lookup(
+        self,
+    ) -> None:
+        stored = ChatChannel(
+            source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+        )
+        write_up = "Deploy failed.\n:::openui\nroot = Card([])\n:::\nRetry at 5."
+        with _seams(todo=_todo(), write_up=write_up, sent_on=ConversationSource.TELEGRAM) as seams:
+            seams.target.return_value = InApp(reason="active_in_app")
+            await deliver(seams, SCHEDULED.model_copy(update={"delivery": stored}), "report")
+
+        request: NotificationRequest = seams.send.await_args.args[0]
+        assert [c.channel_type for c in request.channels] == ["inapp", "telegram"]
+        assert request.message == "Deploy failed.\n\nRetry at 5."
+        # A second lookup would have answered "active_in_app".
+        assert seams.event().destination_basis == "recent_activity"
 
     async def test_a_result_kept_in_the_app_for_an_active_user_says_so(self) -> None:
         with _seams(todo=_todo()) as seams:

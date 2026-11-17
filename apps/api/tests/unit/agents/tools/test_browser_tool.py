@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool
+from pydantic import ValidationError
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -57,6 +58,7 @@ async def _start(args: dict[str, Any], config: RunnableConfig) -> str:
 UI_CONFIG: RunnableConfig = {
     "configurable": {
         "user_id": "u1",
+        "conversation_source": "web",
         "conversation_id": "c1",
         "stream_id": "s1",
         "source_category": "ui",
@@ -67,6 +69,7 @@ UI_CONFIG: RunnableConfig = {
 HEADLESS_CONFIG: RunnableConfig = {
     "configurable": {
         "user_id": "u1",
+        "conversation_source": "web",
         "conversation_id": "c1",
         "stream_id": "s1",
         "execution_mode": "background",
@@ -346,6 +349,7 @@ async def test_conversation_id_prefers_the_user_facing_conversation(
     config: RunnableConfig = {
         "configurable": {
             "user_id": "u1",
+            "conversation_source": "web",
             "conversation_id": "conv-9",
             "thread_id": "executor_conv-9",
         }
@@ -358,25 +362,26 @@ async def test_conversation_id_prefers_the_user_facing_conversation(
 
 async def test_conversation_id_falls_back_to_thread_id(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = _install(monkeypatch)
-    config: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "t-7"}}
+    config: RunnableConfig = {
+        "configurable": {"user_id": "u1", "thread_id": "t-7", "conversation_source": "web"}
+    }
 
     await _start({"task": "x"}, config=config)
 
     assert recorder.request.conversation_id == "t-7"
 
 
-async def test_an_unknown_conversation_source_is_dropped_rather_than_carried(
+async def test_an_unknown_conversation_source_is_refused_rather_than_carried(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The worker compares the source against the platforms it can deliver to; an unparsed string would be a platform nobody can send on."""
-    recorder = _install(monkeypatch)
+    """The worker delivers to the run's platform, so a surface it cannot parse fails the call instead of reaching it."""
+    _install(monkeypatch)
     config: RunnableConfig = {
         "configurable": {"user_id": "u1", "thread_id": "c1", "conversation_source": "carrier-dove"}
     }
 
-    await _start({"task": "x"}, config=config)
-
-    assert recorder.request.conversation_source is None
+    with pytest.raises(ValidationError, match="carrier-dove"):
+        await _start({"task": "x"}, config=config)
 
 
 async def test_missing_identifiers_degrade_to_blank_and_none(
@@ -384,7 +389,7 @@ async def test_missing_identifiers_degrade_to_blank_and_none(
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await _start({"task": "x"}, config={"configurable": {}})
+    await _start({"task": "x"}, config={"configurable": {"conversation_source": "web"}})
 
     request = recorder.request
     assert request.user_id == ""
@@ -393,16 +398,15 @@ async def test_missing_identifiers_degrade_to_blank_and_none(
     assert request.root_request_id is None
 
 
-async def test_a_config_with_no_configurable_key_still_degrades_cleanly(
+async def test_a_config_with_no_configurable_key_is_refused_for_naming_no_surface(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Use the raw coroutine, not ainvoke, because LangChain's ensure_config always injects configurable; without the empty-dict fallback the next line raises AttributeError on None."""
-    recorder = _install(monkeypatch)
+    """Use the raw coroutine, not ainvoke, because LangChain's ensure_config always injects configurable."""
+    _install(monkeypatch)
 
     assert isinstance(browser_task, StructuredTool) and browser_task.coroutine is not None
-    await browser_task.coroutine(config={}, tool_call_id=TOOL_CALL_ID, task="x")
-
-    assert recorder.request.user_id == ""
+    with pytest.raises(ValidationError, match="conversation_source"):
+        await browser_task.coroutine(config={}, tool_call_id=TOOL_CALL_ID, task="x")
 
 
 async def test_each_call_describes_its_own_job(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -683,6 +687,7 @@ async def test_the_job_runs_the_executors_task_never_the_users_raw_message(
     config: RunnableConfig = {
         "configurable": {
             "user_id": "u1",
+            "conversation_source": "web",
             "conversation_id": "conv-9",
             "user_request": "log into my bank, my password is hunter2",
         }
@@ -714,6 +719,9 @@ async def test_a_headless_run_with_no_stream_follows_the_feed_without_showing_it
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await _start({"task": "x"}, config={"configurable": {"user_id": "u1", "thread_id": "c9"}})
+    await _start(
+        {"task": "x"},
+        config={"configurable": {"user_id": "u1", "thread_id": "c9", "conversation_source": "web"}},
+    )
 
     assert recorder.followed == [(recorder.request.job_id, "c9", False)]

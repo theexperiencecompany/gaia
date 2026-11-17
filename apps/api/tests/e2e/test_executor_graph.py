@@ -398,7 +398,7 @@ class _SlowToWrapUp(StreamingScriptedModel):
 
 async def _run_through_the_runner(model: StreamingScriptedModel) -> _ExecutorResult:
     """Run the real executor runner and stream driver over the real graph; only its preparation is doubled."""
-    configurable = {"thread_id": "desk-run", "user_id": "u-1"}
+    configurable = {"thread_id": "desk-run", "user_id": "u-1", "conversation_source": "web"}
     run = ExecutorRun(
         stream_id="desk-stream",
         conversation_id="desk-run",

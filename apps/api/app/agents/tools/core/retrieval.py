@@ -1469,13 +1469,13 @@ def get_retrieve_tools_function(
 
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
-        conversation_source = ConversationSource.coerce(configurable.get("conversation_source"))
+        conversation_source = configurable.get("conversation_source")
         scope = _RetrievalScope(
             user_id=user_id,
             tool_space=tool_space,
             include_subagents=include_subagents,
             include_desktop=(
-                conversation_source is ConversationSource.DESKTOP and tool_space == "general"
+                conversation_source == ConversationSource.DESKTOP and tool_space == "general"
             ),
             # No user is present to connect anything, so an unconnected integration is reported.
             background=configurable.get("execution_mode") == "background",

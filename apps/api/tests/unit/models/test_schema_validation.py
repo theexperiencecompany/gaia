@@ -409,43 +409,20 @@ class TestMemoryModels:
             CreateMemoryRequest()
 
 
-class TestConversationSourceCoerce:
-    """ConversationSource.coerce parses raw values into the enum (or None)."""
-
-    @pytest.mark.parametrize(
-        "raw,expected",
-        [
-            ("whatsapp", ConversationSource.WHATSAPP),
-            ("web", ConversationSource.WEB),
-            ("background", ConversationSource.BACKGROUND),
-            (ConversationSource.SLACK, ConversationSource.SLACK),
-        ],
-    )
-    def test_valid_values_coerce_to_enum(self, raw, expected):
-        assert ConversationSource.coerce(raw) is expected
-
-    @pytest.mark.parametrize("raw", [None, "", "nonsense", "gmail"])
-    def test_invalid_values_return_none(self, raw):
-        assert ConversationSource.coerce(raw) is None
-
-
 class TestSourceCategoryFromSource:
     """SourceCategory.from_source maps a specific channel to its category."""
 
     @pytest.mark.parametrize(
         "source,category",
         [
-            ("web", SourceCategory.UI),
-            ("mobile", SourceCategory.UI),
-            ("whatsapp", SourceCategory.BOT),
-            ("telegram", SourceCategory.BOT),
-            ("discord", SourceCategory.BOT),
-            ("slack", SourceCategory.BOT),
+            (ConversationSource.WEB, SourceCategory.UI),
+            (ConversationSource.MOBILE, SourceCategory.UI),
             (ConversationSource.WHATSAPP, SourceCategory.BOT),
-            ("workflow_system", SourceCategory.BG),
-            ("background", SourceCategory.BG),
-            (None, SourceCategory.BG),
-            ("nonsense", SourceCategory.BG),
+            (ConversationSource.TELEGRAM, SourceCategory.BOT),
+            (ConversationSource.DISCORD, SourceCategory.BOT),
+            (ConversationSource.SLACK, SourceCategory.BOT),
+            (ConversationSource.WORKFLOW_SYSTEM, SourceCategory.BG),
+            (ConversationSource.BACKGROUND, SourceCategory.BG),
         ],
     )
     def test_category_mapping(self, source, category):

@@ -128,7 +128,7 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
     log.set(
         dynamic_context={
             "tier": ctx.tier.value,
-            "source": ctx.source or "web",
+            "source": ctx.source,
             "has_core_memory": bool(rendered.get(SectionId.CORE_MEMORY)),
             "has_memories": bool(rendered.get(SectionId.MEMORY_RECALL)),
             "has_gaia_knowledge": bool(rendered.get(SectionId.GAIA_KNOWLEDGE)),

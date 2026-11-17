@@ -9,10 +9,10 @@ from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
     EXECUTOR_PROMPT_TEMPLATE,
-    _text_only_addendum,
     get_comms_static_prompt,
     get_executor_prompt,
 )
+from app.agents.templates.format_policy import _text_only_addendum
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 
 OPENUI_MARKER = "## Output Format (this app renders rich components)"

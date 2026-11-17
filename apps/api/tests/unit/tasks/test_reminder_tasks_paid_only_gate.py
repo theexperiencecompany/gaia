@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.decorators import entitlements
+from app.models.delivery_models import InApp
 from app.models.payment_models import PlanType
 from app.models.reminder_models import ReminderModel, ReminderStatus, StaticReminderPayload
-from app.services.delivery.chat_channel import InApp
 from app.services.reminder_service import reminder_scheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER, execute_reminder_by_agent
 from app.utils.notification.orchestrator import Notified

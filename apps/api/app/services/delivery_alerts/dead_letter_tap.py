@@ -19,7 +19,6 @@ from aio_pika.abc import AbstractIncomingMessage, AbstractRobustConnection
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config.settings import settings
-from app.constants.chat import ConversationSource
 from app.constants.delivery_alerts import (
     DEAD_LETTER_REASON_REJECTED,
     DEAD_LETTER_TAP_CTX_KEY,
@@ -31,7 +30,6 @@ from app.constants.delivery_alerts import (
 )
 from app.constants.outbound import (
     OUTBOUND_DLX,
-    OUTBOUND_QUEUE_PREFIX,
     OUTBOUND_QUEUES,
     RABBITMQ_CONNECT_TIMEOUT_SECONDS,
     RABBITMQ_HEARTBEAT_SECONDS,
@@ -90,8 +88,8 @@ def dead_letter_failure(headers: Mapping[str, object], body: bytes) -> DeliveryF
     if death.reason == DEAD_LETTER_REASON_REJECTED:
         return None
 
-    platform = ConversationSource.coerce(death.queue.removeprefix(OUTBOUND_QUEUE_PREFIX))
-    if platform is None or OUTBOUND_QUEUES.get(platform) != death.queue:
+    platform = next((p for p, queue in OUTBOUND_QUEUES.items() if queue == death.queue), None)
+    if platform is None:
         raise ValueError(f"dead-lettered from {death.queue!r}, which is not an outbound work queue")
 
     envelope = _envelope_routing(body)
