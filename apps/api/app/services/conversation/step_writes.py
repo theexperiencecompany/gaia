@@ -196,18 +196,6 @@ async def _answers_and_quote(
     return answers, quote_in(answers, reply_seq, known)
 
 
-async def quoted_target(
-    ports: RuntimePorts,
-    claim: StepClaim,
-    answers: tuple[str, ...],
-    first: LoggedEntry,
-    reply_seq: int,
-) -> str | None:
-    """Return what the reply quotes of the entries from first, the oldest input it answers."""
-    after = await ports.log.read_after(claim.conversation_id, claim.user_id, first.seq)
-    return quote_in(answers, reply_seq, [first, *after])
-
-
 async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> LoggedEntry:
     """Store the segment's final reply; once it is shown, clients are carried to the stored text."""
     if not isinstance(attempt.progress, Showing):

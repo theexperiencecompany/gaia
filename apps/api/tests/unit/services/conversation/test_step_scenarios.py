@@ -32,11 +32,13 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.message_models import MessageDict
 from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     Answered,
+    ApprovalAnswer,
     CancelReason,
     EntryRejected,
     Finished,
@@ -897,6 +899,42 @@ class StepScenarios:
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
         assert [item.pending_approvals for item in state.work] == [()]
+        await assert_quiet(rt)
+
+    async def test_a_typed_answer_behind_another_message_is_read_as_a_decision_not_run(
+        self, rt: Runtime, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await start_work(rt)
+        await send(rt, asked("ask", "t1", "ap1"))
+        rt.approvals.decision = "approve"
+        resolve = rt.approvals.resolve
+
+        async def only_a_yes(
+            conversation_id: str, user_id: str, text: str, history: list[MessageDict]
+        ) -> ApprovalAnswer | None:
+            if not text.startswith("yes"):
+                return None
+            return await resolve(conversation_id, user_id, text, history)
+
+        monkeypatch.setattr(rt.approvals, "resolve", only_a_yes)
+        question = UserMessage(
+            id="u5", text="what's the weather", surface=ConversationSource.TELEGRAM
+        )
+        rt.runner.script([Finished(Replied("sunny"))])
+        await send(rt, question, bot_user("u6"))
+        await run(rt)
+        [asked_seq] = [item.seq for item in await rt.entries() if item.entry.id == "u5"]
+        assert [call.batch for call in rt.runner.calls if isinstance(call, Started)] == [
+            (asked_seq,)
+        ]
+        decided = [
+            item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
+        ]
+        assert [(item.approval_id, item.outcome) for item in decided] == [("ap1", "approved")]
+        assert (await answered(rt))[-2:] == [
+            (ReplyOutcome.ANSWERED, ("u5",)),
+            (ReplyOutcome.ANSWERED, ("u6",)),
+        ]
         await assert_quiet(rt)
 
     async def test_a_yes_with_a_change_settles_silent_so_the_re_ask_is_the_reply(
