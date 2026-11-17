@@ -2,17 +2,21 @@
 
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.users import user_repository
-from app.models.short_link_models import LinkSnapshot, PublicOpenUIArtifact, ShortLinkTargetType
+from app.models.short_link_models import (
+    LinkSnapshot,
+    LinkViewerKind,
+    PublicOpenUIArtifact,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
 
-async def _project(
-    owner_id: str, target_id: str, _snapshot: LinkSnapshot | None
-) -> PublicOpenUIArtifact | None:
-    artifact = await openui_artifact_repository.get(target_id, user_id=owner_id)
+async def _project(link: ShortLink, _viewer: LinkViewerKind) -> PublicOpenUIArtifact | None:
+    artifact = await openui_artifact_repository.get(link.target_id, user_id=link.user_id)
     if artifact is None:
         return None
-    owner = await user_repository.get(owner_id)
+    owner = await user_repository.get(link.user_id)
     return PublicOpenUIArtifact(
         target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
         kind=artifact.kind,

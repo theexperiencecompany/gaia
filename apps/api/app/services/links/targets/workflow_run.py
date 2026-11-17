@@ -2,13 +2,17 @@
 
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.short_link_models import LinkSnapshot, PublicWorkflowRun, ShortLinkTargetType
+from app.models.short_link_models import (
+    LinkSnapshot,
+    LinkViewerKind,
+    PublicWorkflowRun,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
 
-async def _project(
-    owner_id: str, target_id: str, _snapshot: LinkSnapshot | None
-) -> PublicWorkflowRun | None:
+async def _run(owner_id: str, target_id: str) -> PublicWorkflowRun | None:
     execution = await workflow_executions_repository.get_for_user(target_id, owner_id)
     if execution is None:
         return None
@@ -25,10 +29,14 @@ async def _project(
     )
 
 
+async def _project(link: ShortLink, _viewer: LinkViewerKind) -> PublicWorkflowRun | None:
+    return await _run(link.user_id, link.target_id)
+
+
 async def _preview(
-    owner_id: str, target_id: str, snapshot: LinkSnapshot | None
+    owner_id: str, target_id: str, _snapshot: LinkSnapshot | None
 ) -> PreviewFacts | None:
-    run = await _project(owner_id, target_id, snapshot)
+    run = await _run(owner_id, target_id)
     return PreviewFacts(title=run.workflow_title, image_url=None) if run else None
 
 

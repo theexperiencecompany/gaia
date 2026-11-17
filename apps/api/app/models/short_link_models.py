@@ -188,6 +188,8 @@ class ShortLink(UserScopedDocument):
     snapshot: LinkSnapshot | None = None
     #: Reports crossed the threshold; the link shows "removed" until an admin restores it.
     suspended: bool = False
+    #: GAIA attached it (the owner has not set it themselves), so a brief carrying it moves its access.
+    gaia_attached: bool = False
 
 
 class ShortLinkUpdate(BaseModel):
@@ -204,6 +206,7 @@ class ShortLinkUpdate(BaseModel):
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     suspended: bool | None = None
+    gaia_attached: bool | None = None
 
 
 class _PublicView(BaseModel):

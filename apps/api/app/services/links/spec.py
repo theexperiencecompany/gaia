@@ -10,7 +10,9 @@ from dataclasses import dataclass
 
 from app.models.short_link_models import (
     LinkSnapshot,
+    LinkViewerKind,
     PublicShortLinkView,
+    ShortLink,
     ShortLinkTargetType,
 )
 
@@ -36,23 +38,21 @@ class PreviewFacts:
     image_url: str | None
 
 
-Projector = Callable[[str, str, LinkSnapshot | None], Awaitable[PublicShortLinkView | None]]
+Projector = Callable[[ShortLink, LinkViewerKind], Awaitable[PublicShortLinkView | None]]
 Previewer = Callable[[str, str, LinkSnapshot | None], Awaitable[PreviewFacts | None]]
 SourceReader = Callable[[str, str], Awaitable[SnapshotSource | None]]
 ConversationTargets = Callable[[str, str], Awaitable[list[str]]]
+CarriedTargets = Callable[[str, str], Awaitable[list[tuple[ShortLinkTargetType, str]]]]
 
 
 @dataclass(frozen=True, slots=True)
 class LinkTargetSpec:
     """One target type's view, preview and (for files) snapshot source.
 
-    Every reader takes (owner_id, target_id) and reads under the link's owner,
-    never a viewer; None means the owner has no such target. project is the
-    only mapping from a stored document to what a recipient sees. source is set
-    for types whose link serves bytes: those are published as a snapshot when
-    the link is minted, and project then reads the snapshot, never the live file;
-    the snapshot it gets has no content_id when the link may not serve its bytes.
-    in_conversation, for types a deleted chat takes with it, takes (owner_id, conversation_id).
+    Readers read under the link's owner, never a viewer; None means the owner has
+    no such target. project maps the link as served (its snapshot without a
+    content_id when it may not serve the bytes) to what this viewer sees. source
+    publishes a file type's bytes at mint. in_conversation and carries take (owner_id, id).
     """
 
     type: ShortLinkTargetType
@@ -63,6 +63,8 @@ class LinkTargetSpec:
     source: SourceReader | None = None
     #: The ids of this type's targets inside one conversation.
     in_conversation: ConversationTargets | None = None
+    #: The targets this one links to (a brief's items), whose GAIA-attached links follow its access.
+    carries: CarriedTargets | None = None
 
 
 def build_registry(

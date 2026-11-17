@@ -52,6 +52,7 @@ from app.services.links.content import (
 )
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
 from app.services.links.registry import REGISTRY
+from app.services.links.urls import build_url
 from app.utils.errors import AppError
 from app.utils.log_identifiers import hash_link_viewer, hash_short_link_slug
 from shared.py.analytics import Dedupe, UserId
@@ -96,10 +97,6 @@ _MINT_ERRORS = (PyMongoError, ShortLinkExhaustedError)
 
 def _random_slug() -> str:
     return "".join(secrets.choice(SLUG_ALPHABET) for _ in range(SLUG_LENGTH))
-
-
-def build_url(slug: str) -> str:
-    return f"{settings.SHORTLINK_BASE_URL}/{slug}"
 
 
 def link_response(link: ShortLink) -> ShortLinkResponse:
@@ -152,7 +149,7 @@ async def _snapshot_for(
     """Publish the target's bytes when its type serves any; raise when the owner has no such target."""
     spec = REGISTRY[target_type]
     if spec.source is None:
-        if await spec.project(user_id, target_id, None) is None:
+        if await spec.preview(user_id, target_id, None) is None:
             raise LinkTargetNotFoundError()
         return None
     source = await spec.source(user_id, target_id)
@@ -232,6 +229,7 @@ async def share(
         grantee_ids=grantee_ids,
         expires_at=link_settings.expires_at,
         snapshot=snapshot,
+        gaia_attached=gaia_attached,
     )
     try:
         minted = await _insert(candidate)
@@ -320,6 +318,29 @@ async def attach_link(
         return None
 
 
+def _access_of(link: ShortLink) -> ShortLinkUpdate:
+    return ShortLinkUpdate(access=link.access, grantees=link.grantees, grantee_ids=link.grantee_ids)
+
+
+_OWNER_ONLY = ShortLinkUpdate(access=LinkAccess.OWNER, grantees=[], grantee_ids=[])
+
+
+async def _carry_access(parent: ShortLink, follow: ShortLinkUpdate) -> None:
+    """Give the GAIA-attached links of the targets parent carries (a brief's items) follow's access.
+
+    A link the owner set themselves keeps its own settings.
+    """
+    carries = REGISTRY[parent.target_type].carries
+    if carries is None:
+        return
+    for target_type, target_id in await carries(parent.user_id, parent.target_id):
+        child = await short_link_repository.get_live_for_target(
+            parent.user_id, target_type, target_id
+        )
+        if child is not None and child.gaia_attached:
+            await short_link_repository.update_live(parent.user_id, child.slug, follow)
+
+
 async def _owned_live(user_id: str, slug: str) -> ShortLink:
     link = await short_link_repository.get_by_slug(slug)
     if link is None or link.user_id != user_id or dead_state(link, _now()) is not None:
@@ -343,9 +364,12 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
     if "grantees" in change.model_fields_set:
         update.grantees = [str(email) for email in change.grantees or []]
         update.grantee_ids = await _grantee_ids(update.grantees)
+    # The owner set it themselves: a brief it rides on no longer moves it.
+    update.gaia_attached = False
     updated = await short_link_repository.update_live(user_id, slug, update)
     if updated is None:
         raise LinkTargetNotFoundError(message="Link not found")
+    await _carry_access(updated, _access_of(updated))
     if updated.access != link.access or updated.grantees != link.grantees:
         capture(
             UserId(user_id),
@@ -405,6 +429,7 @@ async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id
     revoked = await short_link_repository.revoke(user_id, live.slug, RevokeReason.OWNER)
     if revoked is None:
         return False
+    await _carry_access(live, _OWNER_ONLY)
     await _release_snapshot(user_id, live.snapshot)
     log.set(short_link={"slug_hash": hash_short_link_slug(live.slug)})
     capture(
@@ -505,7 +530,7 @@ async def _decide(link: ShortLink | None, viewer: LinkViewer) -> _GrantedView | 
     if isinstance(decision, Denied):
         return decision.denial
     served = _served(link)
-    view = await REGISTRY[link.target_type].project(link.user_id, link.target_id, served.snapshot)
+    view = await REGISTRY[link.target_type].project(served, decision.viewer_kind)
     if view is None:
         return LinkDenial.TARGET_DELETED
     return _GrantedView(served, decision.viewer_kind, view)

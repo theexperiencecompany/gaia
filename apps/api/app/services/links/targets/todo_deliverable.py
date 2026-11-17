@@ -1,15 +1,19 @@
 """A tracked todo's deliverable: its title and the deliverable facet of its canvas."""
 
 from app.db.repositories.todos import todo_repository
-from app.models.short_link_models import LinkSnapshot, PublicTodoDeliverable, ShortLinkTargetType
+from app.models.short_link_models import (
+    LinkSnapshot,
+    LinkViewerKind,
+    PublicTodoDeliverable,
+    ShortLink,
+    ShortLinkTargetType,
+)
 from app.services.canvas_markdown import deliverable_markdown
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
 
-async def _project(
-    owner_id: str, target_id: str, _snapshot: LinkSnapshot | None
-) -> PublicTodoDeliverable | None:
-    todo = await todo_repository.get(target_id, user_id=owner_id)
+async def _project(link: ShortLink, _viewer: LinkViewerKind) -> PublicTodoDeliverable | None:
+    todo = await todo_repository.get(link.target_id, user_id=link.user_id)
     if todo is None:
         return None
     return PublicTodoDeliverable(

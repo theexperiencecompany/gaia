@@ -31,7 +31,7 @@ from app.services.analytics_service import capture
 from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.services.links.content import delete_snapshot
-from app.services.links.service import build_url
+from app.services.links.urls import build_url
 from app.services.support_service import SUPPORT_EMAILS
 from app.utils.errors import AppError
 from app.utils.log_identifiers import hash_short_link_slug

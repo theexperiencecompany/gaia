@@ -29,8 +29,8 @@ from app.services.links.content import (
     servable,
     token_valid,
 )
-from app.services.links.service import build_url
 from app.services.links.serving import snapshot_response, thumbnail_response
+from app.services.links.urls import build_url
 from app.utils.errors import AppError
 from app.utils.loggable_path import LINK_CONTENT_ROUTE_PREFIX
 from shared.py.wide_events import log

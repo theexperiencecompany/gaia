@@ -13,7 +13,7 @@ import re
 
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import ShortLinkTargetType
-from app.services.links.service import build_url
+from app.services.links.urls import build_url
 
 PLACEHOLDER_PREFIX = "gaia-link:"
 #: How a tool result tells the model to use a placeholder.

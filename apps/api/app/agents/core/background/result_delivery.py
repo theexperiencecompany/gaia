@@ -67,7 +67,8 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
-from app.services.links.service import attach_link, build_url
+from app.services.links.service import attach_link
+from app.services.links.urls import build_url
 from app.services.platform_message_service import (
     deliver_message_to_platform,
     deliver_reaction_to_platform,

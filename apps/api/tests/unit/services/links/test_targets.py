@@ -6,6 +6,8 @@ bubbles) and asserts they are absent from the serialized public response.
 Repositories are mocked at the seam; the projection logic is real.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -23,7 +25,9 @@ from app.models.briefing_models import (
 )
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
+    LinkAccess,
     LinkSnapshot,
+    LinkViewerKind,
     PublicBriefing,
     PublicBriefingEvent,
     PublicBriefingItem,
@@ -34,6 +38,7 @@ from app.models.short_link_models import (
     PublicTodoDeliverable,
     PublicWorkflowRun,
     RenderMode,
+    ShortLink,
     ShortLinkTargetType,
 )
 from app.models.todo_models import TodoDocument
@@ -50,8 +55,30 @@ PRIVATE_THREAD = "thread-18c2f9a"
 SESSION = ShortLinkTargetType.SESSION_ARTIFACT
 
 
-async def _project(target_type: ShortLinkTargetType, owner_id: str, target_id: str) -> object:
-    return await REGISTRY[target_type].project(owner_id, target_id, None)
+def _link(
+    target_type: ShortLinkTargetType,
+    owner_id: str,
+    target_id: str,
+    snapshot: LinkSnapshot | None = None,
+    access: LinkAccess = LinkAccess.UNLISTED,
+) -> ShortLink:
+    return ShortLink(
+        slug="abcdefghijk",
+        user_id=owner_id,
+        target_type=target_type,
+        target_id=target_id,
+        snapshot=snapshot,
+        access=access,
+    )
+
+
+async def _project(
+    target_type: ShortLinkTargetType,
+    owner_id: str,
+    target_id: str,
+    viewer: LinkViewerKind = LinkViewerKind.RECIPIENT,
+) -> object:
+    return await REGISTRY[target_type].project(_link(target_type, owner_id, target_id), viewer)
 
 
 CANVAS = (
@@ -102,6 +129,119 @@ class TestTodoDeliverable:
             assert await _project(ShortLinkTargetType.TODO_DELIVERABLE, "x", "t1") is None
 
 
+@contextmanager
+def _item_links(live: dict[str, LinkAccess]) -> Iterator[AsyncMock]:
+    """Give each named deliverable a live link at its access, slug live<n> in order; any other has none."""
+
+    async def read(
+        owner_id: str, target_type: ShortLinkTargetType, target_id: str
+    ) -> ShortLink | None:
+        if target_id not in live:
+            return None
+        return ShortLink(
+            slug=f"live{list(live).index(target_id)}",
+            user_id=owner_id,
+            target_type=target_type,
+            target_id=target_id,
+            access=live[target_id],
+        )
+
+    with patch(
+        "app.services.links.targets.briefing.short_link_repository.get_live_for_target",
+        AsyncMock(side_effect=read),
+    ) as reader:
+        yield reader
+
+
+def _brief_with_items(*todo_ids: str) -> BriefingModel:
+    return BriefingModel(
+        id="brief_abc",
+        user_id="owner",
+        date="2026-10-14",
+        payload=BriefingPayload(
+            kicker="Tuesday",
+            template_family="swiss",
+            date="Oct 14",
+            headline="A clear day",
+            lede="Two things moved.",
+            sections=[
+                BriefingSection(
+                    numeral="I",
+                    title="Done",
+                    items=[
+                        BriefingItem(
+                            text=f"Item {todo_id}",
+                            outcome=BriefOutcome.SENT,
+                            todo_id=todo_id,
+                            link=f"https://heygaia.link/old-{todo_id}",
+                        )
+                        for todo_id in todo_ids
+                    ],
+                )
+            ],
+            mood="clear",
+            caption="See you tomorrow",
+        ),
+    )
+
+
+class TestBriefItemLinks:
+    """An item link never opens for more people than the brief that shows it (L-bug2)."""
+
+    async def _links(
+        self, brief_access: LinkAccess, viewer: LinkViewerKind, live: dict[str, LinkAccess]
+    ) -> dict[str, str | None]:
+        with (
+            patch("app.services.links.targets.briefing.briefing_repository") as repo,
+            _item_links(live),
+        ):
+            repo.get = AsyncMock(return_value=_brief_with_items("narrow", "same", "wide", "off"))
+            view = await REGISTRY[ShortLinkTargetType.BRIEFING].project(
+                _link(ShortLinkTargetType.BRIEFING, "owner", "brief_abc", access=brief_access),
+                viewer,
+            )
+        assert isinstance(view, PublicBriefing)
+        return {item.text: item.link for item in view.payload.sections[0].items}
+
+    async def test_a_viewer_sees_no_item_link_wider_than_the_brief(self) -> None:
+        live = {
+            "narrow": LinkAccess.OWNER,
+            "same": LinkAccess.PEOPLE,
+            "wide": LinkAccess.UNLISTED,
+        }
+        links = await self._links(LinkAccess.PEOPLE, LinkViewerKind.RECIPIENT, live)
+
+        base = settings.SHORTLINK_BASE_URL
+        assert links == {
+            "Item narrow": f"{base}/live0",
+            "Item same": f"{base}/live1",
+            "Item wide": None,
+            "Item off": None,
+        }
+
+    async def test_the_owner_sees_every_live_item_link_at_its_current_url(self) -> None:
+        live = {"narrow": LinkAccess.OWNER, "wide": LinkAccess.PUBLIC}
+        links = await self._links(LinkAccess.OWNER, LinkViewerKind.OWNER, live)
+
+        base = settings.SHORTLINK_BASE_URL
+        assert links == {
+            "Item narrow": f"{base}/live0",
+            "Item same": None,
+            "Item wide": f"{base}/live1",
+            "Item off": None,
+        }
+
+    async def test_a_brief_carries_the_deliverables_it_links(self) -> None:
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
+            repo.get = AsyncMock(return_value=_brief_with_items("a", "b"))
+            carried = await REGISTRY[ShortLinkTargetType.BRIEFING].carries("owner", "brief_abc")
+
+        assert carried == [
+            (ShortLinkTargetType.TODO_DELIVERABLE, "a"),
+            (ShortLinkTargetType.TODO_DELIVERABLE, "b"),
+        ]
+
+
 class TestBriefing:
     async def test_serves_the_brief_without_ids_or_chat_bubbles(self):
         briefing = BriefingModel(
@@ -140,7 +280,10 @@ class TestBriefing:
                 bubbles=[f"hey, I emailed {PRIVATE_EMAIL}"],
             ),
         )
-        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
+        with (
+            patch("app.services.links.targets.briefing.briefing_repository") as repo,
+            _item_links({"todo-secret-id": LinkAccess.UNLISTED}),
+        ):
             repo.get = AsyncMock(return_value=briefing)
             view = await _project(ShortLinkTargetType.BRIEFING, "owner", "brief_abc")
 
@@ -168,7 +311,7 @@ class TestBriefing:
                             PublicBriefingItem(
                                 text="Sent the Acme reply",
                                 kind="note",
-                                link="https://heygaia.link/xyz",
+                                link=f"{settings.SHORTLINK_BASE_URL}/live0",
                             )
                         ],
                     )
@@ -443,7 +586,9 @@ class TestSessionArtifactProjection:
         monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
 
     async def _view(self, snapshot: LinkSnapshot | None) -> PublicSessionArtifact | None:
-        view = await REGISTRY[SESSION].project("owner", "conv-1/notes.md", snapshot)
+        view = await REGISTRY[SESSION].project(
+            _link(SESSION, "owner", "conv-1/notes.md", snapshot), LinkViewerKind.RECIPIENT
+        )
         assert view is None or isinstance(view, PublicSessionArtifact)
         return view
 

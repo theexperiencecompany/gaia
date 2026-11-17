@@ -10,8 +10,10 @@ from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import (
     LinkSnapshot,
+    LinkViewerKind,
     PublicSessionArtifact,
     RenderMode,
+    ShortLink,
     ShortLinkTargetType,
 )
 from app.services.links.content import (
@@ -79,9 +81,8 @@ async def _text(owner_id: str, snapshot: LinkSnapshot) -> str | None:
     return raw.decode(errors="replace")
 
 
-async def _project(
-    owner_id: str, _target_id: str, snapshot: LinkSnapshot | None
-) -> PublicSessionArtifact | None:
+async def _project(link: ShortLink, _viewer: LinkViewerKind) -> PublicSessionArtifact | None:
+    snapshot = link.snapshot
     if snapshot is None:
         return None
     return PublicSessionArtifact(
@@ -89,7 +90,7 @@ async def _project(
         filename=snapshot.filename,
         content_type=snapshot.mime,
         size_bytes=snapshot.size_bytes,
-        text=await _text(owner_id, snapshot),
+        text=await _text(link.user_id, snapshot),
     )
 
 
