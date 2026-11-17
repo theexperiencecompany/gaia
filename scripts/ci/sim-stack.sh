@@ -6,7 +6,7 @@
 # Subcommands:
 #   up    Put mongosh on PATH (the screen fixtures write Mongo through it),
 #         start the stub, API, worker and web, wait until each answers, and
-#         publish the endpoints the Playwright harness reads to $GITHUB_ENV.
+#         publish the endpoints the Playwright and bot harnesses read to $GITHUB_ENV.
 #
 # Env contract:
 #   up    OUT_DIR (required: each process logs to <name>.log there),
@@ -91,6 +91,9 @@ cmd_up() {
   export WORKOS_API_KEY="sk_test_fake" WORKOS_CLIENT_ID="client_fake" WORKOS_COOKIE_PASSWORD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   export MCP_ENCRYPTION_KEY="dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==" # pragma: allowlist secret
   export AGENT_SECRET="test-agent-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # pragma: allowlist secret
+  # The bot API key the harness authenticates with, and the bot session token secret.
+  export GAIA_BOT_API_KEY="sim-bot-api-key-xxxxxxxxxxxxxxxxxxxxxxxx" # pragma: allowlist secret
+  export BOT_SESSION_TOKEN_SECRET="sim-bot-session-secret-xxxxxxxxxxxxxxxxxxxxxxxx" # pragma: allowlist secret
 
   local stub api worker web
   stub=$(_start llm-stub "$REPO_ROOT" uv run tools/llm-stub/server.py)
@@ -109,6 +112,11 @@ cmd_up() {
     echo "WEB_PORT=$WEB_PORT"
     echo "DEV_USER=$DEV_USER"
     echo "E2E_MONGO_URI=$e2e_mongo_uri"
+    # What the bot harness reads (apps/bots config): the API, its bot key, the web app.
+    echo "GAIA_API_URL=http://localhost:$API_PORT"
+    echo "GAIA_BOT_API_KEY=$GAIA_BOT_API_KEY"
+    echo "GAIA_FRONTEND_URL=$FRONTEND_URL"
+    echo "BOT_LOG_HASH_SECRET=0000000000000000000000000000000000000000000000000000000000000000" # pragma: allowlist secret
   } >> "$GITHUB_ENV"
   ci_ok "sim stack: web http://localhost:$WEB_PORT, API http://localhost:$API_PORT"
 }

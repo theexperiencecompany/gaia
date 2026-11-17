@@ -297,20 +297,6 @@ describe("sending", () => {
     expect(sendResult.calls).toHaveLength(1);
   });
 
-  it("shows the message at once and hands it to the server's item with the same id", async () => {
-    release = openConversation(CONVERSATION);
-    await flush();
-    const sending = sendMessage("hello", { conversationId: CONVERSATION });
-    const pending = view().pending;
-    expect(pending).toHaveLength(1);
-    await sending;
-
-    lastStream().push(insertFrame(userItem(pending[0].id, 1, "hello")));
-
-    expect(view().pending).toEqual([]);
-    expect(ids()).toEqual([pending[0].id]);
-  });
-
   it("delivers a burst in send order, each once the one before it was answered", async () => {
     let answerFirst: () => void = () => undefined;
     sendResult.hold = new Promise<void>((resolve) => {

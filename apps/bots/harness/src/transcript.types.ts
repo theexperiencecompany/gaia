@@ -140,8 +140,16 @@ export interface AwaitingApprovalEvent extends TranscriptEventBase {
 }
 
 /** Discriminated union of every transcript event. */
+/** A send or edit the emulated platform refused during a scripted outage. */
+export interface PlatformFailureEvent extends TranscriptEventBase {
+  type: "platform-failure";
+  call: "send" | "edit";
+  status: number;
+}
+
 export type TranscriptEvent =
   | AwaitingApprovalEvent
+  | PlatformFailureEvent
   | InboundEvent
   | SendEvent
   | EditEvent
@@ -156,6 +164,7 @@ export type TranscriptEvent =
 /** Event payload before the recorder stamps `platform`, `seq`, and `t`. */
 export type TranscriptEventInput =
   | Omit<AwaitingApprovalEvent, keyof TranscriptEventBase>
+  | Omit<PlatformFailureEvent, keyof TranscriptEventBase>
   | Omit<InboundEvent, keyof TranscriptEventBase>
   | Omit<SendEvent, keyof TranscriptEventBase>
   | Omit<EditEvent, keyof TranscriptEventBase>

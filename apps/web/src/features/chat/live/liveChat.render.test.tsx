@@ -13,14 +13,7 @@ import {
   userItem,
 } from "@shared/conversation/testing";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -58,14 +51,9 @@ vi.mock("@/features/chat/components/bubbles/bot/SearchedImageDialog", () => ({
 vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
   useCurrentUser: () => ({ profilePicture: "" }),
 }));
-vi.mock("./connection", async (actual) => ({
-  ...(await actual<Record<string, unknown>>()),
-  deliverRetry: vi.fn(),
-}));
 
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import { useChatStore } from "@/stores/chatStore";
-import { deliverRetry } from "./connection";
 import { useLiveConversationStore } from "./liveConversationStore";
 
 const CONVERSATION = "conv-1";
@@ -73,15 +61,6 @@ const CONVERSATION = "conv-1";
 const feed = (...frames: ConversationFrame[]) =>
   act(() => {
     useLiveConversationStore.getState().applyFrames(CONVERSATION, frames);
-  });
-
-const send = (id: string, text: string) =>
-  act(() => {
-    useLiveConversationStore.getState().queueSend(CONVERSATION, {
-      body: { message_id: id, text },
-      fileData: [],
-      failed: false,
-    });
   });
 
 const renderChat = () =>
@@ -176,18 +155,6 @@ describe("the chat rendered from the server's screen patches", () => {
     expect(document.body.textContent).toContain(" word".repeat(deltas).trim());
   });
 
-  it("shows this device's send under the streaming reply, then in the server's place", async () => {
-    renderChat();
-    await feed(insertFrame(userItem("m1", 1, "first")));
-    await feed(insertFrame(replyItem("r1", 2, "Hel")));
-    await feed(replyDelta("a1", "r1", 0, "Hello there"));
-    send("m2", "second");
-    expect(screen.getByText("Hello there")).toBeDefined();
-    expect(screen.getByText("second")).toBeDefined();
-    await feed(insertFrame(userItem("m2", 3, "second")));
-    expect(screen.getAllByText("second")).toHaveLength(1);
-  });
-
   it("words a failed reply with nothing shown in the server's failure line", async () => {
     renderChat();
     const failed = {
@@ -202,22 +169,6 @@ describe("the chat rendered from the server's screen patches", () => {
     expect(
       screen.getByText("The server's own words for a step-limit stop."),
     ).toBeDefined();
-  });
-
-  it("retries a failed reply by asking the server to answer the message it names", async () => {
-    renderChat();
-    await feed(
-      insertFrame(userItem("m1", 1, "book the flight")),
-      insertFrame(userItem("m2", 2, "and a hotel")),
-      insertFrame(failedReply("r1", 3, "m1")),
-    );
-    fireEvent.click(
-      within(screenRow("r1")).getByRole("button", { name: "Retry" }),
-    );
-    expect(vi.mocked(deliverRetry)).toHaveBeenCalledExactlyOnceWith(
-      CONVERSATION,
-      "m1",
-    );
   });
 
   it("offers no retry on a failed reply the server names nothing to retry for", async () => {

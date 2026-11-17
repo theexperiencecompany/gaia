@@ -16,7 +16,9 @@ directives out of it:
     [[pace:<ms>]]                 stream the say text one word per chunk, this
                                   far apart
     [[narrate:<text>]]            text the front door streams with its hand-off
-                                  call, the preamble GAIA then retracts
+                                  call, a preamble that stays above the reply
+    [[react:<emoji>]]             the front door answers the newest message with
+                                  this reaction instead of words
 
 Timing: a wait belongs to the next tool directive after it, or to the final
 reply when no tool follows; consecutive waits add up. Each tier waits only on
@@ -24,7 +26,7 @@ the steps it emits itself: the front door forwards executor tools at once (the
 executor waits on them), and the say is emitted, and waited on, by the tier that
 reaches it. After a hand-off the front door stays silent; the say reaches the
 user once, when it re-voices the finished work. A script whose closing has a
-narrate or a fail scripts the front door's own turn, so it says the reply there.
+fail scripts the front door's own turn, so it says the reply there.
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -76,6 +78,8 @@ DEFAULT_REPLY = "ok (llm-stub)"
 STAY_SILENT_TOOL = "stay_silent"
 # Comms names the user's messages each reply answers by their [#n] handle.
 ANSWERED_TOOL = "answered"
+# Comms answers a message with a reaction instead of words (REACT_TOOL_NAME).
+REACT_TOOL = "react"
 _MESSAGE_HANDLE = r"^\[#(\d+)\] "
 _HANDLE_RE = re.compile(_MESSAGE_HANDLE + r'|^#(\d+) "', re.MULTILINE)
 # A hand-off's task is the request as the user wrote it, which is what the brief quotes.
@@ -101,7 +105,7 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
 
-_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate):")
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate|react):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
@@ -214,8 +218,21 @@ class NarrateDirective:
     text: str
 
 
+@dataclass(frozen=True)
+class ReactDirective:
+    """A [[react:...]] reaction the front door answers the newest message with, instead of words."""
+
+    emoji: str
+
+
 Directive = (
-    ToolDirective | SayDirective | FailDirective | WaitDirective | PaceDirective | NarrateDirective
+    ToolDirective
+    | SayDirective
+    | FailDirective
+    | WaitDirective
+    | PaceDirective
+    | NarrateDirective
+    | ReactDirective
 )
 
 
@@ -268,6 +285,9 @@ def parse_directives(text: str) -> list[Directive]:
         elif opener.group(1) == "narrate":
             say, pos = _scan_say(text, opener.end())
             directive = NarrateDirective(text=say.text)
+        elif opener.group(1) == "react":
+            say, pos = _scan_say(text, opener.end())
+            directive = ReactDirective(emoji=say.text.strip())
         else:
             directive, pos = _scan_tool(text, opener.end())
         if directive is None:
@@ -539,8 +559,8 @@ def _terminal(script: _Script) -> SayResponse:
 
 
 def _scripts_front_door(script: _Script) -> bool:
-    """Whether the closing scripts the front door's own turn: a preamble it streams, or a reply it breaks."""
-    return any(isinstance(d, (NarrateDirective, FailDirective)) for d in script.closing)
+    """Whether the closing scripts the front door's own turn: a reply it breaks."""
+    return any(isinstance(d, FailDirective) for d in script.closing)
 
 
 def _narration(script: _Script) -> dict[str, Any]:
@@ -615,7 +635,18 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
                 args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS, "for_messages": handles},
                 **_narration(script),
             )
-        return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=script.tool_waits[di])
+        args = nxt.args
+        if nxt.name == CALL_EXECUTOR_TOOL and "for_messages" not in args:
+            # A scripted hand-off names the messages it takes, as comms is told to.
+            args = {**args, "for_messages": handles}
+        return ToolCallResponse(name=nxt.name, args=args, delay_ms=script.tool_waits[di])
+    reaction = next((d for d in script.closing if isinstance(d, ReactDirective)), None)
+    if reaction is not None and handles and REACT_TOOL in available_tools:
+        return ToolCallResponse(
+            name=REACT_TOOL,
+            args={"emoji": reaction.emoji, "message_id": handles[-1]},
+            delay_ms=script.final_wait,
+        )
     return _naming(_terminal(script), handles, available_tools)
 
 

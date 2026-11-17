@@ -108,6 +108,32 @@ export async function linkDevUser(
 }
 
 /**
+ * Asks before every call of `askFor` and before no other: the per-tool asks sit
+ * on top of "allow always", which is how a user sets them in settings.
+ */
+async function askBefore(
+  apiUrl: string,
+  email: string,
+  askFor: readonly string[],
+): Promise<void> {
+  const res = await fetch(`${apiUrl}/api/v1/approvals/preferences`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "X-Dev-User": email },
+    body: JSON.stringify({
+      mode: "always_allow",
+      tool_overrides: Object.fromEntries(askFor.map((tool) => [tool, true])),
+      never_auto_tools: [],
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `setting ${email}'s approval preferences returned ${res.status}: ${await res.text()}`,
+    );
+  }
+}
+
+/**
  * Keeps the adapter (and its outbound RabbitMQ consumer) alive `settleMs` after a
  * turn's stream closes, so deliveries published afterward land in that turn's
  * events. A handoff turn closes SSE on the preamble while the real answer
@@ -248,15 +274,28 @@ export async function runScenario(
   }
   const platform = scenario.emulate;
   const user = await linkDevUser(apiUrl, scenario.user, platform);
+  await askBefore(apiUrl, user.email, scenario.askBefore ?? []);
   const transcript = new TranscriptRecorder(platform, outPath);
-  const adapter = await bootAdapter(platform, apiUrl, transcript);
+  let adapter = await bootAdapter(platform, apiUrl, transcript);
   const cutShort = terminationRequested();
   const failures: string[] = [];
 
   try {
+    // A fresh session, as /new gives the user: no earlier run's turns in the scenario's context.
+    await deliverTurn(adapter, user.platformUserId, { send: "/new" });
     for (const [index, turn] of scenario.turns.entries()) {
       const before = transcript.getEvents().length;
-      await deliverTurn(adapter, user.platformUserId, turn);
+      if (turn.outage) adapter.startOutage(turn.outage);
+      await deliverTurnMessages(adapter, user.platformUserId, turn);
+      if (turn.restartAfterMs !== undefined) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, turn.restartAfterMs),
+        );
+        // As the bot process does on Ctrl-C: its follows stop where they are.
+        await adapter.shutdown("restart");
+        adapter = await bootAdapter(platform, apiUrl, transcript);
+      }
+      await adapter.settleTurn();
       // Settle BEFORE slicing: a late outbound delivery belongs to the turn
       // that caused it, and its assertions must be able to see it.
       await settle(
@@ -270,6 +309,8 @@ export async function runScenario(
         }
       }
     }
+    // Leave nothing running or pending: a later run's bot would resume it and wait on it.
+    await deliverTurn(adapter, user.platformUserId, { send: "/stop" });
   } finally {
     await adapter.shutdown("harness").catch(() => undefined);
   }
@@ -313,6 +354,16 @@ export async function deliverTurn(
   platformUserId: string,
   turn: ScenarioTurn,
 ): Promise<void> {
+  await deliverTurnMessages(adapter, platformUserId, turn);
+  await adapter.settleTurn();
+}
+
+/** Injects a turn's messages at their scripted gaps and resolves once each is posted. */
+async function deliverTurnMessages(
+  adapter: HarnessAdapter,
+  platformUserId: string,
+  turn: ScenarioTurn,
+): Promise<void> {
   const handled: Promise<void>[] = [];
   for (const message of turnMessages(turn)) {
     if (message.afterMs) {
@@ -325,7 +376,6 @@ export async function deliverTurn(
     );
   }
   await Promise.all(handled);
-  await adapter.settleTurn();
 }
 
 /**
@@ -377,9 +427,95 @@ function reactedPositions(events: readonly TranscriptEvent[]): number[] {
   return positions;
 }
 
+/** Bubbles deleted, or edited to text shorter than they showed: what the user saw taken back. */
+function takeBacks(events: readonly TranscriptEvent[]): string[] {
+  const shown = new Map<string, string>();
+  const found: string[] = [];
+  for (const event of events) {
+    if (event.type === "send") shown.set(event.messageId, event.text);
+    if (event.type === "edit") {
+      const before = shown.get(event.messageId);
+      if (before !== undefined && event.text.length < before.length) {
+        found.push(
+          `${event.messageId} shrank from ${JSON.stringify(before)} to ${JSON.stringify(event.text)}`,
+        );
+      }
+      shown.set(event.messageId, event.text);
+    }
+    if (event.type === "delete") {
+      found.push(
+        `${event.messageId} was deleted: ${JSON.stringify(shown.get(event.messageId))}`,
+      );
+    }
+  }
+  return found;
+}
+
+/** Each bubble's final text and the 1-based turn position of the inbound message it quotes, or null. */
+function bubbleQuotes(
+  events: readonly TranscriptEvent[],
+): { text: string; quotes: number | null }[] {
+  const inbound = events.flatMap((e) =>
+    e.type === "inbound" ? [e.messageId] : [],
+  );
+  const bubbles = new Map<string, { text: string; quotes: number | null }>();
+  for (const event of events) {
+    if (event.type === "send") {
+      const at =
+        event.replyTo === undefined ? -1 : inbound.indexOf(event.replyTo);
+      bubbles.set(event.messageId, {
+        text: event.text,
+        quotes: at < 0 ? null : at + 1,
+      });
+    } else if (event.type === "edit") {
+      const bubble = bubbles.get(event.messageId);
+      if (bubble) bubble.text = event.text;
+    } else if (event.type === "delete") {
+      bubbles.delete(event.messageId);
+    }
+  }
+  return [...bubbles.values()];
+}
+
 /** All text-bearing events carry a `text` field; this narrows to it. */
 function eventText(event: TranscriptEvent): string | null {
   return "text" in event && typeof event.text === "string" ? event.text : null;
+}
+
+/** The quotes, take-back and excluded-text checks of an assertion: what the user saw and how. */
+function shownTextFailures(
+  events: readonly TranscriptEvent[],
+  assertion: ScenarioAssertion,
+): string[] {
+  const failures: string[] = [];
+  if (assertion.quotes !== undefined) {
+    const bubbles = bubbleQuotes(events);
+    for (const [text, wanted] of Object.entries(assertion.quotes)) {
+      const bubble = bubbles.find((b) => b.text.includes(text));
+      if (!bubble) {
+        failures.push(`no bubble reads "${text}" to check what it quotes`);
+      } else if (bubble.quotes !== wanted) {
+        failures.push(
+          `the bubble "${text}" quotes inbound ${bubble.quotes}, expected ${wanted}`,
+        );
+      }
+    }
+  }
+  if (assertion.noTakeBacks) {
+    for (const takeBack of takeBacks(events)) {
+      failures.push(`shown text was taken back: ${takeBack}`);
+    }
+  }
+  const finalTexts = deliveredTexts(events, true);
+  for (const banned of assertion.excludes ?? []) {
+    const shown = finalTexts.find((text) => text.includes(banned));
+    if (shown !== undefined) {
+      failures.push(
+        `delivered text contains "${banned}": ${JSON.stringify(shown)}`,
+      );
+    }
+  }
+  return failures;
 }
 
 /**
@@ -463,6 +599,7 @@ export function evaluateAssertion(
       );
     }
   }
+  failures.push(...shownTextFailures(events, assertion));
   if (assertion.reactedTo !== undefined) {
     const actual = reactedPositions(events);
     const wanted = [...assertion.reactedTo].sort((a, b) => a - b);

@@ -13,14 +13,19 @@ emulate: telegram
 user: bot-stop-scenario@gaia.local
 turns:
   - burst:
-      - send: 'stock up [[tool:call_executor {"acceptance_criteria":["both todos created"],"desired_outcome":"a stocked pantry","time_horizon":"one_shot","task":"stock up [[tool:create_todo {\"title\":\"stop-1\"}]] [[wait:20000]] [[tool:create_todo {\"title\":\"stop-2\"}]] [[say:Pantry stocked.]]"}]] [[say:On it.]]'
+      - send: 'stock up [[tool:call_executor {"acceptance_criteria":["both todos created"],"desired_outcome":"a stocked pantry","time_horizon":"one_shot","task":"stock up [[tool:create_todo {\"title\":\"stop-1\"}]] [[wait:20000]] [[tool:create_todo {\"title\":\"stop-2\"}]] [[say:Pantry stocked.]]"}]]'
       - send: "/stop"
         afterMs: 12000
     # Past the executor's hold, so a result the stop missed would land here.
     settleMs: 40000
     expect:
-      - delivered: ["On it."]
+      - delivered: []
       - eventTypes: [ephemeral]
   - send: "anything else [[say:Still with you.]]"
     expect:
       - bubbles: ["Still with you."]
+  # The stopped work never blocks the next: new work in the same conversation runs and reports.
+  - send: 'one more [[tool:create_todo {"title":"after-stop"}]] [[say:Added after-stop.]]'
+    settleMs: 15000
+    expect:
+      - bubbles: ["Added after-stop."]

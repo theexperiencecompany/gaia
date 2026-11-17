@@ -1,17 +1,9 @@
 // @vitest-environment jsdom
 //
-// A page load syncs every stale conversation at once. Each one landing as its own
-// store write re-rendered the sidebar per write, and the sidebar's accordion effect
-// set state on every one of those commits: past 50 in a row React logs
-// "Maximum update depth exceeded" (live run 2, 26 conversations).
+// A sync that updates a conversation leaves the sidebar's sections as the user set
+// them. The render loop the page-load sync once caused is the screen-surfaces e2e's.
 import { replyItem, userItem } from "@shared/conversation/testing";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 import {
@@ -146,46 +138,6 @@ describe("a page-load sync of many conversations", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  });
-
-  // Outside act, as in the browser: act would fold the burst into one commit and hide it.
-  it("renders the sidebar without an update-depth loop", async () => {
-    const consoleError = vi.spyOn(console, "error");
-    render(<SidebarWithStoreSync />);
-    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
-
-    await batchSyncConversations();
-
-    await waitFor(() =>
-      expect(screen.getAllByText(/^chat conv-/)).toHaveLength(CONVERSATIONS),
-    );
-    const depthErrors = consoleError.mock.calls.filter((args) =>
-      args.some((arg) => String(arg).includes("Maximum update depth")),
-    );
-    expect(depthErrors).toEqual([]);
-  });
-
-  it("lands every synced conversation in one write per store", async () => {
-    const liveWrites = vi.fn();
-    const listWrites = vi.fn();
-    const unsubscribeLive = useLiveConversationStore.subscribe(liveWrites);
-    const unsubscribeList = useChatStore.subscribe((state, previous) => {
-      if (state.conversations !== previous.conversations) listWrites();
-    });
-    render(<SidebarWithStoreSync />);
-
-    await act(async () => {
-      await batchSyncConversations();
-    });
-    unsubscribeLive();
-    unsubscribeList();
-
-    expect(liveWrites).toHaveBeenCalledTimes(1);
-    expect(listWrites).toHaveBeenCalledTimes(1);
-    expect(
-      Object.keys(useLiveConversationStore.getState().conversations),
-    ).toHaveLength(CONVERSATIONS);
   });
 
   it("keeps a section the user closed closed when a later sync updates a conversation", async () => {

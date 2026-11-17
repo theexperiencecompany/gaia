@@ -1156,15 +1156,17 @@ jobs:
 
   # ── web-e2e-screen: the chat recorded at every DOM change, on the sim stack ─
   # The API, ARQ worker and web dev server against the scripted LLM stub
-  # (scripts/ci/sim-stack.sh), driven by web:e2e-screen. GitHub-hosted: the
+  # (scripts/ci/sim-stack.sh), driven by web:e2e-screen and the bot harness
+  # scenarios (bot-harness:e2e). GitHub-hosted: the
   # stack binds fixed ports and the dev user's Redis keys, which the box's
   # shared services and parallel runners cannot give one job alone.
   web-e2e-screen:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'web-e2e-screen') }}
     runs-on: ubuntu-latest
-    # Boot (models, a cold Turbopack compile) plus the suite, measured 8-15 min locally.
-    timeout-minutes: 35
+    # Boot (models, a cold Turbopack compile) plus the web suite, measured 8-15 min
+    # locally; the bot scenarios add about 10.
+    timeout-minutes: 50
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SIM_STACK_LOGS: ${{ github.workspace }}/sim-stack
@@ -1185,10 +1187,17 @@ jobs:
         run: bash scripts/ci/sim-stack.sh up
       - name: Run the screen-over-time flows
         id: suite
+        if: contains(fromJSON(needs.detect.outputs.job_tasks)['web-e2e-screen'], 'web:e2e-screen')
         shell: python3 scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
         env:
           CI: "true"
         run: pnpm nx run web:e2e-screen
+      # The same stack, driven through the real bot pipeline on emulated platforms.
+      - name: Run the bot harness scenarios
+        id: bots
+        if: ${{ !cancelled() && steps.stack.outcome == 'success' && contains(fromJSON(needs.detect.outputs.job_tasks)['web-e2e-screen'], 'bot-harness:e2e') }}
+        shell: python3 scripts/ci/verdict.py check --path-prefix apps/bots/ -- bash -e {0}
+        run: pnpm nx run bot-harness:e2e
       - name: Upload the verdict so far (a step above failed)
         if: always() && env.GAIA_VERDICT_PENDING == '1'
         uses: ./.github/actions/upload-verdict
@@ -1204,6 +1213,7 @@ jobs:
           path: |
             apps/web/test-results
             apps/web/playwright-report
+            apps/bots/harness/test-results
             ${{ env.SIM_STACK_LOGS }}
           if-no-files-found: warn
           retention-days: 14

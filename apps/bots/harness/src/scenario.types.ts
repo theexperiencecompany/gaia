@@ -34,6 +34,17 @@ export interface ScenarioAssertion {
    * 1-based position in the turn (a burst's order). `[]` asserts none did.
    */
   reactedTo?: number[];
+  /**
+   * Which inbound message each bubble quotes, by the bubble's text: a key is a
+   * substring of one bubble's final text, its value the 1-based position (in
+   * the turn) of the inbound message that bubble replies to, or null for a
+   * bubble that quotes nothing.
+   */
+  quotes?: Record<string, number | null>;
+  /** True: no bubble was deleted or edited to shorter text — nothing shown was taken back. */
+  noTakeBacks?: boolean;
+  /** No delivered message's final text contains any of these substrings. */
+  excludes?: string[];
 }
 
 /** One message of a {@link ScenarioTurn.burst}. */
@@ -41,6 +52,13 @@ export interface BurstMessage {
   send: string;
   /** Milliseconds after the previous message of the burst arrived (0 for the first). */
   afterMs?: number;
+}
+
+/** A platform outage: the next `failures` sends and edits fail with this HTTP status, then it answers again. */
+export interface PlatformOutage {
+  failures: number;
+  /** A transient status the platform answers with: 429, 500, 502, 503 or 504. */
+  status: number;
 }
 
 /**
@@ -58,6 +76,13 @@ export interface ScenarioTurn {
   burst?: BurstMessage[];
   /** Optional channel/conversation id (defaults to the user's platform id). */
   channelId?: string;
+  /** The platform fails this turn's first sends and edits, as Telegram does in an outage. */
+  outage?: PlatformOutage;
+  /**
+   * Milliseconds after the turn's last message arrived at which the bot process
+   * restarts: the running bot stops mid-reply and a fresh one boots and resumes.
+   */
+  restartAfterMs?: number;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
   /**
@@ -75,6 +100,8 @@ export interface Scenario {
   emulate: PlatformName;
   /** Email of the dev user to mint + link (via the dev endpoints). */
   user: string;
+  /** Tools GAIA asks before calling for this user; unset or empty asks before none. */
+  askBefore?: string[];
   /** Ordered conversation turns. */
   turns: ScenarioTurn[];
   /**
