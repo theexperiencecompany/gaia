@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-import { COMPOSER_PLACEHOLDER, SIM_ENABLED } from "./harness";
+import { COMPOSER_PLACEHOLDER, MODEL_ERROR_LINE, SIM_ENABLED } from "./harness";
 
 const PROGRESS_TEXT = "Here is the streamed progress";
 // The route error page that used to replace the whole conversation.
@@ -120,7 +120,7 @@ test.describe("chat turn failure", () => {
     );
 
     const reply = page.locator(".chatbubblebot_parent").first();
-    await expect(reply.getByText("Response was cut short")).toBeVisible({
+    await expect(reply.getByText(MODEL_ERROR_LINE)).toBeVisible({
       timeout: 60_000,
     });
     await expect(reply.getByText(PROGRESS_TEXT).first()).toBeVisible();
@@ -144,7 +144,7 @@ test.describe("chat turn failure", () => {
     );
 
     const reply = page.locator(".chatbubblebot_parent").first();
-    await expect(reply.getByText("Response was cut short")).toBeVisible({
+    await expect(reply.getByText(MODEL_ERROR_LINE)).toBeVisible({
       timeout: 60_000,
     });
     const shown = await reply.innerText();

@@ -147,6 +147,9 @@ export async function seedDevData(): Promise<void> {
 
 export const COMPOSER_PLACEHOLDER = "What can I do for you today?";
 
+/** The start of the server's line under a reply the model broke (REPLY_FAILURE_LINE[MODEL_ERROR]). */
+export const MODEL_ERROR_LINE = /couldn't finish that reply/;
+
 /** How often {@link watchConversation} and {@link sendWhen} read the page. */
 const SAMPLE_INTERVAL_MS = 100;
 

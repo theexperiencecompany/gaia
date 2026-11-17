@@ -1,7 +1,7 @@
 import { StopCircleIcon } from "@icons";
 import { STOPPED_NOTE } from "@shared/conversation";
 
-/** The quiet line under a turn the user stopped, in the same strip style as REPLY_CUT_SHORT. */
+/** The quiet line under a turn the user stopped, in the same strip style as a failed reply's line. */
 export function StoppedNote() {
   return (
     <div className="mt-1 flex items-center gap-2 text-zinc-400">

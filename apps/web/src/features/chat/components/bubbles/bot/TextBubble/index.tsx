@@ -4,7 +4,6 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import { REPLY_CUT_SHORT } from "@shared/conversation";
 import { parseOpenUISegments } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
@@ -81,7 +80,7 @@ function ReplyQuote({
 
 /**
  * The failure surface for a bot turn: `partial` is a compact strip under an
- * already-streamed bubble saying it was cut short; otherwise this IS the
+ * already-streamed bubble carrying the server's failure line; otherwise this IS the
  * message.
  *
  * Retry lives here (not only the hover row), since that row is invisible
@@ -119,7 +118,7 @@ function FailedResponse({
     return (
       <div className="mt-1 flex items-center gap-2 text-zinc-400">
         <Alert01Icon className="shrink-0" height={15} width={15} />
-        <span className="text-xs">{REPLY_CUT_SHORT}</span>
+        <span className="text-xs">{error}</span>
         {retryButton}
       </div>
     );

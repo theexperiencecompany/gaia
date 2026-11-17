@@ -40,7 +40,6 @@ from src.constants import (
     FOLLOW_RECONNECT_DELAY_S,
     FRONTEND_STREAM_TOPIC,
     SSE_DATA_PREFIX,
-    VOICE_ERROR_REPLY,
     VOICE_SYSTEM_PROMPT,
     LogTag,
 )
@@ -220,7 +219,7 @@ class VoiceConversation:
         handle.add_done_callback(lambda done: self._on_speech_done(speech, done))
 
     def _apologise(self, reply: ReplyItem) -> None:
-        """Say the reply failed, after whatever of it was spoken; every device shows the failure from the events stream."""
+        """Say the server's failure line after whatever of the reply was spoken; every device shows the same line."""
         if self.speaker is None:
             raise RuntimeError("a reply failed before the voice session could speak")
         log.error(
@@ -229,7 +228,9 @@ class VoiceConversation:
             reply_id=reply.id,
             failure=reply.failure,
         )
-        self.speaker.say(_one_utterance(VOICE_ERROR_REPLY))
+        if reply.failure_line is None:
+            raise ValueError(f"failed reply {reply.id} carries no failure line")
+        self.speaker.say(_one_utterance(reply.failure_line))
 
     def _on_speech_done(self, speech: ReplySpeech, handle: SpeechHandle) -> None:
         """Report a barge-in when the user cut the reply off before its end."""

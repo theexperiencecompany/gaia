@@ -1,4 +1,3 @@
-import { REPLY_CUT_SHORT } from "@gaia/shared/conversation";
 import { Pressable, View } from "react-native";
 import { Alert01Icon, AppIcon, RepeatIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -94,7 +93,7 @@ export function FailedResponse({
   const { spacing, fontSize, moderateScale } = useResponsive();
 
   if (hasPartialText) {
-    return <MessageNote text={REPLY_CUT_SHORT} alert onRetry={onRetry} />;
+    return <MessageNote text={error} alert onRetry={onRetry} />;
   }
 
   // Full bubble — nothing streamed, so this IS the message.

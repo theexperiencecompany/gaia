@@ -669,22 +669,15 @@ describe("formatBotError", () => {
     expect(result).toContain("timed out");
   });
 
-  it("returns connection message for connection lost", () => {
-    const err = new Error("Connection lost before receiving a response");
-    const result = formatBotError(err);
-    expect(result).toContain("Connection lost");
-  });
-
-  it("returns connection interrupted for ECONNRESET", () => {
-    const err = new Error("ECONNRESET");
-    const result = formatBotError(err);
-    expect(result).toContain("Connection interrupted");
-  });
-
-  it("returns incomplete message for stream processing", () => {
-    const err = new Error("Stream processing incomplete");
-    const result = formatBotError(err);
-    expect(result).toContain("incomplete");
+  it.each([
+    "Connection lost before receiving a response",
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "socket hang up",
+  ])("words every unreachable backend (%s) with one line", (message) => {
+    expect(formatBotError(new Error(message))).toBe(
+      "🔌 Connection interrupted. Please try again.",
+    );
   });
 
   it('returns "something went wrong" for generic Error', () => {

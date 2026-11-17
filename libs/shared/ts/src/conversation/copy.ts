@@ -1,8 +1,5 @@
 import type { DisplayState } from "./types";
 
-/** The strip under a failed reply that already showed text or cards. */
-export const REPLY_CUT_SHORT = "Response was cut short";
-
 /** The label under a send that never reached the server, next to its retry. */
 export const SEND_NOT_DELIVERED = "Not delivered";
 
