@@ -7,7 +7,7 @@ from app.agents.core.comms_ledger import (
     Closing,
     Closure,
     NotOpenError,
-    answer_sole,
+    answer_open,
     close,
     close_ledger,
     drain,
@@ -44,17 +44,21 @@ def test_the_sole_open_message_is_answered_by_the_run_ending_on_words(
 ) -> None:
     close(config, Closing.SILENT, [1])
     drain(RUN)
-    assert answer_sole(RUN) is True
+    assert answer_open(RUN) is True
     assert drain(RUN) == [Closure(how=Closing.ANSWERED, seqs=(2,))]
     assert still_open(RUN) == {}
 
 
-def test_words_answer_nothing_when_several_or_none_are_open(config: RunnableConfig) -> None:
-    assert answer_sole(RUN) is False
-    assert still_open(RUN) == {1: "m1", 2: "m2"}
+def test_words_answer_every_open_message_at_once(config: RunnableConfig) -> None:
+    assert answer_open(RUN) is True
+    assert drain(RUN) == [Closure(how=Closing.ANSWERED, seqs=(1, 2))]
+    assert still_open(RUN) == {}
+
+
+def test_words_answer_nothing_when_none_is_open(config: RunnableConfig) -> None:
     close(config, Closing.SILENT, [1, 2])
     drain(RUN)
-    assert answer_sole(RUN) is False
+    assert answer_open(RUN) is False
     assert drain(RUN) == []
 
 
