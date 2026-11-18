@@ -12,6 +12,7 @@ The persist itself goes through conversation_repository.append_message_tool_data
 these tests mock that repository method (never the DB).
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 import json
 from typing import Any
@@ -37,6 +38,8 @@ from app.services.chat.stream import (
     _TurnContext,
 )
 from app.services.files import FileService
+from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnStep, begin_turn_timings
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -468,10 +471,22 @@ class TestRunChatStreamTurnDerivations:
     """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
 
     async def _run(
-        self, body: MessageRequestWithHistory, *, todo_id: str | None = None
+        self,
+        body: MessageRequestWithHistory,
+        *,
+        todo_id: str | None = None,
+        save_waits_for_lookup: bool = False,
+        clock: TurnClock | None = None,
+        resolved_by_approval: bool = False,
     ) -> dict[str, Any]:
-        seen: dict[str, Any] = {}
-        get_todo_id = AsyncMock(return_value=todo_id)
+        seen: dict[str, Any] = {"timings": begin_turn_timings()}
+        lookup_started = asyncio.Event()
+
+        async def looked_up(*_args: object, **_kwargs: object) -> str | None:
+            lookup_started.set()
+            return todo_id
+
+        get_todo_id = AsyncMock(side_effect=looked_up)
 
         async def fake_publish_init(
             body_: MessageRequestWithHistory,
@@ -482,6 +497,9 @@ class TestRunChatStreamTurnDerivations:
             is_new_conversation_: bool,
         ) -> None:
             seen["is_new_conversation"] = is_new_conversation_
+            if save_waits_for_lookup:
+                # Finishes only once the lookup is under way: run one after the other, it times out.
+                await asyncio.wait_for(lookup_started.wait(), timeout=1)
 
         async def fake_consume(
             body_: MessageRequestWithHistory,
@@ -495,13 +513,15 @@ class TestRunChatStreamTurnDerivations:
 
         with (
             patch.object(chat_stream, "stream_manager") as sm,
-            patch.object(chat_stream, "register_executor_capture"),
+            patch.object(chat_stream, "register_executor_capture") as register_capture,
             patch.object(chat_stream, "_set_stream_log_context"),
             patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
             patch.object(
-                chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
-            ),
+                chat_stream,
+                "_resolve_pending_approval_turn",
+                AsyncMock(return_value=resolved_by_approval),
+            ) as resolve_approval,
             patch.object(chat_stream, "schedule_last_active_touch"),
             patch.object(
                 chat_stream, "ArtifactForwarder", MagicMock(return_value=MagicMock(run=AsyncMock()))
@@ -521,13 +541,47 @@ class TestRunChatStreamTurnDerivations:
             sm.complete_stream = AsyncMock()
             sm.is_cancelled = AsyncMock(return_value=False)
             await chat_stream._run_chat_stream(
-                "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp"
+                "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp", clock
             )
 
         seen["forwarder"] = forwarder
+        seen["register_capture"] = register_capture
+        seen["resolve_approval"] = resolve_approval
         seen["attach_uploads"] = attach_uploads
         seen["get_todo_id"] = get_todo_id
         return seen
+
+    async def test_prep_times_presence_the_init_chunk_and_the_approval_check_in_order(
+        self,
+    ) -> None:
+        seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))
+
+        assert [step for _, step in seen["timings"].steps] == [
+            TurnStep.PRESENCE,
+            TurnStep.INIT_CHUNK,
+            TurnStep.APPROVAL_CHECK,
+        ]
+
+    async def test_the_approval_check_sees_the_turns_identity(self) -> None:
+        body = MessageRequestWithHistory(message="yes", messages=[], conversation_id="conv-1")
+
+        seen = await self._run(body)
+
+        seen["resolve_approval"].assert_awaited_once_with(
+            body,
+            AuthenticatedUser(user_id=USER_ID),
+            "conv-1",
+            "stream-1",
+            seen["state"],
+            "whatsapp",
+        )
+
+    async def test_a_reply_that_resolves_an_approval_ends_the_turn(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="yes", messages=[]), resolved_by_approval=True
+        )
+
+        assert "turn" not in seen
 
     async def test_a_file_turn_on_an_existing_conversation_is_attached(self) -> None:
         seen = await self._run(
@@ -601,6 +655,31 @@ class TestRunChatStreamTurnDerivations:
 
         seen["get_todo_id"].assert_awaited_once_with("conv-1", user_id=USER_ID)
         assert seen["turn"].todo_id == "todo-1"
+
+    async def test_the_todo_lookup_overlaps_the_user_message_save(self) -> None:
+        """Both are Mongo round trips in front of the reply; waited on in turn they add up."""
+        seen = await self._run(
+            MessageRequestWithHistory(message="status?", messages=[], conversation_id="conv-1"),
+            todo_id="todo-1",
+            save_waits_for_lookup=True,
+        )
+
+        assert seen["turn"].todo_id == "todo-1"
+
+    async def test_the_turns_clock_rides_on_the_executor_session_it_registers(self) -> None:
+        """The LLM callback and the reply reader stamp the clock through that session."""
+        clock = TurnClock(received=1.0)
+        clock.marks[TurnMark.T0] = 2.0
+
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="hi", messages=[], conversation_id="conv-1", voice_mode=True
+            ),
+            clock=clock,
+        )
+
+        seen["register_capture"].assert_called_once_with("stream-1", voice_mode=True, clock=clock)
+        assert seen["state"].t0_perf == 2.0
 
     async def test_a_new_conversation_is_never_looked_up_as_a_todos_chat(self) -> None:
         seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))

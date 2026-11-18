@@ -18,11 +18,19 @@
  *   await handleStreamingChat(gaia, request, editMessage, onAuth, onErr,
  *     STREAMING_DEFAULTS.discord);
  */
-import type { AnalyticsContext } from "../../analytics";
+import type {
+  AnalyticsContext,
+  BotEventName,
+  EventProperties,
+} from "../../analytics";
 import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
-import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
+import {
+  BOT_STREAM_ERROR,
+  type ReactionHandler,
+  type ReplyCompleteHandler,
+} from "../api/chat-stream";
 import {
   createDeliveryFailureReporter,
   DELIVERY_FAILURE_KIND,
@@ -38,6 +46,7 @@ import {
   formatBotError,
   PLATFORM_MARKDOWN,
 } from "./formatters";
+import type { BotLogFields } from "./logger";
 import {
   createBotLogger,
   hashLogIdentifier,
@@ -124,13 +133,15 @@ async function _handleStream(
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     onReaction: ReactionHandler,
+    onReplyComplete: ReplyCompleteHandler,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
   editMessage: MessageEditor,
   sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
-  onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
+  onGenericError: (formattedError: string) => Promise<void>,
+  recordFailure: (cause: unknown) => void,
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
@@ -141,8 +152,6 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
-  const emitGenericError = (text: string, cause: unknown) =>
-    onGenericError(render(text), cause);
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
   const wrappedSendNewMessage: NewMessageSender = async (text) => {
     const editor = await sendNewMessage(render(text));
@@ -175,6 +184,8 @@ async function _handleStream(
   let failureReported = false;
   /** True once the turn's emoji ack attached natively, which is a reply of its own. */
   let reacted = false;
+  /** Kept reply text a buffered platform has already delivered, so none of it goes out twice. */
+  let deliveredReply = "";
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -350,15 +361,43 @@ async function _handleStream(
    */
   const handleMessageBoundary = async (discarded: boolean): Promise<void> => {
     await enqueue(async () => {
-      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown nothing yet: the whole
-      // reply is delivered at stream end from ``finalText``, already built from KEPT messages
-      // only. Acting on a boundary here would deliver that text a second time.
+      // Non-streaming platforms (Discord, WhatsApp, iMessage) deliver only from the kept text
+      // chat-stream hands over at ``reply_complete`` and at stream end (deliverKeptReply).
+      // Acting on a boundary here would deliver that text a second time.
       if (!streaming) return;
       if (discarded) {
         discardCurrentMessage();
         return;
       }
       await flushMessage();
+    });
+  };
+
+  /**
+   * Delivers a buffered platform's reply: every KEPT message not already delivered. Called when
+   * the backend marks the reply final (`reply_complete`) and again at the stream's end, so the
+   * reply goes out without waiting on the turn's end-of-turn work, and whatever is kept after
+   * it — a delegated turn's result — follows at the end as messages of its own.
+   *
+   * `keptText` is the whole kept reply so far, as chat-stream builds it; a retraction only ever
+   * takes back the message in flight, so it can only grow past what was already delivered.
+   */
+  const deliverKeptReply = async (keptText: string): Promise<void> => {
+    if (!keptText.startsWith(deliveredReply)) {
+      throw new Error(
+        "Kept reply text no longer extends the reply already delivered",
+      );
+    }
+    pending = keptText.slice(deliveredReply.length);
+    deliveredReply = keptText;
+    await flushMessage();
+  };
+
+  const handleReplyComplete = async (keptText: string): Promise<void> => {
+    await enqueue(async () => {
+      // A streaming platform delivered each kept message at its boundary already.
+      if (streaming) return;
+      await deliverKeptReply(keptText);
     });
   };
 
@@ -394,11 +433,29 @@ async function _handleStream(
     return outcome;
   };
 
+  /**
+   * Tells the user the turn failed. The adapter renders it over what the user is waiting on —
+   * unless the current message already holds finished text (a delivered reply, or an
+   * out-of-band prompt): that stays, and the failure follows as a message of its own.
+   */
+  const emitGenericError = async (text: string, cause: unknown) => {
+    recordFailure(cause);
+    if (bubbleSealed) {
+      await wrappedSendNewMessage(text);
+      return;
+    }
+    await onGenericError(render(text));
+  };
+
   try {
     await streamFn(
       (chunk) => {
+        // A buffered platform delivers only KEPT text (deliverKeptReply). A raw chunk may still
+        // be retracted, and held in `pending` an out-of-band flush would send it — then the
+        // kept copy again.
+        if (!streaming) return;
         pending += chunk;
-        if (streamDone || !streaming) return;
+        if (streamDone) return;
 
         const now = Date.now();
         if (now - lastEditTime >= editIntervalMs) {
@@ -433,16 +490,14 @@ async function _handleStream(
         // Wait for any in-flight operations to finish before final delivery
         await opQueue;
 
-        // Non-streaming platforms (Discord, WhatsApp, iMessage) show nothing yet, so the whole
-        // reply is delivered here from ``finalText``; streaming platforms already delivered each
+        // Non-streaming platforms (Discord, WhatsApp, iMessage) deliver from ``finalText``
+        // whatever ``reply_complete`` did not already; streaming platforms already delivered each
         // message at its boundary, so ``pending`` only holds a leftover last message — a legacy stream, or one cut short by an error.
-        if (!streaming) {
-          pending = finalText;
-          shownText = "";
-          bubbleSealed = false;
+        if (streaming) {
+          await flushMessage();
+        } else {
+          await deliverKeptReply(finalText);
         }
-
-        await flushMessage();
 
         // A retracted preamble with nothing to replace it means the turn produced no reply at
         // all. The preamble stays — a blank message is worse than the agent's own words — but
@@ -492,6 +547,7 @@ async function _handleStream(
       deliverOutOfBand,
       handleMessageBoundary,
       reactToTurn,
+      handleReplyComplete,
     );
   } catch (error) {
     // `streamChat` reports a non-retryable failure via `onError` and THEN rethrows, so by the
@@ -525,7 +581,7 @@ export async function handleStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics?: AnalyticsContext,
+  analytics?: Promise<AnalyticsContext>,
   onReaction?: ReactionHandler,
   onNoReply?: NoReplyHandler,
 ): Promise<void> {
@@ -573,12 +629,13 @@ async function runStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics: AnalyticsContext | undefined,
+  analytics: Promise<AnalyticsContext> | undefined,
   userHash: string | undefined,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
+  const stamps: BotTurnStamps = {};
   let responseLength = 0;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
@@ -589,7 +646,17 @@ async function runStreamingChat(
     | ReturnType<typeof reactionDeliveredProperties>
     | undefined;
 
-  analytics?.client.capture(analytics.distinctId, "bot:message_received", {
+  // The identity lookup never holds the turn: each event is captured once it resolves.
+  const track = <E extends BotEventName>(
+    event: E,
+    properties: EventProperties[E],
+  ): void => {
+    void analytics?.then(({ client, distinctId }) =>
+      client.capture(distinctId, event, properties),
+    );
+  };
+
+  track("bot:message_received", {
     interaction_type: "chat",
     message_length: request.message.length,
   });
@@ -602,10 +669,7 @@ async function runStreamingChat(
     await onAuthError(authUrl);
   };
 
-  const wrappedOnGenericError = async (
-    formattedError: string,
-    cause: unknown,
-  ) => {
+  const recordFailure = (cause: unknown): void => {
     // The failure with its reason and full latency context — a real-time line,
     // an errors[] entry, and outcome "failed" on this chat's wide event.
     const reason = recordBotFailure("chat_stream_failed", cause, {
@@ -628,11 +692,10 @@ async function runStreamingChat(
     }
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.client.capture(analytics.distinctId, "bot:error", {
+    track("bot:error", {
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
-    await onGenericError(formattedError);
   };
 
   const streamFn = (
@@ -642,17 +705,21 @@ async function runStreamingChat(
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     reactToTurn: ReactionHandler,
-  ) =>
-    gaia.chatStream(
+    onReplyComplete: ReplyCompleteHandler,
+  ) => {
+    stamps.apiRequestAt ??= Date.now();
+    return gaia.chatStream(
       request,
       (text) => {
         chunkCount++;
         if (firstChunkMs === null) {
-          firstChunkMs = Date.now() - startMs;
+          stamps.firstChunkAt = Date.now();
+          firstChunkMs = stamps.firstChunkAt - startMs;
         }
         return onChunk(text);
       },
       async (fullText, convId) => {
+        stamps.doneAt ??= Date.now();
         responseLength = fullText.length;
         conversationId = convId;
         await onDone(fullText, convId);
@@ -689,24 +756,37 @@ async function runStreamingChat(
           outcome,
           REACTION_SURFACE.LIVE,
         );
-        analytics?.client.capture(
-          analytics.distinctId,
-          "bot:reaction_delivered",
-          reactionDelivered,
-        );
+        track("bot:reaction_delivered", reactionDelivered);
         return outcome;
       },
+      async (keptText: string) => {
+        // The first one with text is what a buffered platform sends on.
+        if (keptText) stamps.replyCompleteAt ??= Date.now();
+        await onReplyComplete(keptText);
+      },
     );
+  };
+
+  // The first call into either is the first thing the user sees from the bot.
+  const timedEdit: MessageEditor = (text) => {
+    stamps.firstSendAt ??= Date.now();
+    return editMessage(text);
+  };
+  const timedSend: NewMessageSender = (text) => {
+    stamps.firstSendAt ??= Date.now();
+    return sendNewMessage(text);
+  };
 
   try {
     await _handleStream(
       streamFn,
       request,
       gaia,
-      editMessage,
-      sendNewMessage,
+      timedEdit,
+      timedSend,
       wrappedOnAuthError,
-      wrappedOnGenericError,
+      onGenericError,
+      recordFailure,
       options,
       onReaction,
       onNoReply,
@@ -721,6 +801,47 @@ async function runStreamingChat(
       conversation_id: conversationId || undefined,
       reaction_delivery: reactionDelivered?.delivery,
       reaction_reason: reactionDelivered?.reason,
+      latency: botTurnLatency(stamps, request.receivedAt, options.streaming),
     });
   }
+}
+
+/** Epoch-ms moments of one bot turn, each kept at its first occurrence. */
+interface BotTurnStamps {
+  apiRequestAt?: number;
+  firstChunkAt?: number;
+  /** The first `reply_complete` that carried kept text. */
+  replyCompleteAt?: number;
+  doneAt?: number;
+  firstSendAt?: number;
+}
+
+/**
+ * The stretches of a turn the bot itself adds, around the API's own time.
+ *
+ * Egress runs from the frame that makes text visible: the first chunk on a
+ * streaming platform; on a buffered one (WhatsApp, iMessage, Discord) the
+ * `reply_complete` it sends on, or the end of the stream for a turn whose
+ * reply only arrived there. Ingress needs the adapter's
+ * arrival stamp, so it is absent for a request built without one.
+ */
+function botTurnLatency(
+  stamps: BotTurnStamps,
+  receivedAt: number | undefined,
+  streaming: boolean,
+): BotLogFields {
+  const visibleFrameAt = streaming
+    ? stamps.firstChunkAt
+    : (stamps.replyCompleteAt ?? stamps.doneAt);
+  const latency: BotLogFields = {};
+  if (receivedAt !== undefined && stamps.apiRequestAt !== undefined) {
+    latency.bot_ingress_ms = stamps.apiRequestAt - receivedAt;
+  }
+  if (stamps.firstSendAt !== undefined && visibleFrameAt !== undefined) {
+    latency.bot_egress_ms = stamps.firstSendAt - visibleFrameAt;
+  }
+  if (receivedAt !== undefined && stamps.firstSendAt !== undefined) {
+    latency.inbound_to_first_send_ms = stamps.firstSendAt - receivedAt;
+  }
+  return latency;
 }
