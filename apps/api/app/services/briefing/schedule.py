@@ -11,13 +11,13 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from app.constants.briefing import (
+    BRIEFING_KIND_BY_WORKFLOW_KEY,
     DAILY_BRIEFING_WORKFLOW_KEY,
     ENABLED_BRIEFING_KEYS,
     EVERY_DAY_CRON_DAYS,
     WEEKDAYS_CRON_DAYS,
     WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_HOUR,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
     BriefingKind,
 )
@@ -50,12 +50,6 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffResolved,
 )
 from shared.py.wide_events import log
-
-_KIND_BY_WORKFLOW_KEY: dict[str, BriefingKind] = {
-    DAILY_BRIEFING_WORKFLOW_KEY: BriefingKind.DAILY,
-    WEEKLY_DIGEST_WORKFLOW_KEY: BriefingKind.WEEKLY,
-}
-
 
 _FREQUENCY_DESCRIPTIONS: dict[BriefingFrequency, str] = {
     BriefingFrequency.DAILY: "a daily brief every day at {time}, plus the Sunday evening weekly digest",
@@ -133,7 +127,7 @@ async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
     if DAILY_BRIEFING_WORKFLOW_KEY not in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
         return None
     workflows = await workflow_repository.find_system_workflows(
-        user.id, tuple(_KIND_BY_WORKFLOW_KEY)
+        user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
     daily = next(
         (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
@@ -210,10 +204,10 @@ async def resync_briefing_schedules(user: UserDocument) -> None:
     timezone = Timezone.parse(user.timezone).value
     enabled_keys = ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]
     workflows = await workflow_repository.find_system_workflows(
-        user.id, tuple(_KIND_BY_WORKFLOW_KEY)
+        user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
     by_key = {workflow.system_workflow_key: workflow for workflow in workflows}
-    for key, kind in _KIND_BY_WORKFLOW_KEY.items():
+    for key, kind in BRIEFING_KIND_BY_WORKFLOW_KEY.items():
         workflow = by_key.get(key)
         if workflow is None:
             continue

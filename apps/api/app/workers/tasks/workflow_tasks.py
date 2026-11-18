@@ -42,10 +42,9 @@ from app.constants.agents import (
     wrap_agent_payload,
 )
 from app.constants.briefing import (
+    BRIEFING_KIND_BY_WORKFLOW_KEY,
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
     BRIEFING_RUN_SUMMARIES,
-    DAILY_BRIEFING_WORKFLOW_KEY,
-    BriefingKind,
 )
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -1296,12 +1295,9 @@ async def _run_briefing_workflow(workflow: Workflow) -> str:
     """
     from app.services.briefing.pipeline import run_brief  # noqa: PLC0415 -- agent cycle
 
-    kind = (
-        BriefingKind.DAILY
-        if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY
-        else BriefingKind.WEEKLY
+    outcome = await run_brief(
+        workflow.user_id, BRIEFING_KIND_BY_WORKFLOW_KEY[workflow.system_workflow_key]
     )
-    outcome = await run_brief(workflow.user_id, kind)
     log.set_ns("workflow", briefing_outcome=outcome.value)
     return BRIEFING_RUN_SUMMARIES[outcome]
 

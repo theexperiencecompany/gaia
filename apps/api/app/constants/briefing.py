@@ -19,12 +19,24 @@ BRIEF_VOICE_TIMEOUT_SECONDS: Final[int] = 420
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"
 
+
+class BriefingKind(StrEnum):
+    """Which brief a run makes; keys the payload variant and the one-per-day constraint."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+#: Which kind of brief each briefing system workflow's cron runs.
+BRIEFING_KIND_BY_WORKFLOW_KEY: Final[Mapping[str, BriefingKind]] = MappingProxyType(
+    {
+        DAILY_BRIEFING_WORKFLOW_KEY: BriefingKind.DAILY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: BriefingKind.WEEKLY,
+    }
+)
 # Briefing rhythm crons are product plumbing, never user automations: the
 # workflow list excludes them so briefings don't present as user workflows.
-BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
-    DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
-)
+BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
 
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
 # The daily brief's default local hour; the user picks their own, and quiet hours
@@ -36,13 +48,6 @@ WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
 #: The weekly digest's local hour, on Sunday.
 WEEKLY_DIGEST_HOUR: Final[int] = 17
 WEEKLY_DIGEST_CRON: Final[str] = f"0 {WEEKLY_DIGEST_HOUR} * * 0"
-
-
-class BriefingKind(StrEnum):
-    """Which brief a run makes; keys the payload variant and the one-per-day constraint."""
-
-    DAILY = "daily"
-    WEEKLY = "weekly"
 
 
 # Masthead labels, set by code on each kind's payload (never by the model).
