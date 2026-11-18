@@ -103,8 +103,7 @@ describe("share settings", () => {
 
     await waitFor(() =>
       expect(api.createShortLink).toHaveBeenCalledWith(
-        "briefing",
-        "b1",
+        { type: "briefing", id: "b1" },
         expect.objectContaining({ access: "owner" }),
       ),
     );

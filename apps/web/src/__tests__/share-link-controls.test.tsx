@@ -65,7 +65,10 @@ describe("ShareLinkControls", () => {
 
     await openMenu();
     await waitFor(() =>
-      expect(api.fetchShareState).toHaveBeenCalledWith("briefing", "b1"),
+      expect(api.fetchShareState).toHaveBeenCalledWith({
+        type: "briefing",
+        id: "b1",
+      }),
     );
 
     expect(screen.queryByRole("menuitem", { name: /Stop sharing/ })).toBeNull();
