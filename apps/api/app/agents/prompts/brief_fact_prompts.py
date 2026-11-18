@@ -146,6 +146,8 @@ WEEK_IN_NUMBERS_HEADER = (
     "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
 )
 GOALS_THIS_WEEK_HEADER = "[GOALS THIS WEEK]"
+#: A goal's todos the brief also places, pointed to as those items so the voice says each once.
+PLACED_GOAL_TODOS = "also {items} above (say each only once, as its item)"
 
 _OPEN_TRACKED = CountSlot(CountName.OPEN_TRACKED)
 TRACKED_BESIDE_OWN = f" GAIA's tracked work holds {_OPEN_TRACKED} open beside them."

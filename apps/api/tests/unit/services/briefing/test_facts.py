@@ -795,6 +795,44 @@ class TestTheWeekRecap:
         assert facts.values.series["gaia_finished"][SeriesField.TOTAL] == "6"
         assert {"Q3", "v11"} <= facts.values.quoted
 
+    def test_a_goals_todo_the_brief_places_is_named_as_its_item_not_again_by_title(self) -> None:
+        """Replay of the founder's weekly: the stuck video and tweet were named twice."""
+        item = BriefingItem(
+            text="Atlas pricing sheet", kind=ItemState.YOU, action=BriefAction.REVIEW
+        )
+        candidate = BriefCandidate(
+            origin=CandidateOrigin.BACKLOG,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Atlas pricing",
+        )
+        goal = GoalState(
+            id="g1",
+            statement="Ship Atlas",
+            origin=GoalOrigin.MEMORY,
+            done=0,
+            open=2,
+            linked=["Atlas pricing", "Atlas press"],
+            stalled=["Atlas pricing", "Atlas press"],
+        )
+        sources = FactSources(
+            artifacts={},
+            open_todos=0,
+            calendar=CalendarRead(),
+            event_items={},
+            span=WEEK_AHEAD,
+            todos_note=None,
+            recap=WeekRecap(series=[], goals=[goal]),
+        )
+
+        lines = _facts(_chosen((item, candidate)), sources).block.splitlines()
+
+        assert lines[lines.index("[GOALS THIS WEEK]") + 1] == (
+            '- "Ship Atlas": nothing linked to it finished, 0 finished, 2 open'
+            " | stuck a week or more: Atlas press; also item 1 above (say each only once, as its item)"
+        )
+
 
 class TestTheClosingLines:
     def test_an_empty_brief_says_so_then_what_went_unread_the_recap_todos_and_calendar(

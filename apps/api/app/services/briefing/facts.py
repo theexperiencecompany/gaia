@@ -14,6 +14,7 @@ from app.agents.prompts.brief_fact_prompts import (
     OWN_TODOS_COUNTED,
     OWN_TODOS_EMPTY,
     OWN_TODOS_OVERDUE,
+    PLACED_GOAL_TODOS,
     SHOWN_NOT_TOTAL,
     SIGNALS_HEADER,
     TODAY_EMPTY,
@@ -274,7 +275,7 @@ def _closing_lines(
         lines.append(unread)
     lines += voiced_block_lines(sources.blocks)
     if sources.recap is not None:
-        lines += _recap_lines(sources.recap, figures)
+        lines += _recap_lines(sources.recap, figures, chosen)
     if sources.todos_note is not None:
         lines.append(sources.todos_note)
     return [*lines, _calendar_note(events, sources)]
@@ -355,7 +356,9 @@ def _signals_block(
     return "\n".join(lines)
 
 
-def _recap_lines(recap: WeekRecap, figures: Mapping[str, Mapping[SeriesField, str]]) -> list[str]:
+def _recap_lines(
+    recap: WeekRecap, figures: Mapping[str, Mapping[SeriesField, str]], chosen: Chosen
+) -> list[str]:
     """Say the week's totals as one grouped recap, and what moved and what stuck on each goal."""
     lines: list[str] = []
     if recap.series:
@@ -367,20 +370,32 @@ def _recap_lines(recap: WeekRecap, figures: Mapping[str, Mapping[SeriesField, st
         ]
     if recap.goals:
         lines.append(GOALS_THIS_WEEK_HEADER)
-        lines += [_goal_week_line(goal) for goal in recap.goals]
+        placed = {
+            candidate.title: fact_id for picked in chosen.picked for fact_id, candidate in picked
+        }
+        lines += [_goal_week_line(goal, placed) for goal in recap.goals]
     return lines
 
 
-def _goal_week_line(goal: GoalState) -> str:
+def _goal_week_line(goal: GoalState, placed: Mapping[str, int]) -> str:
+    """Say what moved and what stuck on a goal; a todo the brief places is pointed to as its item."""
+
+    def named(titles: list[str]) -> str:
+        said = [title for title in titles if title not in placed]
+        items = [f"item {placed[title]}" for title in titles if title in placed]
+        if items:
+            said.append(PLACED_GOAL_TODOS.format(items=", ".join(items)))
+        return "; ".join(said)
+
     done = goal.linked[: goal.done]
     moved = (
-        f"moved forward, {goal_progress(goal)}: {'; '.join(done)}"
+        f"moved forward, {goal_progress(goal)}: {named(done)}"
         if done
         else f"nothing linked to it finished, {goal_progress(goal)}"
     )
     line = f'- "{goal.statement}": {moved}'
     if goal.stalled:
-        line += f" | stuck a week or more: {'; '.join(goal.stalled)}"
+        line += f" | stuck a week or more: {named(goal.stalled)}"
     return line
 
 
