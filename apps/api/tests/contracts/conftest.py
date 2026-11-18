@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from datetime import UTC
 import os
+from pathlib import Path
 import uuid
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -23,18 +24,12 @@ import pytest
 from redis.asyncio import Redis
 
 from tests.helpers import worker_mongo_db_name, worker_redis_url
+from tests.real_services import mark_real_services
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 
-
-@pytest.fixture(autouse=True)
-def _require_real_services() -> None:
-    if not _USE_REAL_SERVICES:
-        pytest.skip(
-            "repository contract tests require real Mongo + Redis. Set "
-            "USE_REAL_SERVICES=1 and run both on localhost — "
-            "these tests never mock the database."
-        )
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    dir_root = Path(__file__).resolve().parent
+    mark_real_services(item for item in items if item.path.is_relative_to(dir_root))
 
 
 @pytest.fixture(scope="session")
