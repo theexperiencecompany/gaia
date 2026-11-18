@@ -85,6 +85,8 @@ from shared.py.analytics.context import AnalyticsContext, analytics_context
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 
+pytest_plugins = ["tests.real_services"]
+
 _mock_subscription = MagicMock()
 # Mirror the real get_user_subscription_status return type: plan_type is a
 # PlanType enum, not a raw str. get_cached_plan_type relies on `.value`.
