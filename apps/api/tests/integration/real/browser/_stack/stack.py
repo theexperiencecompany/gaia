@@ -17,7 +17,6 @@ from collections.abc import Awaitable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 import os
 from pathlib import Path
 import secrets
@@ -34,6 +33,7 @@ import httpx
 import psutil
 import pytest
 from redis.asyncio import Redis
+from scripts.evals.core.live_chat import TurnReader, follow
 
 from app.agents.core.background.executor_queue import get_lock_holder
 from app.config.feature_flags import FeatureFlag
@@ -45,6 +45,7 @@ from app.db.mongodb import collections
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
+from app.models.conversation_send_models import MessageAccepted
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
@@ -52,6 +53,7 @@ from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
+from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import pick_free_port, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
@@ -326,50 +328,27 @@ class BrowserStack:
             "channel_id": channel_id,
             "is_dm": channel_id is None,
         }
-        headers = self._bot_headers(user)
         # The events stream sends a keepalive, so a reply that never comes is bounded as a whole.
         async with (
             asyncio.timeout(RUN_SECONDS),
-            httpx.AsyncClient(base_url=self.api_url, timeout=RUN_SECONDS) as client,
+            httpx.AsyncClient(
+                base_url=self.api_url, headers=self._bot_headers(user), timeout=RUN_SECONDS
+            ) as client,
         ):
-            posted = await client.post("/api/v1/bot/messages", json=body, headers=headers)
+            posted = await client.post("/api/v1/bot/messages", json=body)
             if posted.status_code != 202:
                 raise AssertionError(f"bot/messages answered {posted.status_code}: {posted.text}")
-            accepted = posted.json()
-            conversation_id = str(accepted["conversation_id"])
-            seq = int(accepted["seq"])
-            return await self._follow_reply(client, headers, conversation_id, seq)
-
-    async def _follow_reply(
-        self, client: httpx.AsyncClient, headers: dict[str, str], conversation_id: str, seq: int
-    ) -> BotReply:
-        """Read the conversation's events until a reply settles covering message seq."""
-        texts: dict[str, str] = {}
-        async with client.stream(
-            "GET",
-            f"/api/v1/conversations/{conversation_id}/events",
-            params={"after": str(seq - 1)},
-            headers=headers,
-        ) as response:
-            if response.status_code != 200:
-                await response.aread()
-                raise AssertionError(f"events answered {response.status_code}: {response.text}")
-            async for line in response.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                frame = json.loads(line.removeprefix("data:").strip())["frame"]
-                entry = frame.get("entry") or {}
-                if entry.get("kind") == "reply":
-                    texts[entry["reply_id"]] = entry.get("text", "")
-                settled = entry.get("kind") == "reply_settled" and entry["through"] >= seq
-                if frame["kind"] == "entry" and settled:
-                    failed = entry["outcome"] == "failed"
-                    return BotReply(
-                        text=texts.get(entry["reply_id"], ""),
-                        conversation_id=conversation_id,
-                        error="reply_failed" if failed else None,
-                    )
-        raise AssertionError("the events stream closed before the reply settled")
+            accepted = MessageAccepted.model_validate(posted.json())
+            reader = TurnReader(text, accepted.message_id, wait_for_work=False)
+            await follow(
+                client, self.api_url, accepted.conversation_id, reader, after=accepted.seq - 1
+            )
+        turn = reader.turn()
+        return BotReply(
+            text=turn.reply,
+            conversation_id=accepted.conversation_id,
+            error="reply_failed" if turn.outcome is ReplyOutcome.FAILED else None,
+        )
 
     async def stop_command(self, user: BotUser, *, channel_id: str | None = None) -> None:
         """Send /stop the way the bot does: a session reset for that chat."""

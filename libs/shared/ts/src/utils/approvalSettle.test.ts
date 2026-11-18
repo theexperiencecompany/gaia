@@ -7,7 +7,7 @@ describe("endAfterDecision", () => {
       decidedEnd("approve"),
     );
     expect(endAfterDecision("deny", { success: true })).toEqual({
-      outcome: "denied",
+      status: "denied",
       decider: "user",
       action: null,
     });
@@ -17,7 +17,7 @@ describe("endAfterDecision", () => {
     expect(
       endAfterDecision("approve", { success: false, outcome: "denied" }),
     ).toEqual({
-      outcome: "denied",
+      status: "denied",
       decider: null,
       action: null,
     });
@@ -27,7 +27,7 @@ describe("endAfterDecision", () => {
         outcome: "approved",
         action: "unknown",
       }),
-    ).toEqual({ outcome: "approved", decider: null, action: "unknown" });
+    ).toEqual({ status: "approved", decider: null, action: "unknown" });
   });
 
   it("asks for a retry when the refusal names no outcome", () => {
