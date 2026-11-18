@@ -2,10 +2,13 @@
 
 The main checkout keeps the defaults (8000/3000, the shared GAIA database). A linked
 worktree gets a slot no other worktree holds, and every port, name and URL derives from it.
+--default-ports gives a linked worktree the main checkout's slot instead, for OAuth work,
+whose providers only know localhost:8000 and :3000.
 """
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Iterable
 from dataclasses import dataclass
 import fcntl
@@ -135,15 +138,22 @@ def _worktree_roots() -> list[Path]:
     ]
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Allocate this worktree's slot under a repo-wide lock and write its .env.worktree."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--default-ports",
+        action="store_true",
+        help="use the main checkout's ports and shared services (OAuth callbacks need 8000/3000)",
+    )
+    default_ports = parser.parse_args(argv).default_ports
     root = Path(_git("rev-parse", "--show-toplevel")).resolve()
     git_dir = Path(_git("rev-parse", "--absolute-git-dir")).resolve()
     common_dir = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir")).resolve()
     # Two worktrees allocating at once must not both see the same slot free.
     with (common_dir / "gaia-wt-env.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if git_dir == common_dir:
+        if git_dir == common_dir or default_ports:
             slot = 0
         else:
             others = [p.resolve() for p in _worktree_roots() if p.resolve() != root]

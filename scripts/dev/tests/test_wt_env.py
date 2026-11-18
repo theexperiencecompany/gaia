@@ -119,7 +119,7 @@ def test_two_linked_worktrees_that_hash_alike_get_different_slots(
 
     for root in (a, b, main):
         monkeypatch.chdir(root)
-        wt_env.main()
+        wt_env.main([])
 
     env_a, env_b, env_main = _env(a), _env(b), _env(main)
     assert env_a["GAIA_WT_SLOT"] != env_b["GAIA_WT_SLOT"]
@@ -133,3 +133,31 @@ def test_the_script_runs_standalone(tmp_path: Path) -> None:
     _git("init", "-q", cwd=tmp_path)
     subprocess.run([sys.executable, str(SCRIPT)], cwd=tmp_path, check=True, capture_output=True)
     assert _env(tmp_path)["API_PORT"] == "8000"
+
+
+def test_default_ports_gives_a_linked_worktree_the_main_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    main = tmp_path / "main"
+    main.mkdir()
+    _git("init", "-q", cwd=main)
+    _git(
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "x",
+        cwd=main,
+    )
+    linked = tmp_path / "linked"
+    _git("worktree", "add", "-q", "--detach", str(linked), cwd=main)
+    monkeypatch.chdir(linked)
+
+    wt_env.main(["--default-ports"])
+
+    assert _env(linked)["API_PORT"] == "8000"
+    assert _env(linked)["GAIA_WT_SLOT"] == "0"

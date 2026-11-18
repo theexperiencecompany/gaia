@@ -20,13 +20,17 @@ One command per intent. Each starts infra in Docker (`nx run docker:docker:up`, 
 | You need… | Command | Why |
 |---|---|---|
 | **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `dev@gaia.local`), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
-| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
+| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | The sim stack (`scripts/dev/sim-stack.sh up`): stub, API, **ARQ worker** and web, all with the bypass and the scripted LLM (`tools/llm-stub`), detached. Returns once `/health/ready` answers, the worker has registered and `DEV_USER` is minted **with Pro** (no paywall). `mise run sim:status` (pids, ports, log paths), `mise run sim:logs api`, `mise run sim:down` (`--purge` drops this worktree's database). Model replies come from directives in the chat message (§3). |
 | **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm --agent` | Runs the API in a container with the FUSE mount; web stays native. `--agent` (or `--sim`, reaching the host stub via `host.docker.internal`) turns on the bypass; plain `mise dev:vm` is real login. Use the moment you hit `JuiceFSUnavailable`. |
 | **Real login flow** (human testing, no bypass) | `mise dev` | Same native stack, no flag — the real WorkOS login, for testing signup/auth as an actual user. Not for agent driving. |
 
 Every bypass command authenticates as `DEV_USER` (default `dev@gaia.local`); set `DEV_USER=<email>` to be someone else (it also becomes the `mise seed` target — §2).
 
 Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for the full list.)
+
+**Config in a fresh worktree.** It has no `apps/api/.env`. Team members boot with Infisical, `mise infisical -- dev --sim`: what this shell and `.env.worktree` set wins over Infisical, so the worktree keeps its own ports, database and Redis. A script that imports `app.*` outside mise has no `ENV` and stops with `InfisicalConfigError: ENV is not set`, never falling through to production; run it through mise (`mise exec -- uv run ...`) so `.env.worktree` supplies `ENV=development`.
+
+**Logs.** Under `--sim` each process writes its own log in `.sim-stack/` (`stub.log`, `api.log`, `worker.log`, `web.log`); a process that dies during boot stops the whole stack and prints its last 40 lines.
 
 ### No Docker daemon? (cloud sandboxes, CI runners, dev containers)
 
@@ -52,14 +56,14 @@ curl -X POST localhost:8000/api/v1/dev/users \
 ```
 
 Three things that will cost you an hour if you don't know them, all encoded in
-those scripts: the app reads the **`GAIA`** database, not the one named in
-`MONGO_DB`'s path, so seeding the URI's database leaves startup validation
-still failing; RabbitMQ must run as the `rabbitmq` user, not root; and
+those scripts: the app reads the database `MONGO_DB_NAME` names (`GAIA` when
+unset), not the one in `MONGO_DB`'s path, so seeding the URI's database leaves
+startup validation still failing; RabbitMQ must run as the `rabbitmq` user, not root; and
 `LOG_FORMAT=json` makes `configure_file_logging()` a no-op, so logs go to
 stdout and `apps/api/logs/` stays empty — that is correct behavior, not a
 broken sink (see `reading-gaia-logs`).
 
-**Ports.** `API_PORT` / `WEB_PORT` are honored everywhere (default 8000 / 3000). For several branches at once, `mise run wt:env` writes a per-worktree `.env.worktree` with collision-free ports (API 8000+offset, web 3000+offset, stub 9797+offset, bots 3200-3203+offset) that mise auto-loads. `mise dev` preflights those ports and refuses to start when one is taken (adding the stub port under `--sim`), naming the process that holds it — a stale server from another worktree used to silently absorb the whole session's traffic. Full workflow: **`parallel-worktrees` skill** — don't reinvent it here.
+**Worktrees are isolated.** In a linked worktree run `mise run wt:env` once: it writes `.env.worktree` with a slot no other worktree holds, so this worktree gets its own ports (API, web, stub, ARQ metrics, bots), its own Mongo database (`MONGO_DB_NAME=gaia_wt<offset>`), a private Redis (ARQ queue, streams, worker health key) and its own RabbitMQ vhost. mise loads it for every task. Without it, dev processes in a linked worktree refuse to start and say so, instead of falling back to `:8000` and the shared `GAIA` database. Two sim stacks in two worktrees run side by side. `mise dev` preflights the ports and names the process holding a taken one. Full workflow: **`parallel-worktrees` skill**.
 
 **WorkOS keys.** `DevelopmentSettings` still requires `WORKOS_API_KEY` / `WORKOS_CLIENT_ID` / `WORKOS_COOKIE_PASSWORD` even under the bypass (WorkOS is never called). Dummy values are fine locally; missing ones fail startup.
 
@@ -67,7 +71,7 @@ broken sink (see `reading-gaia-logs`).
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
+The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). The web app gets this worktree's API URL from `.env.worktree` (`NEXT_PUBLIC_API_BASE_URL`) and is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
 
 `apps/api/.env` keeps `DEV_AUTH_BYPASS_EMAIL` **commented out** on purpose so plain `mise dev` is a real login flow — enable the bypass through the `--agent`/`--sim` flag (pass `DEV_USER=<email>` to change the identity), don't hardcode it back into `.env`.
 
@@ -78,8 +82,9 @@ The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and
 `mise seed` is a thin curl wrapper over the two endpoints below — it `POST`s `/dev/users` then `/dev/seed` against the running API. This is the canonical bootstrap:
 
 ```bash
-mise seed                                   # dev@gaia.local, 5 todos + 2 conversations
+mise seed                                   # dev@gaia.local with Pro, 5 todos + 2 conversations
 DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
+SEED_PRO=false mise seed                    # a free user, to see the paywall
 ```
 
 To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
@@ -124,6 +129,7 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 ```
 
 - A message with **no** directives → the canned reply `ok (llm-stub)`.
+- Only agent turns (streamed, with tools) run your script. Background calls (memory extraction, follow-up actions, titles, compaction) get a neutral, schema-valid answer (`tools/llm-stub/background.py`), so a scripted tool runs once per turn and those helpers log no errors.
 - The stub is stateless: each call it counts the tool-call turns already in the request and emits the next pending directive, then the `say` text once all tools are consumed.
 - **Malformed directive JSON → HTTP 500** echoing the bad directive (fail loud) — e.g. `[[tool:foo {bad}]]`. Fix the JSON; don't retry blindly.
 - GAIA's two-agent front door is handled automatically: a directive naming an executor-only tool becomes one `call_executor` hand-off that replays the whole script to the executor. Keep one script to one agent level (don't mix comms-only tools like `add_memory` with executor tools).
@@ -134,7 +140,7 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
-Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --no-project --with pytest pytest tools/llm-stub -q`.
+Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --frozen --isolated --only-group harness pytest tools/llm-stub -q`.
 
 ---
 
@@ -163,13 +169,13 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
   -d '{"title":"from curl"}'
 ```
 
-**Verify it landed — check Mongo, not stdout.** The API's database is `GAIA` (`app/db/mongodb/mongodb.py`, `get_database("GAIA")`), regardless of the db path in `MONGO_DB`. Resolve the user id from the mint/seed response, then:
+**Verify it landed — check Mongo, not stdout.** The API's database is `$MONGO_DB_NAME` (`app/db/mongodb/mongodb.py`): `gaia_wt<offset>` in a linked worktree (`.env.worktree`), `GAIA` in the main checkout. Resolve the user id from the mint/seed response, then:
 
 ```bash
-mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
+mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.todos.countDocuments({user_id:"<USER_ID>"})'
 # chat persisted → the conversation + messages exist:
-mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
+mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.conversations.find({user_id:"<USER_ID>"}).sort({_id:-1}).limit(1).toArray()'
 ```
 

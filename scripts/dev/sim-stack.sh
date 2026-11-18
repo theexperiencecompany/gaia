@@ -51,6 +51,8 @@ start() {
   shift
   ( cd "$root" && exec "$@" ) >"$state_dir/$name.log" 2>&1 &
   echo "$!" >"$state_dir/$name.pid"
+  # Recorded, so status reports the port this stack bound even from a shell without its env.
+  ports_of "$name" >"$state_dir/$name.port"
 }
 
 fail_boot() {
@@ -91,7 +93,7 @@ stop_processes() {
   for name in "${processes[@]}"; do
     pid="$(pid_of "$name")" || continue
     kill_tree "$pid" KILL
-    rm -f "$state_dir/$name.pid"
+    rm -f "$state_dir/$name.pid" "$state_dir/$name.port"
   done
 }
 
@@ -127,6 +129,9 @@ cmd_up() {
   export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
   # Forced, never inherited: an OPENROUTER_BASE_URL from Infisical would reach the real model.
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
+  # A scripted model's traces mean nothing, and exporting them logs an OTEL ERROR per
+  # batch whenever the Langfuse host is unreachable; blank is "not configured".
+  export LANGFUSE_HOST=""
   local api="http://localhost:$(ports_of api)"
 
   started=()
@@ -181,7 +186,7 @@ cmd_status() {
   for name in "${processes[@]}"; do
     pid="$(pid_of "$name")" || { printf '  %-7s not started\n' "$name"; continue; }
     if kill -0 "$pid" 2>/dev/null; then state="up"; else state="EXITED"; fi
-    printf '  %-7s %-7s pid %-7s port %-6s %s\n' "$name" "$state" "$pid" "$(ports_of "$name")" "$state_dir/$name.log"
+    printf '  %-7s %-7s pid %-7s port %-6s %s\n' "$name" "$state" "$pid" "$(cat "$state_dir/$name.port")" "$state_dir/$name.log"
   done
 }
 

@@ -100,6 +100,8 @@ _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTAL
 # task restates is a second copy of the script the task already carries.
 VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
 DONE_SECTION_HEAD = "Definition of done"
+# The executor intent (desired outcome, time horizon), which the brief puts between the task and the definition of done.
+INTENT_SECTION_HEAD = "Outcome the user actually wants:"
 _SECTION_BREAK = "\n\n"
 
 
@@ -114,17 +116,21 @@ def _strip_echoed_payloads(text: str) -> str:
 def _strip_restated_request(text: str) -> str:
     """Drop the brief's request quote when the task section is that same request.
 
-    Quote and task fill the span from the header to the definition of done (the
-    last_run and playbook sections are tag blocks, gone before this runs), so the
-    quote is restated only when that span is one text twice.
+    Quote and task fill the span from the header to the first section the brief
+    appends after the task (the intent, else the definition of done; last_run and
+    playbook are tag blocks, gone before this runs), so the quote is restated only
+    when that span is one text twice.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
         return text
     span_at = header_at + len(VERBATIM_REQUEST_HEADER)
-    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
-    span_end = len(text) if done_at < 0 else done_at
-    span = text[span_at:span_end]
+    section_starts = [
+        found
+        for head in (INTENT_SECTION_HEAD, DONE_SECTION_HEAD)
+        if (found := text.find(_SECTION_BREAK + head, span_at)) >= 0
+    ]
+    span = text[span_at : min(section_starts, default=len(text))]
     cut = span.find(_SECTION_BREAK)
     while cut >= 0:
         quote, task = span[:cut].strip(), span[cut:].strip()
