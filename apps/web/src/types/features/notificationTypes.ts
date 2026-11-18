@@ -7,7 +7,6 @@ export type {
   ApiCallConfig,
   BulkActionRequest,
   ModalConfig,
-  NotificationContent,
   NotificationView,
   PaginatedNotificationsResponse,
   RedirectConfig,
