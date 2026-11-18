@@ -2329,6 +2329,23 @@ class TestAQuietWeek:
         assert (payload.form, payload.kicker) == (BriefForm.QUIET_NOTE, WEEKLY_KICKER)
         assert payload.message == _expected_note(BriefingKind.WEEKLY, QuietFacts(calendar=None))
 
+    @pytest.mark.regression
+    async def test_a_weekly_only_readers_last_empty_digest_says_goodbye_before_winding_down(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: a weekly-only loop stopped silently after its third empty digest."""
+        world.state.schedule = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY)
+        world.calendar = []
+        world.reads["list_completed_since"].return_value = []
+        _idle_day(monkeypatch, world, IDLE_DORMANT_DAYS)
+        world.replies = [_weekly()]
+
+        assert await run_brief(_USER, BriefingKind.WEEKLY) is BriefingRunOutcome.SENT
+
+        assert world.weekly_prompt.call_args.kwargs["goodbye"] is True
+        world.post.assert_awaited_once()
+        world.enter_wind_down.assert_awaited_once_with(_USER)
+
     async def test_a_week_whose_goal_work_sat_stuck_is_recapped_never_quiet(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:

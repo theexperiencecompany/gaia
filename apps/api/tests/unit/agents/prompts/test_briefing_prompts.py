@@ -91,9 +91,15 @@ def _daily(
     )
 
 
-def _weekly(*, blocks: VoicePromptBlocks = _BLOCKS, recent: RecentLines | None = None) -> str:
+def _weekly(
+    *, blocks: VoicePromptBlocks = _BLOCKS, recent: RecentLines | None = None, goodbye: bool = False
+) -> str:
     return build_weekly_voice_prompt(
-        fence=_FENCE, date_local="2026-10-18", blocks=blocks, recent=recent or RecentLines()
+        fence=_FENCE,
+        date_local="2026-10-18",
+        blocks=blocks,
+        recent=recent or RecentLines(),
+        goodbye=goodbye,
     )
 
 
@@ -256,6 +262,12 @@ class TestTheWeeklyVoicePrompt:
             _WEEKLY_VOICE_CONTRACT,
         )
         assert starts == sorted(starts)
+
+    def test_a_weekly_only_readers_goodbye_is_the_dailys_goodbye_note(self) -> None:
+        goodbye = _note(_SITUATIONS["wind-down-final"])
+
+        assert goodbye in _weekly(goodbye=True)
+        assert goodbye not in _weekly()
 
     def test_it_never_holds_the_dailys_own_blocks(self) -> None:
         prompt = _weekly()

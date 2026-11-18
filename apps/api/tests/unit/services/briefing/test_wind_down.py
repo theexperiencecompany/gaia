@@ -227,22 +227,21 @@ _ONE_DIGEST_FROM_DORMANT = BriefingWindDown(
 
 
 class TestTheWeeklyLadder:
-    """A user whose only brief is the weekly digest winds down on it."""
+    """A user whose only brief is the weekly digest says goodbye on it, then winds down."""
 
     @staticmethod
-    def _seams(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
-        set_day, enter = AsyncMock(), AsyncMock()
+    def _set_day(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        set_day = AsyncMock()
         monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
-        monkeypatch.setattr(briefing_state_repository, "enter_wind_down", enter)
-        return set_day, enter
+        return set_day
 
     @pytest.mark.regression
-    async def test_the_last_empty_digest_puts_a_weekly_only_loop_to_sleep(
+    async def test_the_last_empty_digest_is_a_weekly_only_readers_goodbye(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        set_day, enter = self._seams(monkeypatch)
+        set_day = self._set_day(monkeypatch)
 
-        await wind_down.climb_weekly_ladder(
+        goodbye = await wind_down.climb_weekly_ladder(
             _VETERAN,
             _WEEKLY_ONLY,
             _ONE_DIGEST_FROM_DORMANT,
@@ -251,17 +250,17 @@ class TestTheWeeklyLadder:
             has_goal=False,
         )
 
+        assert goodbye is True
         set_day.assert_awaited_once_with(
             USER_ID, idle_days=IDLE_DORMANT_DAYS, date_str="2026-11-08"
         )
-        enter.assert_awaited_once_with(USER_ID)
 
     async def test_a_digest_with_news_resets_the_count(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        set_day, enter = self._seams(monkeypatch)
+        set_day = self._set_day(monkeypatch)
 
-        await wind_down.climb_weekly_ladder(
+        goodbye = await wind_down.climb_weekly_ladder(
             _VETERAN,
             _WEEKLY_ONLY,
             _ONE_DIGEST_FROM_DORMANT,
@@ -270,15 +269,15 @@ class TestTheWeeklyLadder:
             has_goal=False,
         )
 
+        assert goodbye is False
         set_day.assert_awaited_once_with(USER_ID, idle_days=0, date_str="2026-11-08")
-        enter.assert_not_awaited()
 
     async def test_a_user_with_a_daily_brief_climbs_on_the_daily_instead(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        set_day, enter = self._seams(monkeypatch)
+        set_day = self._set_day(monkeypatch)
 
-        await wind_down.climb_weekly_ladder(
+        goodbye = await wind_down.climb_weekly_ladder(
             _VETERAN,
             BriefingSchedule(),
             _ONE_DIGEST_FROM_DORMANT,
@@ -287,5 +286,5 @@ class TestTheWeeklyLadder:
             has_goal=False,
         )
 
+        assert goodbye is False
         set_day.assert_not_awaited()
-        enter.assert_not_awaited()
