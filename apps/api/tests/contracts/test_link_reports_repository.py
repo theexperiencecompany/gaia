@@ -75,7 +75,8 @@ async def test_only_trusted_reporters_of_that_link_are_counted_as_trusted(
 ) -> None:
     await repo.add(_report("s1", "user-a", trusted=True))
     await repo.add(_report("s1", "user-b"))
-    await repo.add(_report("s2", "user-c", trusted=True))
+    await repo.add(_report("s1", "user-c"))
+    await repo.add(_report("s2", "user-d", trusted=True))
 
     assert await repo.trusted_reporters("s1") == 1
-    assert await repo.signed_in_reporters("s1") == 2
+    assert await repo.signed_in_reporters("s1") == 3

@@ -225,5 +225,8 @@ def test_a_link_serves_its_bytes_only_live_published_and_within_their_cap(
     "fields", [{"revoked": True}, {"revoked": False, "revoked_reason": RevokeReason.OWNER}]
 )
 def test_a_link_is_revoked_exactly_when_it_says_why(fields: dict[str, object]) -> None:
-    with pytest.raises(ValidationError, match="revoked exactly when"):
+    with pytest.raises(ValidationError) as refused:
         _link(LinkAccess.UNLISTED, **fields)
+    assert [error["msg"] for error in refused.value.errors()] == [
+        "Value error, a link is revoked exactly when it has a revoked_reason"
+    ]
