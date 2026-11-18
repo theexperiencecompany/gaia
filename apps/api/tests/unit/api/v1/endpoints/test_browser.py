@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, call, patch
 from annotated_types import Ge, Le
 import fakeredis.aioredis
 from fastapi import HTTPException
+from fastapi.routing import APIRoute
 from httpx import AsyncClient
 import pytest
 from tests.conftest import FAKE_USER
@@ -26,6 +27,7 @@ from tests.helpers import captured_wide_event
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.endpoints import browser as browser_ep, browser_live_view as live_view_ep
+from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_HANDOFF_ACK_CANCEL,
     BROWSER_HANDOFF_ACK_CONTINUE,
@@ -36,6 +38,7 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
+from app.constants.log_tags import LogTag
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -44,7 +47,7 @@ from app.schemas.browser import (
     NewHandoff,
 )
 from app.schemas.browser_job import BrowserJobStopped
-from app.services.browser import handoff_buttons, job_stop
+from app.services.browser import handoff_buttons
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.jobs import done_state
@@ -55,6 +58,7 @@ from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 
@@ -156,7 +160,7 @@ async def button_world(
 
     monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
     # A cancel is a real stop, which reads ARQ's keys: its pool is the same fake Redis.
-    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await create_pending_handoff(
         "h1",
         NewHandoff(
@@ -213,7 +217,14 @@ class TestDecideBrowserHandoff:
         record = await get_handoff("h1")
         assert record is not None
         assert record.status is HandoffStatus.COMPLETED
-        assert [error["error_type"] for error in event["errors"]] == ["RuntimeError"]
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.BROWSER} Recording a handoff decision in the thread failed",
+                "conversation_id": "c1",
+                "error": "checkpointer down",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
         self, button_world: list[tuple[str, str, str]]
@@ -363,9 +374,7 @@ class TestDecideBrowserHandoff:
 
 @pytest.fixture
 def takeover_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        browser_ep.settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False
-    )
+    monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False)
 
 
 @pytest.mark.usefixtures("takeover_secret")
@@ -595,7 +604,7 @@ class TestClearBrowserLoginsContract:
 class TestRouteMetadata:
     def _route(self, path: str, method: str) -> Any:
         for route in browser_ep.router.routes:
-            if route.path == path and method in route.methods:
+            if isinstance(route, APIRoute) and route.path == path and method in route.methods:
                 return route
         raise AssertionError(f"no {method} route for {path}")
 
@@ -664,5 +673,9 @@ class TestAuthenticatedUserThroughTheApp:
     )
     def test_user_id_comes_from_the_auth_dependency(self, path: str, method: str) -> None:
         """A route resolving its own id from request.state is how the 500s got in."""
-        route = next(r for r in browser_ep.router.routes if r.path == path and method in r.methods)
+        route = next(
+            r
+            for r in browser_ep.router.routes
+            if isinstance(r, APIRoute) and r.path == path and method in r.methods
+        )
         assert [d.call for d in route.dependant.dependencies] == [get_user_id]

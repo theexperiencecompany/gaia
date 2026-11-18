@@ -128,7 +128,6 @@ apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
-apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
