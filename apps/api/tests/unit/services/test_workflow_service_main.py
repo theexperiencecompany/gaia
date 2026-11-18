@@ -2941,7 +2941,7 @@ def _gmail_disconnected():
         patch("app.services.workflow.integration_requirements.get_all_integrations_status", status),
         patch("app.services.oauth.oauth_service.get_all_integrations_status", status),
     ):
-        yield
+        yield status
 
 
 _GET_WORKFLOW = "app.services.workflow.service.WorkflowService.get_workflow"
@@ -2962,7 +2962,7 @@ class TestTriggerIntegrationIsRequired:
 
         activate.assert_not_awaited()
 
-    async def test_create_leaves_the_workflow_off(self) -> None:
+    async def test_create_leaves_the_workflow_off(self, _gmail_disconnected: AsyncMock) -> None:
         request = _make_create_request(
             trigger_config=_gmail_triggered_workflow().trigger_config,
             steps=[WorkflowStep(id="s1", title="s", description="d")],
@@ -2979,6 +2979,8 @@ class TestTriggerIntegrationIsRequired:
 
         assert result.activated is False
         activate.assert_not_awaited()
+        # The gate asked about this user's connections, not anyone's.
+        _gmail_disconnected.assert_awaited_with(USER_ID)
 
     @pytest.mark.regression
     async def test_regenerate_keeps_the_workflow_off(self) -> None:
