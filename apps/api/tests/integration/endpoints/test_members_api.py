@@ -451,7 +451,6 @@ class TestRemoveMember:
         workflow = MagicMock(id="wf-1")
         for name, found in (
             ("workflow_repository.find_activated_for_user", [workflow]),
-            ("workflow_repository.find_system_workflows", []),
             ("reminder_repository.find_scheduled_for_user", []),
             ("todo_repository.find_running_tracked_for_user", []),
             ("PlatformLinkService.get_linked_platforms", {}),

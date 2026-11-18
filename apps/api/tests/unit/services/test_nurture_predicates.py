@@ -18,6 +18,7 @@ from app.services.nurture.predicates import (
     used_chat,
     uses_todos,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS
 
 
 def _user(user_id: str = "u-1", **overrides) -> UserDocument:
@@ -90,7 +91,9 @@ class TestHasWorkflow:
     async def test_true_with_any_workflow(self, mock_count) -> None:
         mock_count.return_value = 1
         assert await has_workflow(_user()) is True
-        mock_count.assert_awaited_once_with("u-1", exclude_todo_workflows=False)
+        mock_count.assert_awaited_once_with(
+            "u-1", unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False
+        )
 
     @patch(
         "app.services.nurture.predicates.workflow_repository.count_for_user", new_callable=AsyncMock

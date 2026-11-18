@@ -40,7 +40,7 @@ def _patches(
         patch(
             f"{_MOD}.workflow_repository.find_activated_for_user",
             new_callable=AsyncMock,
-            side_effect=lambda uid: workflows_by_user.get(uid, []),
+            side_effect=lambda uid, excluding_keys: workflows_by_user.get(uid, []),
         ),
         patch(
             f"{_MOD}.WorkflowService.deactivate_workflow",

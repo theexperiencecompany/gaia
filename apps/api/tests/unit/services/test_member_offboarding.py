@@ -1,12 +1,13 @@
 """Unit tests for app.services.member_offboarding — nothing runs for a removed member."""
 
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoUpdate
 from app.services.member_offboarding import stop_acting_for_removed_member
@@ -29,24 +30,30 @@ class Seams:
 
 @pytest.fixture
 def seams() -> Iterator[Seams]:
-    workflows = [SimpleNamespace(id="wf-user"), SimpleNamespace(id="wf-system")]
-    briefs = [
-        SimpleNamespace(id="wf-daily", activated=True),
-        SimpleNamespace(id="wf-weekly", activated=False),
+    owned = [
+        SimpleNamespace(id="wf-user", activated=True, system_workflow_key=None),
+        SimpleNamespace(
+            id="wf-system", activated=True, system_workflow_key="calendar:meeting_prep"
+        ),
+        SimpleNamespace(
+            id="wf-daily", activated=True, system_workflow_key=DAILY_BRIEFING_WORKFLOW_KEY
+        ),
+        SimpleNamespace(
+            id="wf-weekly", activated=False, system_workflow_key=WEEKLY_DIGEST_WORKFLOW_KEY
+        ),
     ]
+
+    async def activated(user_id: str, *, excluding_keys: Collection[str]) -> list[SimpleNamespace]:
+        return [w for w in owned if w.activated and w.system_workflow_key not in excluding_keys]
+
     reminders = [SimpleNamespace(id="rem-1")]
     todos = [SimpleNamespace(id="todo-1")]
     with (
         patch(
             f"{_MOD}.workflow_repository.find_activated_for_user",
             new_callable=AsyncMock,
-            return_value=workflows,
+            side_effect=activated,
         ) as find_workflows,
-        patch(
-            f"{_MOD}.workflow_repository.find_system_workflows",
-            new_callable=AsyncMock,
-            return_value=briefs,
-        ),
         patch(f"{_MOD}.revoke_all_links_for_user", new_callable=AsyncMock) as revoke_links,
         patch(f"{_MOD}.WorkflowService.deactivate_workflow", new_callable=AsyncMock) as deactivate,
         patch(
@@ -148,7 +155,8 @@ class TestStopActingForRemovedMember:
         await stop_acting_for_removed_member(USER)
 
         for finder in seams.finders:
-            finder.assert_awaited_once_with(USER)
+            finder.assert_awaited_once()
+            assert finder.await_args.args == (USER,)
 
     async def test_a_clean_stop_counts_every_item(self, seams: Seams) -> None:
         async with captured_wide_event() as event:

@@ -10,7 +10,6 @@ one left.
 from collections.abc import Awaitable, Callable
 from functools import partial
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.error_codes import MEMBER_OFFBOARDING_INCOMPLETE
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
@@ -32,9 +31,7 @@ async def stop_acting_for_removed_member(user_id: str) -> None:
     steps: list[tuple[str, Callable[[], Awaitable[object]]]] = [
         ("links", partial(revoke_all_links_for_user, user_id))
     ]
-    briefs = await workflow_repository.find_system_workflows(user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS)
-    running = await workflow_repository.find_activated_for_user(user_id)
-    for workflow in [*running, *(brief for brief in briefs if brief.activated)]:
+    for workflow in await workflow_repository.find_activated_for_user(user_id, excluding_keys=()):
         steps.append(
             (
                 f"workflow:{workflow.id}",

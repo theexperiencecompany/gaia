@@ -13,7 +13,6 @@ from collections.abc import Callable
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
@@ -37,12 +36,12 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
-from app.services.briefing.run_times import briefing_cron
 from app.services.briefing.schedule import resync_briefing_schedules
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 from app.services.system_workflows.recipes import install_recipe
+from app.services.system_workflows.registry import behaviour_of
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -234,18 +233,18 @@ async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id:
     """Fit a schedule definition to its user, then recompute next_run.
 
     Factories can't know the user, so scheduled definitions carry no timezone:
-    the profile timezone is stamped so the cron fires on the user's clock. The
-    briefs also take the days and hours the user's briefing schedule gives them.
+    the profile timezone is stamped so the cron fires on the user's clock, and a
+    definition that fits its cron to the user (the briefs) gets the user's own.
     """
     if trigger_config.type != TriggerType.SCHEDULE:
         return
     if not trigger_config.timezone:
         trigger_config.timezone = (await get_profile_timezone(user_id)).value
-    if key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
+    if cron_for := behaviour_of(key).cron_for:
         user = await user_repository.get(user_id)
         if user is None:
-            raise LookupError(f"Cannot schedule the briefs for unknown user {user_id}")
-        trigger_config.cron_expression = briefing_cron(key, user)
+            raise LookupError(f"Cannot schedule {key} for unknown user {user_id}")
+        trigger_config.cron_expression = cron_for(user)
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 

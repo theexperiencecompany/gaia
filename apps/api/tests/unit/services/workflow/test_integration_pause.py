@@ -240,7 +240,7 @@ class TestScanUsesItsArguments:
         """Scanning another user's workflows would pause a stranger's automations."""
         mine = _workflow("wf-1", "Morning digest")
 
-        async def _activated(user_id: str) -> list[MagicMock]:
+        async def _activated(user_id: str, *, excluding_keys: object) -> list[MagicMock]:
             return [mine] if user_id == USER_ID else []
 
         with (

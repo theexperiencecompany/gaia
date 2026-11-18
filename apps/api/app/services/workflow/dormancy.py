@@ -21,6 +21,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
+from app.services.system_workflows.registry import UNPAUSABLE_KEYS
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -54,7 +55,7 @@ async def find_dormancy_candidates(*, max_users: int | None = None) -> list[Dorm
         if max_users is not None and len(candidates) >= max_users:
             break
         workflows: list[WorkflowDocument] = await workflow_repository.find_activated_for_user(
-            user.id
+            user.id, excluding_keys=UNPAUSABLE_KEYS
         )
         if not workflows:
             continue

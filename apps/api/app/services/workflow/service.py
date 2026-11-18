@@ -34,6 +34,7 @@ from app.models.workflow_models import (
 )
 from app.services.briefing.errors import BriefsOffError
 from app.services.integrations.integration_status import get_all_integrations_status
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.wait_service import report_wait_met
 from app.services.workflow.integration_requirements import (
@@ -545,6 +546,7 @@ class WorkflowService:
         try:
             docs = await workflow_repository.list_for_user(
                 user_id,
+                unlisted_keys=UNLISTED_KEYS,
                 exclude_todo_workflows=exclude_todo_workflows,
                 limit=limit,
                 offset=offset,
@@ -554,7 +556,9 @@ class WorkflowService:
             # already holds every match, so counting again is a wasted round-trip.
             total = (
                 await workflow_repository.count_for_user(
-                    user_id, exclude_todo_workflows=exclude_todo_workflows
+                    user_id,
+                    unlisted_keys=UNLISTED_KEYS,
+                    exclude_todo_workflows=exclude_todo_workflows,
                 )
                 if limit is not None
                 else offset + len(docs)

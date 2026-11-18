@@ -41,11 +41,6 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
-from app.constants.briefing import (
-    BRIEFING_RHYTHM_WORKFLOW_KEYS,
-    BRIEFING_RUN_SUMMARIES,
-    DAILY_BRIEFING_WORKFLOW_KEY,
-)
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
 )
@@ -94,6 +89,8 @@ from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
 from app.services.quiet_hours import message_class
+from app.services.system_workflows.registry import behaviour_of
+from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -669,11 +666,10 @@ async def _record_execution_failure(
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
     # An executor that died was already announced by the delivery path, as the
-    # workflow's failure notification; a second one here would say it twice. A brief
-    # is no workflow to the user: its failure is the logged error, and the next one runs.
+    # workflow's failure notification; a second one here would say it twice.
     if (
         not isinstance(error, WorkflowExecutorFailed)
-        and workflow.system_workflow_key not in BRIEFING_RHYTHM_WORKFLOW_KEYS
+        and behaviour_of(workflow.system_workflow_key).notify_on_failure
     ):
         await _notify_workflow_failed(error, workflow)
 
@@ -1287,25 +1283,6 @@ async def _drain_trigger_events(
     return merged, None
 
 
-async def _run_briefing_workflow(workflow: Workflow) -> str:
-    """Run the briefing pipeline instead of the generic chat turn.
-
-    Briefing workflows own their delivery (notification orchestrator and the
-    platform chat), so there is no workflow conversation to thread through.
-    Imported inline to avoid the agent import cycle (same reason as
-    execute_workflow_as_chat).
-    """
-    from app.services.briefing import daily, held, weekly  # noqa: PLC0415 -- agent cycle
-
-    if workflow.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY:
-        outcome = await daily.run_daily_briefing(workflow.user_id)
-        await held.release_after_daily_run(workflow.user_id, outcome)
-    else:
-        outcome = await weekly.run_weekly_digest(workflow.user_id)
-    log.set_ns("workflow", briefing_outcome=outcome.value)
-    return BRIEFING_RUN_SUMMARIES[outcome]
-
-
 async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:
     # Stamps the execution id onto the wide event before any model call: the
     # llm_calls ledger reads it to attribute cost (it exists only here, never
@@ -1318,8 +1295,10 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # path delivers from the background path; a replay via _finish_after_replay.
     conversation_id: str | None
     trace: list[RecordedCall]
-    if workflow.system_workflow_key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
-        conversation_id, trace, summary = None, [], await _run_briefing_workflow(workflow)
+    # A system workflow with its own pipeline delivers itself: no workflow conversation.
+    key = workflow.system_workflow_key
+    if run := SYSTEM_RUNS.get(key) if key else None:
+        conversation_id, trace, summary = None, [], await run(workflow)
     else:
         conversation_id, trace, summary = await _run_workflow(fire)
 
