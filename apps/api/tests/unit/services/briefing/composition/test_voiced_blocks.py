@@ -16,10 +16,8 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
-from app.models.brief_slot_models import SeriesField
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
-    charted_figures,
     voiced_block_lines,
 )
 
@@ -93,15 +91,6 @@ def test_a_chart_over_one_page_of_an_app_tells_the_voice_its_total_is_not_the_ap
 
 def test_no_blocks_beyond_the_items_tell_the_voice_nothing() -> None:
     assert voiced_block_lines([]) == []
-
-
-def test_the_figures_of_every_charted_series_are_offered_by_id() -> None:
-    figures = charted_figures([NOTE, CHART])
-
-    assert list(figures) == ["meetings", "focus"]
-    assert figures["meetings"][SeriesField.TOTAL] == "7"
-    assert figures["meetings"][SeriesField.PEAK] == "4"
-    assert figures["focus"][SeriesField.LATEST] == "1"
 
 
 def test_the_words_the_prose_may_quote_come_from_every_kind_of_block() -> None:

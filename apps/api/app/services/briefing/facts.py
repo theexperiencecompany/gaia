@@ -1,6 +1,7 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from itertools import groupby
 
@@ -27,7 +28,7 @@ from app.agents.prompts.brief_fact_prompts import (
     WEEK_IN_NUMBERS_HEADER,
 )
 from app.models.brief_candidate_models import BriefCandidate, HeldResult
-from app.models.brief_composition_models import BriefBlock, SectionBlock
+from app.models.brief_composition_models import BriefBlock, ChartBlock, SectionBlock
 from app.models.brief_item_models import GroupState
 from app.models.brief_payload_models import (
     BriefingEvent,
@@ -49,11 +50,7 @@ from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import start_time
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.clock import DayWindow, UserClock
-from app.services.briefing.composition.voiced_blocks import (
-    block_words,
-    charted_figures,
-    voiced_block_lines,
-)
+from app.services.briefing.composition.voiced_blocks import block_words, voiced_block_lines
 from app.services.briefing.fact_pool.render import (
     Voiced,
     goal_progress,
@@ -62,13 +59,7 @@ from app.services.briefing.fact_pool.render import (
 )
 from app.services.briefing.formats import day
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import (
-    BriefFact,
-    SlotValues,
-    candidate_fact,
-    figures_in,
-    series_figures,
-)
+from app.services.briefing.slots import BriefFact, SlotValues, figures_in
 from app.services.briefing.work import TrackedWork
 
 
@@ -194,12 +185,14 @@ def _counts(
     return {slot: n for slot, n in counts.items() if n}
 
 
-def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts:
+def build_facts(
+    chosen: Chosen, sources: FactSources, pooled: SlotValues, clock: UserClock
+) -> Facts:
     """Assemble the facts block the model voices, and what each of its slots renders.
 
-    Every item, signal and event is a fact numbered by its candidate id. A todo fact gives
-    the model a summary, whether it is big or waiting on the user, and whether it opens a
-    deliverable; app signals are voiced from their own block, with their memory.
+    pooled is what the pool's slots render (the composition's values); the voice's are its placed
+    facts, worded as the brief words them. A todo fact says its summary, whether it is big or waits
+    on the user, and whether it opens a deliverable; app signals are voiced from their own block.
     """
     facts: dict[int, BriefFact] = {}
     own_words = block_words(sources.blocks)
@@ -218,8 +211,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             elif candidate.url:
                 addresses[fact_id] = candidate.url
             words = _own_words(candidate, it, art)
-            facts[fact_id] = candidate_fact(
-                candidate, clock, title=it.text, kind=it.kind, words=" ".join(words)
+            facts[fact_id] = replace(
+                pooled.facts[fact_id], title=it.text, kind=it.kind, words=" ".join(words)
             )
             own_words += words
             placed.append((it, candidate))
@@ -237,13 +230,14 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
         fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
     events: list[tuple[BriefingEvent, str]] = []
     for (fact_id, candidate), event in zip(sources.event_items.items(), calendar, strict=True):
-        facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
+        # Listed under its day, an event's time slot says only when it starts.
+        facts[fact_id] = replace(pooled.facts[fact_id], time=start_time(event))
         said = Voiced(facts[fact_id])
         line = item_line(
             fact_id, candidate, clock, said
         )  # pragma: no mutate — never due, never a repeat: reads no clock
         events.append((event, line))
-    fact_lines += _closing_lines(chosen, sources, events)
+    fact_lines += _closing_lines(chosen, sources, pooled.series, events)
     if sources.recap is not None:
         own_words += [title for goal in sources.recap.goals for title in goal.linked]
     return Facts(
@@ -253,13 +247,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
         values=SlotValues(
             facts=facts,
             counts=counts,
-            series={
-                **charted_figures(sources.blocks),
-                **{
-                    series.id: series_figures(series)
-                    for series in (sources.recap.series if sources.recap else [])
-                },
-            },
+            series={s.id: pooled.series[s.id] for s in _voiced_series(sources)},
             quoted=figures_in(own_words),
         ),
         deliverables=deliverables,
@@ -268,8 +256,17 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     )
 
 
+def _voiced_series(sources: FactSources) -> list[DataSeries]:
+    """Return the series the voice may figure: every series a chart draws, then the recap's."""
+    charted = [s for block in sources.blocks if isinstance(block, ChartBlock) for s in block.series]
+    return [*charted, *(sources.recap.series if sources.recap else [])]
+
+
 def _closing_lines(
-    chosen: Chosen, sources: FactSources, events: list[tuple[BriefingEvent, str]]
+    chosen: Chosen,
+    sources: FactSources,
+    figures: Mapping[str, Mapping[SeriesField, str]],
+    events: list[tuple[BriefingEvent, str]],
 ) -> list[str]:
     """Return what follows the items: an empty day, what went unread, the blocks, the recap, todos, the calendar."""
     lines = [sources.span.no_items] if not chosen.sections else []
@@ -277,7 +274,7 @@ def _closing_lines(
         lines.append(unread)
     lines += voiced_block_lines(sources.blocks)
     if sources.recap is not None:
-        lines += _recap_lines(sources.recap)
+        lines += _recap_lines(sources.recap, figures)
     if sources.todos_note is not None:
         lines.append(sources.todos_note)
     return [*lines, _calendar_note(events, sources)]
@@ -358,13 +355,13 @@ def _signals_block(
     return "\n".join(lines)
 
 
-def _recap_lines(recap: WeekRecap) -> list[str]:
+def _recap_lines(recap: WeekRecap, figures: Mapping[str, Mapping[SeriesField, str]]) -> list[str]:
     """Say the week's totals as one grouped recap, and what moved and what stuck on each goal."""
     lines: list[str] = []
     if recap.series:
         lines.append(WEEK_IN_NUMBERS_HEADER)
         lines += [
-            f"- {s.label}: {SeriesSlot(s.id, SeriesField.TOTAL)} ({series_figures(s)[SeriesField.TOTAL]}"
+            f"- {s.label}: {SeriesSlot(s.id, SeriesField.TOTAL)} ({figures[s.id][SeriesField.TOTAL]}"
             f"{f' {s.unit}' if s.unit else ''})"
             for s in recap.series
         ]

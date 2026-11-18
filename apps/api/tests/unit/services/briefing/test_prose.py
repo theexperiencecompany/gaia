@@ -24,6 +24,8 @@ from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.tracked import gaia_work_candidates
 from app.services.briefing.clock import UserClock
+from app.services.briefing.composition.compose import pool_values
+from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.facts import TODAY, Facts, FactSources, build_facts
 from app.services.briefing.formats import opening_line
 from app.services.briefing.prose import Writing, reader_block, written_brief
@@ -288,6 +290,22 @@ class TestAFigureTheFactsShow:
                 event_items={},
                 span=TODAY,
                 todos_note=None,
+            ),
+            pool_values(
+                FactPool(
+                    items={1: candidate},
+                    series=[],
+                    quotes=[],
+                    goals=[],
+                    context=PoolContext(
+                        reader="Ada",
+                        clock=_CLOCK,
+                        calendar=0,
+                        calendar_span="today",
+                        done_since=_NOW,
+                    ),
+                    criteria={},
+                )
             ),
             _CLOCK,
         )

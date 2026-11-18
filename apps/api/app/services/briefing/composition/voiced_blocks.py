@@ -1,6 +1,6 @@
 """Say the composition's charts, quotes, progress and notes to the voice, so its message agrees with them."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from app.agents.prompts.brief_fact_prompts import BLOCKS_HEADER, SHOWN_NOT_TOTAL_SERIES
 from app.models.brief_composition_models import (
@@ -10,9 +10,7 @@ from app.models.brief_composition_models import (
     ProgressBlock,
     QuoteBlock,
 )
-from app.models.brief_slot_models import SeriesField
 from app.services.briefing.fact_pool.render import goal_progress
-from app.services.briefing.slots import series_figures
 
 
 def _line(block: BriefBlock) -> str | None:
@@ -36,16 +34,6 @@ def voiced_block_lines(blocks: Sequence[BriefBlock]) -> list[str]:
     """Return the facts lines for every block besides the item sections; empty when there are none."""
     lines = [line for block in blocks if (line := _line(block)) is not None]
     return [BLOCKS_HEADER, *lines] if lines else []
-
-
-def charted_figures(blocks: Sequence[BriefBlock]) -> dict[str, Mapping[SeriesField, str]]:
-    """Return the figures of every series a chart draws, which the voice's series slots may render."""
-    return {
-        series.id: series_figures(series)
-        for block in blocks
-        if isinstance(block, ChartBlock)
-        for series in block.series
-    }
 
 
 def block_words(blocks: Sequence[BriefBlock]) -> list[str]:

@@ -43,10 +43,13 @@ from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.clock import UserClock
+from app.services.briefing.composition.compose import pool_values
+from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.facts import (
     TODAY,
     WEEK_AHEAD,
     BriefSpan,
+    Facts,
     FactSources,
     WeekRecap,
     build_facts,
@@ -69,6 +72,39 @@ _SERIES = DataSeries(
     shape=SeriesShape.CATEGORICAL,
     points=[SeriesPoint(x="Junk", y=22), SeriesPoint(x="Needs a reply", y=9)],
 )
+
+
+_CONTEXT = PoolContext(
+    reader="Ada", clock=_CLOCK, calendar=0, calendar_span="today", done_since=_NOW
+)
+
+
+def _facts(chosen: Chosen, sources: FactSources, *uncharted: DataSeries) -> Facts:
+    """Build the facts over a pool of what the brief placed, its events and series, as a run does."""
+    items = {i: c for picked in chosen.picked for i, c in picked} | sources.event_items
+    charted = [s for b in sources.blocks if isinstance(b, ChartBlock) for s in b.series]
+    recapped = sources.recap.series if sources.recap else []
+    pool = FactPool(
+        items=items,
+        series=[*charted, *recapped, *uncharted],
+        quotes=[],
+        goals=[],
+        context=_CONTEXT,
+        criteria={},
+    )
+    return build_facts(chosen, sources, pool_values(pool), _CLOCK)
+
+
+def _hours(series_id: str, ys: list[float]) -> DataSeries:
+    return DataSeries(
+        id=series_id,
+        label=series_id,
+        unit="hours",
+        source="gaia",
+        app="GAIA",
+        shape=SeriesShape.TIME_SERIES,
+        points=[SeriesPoint(x=f"2026-11-{5 + n:02d}", y=y) for n, y in enumerate(ys)],
+    )
 
 
 def _chosen(*picked: tuple[BriefingItem, BriefCandidate]) -> Chosen:
@@ -116,7 +152,7 @@ class TestTheFactLines:
             count=3,
         )
 
-        facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
+        facts = _facts(_chosen((item, candidate)), _sources(open_todos=4))
 
         assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.OPEN_TODOS: 4}
         assert facts.values.facts[1] == BriefFact(
@@ -147,7 +183,7 @@ class TestTheFactLines:
             todo_id="own-1",
         )
 
-        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+        facts = _facts(_chosen((item, candidate)), _sources())
 
         assert "1. [GAIA] waiting on you: Sort the garage\n" in f"{facts.block}\n"
         assert facts.deliverables == {}
@@ -166,7 +202,7 @@ class TestTheFactLines:
         )
         art = ArtifactFact(snippet="", chars=0, action=True)
 
-        facts = build_facts(_chosen((item, candidate)), _sources(artifacts={"t1": art}), _CLOCK)
+        facts = _facts(_chosen((item, candidate)), _sources(artifacts={"t1": art}))
 
         assert (
             "1. [GAIA] waiting on you: Venue | Lisbon or Porto?"
@@ -205,9 +241,7 @@ class TestWhatTheVoiceMayLink:
     ) -> None:
         art = ArtifactFact(snippet="", chars=chars, action=False)
 
-        facts = build_facts(
-            _chosen(self._work(todo_id, url)), _sources(artifacts={"t1": art}), _CLOCK
-        )
+        facts = _facts(_chosen(self._work(todo_id, url)), _sources(artifacts={"t1": art}))
 
         assert ("| linkable" in facts.block) is linked
 
@@ -224,7 +258,7 @@ class TestWhatProseMayQuote:
             standing="GAIA looks at it again Tue Nov 17",
         )
 
-        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+        facts = _facts(_chosen((item, candidate)), _sources())
 
         assert facts.values.quoted == {"17"}
         assert facts.block.splitlines()[2] == (
@@ -257,7 +291,7 @@ class TestWhatProseMayQuote:
         )
         art = ArtifactFact(snippet="42 slides", chars=900, action=False)
 
-        facts = build_facts(_chosen(first, second), _sources(artifacts={"t1": art}), _CLOCK)
+        facts = _facts(_chosen(first, second), _sources(artifacts={"t1": art}))
 
         assert facts.values.quoted == {"Q3", "5pm", "42", "Q4"}
 
@@ -282,7 +316,7 @@ class TestWhatProseMayQuote:
             signal=signal,
         )
 
-        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+        facts = _facts(_chosen((item, candidate)), _sources())
 
         assert facts.values.quoted == {"4", "2", "P1", "88"}
 
@@ -291,19 +325,32 @@ class TestTheCalendarAndTheCharts:
     def test_a_charts_figures_are_what_the_series_slots_render(self) -> None:
         chart = ChartBlock(chart=ChartKind.BAR, title="Mail", takeaway="Junk.", series=[_SERIES])
 
-        facts = build_facts(Chosen(sections=[], picked=[]), _sources(blocks=[chart]), _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(blocks=[chart]))
 
         assert facts.values.series["gmail_sorted"][SeriesField.TOTAL] == "31"
+
+    def test_the_voice_is_offered_the_figures_of_every_charted_series_alone(self) -> None:
+        meetings = _hours("meetings", [2, 1, 4])
+        focus = _hours("focus", [3, 3, 1])
+        chart = ChartBlock(
+            chart=ChartKind.STACKED_BAR,
+            title="This week",
+            takeaway="Thursday was heaviest.",
+            series=[meetings, focus],
+        )
+
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(blocks=[chart]), _SERIES)
+
+        assert list(facts.values.series) == ["meetings", "focus"]
+        assert facts.values.series["meetings"][SeriesField.TOTAL] == "7"
+        assert facts.values.series["meetings"][SeriesField.PEAK] == "4"
+        assert facts.values.series["focus"][SeriesField.LATEST] == "1"
 
     def test_events_and_their_ids_must_pair_up(self) -> None:
         event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")
 
         with pytest.raises(ValueError, match="zip"):
-            build_facts(
-                Chosen(sections=[], picked=[]),
-                _sources(calendar=[event], event_ids=[]),
-                _CLOCK,
-            )
+            _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[]))
 
     def test_the_calendar_note_lists_each_event_by_its_fact_and_time(self) -> None:
         events = [
@@ -312,10 +359,8 @@ class TestTheCalendarAndTheCharts:
         ]
         span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.", words="this week")
 
-        facts = build_facts(
-            Chosen(sections=[], picked=[]),
-            _sources(calendar=events, event_ids=[7, 8], span=span),
-            _CLOCK,
+        facts = _facts(
+            Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8], span=span)
         )
 
         assert facts.block.splitlines()[-3:] == [
@@ -336,10 +381,9 @@ class TestTheCalendarAndTheCharts:
             heading="The days ahead", empty="Nothing.", no_items="None.", words="ahead", days=days
         )
 
-        facts = build_facts(
+        facts = _facts(
             Chosen(sections=[], picked=[]),
             _sources(calendar=events, event_ids=[7, 8, 9], span=span),
-            _CLOCK,
         )
 
         assert facts.block.splitlines()[-6:] == [
@@ -359,10 +403,9 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-13", start=None, title="Offsite"),
         ]
 
-        facts = build_facts(
+        facts = _facts(
             Chosen(sections=[], picked=[]),
             _sources(calendar=events, event_ids=[7, 8], span=WEEK_AHEAD),
-            _CLOCK,
         )
 
         assert facts.block.splitlines()[-5:] == [
@@ -377,7 +420,7 @@ class TestTheCalendarAndTheCharts:
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
         unconnected = _sources(calendar=CalendarRead(gap=CalendarGap.NOT_CONNECTED))
 
-        facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), unconnected)
 
         assert facts.block.splitlines()[-1] == NO_CALENDAR_CONNECTED
         assert TODAY.empty not in facts.block
@@ -386,7 +429,7 @@ class TestTheCalendarAndTheCharts:
         """Regression: a calendar read that failed told the voice the day was free."""
         unread = _sources(calendar=CalendarRead(gap=CalendarGap.UNAVAILABLE))
 
-        facts = build_facts(Chosen(sections=[], picked=[]), unread, _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), unread)
 
         assert facts.block.splitlines()[-1] == CALENDAR_UNAVAILABLE
         assert TODAY.empty not in facts.block
@@ -441,7 +484,7 @@ class TestEachCountClaimsOnlyItsOwn:
             (BriefingItem(text="Maya", kind=ItemState.YOU, action=BriefAction.REPLY), waiting),
         ]
 
-        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+        facts = _facts(_chosen(*placed), _sources())
 
         assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.WHILE_AWAY: 1}
         assert "4. [GAIA] on their list, undated: Plan Q1\n" in f"{facts.block}\n"
@@ -478,7 +521,7 @@ class TestEachCountClaimsOnlyItsOwn:
             ),
         ]
 
-        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+        facts = _facts(_chosen(*placed), _sources())
 
         assert facts.values.counts == {CountName.DONE: 1, CountName.IN_PROGRESS: 2}
 
@@ -488,9 +531,7 @@ class TestEachCountClaimsOnlyItsOwn:
             BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
         ]
 
-        facts = build_facts(
-            Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]), _CLOCK
-        )
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]))
 
         assert facts.values.counts == {CountName.EVENTS: 2}
 
@@ -532,7 +573,7 @@ class TestTheAppsBlock:
             self._placed("Linear", 3, SignalImportance.HIGH),
         ]
 
-        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+        facts = _facts(_chosen(*placed), _sources())
 
         assert facts.signals.splitlines() == [
             f"{SIGNALS_HEADER} 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
@@ -553,7 +594,7 @@ class TestTheAppsBlock:
             title="Q4 plan",
         )
 
-        assert build_facts(_chosen((item, candidate)), _sources(), _CLOCK).signals == ""
+        assert _facts(_chosen((item, candidate)), _sources()).signals == ""
 
 
 class TestARepeatIsSaidAsStillOpen:
@@ -599,7 +640,7 @@ class TestARepeatIsSaidAsStillOpen:
             ),
         ]
 
-        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+        facts = _facts(_chosen(*placed), _sources())
 
         assert "1. [Linear]" not in facts.block
         assert facts.signals.splitlines()[1:] == [
@@ -625,10 +666,9 @@ class TestARepeatIsSaidAsStillOpen:
             text="Investor list", kind=ItemState.GAIA, todo_id="t1", outcome=BriefOutcome.STARTED
         )
 
-        facts = build_facts(
+        facts = _facts(
             _chosen((item, shown)),
             _sources(artifacts={"t1": ArtifactFact(snippet="12 vetted", chars=900, action=False)}),
-            _CLOCK,
         )
 
         assert "already shown, still open (first seen 3 days ago" in facts.block
@@ -636,7 +676,7 @@ class TestARepeatIsSaidAsStillOpen:
 
 class TestTheEmptyBriefAndTheLead:
     def test_a_brief_with_no_items_tells_the_voice_not_to_claim_any_work(self) -> None:
-        facts = build_facts(Chosen(sections=[], picked=[]), _sources(), _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), _sources())
 
         assert (
             "No tracked work, results or app items need them today. Do not claim anything ran, "
@@ -645,7 +685,7 @@ class TestTheEmptyBriefAndTheLead:
         assert facts.lead is None
 
     def test_a_weekly_with_no_items_says_so_of_the_week_not_of_today(self) -> None:
-        facts = build_facts(Chosen(sections=[], picked=[]), _sources(span=WEEK_AHEAD), _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(span=WEEK_AHEAD))
 
         assert (
             "The digest holds no items from this week. Do not claim anything ran, finished, or "
@@ -656,9 +696,7 @@ class TestTheEmptyBriefAndTheLead:
     def test_an_event_is_a_fact_timed_on_the_users_day(self) -> None:
         event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")
 
-        facts = build_facts(
-            Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]), _CLOCK
-        )
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]))
 
         assert facts.values.facts == {7: BriefFact(title="Board call", time="3:00 PM")}
 
@@ -688,7 +726,7 @@ class TestTheEmptyBriefAndTheLead:
             SectionBlock(kind="lead", section=1),
         ]
 
-        facts = build_facts(Chosen(sections, picked), _sources(blocks=blocks), _CLOCK)
+        facts = _facts(Chosen(sections, picked), _sources(blocks=blocks))
 
         assert facts.lead == 5
 
@@ -740,7 +778,7 @@ class TestTheWeekRecap:
             recap=WeekRecap(series=[self._FINISHED, self._UNITLESS], goals=goals),
         )
 
-        facts = build_facts(_chosen((item, candidate)), sources, _CLOCK)
+        facts = _facts(_chosen((item, candidate)), sources)
 
         lines = facts.block.splitlines()
         start = lines.index(
@@ -773,7 +811,7 @@ class TestTheClosingLines:
             unread=[UnreadSource(app="Linear", reason=ScoutSkipReason.FAILED)],
         )
 
-        facts = build_facts(Chosen(sections=[], picked=[]), sources, _CLOCK)
+        facts = _facts(Chosen(sections=[], picked=[]), sources)
 
         assert facts.block.splitlines() == [
             "The digest holds no items from this week. Do not claim anything ran, finished, or "

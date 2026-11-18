@@ -64,6 +64,7 @@ from app.services.briefing.sections import (
     log_composition,
     sources_shown,
 )
+from app.services.briefing.slots import SlotValues
 from app.services.briefing.standing import Standing, VoiceInputs
 from app.services.briefing.work import BriefReads, OwnTodos, TrackedWork, count_week, read_work
 from app.utils.user_display import display_first_name, display_name
@@ -133,7 +134,7 @@ async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
     log_composition(pool, laid)
     if run.standing.quiet_after_composing(laid, reads.calendar):
         return await _quiet(run, pool)
-    await _publish_edition(run, pool, laid)
+    await _publish_edition(run, pool, laid, composed.values)
     return BriefingRunOutcome.SENT
 
 
@@ -246,7 +247,7 @@ def _recap_series(series: list[DataSeries]) -> list[DataSeries]:
     return [s for s in series if s.shape is SeriesShape.TIME_SERIES and s.source in _RECAP_SOURCES]
 
 
-def _facts(run: Run, pool: FactPool, laid: Laid) -> Facts:
+def _facts(run: Run, pool: FactPool, laid: Laid, pooled: SlotValues) -> Facts:
     reads, spec = run.reads, run.spec
     work, todos = reads.work, reads.todos
     return build_facts(
@@ -266,14 +267,15 @@ def _facts(run: Run, pool: FactPool, laid: Laid) -> Facts:
             if spec.recaps_week
             else None,
         ),
+        pooled,
         run.clock,
     )
 
 
-async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
+async def _publish_edition(run: Run, pool: FactPool, laid: Laid, pooled: SlotValues) -> None:
     """Voice the brief over its facts, draw its edition, build its payload once and publish it."""
     user, clock, spec, standing, reads = run.user, run.clock, run.spec, run.standing, run.reads
-    facts = _facts(run, pool, laid)
+    facts = _facts(run, pool, laid, pooled)
     voicing = await standing.voice(
         VoiceInputs(
             reads=reads.reads,

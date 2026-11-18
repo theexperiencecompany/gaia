@@ -638,10 +638,10 @@ def _records_what_the_run_built(monkeypatch: pytest.MonkeyPatch, w: World) -> No
         w.pool = await build_fact_pool(*args)
         return w.pool
 
-    def facts(chosen: Any, sources: FactSources, clock: Any) -> Any:
+    def facts(chosen: Any, sources: FactSources, pooled: Any, clock: Any) -> Any:
         w.fact_sources = sources
         w.signals = [(i, c) for picked in chosen.picked for i, c in picked if c.signal is not None]
-        return build_facts(chosen, sources, clock)
+        return build_facts(chosen, sources, pooled, clock)
 
     async def written(user_id: str, prompt: str, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
         w.writing = writing
