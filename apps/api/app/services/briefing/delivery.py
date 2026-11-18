@@ -132,7 +132,11 @@ async def _post_to_chat(user: UserDocument, channel: ChatChannel, brief: Briefin
         origin=f"{brief.kind} brief",
         message_class=ProactiveMessageClass.ROUTINE,
         image=PlatformImage(
-            url=await edition_url(edition.key, EditionVariant.JPG, datetime.now(UTC)),
+            url=await edition_url(
+                edition.key,
+                EditionVariant.JPG,
+                datetime.now(UTC),  # pragma: no mutate — naive now() is the same instant
+            ),
             filename=f"gaia-{brief.kind}-brief.jpg",
         )
         if edition is not None

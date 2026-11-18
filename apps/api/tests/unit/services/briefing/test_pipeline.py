@@ -674,8 +674,9 @@ def _store_briefs(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         brief.delivered_channels.extend(c for c in reached if c not in brief.delivered_channels)
 
     async def complete_delivery(user_id: str, briefing_id: str) -> None:
-        delivery = w.briefs[briefing_id].delivery
-        assert delivery is not None
+        brief = w.briefs[briefing_id]
+        assert brief.user_id == user_id and brief.delivery is not None
+        delivery = brief.delivery
         delivery.completed_at = _NOW
 
     def find_for_date(user_id: str, date: str, kind: BriefingKind) -> BriefingModel | None:
@@ -2809,6 +2810,86 @@ class TestHowARunEnds:
         world.consume.assert_awaited_once_with(_USER, ["h1"])
         assert world.delivered_to() == [*_ORCHESTRATED, "telegram"]
         assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
+
+    async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        [brief] = world.briefs.values()
+        assert brief.delivery is not None
+        assert brief.delivery.done == [
+            DeliveryStep.NOTIFICATION,
+            DeliveryStep.CONVERSATION,
+            DeliveryStep.CHAT,
+        ]
+
+    @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
+    async def test_a_chat_post_that_did_not_publish_records_no_platform(
+        self, world: World, result: OutboundResult
+    ) -> None:
+        world.post.return_value = result
+
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        world.post.assert_awaited_once()
+        assert world.delivered_to() == _ORCHESTRATED
+
+    async def test_an_unsent_email_is_reported_with_every_channels_status(
+        self, world: World
+    ) -> None:
+        world.notify.return_value = SimpleNamespace(
+            channels=[
+                _delivered("inapp"),
+                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
+            ]
+        )
+
+        async with captured_wide_event() as event:
+            await run_brief(_USER, BriefingKind.DAILY)
+
+        [warning] = [w for w in event["warnings"] if w["msg"] == "briefing.email_not_sent"]
+        assert warning["statuses"] == {"inapp": "delivered", "email": "failed"}
+
+    async def test_a_brief_that_asked_for_no_email_reports_none_unsent(self, world: World) -> None:
+        world.user.email = None
+        world.notify.return_value = SimpleNamespace(channels=[_delivered("inapp")])
+
+        async with captured_wide_event() as event:
+            await run_brief(_USER, BriefingKind.DAILY)
+
+        assert [c.channel_type for c in world.notify.await_args.args[0].channels] == ["inapp"]
+        assert "briefing.email_not_sent" not in [w["msg"] for w in event.get("warnings", [])]
+
+    async def test_a_resumed_delivery_reports_the_channels_earlier_steps_reached(
+        self, world: World
+    ) -> None:
+        stored = _brief(_DATE, BriefForm.QUIET_NOTE, message="Gym").model_copy(
+            update={
+                "delivered_channels": ["telegram"],
+                "delivery": BriefDelivery(
+                    push=True,
+                    notification_kind=NotificationKind.BRIEFING_NOTE,
+                    done=[DeliveryStep.CHAT],
+                ),
+            }
+        )
+        world.briefs[stored.id] = stored
+
+        async with captured_wide_event() as event:
+            assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        assert event["briefing"]["channels"] == ["telegram", *_ORCHESTRATED]
+
+    async def test_a_brief_stored_without_a_delivery_plan_is_not_delivered(
+        self, world: World
+    ) -> None:
+        stored = _brief(_DATE, BriefForm.EDITION, message="Gym")
+
+        with pytest.raises(
+            ValueError, match=f"^brief {stored.id} was stored without a delivery plan$"
+        ):
+            await delivery.deliver_brief(world.user, stored)
+
+        world.notify.assert_not_awaited()
 
     async def test_resuming_an_edition_brief_stored_without_its_edition_fails_loud(
         self, world: World
