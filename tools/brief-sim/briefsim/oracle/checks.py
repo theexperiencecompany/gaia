@@ -266,6 +266,9 @@ def _true_counts(truth: Truth, brief: Brief) -> dict[str, set[int]]:
     local_today = brief.local_date
     events = truth.local_day_events(brief)
     todos = truth.gaia_todos(brief.stored_at)
+    # GAIA counts its own todos overdue when due before the user's day began.
+    day_start = datetime.combine(local_today, time.min, truth.tz)
+    overdue_todos = [t for t in todos if t.get("due") and parse_instant(str(t["due"])) < day_start]
     weekly = _weekly_counts(truth, brief) if brief.kind == "weekly" else {}
     issue_like = {
         len(open_issues),
@@ -281,6 +284,7 @@ def _true_counts(truth: Truth, brief: Brief) -> dict[str, set[int]]:
             len([t for t in tasks if t.due_date == local_today]),
             len([t for t in tasks if t.due_date and t.due_date < local_today]),
             len(todos),
+            len(overdue_todos),
             len([t for t in tasks if t.created > since]),
         }
         | weekly.get("task", set()),
@@ -413,8 +417,25 @@ def check_failed_source(truth: Truth, brief: Brief) -> list[Finding]:
     return findings
 
 
+def _due_state(due: date | None, on: date) -> str:
+    """Say where a task's due date stands on a day: none, upcoming, today or overdue."""
+    if due is None:
+        return "none"
+    return "upcoming" if due > on else "today" if due == on else "overdue"
+
+
+def _due_moved(truth: Truth, ref: str, previous: Brief, brief: Brief) -> bool:
+    """Whether a Todoist task came due or went overdue between two briefs: news, not a repeat."""
+    task = truth.state_at(brief.stored_at).todoist.get(ref)
+    due = task.due_date if task is not None else None
+    return _due_state(due, previous.local_date) != _due_state(due, brief.local_date)
+
+
 def check_no_stale_repeat(truth: Truth, brief: Brief) -> list[Finding]:
-    """Guard: stale items resurfacing daily. An app item unchanged since the last brief is not shown again."""
+    """Guard: stale items resurfacing daily. An app item unchanged since the last brief is not shown again.
+
+    A task that came due or went overdue since the last brief has changed: the brief may say so.
+    """
     previous = truth.previous(brief)
     if previous is None or brief.kind != "daily":
         return []
@@ -435,7 +456,8 @@ def check_no_stale_repeat(truth: Truth, brief: Brief) -> list[Finding]:
             for c in truth.world.changes_between(previous.stored_at, brief.stored_at)
             if c.app is app and c.ref == ref
         ]
-        if not changed:
+        due_moved = app is App.TODOIST and _due_moved(truth, ref, previous, brief)
+        if not changed and not due_moved:
             findings.append(
                 _finding(
                     "no_stale_repeat",
