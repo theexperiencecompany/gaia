@@ -111,8 +111,8 @@ async def complete_onboarding(
             return _onboarding_user(existing)
 
         timezone = onboarding_data.timezone.strip() if onboarding_data.timezone else None
-        if timezone and await set_user_timezone(user_id, timezone) is None:
-            raise LookupError(f"User {user_id} vanished while onboarding stored their timezone")
+        if timezone:
+            await set_user_timezone(user_id, timezone)
 
         # The wizard submits only once the chosen platform's link has landed
         # (or the user went on without one), so the link is on this document.

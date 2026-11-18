@@ -2802,11 +2802,10 @@ class TestOneRunPerOccurrence:
             ),
             patch(f"{_GATE}.is_trigger_gates_enforced", AsyncMock(return_value=True)),
             patch(
-                "app.services.user_service.get_profile_timezone", AsyncMock(return_value=kolkata)
-            ),
-            patch(
-                "app.services.quiet_hours.get_quiet_hours",
-                AsyncMock(return_value=DEFAULT_QUIET_HOURS),
+                "app.services.quiet_hours.user_repository",
+                MagicMock(
+                    get=AsyncMock(return_value=UserDocument(id=OWNER_ID, timezone=kolkata.value))
+                ),
             ),
             patch(f"{_GATE}.capture"),
             patch(f"{_DISPATCH}.todo_repository", row),
@@ -3457,8 +3456,8 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch(f"{_DISPATCH}.capture"),
         ):
             # Kolkata is the owner's clock alone: a hold read for anyone else would read UTC.
-            gate.tz.side_effect = lambda user_id: Timezone.parse(
-                "Asia/Kolkata" if user_id == OWNER_ID else "UTC"
+            gate.owner_read.side_effect = lambda user_id: UserDocument(
+                id=user_id, timezone="Asia/Kolkata" if user_id == OWNER_ID else "UTC"
             )
             gate.jev.mock(return_value=httpx.Response(200, json=_REPLY_CAN_WAIT))
             yield

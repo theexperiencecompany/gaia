@@ -9,6 +9,7 @@ from app.models.user_models import (
     UserUpdateResponse,
 )
 from app.services.blob_store import blob_store
+from app.utils.errors import AppError, create_error
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -22,6 +23,24 @@ async def get_user_by_id(user_id: str) -> UserDocument | None:
     except Exception as e:
         log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=404, detail="User not found") from e
+
+
+def user_not_found(user_id: str) -> AppError:
+    """Return the 404 a change to a user raises when the id has no users row."""
+    return create_error(
+        message="User not found",
+        why=f"User {user_id} does not exist",
+        fix="Sign in again",
+        status_code=404,
+    )
+
+
+async def require_user(user_id: str) -> UserDocument:
+    """Return the user, or raise user_not_found's 404."""
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise user_not_found(user_id)
+    return user
 
 
 async def get_profile_timezone(user_id: str) -> Timezone:

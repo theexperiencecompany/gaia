@@ -224,10 +224,7 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await set_user_timezone(user_id, user_timezone.strip())
-
-        if updated is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        await set_user_timezone(user_id, user_timezone.strip())
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
@@ -238,7 +235,7 @@ async def update_user_timezone(
             message="Timezone updated successfully",
             timezone=user_timezone.strip(),
         )
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:
         log.error(
