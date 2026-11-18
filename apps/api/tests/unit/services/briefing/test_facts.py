@@ -5,9 +5,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
 from app.constants.briefing import (
-    CALENDAR_UNAVAILABLE,
-    NO_CALENDAR_CONNECTED,
     BriefAction,
     BriefOutcome,
 )

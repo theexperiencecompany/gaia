@@ -138,24 +138,6 @@ QUOTE_MAX_CHARS: Final[int] = 200
 #: What a candidate's source is when GAIA itself, not a connected app, produced it.
 GAIA_SOURCE: Final[str] = "gaia"
 GAIA_APP_NAME: Final[str] = "GAIA"
-#: How the composition names a reader whose name GAIA does not know.
-UNNAMED_READER: Final[str] = "the user"
-# The span each kind of brief reads the calendar over, as its composition is told.
-TODAY_SPAN: Final[str] = "today"
-WEEK_AHEAD_SPAN: Final[str] = "in the week ahead"
-#: What the brief is told when no calendar is connected, so it never calls the user's day empty.
-NO_CALENDAR_CONNECTED: Final[str] = (
-    "No calendar is connected, so nothing is known about the user's schedule: "
-    "never say it is empty, open or clear."
-)
-#: How an undated todo of the user's own reads in the pool and the facts: background, not news.
-BACKLOG_STATE: Final[str] = "on their list, undated"
-#: How an item an earlier brief already showed, unchanged, is marked: still open, not news.
-REPEAT_MARK: Final[str] = "already shown, still open"
-CALENDAR_UNAVAILABLE: Final[str] = (
-    "The user's calendar could not be read this time, so nothing is known about their "
-    "schedule: never say it is empty, open or clear; say once that it could not be read."
-)
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52

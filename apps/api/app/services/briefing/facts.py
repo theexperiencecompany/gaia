@@ -4,13 +4,29 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from itertools import groupby
 
-from app.constants.briefing import (
+from app.agents.prompts.brief_fact_prompts import (
+    ALL_DAY,
     CALENDAR_UNAVAILABLE,
-    GAIA_APP_NAME,
+    COUNTS_HEADER,
+    GOALS_THIS_WEEK_HEADER,
     NO_CALENDAR_CONNECTED,
+    ON_ONE_SUBJECT,
+    ONLY_TRACKED_TODOS,
+    OWN_TODOS_COUNTED,
+    OWN_TODOS_EMPTY,
+    OWN_TODOS_OVERDUE,
+    TODAY_EMPTY,
+    TODAY_HEADING,
+    TODAY_NO_ITEMS,
     TODAY_SPAN,
+    TRACKED_BESIDE_OWN,
+    WEEK_AHEAD_EMPTY,
+    WEEK_AHEAD_HEADING,
+    WEEK_AHEAD_NO_ITEMS,
     WEEK_AHEAD_SPAN,
+    WEEK_IN_NUMBERS_HEADER,
 )
+from app.constants.briefing import GAIA_APP_NAME
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_item_models import GroupState
@@ -41,7 +57,6 @@ from app.services.briefing.composition.voiced_blocks import (
     voiced_block_lines,
 )
 from app.services.briefing.fact_pool.render import (
-    ON_ONE_SUBJECT,
     goal_progress,
     item_state,
     repeat_note,
@@ -136,17 +151,13 @@ class BriefSpan:
         return clock.days(clock.today + timedelta(days=self.starts_in), self.days)
 
 
-_NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
 TODAY = BriefSpan(
-    heading="Today's calendar",
-    empty="The user's calendar has nothing today.",
-    no_items=f"No tracked work, results or app items need them today. {_NO_CLAIM}",
-    words=TODAY_SPAN,
+    heading=TODAY_HEADING, empty=TODAY_EMPTY, no_items=TODAY_NO_ITEMS, words=TODAY_SPAN
 )
 WEEK_AHEAD = BriefSpan(
-    heading="The week ahead",
-    empty="The user's calendar has nothing in the week ahead.",
-    no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
+    heading=WEEK_AHEAD_HEADING,
+    empty=WEEK_AHEAD_EMPTY,
+    no_items=WEEK_AHEAD_NO_ITEMS,
     words=WEEK_AHEAD_SPAN,
     starts_in=1,
     days=7,
@@ -259,7 +270,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     counts = _counts(placed, sources, len(calendar))
     voiced = " · ".join(f"{CountSlot(name)} ({n})" for name, n in counts.items())
     if voiced:
-        fact_lines.insert(0, f"[COUNTS] {voiced}")
+        fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
     events = list(zip(sources.event_ids, calendar, strict=True))
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
@@ -326,7 +337,7 @@ def _own_words(
 
 
 def _event_slot(fact_id: int, time: str | None) -> str:
-    return f"{FactSlot(fact_id, FactField.TIME)} ({time})" if time else "all day"
+    return f"{FactSlot(fact_id, FactField.TIME)} ({time})" if time else ALL_DAY
 
 
 def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
@@ -373,16 +384,14 @@ def _recap_lines(recap: WeekRecap) -> list[str]:
     """Say the week's totals as one grouped recap, and what moved and what stuck on each goal."""
     lines: list[str] = []
     if recap.series:
-        lines.append(
-            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
-        )
+        lines.append(WEEK_IN_NUMBERS_HEADER)
         lines += [
             f"- {s.label}: {SeriesSlot(s.id, SeriesField.TOTAL)} ({series_figures(s)[SeriesField.TOTAL]}"
             f"{f' {s.unit}' if s.unit else ''})"
             for s in recap.series
         ]
     if recap.goals:
-        lines.append("[GOALS THIS WEEK]")
+        lines.append(GOALS_THIS_WEEK_HEADER)
         lines += [_goal_week_line(goal) for goal in recap.goals]
     return lines
 
@@ -402,26 +411,7 @@ def _goal_week_line(goal: GoalState) -> str:
 
 def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) -> str:
     """Say what the user's todo list holds: their own todos, and beside them GAIA's open tracked ones."""
-    tracked = (
-        f" GAIA's tracked work holds {CountSlot(CountName.OPEN_TRACKED)} open beside them."
-        if tracked_open
-        else ""
-    )
     if not open_count:
-        if tracked_open:
-            return (
-                "The user has no todos of their own outside GAIA's tracked work, which holds "
-                f"{CountSlot(CountName.OPEN_TRACKED)} open: never call their todo list "
-                "empty or clear."
-            )
-        return "The user's own todo list is empty."
-    note = (
-        "The user's own open todos are counted in [COUNTS]"
-        "; never voice that list as clear or empty."
-    )
-    if overdue:
-        note += (
-            f" {CountSlot(CountName.OVERDUE_TODOS)} of them are past due: say that count in one plain line,"
-            " never list them."
-        )
-    return note + tracked
+        return ONLY_TRACKED_TODOS if tracked_open else OWN_TODOS_EMPTY
+    overdue_note = OWN_TODOS_OVERDUE if overdue else ""
+    return OWN_TODOS_COUNTED + overdue_note + (TRACKED_BESIDE_OWN if tracked_open else "")

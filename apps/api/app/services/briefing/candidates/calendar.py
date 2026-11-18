@@ -2,12 +2,19 @@
 
 from datetime import date, datetime
 
+from app.agents.prompts.brief_fact_prompts import (
+    ALL_DAY,
+    EVENT_ANSWERED,
+    EVENT_GUESTS,
+    EVENT_ON_CALENDAR,
+    EVENT_ORGANIZED_BY,
+    EVENT_UNTIL,
+)
 from app.constants.briefing import BriefAction
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingEvent
-from app.models.calendar_models import CalendarResponse
 from app.services.briefing.candidates.app_names import integration_name
 
 
@@ -20,21 +27,15 @@ def _clock(hhmm: str) -> str:
     return datetime.strptime(hhmm, "%H:%M").strftime("%-I:%M %p")
 
 
-_ANSWERED: dict[CalendarResponse, str] = {
-    CalendarResponse.TENTATIVE: "the user answered tentative",
-    CalendarResponse.NEEDS_ACTION: "the user has not answered the invite",
-}
-
-
 def event_detail(event: BriefingEvent) -> str | None:
     """Say what an event's line adds to its title and start: its end, where, which calendar, who and the user's answer."""
     parts = [
-        f"until {_clock(event.end)}" if event.end else None,
+        EVENT_UNTIL.format(time=_clock(event.end)) if event.end else None,
         event.location,
-        f"on the {event.calendar} calendar" if event.calendar else None,
-        f"organized by {event.organizer}" if event.organizer else None,
-        f"{event.guests} other(s) invited" if event.guests else None,
-        _ANSWERED.get(event.response),
+        EVENT_ON_CALENDAR.format(calendar=event.calendar) if event.calendar else None,
+        EVENT_ORGANIZED_BY.format(organizer=event.organizer) if event.organizer else None,
+        EVENT_GUESTS.format(guests=event.guests) if event.guests else None,
+        EVENT_ANSWERED.get(event.response),
     ]
     return " | ".join(part for part in parts if part) or None
 
@@ -59,7 +60,7 @@ def calendar_candidates(events: list[BriefingEvent], today: str) -> list[BriefCa
             title=event.title,
             detail=" | ".join(
                 part
-                for part in ("all day" if event.start is None else None, event_detail(event))
+                for part in (ALL_DAY if event.start is None else None, event_detail(event))
                 if part
             )
             or None,

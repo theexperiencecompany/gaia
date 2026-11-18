@@ -1,5 +1,6 @@
 """The voice is told every non-item block as the brief shows it, and may quote only what those blocks carry."""
 
+from app.agents.prompts.brief_fact_prompts import BLOCKS_HEADER
 from app.models.brief_composition_models import (
     ChartBlock,
     ChartKind,
@@ -17,7 +18,6 @@ from app.models.brief_pool_models import (
 )
 from app.models.brief_slot_models import SeriesField
 from app.services.briefing.composition.voiced_blocks import (
-    BLOCKS_HEADER,
     block_words,
     charted_figures,
     voiced_block_lines,

@@ -2,13 +2,24 @@
 
 from datetime import date, datetime
 
-from app.constants.briefing import (
+from app.agents.prompts.brief_fact_prompts import (
     BACKLOG_STATE,
+    CALENDAR_EMPTY_IN,
+    CALENDAR_LISTED_IN,
     CALENDAR_UNAVAILABLE,
+    DONE_BY,
+    ITEM_STATES_LEGEND,
     NO_CALENDAR_CONNECTED,
+    ON_ONE_SUBJECT,
+    OPEN_STATE,
+    POOL_PART_EMPTY,
+    POOL_PARTS,
+    RECENT_OPENINGS,
     REPEAT_MARK,
+    SHOWN_NOT_TOTAL_SERIES,
+    SIGNED_OUT_NOTE,
+    UNREAD_NOTE,
 )
-from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import UnreadSource
@@ -21,42 +32,11 @@ from app.services.briefing.scouts.facts import people_note, seen_note
 from app.services.briefing.slots import figure, series_figures
 from app.utils.timezone import Timezone
 
-# How a done todo reads, by who closed it.
-_DONE_BY: dict[TodoCompleter | None, str] = {
-    TodoCompleter.GAIA: "done by GAIA",
-    TodoCompleter.USER: "done by the user",
-    TodoCompleter.TRIGGER: "closed by an event it watched",
-    TodoCompleter.SYSTEM: "closed by GAIA's housekeeping",
-    None: "done, who finished it is not recorded",
-}
-#: Said of a series summed over the items a scout read: its total is no account's total.
-SHOWN_NOT_TOTAL_SERIES = (
-    "summed over the items read from one page of the app: its total is of those items, "
-    "never the app's whole total"
-)
-#: The head state of GAIA's open work that is not being worked on right now.
-OPEN_STATE = "open"
-#: How many tracked todos one item stands for, as its line says it.
-ON_ONE_SUBJECT = "todos on this one subject"
-
 
 def since_note(moment: datetime, clock: UserClock) -> str:
     """Say when the brief's done window opens, on the user's clock: "Sat 14 Nov, 8:00 AM"."""
     local = moment.astimezone(clock.tz)
     return local.strftime("%a %-d %b, %-I:%M %p")
-
-
-def _states(done_since: str) -> str:
-    """Say what each item state means, beside the items, so every reader of the pool reads them alike."""
-    return (
-        f"done by GAIA / done by the user / closed: finished since {done_since}, by whoever its "
-        "state names; in progress: GAIA is working on it; "
-        f"{OPEN_STATE}: GAIA's work that is not being worked on now, its line says where it stands; "
-        "waiting on you: needs the user; failed: broke and needs the user; "
-        "note: news that needs nothing; "
-        f"{BACKLOG_STATE}: an undated todo of their own, never news and never the lead. "
-        f"An item marked {REPEAT_MARK} was already shown, unchanged: not news, so it never leads"
-    )
 
 
 def _day(iso: str, today: date) -> str:
@@ -72,7 +52,7 @@ def item_state(item: BriefCandidate) -> str:
     if item.backlog:
         return BACKLOG_STATE
     if item.state is ItemState.LOOKBACK and item.todo_id is not None:
-        return _DONE_BY[item.finished_by]
+        return DONE_BY[item.finished_by]
     if item.standing is not None:
         return OPEN_STATE
     return item.state.label.lower()
@@ -177,15 +157,17 @@ def pool_block(pool: FactPool) -> str:
     """Lay out every item, series, quote and goal by id; a part with nothing in it says so."""
     clock = pool.context.clock
     today = clock.now_local.date()
+    legend = ITEM_STATES_LEGEND.format(done_since=since_note(pool.context.done_since, clock))
+    items, series, quotes, goals = POOL_PARTS
     parts = [
-        f"ITEMS ({_states(since_note(pool.context.done_since, clock))})",
-        "\n".join(item_line(i, c, clock) for i, c in pool.items.items()) or "(none)",
-        "SERIES",
-        "\n".join(series_line(s, today) for s in pool.series) or "(none)",
-        "QUOTES",
-        "\n".join(quote_line(q) for q in pool.quotes) or "(none)",
-        "GOALS",
-        "\n".join(goal_line(g) for g in pool.goals) or "(none)",
+        f"{items} ({legend})",
+        "\n".join(item_line(i, c, clock) for i, c in pool.items.items()) or POOL_PART_EMPTY,
+        series,
+        "\n".join(series_line(s, today) for s in pool.series) or POOL_PART_EMPTY,
+        quotes,
+        "\n".join(quote_line(q) for q in pool.quotes) or POOL_PART_EMPTY,
+        goals,
+        "\n".join(goal_line(g) for g in pool.goals) or POOL_PART_EMPTY,
     ]
     return "\n".join(parts)
 
@@ -196,26 +178,18 @@ def _calendar_line(context: PoolContext) -> str:
     if context.calendar is CalendarGap.UNAVAILABLE:
         return CALENDAR_UNAVAILABLE
     if not context.calendar:
-        return f"Nothing on the calendar {context.calendar_span}."
-    return f"Calendar {context.calendar_span}: {context.calendar} event(s), every one listed below."
+        return CALENDAR_EMPTY_IN.format(span=context.calendar_span)
+    return CALENDAR_LISTED_IN.format(span=context.calendar_span, count=context.calendar)
 
 
 def unread_note(unread: list[UnreadSource]) -> str | None:
     """Say which connected apps went unread, and which of them need a reconnect; None when all were read."""
     if not unread:
         return None
-    apps = ", ".join(dict.fromkeys(source.app for source in unread))
-    note = (
-        f"Not read this time: {apps}. Nothing is known about what they hold today: never say "
-        "they hold nothing, or that nothing there needs the user."
-    )
+    note = UNREAD_NOTE.format(apps=", ".join(dict.fromkeys(source.app for source in unread)))
     signed_out = [s.app for s in unread if s.reason is ScoutSkipReason.SIGNED_OUT]
     if signed_out:
-        note += (
-            f" Signed out: {', '.join(dict.fromkeys(signed_out))}. Their sign-in expired, so "
-            "they stay unread until the user reconnects them in Settings, Integrations: say so "
-            "in one short line."
-        )
+        note += SIGNED_OUT_NOTE.format(apps=", ".join(dict.fromkeys(signed_out)))
     return note
 
 
@@ -228,9 +202,6 @@ def context_block(context: PoolContext) -> str:
     if (unread := unread_note(context.unread)) is not None:
         lines.append(unread)
     if context.recent_openings:
-        lines.append(
-            "Recent briefs opened on: "
-            + "; ".join(f'"{line}"' for line in context.recent_openings)
-            + ". Lead somewhere new unless the same thing still matters most."
-        )
+        openings = "; ".join(f'"{line}"' for line in context.recent_openings)
+        lines.append(RECENT_OPENINGS.format(openings=openings))
     return "\n".join(lines)

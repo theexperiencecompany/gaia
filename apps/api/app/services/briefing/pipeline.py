@@ -8,11 +8,11 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from app.agents.prompts.brief_fact_prompts import UNNAMED_READER
 from app.agents.prompts.briefing_prompts import RecentLines
 from app.constants.briefing import (
     GAIA_SOURCE,
     RECENT_BRIEFS_RECALLED,
-    UNNAMED_READER,
     BriefingKind,
     BriefingRunOutcome,
 )

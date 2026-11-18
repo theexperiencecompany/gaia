@@ -3,6 +3,13 @@
 from collections.abc import Callable, Sequence
 from datetime import datetime
 
+from app.agents.prompts.brief_fact_prompts import (
+    PAUSED_BECAUSE,
+    STANDING_PAUSED,
+    STANDING_TIMED_WAITS,
+    STANDING_WAITING_ON_OTHERS,
+    STANDING_WAITS,
+)
 from app.constants.briefing import (
     DUE_TODO_CANDIDATES_LIMIT,
     GAIA_APP_NAME,
@@ -20,7 +27,6 @@ from app.constants.todos import (
 )
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
 from app.models.brief_item_models import ItemState
-from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.subjects import subject_key
@@ -137,30 +143,17 @@ def own_todo_candidates(
     ]
 
 
-_PAUSED_BECAUSE: dict[DeactivationReason, str] = {
-    DeactivationReason.USER_DORMANT: "while the user was away",
-    DeactivationReason.INTEGRATION_EXPIRED: "its app's connection expired",
-    DeactivationReason.INTEGRATION_NEVER_CONNECTED: "the app it needs was never connected",
-    DeactivationReason.SUBSCRIPTION_LAPSED: "the user's plan lapsed",
-    DeactivationReason.INVALID_SCHEDULE: "its schedule is invalid",
-    DeactivationReason.OWNER_NOT_FOUND: "its owner is gone",
-}
-
-
 def standing(doc: TodoDocument, clock: UserClock) -> str | None:
     """Say where open tracked work stands when it is not simply GAIA working: paused, waiting, unplanned."""
     when = due_on(doc.scheduled_at, clock) if doc.scheduled_at is not None else None
     if doc.pause_reason is not None:
-        return f"paused: {_PAUSED_BECAUSE[doc.pause_reason]}"
+        return STANDING_PAUSED.format(why=PAUSED_BECAUSE[doc.pause_reason])
     if WAITING_FOR_REPLY_LABEL in doc.labels:
-        return "waiting on someone else's reply, not the user's"
-    waits = {
-        WaitingOn.EVENT: "waiting on an event it watches",
-        WaitingOn.SUB_TODOS: "its sub-todos are doing the work",
-        WaitingOn.TIME: "GAIA looks at it again" + (f" {when}" if when else ""),
-        WaitingOn.UNPLANNED: "captured, not started: GAIA plans it" + (f" {when}" if when else ""),
-    }
-    return waits.get(doc.waiting_on) if doc.waiting_on is not None else None
+        return STANDING_WAITING_ON_OTHERS
+    said = STANDING_WAITS.get(doc.waiting_on) if doc.waiting_on is not None else None
+    if said is not None and when and doc.waiting_on in STANDING_TIMED_WAITS:
+        return f"{said} {when}"
+    return said
 
 
 def _started(doc: TodoDocument) -> BriefOutcome | None:

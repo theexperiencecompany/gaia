@@ -27,6 +27,7 @@ import time_machine
 from app.agents.core import agent as agent_module
 from app.agents.llm.client import metered_config
 from app.agents.llm.exceptions import MalformedStructuredOutputError
+from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
 from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
@@ -36,13 +37,11 @@ from app.agents.prompts.briefing_prompts import (
 from app.config.settings import settings
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
-    CALENDAR_UNAVAILABLE,
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     LEAD_OFFERS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_VOICE_ATTEMPTS,
-    NO_CALENDAR_CONNECTED,
     PLAIN_BRIEF_HEADLINE,
     WEEKLY_KICKER,
     WINBACK_THRESHOLD,

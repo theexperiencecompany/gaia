@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 
+from app.agents.prompts.brief_fact_prompts import BLOCKS_HEADER, SHOWN_NOT_TOTAL_SERIES
 from app.models.brief_composition_models import (
     BriefBlock,
     ChartBlock,
@@ -10,10 +11,8 @@ from app.models.brief_composition_models import (
     QuoteBlock,
 )
 from app.models.brief_slot_models import SeriesField
-from app.services.briefing.fact_pool.render import SHOWN_NOT_TOTAL_SERIES, goal_progress
+from app.services.briefing.fact_pool.render import goal_progress
 from app.services.briefing.slots import series_figures
-
-BLOCKS_HEADER = "[ALSO IN THE BRIEF]"
 
 
 def _line(block: BriefBlock) -> str | None:

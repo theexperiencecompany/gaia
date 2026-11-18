@@ -8,6 +8,11 @@ of it (the checked-call policy, briefing.checked_call).
 from dataclasses import dataclass
 
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
+from app.agents.prompts.brief_fact_prompts import (
+    EMPTY_DIGEST,
+    NO_WHOLE_COMPOSITION,
+    UNREADABLE_COMPOSITION,
+)
 from app.constants.briefing import BRIEF_COMPOSITION_LABEL, MAX_COMPOSITION_ATTEMPTS
 from app.models.brief_composition_models import (
     BriefComposition,
@@ -82,19 +87,12 @@ def rendered(composition: BriefComposition, values: SlotValues) -> BriefComposit
     return BriefComposition(blocks=[_filled(b, values) for b in composition.blocks])
 
 
-#: A digest that places nothing recaps nothing; a daily may leave its whole pool out as noise.
-_EMPTY_DIGEST = (
-    "a weekly digest recaps the week: place what its pool holds of it (what got done, "
-    "its series, each goal's progress, even a stalled one) instead of nothing"
-)
-
-
 async def _problems(
     user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, must_place: bool
 ) -> list[str]:
     """Return the contract's problems, else every heading untrue of its items."""
     if must_place and not answer.blocks:
-        return [_EMPTY_DIGEST]
+        return [EMPTY_DIGEST]
     return composition_problems(answer, pool, values) or list(
         (await heading_problems(user_id, rendered(answer, values), pool)).values()
     )
@@ -121,8 +119,8 @@ def _salvaged(
 
 def _unreadable_note(problems: list[str], _reply: str) -> str:
     return COMPOSITION_RETRY_NOTE.format(
-        problems=f"the answer was not a whole BriefComposition tool call ({'; '.join(problems)})",
-        last="(no whole composition)",
+        problems=UNREADABLE_COMPOSITION.format(problems="; ".join(problems)),
+        last=NO_WHOLE_COMPOSITION,
     )
 
 
