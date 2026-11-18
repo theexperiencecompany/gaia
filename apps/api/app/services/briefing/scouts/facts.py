@@ -33,18 +33,24 @@ def _days_ago(then: datetime, clock: UserClock) -> str:
     return "yesterday" if days == 1 else f"{days} days ago"
 
 
-def _first_sighting(signal: Signal, clock: UserClock) -> str:
-    """Say how old an item no brief saw before is: new only when the app dates it inside the day."""
+def _created(signal: Signal, clock: UserClock) -> str | None:
+    """Say when the app dates an item's creation and last update; None when it does not."""
     created = as_utc(signal.created_at)
     if created is None:
-        return "first seen today, created date unknown"
-    if clock.now_local - created < SIGNAL_NEW_WITHIN:
-        return f"new: created {_days_ago(created, clock)}"
-    note = f"first seen today, created {clock.day_of(created).isoformat()} ({_days_ago(created, clock)})"
+        return None
+    note = f"created {clock.day_of(created).isoformat()} ({_days_ago(created, clock)})"
     updated = as_utc(signal.updated_at)
     if updated is not None:
         note += f", last updated {_days_ago(updated, clock)}"
     return note
+
+
+def _first_sighting(signal: Signal, clock: UserClock) -> str:
+    """Say how old an item no brief saw before is: new only when the app dates it inside the day."""
+    created = as_utc(signal.created_at)
+    if created is not None and clock.now_local - created < SIGNAL_NEW_WITHIN:
+        return f"new: created {_days_ago(created, clock)}"
+    return f"first seen today, {_created(signal, clock) or 'created date unknown'}"
 
 
 def seen_note(memory: SignalMemoryDocument, clock: UserClock) -> str:
@@ -58,10 +64,13 @@ def seen_note(memory: SignalMemoryDocument, clock: UserClock) -> str:
 
 
 def memory_note(item: RememberedSignal, clock: UserClock) -> str:
-    """Say what earlier briefs remember of a signal: first seen, times mentioned, how it moved."""
+    """Say what earlier briefs remember of a signal: first seen, times mentioned, its age, how it moved."""
     if item.memory is None:
         return _first_sighting(item.signal, clock)
     seen = seen_note(item.memory, clock)
+    created = _created(item.signal, clock)
+    if created is not None:
+        seen += f", {created}"
     if item.previous_state is not None:
         seen += f", moved from {item.previous_state} to {item.signal.state}"
     return seen

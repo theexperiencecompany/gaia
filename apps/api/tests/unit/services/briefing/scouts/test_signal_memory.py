@@ -212,3 +212,17 @@ class TestWhatIsNew:
         assert memory_note(RememberedSignal(signal=signal), CLOCK) == (
             "first seen today, created 2026-10-21 (yesterday)"
         )
+
+    @pytest.mark.regression
+    def test_an_item_seen_before_but_never_mentioned_keeps_its_created_date(self) -> None:
+        """Replay: an issue created a week before its first brief was voiced as a new one."""
+        signal = _signal("12").model_copy(
+            update={"created_at": datetime(2026, 10, 14, 4, 30, tzinfo=UTC)}
+        )
+        remembered = RememberedSignal(
+            signal=signal, memory=_memory("12", first_seen=NOW - timedelta(days=1))
+        )
+
+        assert memory_note(remembered, CLOCK) == (
+            "first seen yesterday, never mentioned, created 2026-10-14 (8 days ago)"
+        )
