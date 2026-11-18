@@ -8,7 +8,13 @@ from tests.factories import make_brief_item
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome
 from app.models.brief_composition_models import SectionBlock
 from app.models.brief_payload_models import BriefingPayload
-from app.services.briefing.editions.explorer_blocks import _data_block, build_blocks, read_sources
+from app.services.briefing.editions.explorer_blocks import (
+    _data_block,
+    build_blocks,
+    events_past_rows,
+    left_out_items,
+    read_sources,
+)
 
 _EVENT = {"date": "2026-11-10", "start": "09:30", "title": "Standup"}
 
@@ -29,8 +35,8 @@ def _days(first: int, n: int, month: str = "11") -> list[str]:
     return [f"2026-{month}-{d:02d}" for d in range(first, first + n)]
 
 
-def _built(blocks: list[dict[str, Any]], **fields: Any) -> list[dict[str, Any]]:
-    payload = BriefingPayload.model_validate(
+def _payload(**fields: Any) -> BriefingPayload:
+    return BriefingPayload.model_validate(
         {
             "kicker": "",
             "date": "2026-11-10",
@@ -39,10 +45,13 @@ def _built(blocks: list[dict[str, Any]], **fields: Any) -> list[dict[str, Any]]:
             "mood": "clear",
             "caption": "",
             "template_family": "swiss",
-            "blocks": blocks,
             **fields,
         }
     )
+
+
+def _built(blocks: list[dict[str, Any]], **fields: Any) -> list[dict[str, Any]]:
+    payload = _payload(blocks=blocks, **fields)
     return [
         dict(b)
         for b in build_blocks(payload.blocks, payload.sections, payload.calendar, payload.date)
@@ -396,3 +405,40 @@ class TestWholeBlocks:
         [roomy] = _built([], calendar=few)
 
         assert (crowded["more"], roomy["more"]) == (2, 0)
+
+
+def test_the_page_gets_the_undrawn_sections_then_the_rows_past_the_editions_own() -> None:
+    def items(section: int, count: int) -> list[dict[str, Any]]:
+        return [make_brief_item(f"{section}.{n}") for n in range(count)]
+
+    payload = _payload(
+        sections=[
+            {"numeral": "I", "title": "Lead", "items": items(0, EDITION_ROWS_SHOWN + 1)},
+            {"numeral": "II", "title": "Asks", "items": items(1, EDITION_ROWS_SHOWN + 2)},
+            {"numeral": "III", "title": "Done", "items": items(2, EDITION_ROWS_SHOWN)},
+            {"numeral": "IV", "title": "Undrawn", "items": items(3, 2)},
+        ],
+        blocks=[
+            {"kind": "lead", "section": 0},
+            {"kind": "items", "section": 1},
+            {"kind": "items", "section": 2},
+            {"kind": "note", "text": "Quiet week."},
+        ],
+        undrawn=[
+            {"kind": "items", "section": 3},
+            {"kind": "note", "text": "A chart the edition cannot draw."},
+        ],
+    )
+
+    left_out = left_out_items(payload.blocks, payload.undrawn, payload.sections)
+
+    assert [item.text for item in left_out] == ["3.0", "3.1", "1.3", "1.4"]
+
+
+def test_the_page_gets_the_days_events_past_the_calendars_rows() -> None:
+    payload = _payload(
+        calendar=[{**_EVENT, "title": f"Event {n}"} for n in range(EDITION_ROWS_SHOWN + 1)]
+    )
+
+    assert [e.title for e in events_past_rows(payload.calendar)] == [f"Event {EDITION_ROWS_SHOWN}"]
+    assert events_past_rows(payload.calendar[:EDITION_ROWS_SHOWN]) == []

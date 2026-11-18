@@ -119,6 +119,9 @@ _CARD: dict[str, Any] = {
     "needs_you_count": 1,
 }
 _BRIEFING_METADATA: dict[str, object] = {"brief_url": _BRIEF_URL, "card": _CARD}
+_NO_EDITION = (
+    f"^a {NOTIFICATION_KIND_BRIEFING_DAILY} notification carries no edition card or brief link$"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -260,22 +263,22 @@ class TestEmailChannelAdapterContract:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("missing", "raised"),
+        ("missing", "message"),
         [
-            ({"brief_url": _BRIEF_URL}, ValidationError),
-            ({"card": _CARD}, ValidationError),
-            ({"brief_url": _BRIEF_URL, "card": None}, ValueError),
-            ({"brief_url": None, "card": _CARD}, ValueError),
-            ({"brief_url": _BRIEF_URL, "card": {**_CARD, "edition": None}}, ValueError),
+            ({"brief_url": _BRIEF_URL}, "card\n  Field required"),
+            ({"card": _CARD}, "brief_url\n  Field required"),
+            ({"brief_url": _BRIEF_URL, "card": None}, _NO_EDITION),
+            ({"brief_url": None, "card": _CARD}, _NO_EDITION),
+            ({"brief_url": _BRIEF_URL, "card": {**_CARD, "edition": None}}, _NO_EDITION),
         ],
         ids=["no-card", "no-brief-url", "null-card", "null-brief-url", "null-edition"],
     )
     async def test_transform_fails_loud_on_a_briefing_without_its_hosted_edition(
-        self, missing: dict[str, object], raised: type[Exception]
+        self, missing: dict[str, object], message: str
     ) -> None:
         notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, metadata=missing)
 
-        with pytest.raises(raised):
+        with pytest.raises(ValueError, match=message):
             await EmailChannelAdapter().transform(notification)
 
 

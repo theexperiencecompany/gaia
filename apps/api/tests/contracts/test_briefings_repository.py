@@ -516,6 +516,50 @@ class TestBriefingsReads:
         assert [b.id for b in second] == [same_day.id, older.id]
         assert last == []
 
+    async def test_list_cards_puts_a_weekly_ahead_of_the_daily_on_its_day_whichever_was_stored_first(
+        self, repo
+    ):
+        user_id = "u-weekly-first"
+        stored: dict[tuple[str, BriefingKind], str] = {}
+        for date, kinds in [
+            ("2026-08-06", (BriefingKind.DAILY, BriefingKind.WEEKLY)),
+            ("2026-08-05", (BriefingKind.WEEKLY, BriefingKind.DAILY)),
+        ]:
+            for kind in kinds:
+                brief = await _upsert(
+                    repo, user_id, date, kind, make_briefing_payload(), edition=_EDITION
+                )
+                stored[(date, kind)] = brief.id
+
+        cards = await repo.list_cards(user_id, limit=10)
+
+        assert [c.id for c in cards] == [
+            stored[("2026-08-06", BriefingKind.WEEKLY)],
+            stored[("2026-08-06", BriefingKind.DAILY)],
+            stored[("2026-08-05", BriefingKind.WEEKLY)],
+            stored[("2026-08-05", BriefingKind.DAILY)],
+        ]
+
+    async def test_list_stamped_orders_its_cities_by_the_day_each_arrived_not_by_city(self, repo):
+        user_id = "u-stamped-order"
+        # Stored newest first and against the cities' alphabetical order.
+        cities = ["zurich", "oslo", "lima", "kyiv", "dakar", "accra"]
+        for day, city in zip(range(9, 3, -1), cities, strict=True):
+            date = f"2026-08-{day:02d}"
+            await _upsert(
+                repo,
+                user_id,
+                date,
+                BriefingKind.DAILY,
+                make_briefing_payload(stamp_city=city),
+                edition=_EDITION,
+            )
+            await _deliver(repo, user_id, date, BriefingKind.DAILY, ["inapp"])
+
+        stamped = await repo.list_stamped(user_id)
+
+        assert [s.payload.stamp_city for s in stamped] == list(reversed(cities))
+
     async def test_list_stamped_reads_each_citys_first_delivered_brief_of_the_users_oldest_first(
         self, repo
     ):
