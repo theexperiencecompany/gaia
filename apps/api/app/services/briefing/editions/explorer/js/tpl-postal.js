@@ -278,7 +278,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
       const said = [figures, ...told].filter(Boolean).join(" ");
       const ps = said ? `<p class="ps"><span class="w">P.S.</span><span>${said}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --defin:${skin.ink.defin}; --ribbon:${skin.ink.ribbon}">
-<div class="env">${paper(rng)}<div class="face tw">
+<div class="env" data-paper>${paper(rng)}<div class="face tw">
   <div class="ret"><img src="${ed.assets.TEC_MARK}" alt="The Experience Company"><span>GAIA Post<br>The Experience Company</span></div>
   ${definitive(rng)}
   <img class="stamp" src="${ed.assets[city.key]}" alt="${esc(city.label)} stamp">
@@ -286,7 +286,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   ${etiquette(city, rng)}
   <div class="addr"><div class="lab">To</div><div class="to">${ed.recipient ? esc(ed.recipient.name) : "You"}</div><div class="re">Re: your ${esc(ed.weekday)}</div><div class="meta">Edition No. ${ed.editionNo} · ${ed.day} ${esc(ed.month)} ${ed.year}</div><div class="under"></div></div>
 </div></div>
-<div class="letter" data-fold>${grain("pa-l", 0.9)}
+<div class="letter" data-paper data-fold>${grain("pa-l", 0.9)}
   <div class="lhead tw"><span class="lbrand">GAIA — Daily brief</span><span class="lmeta">No. ${ed.editionNo} · ${esc(ed.time)}</span></div>
   <p class="dated tw">${esc(city.label)}, ${esc(ed.dateLong)}</p>
   <p class="dear">${ed.recipient ? `Dear ${esc(ed.recipient.first)},` : "Good morning,"}</p>

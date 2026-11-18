@@ -4,19 +4,13 @@ import {
   LETTER_VIEWPORT_GUTTER_PX,
 } from "../letterTokens";
 import { frontPaper, type Rgb } from "./frontPaper";
-import {
-  type EditionSource,
-  findPaper,
-  type PaperBox,
-  straighten,
-} from "./paperBounds";
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
 const FOUR_PANEL_ASPECT = 2.2;
 const MAX_PIXEL_RATIO = 2;
 /** A marked fold is kept within this share of the sheet, so neither the front nor the rest collapses. */
 const FRONT_SHARE_RANGE = [0.12, 0.6] as const;
-/** A marked paper box is cut this share of its width inside, clear of a tilt's corners and its antialiased edge. */
+/** A marked paper box is cut this share of its width inside, clear of its antialiased edge. */
 const PAPER_BOX_INSET = 0.004;
 /** Paper darker than this takes light crease highlights instead of dark shading. */
 const DARK_PAPER_LIGHTNESS = 0.45;
@@ -89,11 +83,20 @@ function panelShares(count: number, foldInSheet: number | null): number[] {
   return [front, ...Array.from({ length: count - 1 }, () => rest)];
 }
 
-/** The paper as the edition's own marker places it, a hair inside its box. */
-function markedBox(image: HTMLImageElement, paper: number[]): PaperBox {
-  const [left, top, right, bottom] = paper;
+/** Where the paper lies in the edition's pixels. */
+interface PaperBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The paper as the edition's marker places it, a hair inside its box; the whole image when it fills it. */
+function paperBox(image: HTMLImageElement, paper: number[] | null): PaperBox {
   const width = image.naturalWidth;
   const height = image.naturalHeight;
+  if (!paper) return { x: 0, y: 0, width, height };
+  const [left, top, right, bottom] = paper;
   const inset = (right - left) * width * PAPER_BOX_INSET;
   return {
     x: left * width + inset,
@@ -101,25 +104,6 @@ function markedBox(image: HTMLImageElement, paper: number[]): PaperBox {
     width: (right - left) * width - 2 * inset,
     height: (bottom - top) * height - 2 * inset,
   };
-}
-
-/**
- * Where the paper lies, and the image to cut it from. A marked box is exact;
- * only an unmarked edition is read for its desk, and a sheet set at an angle on
- * it is turned square first, so its border survives the crop.
- * INTEGRATION(P-api2): once every edition carries the box Chromium measures, the
- * unmarked branch, straighten() and all of paperBounds.ts are deleted.
- */
-function locatePaper(
-  image: HTMLImageElement,
-  drawn: EditionSource,
-  paper: number[] | null,
-): { edition: EditionSource; box: PaperBox; tilt: number } {
-  if (paper) return { edition: drawn, box: markedBox(image, paper), tilt: 0 };
-  const found = findPaper(drawn);
-  if (!found.tilt) return { edition: drawn, box: found, tilt: 0 };
-  const edition = straighten(image, found);
-  return { edition, box: findPaper(edition), tilt: found.tilt };
 }
 
 async function decodeAndSlice(
@@ -132,21 +116,13 @@ async function decodeAndSlice(
   image.crossOrigin = "anonymous";
   image.src = src;
   await image.decode();
-  const drawn: EditionSource = {
-    source: image,
-    width: image.naturalWidth,
-    height: image.naturalHeight,
-  };
-  const { edition, box: sheet, tilt } = locatePaper(image, drawn, paper);
+  const sheet = paperBox(image, paper);
   const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
-  // Turning a tilted sheet square lifts one end of the fold line; the cut moves up by
-  // that much, so nothing below the marker rises into the front.
-  const turnLift = (sheet.width / 2) * Math.abs(Math.sin(tilt));
   const foldInSheet =
     fold === null
       ? null
-      : (fold * image.naturalHeight - turnLift - sheet.y) / sheet.height;
+      : (fold * image.naturalHeight - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
   const panelWidth = Math.round(
@@ -157,7 +133,7 @@ async function decodeAndSlice(
   );
   const cut = (start: number, share: number) =>
     createImageBitmap(
-      edition.source,
+      image,
       sheet.x,
       sheet.y + start * sheet.height,
       sheet.width,
@@ -206,7 +182,7 @@ function evictIdle(): void {
  */
 export function holdEdition(src: string, layout: EditionLayout): EditionHold {
   const width = fittedWidth();
-  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${width}`;
+  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "whole"}@${width}`;
   let entry = preparations.get(key);
   if (entry) {
     preparations.delete(key);

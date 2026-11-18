@@ -536,7 +536,7 @@ async def test_every_family_marks_where_its_letter_folds(family: str) -> None:
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("family", ["boardingpass", "invoice", "librarycard", "memo", "menu"])
+@pytest.mark.parametrize("family", _ON_A_DESK)
 async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> None:
     """The letter and the unfold crop to this box, so no desk shows around the paper."""
     rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
@@ -545,6 +545,40 @@ async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> N
     left, top, right, bottom = rendered.paper
     assert 0 < left < 0.2 and 0.8 < right < 1, f"{family} paper sides at {left:.2f}, {right:.2f}"
     assert 0 <= top < 0.2 and 0.8 < bottom <= 1, f"{family} paper ends at {top:.2f}, {bottom:.2f}"
+
+
+# Device px inside the box its edges are read at, clear of the sheet's antialiased edge.
+_EDGE_INSET_PX = 2
+# Where along each edge it is read: past a rounded corner, inside a tilt's wedge of desk.
+_EDGE_SHARES = (0.1, 0.9)
+
+
+# Air Mail's letter is narrower than its envelope, so its box keeps desk beside the letter.
+_ONE_SHEET = sorted(set(_ON_A_DESK) - {EditionFamily.POSTAL})
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", _ONE_SHEET)
+async def test_a_turned_sheets_paper_box_holds_no_desk_along_its_edges(family: str) -> None:
+    """A sheet set at an angle is cut to the level box inside it, not the box around it."""
+    rendered = await render_edition_png(_shipped(family, _DAILY))
+    assert rendered.paper is not None
+    alpha = Image.open(io.BytesIO(rendered.image)).convert("RGBA").getchannel("A")
+    left, top, right, bottom = (
+        edge * size
+        for edge, size in zip(rendered.paper, (alpha.width, alpha.height) * 2, strict=True)
+    )
+    inset = _EDGE_INSET_PX
+    along_x = [left + (right - left) * share for share in _EDGE_SHARES]
+    along_y = [top + (bottom - top) * share for share in _EDGE_SHARES]
+    points = [
+        *((x, y) for x in along_x for y in (top + inset, bottom - inset)),
+        *((x, y) for y in along_y for x in (left + inset, right - inset)),
+    ]
+
+    edges = {(round(x), round(y)): alpha.getpixel((round(x), round(y))) for x, y in points}
+
+    assert all(value == _OPAQUE for value in edges.values()), f"{family} edges: {edges}"
 
 
 _QUOTED_TITLE = 'Wheat "Field" with Cypresses'

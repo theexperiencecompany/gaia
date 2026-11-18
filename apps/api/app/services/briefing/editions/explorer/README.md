@@ -245,6 +245,13 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    (a painting's `alt`). Every template binds `esc` to `EXPLORER.blocks.esc`
    (`shell/blocks.js`), which escapes both quotes too.
 
+15. **Every desk family marks its paper (2026-10-23, Air Mail and Receipt 2026-11-18).**
+   Each sheet a desk family lays down carries a bare `data-paper` attribute: the boarding
+   pass, the invoice's document, the library card, the memo's sheet and the menu card, Air
+   Mail's envelope and its letter, and the receipt's tape. The render records the box they
+   cover (`services/render/image.py`), each sheet cut to the level box inside it however it
+   is turned, and the letter and the unfold crop to that box. No markup, CSS or skin moves.
+
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that
 family's frame (`editions/artworks.py`), and recorded on the payload as

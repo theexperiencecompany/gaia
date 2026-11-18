@@ -27,12 +27,38 @@ _TRIM_THRESHOLDS = (TRIM_THRESHOLD, TRIM_THRESHOLD, TRIM_THRESHOLD, TRIM_ALPHA_T
 # The fold sits this many CSS px above the marker, so an antialiased edge never shows.
 FOLD_CLEARANCE_PX = 2
 
-# The page-coordinate box of the paper marker: [left, top, right, bottom].
+# The page-coordinate box of the paper, [left, top, right, bottom]: the union of every marked
+# sheet, each cut to the level box that fits inside it however far it and its parents are turned.
 _PAPER_BOX_SCRIPT = """(selector) => {
-  const paper = document.querySelector(selector);
-  if (!paper) return null;
-  const box = paper.getBoundingClientRect();
-  return [box.left + window.scrollX, box.top + window.scrollY, box.right + window.scrollX, box.bottom + window.scrollY];
+  const level = (sheet) => {
+    let turn = 0;
+    for (let el = sheet; el; el = el.parentElement) {
+      const transform = getComputedStyle(el).transform;
+      if (transform !== "none") {
+        const m = new DOMMatrixReadOnly(transform);
+        turn += Math.atan2(m.b, m.a);
+      }
+    }
+    const sin = Math.abs(Math.sin(turn));
+    const cos = Math.cos(turn);
+    const halfW = sheet.offsetWidth / 2;
+    const halfH = sheet.offsetHeight / 2;
+    const across = cos * cos - sin * sin;
+    const a = (halfW * cos - halfH * sin) / across;
+    const b = (halfH * cos - halfW * sin) / across;
+    const box = sheet.getBoundingClientRect();
+    const x = (box.left + box.right) / 2 + window.scrollX;
+    const y = (box.top + box.bottom) / 2 + window.scrollY;
+    return [x - a, y - b, x + a, y + b];
+  };
+  const boxes = [...document.querySelectorAll(selector)].map(level);
+  if (!boxes.length) return null;
+  return [
+    Math.min(...boxes.map((box) => box[0])),
+    Math.min(...boxes.map((box) => box[1])),
+    Math.max(...boxes.map((box) => box[2])),
+    Math.max(...boxes.map((box) => box[3])),
+  ];
 }"""
 
 # The page-coordinate top of the fold marker and every visible box inside it.
@@ -67,7 +93,7 @@ class ImageRenderOptions:
     trim_margin_px: int | None = None
     #: The element whose top is where the edition folds, reported as a share of the image height.
     fold_selector: str | None = None
-    #: The element that is the edition's paper, reported as its box in shares of the image.
+    #: The edition's paper sheets, reported as the box they cover in shares of the image.
     paper_selector: str | None = None
     #: Leave the page's own white out, so a PNG keeps alpha wherever the document paints nothing.
     omit_background: bool = False
@@ -144,7 +170,7 @@ async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | No
 async def _paper_px(
     page: Page, options: ImageRenderOptions, clip: FloatRect | None
 ) -> tuple[float, float, float, float] | None:
-    """Return the paper marker's box in image pixels before any trim, or None without one."""
+    """Return the marked paper's box in image pixels before any trim, or None without a marker."""
     if options.paper_selector is None:
         return None
     box: list[float] | None = await page.evaluate(_PAPER_BOX_SCRIPT, options.paper_selector)

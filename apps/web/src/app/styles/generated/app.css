@@ -236,6 +236,7 @@
 @source "../../../features/settings/constants.ts";
 @source "../../../features/setup-wizard/constants.ts";
 @source "../../../features/short-links/constants.ts";
+@source "../../../features/short-links/link-constants.generated.ts";
 @source "../../../features/short-links/registry.tsx";
 @source "../../../features/skills/constants.ts";
 @source "../../../features/skills/utils.ts";
@@ -402,7 +403,6 @@
 @source "../../../components/ui/holo-card/utils.ts";
 @source "../../../components/ui/orb/GaiaOrb.tsx";
 @source "../../../config/openui/components/AudioPlayerView.tsx";
-@source "../../../config/openui/components/briefing.tsx";
 @source "../../../config/openui/components/charts.tsx";
 @source "../../../config/openui/components/content.tsx";
 @source "../../../config/openui/components/CopyableContentView.tsx";
@@ -471,9 +471,8 @@
 @source "../../../features/briefing/hooks/useOpenBrief.ts";
 @source "../../../features/briefing/utils/briefCard.ts";
 @source "../../../features/briefing/utils/briefSchedule.ts";
-@source "../../../features/briefing/utils/editionLeftOut.ts";
+@source "../../../features/briefing/utils/briefsOffBlock.ts";
 @source "../../../features/briefing/utils/frontPaper.ts";
-@source "../../../features/briefing/utils/paperBounds.ts";
 @source "../../../features/briefing/utils/preparedEdition.ts";
 @source "../../../features/briefing/utils/stampSheet.ts";
 @source "../../../features/browser/api/browserApi.ts";
