@@ -43,7 +43,7 @@ class _Seams:
 def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
     user_id = make_user_id()
     s = _Seams(
-        user=UserDocument(_id=user_id, created_at=_NOW - timedelta(days=60)),
+        user=UserDocument(id=user_id, created_at=_NOW - timedelta(days=60)),
         workflow=MagicMock(id="wf_daily", activated=True),
         last_active_at=_NOW - timedelta(hours=1),
         briefs=[],

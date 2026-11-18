@@ -11,8 +11,8 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.config.settings import settings
 from app.services.agent_lab import sandbox_setup
-from app.services.sandbox import execute_token
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos
 
@@ -25,12 +25,8 @@ def lab_world(todos: InMemoryTodos) -> Iterator[AsyncMock]:
     """Patch the leaves of the run path onto todos; yields the queue mock."""
     enqueue = AsyncMock()
     with ExitStack() as stack:
-        stack.enter_context(
-            patch.object(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
-        )
-        stack.enter_context(
-            patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET)
-        )
+        stack.enter_context(patch.object(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL))
+        stack.enter_context(patch.object(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET))
         for target in (
             "app.services.agent_lab.lab_runs.is_agent_lab_enabled",
             "app.services.agent_lab.lab_runs.is_paid",

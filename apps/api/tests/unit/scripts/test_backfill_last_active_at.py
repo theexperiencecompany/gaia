@@ -1,6 +1,6 @@
 """The last_active_at backfill: a dry run writes nothing, and --apply only ever moves a user forward."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -35,7 +35,7 @@ def _users(behind: set[str]) -> MagicMock:
 
 
 @pytest.fixture
-def stores() -> MagicMock:
+def stores() -> Iterator[MagicMock]:
     users = _users({_BEHIND})
     rows = [{"_id": _BEHIND, "day": "2026-11-15"}, {"_id": _AHEAD, "day": "2026-11-01"}]
     with (
