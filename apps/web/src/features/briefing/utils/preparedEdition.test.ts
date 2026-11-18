@@ -127,6 +127,17 @@ describe("prepared editions", () => {
     expect(decoded).toEqual(["https://cdn/a.png"]);
   });
 
+  it("shares one cut across every narrow viewport and a few across wider ones", async () => {
+    const { prepareEdition } = await loadModule();
+
+    for (let width = 300; width < 1300; width += 1) {
+      window.innerWidth = width;
+      await prepareEdition("https://cdn/a.png", LAYOUT);
+    }
+
+    expect(decoded.length).toBeLessThanOrEqual(6);
+  });
+
   it("keeps a held edition's bitmaps open however many others are prepared", async () => {
     const { holdEdition, prepareEdition } = await loadModule();
     const held = holdEdition("https://cdn/held.png", LAYOUT);

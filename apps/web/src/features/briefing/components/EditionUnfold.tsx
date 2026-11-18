@@ -22,6 +22,7 @@ import {
 } from "@/components/shared/letterMotion";
 import { cn } from "@/lib/utils";
 import {
+  BRIEF_LETTER_WIDTH,
   LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   LETTER_TILT_PERSPECTIVE_PX,
@@ -85,20 +86,21 @@ function CreaseShade({
   );
 }
 
-/** A panel's slice, already cut at display resolution, drawn once into its own small canvas. */
+/**
+ * A panel's slice, already cut at display resolution, drawn once into its own
+ * small canvas. The canvas keeps what it drew, so the bitmap may be closed after.
+ */
 export function PanelFace({ bitmap }: { bitmap: ImageBitmap }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useLayoutEffect(() => {
-    canvasRef.current?.getContext("2d")?.drawImage(bitmap, 0, 0);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // Sized here, not as props: a closed bitmap reads 0 wide, and resizing would wipe the drawing.
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
   }, [bitmap]);
-  return (
-    <canvas
-      ref={canvasRef}
-      width={bitmap.width}
-      height={bitmap.height}
-      className="absolute inset-0 h-full w-full"
-    />
-  );
+  return <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />;
 }
 
 interface PanelProps {
@@ -186,7 +188,7 @@ export function EditionUnfold({
   origin,
   onFolded,
 }: EditionUnfoldProps) {
-  const { aspect, width, panels, shares } = edition;
+  const { aspect, panels, shares } = edition;
   const reduceMotion = useReducedMotion() ?? false;
   const travels = Boolean(origin) && !reduceMotion;
   const [isPresent, safeToRemove] = usePresence();
@@ -313,7 +315,7 @@ export function EditionUnfold({
         // A settled letter shrinks about its centre; one still travelling keeps the corner it travels by.
         transformOrigin:
           travels && (isPresent || isOpening) ? "0 0" : "50% 50%",
-        width,
+        width: BRIEF_LETTER_WIDTH,
         aspectRatio: `1 / ${aspect}`,
         willChange: isMoving ? "transform, opacity" : "auto",
       }}

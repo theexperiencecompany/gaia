@@ -26,8 +26,6 @@ export interface EditionLayout {
 export interface PreparedEdition {
   /** Natural height over width. */
   aspect: number;
-  /** Display width in CSS px, fitted to the viewport it was prepared for. */
-  width: number;
   /** One bitmap per panel, top to bottom, already at display resolution. */
   panels: ImageBitmap[];
   /** The whole sheet in one bitmap, shown once the letter lies open so no panel seam is left. */
@@ -39,8 +37,10 @@ export interface PreparedEdition {
   isDarkPaper: boolean;
 }
 
-/** Prepared editions nobody holds that are kept for a quick reopen; each holds ~25 MB of bitmaps. */
-const IDLE_EDITIONS_KEPT = 3;
+/** Editions kept open at most; each holds ~25 MB of bitmaps. Only held ones (a face being drawn, an open letter) exceed it. */
+const OPEN_EDITIONS_MAX = 4;
+/** Cut widths between the chat letter's and the open letter's step by this, so nearby viewports share a cut. */
+const CUT_WIDTH_STEP_PX = 60;
 
 interface Preparation {
   edition: Promise<PreparedEdition>;
@@ -56,14 +56,24 @@ export interface EditionHold {
   release: () => void;
 }
 
-/** The edition at its full letter width, or the screen's when narrower; a tall one scrolls. */
-function fittedWidth(): number {
-  return Math.round(
-    Math.min(
-      BRIEF_LETTER_MAX_WIDTH_PX,
-      window.innerWidth - LETTER_VIEWPORT_GUTTER_PX,
-    ),
+/**
+ * The panels' width in bitmap pixels: wide enough for the open letter at this
+ * viewport and for the chat letter, rounded up to a step so every narrow screen
+ * shares one cut and wider ones share a few.
+ */
+function cutWidth(): number {
+  const shown = Math.min(
+    BRIEF_LETTER_MAX_WIDTH_PX,
+    window.innerWidth - LETTER_VIEWPORT_GUTTER_PX,
   );
+  const stepped =
+    CHAT_LETTER_MAX_WIDTH_PX +
+    Math.ceil(
+      Math.max(0, shown - CHAT_LETTER_MAX_WIDTH_PX) / CUT_WIDTH_STEP_PX,
+    ) *
+      CUT_WIDTH_STEP_PX;
+  const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
+  return Math.round(Math.min(stepped, BRIEF_LETTER_MAX_WIDTH_PX) * ratio);
 }
 
 /** Perceived lightness of an sRGB colour, 0 (black) to 1 (white). */
@@ -109,7 +119,7 @@ function paperBox(image: HTMLImageElement, paper: number[] | null): PaperBox {
 async function decodeAndSlice(
   src: string,
   { fold, paper }: EditionLayout,
-  width: number,
+  panelWidth: number,
 ): Promise<PreparedEdition> {
   const image = new window.Image();
   // The edition CDN allows any origin, so the paper can be read back from the pixels.
@@ -124,10 +134,6 @@ async function decodeAndSlice(
       ? null
       : (fold * image.naturalHeight - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
-  const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-  const panelWidth = Math.round(
-    Math.max(width, CHAT_LETTER_MAX_WIDTH_PX) * ratio,
-  );
   const starts = shares.map((_, index) =>
     shares.slice(0, index).reduce((sum, share) => sum + share, 0),
   );
@@ -151,7 +157,6 @@ async function decodeAndSlice(
   const frontRgb = frontPaper(panels[0]);
   return {
     aspect,
-    width,
     panels,
     sheet: whole,
     shares,
@@ -165,10 +170,11 @@ function closeBitmaps(edition: PreparedEdition): void {
   for (const panel of edition.panels) panel.close();
 }
 
-/** Drop the least recently used editions nobody holds, past the few kept, and free their bitmaps. */
-function evictIdle(): void {
+/** Past the cap, drop the least recently used editions nobody holds and free their bitmaps. */
+function evictPastCap(): void {
   const idle = [...preparations].filter(([, entry]) => entry.holders === 0);
-  for (const [key, entry] of idle.slice(0, -IDLE_EDITIONS_KEPT)) {
+  const excess = preparations.size - OPEN_EDITIONS_MAX;
+  for (const [key, entry] of idle.slice(0, Math.max(0, excess))) {
     preparations.delete(key);
     // A failed preparation has nothing to free; its holders already saw the error.
     entry.edition.then(closeBitmaps, () => undefined);
@@ -176,19 +182,20 @@ function evictIdle(): void {
 }
 
 /**
- * Decode the edition and cut its panels once per display width, so opening only
- * composites small bitmaps. Every viewport wider than the letter shares one width.
+ * Decode the edition and cut its panels once per cut width, so opening only
+ * composites small bitmaps. A hold keeps its bitmaps open until released; the
+ * rest stay for a quick reopen while there is room under the cap.
  * A failed preparation is forgotten and retried next time.
  */
 export function holdEdition(src: string, layout: EditionLayout): EditionHold {
-  const width = fittedWidth();
-  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "whole"}@${width}`;
+  const panelWidth = cutWidth();
+  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "whole"}@${panelWidth}`;
   let entry = preparations.get(key);
   if (entry) {
     preparations.delete(key);
   } else {
     const created: Preparation = {
-      edition: decodeAndSlice(src, layout, width),
+      edition: decodeAndSlice(src, layout, panelWidth),
       holders: 0,
     };
     created.edition.catch(() => {
@@ -198,6 +205,7 @@ export function holdEdition(src: string, layout: EditionLayout): EditionHold {
   }
   preparations.set(key, entry);
   entry.holders += 1;
+  evictPastCap();
   const held = entry;
   let isReleased = false;
   return {
@@ -206,7 +214,7 @@ export function holdEdition(src: string, layout: EditionLayout): EditionHold {
       if (isReleased) return;
       isReleased = true;
       held.holders -= 1;
-      evictIdle();
+      evictPastCap();
     },
   };
 }

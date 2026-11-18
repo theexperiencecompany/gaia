@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@heroui/react";
 import { useInView } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LETTER_HOVER_EASE } from "@/components/shared/letterMotion";
@@ -37,6 +37,12 @@ const FOLDED_LAYERS = [
   { heightPx: 8, tint: 90, nudgeXPx: 0, turnDeg: 0, inset: 0 },
   { heightPx: 7, tint: 83, nudgeXPx: 1, turnDeg: 0.3, inset: 0.6 },
 ] as const;
+
+/** An edition handed to the letter, with the hold that keeps its bitmaps open until the face is drawn. */
+interface EditionDelivery {
+  edition: PreparedEdition;
+  release: () => void;
+}
 
 interface BriefLetterProps {
   /** Its edition, cut where the edition folds; the face ends at the fold. */
@@ -108,31 +114,37 @@ export function BriefLetter({ brief, trigger }: BriefLetterProps) {
   const { headline, imageUrl, editionFold, editionPaper } = brief;
   const rootRef = useRef<HTMLDivElement>(null);
   const faceRef = useRef<HTMLSpanElement>(null);
-  const isNear = useInView(rootRef, { once: true, margin: PREPARE_MARGIN });
-  const [edition, setEdition] = useState<PreparedEdition | null>(null);
-  const [isFailed, setIsFailed] = useState(false);
+  const isNear = useInView(rootRef, { margin: PREPARE_MARGIN });
+  const [delivery, setDelivery] = useState<EditionDelivery | null>(null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const isFailed = imageUrl !== null && failedUrl === imageUrl;
+  const edition = delivery?.edition ?? null;
 
+  // Each approach readies the edition again, so a press opens it at once; leaving lets it go.
   useEffect(() => {
-    if (!isNear || !imageUrl) return;
+    if (!isNear || !imageUrl || isFailed) return;
     let isCurrent = true;
-    setIsFailed(false);
     const hold = holdEdition(imageUrl, {
       fold: editionFold,
       paper: editionPaper,
     });
     hold.edition
       .then((prepared) => {
-        if (isCurrent) setEdition(prepared);
+        if (isCurrent)
+          setDelivery({ edition: prepared, release: hold.release });
       })
       .catch((error: unknown) => {
         console.error("Preparing the briefing letter failed", error);
-        if (isCurrent) setIsFailed(true);
+        if (isCurrent) setFailedUrl(imageUrl);
       });
     return () => {
       isCurrent = false;
       hold.release();
     };
-  }, [isNear, imageUrl, editionFold, editionPaper]);
+  }, [isNear, imageUrl, isFailed, editionFold, editionPaper]);
+
+  // The face's canvas keeps what it drew (the face draws first, as a child), so the hold can go.
+  useLayoutEffect(() => delivery?.release(), [delivery]);
 
   return (
     <div
