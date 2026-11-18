@@ -126,6 +126,7 @@ from app.models.scout_models import (
 )
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import ExternalRefSource, TodoDocument
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.analytics_service import AIFeature
@@ -162,6 +163,7 @@ from app.services.briefing.prose import Writing, reader_block
 from app.services.briefing.quiet_note import QuietFacts, quiet_note
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.slots import BriefFact
+from app.services.briefing.wind_down import latest_activity_since
 from app.services.briefing.work import BriefReads, OpenSubjects, OwnTodos, TrackedWork
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 from app.services.delivery.chat_channel import ChatChannel, InApp
@@ -197,6 +199,8 @@ _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite y
 #: When the default world's completions were finished: inside every window a run reads.
 _JUST_NOW = _NOW - timedelta(hours=1)
 _DORMANT_SINCE = datetime(2026, 10, 1, tzinfo=UTC)
+#: The real activity read, which the world fixture stands in for.
+_LATEST_ACTIVITY_SINCE = latest_activity_since
 
 # ---- The stand-in model ------------------------------------------------------------------
 
@@ -2278,23 +2282,27 @@ class TestAWeeklyDigest:
         assert payload.uncomposed == []
 
     @pytest.mark.parametrize("came_back", [False, True])
-    async def test_a_dormant_loop_recaps_only_once_the_user_came_back(
+    async def test_a_dormant_loop_wakes_only_on_the_users_own_activity_never_the_digest(
         self, world: World, monkeypatch: pytest.MonkeyPatch, came_back: bool
     ) -> None:
         _dormant(world)
         world.replies = [_weekly()]
-        _seam(
-            monkeypatch,
-            world,
-            wind_down,
-            "latest_activity_since",
-            AsyncMock(return_value=_NOW if came_back else None),
+        monkeypatch.setattr(wind_down, "latest_activity_since", _LATEST_ACTIVITY_SINCE)
+        last_active = _DORMANT_SINCE + (timedelta(days=1) if came_back else -timedelta(days=1))
+        monkeypatch.setattr(
+            user_repository,
+            "get_activity_dates",
+            AsyncMock(
+                side_effect=lambda user_id: UserActivityDates(last_active_at=last_active)
+                if user_id == _USER
+                else None
+            ),
         )
 
-        await run_brief(_USER, BriefingKind.WEEKLY)
+        outcome = await run_brief(_USER, BriefingKind.WEEKLY)
 
-        (user_id, since), _ = world.reads["latest_activity_since"].await_args
-        assert (user_id, since) == (_USER, _DORMANT_SINCE)
+        assert outcome is (BriefingRunOutcome.SENT if came_back else BriefingRunOutcome.DORMANT)
+        assert bool(world.clear_dormancy.await_count) is came_back
         assert bool(world.upsert.await_count) is came_back
 
 
