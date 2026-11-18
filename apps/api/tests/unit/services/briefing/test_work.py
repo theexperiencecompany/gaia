@@ -6,6 +6,7 @@ The todo and workflow repositories are the faked seams.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
@@ -81,7 +82,7 @@ class TestReadWork:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         since = datetime.now(UTC)
-        at_cutoff = {"completed": True, "completed_at": since}
+        at_cutoff: dict[str, Any] = {"completed": True, "completed_at": since}
         monkeypatch.setattr(
             todo_repository,
             "list_completed_since",

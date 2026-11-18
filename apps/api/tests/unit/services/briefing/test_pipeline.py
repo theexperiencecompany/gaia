@@ -148,8 +148,8 @@ from app.services.briefing.composition import headings as composition_headings
 from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights
-from app.services.briefing.fact_pool.pool import FactPool
-from app.services.briefing.facts import WEEK_AHEAD, FactSources
+from app.services.briefing.fact_pool.pool import FactPool, build_fact_pool
+from app.services.briefing.facts import WEEK_AHEAD, FactSources, build_facts
 from app.services.briefing.goals import StatedGoal
 from app.services.briefing.kinds import KIND_SPECS
 from app.services.briefing.lookback import Lookback, WinbackState
@@ -157,7 +157,7 @@ from app.services.briefing.pipeline import run_brief
 from app.services.briefing.prose import Writing, reader_block
 from app.services.briefing.quiet_note import QuietFacts, quiet_note
 from app.services.briefing.render import RenderedImage
-from app.services.briefing.scouts import service as scout_service
+from app.services.briefing.scouts import facts as scout_facts, service as scout_service
 from app.services.briefing.slots import BriefFact
 from app.services.briefing.work import BriefReads, OpenSubjects, OwnTodos, TrackedWork
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
@@ -244,7 +244,7 @@ def _weekly(**fields: str) -> dict[str, str]:
 def _placed(item_id: int, item: BriefCandidate, *, asks: bool | None = None) -> dict[str, object]:
     """Word an item as a composer would: its own title, on its ask's or its report's side."""
     asking = item.state.needs_you if asks is None else asks
-    side = (
+    side: dict[str, BriefAction | BriefOutcome] = (
         {"action": item.action or BriefAction.REPLY}
         if asking
         else {"outcome": item.outcome or BriefOutcome.FINISHED}
@@ -337,14 +337,14 @@ def _with_block(
     return answer
 
 
-_CHART = {
+_CHART: dict[str, object] = {
     "kind": "chart",
     "chart": "bar",
     "series_ids": ["gaia_finished"],
     "title": "Finished",
     "takeaway": "One thing done.",
 }
-_PROGRESS = {"kind": "progress", "goal_id": "g1"}
+_PROGRESS: dict[str, object] = {"kind": "progress", "goal_id": "g1"}
 
 
 def _every_heading_fits(
@@ -615,11 +615,9 @@ def _speaks(w: World) -> Callable[..., Awaitable[BriefVoice]]:
 
 def _records_what_the_run_built(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Record, on its way through, the pool, the facts' sources, the writing and the signals voiced."""
-    build_pool, build_facts = pipeline.build_fact_pool, pipeline.build_facts
-    written_brief, signals_block = pipeline.written_brief, pipeline.signals_block
 
     async def pooled(*args: Any) -> FactPool:
-        w.pool = await build_pool(*args)
+        w.pool = await build_fact_pool(*args)
         return w.pool
 
     def facts(chosen: Any, sources: FactSources, clock: Any) -> Any:
@@ -628,11 +626,11 @@ def _records_what_the_run_built(monkeypatch: pytest.MonkeyPatch, w: World) -> No
 
     async def written(user_id: str, prompt: str, writing: Writing) -> tuple[BriefVoice, BriefVoice]:
         w.writing = writing
-        return await written_brief(user_id, prompt, writing)
+        return await prose.written_brief(user_id, prompt, writing)
 
     def signals(remembered: list[tuple[int, RememberedSignal]], clock: Any) -> str:
         w.signals = list(remembered)
-        return signals_block(remembered, clock)
+        return scout_facts.signals_block(remembered, clock)
 
     monkeypatch.setattr(pipeline, "build_fact_pool", pooled)
     monkeypatch.setattr(pipeline, "build_facts", facts)
