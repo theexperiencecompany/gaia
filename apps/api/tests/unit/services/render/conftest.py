@@ -56,6 +56,9 @@ class FakePlaywright:
         self.stopped = False
 
     async def launch(self, **options: Any) -> FakeBrowser:
+        self.fake.launches.append(options)
+        if self.fake.launch_error is not None:
+            raise self.fake.launch_error
         browser = FakeBrowser(self.fake)
         self.fake.browsers.append(browser)
         return browser
@@ -71,6 +74,8 @@ class FakeChromium:
         self.page: Any = MagicMock()
         self.browsers: list[FakeBrowser] = []
         self.playwrights: list[FakePlaywright] = []
+        self.launches: list[dict[str, Any]] = []
+        self.launch_error: Exception | None = None
 
     async def start(self) -> FakePlaywright:
         playwright = FakePlaywright(self)
