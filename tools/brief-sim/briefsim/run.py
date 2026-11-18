@@ -32,6 +32,7 @@ RESCAN_EVERY = timedelta(minutes=30)
 #: Exported per user after the run: what GAIA stored and what reached the user in-app.
 EXPORTED = [
     "briefings",
+    "workflows",
     "notifications",
     "scouts",
     "signal_memory",

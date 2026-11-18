@@ -63,6 +63,12 @@ class StoredPayload(TypedDict, total=False):
     sources_unavailable: list[StoredSource]
 
 
+class StoredEdition(TypedDict):
+    """A brief's stored edition render: the key its image variants are stored under."""
+
+    key: str
+
+
 class StoredBrief(TypedDict, total=False):
     """A briefings document as run.py exported it (GAIA's BriefingModel, ids and dates as strings)."""
 
@@ -73,7 +79,7 @@ class StoredBrief(TypedDict, total=False):
     created_at: str
     payload: StoredPayload
     delivered_channels: list[str]
-    edition_image_url: str | None
+    edition: "StoredEdition | None"
 
 
 def parse_instant(value: str) -> datetime:
@@ -141,6 +147,8 @@ class Truth:
     reads: list[JsonObject]
     persona: list[JsonObject]
     connected_at: datetime
+    #: The minute past its hour each brief kind is scheduled at (the user's slot minute).
+    slot_minutes: dict[str, int] = field(default_factory=dict)
 
     def state_at(self, at: datetime) -> AppState:
         return self.world.state_at(at)
@@ -274,7 +282,22 @@ def load(out: Path) -> Truth:
         brief.items = _items(brief.payload, world.state_at(stored))
         briefs.append(brief)
     reads = [r for r in read_jsonl(out / "world_calls.jsonl") if r.get("kind") == "read"]
-    return Truth(world, tz, briefs, reads, persona, connected)
+    return Truth(world, tz, briefs, reads, persona, connected, _slot_minutes(out))
+
+
+_BRIEF_WORKFLOW_KINDS = {"daily_briefing": "daily", "weekly_digest": "weekly"}
+
+
+def _slot_minutes(out: Path) -> dict[str, int]:
+    """Return each brief kind's scheduled minute, from its workflow's stored cron."""
+    minutes: dict[str, int] = {}
+    for row in read_jsonl(out / "workflows.jsonl"):
+        kind = _BRIEF_WORKFLOW_KINDS.get(str(row.get("system_workflow_key")))
+        trigger = cast(JsonObject, row.get("trigger_config") or {})
+        cron = trigger.get("cron_expression")
+        if kind and isinstance(cron, str):
+            minutes[kind] = int(cron.split(" ", 1)[0])
+    return minutes
 
 
 def github_item(truth: Truth, brief: Brief, number: int) -> GithubItem:

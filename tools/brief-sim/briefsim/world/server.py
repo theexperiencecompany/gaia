@@ -1,4 +1,4 @@
-"""The fake outside world: Composio (and the apps behind it), Cloudinary and Resend, in one process.
+"""The fake outside world: Composio (and the apps behind it), Cloudinary, S3 and Resend, in one process.
 
   python -m briefsim.world.server --port 8711 --out <run dir> --origin <ISO> --days 14
 
@@ -16,7 +16,7 @@ import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, FastAPI, Form, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import uvicorn
 
 from briefsim.world.apps import calendar, github, todoist
@@ -33,6 +33,12 @@ _PROVIDER_ERRORS: dict[FaultMode, tuple[int, str]] = {
     FaultMode.RATE_LIMITED: (429, "Too Many Requests"),
 }
 _RETRY_AFTER_S = "3600"
+#: The S3-compatible blob store's path under the world's URL (path-style: /s3/<bucket>/<key>).
+S3_PREFIX = "/s3"
+_S3_NO_SUCH_KEY = (
+    "<?xml version='1.0' encoding='UTF-8'?>"
+    "<Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message></Error>"
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,7 @@ class WorldServer:
                 self.tools[tool["slug"]] = tool
                 self.toolkit_of[tool["slug"]] = str(tool["toolkit"]["slug"]).upper()
         (out / "editions").mkdir(parents=True, exist_ok=True)
+        (out / "blobs").mkdir(parents=True, exist_ok=True)
 
     def log(self, **row: object) -> None:
         row = {"at": datetime.now(UTC).isoformat(), **row}
@@ -241,9 +248,35 @@ def _composio_routes(server: WorldServer) -> APIRouter:
     return router
 
 
+def _s3_object(server: WorldServer, bucket: str, key: str) -> Path:
+    """Return where an object lives under <run dir>/blobs, one file per bucket/key."""
+    return server.out / "blobs" / bucket / key.replace("/", "__")
+
+
 def _sink_routes(server: WorldServer) -> APIRouter:
-    """Where GAIA's output lands: Cloudinary for edition images, Resend for email."""
+    """Where GAIA's output lands: Cloudinary and S3 for files and edition images, Resend for email."""
     router = APIRouter()
+
+    @router.put(S3_PREFIX + "/{bucket}/{key:path}")
+    async def s3_put(bucket: str, key: str, request: Request) -> Response:
+        content = await request.body()
+        _s3_object(server, bucket, key).parent.mkdir(parents=True, exist_ok=True)
+        _s3_object(server, bucket, key).write_bytes(content)
+        server.log(kind="sink", sink="s3", key=key, bytes=len(content))
+        return Response(status_code=200, headers={"ETag": f'"{secrets.token_hex(16)}"'})
+
+    @router.api_route(S3_PREFIX + "/{bucket}/{key:path}", methods=["GET", "HEAD"])
+    async def s3_get(bucket: str, key: str) -> Response:
+        path = _s3_object(server, bucket, key)
+        if not path.exists():
+            return Response(_S3_NO_SUCH_KEY, status_code=404, media_type="application/xml")
+        return Response(path.read_bytes(), media_type="application/octet-stream")
+
+    @router.delete(S3_PREFIX + "/{bucket}/{key:path}")
+    async def s3_delete(bucket: str, key: str) -> Response:
+        _s3_object(server, bucket, key).unlink(missing_ok=True)
+        server.log(kind="sink", sink="s3_delete", key=key)
+        return Response(status_code=204)
 
     @router.post("/v1_1/{cloud}/image/upload")
     async def cloudinary_upload(

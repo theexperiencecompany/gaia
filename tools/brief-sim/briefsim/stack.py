@@ -142,6 +142,16 @@ def sim_env(clock: Path, openai_key: str) -> dict[str, str]:
             "CLOUDINARY_API_KEY": "sim",
             "CLOUDINARY_API_SECRET": "sim",
             "CLOUDINARY_UPLOAD_PREFIX": world,
+            # Files and edition images go to the world's S3 (on GAIA Cloud they go to R2, one S3 client).
+            "BLOB_STORE": "s3",
+            "S3_ENDPOINT_URL": f"{world}/s3",
+            "S3_BUCKET": "brief-sim",
+            "S3_ACCESS_KEY_ID": "sim",
+            "S3_SECRET_ACCESS_KEY": "sim",
+            "S3_ADDRESSING_STYLE": "path",
+            # The fake S3 takes plain bodies, not aws-chunked uploads with trailing checksums.
+            "AWS_REQUEST_CHECKSUM_CALCULATION": "when_required",
+            "AWS_RESPONSE_CHECKSUM_VALIDATION": "when_required",
             "RESEND_API_KEY": "re_sim",
             "RESEND_API_URL": world,
             "RESEND_AUDIENCE_ID": "sim-audience",

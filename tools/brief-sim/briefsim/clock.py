@@ -23,7 +23,8 @@ _QUIET_POLL_S = 0.5
 _QUIET_TIMEOUT_S = 1800.0
 #: A job due this soon is the worker's to pick up now (it polls every 0.5 s), not a future wake-up.
 _PICKUP_SLACK = timedelta(seconds=5)
-ARQ_QUEUE = "arq:queue"
+#: Every ARQ queue the worker process serves: the shared one, and the brief and scout queues.
+ARQ_QUEUES = ("arq:queue", "arq:queue:brief", "arq:queue:scouts")
 ARQ_CRON_PREFIX = b"cron:"
 
 
@@ -106,20 +107,28 @@ class SimClock:
                 cutoff = now - timedelta(seconds=float(seconds))
                 self.mongo[name].delete_many({field_name: {"$lt": cutoff}})
 
+    def _queued(self, first: int, last: int) -> list[tuple[bytes, float]]:
+        """Return the jobs ranked first..last on every queue, merged by score (ms since the epoch)."""
+        rows = [
+            row
+            for queue in ARQ_QUEUES
+            for row in cast(
+                list[tuple[bytes, float]],
+                self.redis_client.zrange(queue, first, last, withscores=True),
+            )
+        ]
+        return sorted(rows, key=lambda row: row[1])
+
     def due_job_at(self) -> datetime | None:
-        """Return when the next ARQ job is due, from the queue's scores (ms since the epoch)."""
-        first = self.redis_client.zrange(ARQ_QUEUE, 0, 0, withscores=True)
+        """Return when the next ARQ job on any queue is due."""
+        first = self._queued(0, 0)
         if not first:
             return None
-        score = cast(list[tuple[bytes, float]], first)[0][1]
-        return datetime.fromtimestamp(score / 1000, UTC)
+        return datetime.fromtimestamp(first[0][1] / 1000, UTC)
 
     def queue_head(self, size: int = 5) -> list[str]:
         """Return the first queued ARQ jobs as job@instant, for the jump log."""
-        head = cast(
-            list[tuple[bytes, float]],
-            self.redis_client.zrange(ARQ_QUEUE, 0, size - 1, withscores=True),
-        )
+        head = self._queued(0, size - 1)[:size]
         return [
             f"{job.decode()}@{datetime.fromtimestamp(score / 1000, UTC).isoformat()}"
             for job, score in head
@@ -132,9 +141,16 @@ class SimClock:
         and catches up the runs a jump skipped on its own.
         """
         now_ms = datetime.now(UTC).timestamp() * 1000
-        upcoming = cast(
-            list[tuple[bytes, float]],
-            self.redis_client.zrangebyscore(ARQ_QUEUE, now_ms, "+inf", withscores=True),
+        upcoming = sorted(
+            (
+                row
+                for queue in ARQ_QUEUES
+                for row in cast(
+                    list[tuple[bytes, float]],
+                    self.redis_client.zrangebyscore(queue, now_ms, "+inf", withscores=True),
+                )
+            ),
+            key=lambda row: row[1],
         )
         score = next((s for job, s in upcoming if not job.startswith(ARQ_CRON_PREFIX)), None)
         return None if score is None else datetime.fromtimestamp(score / 1000, UTC)

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from html import escape
 import json
 from pathlib import Path
-import re
 
 from briefsim.oracle.logs import LoggedError, logged_errors
 from briefsim.oracle.truth import Brief, Truth, load, parse_instant, read_jsonl
@@ -20,15 +19,16 @@ th{color:#999;font-weight:500}.fault{color:#f87171}.ok{color:#86efac}.muted{colo
 pre{white-space:pre-wrap;font:13px/1.4 ui-monospace,monospace;color:#ccc;margin:4px 0}
 .pill{display:inline-block;background:#222;border-radius:999px;padding:2px 8px;margin:2px}
 """
-_EDITION = re.compile(r"briefing/editions/([A-Za-z0-9_-]+)")
 
 
 def _edition_file(out: Path, brief: Brief) -> str | None:
-    match = _EDITION.search(brief.doc.get("edition_image_url") or "")
-    if match is None:
+    """Return the brief's stored edition PNG under the run dir, from its edition key."""
+    edition = brief.doc.get("edition")
+    if edition is None:
         return None
-    name = f"editions/briefing_editions_{match.group(1)}.png"
-    return name if (out / name).exists() else None
+    key = edition["key"]
+    found = sorted((out / "blobs").glob(f"*/*__brief-edition-{key}.png"))
+    return str(found[0].relative_to(out)) if found else None
 
 
 def _world_cell(truth: Truth, day_start: datetime) -> str:

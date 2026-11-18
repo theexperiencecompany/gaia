@@ -426,9 +426,10 @@ def check_no_stale_repeat(truth: Truth, brief: Brief) -> list[Finding]:
 
 
 def _scheduled_at(truth: Truth, brief: Brief) -> datetime:
-    """Return when the brief was due: 08:00 local daily, Sunday 17:00 local weekly (the persona's defaults)."""
+    """Return when the brief was due: 08:00 local daily, Sunday 17:00 local weekly, at the user's slot minute."""
     hour = WEEKLY_HOUR if brief.kind == "weekly" else DAILY_HOUR
-    return datetime.combine(brief.local_date, time(hour), truth.tz)
+    minute = truth.slot_minutes.get(brief.kind, 0)
+    return datetime.combine(brief.local_date, time(hour, minute), truth.tz)
 
 
 def check_on_time(truth: Truth, brief: Brief) -> list[Finding]:
