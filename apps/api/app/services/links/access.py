@@ -15,13 +15,8 @@ from app.models.short_link_models import (
     ShortLink,
 )
 
-# Wider levels open for more people; a snapshot capped at one level serves at it and narrower.
-_WIDTH: dict[LinkAccess, int] = {
-    LinkAccess.OWNER: 0,
-    LinkAccess.PEOPLE: 1,
-    LinkAccess.UNLISTED: 2,
-    LinkAccess.PUBLIC: 3,
-}
+#: Every level by who it opens for, widest first; a snapshot capped at one level serves at it and narrower.
+ACCESS_WIDEST_FIRST = (LinkAccess.PUBLIC, LinkAccess.UNLISTED, LinkAccess.PEOPLE, LinkAccess.OWNER)
 
 _REVOKED_STATE: dict[RevokeReason, LinkState] = {
     RevokeReason.OWNER: LinkState.STOPPED,
@@ -55,8 +50,8 @@ SHARING_OFF = frozenset(
 
 _OPEN = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
 
-# Dead by the owner's own hand (stopped, rotated or expired): still theirs to open.
-_OWNER_STILL_OPENS = frozenset({LinkDenial.REVOKED, LinkDenial.EXPIRED})
+#: Dead by the owner's own hand (stopped, rotated or expired): still theirs to open.
+OWNER_STILL_OPENS = frozenset({LinkDenial.REVOKED, LinkDenial.EXPIRED})
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +66,7 @@ class Denied:
 
 def at_most(access: LinkAccess, cap: LinkAccess) -> bool:
     """Whether access opens for no one beyond cap."""
-    return _WIDTH[access] <= _WIDTH[cap]
+    return ACCESS_WIDEST_FIRST.index(access) >= ACCESS_WIDEST_FIRST.index(cap)
 
 
 def is_open(access: LinkAccess) -> bool:
@@ -141,7 +136,7 @@ def evaluate(link: ShortLink | None, viewer: LinkViewer, now: datetime) -> Grant
         return Denied(LinkDenial.NOT_FOUND)
     dead = dead_state(link, now)
     is_owner = viewer.user_id is not None and viewer.user_id == link.user_id
-    if is_owner and (dead is None or dead in _OWNER_STILL_OPENS):
+    if is_owner and (dead is None or dead in OWNER_STILL_OPENS):
         return Granted(LinkViewerKind.OWNER)
     if dead is not None:
         return Denied(dead)

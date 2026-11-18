@@ -1,7 +1,7 @@
 """heygaia.link constants.
 
-The ones the usercontent Worker, the CLI and the self-host Caddyfile mirror are
-generated from here by mise links:constants (apps/api/scripts/dump_link_constants.py).
+The ones the web app, the usercontent Worker, the CLI and the self-host Caddyfile use
+are generated from here by mise links:constants (apps/api/scripts/dump_link_constants.py).
 """
 
 # The web app route a heygaia.link slug rewrites to.

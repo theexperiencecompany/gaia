@@ -86,8 +86,9 @@ class TestGuessingLockout:
             await abuse.refuse_when_locked_out(VIEWER)
 
         assert (raised.value.status_code, raised.value.code) == (429, "link_lookup_locked")
-        assert raised.value.message == "Too many links that don't exist were opened from here"
-        assert raised.value.fix == "Try again in an hour"
+        assert raised.value.message == (
+            "Too many links that don't exist were opened from here. Try again in an hour."
+        )
         await abuse.refuse_when_locked_out("198.51.100.1")
 
     async def test_misses_are_counted_by_slug_hash_within_a_window(

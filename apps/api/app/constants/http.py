@@ -9,6 +9,9 @@ API_V1_PREFIX = "/api/v1"
 #: spells this one name, so a client reading it can never miss one of them.
 RETRY_AFTER_HEADER = "Retry-After"  # pragma: no mutate -- header names are case-insensitive (RFC 9110 section 5.1), so a case mutant is equivalent
 
+#: The ErrorEnvelope code of every rate-limit refusal, the per-route limiter's and the tiered one's.
+RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
+
 #: nginx's "client closed request": the client hung up before the response, so nobody reads it.
 CLIENT_CLOSED_REQUEST_STATUS = 499
 
