@@ -142,3 +142,28 @@ def test_the_plr_complexity_hook_runs_ci_script_on_the_pinned_interpreter() -> N
         *ci_args,
     ], "the hook runs CI's script and args on the pinned interpreter, not PATH's python3"
     assert hook["pass_filenames"] is False
+
+
+# Directories an install creates; a fresh worktree has none of them yet.
+INSTALL_DIRS = (".venv", "node_modules")
+
+
+def _all_hooks() -> list[tuple[str, dict[str, object]]]:
+    configs = [PRE_COMMIT, *sorted(REPO_ROOT.glob("apps/*/.pre-commit-config.yaml"))]
+    return [
+        (f"{config.relative_to(REPO_ROOT)}:{hook['id']}", hook)
+        for config in configs
+        for repo in yaml.safe_load(config.read_text(encoding="utf-8"))["repos"]
+        for hook in repo.get("hooks", [])
+    ]
+
+
+@pytest.mark.parametrize(("name", "hook"), [pytest.param(*h, id=h[0]) for h in _all_hooks()])
+def test_no_hook_runs_a_program_out_of_an_install_directory(
+    name: str, hook: dict[str, object]
+) -> None:
+    """Regression: `../../.venv/bin/python` hooks died with a bare ENOENT in a fresh worktree."""
+    program = shlex.split(str(hook.get("entry", "")))[:1]
+    assert not [part for part in Path(*program).parts if part in INSTALL_DIRS], (
+        f"{name} runs {program[0]}: use `uv run` (Python) or `pnpm exec` (Node) instead"
+    )

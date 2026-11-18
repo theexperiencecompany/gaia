@@ -47,10 +47,10 @@ repos:
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        # Runs on the repo venv, not the system python3 (3.9 on macOS cannot
-        # parse the app's 3.10+ syntax); paths are apps/api-relative because
-        # this nested config runs with cwd=apps/api.
-        entry: ../../.venv/bin/python scripts/check_outbound_topology_parity.py
+        # uv runs it on the .python-version interpreter, not the system python3
+        # (3.9 on macOS cannot parse the app's 3.10+ syntax), and needs no venv;
+        # paths are apps/api-relative because this nested config runs with cwd=apps/api.
+        entry: uv run --no-project --isolated python scripts/check_outbound_topology_parity.py
         # libs/shared/ts/src/bots/consumer/topology.ts is outside apps/api and cannot
         # be matched from this nested config; the root config must guard that side.
         files: ^(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)$
@@ -60,11 +60,11 @@ repos:
       - id: gaia-python-lints
         name: GAIA custom Python lints (route contract, service classes, wide events, docstring + comment content)
         language: system
-        # cwd=apps/api: repo-root tools live at ../../tools, and the repo venv
-        # python replaces the system python3 (3.9 on macOS crashes ast.parse on
-        # the app's 3.10+ syntax). tools/lints/*.py is outside apps/api and
+        # cwd=apps/api: repo-root tools live at ../../tools, and uv's pinned
+        # interpreter replaces the system python3 (3.9 on macOS crashes ast.parse
+        # on the app's 3.10+ syntax). tools/lints/*.py is outside apps/api and
         # cannot be matched here; the root config must guard that side.
-        entry: ../../.venv/bin/python ../../tools/lints/run.py app tests
+        entry: uv run --no-project --isolated python ../../tools/lints/run.py app tests
         files: ^(app|tests)/.*\.py$
         pass_filenames: false
         priority: 0
@@ -72,11 +72,12 @@ repos:
       - id: gaia-import-cost
         name: Base-layer import cost (constants/config/utils/models stay cheap)
         language: system
-        # Same cwd=apps/api rule as the hooks around it, and the repo venv
-        # python because the check imports the real modules. `--report` matches
-        # the CI step: it measures and prints, and gates nothing until the base
-        # layers stop importing upward (tools/lints/check_import_cost.py).
-        entry: ../../.venv/bin/python ../../tools/lints/check_import_cost.py --report
+        # Same cwd=apps/api rule as the hooks around it. The check finds the
+        # synced venv it imports the real modules with itself, and names the
+        # sync command when there is none. `--report` matches the CI step: it
+        # measures and prints, and gates nothing until the base layers stop
+        # importing upward (tools/lints/check_import_cost.py).
+        entry: uv run --no-project --isolated python ../../tools/lints/check_import_cost.py --report
         files: ^(app/(constants|config|utils|models)/.*\.py|app/(main|worker)\.py|tests/conftest\.py)$
         pass_filenames: false
         priority: 0
@@ -88,7 +89,7 @@ repos:
         # the repo root — neither a root-relative path nor the system python3
         # works here. tools/lints/*.py cannot be matched from this nested
         # config; the root config must guard that side.
-        entry: ../../.venv/bin/python ../../tools/lints/check_ignore_whys.py
+        entry: uv run --no-project --isolated python ../../tools/lints/check_ignore_whys.py
         files: ^pyproject\.toml$
         pass_filenames: false
         priority: 0
