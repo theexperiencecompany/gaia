@@ -12,6 +12,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, Str
 
 from app.constants.auth import MIN_PASSWORD_LENGTH
 from app.db.repositories.base import MongoDocument
+from app.utils.email_utils import canonical_email
 
 ADMIN_CREDENTIAL_SLOT = "admin"
 
@@ -39,15 +40,9 @@ BcryptLimitedPassword = Annotated[
 ]
 
 
-def _normalize_email(value: EmailStr) -> str:
-    """Lowercase the whole address. ``EmailStr`` alone only normalizes the
-    domain; without this, ``Admin@EXAMPLE.com`` and ``admin@example.com`` are
-    two accounts."""
-    return str(value).lower()
-
-
 # Request-side email type: validated as RFC-ish email, stored/compared lowercase.
-NormalizedEmail = Annotated[EmailStr, AfterValidator(_normalize_email)]
+# EmailStr alone only lowercases the domain.
+NormalizedEmail = Annotated[EmailStr, AfterValidator(canonical_email)]
 
 
 class LocalCredentialDocument(MongoDocument):
