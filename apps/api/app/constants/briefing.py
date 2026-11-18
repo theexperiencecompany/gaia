@@ -373,7 +373,7 @@ FAVOURITE_WEIGHT_FACTOR: Final[int] = 2
 
 
 class BriefingBag(StrEnum):
-    """The per-user shuffle bags kept on the user doc (briefing_shuffle_bags)."""
+    """The per-user shuffle bags kept in briefing_state (shuffle_bags)."""
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"

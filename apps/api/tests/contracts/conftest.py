@@ -13,9 +13,10 @@ Isolation, so the default -n 4 xdist run is safe:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from datetime import UTC
 import os
+import time
 import uuid
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
@@ -102,6 +103,23 @@ async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
     await client.flushdb()
     await client.aclose()
+
+
+@pytest.fixture
+def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Move the process's local timezone off UTC for the test.
+
+    The suite pins TZ=UTC, which makes a naive datetime.now() numerically
+    identical to an aware UTC one — so a timestamp that forgot its timezone
+    would look correct here and be hours wrong in production.
+    """
+    monkeypatch.setenv("TZ", "Asia/Kolkata")  # UTC+5:30
+    time.tzset()
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
+        time.tzset()
 
 
 #: Runs one repository read and returns the plan summary of every operation it sent.

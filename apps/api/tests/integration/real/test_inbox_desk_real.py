@@ -20,13 +20,14 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     INBOX_DESK_TITLE,
 )
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
 from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
 from app.utils.redis_utils import RedisPoolManager
 
-_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 pytestmark = pytest.mark.service
 

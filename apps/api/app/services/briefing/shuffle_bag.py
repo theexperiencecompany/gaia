@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping, Set
 from itertools import pairwise
 import random
 
-from app.models.user_models import ShuffleBag
+from app.models.briefing_state_models import ShuffleBag
 
 # Rejection sampling bound: valid orders are the overwhelming majority for any
 # pool this module serves, so hitting it means the pool cannot be arranged.

@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from app.constants.briefing import EditionFamily
-from app.models.user_models import ShuffleBag
+from app.models.briefing_state_models import ShuffleBag
 from app.services.briefing.editions import (
     DAILY_FAMILY_WEIGHTS,
     EXPLORER_RENDERER,

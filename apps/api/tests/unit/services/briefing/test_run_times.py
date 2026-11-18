@@ -19,14 +19,11 @@ from app.workers.brief_slots import spread_cron
 _KOLKATA = ZoneInfo("Asia/Kolkata")
 
 
-def _user(
-    frequency: BriefingFrequency = BriefingFrequency.DAILY,
-    hour: int = 8,
-    quiet_hours: QuietHours | None = None,
-) -> UserDocument:
-    return UserDocument(
-        briefing_schedule=BriefingSchedule(frequency=frequency, hour=hour),
-        quiet_hours=quiet_hours,
+def _slots(
+    frequency: BriefingFrequency = BriefingFrequency.DAILY, hour: int = 8
+) -> dict[str, run_times.BriefSlot]:
+    return run_times.brief_slots(
+        BriefingSchedule(frequency=frequency, hour=hour), DEFAULT_QUIET_HOURS
     )
 
 
@@ -55,11 +52,11 @@ class TestTheDailyBriefsCron:
     def test_the_brief_runs_at_8_or_when_quiet_hours_end(
         self, quiet_hours: QuietHours, cron: str
     ) -> None:
-        user = _user(quiet_hours=quiet_hours)
+        user = UserDocument(quiet_hours=quiet_hours)
 
-        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == spread_cron(
-            cron, user.id
-        )
+        assert run_times.briefing_cron(
+            DAILY_BRIEFING_WORKFLOW_KEY, user, BriefingSchedule()
+        ) == spread_cron(cron, user.id)
 
     @pytest.mark.parametrize(
         ("frequency", "hour", "cron"),
@@ -75,27 +72,28 @@ class TestTheDailyBriefsCron:
     def test_the_brief_runs_on_the_users_days_and_hour(
         self, frequency: BriefingFrequency, hour: int, cron: str
     ) -> None:
-        user = _user(frequency, hour)
+        user = UserDocument()
+        schedule = BriefingSchedule(frequency=frequency, hour=hour)
 
-        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == spread_cron(
+        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user, schedule) == spread_cron(
             cron, user.id
         )
 
 
 class TestTheWeeklyDigestsCron:
     def test_it_runs_on_sunday_at_five(self) -> None:
-        user = _user()
+        user = UserDocument()
 
-        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user) == spread_cron(
-            "0 17 * * 0", user.id
-        )
+        assert run_times.briefing_cron(
+            WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule()
+        ) == spread_cron("0 17 * * 0", user.id)
 
     def test_quiet_hours_covering_it_push_it_to_when_they_end(self) -> None:
-        user = _user(quiet_hours=QuietHours(enabled=True, start_hour=16, end_hour=19))
+        user = UserDocument(quiet_hours=QuietHours(enabled=True, start_hour=16, end_hour=19))
 
-        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user) == spread_cron(
-            "0 19 * * 0", user.id
-        )
+        assert run_times.briefing_cron(
+            WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule()
+        ) == spread_cron("0 19 * * 0", user.id)
 
 
 class TestBriefSlots:
@@ -111,7 +109,7 @@ class TestBriefSlots:
     def test_each_frequency_runs_its_briefs(
         self, frequency: BriefingFrequency, keys: list[str]
     ) -> None:
-        assert list(run_times.user_brief_slots(_user(frequency))) == keys
+        assert list(_slots(frequency)) == keys
 
 
 class TestDescribeBriefingSchedule:
@@ -139,7 +137,7 @@ class TestDescribeBriefingSchedule:
     def test_it_names_the_briefs_and_the_hour_they_really_land(
         self, frequency: BriefingFrequency, hour: int, text: str
     ) -> None:
-        assert run_times.describe_briefing_schedule(_user(frequency, hour)) == text
+        assert run_times.describe_briefing_schedule(_slots(frequency, hour)) == text
 
 
 class TestNextBriefLands:
@@ -160,12 +158,12 @@ class TestNextBriefLands:
     ) -> None:
         now_local = now.replace(tzinfo=_KOLKATA)
 
-        assert run_times.next_brief_lands(_user(frequency, 9), now_local) == lands
+        assert run_times.next_brief_lands(_slots(frequency, 9), now_local) == lands
 
     def test_briefs_off_promise_none(self) -> None:
         now_local = datetime(2026, 10, 14, 7, tzinfo=_KOLKATA)
 
-        assert run_times.next_brief_lands(_user(BriefingFrequency.OFF), now_local) is None
+        assert run_times.next_brief_lands(_slots(BriefingFrequency.OFF), now_local) is None
 
 
 class TestTheInboxDesksRecurrence:
@@ -182,4 +180,6 @@ class TestTheInboxDesksRecurrence:
     def test_it_sweeps_an_hour_ahead_of_the_daily_brief(
         self, frequency: BriefingFrequency, hour: int, recurrence: str
     ) -> None:
-        assert run_times.inbox_desk_recurrence(_user(frequency, hour)) == recurrence
+        schedule = BriefingSchedule(frequency=frequency, hour=hour)
+
+        assert run_times.inbox_desk_recurrence(schedule, DEFAULT_QUIET_HOURS) == recurrence

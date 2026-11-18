@@ -12,6 +12,7 @@ import sys
 
 from app.constants.briefing import BRIEFING_KIND_BY_WORKFLOW_KEY
 from app.core.provider_registration import register_lazy_providers
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.services.briefing.run_times import briefing_cron
@@ -29,6 +30,7 @@ async def resync(apply: bool) -> int:
         user = await user_repository.get(user_id)
         if user is None:
             continue
+        schedule = (await briefing_state_repository.state_for(user_id)).schedule
         workflows = await workflow_repository.find_system_workflows(
             user_id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
         )
@@ -37,7 +39,7 @@ async def resync(apply: bool) -> int:
             for w in workflows
             if w.system_workflow_key
             and w.trigger_config.cron_expression
-            != (cron := briefing_cron(w.system_workflow_key, user))
+            != (cron := briefing_cron(w.system_workflow_key, user, schedule))
         ]
         if not moves:
             continue

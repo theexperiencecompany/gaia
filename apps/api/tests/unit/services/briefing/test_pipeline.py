@@ -69,6 +69,7 @@ from app.constants.notifications import (
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.hil import hil_approval_repository
@@ -97,6 +98,12 @@ from app.models.brief_payload_models import (
 from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_slot_models import CountName
+from app.models.briefing_state_models import (
+    BriefingBootstrap,
+    BriefingDormancy,
+    BriefingStateDocument,
+    ShuffleBag,
+)
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.chat_models import ConversationSource
 from app.models.email_verdict_models import EmailVerdictDocument
@@ -116,12 +123,7 @@ from app.models.scout_models import (
 )
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import ExternalRefSource, TodoDocument
-from app.models.user_models import (
-    BriefingBootstrap,
-    BriefingDormancy,
-    ShuffleBag,
-    UserDocument,
-)
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.analytics_service import AIFeature
 from app.services.briefing import (
@@ -497,6 +499,10 @@ class World:
     user: UserDocument = field(
         default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c", name="Ada")
     )
+    #: The user's briefing_state row; its shuffle bags are bags, as the run stored them.
+    state: BriefingStateDocument = field(
+        default_factory=lambda: BriefingStateDocument(user_id=_USER)
+    )
     chat: ChatChannel | None = _CHAT
     scouts: list[ScoutResult] = field(default_factory=list)
     memory: list[SignalMemoryDocument] = field(default_factory=list)
@@ -753,6 +759,26 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
 
 
+def _store_briefing_state(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
+    """Keep the user's briefing_state row in memory; its shuffle bags are w.bags, as Mongo holds them."""
+
+    async def state_for(user_id: str) -> BriefingStateDocument:
+        assert user_id == _USER
+        w.state.shuffle_bags = {BriefingBag(k): v for k, v in w.bags.items()}
+        return w.state
+
+    async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
+        assert user_id == _USER
+        w.bags[bag.value] = state
+
+    monkeypatch.setattr(briefing_state_repository, "state_for", state_for)
+    monkeypatch.setattr(briefing_state_repository, "clear_bootstrap", w.clear_bootstrap)
+    monkeypatch.setattr(briefing_state_repository, "clear_dormancy", w.clear_dormancy)
+    monkeypatch.setattr(briefing_state_repository, "enter_dormancy", w.enter_dormancy)
+    monkeypatch.setattr(briefing_state_repository, "record_goal_question", w.goal_asked)
+    monkeypatch.setattr(briefing_state_repository, "set_bag", set_bag)
+
+
 @pytest.fixture
 def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
@@ -771,26 +797,14 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     )
     w.voice.side_effect = _speaks(w)
 
-    # Seams keyed on the user: a read for anyone else finds nothing. The stored
-    # shuffle bags ride on the user document, as they do in Mongo.
+    # Seams keyed on the user: a read for anyone else finds nothing.
     async def get_user(user_id: str) -> UserDocument | None:
-        if user_id != w.user.id:
-            return None
-        w.user.briefing_shuffle_bags = {BriefingBag(k): v for k, v in w.bags.items()} or None
-        return w.user
-
-    async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
-        assert user_id == _USER
-        w.bags[bag.value] = state
+        return w.user if user_id == w.user.id else None
 
     monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=get_user))
     _store_briefs(monkeypatch, w)
+    _store_briefing_state(monkeypatch, w)
     _records_what_the_run_built(monkeypatch, w)
-    monkeypatch.setattr(user_repository, "clear_briefing_bootstrap", w.clear_bootstrap)
-    monkeypatch.setattr(user_repository, "clear_briefing_dormancy", w.clear_dormancy)
-    monkeypatch.setattr(user_repository, "enter_briefing_dormancy", w.enter_dormancy)
-    monkeypatch.setattr(user_repository, "record_goal_question", w.goal_asked)
-    monkeypatch.setattr(user_repository, "set_briefing_bag", set_bag)
     monkeypatch.setattr(daily, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(weekly, "build_weekly_voice_prompt", w.weekly_prompt)
     monkeypatch.setattr(checked_call, "ainvoke_structured", _model(w))
@@ -1317,7 +1331,7 @@ class TestTheEdition:
         """Regression (#1804 review): with only Menu on, a progress-only brief drew nothing and was never pushed."""
         world.calendar = []
         world.work = _brief_work()
-        world.user.briefing_editions = {
+        world.state.editions = {
             family: EditionChoice.OFF for family in DAILY_FAMILY_WEIGHTS if family != "menu"
         }
         world.composer.side_effect = lambda schema, _prompt, **_k: schema.model_validate(
@@ -1784,7 +1798,7 @@ def _quiet_day(world: World) -> None:
     """Nothing to place, nothing on the calendar and the goal asked yesterday: the ladder says nothing."""
     world.work = TrackedWork()
     world.calendar = []
-    world.user.briefing_dormancy = BriefingDormancy(goal_asked_at=_NOW - timedelta(days=1))
+    world.state.dormancy = BriefingDormancy(goal_asked_at=_NOW - timedelta(days=1))
 
 
 def _shown_before(world: World, todo_id: str, times: int) -> None:
@@ -2362,11 +2376,9 @@ class TestAQuietWeek:
 
 
 def _dormant(world: World) -> None:
-    world.user = UserDocument(
-        id=_USER,
-        timezone=_TZ,
-        email="a@b.c",
-        briefing_dormancy=BriefingDormancy(idle_days=3, dormant_since=_DORMANT_SINCE),
+    world.user = UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
+    world.state = BriefingStateDocument(
+        user_id=_USER, dormancy=BriefingDormancy(idle_days=3, dormant_since=_DORMANT_SINCE)
     )
 
 
@@ -2389,11 +2401,9 @@ class TestTheGoalHold:
 
     @staticmethod
     def _pending(world: World, since: datetime) -> None:
-        world.user = UserDocument(
-            id=_USER,
-            timezone=_TZ,
-            email="a@b.c",
-            briefing_bootstrap=BriefingBootstrap(pending=True, since=since),
+        world.user = UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
+        world.state = BriefingStateDocument(
+            user_id=_USER, bootstrap=BriefingBootstrap(pending=True, since=since)
         )
 
     @pytest.mark.parametrize(
@@ -2433,8 +2443,9 @@ class TestTheGoalHold:
     async def test_a_hold_already_released_does_not_wait(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        world.user = UserDocument(
-            id=_USER, timezone=_TZ, briefing_bootstrap=BriefingBootstrap(pending=False, since=_NOW)
+        world.user = UserDocument(id=_USER, timezone=_TZ)
+        world.state = BriefingStateDocument(
+            user_id=_USER, bootstrap=BriefingBootstrap(pending=False, since=_NOW)
         )
         _goals_seam(monkeypatch, world, AsyncMock(return_value=[]))
 
@@ -2471,8 +2482,8 @@ class TestTheIdleLadder:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _dormant(world)
-        assert world.user.briefing_dormancy is not None
-        world.user.briefing_dormancy.goal_asked_at = _NOW - timedelta(days=2)
+        assert world.state.dormancy is not None
+        world.state.dormancy.goal_asked_at = _NOW - timedelta(days=2)
         _goals_seam(monkeypatch, world, AsyncMock(return_value=[]))
         _seam(monkeypatch, world, wind_down, "latest_activity_since", AsyncMock(return_value=_NOW))
 
@@ -2535,11 +2546,9 @@ class TestTheIdleLadder:
         asks: bool,
     ) -> None:
         asked_at = None if asked_days_ago is None else _NOW - timedelta(days=asked_days_ago)
-        world.user = UserDocument(
-            id=_USER,
-            timezone=_TZ,
-            email="a@b.c",
-            briefing_dormancy=BriefingDormancy(goal_asked_at=asked_at),
+        world.user = UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
+        world.state = BriefingStateDocument(
+            user_id=_USER, dormancy=BriefingDormancy(goal_asked_at=asked_at)
         )
         goals = [StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if has_goal else []
         _goals_seam(monkeypatch, world, AsyncMock(return_value=goals))
@@ -2681,9 +2690,7 @@ class TestTheLighterCadenceOffer:
         self, world: World
     ) -> None:
         world.activity = ActivityStatus.IDLE
-        world.user.briefing_schedule = BriefingSchedule(
-            frequency=BriefingFrequency.WEEKDAYS, hour=9
-        )
+        world.state.schedule = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9)
 
         await run_brief(_USER, BriefingKind.DAILY)
 
@@ -2901,7 +2908,7 @@ class TestTheDailyRunReads:
         world.reads["list_for_user"].assert_awaited_once_with(_USER, sort=[("created_at", 1)])
         world.reads["format_replies_block"].assert_awaited_once_with(_USER, _DAY_START)
         world.reads["record_idle_day"].assert_awaited_once_with(
-            _USER, wind_down.state_from_user(world.user), False, _DATE
+            _USER, wind_down.ladder_state(world.state), False, _DATE
         )
         prompt_args = world.voice_prompt.call_args.kwargs
         assert prompt_args["date_local"] == _DATE

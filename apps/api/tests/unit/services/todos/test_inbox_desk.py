@@ -17,9 +17,11 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -89,6 +91,7 @@ def seams() -> Iterator[SimpleNamespace]:
     """Every call the provisioner makes; the repository holds whatever desk a test puts in it."""
     stored: dict[str, TodoDocument] = {}
     users = {USER_ID: UserDocument(id=USER_ID, timezone="Asia/Kolkata")}
+    states = {USER_ID: BriefingStateDocument(user_id=USER_ID)}
 
     async def _create(*_args: object, **kwargs: object) -> TrackedTodoCreation:
         schedule = kwargs["schedule"]
@@ -117,6 +120,11 @@ def seams() -> Iterator[SimpleNamespace]:
             AsyncMock(side_effect=lambda user_id: users.get(user_id)),
         ),
         patch.object(
+            briefing_state_repository,
+            "state_for",
+            AsyncMock(side_effect=lambda user_id: states[user_id]),
+        ),
+        patch.object(
             TrackedTodoService, "create_tracked_todo", AsyncMock(side_effect=_create)
         ) as create,
         patch.object(
@@ -135,6 +143,7 @@ def seams() -> Iterator[SimpleNamespace]:
             timeline=timeline,
             capture=capture,
             users=users,
+            states=states,
         )
 
 
@@ -241,7 +250,7 @@ async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace
 async def test_the_desk_sweeps_an_hour_ahead_of_the_users_own_brief(
     seams: SimpleNamespace,
 ) -> None:
-    seams.users[USER_ID].briefing_schedule = BriefingSchedule(hour=10)
+    seams.states[USER_ID].schedule = BriefingSchedule(hour=10)
 
     await provision_inbox_desk(USER_ID)
 
@@ -253,7 +262,7 @@ async def test_the_desk_sweeps_an_hour_ahead_of_the_users_own_brief(
 async def test_a_desk_on_the_old_brief_hour_follows_the_brief(seams: SimpleNamespace) -> None:
     seams.stored[DESK_ID] = _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE)
     seams.repo.find_latest_by_external_ref.return_value = seams.stored[DESK_ID]
-    seams.users[USER_ID].briefing_schedule = BriefingSchedule(hour=10)
+    seams.states[USER_ID].schedule = BriefingSchedule(hour=10)
 
     await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
 

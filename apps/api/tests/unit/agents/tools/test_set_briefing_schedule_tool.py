@@ -19,18 +19,20 @@ USER_ID = make_user_id()
 CONFIG = RunnableConfig(metadata={"user_id": USER_ID})
 
 
-def _user(schedule: BriefingSchedule) -> UserDocument:
-    return UserDocument(id=USER_ID, briefing_schedule=schedule)
-
-
 @pytest.fixture(autouse=True)
 def paid():
     with patch("app.services.briefing.schedule.is_paid", new=AsyncMock(return_value=True)) as mock:
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def user():
+    with patch(f"{MODULE}.require_user", new=AsyncMock(return_value=UserDocument(id=USER_ID))):
+        yield
+
+
 def _setter(stored: BriefingSchedule) -> AsyncMock:
-    return AsyncMock(return_value=_user(stored))
+    return AsyncMock(return_value=stored)
 
 
 @pytest.mark.unit

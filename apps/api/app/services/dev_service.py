@@ -21,6 +21,7 @@ from app.constants.payments import (
     DEV_SUBSCRIPTION_PREFIX,
 )
 from app.constants.platform_links import Platform
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -280,6 +281,7 @@ async def delete_dev_user(email: str) -> DeleteDevUserResponse:
     todos_deleted = await todo_repository.delete_all_for_user(user_id)
     conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))
     projects_deleted = await project_repository.delete_all_for_user(user_id)
+    await briefing_state_repository.delete(user_id)
     user_deleted = int(await user_repository.delete(user_id))
 
     log.info(

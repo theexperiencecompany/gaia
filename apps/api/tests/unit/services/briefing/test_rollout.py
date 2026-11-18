@@ -11,7 +11,8 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.models.brief_pool_models import GoalOrigin
-from app.models.user_models import BriefingBootstrap, OnboardingSubdocument, UserDocument
+from app.models.briefing_state_models import BriefingBootstrap, BriefingStateDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import rollout
 from app.services.briefing.goals import StatedGoal
 from app.services.briefing.rollout import provision_existing_user
@@ -36,13 +37,22 @@ class FakeUserRepo:
     def __init__(self) -> None:
         self.user: UserDocument | None = UserDocument(id=USER_ID, onboarding=_ONBOARDED)
         self.lookups: list[str] = []
-        self.bootstrap_calls: list[str] = []
 
     async def get(self, user_id: str) -> UserDocument | None:
         self.lookups.append(user_id)
         return self.user
 
-    async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
+
+class FakeBriefingStateRepo:
+    def __init__(self) -> None:
+        self.state = BriefingStateDocument(user_id=USER_ID)
+        self.bootstrap_calls: list[str] = []
+
+    async def state_for(self, user_id: str) -> BriefingStateDocument:
+        assert user_id == USER_ID
+        return self.state
+
+    async def hold_for_goal(self, user_id: str) -> None:
         self.bootstrap_calls.append(user_id)
 
 
@@ -64,6 +74,7 @@ class Harness:
         self.captured: list[tuple[UserId, Any]] = []
         self.integrations = FakeIntegrationRepo(0)
         self.users = FakeUserRepo()
+        self.states = FakeBriefingStateRepo()
 
 
 def _provisioned(held_for_goal: bool) -> list[tuple[UserId, Any]]:
@@ -91,6 +102,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     monkeypatch.setattr(rollout, "user_integration_repository", h.integrations)
     monkeypatch.setattr(rollout, "user_repository", h.users)
     monkeypatch.setattr(rollout, "briefing_repository", h.briefings)
+    monkeypatch.setattr(rollout, "briefing_state_repository", h.states)
     return h
 
 
@@ -100,16 +112,13 @@ class TestReRun:
 
     async def test_a_user_already_held_keeps_their_grace_window(self, harness: Harness) -> None:
         harness.has_goal = False
-        harness.users.user = UserDocument(
-            id=USER_ID,
-            onboarding=_ONBOARDED,
-            briefing_bootstrap=BriefingBootstrap(
-                pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)
-            ),
+        harness.states.state = BriefingStateDocument(
+            user_id=USER_ID,
+            bootstrap=BriefingBootstrap(pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)),
         )
 
         assert await provision_existing_user(USER_ID) == "already_rolled_out"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.provisioned == [USER_ID]
 
     async def test_a_user_already_briefed_is_never_held(self, harness: Harness) -> None:
@@ -117,7 +126,7 @@ class TestReRun:
         harness.briefings.briefed = True
 
         assert await provision_existing_user(USER_ID) == "already_rolled_out"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == []
 
 
@@ -129,7 +138,7 @@ class TestUnknownUser:
         assert await provision_existing_user(USER_ID) == "skipped"
         assert harness.provisioned == []
         assert harness.goal_calls == []
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == []
 
 
@@ -146,7 +155,7 @@ class TestMidOnboarding:
 
         assert await provision_existing_user(USER_ID) == "mid_onboarding"
         assert harness.provisioned == []
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == []
 
 
@@ -158,7 +167,7 @@ class TestNormalPath:
         assert await provision_existing_user(USER_ID) == "normal"
         assert harness.users.lookups == [USER_ID]
         assert harness.provisioned == [USER_ID]
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == _provisioned(held_for_goal=False)
 
     async def test_goal_derivation_reads_the_user_that_was_looked_up(
@@ -173,7 +182,7 @@ class TestNormalPath:
         harness.integrations.count = 2
 
         assert await provision_existing_user(USER_ID) == "normal"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == _provisioned(held_for_goal=False)
 
 
@@ -185,7 +194,7 @@ class TestBootstrapPath:
 
         assert await provision_existing_user(USER_ID) == "bootstrap"
         assert harness.provisioned == [USER_ID]
-        assert harness.users.bootstrap_calls == [USER_ID]
+        assert harness.states.bootstrap_calls == [USER_ID]
         assert harness.captured == _provisioned(held_for_goal=True)
 
     async def test_zero_integrations_is_sparse(self, harness: Harness) -> None:
@@ -193,7 +202,7 @@ class TestBootstrapPath:
         harness.integrations.count = 0
 
         assert await provision_existing_user(USER_ID) == "bootstrap"
-        assert harness.users.bootstrap_calls == [USER_ID]
+        assert harness.states.bootstrap_calls == [USER_ID]
 
     async def test_sparsity_is_measured_for_the_same_user(self, harness: Harness) -> None:
         harness.has_goal = False

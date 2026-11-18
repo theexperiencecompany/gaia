@@ -7,10 +7,10 @@ from typing import Any
 import pytest
 from tests.helpers import captured_wide_event
 
-from app.constants.briefing import EditionChoice, EditionFamily
+from app.constants.briefing import BriefingBag, EditionChoice, EditionFamily
 from app.models.brief_composition_models import BriefBlock, ChartKind
 from app.models.brief_payload_models import BriefingPayload
-from app.models.user_models import ShuffleBag, UserDocument
+from app.models.briefing_state_models import BriefingStateDocument, ShuffleBag
 from app.services.briefing.edition_draws import daily_family_weights, draw_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS, EXPLORER_RENDERER
 from app.services.briefing.editions.capabilities import (
@@ -129,11 +129,10 @@ class TestCapabilities:
         ]
 
 
-def _user(order: list[str], index: int = 0) -> UserDocument:
-    return UserDocument(
-        id="u1",
-        email="a@b.c",
-        briefing_shuffle_bags={"edition_family": ShuffleBag(order=order, index=index)},
+def _user(order: list[str], index: int = 0) -> BriefingStateDocument:
+    return BriefingStateDocument(
+        user_id="u1",
+        shuffle_bags={BriefingBag.EDITION_FAMILY: ShuffleBag(order=order, index=index)},
     )
 
 
@@ -173,20 +172,20 @@ class TestDrawEdition:
         assert [b.kind for b in draw.undrawn] == ["chart"]
 
 
-def _user_choosing(choices: dict[str, EditionChoice]) -> UserDocument:
-    return UserDocument(id="u1", email="a@b.c", briefing_editions=choices)
+def _user_choosing(choices: dict[str, EditionChoice]) -> BriefingStateDocument:
+    return BriefingStateDocument(user_id="u1", editions=choices)
 
 
 def _only_on(*families: str) -> dict[str, EditionChoice]:
     return {f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f not in families}
 
 
-def _draw_days(user: UserDocument, days: int, blocks: list[BriefBlock]) -> list[str]:
+def _draw_days(user: BriefingStateDocument, days: int, blocks: list[BriefBlock]) -> list[str]:
     picks: list[str] = []
     for _ in range(days):
         family = draw_edition(user, blocks, None).draws[0]
         picks.append(family.member)
-        user = user.model_copy(update={"briefing_shuffle_bags": {family.bag: family.next_state}})
+        user = user.model_copy(update={"shuffle_bags": {family.bag: family.next_state}})
     return picks
 
 

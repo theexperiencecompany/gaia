@@ -1,7 +1,7 @@
 """Choosing the daily brief's editions through the real router, against REAL MongoDB.
 
 The real router, edition service and repository run; only the analytics capture is
-replaced, and the draw reads the user back from Mongo.
+replaced, and the draw reads the briefing state back from Mongo.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import pytest
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.redis import delete_cache
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import SectionBlock
 from app.services.briefing.edition_draws import draw_edition
@@ -32,6 +33,7 @@ USER_OID = ObjectId(FAKE_USER.user_id)
 @pytest.fixture(autouse=True)
 async def _user(mongo_db) -> AsyncIterator[None]:
     await mongo_db["users"].delete_many({"_id": USER_OID})
+    await mongo_db["briefing_state"].delete_many({"user_id": FAKE_USER.user_id})
     await mongo_db["users"].insert_one(
         {"_id": USER_OID, "email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"}
     )
@@ -41,6 +43,7 @@ async def _user(mongo_db) -> AsyncIterator[None]:
     )
     yield
     await mongo_db["users"].delete_many({"_id": USER_OID})
+    await mongo_db["briefing_state"].delete_many({"user_id": FAKE_USER.user_id})
 
 
 @pytest.fixture
@@ -68,8 +71,8 @@ class TestBriefingEditions:
         )
 
         assert response.status_code == 200
-        stored = await mongo_db["users"].find_one({"_id": USER_OID})
-        assert stored["briefing_editions"] == {"menu": "off", "swiss": "favourite"}
+        stored = await mongo_db["briefing_state"].find_one({"user_id": FAKE_USER.user_id})
+        assert stored["editions"] == {"menu": "off", "swiss": "favourite"}
         read = _choices((await client.get(EDITIONS_URL)).json())
         assert read["menu"] == "off" and read["swiss"] == "favourite" and read["memo"] == "on"
         captured.assert_called_once_with(
@@ -78,9 +81,8 @@ class TestBriefingEditions:
                 editions_off=1, editions_favourited=1, editions_total=len(DAILY_FAMILY_WEIGHTS)
             ),
         )
-        user = await user_repository.get(FAKE_USER.user_id)
-        assert user is not None
-        draw = draw_edition(user, [SectionBlock(kind="items", section=0)], None)
+        state = await briefing_state_repository.state_for(FAKE_USER.user_id)
+        draw = draw_edition(state, [SectionBlock(kind="items", section=0)], None)
         assert draw.draws[0].next_state.order.count("swiss") == 2
         assert "menu" not in draw.draws[0].next_state.order
 
@@ -93,8 +95,7 @@ class TestBriefingEditions:
 
         assert response.status_code == 422
         assert response.json()["message"] == "Keep at least one edition on"
-        stored = await mongo_db["users"].find_one({"_id": USER_OID})
-        assert "briefing_editions" not in stored
+        assert await mongo_db["briefing_state"].find_one({"user_id": FAKE_USER.user_id}) is None
         captured.assert_not_called()
 
     async def test_an_unknown_or_weekly_family_is_refused(
@@ -103,5 +104,4 @@ class TestBriefingEditions:
         response = await client.put(EDITIONS_URL, json={"choices": {"weekly": "off"}})
 
         assert response.status_code == 422
-        stored = await mongo_db["users"].find_one({"_id": USER_OID})
-        assert "briefing_editions" not in stored
+        assert await mongo_db["briefing_state"].find_one({"user_id": FAKE_USER.user_id}) is None

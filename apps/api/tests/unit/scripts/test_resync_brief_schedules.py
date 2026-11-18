@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing.run_times import briefing_cron
@@ -27,7 +30,7 @@ def _workflow(key: str, cron: str) -> MagicMock:
 
 def _briefs(user: UserDocument, *, spread: bool) -> list[MagicMock]:
     return [
-        _workflow(key, briefing_cron(key, user) if spread else "0 8 * * *")
+        _workflow(key, briefing_cron(key, user, BriefingSchedule()) if spread else "0 8 * * *")
         for key in (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
     ]
 
@@ -43,6 +46,11 @@ def moved() -> Iterator[AsyncMock]:
     with (
         patch.object(user_repository, "list_all_ids", AsyncMock(return_value=list(users))),
         patch.object(user_repository, "get", AsyncMock(side_effect=users.get)),
+        patch.object(
+            briefing_state_repository,
+            "state_for",
+            AsyncMock(side_effect=lambda user_id: BriefingStateDocument(user_id=user_id)),
+        ),
         patch.object(
             workflow_repository,
             "find_system_workflows",

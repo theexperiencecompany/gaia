@@ -15,7 +15,8 @@ from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.user_models import BriefingDormancy, UserDocument
+from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, wind_down
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
@@ -32,7 +33,7 @@ from app.services.briefing.lookback import (
     lookback_since,
 )
 from app.services.briefing.prose import Writing, reader_block
-from app.services.briefing.run_times import describe_briefing_schedule
+from app.services.briefing.run_times import brief_slots, describe_briefing_schedule
 from app.services.briefing.sections import Laid
 from app.services.briefing.slots import figures_in
 from app.services.briefing.standing import Standing, VoiceInputs, VoiceRequest
@@ -50,6 +51,7 @@ class DailyStanding(Standing):
     """The reader's standing for today's brief; ladder is set once the run knows whether it has news."""
 
     user: UserDocument
+    state: BriefingStateDocument
     clock: UserClock
     goals: list[StatedGoal]
     lookback: Lookback
@@ -126,7 +128,7 @@ class DailyStanding(Standing):
             lookback=lookback,
             replies=await chat_sync.format_replies_block(user_id, self.since),
             setup=await _setup_block(
-                self.user, first_week=ladder.first_week, offer_lighter=offer_lighter
+                self.user, self.state, first_week=ladder.first_week, offer_lighter=offer_lighter
             ),
             signals=inputs.signals,
         )
@@ -173,17 +175,19 @@ class DailyStanding(Standing):
     @override
     async def settle(self) -> None:
         """Clear the bootstrap and the ladder's rung."""
-        await clear_bootstrap(self.user)
+        await clear_bootstrap(self.state)
         await wind_down.leave_idle_ladder(self.user.id, self._ladder)
 
 
-async def stand_daily(user: UserDocument, clock: UserClock) -> DailyStanding | BriefingRunOutcome:
+async def stand_daily(
+    user: UserDocument, state: BriefingStateDocument, clock: UserClock
+) -> DailyStanding | BriefingRunOutcome:
     """Read where the reader stands today, or how the run ends before any model cost."""
-    dstate = await wake_or_skip(user)
+    dstate = await wake_or_skip(state)
     if dstate is None:
         return BriefingRunOutcome.DORMANT
     goals = await stated_goals(user.id, user)
-    if bootstrap_should_skip(user, bool(goals)):
+    if bootstrap_should_skip(state, bool(goals)):
         log.info("briefing.bootstrap_pending_skip", user_id=user.id)
         return BriefingRunOutcome.BOOTSTRAP_PENDING
     last = await last_brief(user.id, clock, BriefingKind.DAILY)
@@ -194,6 +198,7 @@ async def stand_daily(user: UserDocument, clock: UserClock) -> DailyStanding | B
         return BriefingRunOutcome.WINBACK_BACKOFF
     return DailyStanding(
         user=user,
+        state=state,
         clock=clock,
         goals=goals,
         lookback=Lookback(last=last, since=lookback_since(clock, last)),
@@ -203,11 +208,14 @@ async def stand_daily(user: UserDocument, clock: UserClock) -> DailyStanding | B
     )
 
 
-async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: bool) -> str:
+async def _setup_block(
+    user: UserDocument, state: BriefingStateDocument, *, first_week: bool, offer_lighter: bool
+) -> str:
     """Return the account facts a first-week tip or a lighter-cadence offer may cite."""
     lines: list[str] = []
     if offer_lighter:
-        lines.append(f"Their briefs now: {describe_briefing_schedule(user)}.")
+        slots = brief_slots(state.schedule, user.effective_quiet_hours)
+        lines.append(f"Their briefs now: {describe_briefing_schedule(slots)}.")
     if first_week:
         connected: list[ConnectedIntegration] = await get_connected_integrations_named(user.id)
         apps = [integration["name"] for integration in connected]

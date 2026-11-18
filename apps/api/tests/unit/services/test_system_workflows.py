@@ -17,6 +17,8 @@ from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.payment_models import PlanType
 from app.models.quiet_hours_models import QuietHours
 from app.models.scheduler_models import DeactivationReason
@@ -1352,6 +1354,15 @@ class TestActivationForPayingUsers:
 
 class TestTheDailyBriefFollowsQuietHours:
     """The brief is provisioned (or reset) at 08:00 local, or when quiet hours end."""
+
+    @pytest.fixture(autouse=True)
+    def _default_schedule(self):
+        with patch.object(
+            briefing_state_repository,
+            "state_for",
+            AsyncMock(side_effect=lambda uid: BriefingStateDocument(user_id=uid)),
+        ):
+            yield
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

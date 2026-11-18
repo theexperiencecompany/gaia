@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
@@ -45,7 +46,8 @@ async def brief_will_carry(user_id: str) -> bool:
     user = await user_repository.get(user_id)
     if user is None:
         raise LookupError(f"Daily brief workflow {workflow.id} belongs to no user {user_id}")
-    if bootstrap_holds(user) or await wind_down.is_dormant(user):
+    state = await briefing_state_repository.state_for(user_id)
+    if bootstrap_holds(state) or await wind_down.is_dormant(state):
         return False
     return not (await compute_winback_state(user)).should_back_off
 

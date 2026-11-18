@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefItemSource,
     EditionFamily,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
@@ -23,8 +24,13 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.brief_document_models import BriefingModel
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.briefing_state_models import (
+    BriefingBootstrap,
+    BriefingDormancy,
+    BriefingStateDocument,
+)
 from app.models.user_activity_models import UserActivityDates
-from app.models.user_models import BriefingBootstrap, BriefingDormancy, UserDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import held
 from app.services.notification_service import notification_service
 
@@ -34,6 +40,7 @@ _NOW = datetime(2026, 10, 14, 8, tzinfo=UTC)
 @dataclass
 class _Seams:
     user: UserDocument
+    state: BriefingStateDocument
     workflow: MagicMock
     last_active_at: datetime | None
     briefs: list[BriefingModel]
@@ -46,6 +53,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
     user_id = make_user_id()
     s = _Seams(
         user=UserDocument(id=user_id, created_at=_NOW - timedelta(days=60)),
+        state=BriefingStateDocument(user_id=user_id),
         workflow=MagicMock(id="wf_daily", activated=True),
         last_active_at=_NOW - timedelta(hours=1),
         briefs=[],
@@ -66,6 +74,9 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
     monkeypatch.setattr(workflow_repository, "find_system_workflow", find_system_workflow)
     monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=lambda _uid: s.user))
     monkeypatch.setattr(user_repository, "get_activity_dates", activity)
+    monkeypatch.setattr(
+        briefing_state_repository, "state_for", AsyncMock(side_effect=lambda _uid: s.state)
+    )
     monkeypatch.setattr(briefing_repository, "list_recent", recent)
     monkeypatch.setattr(
         pending_brief_items_repository,
@@ -117,7 +128,7 @@ class TestBriefWillCarry:
 
     @pytest.mark.regression
     async def test_a_dormant_loop_does_not(self, seams: _Seams) -> None:
-        seams.user.briefing_dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
         seams.last_active_at = _NOW - timedelta(days=5)
 
         assert not await held.brief_will_carry(seams.user.id)
@@ -125,7 +136,7 @@ class TestBriefWillCarry:
     async def test_activity_since_dormancy_wakes_the_next_run_so_it_carries(
         self, seams: _Seams
     ) -> None:
-        seams.user.briefing_dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
 
         assert await held.brief_will_carry(seams.user.id)
 
@@ -144,7 +155,7 @@ class TestBriefWillCarry:
 
     @pytest.mark.regression
     async def test_a_first_brief_held_for_a_goal_does_not(self, seams: _Seams) -> None:
-        seams.user.briefing_bootstrap = BriefingBootstrap(pending=True, since=_NOW)
+        seams.state.bootstrap = BriefingBootstrap(pending=True, since=_NOW)
 
         assert not await held.brief_will_carry(seams.user.id)
 
@@ -157,7 +168,7 @@ class TestReleaseAfterDailyRun:
     async def test_a_run_the_loop_stopped_releases_what_was_held(
         self, seams: _Seams, outcome: BriefingRunOutcome
     ) -> None:
-        seams.user.briefing_dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
         seams.last_active_at = None
 
         await held.release_after_daily_run(seams.user.id, outcome)

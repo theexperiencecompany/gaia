@@ -18,6 +18,7 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.decorators.entitlements import is_paid
@@ -139,7 +140,8 @@ async def _desk_schedule(user_id: str) -> TodoUpdate:
     user = await user_repository.get(user_id)
     if user is None:
         raise LookupError(f"Cannot schedule an Inbox desk for unknown user {user_id}")
-    return _schedule_on(inbox_desk_recurrence(user), user)
+    schedule = (await briefing_state_repository.state_for(user_id)).schedule
+    return _schedule_on(inbox_desk_recurrence(schedule, user.effective_quiet_hours), user)
 
 
 def _schedule_on(recurrence: str, user: UserDocument) -> TodoUpdate:

@@ -12,7 +12,7 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.brief_settings_models import BriefingSchedule
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -42,7 +42,7 @@ from shared.py.analytics.catalog.workflows import (
 )
 from shared.py.wide_events import WorkflowContext, log
 from tests.conftest import FAKE_USER
-from tests.helpers import users_get_on
+from tests.helpers import briefs_on, users_get
 
 BASE_URL = "/api/v1/workflows"
 _LOG = "app.api.v1.endpoints.workflows.log"
@@ -399,7 +399,8 @@ class TestCreateWorkflow:
                 new_callable=AsyncMock,
                 return_value={},
             ),
-            patch("app.utils.auth_utils.user_repository.get", new=users_get_on(frequency)),
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
             patch("app.services.workflow.service.workflow_repository.create") as mock_create,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload(delivery="brief"))
@@ -424,18 +425,15 @@ class TestCreateWorkflow:
             (BriefingFrequency.OFF, WorkflowDelivery.SILENT, False),
         ],
     )
-    def test_only_a_brief_delivery_without_a_daily_brief_is_refused(
+    async def test_only_a_brief_delivery_without_a_daily_brief_is_refused(
         self, frequency: BriefingFrequency, delivery: WorkflowDelivery, refused: bool
     ):
-        owner = FAKE_USER.model_copy(
-            update={"briefing_schedule": BriefingSchedule(frequency=frequency)}
-        )
-
-        if refused:
-            with pytest.raises(BriefsOffError):
-                refuse_a_missing_brief(owner, delivery)
-        else:
-            refuse_a_missing_brief(owner, delivery)
+        with patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)):
+            if refused:
+                with pytest.raises(BriefsOffError):
+                    await refuse_a_missing_brief(FAKE_USER.user_id, delivery)
+            else:
+                await refuse_a_missing_brief(FAKE_USER.user_id, delivery)
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1424,9 +1422,8 @@ class TestUpdateWorkflow:
                 new_callable=AsyncMock,
                 return_value=_make_workflow(),
             ),
-            patch(
-                "app.utils.auth_utils.user_repository.get",
-                new=users_get_on(BriefingFrequency.OFF),
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
             ),
             patch("app.services.workflow.service.workflow_repository.update_for_user") as update,
         ):

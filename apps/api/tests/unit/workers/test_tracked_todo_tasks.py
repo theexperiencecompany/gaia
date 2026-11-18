@@ -93,6 +93,7 @@ from app.constants.user_activity import ActivityStatus
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.todos import todo_repository
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -167,7 +168,7 @@ _GMAIL_ORIGIN = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_m
 _MEETING = "someone is waiting on you for a meeting happening soon"
 
 
-_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 
 def _user_context(*, timezone: str | None = None) -> Callable[[str], AuthenticatedUser]:

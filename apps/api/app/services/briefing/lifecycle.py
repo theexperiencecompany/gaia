@@ -6,51 +6,52 @@ from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
     BriefingKind,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
-from app.db.repositories.users import user_repository
-from app.models.user_models import BriefingDormancy, UserDocument
+from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
 from app.services.briefing import wind_down
 from app.services.briefing.clock import UserClock
 from app.utils.timezone import as_utc
 from shared.py.wide_events import log
 
 
-def bootstrap_holds(user: UserDocument) -> bool:
+def bootstrap_holds(state: BriefingStateDocument) -> bool:
     """Whether an existing user's first brief is held for a goal: marked, inside the grace window."""
-    marker = user.briefing_bootstrap
+    marker = state.bootstrap
     if marker is None or not marker.pending:
         return False
     return datetime.now(UTC) - as_utc(marker.since) < timedelta(days=BOOTSTRAP_GRACE_DAYS)
 
 
-def bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
+def bootstrap_should_skip(state: BriefingStateDocument, has_goal: bool) -> bool:
     """Existing-user rollout gate: skip the run while the hold stands and no goal has arrived.
 
     Past the grace window the run proceeds as a best-effort brief, re-asking for a goal.
     """
-    return not has_goal and bootstrap_holds(user)
+    return not has_goal and bootstrap_holds(state)
 
 
-async def clear_bootstrap(user: UserDocument) -> None:
-    if user.briefing_bootstrap is not None:
-        await user_repository.clear_briefing_bootstrap(user.id)
+async def clear_bootstrap(state: BriefingStateDocument) -> None:
+    if state.bootstrap is not None:
+        await briefing_state_repository.clear_bootstrap(state.user_id)
 
 
-async def wake_or_skip(user: UserDocument) -> BriefingDormancy | None:
+async def wake_or_skip(state: BriefingStateDocument) -> BriefingDormancy | None:
     """Wake a dormant loop on a reactivation signal (user active, any message).
 
     Otherwise None means skip before any LLM cost.
     """
-    dstate = wind_down.state_from_user(user)
+    user_id = state.user_id
+    dstate = wind_down.ladder_state(state)
     if not dstate.dormant_since:
         return dstate
-    if await wind_down.latest_activity_since(user.id, dstate.dormant_since) is not None:
-        await user_repository.clear_briefing_dormancy(user.id)
-        log.info("briefing.dormancy_cleared", user_id=user.id)
+    if await wind_down.latest_activity_since(user_id, dstate.dormant_since) is not None:
+        await briefing_state_repository.clear_dormancy(user_id)
+        log.info("briefing.dormancy_cleared", user_id=user_id)
         return BriefingDormancy(
             idle_days=0, date=None, dormant_since=None, goal_asked_at=dstate.goal_asked_at
         )
-    log.info("briefing.dormant_skip", user_id=user.id)
+    log.info("briefing.dormant_skip", user_id=user_id)
     return None
 
 

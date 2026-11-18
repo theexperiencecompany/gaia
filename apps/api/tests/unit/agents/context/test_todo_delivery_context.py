@@ -22,14 +22,16 @@ from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import INBOX_DESK_TITLE
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser, UserDocument
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.delivery.chat_channel import InApp
 from app.services.tracked_todo_service import starting_canvas
 
-_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 pytestmark = pytest.mark.unit
 

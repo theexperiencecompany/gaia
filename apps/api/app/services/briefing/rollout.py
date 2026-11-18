@@ -1,13 +1,14 @@
 """Existing-user rollout: provision the briefing workflows, no cold starts.
 
 Users with a derivable goal get a real first briefing next morning; sparse users
-have briefings held (briefing_bootstrap marker) until a goal memory arrives or the
+have briefings held (the briefing state's bootstrap marker) until a goal memory arrives or the
 grace window elapses. A user still in the onboarding wizard is left to it: completing
 onboarding provisions their briefs on the timezone it stores.
 """
 
 from enum import StrEnum
 
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
@@ -55,13 +56,14 @@ async def provision_existing_user(user_id: str) -> RolloutPath:
 
     # A user already held, or already briefed, keeps their state: a re-run of the
     # rollout must neither restart a grace window nor hold a user who is being briefed.
-    if user.briefing_bootstrap is not None or await briefing_repository.has_daily_briefing(user_id):
+    state = await briefing_state_repository.state_for(user_id)
+    if state.bootstrap is not None or await briefing_repository.has_daily_briefing(user_id):
         return RolloutPath.ALREADY_ROLLED_OUT
 
     has_goal = bool(await stated_goals(user_id, user))
     integrations = await user_integration_repository.count_for_user(user_id)
     if not has_goal and integrations <= _SPARSE_INTEGRATION_MAX:
-        await user_repository.set_briefing_bootstrap_pending(user_id)
+        await briefing_state_repository.hold_for_goal(user_id)
         capture(UserId(user_id), BriefingProvisioned(held_for_goal=True))
         return RolloutPath.BOOTSTRAP
 

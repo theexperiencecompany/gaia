@@ -37,24 +37,21 @@ DAILY = {"frequency": "daily", "hour": 9}
 @pytest.fixture(autouse=True)
 async def _user(mongo_db) -> AsyncIterator[None]:
     await mongo_db["users"].delete_many({"_id": USER_OID})
+    await mongo_db["briefing_state"].delete_many({"user_id": FAKE_USER.user_id})
     await mongo_db["workflows"].delete_many(
         {"user_id": {"$in": [FAKE_USER.user_id, OTHER_USER_ID]}}
     )
     await mongo_db["users"].insert_one(
-        {
-            "_id": USER_OID,
-            "email": FAKE_USER.email,
-            "name": FAKE_USER.name,
-            "timezone": "UTC",
-            "briefing_schedule": DAILY,
-        }
+        {"_id": USER_OID, "email": FAKE_USER.email, "name": FAKE_USER.name, "timezone": "UTC"}
     )
+    await mongo_db["briefing_state"].insert_one({"user_id": FAKE_USER.user_id, "schedule": DAILY})
     # The raw insert bypasses the repository, so drop any entity an earlier test cached.
     await delete_cache(
         user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, FAKE_USER.user_id)
     )
     yield
     await mongo_db["users"].delete_many({"_id": USER_OID})
+    await mongo_db["briefing_state"].delete_many({"user_id": FAKE_USER.user_id})
     await mongo_db["workflows"].delete_many(
         {"user_id": {"$in": [FAKE_USER.user_id, OTHER_USER_ID]}}
     )
@@ -84,8 +81,8 @@ async def _seed(
 
 
 async def _stored_schedule(mongo_db) -> dict[str, object]:
-    user = await mongo_db["users"].find_one({"_id": USER_OID})
-    return user["briefing_schedule"]
+    state = await mongo_db["briefing_state"].find_one({"user_id": FAKE_USER.user_id})
+    return state["schedule"]
 
 
 async def _delivery(mongo_db, workflow_id: str) -> str:

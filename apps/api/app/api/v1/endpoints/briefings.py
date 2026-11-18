@@ -8,6 +8,7 @@ from fastapi.responses import Response
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import EDITION_IMAGE_MAX_AGE_SECONDS, EditionVariant
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_settings_models import (
     BriefDeliveryWorkflowsConflict,
@@ -24,7 +25,6 @@ from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_ed
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
 from app.services.briefing.view import briefing_card, briefing_view
-from app.services.user_service import require_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from shared.py.wide_events import log
@@ -78,7 +78,7 @@ async def read_briefing_schedule(
 ) -> BriefingScheduleState:
     """How often the user's briefs come, the daily brief's hour on their clock, and whether they run."""
     log.set(user={"id": user.user_id}, operation="read_briefing_schedule")
-    return await briefing_schedule_state(await require_user(user.user_id))
+    return await briefing_schedule_state(user.user_id)
 
 
 @router.put(
@@ -96,14 +96,14 @@ async def update_briefing_schedule(
 ) -> BriefingScheduleState:
     """Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs."""
     log.set(user={"id": user.user_id}, operation="update_briefing_schedule")
-    updated = await set_briefing_schedule(
+    await set_briefing_schedule(
         user.user_id,
         body.frequency,
         "settings",
         hour=body.hour,
         workflow_deliveries=body.workflow_deliveries,
     )
-    return await briefing_schedule_state(updated)
+    return await briefing_schedule_state(user.user_id)
 
 
 # evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
@@ -113,7 +113,7 @@ async def read_briefing_editions(
 ) -> BriefingEditions:
     """Every daily edition family a brief can draw, and whether the user keeps it on or favours it."""
     log.set(user={"id": user.user_id}, operation="read_briefing_editions")
-    return briefing_editions((await require_user(user.user_id)).briefing_editions)
+    return briefing_editions((await briefing_state_repository.state_for(user.user_id)).editions)
 
 
 @router.put("/editions")

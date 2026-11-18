@@ -11,9 +11,9 @@ from app.constants.briefing import (
     EditionChoice,
     EditionFamily,
 )
-from app.db.repositories.users import user_repository
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.brief_composition_models import BriefBlock
-from app.models.user_models import ShuffleBag, UserDocument
+from app.models.briefing_state_models import BriefingStateDocument, ShuffleBag
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.capabilities import families_drawing, split_drawable
@@ -32,19 +32,20 @@ class BagDraw:
 
 
 def draw_from_bag(
-    user: UserDocument,
+    state: BriefingStateDocument,
     bag: BriefingBag,
     weights: Mapping[str, int],
     *,
     eligible: Set[str] | None = None,
 ) -> BagDraw:
-    """Draw today's member from one of the user's shuffle bags, off the loaded user.
+    """Draw today's member from one of the user's shuffle bags, off their loaded state.
 
     Nothing is persisted here: publish saves the draw only once a pushed brief went out,
     so a failed run does not burn a member of the pass.
     """
-    state = (user.briefing_shuffle_bags or {}).get(bag)
-    member, next_state = draw(state, weights, random.SystemRandom(), eligible=eligible)
+    member, next_state = draw(
+        state.shuffle_bags.get(bag), weights, random.SystemRandom(), eligible=eligible
+    )
     return BagDraw(bag=bag, member=member, next_state=next_state)
 
 
@@ -81,18 +82,18 @@ class EditionDraw:
     draws: list[BagDraw] = field(default_factory=list)
 
 
-def _drawn_family(user: UserDocument, blocks: list[BriefBlock]) -> BagDraw:
+def _drawn_family(state: BriefingStateDocument, blocks: list[BriefBlock]) -> BagDraw:
     """Draw today's family from the user's bag, among its families that can draw every block.
 
     When no family in the user's rotation can draw the whole composition, the bag's next
     family draws and the blocks it cannot draw go to the brief's page; a family the user
     turned off is never drawn.
     """
-    weights = daily_family_weights(user.briefing_editions)
+    weights = daily_family_weights(state.editions)
     fits = families_drawing(weights, blocks)
-    # A bag holds its members as the strings the user doc stores.
+    # A bag holds its members as the strings briefing_state stores.
     return draw_from_bag(
-        user,
+        state,
         BriefingBag.EDITION_FAMILY,
         {family.value: weight for family, weight in weights.items()},
         eligible={family.value for family in fits} or None,
@@ -100,20 +101,20 @@ def _drawn_family(user: UserDocument, blocks: list[BriefBlock]) -> BagDraw:
 
 
 def draw_edition(
-    user: UserDocument, blocks: list[BriefBlock], fixed_family: EditionFamily | None
+    state: BriefingStateDocument, blocks: list[BriefBlock], fixed_family: EditionFamily | None
 ) -> EditionDraw:
     """Draw the edition the blocks print in: its family, then its stamp city or its painting.
 
     The family is fixed for the kind or drawn from the user's bag; an Air Mail edition carries
     a stamp, a framed family a painting.
     """
-    family_draws = [] if fixed_family is not None else [_drawn_family(user, blocks)]
+    family_draws = [] if fixed_family is not None else [_drawn_family(state, blocks)]
     family = fixed_family if fixed_family is not None else EditionFamily(family_draws[0].member)
     drawn, undrawn = split_drawable(family, blocks)
     if undrawn:
         log.info("briefing.blocks_undrawn", family=family, kinds=[b.kind for b in undrawn])
     if family == EditionFamily.POSTAL:
-        stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
+        stamp = draw_from_bag(state, BriefingBag.STAMP_CITY, hosted_stamp_weights())
         return EditionDraw(
             family=family,
             drawn=drawn,
@@ -123,7 +124,7 @@ def draw_edition(
         )
     if family in ArtFamily:
         artwork = draw_from_bag(
-            user, BriefingBag.ARTWORK, artwork_weights(), eligible=artworks_for(ArtFamily(family))
+            state, BriefingBag.ARTWORK, artwork_weights(), eligible=artworks_for(ArtFamily(family))
         )
         return EditionDraw(
             family=family,
@@ -137,7 +138,7 @@ def draw_edition(
 
 async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:
     for bag_draw in draws:
-        await user_repository.set_briefing_bag(user_id, bag_draw.bag, bag_draw.next_state)
+        await briefing_state_repository.set_bag(user_id, bag_draw.bag, bag_draw.next_state)
         log.info(
             "briefing.bag_drawn", user_id=user_id, bag=bag_draw.bag.value, member=bag_draw.member
         )

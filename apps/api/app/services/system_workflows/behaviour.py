@@ -1,6 +1,6 @@
 """How the workflow engine treats a system workflow, declared beside the workflow's definition."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.models.user_models import UserDocument
@@ -17,7 +17,7 @@ class SystemWorkflowBehaviour:
     #: The dormancy, lapsed-plan and disconnected-integration pauses may switch it off.
     pausable: bool = True
     #: The cron the user's own copy runs on, from the user; None keeps the definition's.
-    cron_for: Callable[[UserDocument], str] | None = None
+    cron_for: Callable[[UserDocument], Awaitable[str]] | None = None
 
 
 #: A workflow with no declared behaviour: every user workflow, and the integration ones.
