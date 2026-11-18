@@ -341,8 +341,9 @@ def _answered(state: ConversationState, entry: ReplySettled) -> ConversationStat
             "finished_work": tuple(w for w in state.finished_work if w.seq not in answered),
         }
     )
-    open_below = min(left.unsettled_waking, default=entry.through + 1) - 1
-    settled = max(state.settled_through, min(entry.through, open_below))
+    settled = max(
+        state.settled_through, min((entry.through, *(seq - 1 for seq in left.unsettled_waking)))
+    )
     return left.model_copy(update={"settled_through": settled})
 
 

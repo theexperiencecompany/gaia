@@ -29,9 +29,11 @@ from shared.py.conversation_wire import ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
+    asked,
     notice,
     opened,
     settled,
+    started,
     stop,
     todo_woke,
     user,
@@ -110,6 +112,21 @@ async def test_an_entry_is_stored_at_the_next_seq_stamped_with_the_clock(
     assert second.duplicate is False
     assert KickStep() in second.effects
     assert (await redis.hgetall(hint_key(conversation, UID)))[HintField.HEAD] == "2"
+
+
+async def test_each_approval_request_is_stored_under_the_next_number_the_user_sees(
+    appends: LogAppends, conversation: str
+) -> None:
+    await appends.append(conversation, UID, user("u1"))
+    await appends.append(conversation, UID, started("w", "t1", 1))
+
+    first = await appends.append(conversation, UID, asked("a1", "t1", "ap1"))
+    second = await appends.append(conversation, UID, asked("a2", "t1", "ap2"))
+
+    assert (first.logged.entry, second.logged.entry) == (
+        asked("a1", "t1", "ap1").model_copy(update={"number": 1}),
+        asked("a2", "t1", "ap2").model_copy(update={"number": 2}),
+    )
 
 
 async def test_the_same_id_again_is_the_stored_entry_with_the_current_state_and_no_effects(

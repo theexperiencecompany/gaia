@@ -711,7 +711,12 @@ def test_a_reply_delivers_the_files_it_and_the_work_it_narrates_wrote_once_each(
     log = [logged(1, user("u1")), logged(2, started), logged(3, finished), logged(4, reply)]
     [*_, item] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
     assert item.kind is ScreenItemKind.REPLY
-    assert [file.path for file in item.files] == ["out/a.pdf", "out/b.pdf"]
+    page = TEST_FILE_LINKS.conversation_page(CONVERSATION_ID)
+    assert [(file.path, file.opens_at) for file in item.files] == [
+        ("out/a.pdf", page),
+        ("out/b.pdf", page),
+    ]
+    assert page.endswith(f"/c/{CONVERSATION_ID}")
 
 
 def test_a_reply_and_its_work_name_the_newest_user_message_they_answer_as_the_retry_target() -> (

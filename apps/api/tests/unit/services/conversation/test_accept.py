@@ -1,11 +1,17 @@
 """accept: append, publish the entry and any display change, then run the effects in order."""
 
 from app.models.conversation_frame_models import EntryFrame, LiveTask, StateFrame
-from app.models.conversation_log_models import CancelWork, DisplayState, KickStep, StartAck
+from app.models.conversation_log_models import (
+    CancelWork,
+    DisplayState,
+    KickStep,
+    StartAck,
+    WorkOutcome,
+)
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import started, stop, user
+from tests.unit.services.conversation.log_helpers import asked, finished, started, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
@@ -88,6 +94,20 @@ async def test_a_stop_hands_back_what_its_cancel_cancelled_for_the_users_convers
     accepted = await accept(rt.ports, CONVERSATION, USER, stop("s"))
     assert accepted.cancelled == WorkCancelled(pending_task_ids=["t1"])
     assert EffectCall("cancel_work", ("t1",)) in rt.effects.calls
+    assert set(rt.effects.addressed) == {(CONVERSATION, USER)}
+
+
+async def test_a_run_that_fails_while_its_approval_waits_withdraws_it_for_the_users_conversation() -> (
+    None
+):
+    rt = Runtime()
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    await accept(rt.ports, CONVERSATION, USER, started("w", "t1", 1))
+    await accept(rt.ports, CONVERSATION, USER, asked("a", "t1", "ap1"))
+    rt.effects.calls.clear()
+    rt.effects.addressed.clear()
+    await accept(rt.ports, CONVERSATION, USER, finished("f", "t1", WorkOutcome.FAILED))
+    assert EffectCall("withdraw_approvals", ("ap1",)) in rt.effects.calls
     assert set(rt.effects.addressed) == {(CONVERSATION, USER)}
 
 

@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from prometheus_client import REGISTRY
 import pytest
 
 from app.constants.chat import ConversationSource
-from app.models.bot_models import BotChatRequest
+from app.models.bot_models import BotChatRequest, BotDelivery, BotSessionDocument, PartialReply
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.chat_models import ConversationModel
 from app.models.conversation_log_models import BargeIn, Entry, UserMessage
@@ -371,6 +372,29 @@ async def test_a_bot_message_lands_in_its_session_under_its_platform_message_id(
     world.token.assert_called_once_with(user_id=USER, platform="telegram", platform_user_id="pu1")
 
 
+async def test_a_bot_message_into_a_session_still_owing_a_cut_reply_follows_from_its_cursor(
+    world: World,
+) -> None:
+    world.log.opened.add(CONVERSATION)
+    cut = BotDelivery(
+        delivered_seq=0, owed_seq=1, partial_reply=PartialReply(reply_id="r0", bubbles=1)
+    )
+    session = BotSessionDocument(
+        session_key=f"telegram:{CONVERSATION}",
+        conversation_id=CONVERSATION,
+        platform="telegram",
+        platform_user_id="pu1",
+        delivery=cut,
+    )
+    with patch(
+        "app.services.conversation.bot_followers.bot_session_repository.get_by_conversation_id",
+        AsyncMock(side_effect={CONVERSATION: session}.get),
+    ):
+        accepted = await submit_bot_message(_bot_request(), world.user)
+
+    assert (accepted.after_seq, accepted.partial_reply) == (0, cut.partial_reply)
+
+
 async def test_a_resent_bot_message_is_counted_once(world: World) -> None:
     world.log.opened.add(CONVERSATION)
     first = await submit_bot_message(_bot_request(), world.user)
@@ -463,8 +487,12 @@ async def test_a_bot_message_starts_its_prep_only_once_charged(world: World) -> 
 async def test_the_accept_ends_ingress_and_reports_where_it_went(world: World) -> None:
     world.log.opened.add(CONVERSATION)
     timings = begin_turn_timings(started=0.0)
+    accepts = {"source": "telegram", "phase": "ingress", "step": "accept"}
+    before = REGISTRY.get_sample_value("turn_step_seconds_count", accepts) or 0.0
 
     await submit_bot_message(_bot_request(), world.user)
+
+    assert REGISTRY.get_sample_value("turn_step_seconds_count", accepts) == before + 1
 
     [latency] = [
         c.kwargs["latency"] for c in world.wide.set.call_args_list if "latency" in c.kwargs

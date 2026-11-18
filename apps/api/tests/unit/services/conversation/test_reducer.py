@@ -740,6 +740,17 @@ def test_finished_work_keeps_the_messages_that_caused_it_until_a_reply_settles_i
     assert state.finished_work == ()
 
 
+def test_a_settle_naming_finished_works_seq_answers_that_work() -> None:
+    work_started = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
+    log: list[Entry] = [user("u1"), work_started, *replied("r", ["u1"], 1), finished("f", "t1")]
+    during, _ = fold(log)
+    answered = settled("r2", ["f"], 5, reply_id="r2").model_copy(update={"answered_seqs": (5,)})
+    after_open = _accept(during, 6, opened("o2", "r2")).state
+    result = _accept(after_open, 7, answered)
+    assert result.state.finished_work == ()
+    assert result.state.settled_through == 5
+
+
 def test_cancelled_work_leaves_no_finished_work_to_answer() -> None:
     log: list[Entry] = [user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1)]
     state, _ = fold([*log, finished("f", "t1", WorkOutcome.CANCELLED)])
