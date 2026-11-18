@@ -87,7 +87,6 @@ export {
 
 export type {
   ApiFileData,
-  ApiToolData,
   ApprovalDecision,
   ApprovalDecisionPayload,
   ApprovalRequestData,

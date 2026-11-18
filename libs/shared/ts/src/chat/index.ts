@@ -57,7 +57,6 @@ export {
 } from "./turnAccumulator";
 export type {
   ApiFileData,
-  ApiToolData,
   ArtifactData,
   CalendarDeleteOptions,
   CalendarEditOptions,

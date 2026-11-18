@@ -114,8 +114,8 @@ def test_enable_openui_removed_from_settings() -> None:
                 )
         # Check plain assignments (e.g. ENABLE_OPENUI = True)
         if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "ENABLE_OPENUI":
+            for assigned in node.targets:
+                if isinstance(assigned, ast.Name) and assigned.id == "ENABLE_OPENUI":
                     pytest.fail(
                         "ENABLE_OPENUI assignment found in settings.py — it should have been removed"
                     )

@@ -127,7 +127,8 @@ async def test_a_reply_ending_in_a_placeholder_resolves_when_it_finishes(closed:
     events = _reply_in_pieces(ENDING_IN_LINK, 5)
     if not closed:
         events = events[:-1]
-    frames = [f async for f in execute_graph_streaming(ScriptedGraph(events), {}, _CONFIG)]
+    graph = cast(CompiledAgentGraph, ScriptedGraph(events))
+    frames = [f async for f in execute_graph_streaming(graph, {}, _CONFIG)]
 
     sent, stored = _streamed(frames)
     assert sent == f"Here it is: {_url()}"

@@ -42,6 +42,7 @@ from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
 from app.db.repositories.integrations import IntegrationsRepository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.integration_models import (
@@ -838,27 +839,28 @@ class TestMCPClientDisconnect:
 
 
 class TestTearingDownADeadIntegration:
-    @pytest.mark.parametrize(
-        ("kwargs", "status"), [({}, "created"), ({"status": "expired"}, "expired")]
-    )
+    @pytest.mark.parametrize(("given", "status"), [(None, "created"), ("expired", "expired")])
     async def test_the_record_reads_never_set_up_unless_the_sign_in_expired(
-        self, kwargs: dict[str, str], status: str
+        self, given: UserIntegrationStatus | None, status: UserIntegrationStatus
     ) -> None:
         """A disconnect reads as never set up; a dead sign-in reads expired, so settings offers Reconnect."""
         client = MCPClient(user_id=USER_ID)
-        client.token_store.delete_credentials = AsyncMock()
-        client.token_store.delete_dcr_client = AsyncMock()
         with (
+            patch.object(client.token_store, "delete_credentials", AsyncMock()) as deleted,
+            patch.object(client.token_store, "delete_dcr_client", AsyncMock()),
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ) as update_status,
         ):
-            await client._reset_to_disconnected(INTEGRATION_ID, **kwargs)
+            if given is None:
+                await client._reset_to_disconnected(INTEGRATION_ID)
+            else:
+                await client._reset_to_disconnected(INTEGRATION_ID, status=given)
 
         update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status)
-        client.token_store.delete_credentials.assert_awaited_once_with(INTEGRATION_ID)
+        deleted.assert_awaited_once_with(INTEGRATION_ID)
 
 
 class TestMCPClientGetTools:
@@ -4975,9 +4977,7 @@ class TestHandleConnectFailureExact:
     def _connected_before(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         """Say the integration had connected, so a credential that stops working reads as expired."""
         connected_before = AsyncMock(return_value=True)
-        monkeypatch.setattr(
-            mcp_client.user_integration_repository, "has_connected_before", connected_before
-        )
+        monkeypatch.setattr(user_integration_repository, "has_connected_before", connected_before)
         return connected_before
 
     @pytest.mark.regression
@@ -5114,8 +5114,8 @@ class TestHandleConnectFailureExact:
     ):
         _connected_before.return_value = False
         client = MCPClient(user_id=USER_ID)
-        client._reset_to_disconnected = AsyncMock()
         with (
+            patch.object(client, "_reset_to_disconnected", AsyncMock()) as reset,
             patch("app.services.mcp.mcp_client.log"),
             pytest.raises(MCPAuthorizationRequiredError),
         ):
@@ -5124,7 +5124,7 @@ class TestHandleConnectFailureExact:
             )
 
         _connected_before.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
-        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID, status="created")
+        reset.assert_awaited_once_with(INTEGRATION_ID, status="created")
 
     async def test_auth_error_refreshes_token_and_retries_connect_once(self):
         client = MCPClient(user_id=USER_ID)
@@ -5240,9 +5240,7 @@ class TestConnectFailureClassification:
     def _connected_before(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         """Say the integration had connected, so a credential that stops working reads as expired."""
         connected_before = AsyncMock(return_value=True)
-        monkeypatch.setattr(
-            mcp_client.user_integration_repository, "has_connected_before", connected_before
-        )
+        monkeypatch.setattr(user_integration_repository, "has_connected_before", connected_before)
         return connected_before
 
     @staticmethod
