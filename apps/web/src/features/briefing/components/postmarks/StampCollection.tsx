@@ -1,3 +1,5 @@
+"use client";
+
 import { Tooltip } from "@heroui/react";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
