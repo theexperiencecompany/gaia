@@ -95,6 +95,7 @@ TODO_CACHE_PREFIX = "todo"
 USER_INTEGRATION_CACHE_PREFIX = "user_integration"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
+BOT_USER_CACHE_PREFIX = "bot_user"
 # A user's paired devices and the servers they expose. Generation scoped (see
 # CachePolicy): every structural device/server write orphans the old query key.
 # Mutable status (online, sync state, last-seen) is deliberately not part of it.

@@ -85,7 +85,7 @@ from app.services.platform_link_service import (
 )
 from app.services.turn_clock import TurnClock
 from app.services.turn_timings import TurnStep, turn_step
-from app.utils.auth_utils import resolve_bot_user
+from app.utils.auth_utils import bot_user_cache_key, resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
@@ -913,8 +913,7 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
         provider=platform,
     )
 
-    cache_key = f"bot_user:{platform}:{platform_user_id}"
-    await redis_cache.client.delete(cache_key)
+    await redis_cache.client.delete(bot_user_cache_key(platform, platform_user_id))
 
     # Same event the web-side platform unlink emits — one user action, one name,
     # regardless of which surface triggered it.
