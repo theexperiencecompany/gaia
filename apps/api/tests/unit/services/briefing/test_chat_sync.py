@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.factories import make_user_id
 
 from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_models import BotReplyRow
 from app.services.briefing import chat_sync
 
-_USER = "user-1"
+USER_ID = make_user_id()
 _SINCE = datetime(2026, 10, 13, 8, tzinfo=UTC)
 
 
@@ -22,16 +23,16 @@ def replies(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 class TestFormatRepliesBlock:
     async def test_no_replies_says_so(self, replies: AsyncMock) -> None:
-        assert await chat_sync.format_replies_block(_USER, _SINCE) == (
+        assert await chat_sync.format_replies_block(USER_ID, _SINCE) == (
             "No replies since the last brief."
         )
 
     async def test_only_the_newest_handful_since_the_cutoff_is_read(
         self, replies: AsyncMock
     ) -> None:
-        await chat_sync.format_replies_block(_USER, _SINCE)
+        await chat_sync.format_replies_block(USER_ID, _SINCE)
 
-        replies.assert_awaited_once_with(_USER, _SINCE, limit=chat_sync.MAX_REPLY_LINES)
+        replies.assert_awaited_once_with(USER_ID, _SINCE, limit=chat_sync.MAX_REPLY_LINES)
         assert chat_sync.MAX_REPLY_LINES == 10
 
     async def test_replies_read_oldest_first_tagged_by_platform_on_one_line_each(
@@ -43,7 +44,7 @@ class TestFormatRepliesBlock:
             BotReplyRow(source="discord", text="morning"),
         ]
 
-        block = await chat_sync.format_replies_block(_USER, _SINCE)
+        block = await chat_sync.format_replies_block(USER_ID, _SINCE)
 
         assert block == "- [discord] morning\n- [slack] \n- [telegram] sounds good, ship it"
 
@@ -54,7 +55,7 @@ class TestFormatRepliesBlock:
             BotReplyRow(source="slack", text=at_limit),
         ]
 
-        block = await chat_sync.format_replies_block(_USER, _SINCE)
+        block = await chat_sync.format_replies_block(USER_ID, _SINCE)
 
         assert block.splitlines() == [f"- [slack] {at_limit}", f"- [telegram] {at_limit}..."]
         assert chat_sync.MAX_REPLY_CHARS == 200

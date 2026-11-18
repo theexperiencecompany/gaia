@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import unfenced, user_clock
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
@@ -22,7 +23,7 @@ from app.services.briefing.composition.headings import (
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.utils.errors import AppError
 
-USER = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 POOL = FactPool(
     items={
         1: BriefCandidate(
@@ -91,7 +92,7 @@ def model(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncMock) -> None:
-    await heading_problems(USER, COMPOSITION, POOL)
+    await heading_problems(USER_ID, COMPOSITION, POOL)
 
     schema, prompt = model.await_args.args
     assert schema is HeadingVerdicts
@@ -104,7 +105,7 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
 
 
 async def test_item_titles_are_fenced_as_data(model: AsyncMock) -> None:
-    await heading_problems(USER, COMPOSITION, POOL)
+    await heading_problems(USER_ID, COMPOSITION, POOL)
 
     prompt = model.await_args.args[1]
     assert "Offsite venues" in prompt
@@ -112,10 +113,10 @@ async def test_item_titles_are_fenced_as_data(model: AsyncMock) -> None:
 
 
 async def test_the_call_is_labelled_and_metered_to_the_user(model: AsyncMock) -> None:
-    await heading_problems(USER, COMPOSITION, POOL)
+    await heading_problems(USER_ID, COMPOSITION, POOL)
 
     assert model.await_args.kwargs["label"] == BRIEF_HEADING_CHECK_LABEL
-    assert model.await_args.kwargs["config"] == {"configurable": {"user_id": USER}}
+    assert model.await_args.kwargs["config"] == {"configurable": {"user_id": USER_ID}}
 
 
 async def test_an_item_with_neither_side_is_shown_as_neither(model: AsyncMock) -> None:
@@ -133,7 +134,7 @@ async def test_an_item_with_neither_side_is_shown_as_neither(model: AsyncMock) -
         }
     )
 
-    await heading_problems(USER, bare, POOL)
+    await heading_problems(USER_ID, bare, POOL)
 
     assert "- item 1: Offsite venues | waiting on you | neither" in model.await_args.args[1]
 
@@ -159,7 +160,7 @@ async def test_every_misfit_is_named_with_its_side_or_without_one(model: AsyncMo
         }
     )
 
-    assert await heading_problems(USER, bare, POOL) == {
+    assert await heading_problems(USER_ID, bare, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you), '
         "item 2 (done, sent): mixed; move them under a heading true of what they are, or "
         "rename this group"
@@ -171,14 +172,14 @@ async def test_a_verdict_naming_no_item_blames_its_items(model: AsyncMock) -> No
         verdicts=[HeadingVerdict(block=2, fits=False, misfits=[], why="too vague")]
     )
 
-    assert await heading_problems(USER, COMPOSITION, POOL) == {
+    assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of its items: too vague; move them '
         "under a heading true of what they are, or rename this group"
     }
 
 
 async def test_a_heading_untrue_of_an_item_is_named_with_the_item(model: AsyncMock) -> None:
-    assert await heading_problems(USER, COMPOSITION, POOL) == {
+    assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
         "still waits on approval; move them under a heading true of what they are, or rename "
         "this group"
@@ -190,14 +191,14 @@ async def test_a_fitting_heading_is_no_problem(model: AsyncMock) -> None:
         verdicts=[HeadingVerdict(block=2, fits=True, misfits=[], why="both can be read now")]
     )
 
-    assert await heading_problems(USER, COMPOSITION, POOL) == {}
+    assert await heading_problems(USER_ID, COMPOSITION, POOL) == {}
 
 
 async def test_a_group_left_unjudged_fails_loud(model: AsyncMock) -> None:
     model.return_value = HeadingVerdicts(verdicts=[])
 
     with pytest.raises(AppError) as raised:
-        await heading_problems(USER, COMPOSITION, POOL)
+        await heading_problems(USER_ID, COMPOSITION, POOL)
 
     assert raised.value.message == "the brief's heading check left a group unjudged"
     assert raised.value.why == "no verdict for block(s) [2]"
@@ -210,7 +211,7 @@ async def test_a_group_left_unjudged_fails_loud(model: AsyncMock) -> None:
 async def test_a_composition_without_groups_makes_no_call(model: AsyncMock) -> None:
     only_note = BriefComposition.model_validate({"blocks": [{"kind": "note", "text": "Quiet."}]})
 
-    assert await heading_problems(USER, only_note, POOL) == {}
+    assert await heading_problems(USER_ID, only_note, POOL) == {}
     model.assert_not_awaited()
 
 

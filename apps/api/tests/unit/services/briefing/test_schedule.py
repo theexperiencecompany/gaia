@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 import time_machine
 
 from app.constants.briefing import (
@@ -39,7 +41,7 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffResolved,
 )
 
-_USER = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 _TZ = "Asia/Kolkata"
 # 07:05 on 14 Oct in Kolkata.
 _NOW = datetime(2026, 10, 14, 1, 35, tzinfo=UTC)
@@ -50,7 +52,7 @@ _WEEKLY_CRON = "0 17 * * 0"
 
 def _slot(cron: str) -> str:
     """Return cron at the user's slot minute, as every stored brief cron is."""
-    return spread_cron(cron, _USER)
+    return spread_cron(cron, USER_ID)
 
 
 def _workflow(
@@ -76,7 +78,7 @@ def _user(
     frequency: BriefingFrequency = BriefingFrequency.DAILY,
 ) -> UserDocument:
     return UserDocument(
-        id=_USER,
+        id=USER_ID,
         timezone=timezone,
         quiet_hours=quiet_hours,
         briefing_schedule=BriefingSchedule(frequency=frequency),
@@ -171,12 +173,12 @@ class TestResyncBriefingSchedules:
         )
 
         seams.find.assert_awaited_once_with(
-            _USER, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
+            USER_ID, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
         )
         assert _moves(seams.update) == {
             "wf-daily_briefing": (_slot("0 10 * * *"), _TZ, _TODAY_START)
         }
-        assert seams.update.await_args.args[2] == _USER
+        assert seams.update.await_args.args[2] == USER_ID
 
     async def test_a_new_timezone_moves_both_briefs_onto_it(self, seams: Seams) -> None:
         await schedule.resync_briefing_schedules(
@@ -200,7 +202,7 @@ class TestResyncBriefingSchedules:
             _user(QuietHours(enabled=True, start_hour=0, end_hour=10))
         )
 
-        seams.was_delivered.assert_awaited_once_with(_USER, "2026-10-14", "daily")
+        seams.was_delivered.assert_awaited_once_with(USER_ID, "2026-10-14", "daily")
         assert _moves(seams.update)["wf-daily_briefing"][2] == _TOMORROW_START
 
     async def test_a_brief_already_in_place_does_not_stop_the_other_moving(
@@ -275,7 +277,7 @@ class TestTheFrequencySwitchesTheBriefs:
         )
 
         assert _switched(seams.deactivate) == ["wf-daily_briefing"]
-        assert seams.deactivate.await_args.args[1] == _USER
+        assert seams.deactivate.await_args.args[1] == USER_ID
         seams.activate.assert_not_awaited()
 
     async def test_off_switches_off_both_briefs(self, seams: Seams) -> None:
@@ -294,7 +296,7 @@ class TestTheFrequencySwitchesTheBriefs:
         await schedule.resync_briefing_schedules(_user(DEFAULT_QUIET_HOURS))
 
         assert _switched(seams.activate) == ["wf-daily_briefing", "wf-weekly_digest"]
-        seams.is_paid.assert_awaited_with(_USER)
+        seams.is_paid.assert_awaited_with(USER_ID)
 
     async def test_a_free_users_briefs_stay_off(self, seams: Seams) -> None:
         seams.is_paid.return_value = False
@@ -367,27 +369,28 @@ class TestSetBriefingSchedule:
         monkeypatch.setattr(user_repository, "get", get)
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
-        log = MagicMock()
-        monkeypatch.setattr(schedule, "log", log)
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY, hour=9)
 
-        result = await schedule.set_briefing_schedule(
-            _USER, BriefingFrequency.WEEKLY_ONLY, "agent", hour=9
-        )
+        async with captured_wide_event() as event:
+            result = await schedule.set_briefing_schedule(
+                USER_ID, BriefingFrequency.WEEKLY_ONLY, "agent", hour=9
+            )
 
         assert result is stored
-        store.assert_awaited_once_with(_USER, wanted)
-        get.assert_awaited_with(_USER)
-        log.audit.assert_called_once_with(
-            "briefing schedule updated",
-            actor=_USER,
-            frequency=BriefingFrequency.WEEKLY_ONLY,
-            hour=9,
-            via="agent",
-        )
+        store.assert_awaited_once_with(USER_ID, wanted)
+        get.assert_awaited_with(USER_ID)
+        assert event["audit"] == [
+            {
+                "msg": "briefing schedule updated",
+                "actor": USER_ID,
+                "frequency": BriefingFrequency.WEEKLY_ONLY,
+                "hour": 9,
+                "via": "agent",
+            }
+        ]
         assert _switched(seams.deactivate) == ["wf-daily_briefing"]
         capture.assert_called_once_with(
-            UserId(_USER),
+            UserId(USER_ID),
             SettingsBriefingScheduleUpdated(frequency="weekly_only", hour=9, via="agent"),
         )
 
@@ -400,10 +403,10 @@ class TestSetBriefingSchedule:
         current.briefing_schedule.hour = 6
         monkeypatch.setattr(user_repository, "get", AsyncMock(return_value=current))
 
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKDAYS, "agent")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKDAYS, "agent")
 
         store.assert_awaited_once_with(
-            _USER, BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=6)
+            USER_ID, BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=6)
         )
 
     async def test_an_unknown_user_fails_loud_and_reports_nothing(
@@ -415,10 +418,10 @@ class TestSetBriefingSchedule:
         monkeypatch.setattr(schedule, "capture", capture)
 
         with pytest.raises(AppError) as raised:
-            await schedule.set_briefing_schedule(_USER, BriefingFrequency.DAILY, "settings")
+            await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.DAILY, "settings")
 
         assert raised.value.status_code == 404
-        assert raised.value.why == f"User {_USER} does not exist"
+        assert raised.value.why == f"User {USER_ID} does not exist"
 
         capture.assert_not_called()
         seams.update.assert_not_awaited()
@@ -426,7 +429,7 @@ class TestSetBriefingSchedule:
 
 def _held(source_title: str, text: str) -> PendingBriefItemDocument:
     return PendingBriefItemDocument(
-        user_id=_USER,
+        user_id=USER_ID,
         source=BriefItemSource.WORKFLOW,
         source_id=f"wf-{source_title}",
         source_title=source_title,
@@ -460,22 +463,22 @@ class TestWhatTheBriefHeld:
     ) -> None:
         seams.daily.return_value = MagicMock(activated=False)
 
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKLY_ONLY, "settings")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKLY_ONLY, "settings")
 
-        seams.daily.assert_awaited_once_with(_USER, DAILY_BRIEFING_WORKFLOW_KEY)
-        seams.held.assert_awaited_once_with(_USER, sort=[("created_at", 1)])
+        seams.daily.assert_awaited_once_with(USER_ID, DAILY_BRIEFING_WORKFLOW_KEY)
+        seams.held.assert_awaited_once_with(USER_ID, sort=[("created_at", 1)])
         [request] = [call.args[0] for call in seams.notify.await_args_list]
         assert (request.user_id, request.content.title, request.content.body) == (
-            _USER,
+            USER_ID,
             HELD_RELEASE_TITLE,
             "Digest: Three new leads\nPrices: Down 4%",
         )
-        seams.consume.assert_awaited_once_with(_USER, [doc.id for doc in moving])
+        seams.consume.assert_awaited_once_with(USER_ID, [doc.id for doc in moving])
 
     async def test_a_daily_brief_that_still_runs_keeps_carrying_them(
         self, seams: Seams, moving: list[PendingBriefItemDocument]
     ) -> None:
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKDAYS, "settings")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKDAYS, "settings")
 
         seams.notify.assert_not_awaited()
         seams.consume.assert_not_awaited()
@@ -484,7 +487,7 @@ class TestWhatTheBriefHeld:
         seams.daily.return_value = None
         seams.held.return_value = []
 
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKLY_ONLY, "settings")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKLY_ONLY, "settings")
 
         seams.notify.assert_not_awaited()
         seams.consume.assert_not_awaited()
@@ -500,7 +503,7 @@ class TestBriefingScheduleState:
 
         assert state.paused_for_plan is True
         assert (state.frequency, state.hour) == (BriefingFrequency.WEEKDAYS, 7)
-        seams.is_paid.assert_awaited_once_with(_USER)
+        seams.is_paid.assert_awaited_once_with(USER_ID)
 
     @pytest.mark.parametrize(
         ("frequency", "has_daily", "hour"),
@@ -546,7 +549,7 @@ class TestTheNextDailyBrief:
 
         assert state.next_daily_brief_at == _NEXT_DAILY
         seams.find.assert_awaited_once_with(
-            _USER, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
+            USER_ID, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
         )
 
     async def test_there_is_none_while_the_daily_workflow_is_off(self, seams: Seams) -> None:
@@ -601,19 +604,19 @@ class TestTurningBriefsOff:
         self, seams: Seams, delivering: MagicMock
     ) -> None:
         await schedule.set_briefing_schedule(
-            _USER,
+            USER_ID,
             BriefingFrequency.OFF,
             "agent",
             workflow_deliveries={"wf-digest": WorkflowDelivery.SILENT},
         )
 
-        delivering.assert_awaited_once_with(_USER)
+        delivering.assert_awaited_once_with(USER_ID)
         [call] = seams.update.await_args_list
         assert call.args[0] == "wf-digest"
         assert call.args[1].delivery is WorkflowDelivery.SILENT
-        assert call.args[2] == _USER
+        assert call.args[2] == USER_ID
         seams.capture.assert_any_call(
-            UserId(_USER),
+            UserId(USER_ID),
             SettingsBriefsOffResolved(moved_to_now=0, moved_to_silent=1, via="agent"),
         )
 
@@ -621,12 +624,12 @@ class TestTurningBriefsOff:
         self, seams: Seams, delivering: MagicMock
     ) -> None:
         """With no daily brief to hold them, their results already went out at once."""
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKLY_ONLY, "settings")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKLY_ONLY, "settings")
 
-        delivering.assert_awaited_once_with(_USER)
+        delivering.assert_awaited_once_with(USER_ID)
         moved = [call for call in seams.update.await_args_list if call.args[0] == "wf-digest"]
         assert [(call.args[1].delivery, call.args[2]) for call in moved] == [
-            (WorkflowDelivery.NOW, _USER)
+            (WorkflowDelivery.NOW, USER_ID)
         ]
         captured = [call.args[1] for call in seams.capture.call_args_list]
         assert not [e for e in captured if isinstance(e, SettingsBriefsOffBlocked)]
@@ -635,7 +638,7 @@ class TestTurningBriefsOff:
     async def test_a_schedule_that_keeps_the_daily_brief_leaves_brief_workflows_alone(
         self, seams: Seams, delivering: MagicMock
     ) -> None:
-        await schedule.set_briefing_schedule(_USER, BriefingFrequency.WEEKDAYS, "settings")
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKDAYS, "settings")
 
         delivering.assert_not_awaited()
 
@@ -643,11 +646,11 @@ class TestTurningBriefsOff:
         self, seams: Seams, delivering: MagicMock
     ) -> None:
         with pytest.raises(schedule.BriefDeliveryWorkflowsError):
-            await schedule.set_briefing_schedule(_USER, BriefingFrequency.OFF, "settings")
+            await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.OFF, "settings")
 
         seams.update.assert_not_awaited()
         seams.capture.assert_called_once_with(
-            UserId(_USER), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
+            UserId(USER_ID), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
         )
 
     @pytest.mark.regression
@@ -656,7 +659,7 @@ class TestTurningBriefsOff:
     ) -> None:
         """The tool could not say where they go, so off always refused a user with any."""
         await schedule.set_briefing_schedule(
-            _USER, BriefingFrequency.OFF, "agent", brief_workflows_to=WorkflowDelivery.SILENT
+            USER_ID, BriefingFrequency.OFF, "agent", brief_workflows_to=WorkflowDelivery.SILENT
         )
 
         [call] = seams.update.await_args_list
@@ -671,7 +674,7 @@ class TestTurningBriefsOff:
         ]
 
         with pytest.raises(schedule.BriefDeliveryWorkflowsError) as raised:
-            await schedule.set_briefing_schedule(_USER, BriefingFrequency.OFF, "settings")
+            await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.OFF, "settings")
 
         error = raised.value
         assert error.message == "2 workflows send their results to your brief"
@@ -689,7 +692,7 @@ class TestTurningBriefsOff:
         self, seams: Seams, delivering: MagicMock
     ) -> None:
         with pytest.raises(schedule.BriefDeliveryWorkflowsError) as raised:
-            await schedule.set_briefing_schedule(_USER, BriefingFrequency.OFF, "settings")
+            await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.OFF, "settings")
 
         assert raised.value.message == "1 workflow sends its results to your brief"
 
@@ -702,7 +705,7 @@ class TestTurningBriefsOff:
             LookupError, match="^Workflow wf-digest vanished while it was moved off the brief$"
         ):
             await schedule.set_briefing_schedule(
-                _USER,
+                USER_ID,
                 BriefingFrequency.OFF,
                 "settings",
                 workflow_deliveries={"wf-digest": WorkflowDelivery.NOW},
@@ -718,7 +721,7 @@ class TestTurningBriefsOff:
         ]
 
         await schedule.set_briefing_schedule(
-            _USER,
+            USER_ID,
             BriefingFrequency.OFF,
             "settings",
             workflow_deliveries={
@@ -729,6 +732,6 @@ class TestTurningBriefsOff:
         )
 
         seams.capture.assert_any_call(
-            UserId(_USER),
+            UserId(USER_ID),
             SettingsBriefsOffResolved(moved_to_now=2, moved_to_silent=1, via="settings"),
         )

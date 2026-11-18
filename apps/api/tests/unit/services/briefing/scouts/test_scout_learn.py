@@ -477,15 +477,18 @@ class TestTheLearnRun:
 class TestWhyAReportIsNotFrozen:
     async def _problem(self, report: str, app: _App | None = None) -> str | None:
         app = app or _App([_ISSUE])
-        with _seams(app, report), patch.object(learn, "log") as log:
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+        with _seams(app, report):
+            async with captured_wide_event() as event:
+                learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
         assert learned.scout is None
         assert [s.external_id for s in learned.signals] == ["ENG-12"]
-        log.warning.assert_called_once_with(
-            "briefing.scout_not_frozen",
-            integration_id="linear",
-            problem=learned.freeze_problem,
-        )
+        assert [w for w in event["warnings"] if w["msg"] == "briefing.scout_not_frozen"] == [
+            {
+                "msg": "briefing.scout_not_frozen",
+                "integration_id": "linear",
+                "problem": learned.freeze_problem,
+            }
+        ]
         return learned.freeze_problem
 
     async def test_a_report_with_no_calls(self) -> None:
@@ -695,15 +698,17 @@ class TestReadOnlyAtCallTime:
             _seams(app, _report()),
             patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
             patch.object(learn, "run_tool_graph", keep_history),
-            patch("app.services.hil.gate.log") as gate_log,
         ):
-            await learn_scout(USER, USER_ID, LINEAR, leaky, _SPEND)
+            async with captured_wide_event() as event:
+                await learn_scout(USER, USER_ID, LINEAR, leaky, _SPEND)
 
         assert _DELETED == []
         [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]
         assert answer.content == READ_ONLY_REFUSAL_TEMPLATE.format(tool="delete_issue")
         assert answer.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-        gate_log.error.assert_called_once_with(
-            f"{LogTag.HIL} Read-only run refused a tool not classified read-only",
-            tool_name="delete_issue",
-        )
+        assert [e for e in event["errors"] if e["msg"].startswith(LogTag.HIL)] == [
+            {
+                "msg": f"{LogTag.HIL} Read-only run refused a tool not classified read-only",
+                "tool_name": "delete_issue",
+            }
+        ]

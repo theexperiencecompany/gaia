@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_todo, make_user_id
 from tests.helpers import user_clock
 
 from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
@@ -44,7 +44,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.workflow_execution_models import RunMoment
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.clock import DayWindow
@@ -77,12 +77,6 @@ def _at(day: int, hour: int) -> datetime:
     return datetime(2026, 11, day, hour, tzinfo=KOLKATA).astimezone(UTC)
 
 
-def _todo(title: str, *labels: str, **fields: object) -> TodoDocument:
-    return TodoDocument.model_validate(
-        {"id": title, "user_id": USER_ID, "title": title, "labels": list(labels), **fields}
-    )
-
-
 _MAYA = Signal(
     integration_id="gmail",
     app="Gmail",
@@ -110,19 +104,19 @@ class Stores:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.completed = AsyncMock(
             return_value=[
-                _todo(
+                make_todo(
                     "GAIA privacy labels",
                     GAIA_TRACKED_LABEL,
                     completed=True,
                     completed_at=_at(10, 9),
                     completed_by=TodoCompleter.GAIA,
                 ),
-                _todo("Call the bank", completed=True, completed_at=_at(11, 7)),
+                make_todo("Call the bank", completed=True, completed_at=_at(11, 7)),
             ]
         )
         self.threads = AsyncMock(
             return_value=[
-                _todo(
+                make_todo(
                     "Re: offsite",
                     GAIA_TRACKED_LABEL,
                     created_at=_at(10, 8),
@@ -140,7 +134,7 @@ class Stores:
         )
         self.rhythm = AsyncMock(return_value=[SimpleNamespace(id="wf-daily-brief")])
         self.runs = AsyncMock(return_value=[RunMoment(started_at=_at(9, 6), status="failed")])
-        self.open_todos = AsyncMock(return_value=[_todo("GAIA beta invite email")])
+        self.open_todos = AsyncMock(return_value=[make_todo("GAIA beta invite email")])
         self.tracked = AsyncMock(return_value=[])
         for owner, name, mock in (
             (todo_repository, "list_completed_since", self.completed),
@@ -247,8 +241,8 @@ class TestTheFactPool:
 
     async def test_a_goals_open_work_untouched_a_week_by_now_is_stuck(self, stores: Stores) -> None:
         stores.open_todos.return_value = [
-            _todo("GAIA beta invite email", updated_at=_at(10, 9)),
-            _todo("GAIA store listing", updated_at=_at(3, 9)),
+            make_todo("GAIA beta invite email", updated_at=_at(10, 9)),
+            make_todo("GAIA store listing", updated_at=_at(3, 9)),
         ]
 
         [goal] = (await _pool()).goals
@@ -441,7 +435,7 @@ class TestAnItemLine:
 
     def test_an_item_an_earlier_brief_showed_as_it_stands_is_marked_still_open(self) -> None:
         shown = SignalMemoryDocument(
-            user_id="u1",
+            user_id=USER_ID,
             integration_id="gaia",
             external_id="todo:t1",
             first_seen=datetime(2026, 11, 8, 3, tzinfo=UTC),

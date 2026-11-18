@@ -3,9 +3,9 @@
 from collections import Counter
 from itertools import pairwise
 from typing import Any
-from unittest.mock import patch
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.constants.briefing import EditionChoice, EditionFamily
 from app.models.brief_composition_models import BriefBlock, ChartKind
@@ -223,13 +223,15 @@ class TestEditionChoices:
         assert set(picks) == {"swiss", "memo"}
         assert all(a != b for a, b in pairwise(picks))
 
-    def test_when_every_edition_left_on_was_retired_every_daily_family_draws_loudly(
+    async def test_when_every_edition_left_on_was_retired_every_daily_family_draws_loudly(
         self,
     ) -> None:
         choices = _only_on("retired") | {"retired": EditionChoice.FAVOURITE}
 
-        with patch("app.services.briefing.edition_draws.log") as log:
+        async with captured_wide_event() as event:
             weights = daily_family_weights(choices)
 
         assert weights == DAILY_FAMILY_WEIGHTS
-        log.warning.assert_called_once_with("briefing.editions_all_retired", kept=sorted(choices))
+        assert event["warnings"] == [
+            {"msg": "briefing.editions_all_retired", "kept": sorted(choices)}
+        ]

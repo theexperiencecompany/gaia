@@ -11,25 +11,22 @@ from app.constants.workflows import WorkflowDelivery
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.user_models import UserDocument
 from app.services.briefing.schedule import BriefDeliveryWorkflowsError
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.account_tools"
-CONFIG = RunnableConfig(metadata={"user_id": "user-1"})
+USER_ID = make_user_id()
+CONFIG = RunnableConfig(metadata={"user_id": USER_ID})
 
 
 def _user(schedule: BriefingSchedule) -> UserDocument:
-    return UserDocument(id="user-1", briefing_schedule=schedule)
+    return UserDocument(id=USER_ID, briefing_schedule=schedule)
 
 
 @pytest.fixture(autouse=True)
 def paid():
     with patch("app.services.briefing.schedule.is_paid", new=AsyncMock(return_value=True)) as mock:
         yield mock
-
-
-@pytest.fixture(autouse=True)
-def mutation_log():
-    with patch("app.agents.tools.core.mutations.log") as log:
-        yield log
 
 
 def _setter(stored: BriefingSchedule) -> AsyncMock:
@@ -41,16 +38,21 @@ class TestSetBriefingSchedule:
     async def test_it_sets_the_frequency_and_hour_and_confirms_what_changed(self) -> None:
         setter = _setter(BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9))
         with patch(f"{MODULE}.briefing_schedule.set_briefing_schedule", new=setter):
-            result = await account_tools.set_briefing_schedule.ainvoke(
-                {"frequency": "weekdays", "hour": 9}, config=CONFIG
-            )
+            async with captured_wide_event() as event:
+                result = await account_tools.set_briefing_schedule.ainvoke(
+                    {"frequency": "weekdays", "hour": 9}, config=CONFIG
+                )
 
         setter.assert_awaited_once_with(
-            "user-1", BriefingFrequency.WEEKDAYS, "agent", hour=9, brief_workflows_to=None
+            USER_ID, BriefingFrequency.WEEKDAYS, "agent", hour=9, brief_workflows_to=None
         )
         assert result == (
             "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
             "plus the weekly digest on Sunday at 17:00."
+        )
+        assert (event["tool"], event["surface"]) == (
+            {"name": "set_briefing_schedule", "action": "mutate"},
+            {"area": "briefing"},
         )
 
     async def test_a_free_user_is_told_the_briefs_stay_paused_until_pro(

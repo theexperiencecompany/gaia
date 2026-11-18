@@ -4,11 +4,12 @@ Faked seams: the structured model call and the heading check.
 """
 
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from pydantic import ValidationError
 import pytest
-from tests.helpers import user_clock
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event, user_clock
 
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -30,7 +31,7 @@ from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.kinds import KIND_SPECS
 from app.utils.errors import AppError
 
-USER = "64f1c0ffee0000000000abcd"
+USER = make_user_id()
 DAILY = KIND_SPECS[BriefingKind.DAILY]
 WEEKLY = KIND_SPECS[BriefingKind.WEEKLY]
 _CONTEXT = PoolContext(
@@ -376,15 +377,14 @@ class TestRetryThenFailLoud:
         assert "the answer was not a whole BriefComposition tool call" in _prompt(model, 1)
 
     async def test_no_composition_twice_builds_the_brief_from_the_pool(
-        self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, model: AsyncMock
     ) -> None:
-        log = MagicMock()
-        monkeypatch.setattr(checked_call, "log", log)
         model.side_effect = MalformedStructuredOutputError(
             "BriefComposition: reply stopped at the output cap"
         )
 
-        composed = await compose_brief(USER, POOL, DAILY)
+        async with captured_wide_event() as event:
+            composed = await compose_brief(USER, POOL, DAILY)
 
         asks, done = composed.rendered.blocks
         assert isinstance(asks, ComposedItems) and isinstance(done, ComposedItems)
@@ -397,10 +397,12 @@ class TestRetryThenFailLoud:
             [(2, BriefOutcome.FINISHED)],
         )
         assert model.await_count == 2
-        (salvaged,) = log.error.call_args_list
-        assert salvaged.args == ("briefing.checked_call_salvaged",)
-        assert salvaged.kwargs["call"] == "composition"
-        assert "reply stopped at the output cap" in salvaged.kwargs["problems"]
+        [salvaged] = event["errors"]
+        assert (salvaged["msg"], salvaged["call"]) == (
+            "briefing.checked_call_salvaged",
+            "composition",
+        )
+        assert "reply stopped at the output cap" in salvaged["problems"]
 
     async def test_broken_twice_keeps_what_holds_under_a_heading_code_derives(
         self, model: AsyncMock
@@ -628,24 +630,21 @@ class TestTheCallItself:
 
 
 class TestWhatARejectionSays:
-    async def test_every_problem_is_named_in_the_retry_and_logged(
-        self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        log = MagicMock()
-        monkeypatch.setattr(checked_call, "log", log)
+    async def test_every_problem_is_named_in_the_retry_and_logged(self, model: AsyncMock) -> None:
         broken = _items_block(_item(1, detail="x" * 200))
         stray = broken.blocks[0].model_copy(update={"heading": "9 replies waiting"})
         model.side_effect = [broken.model_copy(update={"blocks": [stray]}), _GOOD]
 
-        await compose_brief(USER, POOL, DAILY)
+        async with captured_wide_event() as event:
+            await compose_brief(USER, POOL, DAILY)
 
         problems = [
             "block 1 (items), item 1: a detail over 80 characters",
             _STRAY_PROBLEM,
         ]
-        log.warning.assert_called_once_with(
-            "briefing.checked_call_rejected", call="composition", problems=problems
-        )
+        assert event["warnings"] == [
+            {"msg": "briefing.checked_call_rejected", "call": "composition", "problems": problems}
+        ]
         assert f"was sent back: {'; '.join(problems)}.\n" in _prompt(model, 1)
 
     async def test_a_reply_that_was_no_composition_is_retried_with_no_last_answer_and_its_reason(
