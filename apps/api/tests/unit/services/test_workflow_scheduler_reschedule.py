@@ -21,6 +21,7 @@ from uuid import uuid4
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.user_activity import ActivityStatus
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.user_models import UserDocument
 from app.services.workflow.scheduler import WorkflowScheduler
@@ -40,6 +41,16 @@ def _subscription_active_by_default():
     with patch(
         "app.workers.tasks.workflow_tasks.is_paid",
         AsyncMock(return_value=True),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _active_owner():
+    """Default the owner to an active one so the dormant-owner gate stays out of the way of the stale-fire tests."""
+    with patch(
+        "app.workers.tasks.workflow_tasks.activity_status_of",
+        AsyncMock(return_value=ActivityStatus.ACTIVE),
     ):
         yield
 
