@@ -68,6 +68,10 @@ class _Routed(BaseModel):
             return self.transaction
         return None
 
+    def named_by_raw_url(self) -> bool:
+        """Return True when the transaction is named by the request path no route matched."""
+        return self.transaction_info.source == TransactionSource.URL
+
 
 def _path_capabilities(path: str, route: str) -> set[str]:
     """Return the values the path holds for the route's capability parameters."""
@@ -133,7 +137,7 @@ def scrub_request(event: Event) -> Event:
     routed = _Routed.model_validate(event)
     route = routed.route()
     scrubbed: dict[str, object] = dict(event)
-    if routed.transaction is not None and route is None:
+    if routed.named_by_raw_url():
         scrubbed["transaction"] = UNROUTED
     if isinstance(routed.spans, list):
         scrubbed["spans"] = [_without_query(span) for span in routed.spans]

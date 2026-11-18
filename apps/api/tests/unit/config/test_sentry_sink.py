@@ -30,11 +30,13 @@ import sentry_sdk
 from sentry_sdk._types import AnnotatedValue
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
+from sentry_sdk.tracing import TransactionSource
 from sentry_sdk.types import Event, Hint
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
+from app.config.sentry_scrub import UNROUTED
 from app.config.settings import settings
 from app.constants.http import VIEWER_IP_HEADER
 from shared.py import logging as shared_logging
@@ -687,3 +689,26 @@ def test_spans_sentry_already_trimmed_pass_through() -> None:
     event = sentry_config._before_send_transaction(raw, {})
 
     assert event["spans"] is trimmed
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [("process_reminder", TransactionSource.TASK), ("chat turn", TransactionSource.CUSTOM)],
+)
+def test_a_worker_or_custom_trace_keeps_its_name(
+    sentry_transactions: list[Event], name: str, source: TransactionSource
+) -> None:
+    with sentry_sdk.start_transaction(name=name, source=source):
+        pass
+
+    [transaction] = sentry_transactions
+    assert transaction["transaction"] == name
+
+
+def test_a_trace_named_by_its_raw_url_is_renamed_unrouted() -> None:
+    raw: Event = {"transaction": "/api/v1/l/raw-slug", "transaction_info": {"source": "url"}}
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["transaction"] == UNROUTED
