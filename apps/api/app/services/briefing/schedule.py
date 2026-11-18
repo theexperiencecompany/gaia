@@ -38,8 +38,9 @@ from app.services.briefing import context
 from app.services.briefing.held import brief_will_carry, release_held_items
 from app.services.briefing.run_times import briefing_cron, inbox_desk_recurrence, user_brief_slots
 from app.services.todos.inbox_desk import follow_the_brief
+from app.services.user_service import require_user
 from app.services.workflow.service import WorkflowService
-from app.utils.errors import AppError, create_error
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
@@ -246,14 +247,7 @@ async def set_briefing_schedule(
     to its delivery in workflow_deliveries, else brief_workflows_to, else (weekly-only) Tell
     me now, raising BriefDeliveryWorkflowsError while any has none. It releases what was held.
     """
-    before = await user_repository.get(user_id)
-    if before is None:
-        raise create_error(
-            message="No such user",
-            why=f"User {user_id} does not exist",
-            fix="Sign in again",
-            status_code=404,
-        )
+    before = await require_user(user_id)
     schedule = BriefingSchedule(
         frequency=frequency, hour=before.briefing_schedule.hour if hour is None else hour
     )

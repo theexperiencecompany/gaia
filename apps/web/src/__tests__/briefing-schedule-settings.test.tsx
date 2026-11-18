@@ -11,13 +11,11 @@ const getBriefingSchedule = vi.fn();
 const updateBriefingSchedule = vi.fn();
 const toastError = vi.fn();
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingSchedule: () => getBriefingSchedule(),
-    updateBriefingSchedule: (schedule: unknown) =>
-      updateBriefingSchedule(schedule),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchSchedule: () => getBriefingSchedule(),
+    updateSchedule: (schedule: unknown) => updateBriefingSchedule(schedule),
   },
-  readBriefsOffBlock: () => null,
 }));
 
 vi.mock("@/lib/toast", () => ({

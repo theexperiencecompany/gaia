@@ -44,7 +44,7 @@ async def set_edition_choices(
         raise create_error(
             message=f"Not a daily edition: {', '.join(unknown)}",
             why="Only the daily edition families can be turned off or favourited",
-            fix="Choose from the editions GET /notifications/preferences/briefing-editions lists",
+            fix="Choose from the editions GET /briefings/editions lists",
             status_code=422,
         )
     stored = {family: choice for family, choice in choices.items() if choice != EditionChoice.ON}

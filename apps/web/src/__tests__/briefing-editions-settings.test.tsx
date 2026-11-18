@@ -12,10 +12,10 @@ const updateBriefingEditions = vi.fn();
 const toastError = vi.fn();
 const toastInfo = vi.fn();
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingEditions: () => getBriefingEditions(),
-    updateBriefingEditions: (update: unknown) => updateBriefingEditions(update),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchEditions: () => getBriefingEditions(),
+    updateEditions: (update: unknown) => updateBriefingEditions(update),
   },
 }));
 

@@ -70,7 +70,7 @@ EXECUTION_RUNNING = "running"
 EXECUTION_SUCCEEDED = "success"
 # A schedule other than the default, so the PUT is a real change.
 BRIEFING_SCHEDULE = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
-BRIEFING_SCHEDULE_PATH = "/notifications/preferences/briefing-schedule"
+BRIEFING_SCHEDULE_PATH = "/briefings/schedule"
 
 
 class JourneyError(RuntimeError):

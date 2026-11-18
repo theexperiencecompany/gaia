@@ -31,7 +31,7 @@ vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 
-const SCHEDULE_PATH = "/notifications/preferences/briefing-schedule";
+const SCHEDULE_PATH = "/briefings/schedule";
 const BRIEF_DELIVERY_WORKFLOWS_EXIST = "brief_delivery_workflows_exist";
 
 interface StoredWorkflow {

@@ -5,18 +5,17 @@ import type { WorkflowDelivery } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
+import { briefingApi } from "@/features/briefing/api/briefingApi";
 import WorkflowDeliveryField from "@/features/workflows/components/workflow-modal/WorkflowDeliveryField";
 import {
   getDefaultFormValues,
   type WorkflowFormData,
 } from "@/features/workflows/schemas/workflowFormSchema";
-import { NotificationsAPI } from "@/services/api/notifications";
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingSchedule: vi.fn(),
-    updateBriefingSchedule: vi.fn(),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchSchedule: vi.fn(),
+    updateSchedule: vi.fn(),
   },
 }));
 
@@ -31,10 +30,14 @@ function renderField(
   schedule: Pick<BriefingScheduleState, "frequency" | "hour">,
   delivery: WorkflowDelivery,
 ) {
-  vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue({
+  const hasDailyBrief =
+    schedule.frequency === "daily" || schedule.frequency === "weekdays";
+  vi.mocked(briefingApi.fetchSchedule).mockResolvedValue({
     ...schedule,
     paused_for_plan: false,
     next_daily_brief_at: null,
+    has_daily_brief: hasDailyBrief,
+    daily_brief_hour: hasDailyBrief ? (schedule.hour ?? null) : null,
   });
   return render(<DeliveryOnly delivery={delivery} />);
 }

@@ -126,6 +126,6 @@ class TestSetEditionChoices:
             422,
             "Not a daily edition: gone, weekly",
             "Only the daily edition families can be turned off or favourited",
-            "Choose from the editions GET /notifications/preferences/briefing-editions lists",
+            "Choose from the editions GET /briefings/editions lists",
         )
         seams.store.assert_not_awaited()

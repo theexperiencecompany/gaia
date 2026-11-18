@@ -28,7 +28,7 @@ from tests.conftest import FAKE_USER
 
 pytestmark = pytest.mark.service
 
-SCHEDULE_URL = "/api/v1/notifications/preferences/briefing-schedule"
+SCHEDULE_URL = "/api/v1/briefings/schedule"
 USER_OID = ObjectId(FAKE_USER.user_id)
 OTHER_USER_ID = "507f1f77bcf86cd799439099"
 DAILY = {"frequency": "daily", "hour": 9}
@@ -141,7 +141,14 @@ class TestBriefsOffGuard:
         response = await client.put(SCHEDULE_URL, json={"frequency": "off", "hour": 9})
 
         assert response.status_code == 200
-        assert response.json() == {"frequency": "off", "hour": 9}
+        assert response.json() == {
+            "frequency": "off",
+            "hour": 9,
+            "paused_for_plan": False,
+            "next_daily_brief_at": None,
+            "has_daily_brief": False,
+            "daily_brief_hour": None,
+        }
         assert await _stored_schedule(mongo_db) == {"frequency": "off", "hour": 9}
         assert not any(
             isinstance(call.args[1], SettingsBriefsOffBlocked | SettingsBriefsOffResolved)

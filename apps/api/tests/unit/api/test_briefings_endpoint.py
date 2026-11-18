@@ -1,19 +1,28 @@
-"""One brief, opened from the email image, the chat link or the Briefings list.
+"""One brief, opened from the email image, the chat link or the Briefings list; and the brief settings.
 
 The repository is faked; the route, its owner scoping and its analytics run for real.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from pydantic import ValidationError
+import pytest
 
 from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefingFrequency, EditionChoice
+from app.constants.workflows import WorkflowDelivery
 from app.models.briefing_models import (
+    BriefingEditions,
     BriefingModel,
     BriefingPayload,
+    BriefingSchedule,
+    BriefingScheduleUpdate,
     Postmark,
     PostmarksResponse,
 )
+from app.models.user_models import UserDocument
 from app.services.briefing.view import briefing_view
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
@@ -22,6 +31,7 @@ from tests.helpers import captured_wide_event
 
 BASE = "/api/v1/briefings"
 MODULE = "app.api.v1.endpoints.briefings"
+FAKE_USER_ID = FAKE_USER.user_id
 
 
 def _brief(*, opened: bool) -> BriefingModel:
@@ -219,3 +229,209 @@ async def test_postmarks_tags_the_wide_event_with_the_collected_count() -> None:
 
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "postmarks", "postmarks_collected": 0}
+
+
+PAID = "app.services.briefing.schedule.is_paid"
+SYSTEM_WORKFLOWS = "app.services.briefing.schedule.workflow_repository.find_system_workflows"
+
+
+class TestBriefingScheduleEndpoints:
+    async def test_an_unset_user_reads_daily_at_8(self, client: AsyncClient) -> None:
+        daily = MagicMock(system_workflow_key=DAILY_BRIEFING_WORKFLOW_KEY, activated=True)
+        daily.trigger_config.next_run = datetime(2026, 10, 15, 2, 30, tzinfo=UTC)
+        with (
+            patch(PAID, new_callable=AsyncMock, return_value=True),
+            patch(SYSTEM_WORKFLOWS, new_callable=AsyncMock, return_value=[daily]),
+            patch(
+                "app.services.user_service.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ) as get,
+            patch(f"{MODULE}.log") as log,
+        ):
+            response = await client.get(f"{BASE}/schedule")
+
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_schedule")
+        assert response.status_code == 200
+        assert response.json() == {
+            "frequency": "daily",
+            "hour": 8,
+            "paused_for_plan": False,
+            "next_daily_brief_at": "2026-10-15T02:30:00Z",
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
+        }
+
+    async def test_a_free_users_schedule_reads_as_paused_for_the_plan(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(PAID, new_callable=AsyncMock, return_value=False),
+            patch(
+                "app.services.user_service.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ),
+        ):
+            response = await client.get(f"{BASE}/schedule")
+
+        assert response.json() == {
+            "frequency": "daily",
+            "hour": 8,
+            "paused_for_plan": True,
+            "next_daily_brief_at": None,
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
+        }
+
+    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
+        with patch(
+            "app.services.user_service.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.get(f"{BASE}/schedule")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+
+    async def test_an_update_goes_through_the_one_schedule_setter_and_echoes_it(
+        self, client: AsyncClient
+    ) -> None:
+        wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
+        with (
+            patch(PAID, new_callable=AsyncMock, return_value=False),
+            patch(
+                f"{MODULE}.set_briefing_schedule",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID, briefing_schedule=wanted),
+            ) as setter,
+            patch(f"{MODULE}.log") as log,
+        ):
+            response = await client.put(
+                f"{BASE}/schedule",
+                json={"frequency": "weekdays", "hour": 7},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "frequency": "weekdays",
+            "hour": 7,
+            "paused_for_plan": True,
+            "next_daily_brief_at": None,
+            "has_daily_brief": True,
+            "daily_brief_hour": 8,
+        }
+        setter.assert_awaited_once_with(
+            FAKE_USER_ID,
+            BriefingFrequency.WEEKDAYS,
+            "settings",
+            hour=7,
+            workflow_deliveries={},
+        )
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
+
+    async def test_new_deliveries_are_refused_unless_briefs_are_being_turned_off(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{MODULE}.set_briefing_schedule", new_callable=AsyncMock) as setter:
+            response = await client.put(
+                f"{BASE}/schedule",
+                json={"frequency": "daily", "hour": 7, "workflow_deliveries": {"wf-1": "now"}},
+            )
+
+        assert response.status_code == 422
+        assert "workflow_deliveries is only accepted when frequency is off" in response.text
+        setter.assert_not_awaited()
+
+    def test_the_refusal_names_exactly_why_deliveries_were_refused(self) -> None:
+        with pytest.raises(ValidationError) as refused:
+            BriefingScheduleUpdate(
+                frequency=BriefingFrequency.DAILY,
+                hour=7,
+                workflow_deliveries={"wf-1": WorkflowDelivery.NOW},
+            )
+
+        assert [error["msg"] for error in refused.value.errors()] == [
+            "Value error, workflow_deliveries is only accepted when frequency is off"
+        ]
+
+    @pytest.mark.parametrize(
+        "body", [{"frequency": "hourly", "hour": 7}, {"frequency": "daily", "hour": 24}]
+    )
+    async def test_an_unknown_frequency_or_hour_is_refused_before_anything_is_stored(
+        self, client: AsyncClient, body: dict[str, object]
+    ) -> None:
+        with patch(f"{MODULE}.set_briefing_schedule", new_callable=AsyncMock) as setter:
+            response = await client.put(f"{BASE}/schedule", json=body)
+
+        assert response.status_code == 422
+        setter.assert_not_awaited()
+
+
+class TestBriefingEditionsEndpoints:
+    async def test_the_stored_choices_are_read_back_for_every_edition(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.services.user_service.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(
+                    id=FAKE_USER_ID, briefing_editions={"menu": EditionChoice.OFF}
+                ),
+            ) as get,
+            patch(f"{MODULE}.log") as log,
+        ):
+            response = await client.get(f"{BASE}/editions")
+
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_editions")
+        assert response.status_code == 200
+        choices = {e["family"]: e["choice"] for e in response.json()["editions"]}
+        assert choices["menu"] == "off"
+        assert choices["postal"] == "on"
+
+    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
+        with patch(
+            "app.services.user_service.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.get(f"{BASE}/editions")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+
+    async def test_an_update_goes_through_the_one_setter_and_echoes_it(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                f"{MODULE}.set_edition_choices",
+                new_callable=AsyncMock,
+                return_value=BriefingEditions(editions=[]),
+            ) as setter,
+            patch(f"{MODULE}.log") as log,
+        ):
+            response = await client.put(
+                f"{BASE}/editions",
+                json={"choices": {"menu": "off", "swiss": "favourite"}},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"editions": []}
+        setter.assert_awaited_once_with(
+            FAKE_USER_ID, {"menu": EditionChoice.OFF, "swiss": EditionChoice.FAVOURITE}
+        )
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_editions")
+
+    async def test_an_unknown_choice_is_refused_before_anything_is_stored(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{MODULE}.set_edition_choices", new_callable=AsyncMock) as setter:
+            response = await client.put(f"{BASE}/editions", json={"choices": {"menu": "hidden"}})
+
+        assert response.status_code == 422
+        setter.assert_not_awaited()

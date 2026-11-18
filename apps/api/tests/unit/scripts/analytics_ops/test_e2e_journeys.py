@@ -136,7 +136,7 @@ def test_the_briefing_journey_puts_a_non_default_schedule_from_the_browser() -> 
 
     assert stack.sent is not None
     assert stack.sent.method == "PUT"
-    assert stack.sent.url.path == "/api/v1/notifications/preferences/briefing-schedule"
+    assert stack.sent.url.path == "/api/v1/briefings/schedule"
     assert stack.sent.headers[POSTHOG_SESSION_HEADER] == stack.session_id
     sent = BriefingSchedule.model_validate_json(stack.sent.content)
     assert sent == BRIEFING_SCHEDULE
