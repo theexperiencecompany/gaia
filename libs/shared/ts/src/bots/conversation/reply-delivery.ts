@@ -129,9 +129,10 @@ export class ReplyDelivery {
 
   /** Tell the listener the final bubbles and the open bubble's messages, when either moved. */
   private async report(bubbles: number): Promise<void> {
-    const open = [...this.messages]
-      .filter(([slot]) => !this.final.has(slot))
-      .map(([, message]) => message.id);
+    const open: string[] = [];
+    for (const [slot, message] of this.messages) {
+      if (!this.final.has(slot)) open.push(message.id);
+    }
     if (bubbles === this.reported.bubbles && sameIds(open, this.reported.open))
       return;
     this.reported = { bubbles, open };

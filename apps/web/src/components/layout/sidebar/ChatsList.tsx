@@ -128,11 +128,12 @@ export default function ChatsList() {
     ],
     [systemConversations, starredConversations, sortedTimeFrames],
   );
-  const openAccordions = sections.filter(
-    (section) => !collapsedSections.includes(section),
-  );
-  const setOpenAccordions = (open: string[]) =>
-    setCollapsedSections(sections.filter((section) => !open.includes(section)));
+  const collapsed = new Set(collapsedSections);
+  const openAccordions = sections.filter((section) => !collapsed.has(section));
+  const setOpenAccordions = (open: string[]) => {
+    const opened = new Set(open);
+    setCollapsedSections(sections.filter((section) => !opened.has(section)));
+  };
 
   // Direct scroll listener for infinite scroll - throttled with requestAnimationFrame
   useEffect(() => {

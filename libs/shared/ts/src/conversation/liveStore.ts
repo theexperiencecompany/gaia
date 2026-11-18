@@ -74,9 +74,10 @@ function undelivered<Send extends QueuedSend>(
   view: ConversationView,
   sends: Readonly<Record<string, Send>>,
 ): Readonly<Record<string, Send>> {
-  const delivered = new Set(
-    view.items.filter((item) => item.seq <= view.head).map((item) => item.id),
-  );
+  const delivered = new Set<string>();
+  for (const item of view.items) {
+    if (item.seq <= view.head) delivered.add(item.id);
+  }
   if (!Object.keys(sends).some((id) => delivered.has(id))) return sends;
   return Object.fromEntries(
     Object.entries(sends).filter(([id]) => !delivered.has(id)),
