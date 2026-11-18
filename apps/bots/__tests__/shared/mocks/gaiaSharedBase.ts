@@ -153,11 +153,13 @@ export function makeGaiaSharedMock(
     // Default: route media to a chat turn with no attachments. Tests that care
     // about a specific outcome (upload, transcribe, reject) override this via
     // (adapter as ...).resolveIncomingMedia.mockResolvedValueOnce(...).
-    resolveIncomingMedia = vi.fn(async (media: { caption?: string }) => ({
-      action: "chat" as const,
-      text: media.caption ?? "media",
-      attachments: [] as unknown[],
-    }));
+    resolveIncomingMedia = vi.fn(
+      async (items: { media: { caption?: string } }[]) => ({
+        replies: [] as string[],
+        text: items[0]?.media.caption ?? "media",
+        attachments: [] as unknown[],
+      }),
+    );
   };
 
   const createBotLogger = vi.fn(() => ({

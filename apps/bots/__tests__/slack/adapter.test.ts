@@ -65,6 +65,11 @@ vi.mock("@gaia/shared/bots", async () => {
     ...base,
     withWideEvent: actual.withWideEvent,
     recordBotFailure: actual.recordBotFailure,
+    // The real file mapping and capped download, so the inbound-file tests
+    // pin what production sends the pipeline and how it fetches.
+    mediaKindFromMime: actual.mediaKindFromMime,
+    fetchBytesCapped: actual.fetchBytesCapped,
+    unfetchableMediaMessage: actual.unfetchableMediaMessage,
     extractSubcommandArgs: vi.fn(
       (commandName: string, rawText: string | undefined) => {
         if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
@@ -953,6 +958,229 @@ describe("SlackAdapter - DM message event handling", () => {
     });
 
     expect(handleStreamingChat).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inbound files — DMs with subtype file_share, and @mentions carrying files
+// ---------------------------------------------------------------------------
+
+/** A Slack file object as Bolt's FileShareMessageEvent / AppMentionEvent carry it. */
+const SLACK_PDF = {
+  id: "F1",
+  name: "report.pdf",
+  mimetype: "application/pdf",
+  size: 2048,
+  url_private_download: "https://files.slack.test/F1/report.pdf",
+};
+
+const UPLOADED = {
+  fileId: "file-1",
+  url: "https://gaia.test/file-1",
+  filename: "report.pdf",
+  type: "application/pdf",
+};
+
+describe("SlackAdapter - inbound files", () => {
+  let adapter: SlackAdapter;
+  let appMock: {
+    event: ReturnType<typeof vi.fn>;
+    message: ReturnType<typeof vi.fn>;
+  };
+  let resolveMedia: ReturnType<typeof vi.fn>;
+
+  type FileHandler = (args: {
+    message?: Record<string, unknown>;
+    event?: Record<string, unknown>;
+    client: ReturnType<typeof makeSlackClient>;
+    context?: { botUserId?: string };
+  }) => Promise<void>;
+
+  const dm = (): FileHandler => appMock.message.mock.calls[0][0] as FileHandler;
+  const mention = (): FileHandler =>
+    appMock.event.mock.calls[0][1] as FileHandler;
+
+  beforeEach(async () => {
+    const booted = await bootSlackWithEvents();
+    adapter = booted.adapter;
+    appMock = booted.appMock;
+    (adapter as unknown as { token: string }).token = "xoxb-test";
+    resolveMedia = (
+      adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
+    ).resolveIncomingMedia;
+    resolveMedia.mockResolvedValue({
+      replies: [],
+      text: "summarize this",
+      attachments: [UPLOADED],
+    });
+  });
+
+  it("reads a DM that carries a file instead of dropping it", async () => {
+    const client = makeSlackClient("ts-file");
+
+    await dm()({
+      message: {
+        type: "message",
+        subtype: "file_share",
+        text: "summarize this",
+        user: "U555",
+        channel: "D123",
+        channel_type: "im",
+        ts: "111.222",
+        files: [SLACK_PDF],
+      },
+      client,
+    });
+
+    const [items, userId, channelId] = resolveMedia.mock.calls[0];
+    expect(userId).toBe("U555");
+    expect(channelId).toBe("D123");
+    expect(items).toHaveLength(1);
+    expect(items[0].media).toEqual({
+      kind: "document",
+      isVoiceNote: false,
+      mimeType: "application/pdf",
+      filename: "report.pdf",
+      sizeBytes: 2048,
+      caption: "summarize this",
+    });
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        message: "summarize this",
+        channelId: "D123",
+        fileIds: ["file-1"],
+        fileData: [UPLOADED],
+      }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ platform: "slack" }),
+      expect.any(Promise),
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+
+  it("reads a file sent with no text", async () => {
+    const client = makeSlackClient("ts-file");
+
+    await dm()({
+      message: {
+        type: "message",
+        subtype: "file_share",
+        text: "",
+        user: "U555",
+        channel: "D123",
+        channel_type: "im",
+        ts: "111.222",
+        files: [SLACK_PDF],
+      },
+      client,
+    });
+
+    expect(resolveMedia).toHaveBeenCalledTimes(1);
+    expect(resolveMedia.mock.calls[0][0][0].media.caption).toBeUndefined();
+    expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("downloads a Slack file with the bot token, since url_private needs auth", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([9, 9]));
+          controller.close();
+        },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await dm()({
+      message: {
+        type: "message",
+        subtype: "file_share",
+        text: "",
+        user: "U555",
+        channel: "D123",
+        channel_type: "im",
+        files: [SLACK_PDF],
+      },
+      client: makeSlackClient(),
+    });
+    const bytes = await resolveMedia.mock.calls[0][0][0].download(1024);
+    vi.unstubAllGlobals();
+
+    expect(Array.from(bytes)).toEqual([9, 9]);
+    expect(fetchMock.mock.calls[0][0]).toBe(SLACK_PDF.url_private_download);
+    expect(
+      new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization"),
+    ).toBe("Bearer xoxb-test");
+  });
+
+  it("posts the pipeline's notices, then streams what was read", async () => {
+    resolveMedia.mockResolvedValueOnce({
+      replies: ["Up to 5 files per message. Read the first 5, skipped 1."],
+      text: "summarize this",
+      attachments: [UPLOADED],
+    });
+    const client = makeSlackClient();
+
+    await dm()({
+      message: {
+        type: "message",
+        subtype: "file_share",
+        text: "summarize this",
+        user: "U555",
+        channel: "D123",
+        channel_type: "im",
+        files: [SLACK_PDF],
+      },
+      client,
+    });
+
+    expect(client.chat.postMessage).toHaveBeenCalledWith({
+      channel: "D123",
+      text: "Up to 5 files per message. Read the first 5, skipped 1.",
+    });
+    expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("reads the files on an @mention", async () => {
+    await mention()({
+      event: {
+        type: "app_mention",
+        text: "<@BOTID> what does this say?",
+        user: "U999",
+        channel: "C111",
+        ts: "333.444",
+        files: [SLACK_PDF],
+      },
+      client: makeSlackClient("ts-mention"),
+      context: { botUserId: "BOTID" },
+    });
+
+    const [items, userId, channelId] = resolveMedia.mock.calls[0];
+    expect(userId).toBe("U999");
+    expect(channelId).toBe("C111");
+    expect(items[0].media).toMatchObject({
+      filename: "report.pdf",
+      caption: "what does this say?",
+    });
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ channelId: "C111", fileIds: ["file-1"] }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ platform: "slack" }),
+      expect.any(Promise),
+      expect.any(Function),
+      expect.any(Function),
+    );
   });
 });
 

@@ -255,8 +255,9 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     // Short-circuit the media decision so no real download/upload runs; we only
     // assert the webhook extracted the media and routed it to resolveIncomingMedia.
     const resolveIncomingMedia = vi.fn(async () => ({
-      action: "reply" as const,
-      text: "I see your image.",
+      replies: ["I see your image."],
+      text: "",
+      attachments: [],
     }));
     (
       h.adapter as unknown as { resolveIncomingMedia: unknown }
@@ -267,7 +268,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
 
     expect(res.status).toBe(200);
     await vi.waitFor(() => expect(resolveIncomingMedia).toHaveBeenCalled());
-    expect(resolveIncomingMedia.mock.calls[0][0]).toMatchObject({
+    expect(resolveIncomingMedia.mock.calls[0][0][0].media).toMatchObject({
       kind: "image",
       caption: "what is in this picture?",
     });

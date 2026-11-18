@@ -71,8 +71,14 @@ export {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
-export type { IncomingMedia, MediaKind, MediaOutcome } from "./media";
+export type {
+  IncomingAttachment,
+  IncomingMedia,
+  MediaBatchOutcome,
+  MediaKind,
+} from "./media";
 export {
+  BOT_MAX_FILES_PER_MESSAGE,
   BOT_MEDIA_LIMITS,
   extensionForMime,
   friendlyMediaError,

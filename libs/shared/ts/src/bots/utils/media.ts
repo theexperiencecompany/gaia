@@ -29,6 +29,9 @@ export const BOT_MEDIA_LIMITS = {
   audio: 25 * MB,
 } as const;
 
+/** Attachments GAIA reads from one message; equals the web composer's MAX_FILES. */
+export const BOT_MAX_FILES_PER_MESSAGE = 5;
+
 /**
  * How long an adapter waits for a platform to deliver media bytes before
  * giving up with a {@link MediaReadTimeoutError}. Shared so a stalled download
@@ -84,6 +87,29 @@ export interface IncomingMedia {
 export type MediaOutcome =
   | { action: "chat"; text: string; attachments: BotFileData[] }
   | { action: "reply"; text: string };
+
+/** One attachment of an inbound message, with the thunk that fetches its bytes. */
+export interface IncomingAttachment {
+  media: IncomingMedia;
+  download: (maxBytes: number) => Promise<Uint8Array>;
+}
+
+/**
+ * What one message's attachments came to. The adapter sends each reply, then
+ * streams a chat turn when `text` or `attachments` is non-empty.
+ */
+export interface MediaBatchOutcome {
+  /** Rejections, failures and the skipped-files notice, in order. */
+  replies: string[];
+  /** Transcripts when any audio was read, else the first file's prompt. */
+  text: string;
+  attachments: BotFileData[];
+}
+
+/** The notice for files past {@link BOT_MAX_FILES_PER_MESSAGE}, worded like web's. */
+export function skippedFilesMessage(skipped: number): string {
+  return `Up to ${BOT_MAX_FILES_PER_MESSAGE} files per message. Read the first ${BOT_MAX_FILES_PER_MESSAGE}, skipped ${skipped}.`;
+}
 
 /** Reply shown for media kinds GAIA does not process yet (video, sticker, …). */
 export function unsupportedMediaMessage(kind: string): string {

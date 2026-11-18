@@ -8,7 +8,8 @@
  * - **Ephemeral responses** via Bolt's `respond({ response_type: "ephemeral" })`
  * - **Rich messages** rendered as markdown (Slack has no native embed API)
  * - **App mentions** via the `app_mention` event with streaming chat
- * - **DM messages** via the `message` event with `channel_type === "im"`
+ * - **DM messages** via the `message` event with `channel_type === "im"`,
+ *   including ones carrying files (subtype `file_share`)
  * - **Socket Mode** for real-time event delivery
  *
  * New features gained from the unified command system:
@@ -23,11 +24,14 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
   buildAuthLinkMessage,
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
   hashLogIdentifier,
+  type IncomingAttachment,
+  type MediaBatchOutcome,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -41,25 +45,21 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
+  unfetchableMediaMessage,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
 import { which } from "node-emoji";
+import {
+  downloadSlackFile,
+  type SlackInboundFile,
+  slackFileMedia,
+} from "./media";
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
   message: string | Record<string, unknown>,
 ) => Promise<unknown>;
-
-/** Slack message event shape (Bolt doesn't export typed message events). */
-interface SlackMessageEvent {
-  text?: string;
-  user?: string;
-  channel?: string;
-  channel_type?: string;
-  subtype?: string;
-  ts?: string;
-}
 
 /** Minimal Slack Web API client shape used by the adapter. */
 interface SlackWebClient {
@@ -198,7 +198,7 @@ export class SlackAdapter extends BaseBotAdapter {
       const botMention = context.botUserId
         ? new RegExp(`<@${context.botUserId}>`, "g")
         : null;
-      const content = botMention
+      const caption = botMention
         ? event.text.replace(botMention, "").trim()
         : event.text.trim();
       const userId = event.user;
@@ -206,7 +206,19 @@ export class SlackAdapter extends BaseBotAdapter {
 
       if (!userId) return;
 
-      if (!content) {
+      const media = await this.resolveSlackFiles(
+        client,
+        event.files ?? [],
+        caption,
+        userId,
+        channelId,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+
+      if (!content && attachments.length === 0) {
+        // Every file was rejected and its notice already sent.
+        if (media) return;
         await client.chat.postMessage({
           channel: channelId,
           text: "How can I help you?",
@@ -222,26 +234,42 @@ export class SlackAdapter extends BaseBotAdapter {
         false,
         receivedAt,
         event.ts,
+        attachments,
       );
     });
 
-    // DM messages
+    // DM messages; one carrying files arrives with subtype file_share. Bolt's
+    // ignoreSelf drops the bot's own uploads, so outbound files never loop back.
     this.app.message(async ({ message, client }) => {
       const receivedAt = Date.now();
-      const msg = message as SlackMessageEvent;
 
-      if (msg.subtype) return;
-      if (msg.channel_type !== "im") return;
-      if (!msg.text || !msg.user || !msg.channel) return;
+      if (message.subtype !== undefined && message.subtype !== "file_share") {
+        return;
+      }
+      if (message.channel_type !== "im") return;
+      if (!message.user || !message.channel) return;
+
+      const caption = message.text?.trim() ?? "";
+      const media = await this.resolveSlackFiles(
+        client,
+        message.files ?? [],
+        caption,
+        message.user,
+        message.channel,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+      if (!content && attachments.length === 0) return;
 
       await this.handleSlackStreaming(
         client,
-        msg.channel,
-        msg.user,
-        msg.text,
+        message.channel,
+        message.user,
+        content,
         true,
         receivedAt,
-        msg.ts,
+        message.ts,
+        attachments,
       );
     });
   }
@@ -409,6 +437,48 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   /**
+   * Reads the files on a Slack message through the shared pipeline and posts
+   * its notices (rejections, skipped files); null when there are no files.
+   */
+  private async resolveSlackFiles(
+    client: SlackWebClient,
+    files: SlackInboundFile[],
+    caption: string,
+    userId: string,
+    channelId: string,
+  ): Promise<MediaBatchOutcome | null> {
+    if (files.length === 0) return null;
+
+    const fetchable: IncomingAttachment[] = [];
+    for (const file of files) {
+      const media = slackFileMedia(file, caption || undefined);
+      const url = file.url_private_download;
+      if (!url) {
+        // External files (Drive, Dropbox links) carry no Slack download URL.
+        await client.chat.postMessage({
+          channel: channelId,
+          text: unfetchableMediaMessage(media.kind, false),
+        });
+        continue;
+      }
+      fetchable.push({
+        media,
+        download: (maxBytes) => downloadSlackFile(url, this.token, maxBytes),
+      });
+    }
+
+    const outcome = await this.resolveIncomingMedia(
+      fetchable,
+      userId,
+      channelId,
+    );
+    for (const text of outcome.replies) {
+      await client.chat.postMessage({ channel: channelId, text });
+    }
+    return outcome;
+  }
+
+  /**
    * Shared streaming handler for `/gaia`, @mentions, and DMs.
    *
    * Posts an initial "Thinking..." message, then updates it via
@@ -424,6 +494,7 @@ export class SlackAdapter extends BaseBotAdapter {
     isDm: boolean,
     receivedAt: number,
     inboundTs?: string,
+    attachments: BotFileData[] = [],
   ): Promise<void> {
     const analytics = this.analyticsFor(userId);
     const placeholder = ReplyPlaceholder.post(
@@ -460,6 +531,12 @@ export class SlackAdapter extends BaseBotAdapter {
         isDm,
         platformMessageId: inboundTs,
         receivedAt,
+        ...(attachments.length > 0
+          ? {
+              fileIds: attachments.map((a) => a.fileId),
+              fileData: attachments,
+            }
+          : {}),
       },
       async (text: string) => {
         await client.chat.update({

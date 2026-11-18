@@ -11,7 +11,7 @@ import {
   friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
-  type IncomingMedia,
+  type IncomingAttachment,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
@@ -590,10 +590,7 @@ export class ImessageAdapter extends BaseBotAdapter {
     try {
       await this.ensureWelcomed(handle, space);
 
-      const uploaded: BotFileData[] = [];
-      const transcripts: string[] = [];
-      let filePrompt = "";
-
+      const fetchable: IncomingAttachment[] = [];
       for (const [index, content] of contents.entries()) {
         const isVoiceNote = content.type === "voice";
         if (!content.id) {
@@ -608,34 +605,26 @@ export class ImessageAdapter extends BaseBotAdapter {
           );
           continue;
         }
-
-        const incoming: IncomingMedia = {
-          kind: kinds[index],
-          isVoiceNote,
-          mimeType: content.mimeType,
-          filename: content.name,
-          sizeBytes: content.size,
-          caption,
-        };
-        const outcome = await this.resolveIncomingMedia(
-          incoming,
-          (maxBytes) => readMediaBytes(content, maxBytes),
-          handle,
-          space.id,
-        );
-
-        if (outcome.action === "reply") {
-          await this.sendImessageText(space, outcome.text);
-        } else if (outcome.attachments.length > 0) {
-          uploaded.push(...outcome.attachments);
-          if (!filePrompt) filePrompt = outcome.text;
-        } else {
-          transcripts.push(outcome.text);
-        }
+        fetchable.push({
+          media: {
+            kind: kinds[index],
+            isVoiceNote,
+            mimeType: content.mimeType,
+            filename: content.name,
+            sizeBytes: content.size,
+            caption,
+          },
+          download: (maxBytes) => readMediaBytes(content, maxBytes),
+        });
       }
 
-      const text =
-        transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
+      if (fetchable.length === 0) return;
+      const {
+        replies,
+        text,
+        attachments: uploaded,
+      } = await this.resolveIncomingMedia(fetchable, handle, space.id);
+      for (const reply of replies) await this.sendImessageText(space, reply);
       if (uploaded.length > 0 || text) {
         // Media turns carry no inbound message id (the media pipeline drops
         // it), so a later reaction to one falls back to a text bubble.

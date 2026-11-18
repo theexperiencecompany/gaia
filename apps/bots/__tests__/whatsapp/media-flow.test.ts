@@ -108,18 +108,16 @@ const MOCK_CONFIG = {
 };
 
 /** Outcome returned by the shared media pipeline (overridable per-test). */
-type MediaOutcome =
-  | {
-      action: "chat";
-      text: string;
-      attachments: {
-        fileId: string;
-        url: string;
-        filename: string;
-        type: string;
-      }[];
-    }
-  | { action: "reply"; text: string };
+interface MediaOutcome {
+  replies: string[];
+  text: string;
+  attachments: {
+    fileId: string;
+    url: string;
+    filename: string;
+    type: string;
+  }[];
+}
 
 interface MediaInternals {
   waClient: typeof mockWaClientInstance;
@@ -252,7 +250,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("builds an IncomingMedia descriptor from the Kapso media for an image with a caption", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -266,7 +264,7 @@ describe("WhatsAppAdapter - media routing", () => {
     );
 
     expect(resolveCalls(adapter)).toHaveBeenCalledTimes(1);
-    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    const incoming = resolveCalls(adapter).mock.calls[0][0][0].media;
     expect(incoming).toMatchObject({
       kind: "image",
       isVoiceNote: false,
@@ -278,7 +276,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("preserves the voice-note flag and audio mime type in the descriptor", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -290,7 +288,7 @@ describe("WhatsAppAdapter - media routing", () => {
       }),
     );
 
-    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    const incoming = resolveCalls(adapter).mock.calls[0][0][0].media;
     expect(incoming).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
@@ -300,7 +298,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("passes a download thunk that fetches the correct Kapso media bytes", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -309,7 +307,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
     // The adapter must hand resolveIncomingMedia a thunk, not pre-downloaded
     // bytes — unsupported kinds must be able to skip the download entirely.
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
     expect(mockMediaDownload).not.toHaveBeenCalled();
@@ -326,11 +324,11 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("forwards the Kapso-declared media size so an oversize file skips the download", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "reply", text: "too large" });
+    setOutcome(adapter, { replies: ["too large"], text: "", attachments: [] });
 
     await callHandle(adapter, media({ sizeBytes: 12_582_912 }));
 
-    expect(resolveCalls(adapter).mock.calls[0][0]).toMatchObject({
+    expect(resolveCalls(adapter).mock.calls[0][0][0].media).toMatchObject({
       sizeBytes: 12_582_912,
     });
     expect(mockMediaDownload).not.toHaveBeenCalled();
@@ -341,11 +339,11 @@ describe("WhatsAppAdapter - media routing", () => {
     const { response, produced, cancelled } = endlessMediaResponse(chunk);
     mockMediaDownload.mockResolvedValue(response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-huge" }));
 
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
     const bytes = await thunk(1000);
@@ -365,11 +363,11 @@ describe("WhatsAppAdapter - media routing", () => {
       body: null,
     } as unknown as Response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-gone" }));
 
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
@@ -379,7 +377,7 @@ describe("WhatsAppAdapter - media routing", () => {
   it("dispatches a 'chat' outcome to handleStreamingChat with fileIds and fileData", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "chat",
+      replies: [],
       text: "Please describe this image.",
       attachments: [
         {
@@ -407,7 +405,7 @@ describe("WhatsAppAdapter - media routing", () => {
   it("dispatches a transcript 'chat' outcome with no attachments", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "chat",
+      replies: [],
       text: "this is the transcribed voice note",
       attachments: [],
     });
@@ -426,8 +424,11 @@ describe("WhatsAppAdapter - media routing", () => {
   it("sends a 'reply' outcome verbatim and does NOT start a chat turn", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "reply",
-      text: "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+      replies: [
+        "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+      ],
+      text: "",
+      attachments: [],
     });
 
     await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));

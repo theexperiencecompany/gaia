@@ -24,11 +24,9 @@ import {
   buildAuthLinkMessage,
   createBotLogger,
   formatBotError,
-  friendlyMediaError,
   handleStreamingChat,
   hashLogIdentifier,
-  type IncomingMedia,
-  type MediaOutcome,
+  type MediaBatchOutcome,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -587,51 +585,37 @@ export class DiscordAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handles DM messages with authenticated streaming.
-   *
-   * Sends a welcome embed to first-time users before processing their message.
-   */
-  /**
-   * Resolves any inbound media on a Discord message to a {@link MediaOutcome}
-   * via the shared pipeline, or null when the message carries no media.
-   * Download/upload/transcribe failures are caught and surfaced as a reply.
+   * Reads every attachment on a Discord message through the shared pipeline
+   * and sends its notices (rejections, skipped files); null when the message
+   * carries no media.
    */
   private async resolveDiscordMedia(
     message: Message,
     caption: string,
     userId: string,
-  ): Promise<MediaOutcome | null> {
+    send: (text: string) => Promise<unknown>,
+  ): Promise<MediaBatchOutcome | null> {
     const extracted = extractDiscordMedia(message);
-    if (!extracted) return null;
+    if (extracted.length === 0) return null;
 
-    const media: IncomingMedia = {
-      ...extracted.media,
-      caption: caption || undefined,
-    };
-
-    try {
-      return await this.resolveIncomingMedia(
-        media,
-        (maxBytes) => downloadDiscordAttachment(extracted.url, maxBytes),
-        userId,
-        message.channelId,
-      );
-    } catch (err) {
-      this.adapterLogger.error(
-        "media_message_failed",
-        {
-          channel_hash: hashLogIdentifier(message.channelId),
-          media_kind: media.kind,
-        },
-        err,
-      );
-      return {
-        action: "reply",
-        text: friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
-      };
-    }
+    const outcome = await this.resolveIncomingMedia(
+      extracted.map(({ url, media }) => ({
+        media: { ...media, caption: caption || undefined },
+        download: (maxBytes: number) =>
+          downloadDiscordAttachment(url, maxBytes),
+      })),
+      userId,
+      message.channelId,
+    );
+    for (const reply of outcome.replies) await send(reply);
+    return outcome;
   }
 
+  /**
+   * Handles DM messages with authenticated streaming.
+   *
+   * Sends a welcome embed to first-time users before processing their message.
+   */
   private async handleDMMessage(
     message: Message,
     receivedAt: number,
@@ -646,15 +630,18 @@ export class DiscordAdapter extends BaseBotAdapter {
       (message.channel as { send: (t: string) => Promise<Message> }).send(text);
 
     const caption = message.content.trim();
-    const media = await this.resolveDiscordMedia(message, caption, userId);
-    if (media?.action === "reply") {
-      await send(media.text);
-      return;
-    }
+    const media = await this.resolveDiscordMedia(
+      message,
+      caption,
+      userId,
+      send,
+    );
     const content = media ? media.text : caption;
-    const attachments = media ? media.attachments : [];
+    const attachments = media?.attachments ?? [];
 
     if (!content && attachments.length === 0) {
+      // Every attachment was rejected and its notice already sent.
+      if (media) return;
       await send("How can I help you?");
       return;
     }
@@ -840,16 +827,14 @@ export class DiscordAdapter extends BaseBotAdapter {
       message,
       caption,
       message.author.id,
+      send,
     );
-    if (media?.action === "reply") {
-      await send(media.text);
-      return;
-    }
-
     const content = media ? media.text : caption;
-    const attachments = media ? media.attachments : [];
+    const attachments = media?.attachments ?? [];
 
     if (!content && attachments.length === 0) {
+      // Every attachment was rejected and its notice already sent.
+      if (media) return;
       await message.reply("How can I help you?");
       return;
     }

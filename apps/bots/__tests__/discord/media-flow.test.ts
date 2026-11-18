@@ -21,8 +21,8 @@ import type {
   BotUserContext,
 } from "../../../../libs/shared/ts/src/bots/types";
 import type {
-  IncomingMedia,
-  MediaOutcome,
+  IncomingAttachment,
+  MediaBatchOutcome,
 } from "../../../../libs/shared/ts/src/bots/utils";
 import {
   BOT_MEDIA_LIMITS,
@@ -82,14 +82,17 @@ function endlessCdn(): void {
 function makeMessage(size: number): Message {
   return {
     channelId: CHANNEL_ID,
-    attachments: {
-      first: () => ({
-        url: "https://cdn.discord.test/photo.jpg",
-        name: "photo.jpg",
-        contentType: "image/jpeg",
-        size,
-      }),
-    },
+    attachments: new Map([
+      [
+        "att-1",
+        {
+          url: "https://cdn.discord.test/photo.jpg",
+          name: "photo.jpg",
+          contentType: "image/jpeg",
+          size,
+        },
+      ],
+    ]),
     stickers: { size: 0 },
     flags: { has: () => false },
   } as unknown as Message;
@@ -113,39 +116,53 @@ function buildAdapter(): DiscordAdapter {
   return adapter;
 }
 
-/** Routes resolveIncomingMedia through the real shared pipeline. */
+/** Runs each attachment the adapter hands over through the real processBotMedia. */
 function useRealPipeline(adapter: DiscordAdapter): void {
   (
     adapter as unknown as {
       resolveIncomingMedia: (
-        media: IncomingMedia,
-        download: (maxBytes: number) => Promise<Uint8Array>,
+        items: IncomingAttachment[],
         userId: string,
         channelId?: string,
-      ) => Promise<MediaOutcome>;
+      ) => Promise<MediaBatchOutcome>;
     }
-  ).resolveIncomingMedia = (media, download, userId, channelId) =>
-    processBotMedia(fakeGaia, media, download, {
-      platform: "discord",
-      platformUserId: userId,
-      channelId,
-    } as BotUserContext);
+  ).resolveIncomingMedia = async (items, userId, channelId) => {
+    const batch: MediaBatchOutcome = { replies: [], text: "", attachments: [] };
+    for (const { media, download } of items) {
+      const outcome = await processBotMedia(fakeGaia, media, download, {
+        platform: "discord",
+        platformUserId: userId,
+        channelId,
+      } as BotUserContext);
+      if (outcome.action === "reply") batch.replies.push(outcome.text);
+      else {
+        batch.text = outcome.text;
+        batch.attachments.push(...outcome.attachments);
+      }
+    }
+    return batch;
+  };
 }
+
+let sent: string[] = [];
 
 function resolveMedia(
   adapter: DiscordAdapter,
   message: Message,
   caption = "",
-): Promise<MediaOutcome | null> {
+): Promise<MediaBatchOutcome | null> {
   return (
     adapter as unknown as {
       resolveDiscordMedia: (
         message: Message,
         caption: string,
         userId: string,
-      ) => Promise<MediaOutcome | null>;
+        send: (text: string) => Promise<unknown>,
+      ) => Promise<MediaBatchOutcome | null>;
     }
-  ).resolveDiscordMedia(message, caption, USER_ID);
+  ).resolveDiscordMedia(message, caption, USER_ID, async (text) => {
+    sent.push(text);
+  });
 }
 
 beforeEach(() => {
@@ -153,6 +170,7 @@ beforeEach(() => {
   produced = 0;
   cancelled = false;
   fetchedUrls = [];
+  sent = [];
   endlessCdn();
 });
 
@@ -170,10 +188,10 @@ describe("DiscordAdapter - inbound media size gating", () => {
       makeMessage(BOT_MEDIA_LIMITS.file + 1),
     );
 
-    expect(outcome).toEqual({
-      action: "reply",
-      text: "That file is too large to process (limit: 10 MB). Please share a smaller file.",
-    });
+    expect(outcome?.attachments).toEqual([]);
+    expect(sent).toEqual([
+      "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+    ]);
     expect(fetchedUrls).toEqual([]);
     expect(fakeGaia.uploadFile).not.toHaveBeenCalled();
   });
@@ -187,8 +205,9 @@ describe("DiscordAdapter - inbound media size gating", () => {
     expect(fetchedUrls).toEqual(["https://cdn.discord.test/photo.jpg"]);
     expect(cancelled).toBe(true);
     expect(produced).toBeLessThanOrEqual(BOT_MEDIA_LIMITS.file + 2 * CHUNK);
-    expect(outcome).toMatchObject({ action: "reply" });
-    expect((outcome as { text: string }).text).toContain("too large");
+    expect(outcome?.attachments).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("too large");
     expect(fakeGaia.uploadFile).not.toHaveBeenCalled();
   });
 
@@ -211,7 +230,9 @@ describe("DiscordAdapter - inbound media size gating", () => {
 
     const outcome = await resolveMedia(adapter, makeMessage(3), "what is this");
 
-    expect(outcome).toMatchObject({ action: "chat", text: "what is this" });
+    expect(outcome).toMatchObject({ text: "what is this" });
+    expect(outcome?.attachments.map((a) => a.fileId)).toEqual(["file-1"]);
+    expect(sent).toEqual([]);
     expect(fakeGaia.uploadFile).toHaveBeenCalledTimes(1);
     const uploaded = vi.mocked(fakeGaia.uploadFile).mock.calls[0][0] as {
       data: Buffer;
@@ -229,7 +250,7 @@ describe("DiscordAdapter - inbound media size gating", () => {
 
     await resolveMedia(adapter, makeMessage(1024));
 
-    const download = resolve.mock.calls[0][1] as (
+    const download = resolve.mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
     const bytes = await download(4096);
@@ -251,9 +272,36 @@ describe("DiscordAdapter - inbound media size gating", () => {
 
     await resolveMedia(adapter, makeMessage(555_000));
 
-    expect(resolve.mock.calls[0][0]).toMatchObject({
+    expect(resolve.mock.calls[0][0][0].media).toMatchObject({
       kind: mediaKindFromMime("image/jpeg"),
       sizeBytes: 555_000,
     });
+  });
+
+  it("hands the shared pipeline every attachment, each with its own download", async () => {
+    const adapter = buildAdapter();
+    const resolve = (
+      adapter as unknown as {
+        resolveIncomingMedia: ReturnType<typeof vi.fn>;
+      }
+    ).resolveIncomingMedia;
+    const message = makeMessage(100);
+    (message.attachments as unknown as Map<string, unknown>).set("att-2", {
+      url: "https://cdn.discord.test/second.png",
+      name: "second.png",
+      contentType: "image/png",
+      size: 200,
+    });
+
+    await resolveMedia(adapter, message, "compare");
+
+    const items = resolve.mock.calls[0][0] as {
+      media: { sizeBytes: number; caption: string };
+      download: (maxBytes: number) => Promise<Uint8Array>;
+    }[];
+    expect(items.map((i) => i.media.sizeBytes)).toEqual([100, 200]);
+    expect(items.every((i) => i.media.caption === "compare")).toBe(true);
+    await items[1].download(10);
+    expect(fetchedUrls).toEqual(["https://cdn.discord.test/second.png"]);
   });
 });

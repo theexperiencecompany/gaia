@@ -356,7 +356,7 @@ describe("handleInboundMessage routing", () => {
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
       mimeType: "audio/ogg",
@@ -389,11 +389,10 @@ describe("handleInboundMessage routing", () => {
       ).resolveIncomingMedia;
       resolveMock.mockImplementation(
         async (
-          _media: unknown,
-          download: (maxBytes: number) => Promise<Uint8Array>,
+          items: { download: (maxBytes: number) => Promise<Uint8Array> }[],
         ) => {
-          await download(1024);
-          return { action: "chat", text: "media", attachments: [] };
+          await items[0].download(1024);
+          return { replies: [], text: "media", attachments: [] };
         },
       );
 
@@ -446,7 +445,7 @@ describe("handleInboundMessage routing", () => {
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    const download = resolveMock.mock.calls[0][1] as (
+    const download = resolveMock.mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
@@ -469,8 +468,15 @@ describe("handleInboundMessage routing", () => {
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
     expect(resolveMock).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "image", mimeType: "image/jpeg" }),
-      expect.any(Function),
+      [
+        {
+          media: expect.objectContaining({
+            kind: "image",
+            mimeType: "image/jpeg",
+          }),
+          download: expect.any(Function),
+        },
+      ],
       "+15550100",
       space.id,
     );
@@ -485,7 +491,7 @@ describe("handleInboundMessage routing", () => {
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       sizeBytes: 42_000_000,
     });
     expect(content.read).not.toHaveBeenCalled();
@@ -500,7 +506,7 @@ describe("handleInboundMessage routing", () => {
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    const download = resolveMock.mock.calls[0][1] as (
+    const download = resolveMock.mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
@@ -543,7 +549,7 @@ describe("multi-part (group) content", () => {
 
     const resolveMock = resolveMockOf(adapter);
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "image",
       mimeType: "image/jpeg",
       caption: "explain this meme",
@@ -582,23 +588,17 @@ describe("multi-part (group) content", () => {
   it("sends stacked images as ONE chat turn carrying every attachment", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
-    let uploaded = 0;
     resolveMockOf(adapter).mockImplementation(
-      async (media: { caption?: string }) => {
-        uploaded += 1;
-        return {
-          action: "chat" as const,
-          text: media.caption ?? "media",
-          attachments: [
-            {
-              fileId: `file-${uploaded}`,
-              url: `https://cdn.gaia/${uploaded}`,
-              filename: `photo-${uploaded}.jpg`,
-              type: "file",
-            },
-          ],
-        };
-      },
+      async (items: { media: { caption?: string } }[]) => ({
+        replies: [],
+        text: items[0]?.media.caption ?? "media",
+        attachments: items.map((_, i) => ({
+          fileId: `file-${i + 1}`,
+          url: `https://cdn.gaia/${i + 1}`,
+          filename: `photo-${i + 1}.jpg`,
+          type: "file",
+        })),
+      }),
     );
 
     priv.handleInboundMessage(
@@ -612,7 +612,8 @@ describe("multi-part (group) content", () => {
     );
     await drainQueues(priv);
 
-    expect(resolveMockOf(adapter)).toHaveBeenCalledTimes(3);
+    expect(resolveMockOf(adapter)).toHaveBeenCalledTimes(1);
+    expect(resolveMockOf(adapter).mock.calls[0][0]).toHaveLength(3);
     expect(handleStreamingChat).toHaveBeenCalledTimes(1);
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -675,7 +676,7 @@ describe("multi-part (group) content", () => {
 
     const resolveMock = resolveMockOf(adapter);
     expect(resolveMock).toHaveBeenCalledTimes(1);
-    expect(resolveMock.mock.calls[0][0]).toMatchObject({
+    expect(resolveMock.mock.calls[0][0][0].media).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
       caption: "what did I say",
