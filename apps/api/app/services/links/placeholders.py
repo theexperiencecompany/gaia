@@ -97,7 +97,7 @@ def releasable_end(text: str) -> int:
     """
     open_link = _OPEN_LINK_TAIL.search(text)
     if open_link is not None and (
-        open_link["target"] is None or _may_become_placeholder(open_link["target"])
+        open_link.group("target") is None or _may_become_placeholder(open_link.group("target"))
     ):
         return open_link.start()
     held = _placeholder_tail(text)

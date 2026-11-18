@@ -7,7 +7,7 @@ one module under targets/ registered below.
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Generic, TypeVar, cast, get_args
+from typing import Generic, TypeVar, cast
 
 from app.models.short_link_models import (
     LinkSnapshot,
@@ -92,7 +92,7 @@ def build_registry(
     for spec in specs:
         if spec.type in registry:
             raise ValueError(f"two link target specs for {spec.type}")
-        if spec.type not in get_args(spec.target.model_fields["type"].annotation):
+        if spec.type not in spec.target.TYPES:
             raise ValueError(f"the {spec.type} spec takes {spec.target.__name__} targets")
         registry[spec.type] = cast(LinkTargetSpec[LinkTarget], spec)
     missing = set(ShortLinkTargetType) - registry.keys()

@@ -5,16 +5,16 @@ is this sweep's: the image goes first, then the brief that names it.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from app.constants.briefing import BRIEFING_EXPIRY_PAGE, BRIEFING_RETENTION
 from app.constants.log_tags import LogTag
 from app.db.repositories.briefings import briefing_repository
 from app.services.briefing.edition_image import delete_edition
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 
-async def sweep_expired_briefings(_ctx: dict[str, Any]) -> str:
+async def sweep_expired_briefings(_ctx: ArqJobContext) -> str:
     """Delete every brief written more than BRIEFING_RETENTION ago, and its edition image."""
     cutoff = datetime.now(UTC) - BRIEFING_RETENTION
     briefs = images = 0

@@ -68,15 +68,23 @@ async def scout_integrations(user_id: str) -> list[ScoutIntegration]:
     signed_out: list[ConnectedIntegration] = await get_signed_out_integrations_named(user_id)
     handles = await _own_handles(user_id)
     return [
+        *_scouted(connected, IntegrationStatus.CONNECTED, handles),
+        *_scouted(signed_out, IntegrationStatus.EXPIRED, handles),
+    ]
+
+
+def _scouted(
+    entries: list[ConnectedIntegration],
+    status: IntegrationStatus,
+    handles: dict[str, frozenset[str]],
+) -> list[ScoutIntegration]:
+    """Return the entries a scout watches, each carrying status and the user's handles on it."""
+    return [
         ScoutIntegration(
             integration_id=entry["id"],
             name=entry["name"],
             status=status,
             handles=handles.get(entry["id"], frozenset()),
-        )
-        for entries, status in (
-            (connected, IntegrationStatus.CONNECTED),
-            (signed_out, IntegrationStatus.EXPIRED),
         )
         for entry in entries
         if entry["id"] not in SCOUTED_ELSEWHERE and _is_external(entry["id"])
