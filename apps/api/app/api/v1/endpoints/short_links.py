@@ -281,7 +281,7 @@ async def download_link_file_route(
     log.set(short_link={"operation": "download", "slug_hash": hash_short_link_slug(slug)})
     link = await openable_link(await get_link(slug), _viewer(request, user))
     snapshot = servable_content(link, datetime.now(UTC))
-    if snapshot is None or snapshot.content_id is None:
+    if snapshot is None or snapshot.content_id is None:  # pragma: no mutate — narrows the type
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
     return download_response(await read_snapshot(link.user_id, snapshot.content_id), snapshot)
 

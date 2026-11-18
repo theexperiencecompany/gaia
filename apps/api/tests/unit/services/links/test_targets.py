@@ -55,6 +55,7 @@ from app.services.links.spec import SnapshotSource
 from app.services.storage import ArtifactInfo, JuiceFSUnavailable
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from app.utils.errors import AppError
+from tests.helpers import captured_wide_event
 
 PRIVATE_EMAIL = "ceo@acme-secret.com"
 PRIVATE_THREAD = "thread-18c2f9a"
@@ -754,3 +755,30 @@ class TestOpenUIArtifact:
         ) as artifacts:
             artifacts.get = AsyncMock(return_value=None)
             assert await _project(ShortLinkTargetType.OPENUI_ARTIFACT, "x", "a1") is None
+
+
+async def test_an_artifacts_export_is_its_pdf_named_by_title_and_logged() -> None:
+    artifact = OpenUIArtifact(
+        id="a1",
+        user_id="owner",
+        kind=ArtifactKind.REPORT,
+        title="Q3 plan",
+        program="p",
+        brief_hash="h",
+        model="gpt-6-luna",
+    )
+    spec = REGISTRY[ShortLinkTargetType.OPENUI_ARTIFACT]
+    assert spec.export is not None
+    with patch(
+        "app.services.links.targets.openui_artifact.owner_artifact_pdf",
+        AsyncMock(return_value=(artifact, b"%PDF-1.7")),
+    ) as printed:
+        async with captured_wide_event() as event:
+            exported = await spec.export(
+                "owner", RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1")
+            )
+
+    printed.assert_awaited_once_with("owner", "a1")
+    assert (exported.body, exported.media_type) == (b"%PDF-1.7", "application/pdf")
+    assert exported.headers["Content-Disposition"] == 'attachment; filename="Q3 plan.pdf"'
+    assert event["artifact"] == {"kind": "report", "pdf_bytes": 8}

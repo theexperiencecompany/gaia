@@ -405,7 +405,8 @@ class TestDownload:
             render=RenderMode.TEXT,
             content_id="c" * 26,
         )
-        link = _LINK.model_copy(update={"snapshot": snapshot})
+        # An expiry still ahead: the route reads the clock to know the link is live.
+        link = _LINK.model_copy(update={"snapshot": snapshot, "expires_at": _EXPIRES})
         with (
             patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=link)),
             patch(f"{_ENDPOINT}.read_snapshot", AsyncMock(return_value=b"a,b")) as read,
