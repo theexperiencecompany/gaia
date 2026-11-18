@@ -14,7 +14,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ComposedBlock,
@@ -53,36 +53,77 @@ def _shared_state(items: list[ComposedItem]) -> GroupState | None:
     return states.pop() if len(states) == 1 else None
 
 
+def _owed(pool: FactPool) -> list[int]:
+    """Return the pending approvals no brief has shown, in pool order, as many as a brief holds."""
+    return [
+        item_id
+        for item_id, candidate in pool.items.items()
+        if candidate.origin is CandidateOrigin.APPROVAL and candidate.is_news
+    ][:MAX_BRIEF_ITEMS]
+
+
+def _with_owed(blocks: list[ComposedBlock], owed: list[ComposedItem]) -> list[ComposedBlock]:
+    """Place the owed approvals in groups of their own, right after what already asks the user."""
+    asks = [
+        i
+        for i, b in enumerate(blocks)
+        if isinstance(b, ComposedLead)
+        or (isinstance(b, ComposedItems) and b.state is GroupState.NEEDS_YOU)
+    ]
+    at = asks[-1] + 1 if asks else 0
+    groups: list[ComposedBlock] = [
+        ComposedItems(
+            kind="items",
+            state=GroupState.NEEDS_YOU,
+            heading=GroupState.NEEDS_YOU.fallback_heading,
+            items=owed[start : start + MAX_ITEMS_PER_BLOCK],
+        )
+        for start in range(0, len(owed), MAX_ITEMS_PER_BLOCK)
+    ]
+    return blocks[:at] + groups + blocks[at:]
+
+
 def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
-    """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget."""
+    """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget.
+
+    A pending approval no brief has shown always has its place: the composer's choice is
+    what else fills the page.
+    """
     seen: set[int] = set()
     # Two items the composer titles alike are one subject to the reader, even from two todos.
     titles: set[str] = set()
-    left = MAX_BRIEF_ITEMS
+    owed = _owed(pool)
+    left = MAX_BRIEF_ITEMS - len(owed)
     charts = 0
     blocks: list[ComposedBlock] = []
+
+    def fits(item_id: int) -> bool:
+        nonlocal left
+        if item_id in owed:
+            return True
+        left -= 1
+        return left >= 0
+
     for block in composition.blocks:
         if isinstance(block, ComposedLead):
             candidate = pool.items.get(block.item.id)
-            if blocks or candidate is None:
+            if blocks or candidate is None or not fits(block.item.id):
                 continue
             seen.add(block.item.id)
             titles.add(same_text_key(block.item.title))
-            left -= 1
             blocks.append(block.model_copy(update={"item": _sided(block.item, candidate)}))
         elif isinstance(block, ComposedItems):
             items: list[ComposedItem] = []
             for item in block.items:
                 candidate = pool.items.get(item.id)
                 title = same_text_key(item.title)
-                if candidate is None or item.id in seen or title in titles or len(items) >= left:
+                if candidate is None or item.id in seen or title in titles or not fits(item.id):
                     continue
                 seen.add(item.id)
                 titles.add(title)
                 items.append(_sided(item, candidate))
             if not items:
                 continue
-            left -= len(items)
             state = _shared_state(items) or block.state
             blocks.append(block.model_copy(update={"items": items, "state": state}))
         elif block.kind == "chart":
@@ -91,7 +132,8 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
                 blocks.append(block)
         else:
             blocks.append(block)
-    return BriefComposition(blocks=blocks)
+    missing = [_placed(i, pool.items[i]) for i in owed if i not in seen]
+    return BriefComposition(blocks=_with_owed(blocks, missing) if missing else blocks)
 
 
 def _as_group(lead: ComposedLead) -> ComposedItems:

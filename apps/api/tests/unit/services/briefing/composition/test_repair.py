@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from tests.helpers import user_clock
 
-from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.briefing import MAX_BRIEF_ITEMS, BriefAction, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
@@ -16,9 +16,11 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
     ComposedNote,
+    placed_items,
 )
 from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.composition.compose import pool_values
 from app.services.briefing.composition.repair import pool_composition, repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
@@ -179,6 +181,58 @@ class TestTheLead:
         )
 
         assert repaired(composition, MANY) == _of(_lead(_item(1, title=mercury)), _group(_item(2)))
+
+
+APPROVAL = _candidate(
+    "Connect integration", origin=CandidateOrigin.APPROVAL, action=BriefAction.APPROVE
+)
+PLACED_APPROVAL = ComposedItems(
+    kind="items",
+    state=GroupState.NEEDS_YOU,
+    heading=GroupState.NEEDS_YOU.fallback_heading,
+    items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
+)
+
+
+class TestAnApprovalNoBriefHasShown:
+    """Replay of Dhruv's Nov 9: the composer left out an unseen approval, and the day went quiet."""
+
+    def test_it_is_placed_after_the_asks_when_the_composer_leaves_it_out(self) -> None:
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+        done = _group(_item(1, action=None, outcome=BriefOutcome.FINISHED), state=GroupState.DONE)
+
+        assert repaired(_of(_group(_item(1)), NOTE), pool) == _of(
+            _group(_item(1)), PLACED_APPROVAL, NOTE
+        )
+        assert repaired(_of(done), pool) == _of(PLACED_APPROVAL, done)
+
+    def test_one_shown_before_and_unchanged_is_the_composers_call(self) -> None:
+        shown = APPROVAL.model_copy(
+            update={
+                "memory": SignalMemoryDocument(
+                    user_id="u",
+                    integration_id="gaia",
+                    external_id="approval:1",
+                    first_seen=datetime(2026, 11, 9, tzinfo=UTC),
+                    times_shown=1,
+                )
+            }
+        )
+
+        assert repaired(_of(_group(_item(1))), _pool(_candidate("Ask 1"), shown)) == _of(
+            _group(_item(1))
+        )
+
+    def test_it_takes_its_place_inside_the_brief_cap(self) -> None:
+        pool = _pool(*(_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS + 1)), APPROVAL)
+        full = _of(
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS + 1))),
+        )
+
+        placed = [i.id for b in repaired(full, pool).blocks for i in placed_items(b)]
+
+        assert placed == [*range(1, MAX_BRIEF_ITEMS), MAX_BRIEF_ITEMS + 1]
 
 
 class TestThePageBudget:

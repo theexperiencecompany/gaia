@@ -32,6 +32,7 @@ from tests.briefing_run_world import (
 from app.constants.briefing import (
     IDLE_DORMANT_DAYS,
     WEEKLY_KICKER,
+    BriefAction,
     BriefForm,
     BriefingFrequency,
     BriefingKind,
@@ -48,6 +49,7 @@ from app.models.brief_payload_models import (
 from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_view_models import BriefNoteNotification
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.scout_models import (
     ScoutSkipReason,
 )
@@ -141,6 +143,34 @@ class TestAQuietDay:
         await run_brief(USER, BriefingKind.DAILY)
 
         assert world.stored().form is form
+
+    async def test_an_approval_no_brief_has_shown_is_placed_however_the_composer_leaves_it(
+        self, world: World
+    ) -> None:
+        """Replay of Dhruv's Nov 9: "Nothing new needs you today" while an unseen approval waited."""
+        quiet_day(world)
+        world.track(TrackedWork(blocked=[tracked("b1", "Approve the Acme MSA")]))
+        shown_before(world, "b1", times=2)
+        world.approvals.rows = [
+            ApprovalLedgerDocument(
+                approval_id="ap_1",
+                conversation_id="conv-1",
+                user_id=USER,
+                fingerprint="fp-1",
+                tool_name="GMAIL_SEND_EMAIL",
+                summary="Send the invoice to Acme",
+            )
+        ]
+        world.composer.side_effect = composed({"Still waiting": ["Approve the Acme MSA"]})
+
+        await run_brief(USER, BriefingKind.DAILY)
+
+        payload = world.stored()
+        assert payload.form is BriefForm.EDITION
+        assert [(i.text, i.action) for s in payload.sections for i in s.items][-1] == (
+            "Send the invoice to Acme",
+            BriefAction.APPROVE,
+        )
 
     async def test_a_day_of_repeats_whose_chart_shows_what_moved_is_an_edition(
         self, world: World
