@@ -68,7 +68,7 @@ case "$*" in
   *"service ps"*)
     head -n 1 "$STATE/states"
     if [[ $(wc -l < "$STATE/states") -gt 1 ]]; then sed -i.bak 1d "$STATE/states"; fi ;;
-  *"service logs"*) echo "  migrate_briefing_state: applied" ;;
+  *"service logs"*) echo "  migrate_todo_delivery: applied" ;;
   *"service rm"*) rm -f "$STATE/earlier-job" ;;
   *) echo "unexpected docker call: $*" >&2; exit 1 ;;
 esac
@@ -166,7 +166,7 @@ def test_the_job_is_the_workers_image_running_the_release_step(tmp_path: Path) -
         "type=volume,source=gaia_jfs_v2,target=/mnt/jfs,volume-nocopy=true"
     ]
     assert _after(args, "--constraint") == ["node.role == manager"]
-    assert "migrate_briefing_state: applied" in result.stdout
+    assert "migrate_todo_delivery: applied" in result.stdout
     assert "service rm gaia-prod_migrate" in (state / "calls").read_text()
 
 

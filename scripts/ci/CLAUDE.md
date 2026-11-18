@@ -51,7 +51,7 @@ keeps serving while the job runs, so a migration that moves a field leaves it re
 that field's default for those minutes, so a migration that moves a field is
 expand/contract: the expand copies and keeps the old field, and the contract step that drops
 it runs a release later. `apps/api/scripts/contract_moved_fields.py` is the pending contract
-for the briefing-stack moves; the next release appends it to `POST_DEPLOY_STEPS`
+for the todo and notification moves; the next release appends it to `POST_DEPLOY_STEPS`
 (`infra/docker/CLAUDE.md`). Self-host gets the same order from the
 `migrate` service in `packages/cli/selfhost/docker-compose.selfhost.yml`, which the API
 and worker wait on; Render runs it as their `preDeployCommand`.

@@ -22,33 +22,23 @@ from app.db.mongodb.collections import get_async_collection
 from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
-from scripts.migrate_brief_storage import migrate as migrate_brief_storage
-from scripts.migrate_briefing_state import migrate as migrate_briefing_state
 from scripts.migrate_inbox_desk_recurrence import migrate as migrate_inbox_desk_recurrence
 from scripts.migrate_notification_details import migrate as migrate_notification_details
-from scripts.migrate_short_link_targets import migrate as migrate_short_link_targets
 from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
 from scripts.provision_daily_briefings import rollout as provision_daily_briefings
-from scripts.rename_brief_wind_down import migrate as rename_brief_wind_down
-from scripts.resync_brief_schedules import resync as resync_brief_schedules
 from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
 #: Order matters: shapes are migrated before anything reads them, activity is backfilled before
-#: dormancy reads it, and briefs are provisioned before the desk and the resync follow them.
+#: dormancy reads it, and briefs are provisioned before the desk follows them.
 #: A migration reads only the fields it rewrites, never a whole old document.
 POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
-    ("migrate_short_link_targets", migrate_short_link_targets),
-    ("migrate_brief_storage", migrate_brief_storage),
-    ("migrate_briefing_state", migrate_briefing_state),
-    ("rename_brief_wind_down", rename_brief_wind_down),
     ("retire_legacy_triggers", retire_legacy_triggers),
     ("backfill_last_active_at", backfill_last_active_at),
     ("provision_daily_briefings", provision_daily_briefings),
     ("migrate_inbox_desk_recurrence", migrate_inbox_desk_recurrence),
     ("migrate_workflow_delivery", migrate_workflow_delivery),
     ("migrate_todo_delivery", migrate_todo_delivery),
-    ("resync_brief_schedules", resync_brief_schedules),
     ("clear_email_derived_names", clear_email_derived_names),
     ("migrate_notification_details", migrate_notification_details),
 )
