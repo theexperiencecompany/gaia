@@ -231,8 +231,11 @@ def build_facts(
         fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
     events: list[tuple[BriefingEvent, str]] = []
     for (fact_id, candidate), event in zip(sources.event_items.items(), calendar, strict=True):
-        # Listed under its day, an event's time slot says only when it starts.
-        facts[fact_id] = replace(pooled.facts[fact_id], time=start_time(event))
+        # Listed under its day, an event's time slot says only when it starts; its end is its words.
+        facts[fact_id] = replace(
+            pooled.facts[fact_id], time=start_time(event), words=candidate.detail
+        )
+        own_words += [candidate.detail] if candidate.detail else []
         said = Voiced(facts[fact_id])
         line = item_line(
             fact_id, candidate, clock, said

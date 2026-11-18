@@ -56,7 +56,7 @@ from app.services.briefing.facts import (
     user_todos_note,
 )
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact
+from app.services.briefing.slots import BriefFact, slot_problems
 
 pytestmark = pytest.mark.unit
 
@@ -699,6 +699,13 @@ class TestTheEmptyBriefAndTheLead:
         facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]))
 
         assert facts.values.facts == {7: BriefFact(title="Board call", time="3:00 PM")}
+
+    def test_the_time_an_events_line_says_it_ends_may_be_typed(self) -> None:
+        event = BriefingEvent(date="2026-11-11", start="10:30", end="10:45", title="Standup")
+
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]))
+
+        assert slot_problems("message", "Standup runs until 10:45.", facts.values) == []
 
     def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
         def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
