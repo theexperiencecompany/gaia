@@ -45,7 +45,6 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
-  unfetchableMediaMessage,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
@@ -438,7 +437,7 @@ export class SlackAdapter extends BaseBotAdapter {
 
   /**
    * Reads the files on a Slack message through the shared pipeline and posts
-   * its notices (rejections, skipped files); null when there are no files.
+   * its notice (rejections, skipped files); null when there are no files.
    */
   private async resolveSlackFiles(
     client: SlackWebClient,
@@ -449,31 +448,23 @@ export class SlackAdapter extends BaseBotAdapter {
   ): Promise<MediaBatchOutcome | null> {
     if (files.length === 0) return null;
 
-    const fetchable: IncomingAttachment[] = [];
-    for (const file of files) {
-      const media = slackFileMedia(file, caption || undefined);
+    const items = files.map((file): IncomingAttachment => {
       const url = file.url_private_download;
-      if (!url) {
+      return {
+        media: slackFileMedia(file, caption || undefined),
         // External files (Drive, Dropbox links) carry no Slack download URL.
-        await client.chat.postMessage({
-          channel: channelId,
-          text: unfetchableMediaMessage(media.kind, false),
-        });
-        continue;
-      }
-      fetchable.push({
-        media,
-        download: (maxBytes) => downloadSlackFile(url, this.token, maxBytes),
-      });
-    }
+        download: url
+          ? (maxBytes) => downloadSlackFile(url, this.token, maxBytes)
+          : undefined,
+      };
+    });
 
-    const outcome = await this.resolveIncomingMedia(
-      fetchable,
-      userId,
-      channelId,
-    );
-    for (const text of outcome.replies) {
-      await client.chat.postMessage({ channel: channelId, text });
+    const outcome = await this.resolveIncomingMedia(items, userId, channelId);
+    if (outcome.notice) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: outcome.notice,
+      });
     }
     return outcome;
   }

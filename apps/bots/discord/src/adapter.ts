@@ -586,7 +586,7 @@ export class DiscordAdapter extends BaseBotAdapter {
 
   /**
    * Reads every attachment on a Discord message through the shared pipeline
-   * and sends its notices (rejections, skipped files); null when the message
+   * and sends its notice (rejections, skipped files); null when the message
    * carries no media.
    */
   private async resolveDiscordMedia(
@@ -607,7 +607,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       userId,
       message.channelId,
     );
-    for (const reply of outcome.replies) await send(reply);
+    if (outcome.notice) await send(outcome.notice);
     return outcome;
   }
 

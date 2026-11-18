@@ -116,7 +116,7 @@ function buildAdapter(): DiscordAdapter {
   return adapter;
 }
 
-/** Runs each attachment the adapter hands over through the real processBotMedia. */
+/** Runs the (single) attachment the adapter hands over through the real processBotMedia. */
 function useRealPipeline(adapter: DiscordAdapter): void {
   (
     adapter as unknown as {
@@ -127,20 +127,15 @@ function useRealPipeline(adapter: DiscordAdapter): void {
       ) => Promise<MediaBatchOutcome>;
     }
   ).resolveIncomingMedia = async (items, userId, channelId) => {
-    const batch: MediaBatchOutcome = { replies: [], text: "", attachments: [] };
-    for (const { media, download } of items) {
-      const outcome = await processBotMedia(fakeGaia, media, download, {
-        platform: "discord",
-        platformUserId: userId,
-        channelId,
-      } as BotUserContext);
-      if (outcome.action === "reply") batch.replies.push(outcome.text);
-      else {
-        batch.text = outcome.text;
-        batch.attachments.push(...outcome.attachments);
-      }
-    }
-    return batch;
+    const [{ media, download }] = items;
+    const outcome = await processBotMedia(fakeGaia, media, download, {
+      platform: "discord",
+      platformUserId: userId,
+      channelId,
+    } as BotUserContext);
+    return outcome.action === "reply"
+      ? { notice: outcome.text, text: "", attachments: [] }
+      : { notice: "", text: outcome.text, attachments: outcome.attachments };
   };
 }
 

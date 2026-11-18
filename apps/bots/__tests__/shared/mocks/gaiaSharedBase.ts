@@ -155,7 +155,7 @@ export function makeGaiaSharedMock(
     // (adapter as ...).resolveIncomingMedia.mockResolvedValueOnce(...).
     resolveIncomingMedia = vi.fn(
       async (items: { media: { caption?: string } }[]) => ({
-        replies: [] as string[],
+        notice: "",
         text: items[0]?.media.caption ?? "media",
         attachments: [] as unknown[],
       }),

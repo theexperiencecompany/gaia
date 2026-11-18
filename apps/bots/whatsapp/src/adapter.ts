@@ -830,9 +830,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         waId,
       );
 
-      for (const reply of outcome.replies) {
-        await this.sendWhatsAppText(waId, reply);
-      }
+      if (outcome.notice) await this.sendWhatsAppText(waId, outcome.notice);
       if (outcome.text || outcome.attachments.length > 0) {
         await this.handleStreamingMessage(
           waId,

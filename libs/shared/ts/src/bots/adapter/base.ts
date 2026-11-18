@@ -76,14 +76,16 @@ import {
 import {
   BOT_MAX_FILES_PER_MESSAGE,
   friendlyMediaError,
-  type IncomingAttachment,
-  type IncomingMedia,
-  type MediaBatchOutcome,
-  type MediaOutcome,
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
   skippedFilesMessage,
 } from "../utils/media";
+import type {
+  IncomingAttachment,
+  IncomingMedia,
+  MediaBatchOutcome,
+  MediaOutcome,
+} from "../utils/media.types";
 import {
   REACTION_OUTCOME,
   REACTION_SURFACE,
@@ -808,8 +810,8 @@ export abstract class BaseBotAdapter {
 
   /**
    * Reads one message's attachments, up to {@link BOT_MAX_FILES_PER_MESSAGE}, through
-   * {@link processBotMedia} and folds them into one outcome. A failed attachment becomes a reply
-   * and the rest still go through; files past the cap get one skipped-files notice.
+   * {@link processBotMedia} and folds them into one outcome. A failed attachment adds a line to the
+   * notice and the rest still go through; files past the cap add one skipped-files line.
    *
    * Each attachment gets its own media_intake wide event (download, Whisper, upload), which
    * happens before any chat boundary exists.
@@ -826,21 +828,27 @@ export abstract class BaseBotAdapter {
     const attachments: BotFileData[] = [];
     let filePrompt = "";
 
-    for (const { media, download } of read) {
-      const outcome = await withWideEvent(
-        "media_intake",
-        {
-          platform: this.platform,
-          component: "base-adapter",
-          user_hash: hashLogIdentifier(userId),
-          channel_hash: hashLogIdentifier(channelId),
-          media_kind: media.kind,
-          is_voice_note: media.isVoiceNote,
-          files_in_message: items.length,
-          files_skipped: skipped,
-        },
-        () => this.intakeOne(media, download, userId, channelId),
-      );
+    // Attachments are independent, so they download and upload concurrently;
+    // Promise.all keeps the outcomes in message order.
+    const outcomes = await Promise.all(
+      read.map(({ media, download }) =>
+        withWideEvent(
+          "media_intake",
+          {
+            platform: this.platform,
+            component: "base-adapter",
+            user_hash: hashLogIdentifier(userId),
+            channel_hash: hashLogIdentifier(channelId),
+            media_kind: media.kind,
+            is_voice_note: media.isVoiceNote,
+            files_in_message: items.length,
+            files_skipped: skipped,
+          },
+          () => this.intakeOne(media, download, userId, channelId),
+        ),
+      ),
+    );
+    for (const outcome of outcomes) {
       if (outcome.action === "reply") {
         replies.push(outcome.text);
       } else if (outcome.attachments.length > 0) {
@@ -853,13 +861,13 @@ export abstract class BaseBotAdapter {
 
     if (skipped > 0) replies.push(skippedFilesMessage(skipped));
     const text = transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
-    return { replies, text, attachments };
+    return { notice: replies.join("\n\n"), text, attachments };
   }
 
   /** One attachment inside its media_intake boundary; a failure becomes the reply the user sees. */
   private async intakeOne(
     media: IncomingMedia,
-    download: (maxBytes: number) => Promise<Uint8Array>,
+    download: IncomingAttachment["download"],
     userId: string,
     channelId?: string,
   ): Promise<MediaOutcome> {

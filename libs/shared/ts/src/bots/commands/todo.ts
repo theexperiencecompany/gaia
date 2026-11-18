@@ -13,12 +13,13 @@
 
 import type { Priority } from "../../api/generated";
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchTodoSubcommand,
   handleTodoCreate,
   handleTodoList,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
+import { parseTextArgs } from "../utils/text";
 
 /** `/todo` command definition with subcommands. */
 export const todoCommand: BotCommand = {

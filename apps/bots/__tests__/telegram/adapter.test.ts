@@ -1589,7 +1589,7 @@ describe("TelegramAdapter - media message routing", () => {
       filename: "photo.jpg",
     };
     setResolveOutcome({
-      replies: [],
+      notice: "",
       text: "describe this image",
       attachments: [attachment],
     });
@@ -1624,7 +1624,7 @@ describe("TelegramAdapter - media message routing", () => {
   it("posts a plain reply for a 'reply' outcome and does not stream", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     setResolveOutcome({
-      replies: ["I can't process videos yet."],
+      notice: "I can't process videos yet.",
       text: "",
       attachments: [],
     });
@@ -1637,7 +1637,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("passes the extracted media and a download thunk to resolveIncomingMedia", async () => {
-    setResolveOutcome({ replies: ["ok"], text: "", attachments: [] });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
 
     const ctx = makePhotoCtx({ caption: "look at this" });
     await invokeMediaHandler(ctx);
@@ -1666,7 +1666,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("forwards the declared file size so an oversize photo never reaches getFile", async () => {
-    setResolveOutcome({ replies: ["ok"], text: "", attachments: [] });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
 
     const ctx = makePhotoCtx({ fileSize: 11_000_000 });
     await invokeMediaHandler(ctx);
@@ -1684,7 +1684,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("reads the Telegram file through a capped stream instead of buffering it whole", async () => {
-    setResolveOutcome({ replies: ["ok"], text: "", attachments: [] });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
     (adapter as unknown as { token: string }).token = "test-token";
 
     const chunk = 256;
@@ -1736,7 +1736,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("surfaces a failed file download as an error carrying the HTTP status", async () => {
-    setResolveOutcome({ replies: ["ok"], text: "", attachments: [] });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
     (adapter as unknown as { token: string }).token = "test-token";
     vi.stubGlobal(
       "fetch",
@@ -1763,7 +1763,7 @@ describe("TelegramAdapter - media message routing", () => {
 
   it("ignores a group photo that does not @mention the bot in its caption", async () => {
     setResolveOutcome({
-      replies: ["should not be used"],
+      notice: "should not be used",
       text: "",
       attachments: [],
     });
