@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.todos import NoReplyPlan, TodoActivityEvent, WaitingOn
+from app.constants.workflows import WorkflowDelivery
 from app.models.todo_models import TodoUpdate, TodoUpdateRequest
 from app.services import todo_activity
 from app.services.todo_activity import (
@@ -96,14 +97,14 @@ class TestRecordFieldChanges:
         ]
 
     async def test_turning_delivery_off_is_recorded(self) -> None:
-        entries = await self._recorded(TodoUpdateRequest(notify_on_run=False))
+        entries = await self._recorded(TodoUpdateRequest(delivery=WorkflowDelivery.SILENT))
 
         assert entries == [
             ("delivery_changed", "runs never message the user, by GAIA in conversation 00f7c88f")
         ]
 
     async def test_turning_delivery_on_is_recorded(self) -> None:
-        entries = await self._recorded(TodoUpdateRequest(notify_on_run=True))
+        entries = await self._recorded(TodoUpdateRequest(delivery=WorkflowDelivery.NOW))
 
         assert entries == [
             ("delivery_changed", "runs may message the user, by GAIA in conversation 00f7c88f")
@@ -111,7 +112,7 @@ class TestRecordFieldChanges:
 
     async def test_a_delivery_setting_sent_as_null_records_nothing(self) -> None:
         """An explicit null leaves the setting as it was, so nothing changed."""
-        assert await self._recorded(TodoUpdateRequest(notify_on_run=None)) == []
+        assert await self._recorded(TodoUpdateRequest(delivery=None)) == []
 
     async def test_fields_the_update_did_not_set_record_nothing(self) -> None:
         assert await self._recorded(TodoUpdateRequest(title="renamed", priority=None)) == []

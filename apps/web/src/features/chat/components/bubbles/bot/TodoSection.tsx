@@ -37,7 +37,7 @@ function toCanonicalTodo(t: ChatTodoItem): Todo {
     priority: t.priority,
     project_id: t.project_id ?? "",
     completed: t.completed,
-    notify_on_run: true,
+    delivery: "now",
     subtasks: (t.subtasks ?? []).map((s) => ({
       id: s.id,
       title: s.title,

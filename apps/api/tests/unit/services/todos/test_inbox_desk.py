@@ -17,6 +17,7 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
@@ -169,7 +170,7 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     kwargs = seams.create.await_args.kwargs
     assert kwargs["description"] == INBOX_DESK_DESCRIPTION
     assert kwargs["external_ref"] == DESK_REF
-    assert kwargs["notify_on_run"] is True
+    assert kwargs["delivery"] is WorkflowDelivery.BRIEF
     assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
     assert kwargs["schedule"].recurrence == DESK_RECURRENCE

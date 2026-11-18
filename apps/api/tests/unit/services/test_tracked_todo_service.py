@@ -33,6 +33,7 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
@@ -330,7 +331,7 @@ class TestACreateForACompletedRefReopensIt:
             USER_ID,
             "Sam wrote back",
             labels=["needs-reply"],
-            notify_on_run=False,
+            delivery=WorkflowDelivery.SILENT,
             source_conversation_id="abcdef1234567890",
             external_ref=_THREAD,
             schedule=TodoUpdate(waiting_on=WaitingOn.EVENT, scheduled_at=_NEXT_CHECK),
@@ -355,12 +356,12 @@ class TestACreateForACompletedRefReopensIt:
             *schedule.model_fields_set,
             "title",
             "labels",
-            "notify_on_run",
+            "delivery",
             "parent_todo_id",
         }
         assert update.title == "Sam wrote back"
         assert update.labels == ["needs-reply", GAIA_TRACKED_LABEL]
-        assert update.notify_on_run is False
+        assert update.delivery is WorkflowDelivery.SILENT
         assert update.parent_todo_id is None
         assert update.scheduled_at == _NEXT_CHECK and update.waiting_on is WaitingOn.EVENT
         assert update.recurrence is None and update.due_date is None
@@ -917,16 +918,16 @@ class TestCreateTrackedTodo:
 
         await TrackedTodoService.create_tracked_todo(USER_ID, "Prepare Q3 report")
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_a_caller_can_create_a_silent_todo(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
 
         await TrackedTodoService.create_tracked_todo(
-            USER_ID, "Prepare Q3 report", notify_on_run=False
+            USER_ID, "Prepare Q3 report", delivery=WorkflowDelivery.SILENT
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is False
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.SILENT
 
     async def test_preserves_caller_labels(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -1140,7 +1141,7 @@ class TestCreateSubTodo:
             USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is False
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.SILENT
 
     @pytest.mark.regression
     async def test_a_thread_sub_todo_tells_the_user_itself_by_default(
@@ -1154,17 +1155,17 @@ class TestCreateSubTodo:
             USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, external_ref=_THREAD
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_a_sub_todo_can_still_ask_to_message_the_user(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _parent()
         mock_deps.create.return_value = _todo_response()
 
         await TrackedTodoService.create_tracked_todo(
-            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, notify_on_run=True
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, delivery=WorkflowDelivery.NOW
         )
 
-        assert mock_deps.create.call_args.args[0].notify_on_run is True
+        assert mock_deps.create.call_args.args[0].delivery is WorkflowDelivery.NOW
 
     async def test_an_unusable_parent_creates_nothing(self, mock_repo, mock_deps):
         with pytest.raises(SubTodoParentError):

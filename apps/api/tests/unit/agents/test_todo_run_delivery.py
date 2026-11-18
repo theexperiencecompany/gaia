@@ -408,7 +408,7 @@ class TestTheWideEventSaysWhatHappened:
     async def test_with_delivery_off_the_report_is_still_kept_for_the_chats_next_turn(
         self,
     ) -> None:
-        with _seams(todo=_todo(notify_on_run=False)) as seams:
+        with _seams(todo=_todo(delivery="silent")) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         seams.narrate.assert_not_awaited()

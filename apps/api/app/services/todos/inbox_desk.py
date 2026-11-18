@@ -18,6 +18,7 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
@@ -158,7 +159,7 @@ async def _open_desk(user_id: str, schedule: TodoUpdate) -> TodoDocument:
             description=INBOX_DESK_DESCRIPTION,
             initial_canvas=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
             external_ref=INBOX_DESK_REF,
-            notify_on_run=True,
+            delivery=WorkflowDelivery.BRIEF,
             schedule=schedule,
         )
     except ExternalRefTakenError as taken:

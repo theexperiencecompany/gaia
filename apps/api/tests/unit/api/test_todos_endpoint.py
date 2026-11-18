@@ -16,6 +16,7 @@ import pytest
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -671,11 +672,11 @@ class TestUpdateTodoTimeline:
     async def test_turning_a_tracked_todos_delivery_off_is_recorded_as_the_users(
         self, client: AsyncClient
     ) -> None:
-        recorded = await self._put(client, {"notify_on_run": False}, [GAIA_TRACKED_LABEL])
+        recorded = await self._put(client, {"delivery": "silent"}, [GAIA_TRACKED_LABEL])
 
         todo_id, user_id, update = recorded.await_args.args
         assert (todo_id, user_id) == ("todo-1", "507f1f77bcf86cd799439011")
-        assert update.notify_on_run is False
+        assert update.delivery is WorkflowDelivery.SILENT
         assert recorded.await_args.kwargs == {"by": "the user in the app"}
 
     async def test_a_classic_todo_has_no_timeline(self, client: AsyncClient) -> None:
