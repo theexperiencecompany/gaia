@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from app.models.briefing_models import BriefingModel
-from app.utils.timezone import Timezone
+from app.utils.timezone import Timezone, as_utc
 
 
 @dataclass(frozen=True)
@@ -43,8 +43,7 @@ class DayWindow:
 
 def _local_day(moment: datetime, tz: tzinfo) -> date:
     """Return the local day a moment falls on; a naive moment is UTC, as Mongo stores it."""
-    aware = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
-    return aware.astimezone(tz).date()
+    return as_utc(moment).astimezone(tz).date()
 
 
 @dataclass(frozen=True)

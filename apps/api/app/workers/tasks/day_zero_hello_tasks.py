@@ -27,6 +27,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
 from app.utils.markdown_utils import decode_json_blocks
+from app.utils.timezone import as_utc
 from app.utils.user_display import display_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
@@ -79,9 +80,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="already_sent")
             return f"skip {user_id}: day-zero hello already sent"
 
-        created_at = user.created_at
-        if created_at is not None and created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
+        created_at = as_utc(user.created_at)
         account_too_old = created_at is None or datetime.now(UTC) - created_at > timedelta(
             days=DAY_ZERO_MAX_ACCOUNT_AGE_DAYS
         )
