@@ -21,7 +21,7 @@ from app.constants.briefing import (
     ArtFamily,
     EditionFamily,
 )
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.edition_fonts import edition_font_faces_css
 from app.services.briefing.editions.edition_logos import logo_css, logo_kinds

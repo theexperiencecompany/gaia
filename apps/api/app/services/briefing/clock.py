@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
-from app.models.briefing_models import BriefingModel
+from app.models.brief_document_models import BriefingModel
 from app.utils.timezone import Timezone, as_utc
 
 

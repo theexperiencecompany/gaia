@@ -3,13 +3,8 @@
 from datetime import UTC, datetime
 
 from app.constants.briefing import EditionVariant
-from app.models.briefing_models import (
-    BriefingCardData,
-    BriefingModel,
-    BriefingPublicView,
-    BriefingView,
-    EditionImage,
-)
+from app.models.brief_document_models import BriefingModel, EditionImage
+from app.models.brief_view_models import BriefingCardData, BriefingPublicView, BriefingView
 from app.services.briefing.edition_image import edition_url
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names

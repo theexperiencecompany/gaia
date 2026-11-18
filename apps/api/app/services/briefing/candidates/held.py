@@ -11,7 +11,8 @@ from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.brief_models import PendingBriefItemDocument
 from app.services.briefing.candidates.app_names import integration_name
-from app.services.briefing.held import first_line, held_text
+from app.services.briefing.formats import opening_line
+from app.services.briefing.held import held_text
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 
@@ -27,7 +28,7 @@ async def held_candidates(
         from_desk = (
             desk is not None and doc.source is BriefItemSource.TODO and doc.source_id == desk.id
         )
-        first = first_line(doc.text)
+        first = opening_line(doc.text)
         if from_desk:
             # The desk writes each finding as one self-contained line.
             candidates.append(

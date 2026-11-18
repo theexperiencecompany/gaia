@@ -43,7 +43,7 @@ from app.constants.onboarding import (
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,

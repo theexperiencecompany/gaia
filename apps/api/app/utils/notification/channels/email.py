@@ -23,7 +23,8 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationChannel
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingPayload, EditionImage
+from app.models.brief_document_models import EditionImage
+from app.models.brief_payload_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,

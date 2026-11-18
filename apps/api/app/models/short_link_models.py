@@ -21,10 +21,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, fiel
 from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.brief_item_models import ItemState
-from app.models.briefing_models import (
-    BriefingMood,
-    BriefingStat,
-)
+from app.models.brief_payload_models import BriefingMood, BriefingStat
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel

@@ -14,7 +14,7 @@ from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
-from app.models.briefing_models import BriefingMood, BriefingPayload, BriefVoice
+from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
 from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, dormancy
 from app.services.briefing.calendar_read import CalendarRead

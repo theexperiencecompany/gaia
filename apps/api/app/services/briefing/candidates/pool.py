@@ -7,7 +7,7 @@ from app.constants.briefing import GAIA_SOURCE
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.briefing_models import BriefingEvent, UnreadSource
+from app.models.brief_payload_models import BriefingEvent, UnreadSource
 from app.models.scout_models import SignalImportance
 from app.models.todo_models import TodoDocument
 from app.services.briefing.candidates.app_signals import app_signal_candidates

@@ -35,15 +35,15 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_pool_models import GoalOrigin
-from app.models.briefing_models import (
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingModel,
     BriefingMood,
     BriefingPayload,
     BriefingSection,
 )
+from app.models.brief_pool_models import GoalOrigin
 from app.models.calendar_models import CalendarEventsResponse, GoogleCalendarEventResource
 from app.models.memory_models import MemoryEntityRef, MemoryEntry, MemorySearchResult
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument

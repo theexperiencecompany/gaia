@@ -23,7 +23,7 @@ from app.db.repositories.pending_brief_items import pending_brief_items_reposito
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType

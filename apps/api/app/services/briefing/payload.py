@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from app.constants.briefing import hue_for_day
-from app.models.briefing_models import (
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingMood,
     BriefingPayload,

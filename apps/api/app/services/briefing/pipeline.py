@@ -19,8 +19,9 @@ from app.constants.briefing import (
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import BriefingTallies
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingModel, BriefingTallies
 from app.models.user_models import UserDocument
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead, read_calendar

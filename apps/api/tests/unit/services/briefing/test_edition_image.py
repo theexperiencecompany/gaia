@@ -25,7 +25,8 @@ from app.constants.briefing import (
     EditionVariant,
 )
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefDelivery, BriefingModel, BriefingMood, BriefingPayload
+from app.models.brief_document_models import BriefDelivery, BriefingModel
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.services.briefing import edition_email, store
 from app.services.briefing.edition_image import delete_edition, edition_url
 from app.services.briefing.render import RenderedImage

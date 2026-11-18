@@ -12,8 +12,8 @@ from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_payload_models import UnreadSource
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
-from app.models.briefing_models import UnreadSource
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import Signal
 from app.models.todo_models import ExternalRefSource, TodoDocument

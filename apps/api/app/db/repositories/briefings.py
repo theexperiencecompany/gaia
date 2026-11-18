@@ -19,7 +19,7 @@ from app.constants.briefing import (
 )
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import (
+from app.models.brief_document_models import (
     BriefingModel,
     BriefingUpdate,
     DeliveryStep,

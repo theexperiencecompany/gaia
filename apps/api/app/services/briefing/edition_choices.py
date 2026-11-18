@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from app.constants.briefing import EditionChoice
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingEdition, BriefingEditions
+from app.models.brief_settings_models import BriefingEdition, BriefingEditions
 from app.services.analytics_service import capture
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names

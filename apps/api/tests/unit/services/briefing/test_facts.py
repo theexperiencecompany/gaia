@@ -13,18 +13,18 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
+from app.models.brief_payload_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingSection,
+    UnreadSource,
+)
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
     GoalState,
     SeriesPoint,
     SeriesShape,
-)
-from app.models.briefing_models import (
-    BriefingEvent,
-    BriefingItem,
-    BriefingSection,
-    UnreadSource,
 )
 from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact

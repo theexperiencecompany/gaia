@@ -12,7 +12,7 @@ from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
-from app.models.briefing_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
+from app.models.brief_payload_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import checked_call, prose
@@ -21,7 +21,8 @@ from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.tracked import gaia_work_candidates
 from app.services.briefing.clock import UserClock
 from app.services.briefing.facts import TODAY, Facts, FactSources, build_facts
-from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
+from app.services.briefing.formats import opening_line
+from app.services.briefing.prose import Writing, reader_block, written_brief
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots
 from app.services.briefing.work import TrackedWork

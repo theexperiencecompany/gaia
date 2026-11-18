@@ -9,7 +9,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
-from app.models.briefing_models import BriefingItem
+from app.models.brief_payload_models import BriefingItem
 
 
 def _ask(**fields: object) -> BriefingItem:

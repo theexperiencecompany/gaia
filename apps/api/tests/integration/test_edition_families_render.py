@@ -22,7 +22,7 @@ from playwright.async_api import async_playwright
 import pytest
 
 from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue

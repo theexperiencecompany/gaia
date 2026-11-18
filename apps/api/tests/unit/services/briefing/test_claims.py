@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.models.brief_item_models import ItemState
 from app.services.briefing.claims import claim_problems
 from app.services.briefing.slots import BriefFact, SlotValues
 
@@ -12,7 +13,7 @@ _FAILED_SAID_DONE = (
 )
 _VALUES = SlotValues(
     facts={
-        1: BriefFact(title="Stripe payout", kind="failed"),
+        1: BriefFact(title="Stripe payout", kind=ItemState.FAILED),
         2: BriefFact(title="Board call", time="3:00 PM"),
     },
     counts={},
@@ -53,7 +54,7 @@ class TestAFigureOfAnotherFact:
     def test_a_facts_own_count_may_be_said_though_another_fact_holds_that_figure(self) -> None:
         values = SlotValues(
             facts={
-                1: BriefFact(title="Reply to Maya", count=3, kind="you"),
+                1: BriefFact(title="Reply to Maya", count=3, kind=ItemState.YOU),
                 2: BriefFact(title="3 invoices"),
             },
             counts={},

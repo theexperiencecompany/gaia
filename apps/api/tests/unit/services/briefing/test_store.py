@@ -9,13 +9,8 @@ import pytest
 
 from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import (
-    BriefDelivery,
-    BriefingModel,
-    BriefingMood,
-    BriefingPayload,
-    EditionRender,
-)
+from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing import store
 from app.services.briefing.render import RenderedImage

@@ -38,7 +38,7 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import CandidateOrigin, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.briefing_models import BriefingEvent
+from app.models.brief_payload_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument

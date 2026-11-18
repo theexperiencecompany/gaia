@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app.agents.prompts.briefing_prompts import RecentLines
-from app.models.briefing_models import BriefingMood, BriefingPayload, BriefVoice
+from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
 from app.services.briefing.fact_pool.pool import FactPool

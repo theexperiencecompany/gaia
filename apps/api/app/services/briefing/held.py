@@ -15,6 +15,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
 )
+from app.services.briefing.formats import opening_line
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
 
@@ -30,14 +31,9 @@ async def held_items(user_id: str) -> list[PendingBriefItemDocument]:
     return await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
 
 
-def first_line(text: str) -> str | None:
-    """Return a held report's first non-blank line: all of it that is ever shown."""
-    return next((line.strip() for line in text.splitlines() if line.strip()), None)
-
-
 def held_text(doc: PendingBriefItemDocument) -> str:
-    """One line for a held result: where it came from and its report's first line."""
-    first = first_line(doc.text)
+    """One line for a held result: where it came from and its report's first line, all of it ever shown."""
+    first = opening_line(doc.text)
     return f"{doc.source_title}: {first}" if first else doc.source_title
 
 

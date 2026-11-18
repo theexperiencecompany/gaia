@@ -14,7 +14,7 @@ from app.agents.tools.core.mutations import define_mutation_tool
 from app.constants.briefing import BRIEFS_PAUSED_FOR_PLAN_NOTE, BriefingFrequency
 from app.db.repositories.users import user_repository
 from app.decorators import enforce_rate_limit
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.services.account_fs import schedule_account_sync
 from app.services.account_settings import (
     select_voice,

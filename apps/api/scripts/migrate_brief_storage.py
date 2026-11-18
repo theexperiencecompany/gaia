@@ -32,7 +32,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.db.mongodb.collections import get_async_collection
-from app.models.briefing_models import BriefDelivery, DeliveryStep, EditionRender
+from app.models.brief_document_models import BriefDelivery, DeliveryStep, EditionRender
 from app.services.blob_store import CloudinaryBlobStore
 from app.services.briefing.edition_image import store_edition
 

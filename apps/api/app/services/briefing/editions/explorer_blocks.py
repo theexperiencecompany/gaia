@@ -18,8 +18,8 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
+from app.models.brief_payload_models import BriefingEvent, BriefingItem, BriefingSection
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.services.briefing.candidates.app_names import integration_id_named
 from app.services.briefing.editions.edition_logos import logo_key
 

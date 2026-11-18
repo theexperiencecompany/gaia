@@ -14,13 +14,12 @@ import pytest
 from app.config.settings import settings
 from app.constants.briefing import BriefOutcome
 from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
-from app.models.briefing_models import (
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingModel,
     BriefingPayload,
     BriefingSection,
-    EditionRender,
 )
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (

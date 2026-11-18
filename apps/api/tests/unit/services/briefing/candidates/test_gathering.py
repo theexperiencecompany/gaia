@@ -20,7 +20,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
-from app.models.briefing_models import BriefingEvent
+from app.models.brief_payload_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
     ScoutOutcome,

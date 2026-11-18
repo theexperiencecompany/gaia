@@ -13,7 +13,7 @@ import re
 from typing import TypedDict
 
 from app.constants.briefing import EditionFamily
-from app.models.briefing_models import BriefingEvent, BriefingPayload, BriefingTallies
+from app.models.brief_payload_models import BriefingEvent, BriefingPayload, BriefingTallies
 from app.services.briefing.editions.codes import CodeGeometry, Symbology, family_codes
 from app.services.briefing.editions.explorer_blocks import (
     ExplorerBlock,

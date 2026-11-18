@@ -18,13 +18,13 @@ from app.constants.briefing import (
 )
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import (
+from app.models.brief_document_models import (
     BriefDelivery,
     BriefingModel,
-    BriefingPayload,
     DeliveryStep,
     EditionRender,
 )
+from app.models.brief_payload_models import BriefingPayload
 from tests.helpers import local_timezone
 
 

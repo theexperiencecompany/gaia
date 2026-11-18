@@ -18,7 +18,7 @@ from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
 from app.constants.briefing import EditionChoice
 from app.db.repositories.base import MongoDocument
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
 from app.models.quiet_hours_models import QuietHours
 from app.schemas.common import ResponseModel

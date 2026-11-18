@@ -22,7 +22,7 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import (
+from app.models.brief_settings_models import (
     BriefDeliveryWorkflowsConflict,
     BriefingEditions,
     BriefingEditionsUpdate,

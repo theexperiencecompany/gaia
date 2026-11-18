@@ -27,7 +27,7 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
-from app.models.briefing_models import (
+from app.models.brief_settings_models import (
     BriefDeliveryWorkflow,
     BriefFreeDelivery,
     BriefingSchedule,

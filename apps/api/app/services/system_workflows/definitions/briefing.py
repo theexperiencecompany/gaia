@@ -15,7 +15,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.workflow_models import (
     CreateWorkflowRequest,

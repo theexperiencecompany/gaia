@@ -6,7 +6,8 @@ Postmarks page opens.
 """
 
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import NewStamp, Postmark, PostmarksResponse
+from app.models.brief_payload_models import NewStamp
+from app.models.brief_view_models import Postmark, PostmarksResponse
 from app.services.briefing.editions.stamps import (
     hosted_stamp_weights,
     stamp_asset_url,

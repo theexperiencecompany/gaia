@@ -7,7 +7,7 @@ from enum import StrEnum
 from fastapi import HTTPException
 
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
-from app.models.briefing_models import BriefingEvent, UnreadSource
+from app.models.brief_payload_models import BriefingEvent, UnreadSource
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import ScoutSkipReason
 from app.services.briefing.candidates.app_names import integration_name

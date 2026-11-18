@@ -17,7 +17,7 @@ from app.constants.briefing import (
     EXPLORER_SCALE,
     EditionFamily,
 )
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
     EXPLORER_CANVAS_PX,
     explorer_family_ids,

@@ -10,7 +10,8 @@ from app.constants.briefing import BriefForm, BriefingKind
 from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_NOTE
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock
-from app.models.briefing_models import BriefDelivery, BriefingModel, BriefingPayload
+from app.models.brief_document_models import BriefDelivery, BriefingModel
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing.clock import UserClock

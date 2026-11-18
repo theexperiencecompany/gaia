@@ -25,14 +25,14 @@ from app.constants.briefing import (
     PLAIN_BRIEF_EMPTY,
     PLAIN_BRIEF_HEADLINE,
 )
-from app.models.briefing_models import BriefingModel, BriefingMood, BriefVoice
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import BriefingMood, BriefVoice
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
 from app.services.briefing.claims import claim_problems
-from app.services.briefing.facts import (
-    Facts,
-)
+from app.services.briefing.facts import Facts
+from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
     SlotValues,
     referenced_facts,
@@ -103,11 +103,6 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 _FREQUENCY_RE = re.compile(rf"\b({'|'.join(FREQUENCY_CLAIMS)})\b", re.IGNORECASE)
 _NOT_A_WORD_RE = re.compile(r"[^\w\s]")
-
-
-def opening_line(message: str) -> str:
-    """Return a message's first non-blank line."""
-    return next((line.strip() for line in message.splitlines() if line.strip()), "")
 
 
 def recent_lines(briefs: list[BriefingModel]) -> RecentLines:

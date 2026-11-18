@@ -22,7 +22,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import GoalOrigin
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.user_models import DayZeroHello, UserDocument
 from app.services.briefing import silent_turn
 from app.services.briefing.goals import StatedGoal

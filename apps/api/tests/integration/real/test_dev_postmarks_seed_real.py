@@ -8,7 +8,8 @@ import pytest
 
 from app.constants.briefing import EditionFamily
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.brief_document_models import EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services.briefing import store
 from app.services.briefing.editions.stamps import hosted_stamp_weights

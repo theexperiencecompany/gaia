@@ -7,7 +7,7 @@ from tests.factories import make_brief_item
 
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome
 from app.models.brief_composition_models import SectionBlock
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.explorer_blocks import _data_block, build_blocks, read_sources
 
 _EVENT = {"date": "2026-11-10", "start": "09:30", "title": "Standup"}

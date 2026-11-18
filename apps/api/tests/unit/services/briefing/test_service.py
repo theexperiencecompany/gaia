@@ -79,22 +79,20 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_composition_models import BriefComposition, SectionBlock
+from app.models.brief_document_models import BriefingModel, DeliveryStep, EditionRender
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.brief_pool_models import GoalOrigin
-from app.models.briefing_models import (
+from app.models.brief_payload_models import (
     BriefingEvent,
-    BriefingModel,
     BriefingMood,
     BriefingPayload,
-    BriefingSchedule,
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
     BriefVoice,
-    DeliveryStep,
-    EditionRender,
     NewStamp,
 )
+from app.models.brief_pool_models import GoalOrigin
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.chat_models import ConversationSource
 from app.models.email_verdict_models import EmailVerdictDocument

@@ -5,14 +5,13 @@ The real explorer templates and stamp catalogue (cities.json) are read.
 
 from app.config.settings import settings
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.briefing_models import (
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingModel,
     BriefingMood,
     BriefingPayload,
     BriefingSection,
-    EditionRender,
 )
 from app.services.briefing.view import briefing_view, public_view
 

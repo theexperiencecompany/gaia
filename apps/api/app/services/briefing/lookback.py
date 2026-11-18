@@ -7,7 +7,8 @@ from app.constants.briefing import LOOKBACK_MAX_DAYS, WINBACK_THRESHOLD, Briefin
 from app.constants.todos import TodoCompleter
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
-from app.models.briefing_models import BriefingModel, BriefingMood
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import BriefingMood
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy

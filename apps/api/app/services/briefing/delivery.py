@@ -20,12 +20,8 @@ from app.constants.notifications import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
-from app.models.briefing_models import (
-    BriefDelivery,
-    BriefingCardData,
-    BriefingModel,
-    DeliveryStep,
-)
+from app.models.brief_document_models import BriefDelivery, BriefingModel, DeliveryStep
+from app.models.brief_view_models import BriefingCardData
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,

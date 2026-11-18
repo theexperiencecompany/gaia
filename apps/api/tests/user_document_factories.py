@@ -9,7 +9,7 @@ from app.constants.briefing import (
     EditionChoice,
     EditionFamily,
 )
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (

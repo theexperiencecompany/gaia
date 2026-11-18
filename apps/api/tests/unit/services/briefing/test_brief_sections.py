@@ -17,6 +17,7 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
+from app.models.brief_payload_models import BriefPoolItem
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -25,7 +26,6 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
-from app.models.briefing_models import BriefPoolItem
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.sections import _data_block, carried_ids, lay_out, sources_shown

@@ -28,7 +28,8 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
-from app.models.briefing_models import BriefDelivery, BriefingMood, BriefingPayload
+from app.models.brief_document_models import BriefDelivery
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (

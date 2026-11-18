@@ -18,7 +18,7 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.briefing_models import BriefingEvent, BriefingWeek, BriefingWeekDay
+from app.models.brief_payload_models import BriefingEvent, BriefingWeek, BriefingWeekDay
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.clock import UserClock

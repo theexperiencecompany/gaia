@@ -15,7 +15,7 @@ import pytest
 import zxingcpp
 
 from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from tests.integration.test_edition_families_render import _DAILY
 

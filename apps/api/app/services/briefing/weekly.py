@@ -7,7 +7,7 @@ from typing_extensions import override
 
 from app.agents.prompts.briefing_prompts import VoicePromptBlocks, build_weekly_voice_prompt
 from app.constants.briefing import BriefingRunOutcome
-from app.models.briefing_models import BriefingMood, BriefingPayload, BriefVoice
+from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
 from app.services.briefing.calendar_read import CalendarRead

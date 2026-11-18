@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.capabilities import split_drawable
 from app.services.briefing.fact_pool.series import SeriesName
 from tests.factories import make_brief_item

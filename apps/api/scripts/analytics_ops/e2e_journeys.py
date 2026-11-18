@@ -24,7 +24,7 @@ from standardwebhooks.webhooks import Webhook
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
+from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
     OnboardingAnswers,

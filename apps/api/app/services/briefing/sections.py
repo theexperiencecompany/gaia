@@ -24,11 +24,7 @@ from app.models.brief_composition_models import (
     placed_items,
 )
 from app.models.brief_item_models import ItemState
-from app.models.briefing_models import (
-    BriefingItem,
-    BriefingSection,
-    BriefPoolItem,
-)
+from app.models.brief_payload_models import BriefingItem, BriefingSection, BriefPoolItem
 from app.models.scout_models import RememberedSignal
 from app.services.briefing.fact_pool.pool import FactPool
 from shared.py.wide_events import log

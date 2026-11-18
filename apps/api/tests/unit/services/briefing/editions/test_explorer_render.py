@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from app.constants.briefing import EditionFamily
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing import editions
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue

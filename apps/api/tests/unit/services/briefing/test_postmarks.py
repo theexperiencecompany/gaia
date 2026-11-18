@@ -8,14 +8,9 @@ from unittest.mock import AsyncMock, patch
 from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
-from app.models.briefing_models import (
-    BriefingModel,
-    BriefingMood,
-    BriefingPayload,
-    EditionImage,
-    EditionRender,
-    Postmark,
-)
+from app.models.brief_document_models import BriefingModel, EditionImage, EditionRender
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.brief_view_models import Postmark
 from app.services.briefing.postmarks import collected_postmarks
 
 MODULE = "app.services.briefing.postmarks"

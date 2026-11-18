@@ -28,9 +28,9 @@ from app.constants.notifications import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
+from app.models.brief_document_models import BriefDelivery, DeliveryStep
 from app.models.brief_item_models import ItemState
-from app.models.briefing_models import (
-    BriefDelivery,
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
     BriefingMood,
@@ -39,7 +39,6 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
-    DeliveryStep,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS

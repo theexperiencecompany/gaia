@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import EDITION_IMAGE_MAX_AGE_SECONDS, EditionVariant
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingListResponse, BriefingView, PostmarksResponse
+from app.models.brief_view_models import BriefingListResponse, BriefingView, PostmarksResponse
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition

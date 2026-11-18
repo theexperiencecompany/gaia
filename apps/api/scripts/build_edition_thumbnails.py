@@ -24,7 +24,7 @@ from PIL import Image
 from tests import offline_env  # noqa: F401 -- must run before any app import
 from tests.integration.brief_compositions import composed_payload
 
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.dev_postmarks_seed import sample_edition_payload

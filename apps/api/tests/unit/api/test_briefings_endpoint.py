@@ -10,15 +10,9 @@ from httpx import AsyncClient
 from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind
-from app.models.briefing_models import (
-    BriefingModel,
-    BriefingMood,
-    BriefingPayload,
-    EditionImage,
-    EditionRender,
-    Postmark,
-    PostmarksResponse,
-)
+from app.models.brief_document_models import BriefingModel, EditionImage, EditionRender
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.brief_view_models import Postmark, PostmarksResponse
 from app.services.briefing.view import briefing_view
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed

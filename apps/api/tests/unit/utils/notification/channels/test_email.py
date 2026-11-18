@@ -23,7 +23,7 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationContent,

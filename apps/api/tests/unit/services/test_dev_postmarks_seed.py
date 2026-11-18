@@ -20,7 +20,8 @@ from app.constants.briefing import (
 )
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
-from app.models.briefing_models import BriefingPayload, DeliveryStep, EditionRender
+from app.models.brief_document_models import DeliveryStep, EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS

@@ -7,12 +7,8 @@ stored (the daily, the weekly, the dev seed) goes through store_brief.
 
 from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import (
-    BriefDelivery,
-    BriefingModel,
-    BriefingPayload,
-    EditionRender,
-)
+from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.edition_image import store_edition

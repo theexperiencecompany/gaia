@@ -19,7 +19,8 @@ from app.constants.briefing import (
     BriefingKind,
 )
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingModel, BriefingMood, BriefingPayload, UnreadSource
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import BriefingMood, BriefingPayload, UnreadSource
 from app.models.scout_models import ScoutSkipReason
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.clock import UserClock, when_sent

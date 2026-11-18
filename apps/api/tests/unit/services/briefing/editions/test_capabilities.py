@@ -9,7 +9,7 @@ import pytest
 
 from app.constants.briefing import EditionChoice
 from app.models.brief_composition_models import BriefBlock, ChartKind
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
 from app.services.briefing.edition_draws import daily_family_weights, draw_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS, EXPLORER_RENDERER

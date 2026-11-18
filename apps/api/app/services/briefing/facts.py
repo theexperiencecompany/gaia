@@ -14,14 +14,14 @@ from app.constants.briefing import (
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_item_models import GroupState
-from app.models.brief_pool_models import DataSeries, GoalState
-from app.models.briefing_models import (
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
     BriefingSection,
     BriefingStat,
     UnreadSource,
 )
+from app.models.brief_pool_models import DataSeries, GoalState
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import event_detail, start_time
