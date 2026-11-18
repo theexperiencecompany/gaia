@@ -10,6 +10,7 @@ from app.services.system_workflows.registry import (
     UNPAUSABLE_KEYS,
     behaviour_of,
 )
+from app.workers.brief_slots import spread_cron
 
 pytestmark = pytest.mark.unit
 
@@ -40,7 +41,7 @@ def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cron: st
     cron_for = behaviour_of(key).cron_for
 
     assert cron_for is not None
-    assert cron_for(UserDocument(id="u1")) == cron
+    assert cron_for(UserDocument(id="u1")) == spread_cron(cron, "u1")
 
 
 def test_the_key_sets_the_engine_filters_by_are_the_briefs() -> None:
