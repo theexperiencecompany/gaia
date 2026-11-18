@@ -21,11 +21,7 @@ from app.constants.briefing import (
     EditionFamily,
     hue_for_day,
 )
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-    NotificationChannel,
-)
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_document_models import BriefDelivery, DeliveryStep
@@ -48,9 +44,9 @@ from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
-_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
-    BriefingKind.DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
-    BriefingKind.WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, NotificationKind] = {
+    BriefingKind.DAILY: NotificationKind.BRIEFING_DAILY,
+    BriefingKind.WEEKLY: NotificationKind.BRIEFING_WEEKLY,
 }
 # Anchored, not today-relative: a today-relative range would add a brief on every new day.
 _LAST_SEEDED_DATE = date(2026, 10, 1)

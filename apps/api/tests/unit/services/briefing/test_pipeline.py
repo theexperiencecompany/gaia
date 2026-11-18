@@ -61,9 +61,7 @@ from app.constants.briefing import (
 from app.constants.desk_buckets import DeskBucket
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_NOTE,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    NotificationKind,
     ProactiveMessageClass,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
@@ -81,7 +79,12 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefComposition, SectionBlock
-from app.models.brief_document_models import BriefingModel, DeliveryStep, EditionRender
+from app.models.brief_document_models import (
+    BriefDelivery,
+    BriefingModel,
+    DeliveryStep,
+    EditionRender,
+)
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import (
     BriefingEvent,
@@ -671,8 +674,9 @@ def _store_briefs(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         brief.delivered_channels.extend(c for c in reached if c not in brief.delivered_channels)
 
     async def complete_delivery(user_id: str, briefing_id: str) -> None:
-        delivery = w.briefs[briefing_id].delivery
-        assert delivery is not None
+        brief = w.briefs[briefing_id]
+        assert brief.user_id == user_id and brief.delivery is not None
+        delivery = brief.delivery
         delivery.completed_at = _NOW
 
     def find_for_date(user_id: str, date: str, kind: BriefingKind) -> BriefingModel | None:
@@ -1015,7 +1019,7 @@ class TestADailyBrief:
         assert request.metadata["brief_url"] == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
-        assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
+        assert request.metadata["kind"] == NotificationKind.BRIEFING_DAILY
         # GAIA's Briefings-conversation message carries the same folded card the notification does.
         user_id, text, card = world.brief_message.await_args.args
         assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
@@ -1821,7 +1825,7 @@ class TestAQuietDay:
         assert payload.message == _expected_note(BriefingKind.DAILY, QuietFacts(calendar=None))
         assert world.upsert.await_args.args[0].edition is None
         request = world.notify.await_args.args[0]
-        assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_NOTE
+        assert request.metadata == {"kind": NotificationKind.BRIEFING_NOTE}
         assert request.content.rich_content is None
         assert [c.channel_type for c in request.channels] == ["inapp", "email"]
         posted = world.post.await_args.kwargs
@@ -1966,7 +1970,7 @@ class TestAWeeklyDigest:
         assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
         assert payload.headline == "A good week"
         request = world.notify.await_args.args[0]
-        assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_WEEKLY
+        assert request.metadata["kind"] == NotificationKind.BRIEFING_WEEKLY
         assert request.content.body == payload.message == "Gym"
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["origin"] == "weekly brief"
@@ -2806,6 +2810,105 @@ class TestHowARunEnds:
         world.consume.assert_awaited_once_with(_USER, ["h1"])
         assert world.delivered_to() == [*_ORCHESTRATED, "telegram"]
         assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
+
+    async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        [brief] = world.briefs.values()
+        assert brief.delivery is not None
+        assert brief.delivery.done == [
+            DeliveryStep.NOTIFICATION,
+            DeliveryStep.CONVERSATION,
+            DeliveryStep.CHAT,
+        ]
+
+    @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
+    async def test_a_chat_post_that_did_not_publish_records_no_platform(
+        self, world: World, result: OutboundResult
+    ) -> None:
+        world.post.return_value = result
+
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        world.post.assert_awaited_once()
+        assert world.delivered_to() == _ORCHESTRATED
+
+    async def test_an_unsent_email_is_reported_with_every_channels_status(
+        self, world: World
+    ) -> None:
+        world.notify.return_value = SimpleNamespace(
+            channels=[
+                _delivered("inapp"),
+                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
+            ]
+        )
+
+        async with captured_wide_event() as event:
+            await run_brief(_USER, BriefingKind.DAILY)
+
+        [warning] = [w for w in event["warnings"] if w["msg"] == "briefing.email_not_sent"]
+        assert warning["statuses"] == {"inapp": "delivered", "email": "failed"}
+
+    async def test_a_brief_that_asked_for_no_email_reports_none_unsent(self, world: World) -> None:
+        world.user.email = None
+        world.notify.return_value = SimpleNamespace(channels=[_delivered("inapp")])
+
+        async with captured_wide_event() as event:
+            await run_brief(_USER, BriefingKind.DAILY)
+
+        assert [c.channel_type for c in world.notify.await_args.args[0].channels] == ["inapp"]
+        assert "briefing.email_not_sent" not in [w["msg"] for w in event.get("warnings", [])]
+
+    async def test_a_resumed_delivery_reports_the_channels_earlier_steps_reached(
+        self, world: World
+    ) -> None:
+        stored = _brief(_DATE, BriefForm.QUIET_NOTE, message="Gym").model_copy(
+            update={
+                "delivered_channels": ["telegram"],
+                "delivery": BriefDelivery(
+                    push=True,
+                    notification_kind=NotificationKind.BRIEFING_NOTE,
+                    done=[DeliveryStep.CHAT],
+                ),
+            }
+        )
+        world.briefs[stored.id] = stored
+
+        async with captured_wide_event() as event:
+            assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        assert event["briefing"]["channels"] == ["telegram", *_ORCHESTRATED]
+
+    async def test_a_brief_stored_without_a_delivery_plan_is_not_delivered(
+        self, world: World
+    ) -> None:
+        stored = _brief(_DATE, BriefForm.EDITION, message="Gym")
+
+        with pytest.raises(
+            ValueError, match=f"^brief {stored.id} was stored without a delivery plan$"
+        ):
+            await delivery.deliver_brief(world.user, stored)
+
+        world.notify.assert_not_awaited()
+
+    async def test_resuming_an_edition_brief_stored_without_its_edition_fails_loud(
+        self, world: World
+    ) -> None:
+        stored = _brief(_DATE, BriefForm.EDITION, message="Gym", link=_BRIEF_LINK).model_copy(
+            update={
+                "delivery": BriefDelivery(
+                    push=True,
+                    notification_kind=NotificationKind.BRIEFING_DAILY,
+                    done=[DeliveryStep.CHAT],
+                )
+            }
+        )
+        world.briefs[stored.id] = stored
+
+        with pytest.raises(ValueError, match=f"^briefing_daily brief {stored.id} was stored"):
+            await run_brief(_USER, BriefingKind.DAILY)
+
+        world.notify.assert_not_awaited()
 
     async def test_a_stalled_voice_fails_the_run_instead_of_hanging(
         self, world: World, monkeypatch: pytest.MonkeyPatch

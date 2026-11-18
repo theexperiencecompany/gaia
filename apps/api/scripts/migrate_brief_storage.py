@@ -24,10 +24,7 @@ from app.constants.briefing import (
     BriefingKind,
 )
 from app.constants.files import BLOB_DOWNLOAD_TIMEOUT_SECONDS
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-)
+from app.constants.notifications import NotificationKind
 from app.db.mongodb.collections import get_async_collection
 from app.models.brief_document_models import BriefDelivery, DeliveryStep, EditionRender
 from app.services.blob_store import CloudinaryBlobStore
@@ -91,9 +88,9 @@ async def _complete_deliveries(apply: bool, mode: str) -> None:
             continue
         delivered = BriefDelivery(
             push=True,
-            notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY
+            notification_kind=NotificationKind.BRIEFING_DAILY
             if doc.get("kind", BriefingKind.DAILY) == BriefingKind.DAILY
-            else NOTIFICATION_KIND_BRIEFING_WEEKLY,
+            else NotificationKind.BRIEFING_WEEKLY,
             done=list(DeliveryStep),
             completed_at=doc["created_at"],
         )

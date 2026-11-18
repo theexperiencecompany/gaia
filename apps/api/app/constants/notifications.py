@@ -141,9 +141,13 @@ def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[st
 # the rest of a longer caption as follow-up text.
 CHAT_CAPTION_MAX_CHARS = 1024
 
-# Daily brief / weekly recap notifications: the email channel renders the
-# edition from the card in their metadata when metadata.kind names one of these.
-NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
-NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
-# A quiet day's plain note: no edition, so every channel renders it as a plain notification.
-NOTIFICATION_KIND_BRIEFING_NOTE = "briefing_note"
+
+class NotificationKind(StrEnum):
+    """What a kinded notification is, stored as its metadata's kind; a channel may render each its own way."""
+
+    #: The daily brief: its email is the edition.
+    BRIEFING_DAILY = "briefing_daily"
+    #: The weekly recap: its email is the edition.
+    BRIEFING_WEEKLY = "briefing_weekly"
+    #: A quiet day's note: no edition, so every channel renders it as a plain notification.
+    BRIEFING_NOTE = "briefing_note"

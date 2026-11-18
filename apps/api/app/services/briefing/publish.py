@@ -7,7 +7,7 @@ precedes delivery so the dashboard never misses a brief that reached a channel.
 from dataclasses import dataclass, field
 
 from app.constants.briefing import BriefForm, BriefingKind
-from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_NOTE
+from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock
 from app.models.brief_document_models import BriefDelivery, BriefingModel
@@ -66,7 +66,7 @@ async def publish(
     note = payload.form is BriefForm.QUIET_NOTE
     plan = BriefDelivery(
         push=sending.push,
-        notification_kind=NOTIFICATION_KIND_BRIEFING_NOTE if note else spec.notification_kind,
+        notification_kind=NotificationKind.BRIEFING_NOTE if note else spec.notification_kind,
         held_ids=sending.held_ids,
     )
     store = store_note if note else store_brief
