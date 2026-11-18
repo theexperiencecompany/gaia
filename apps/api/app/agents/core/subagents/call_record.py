@@ -10,11 +10,11 @@ subagent's real calls instead.
 from collections.abc import Sequence
 import json
 
-from langchain_core.messages import AnyMessage, ToolMessage
+from langchain_core.messages import AnyMessage, ToolCall, ToolMessage
 
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import FINISH_TASK_NAME
-from app.models.workflow_execution_models import carries_no_data, parse_result
+from app.models.workflow_execution_models import ToolResultEnvelope, carries_no_data, parse_result
 
 #: Longest serialized form a single recorded arg value may take; anything past
 #: it is cut with the marker so the record's token cost stays bounded.
@@ -57,12 +57,7 @@ def is_error_envelope(result: object) -> bool:
     Many tools answer with {"success": false, ...}, Composio's {"successful": false, ...}
     or {"error": "..."} under a normal status, so status alone does not say the call worked.
     """
-    if not isinstance(result, dict):
-        return False
-    if result.get("success") is False or result.get("successful") is False:
-        return True
-    error = result.get("error")
-    return bool(error)
+    return isinstance(result, dict) and ToolResultEnvelope.model_validate(result).failed
 
 
 def tool_call_failed(message: ToolMessage) -> bool:
@@ -86,6 +81,7 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
         ):
             results[message.tool_call_id] = parsed_result(message)
     lines: list[str] = []
+    call: ToolCall
     for message in messages:
         for call in getattr(message, "tool_calls", None) or []:
             name = str(call.get("name") or "")

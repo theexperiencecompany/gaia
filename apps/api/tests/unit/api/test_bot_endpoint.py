@@ -508,6 +508,8 @@ class TestUnlinkAccount:
         assert response.status_code == 200
         assert response.json()["success"] is True
         mock_get_user.assert_awaited_once_with("discord", "u1")
+        # The key the auth middleware caches under, or the unlinked account stays signed in.
+        mock_redis.client.delete.assert_awaited_once_with("bot_user:discord:u1")
         # The same event name the web-side unlink emits — one action, one name.
         mock_capture.assert_called_once_with(
             UserId(USER_ID), IntegrationDisconnected(integration_id="discord")

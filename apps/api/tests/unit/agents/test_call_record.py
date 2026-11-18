@@ -96,6 +96,8 @@ class TestSuccessfulCallLines:
             {"success": False, "error": "not found"},
             {"success": False},
             {"error": "quota exceeded", "data": []},
+            {"successful": False, "data": {}},
+            {"successful": False, "error": "Gmail connection expired", "data": {}},
         ],
     )
     def test_a_call_whose_ok_message_carries_an_error_envelope_is_dropped(
@@ -122,6 +124,7 @@ class TestSuccessfulCallLines:
         [
             {"success": True, "error": None, "data": [{"id": 1}]},
             {"success": True, "error": "", "data": [{"id": 1}]},
+            {"successful": True, "error": None, "data": [{"id": 1}]},
         ],
     )
     def test_an_empty_error_field_is_not_an_error(self, payload: dict[str, object]) -> None:
