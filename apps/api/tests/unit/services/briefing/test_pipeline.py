@@ -2813,7 +2813,7 @@ class TestHowARunEnds:
     async def test_resuming_an_edition_brief_stored_without_its_edition_fails_loud(
         self, world: World
     ) -> None:
-        stored = _brief(_DATE, BriefForm.EDITION, message="Gym").model_copy(
+        stored = _brief(_DATE, BriefForm.EDITION, message="Gym", link=_BRIEF_LINK).model_copy(
             update={
                 "delivery": BriefDelivery(
                     push=True,
