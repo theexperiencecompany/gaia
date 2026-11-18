@@ -5,32 +5,27 @@ RESEND_API_KEY / EMAIL_UNSUBSCRIBE_SECRET is an ops precondition: the adapter sk
 with a structured log. A failed send raises and the orchestrator records the channel
 as failed.
 
-Template selection keys off notification.metadata["kind"]: briefing_daily and
-briefing_weekly embed the edition image the briefing service already rendered and
-stored (the card's signed edition URL), linked to the brief's heygaia.link, above the
-stored brief's message. A briefing notification missing its card, edition or link, or
-whose brief is no longer stored, fails at transform. Anything else renders the
-plain-notification template.
+A notification whose metadata.kind has a renderer in the registry the adapter is built
+with is rendered by it, and one that renderer cannot render fails at transform. Anything
+else renders the plain-notification template.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.constants.notifications import NotificationChannel
-from app.db.repositories.briefings import briefing_repository
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.db.repositories.users import user_repository
-from app.models.brief_payload_models import BriefingPayload
-from app.models.brief_view_models import BriefNotificationMetadata
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
-from app.services.briefing.edition_email import is_edition_kind, render_edition_email
 from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.utils.email_utils import normalize_email
@@ -43,40 +38,44 @@ from app.utils.notification.unsubscribe import (
 from shared.py.wide_events import log
 
 _DEFAULT_SUBJECT = "GAIA"
-_EDITION_DEFAULT_SUBJECT = "Your GAIA brief"
+
+
+class RenderableEmail(Protocol):
+    """An email ready to send once its recipient's unsubscribe link is known."""
+
+    def render(self, unsubscribe_url: str) -> tuple[str, str]:
+        """Return the email's (subject, html)."""
+        ...
+
+
+#: Turns a notification of its kind into its email; raises when it cannot be rendered.
+EmailRenderer = Callable[[NotificationRequest], Awaitable[RenderableEmail]]
+EmailRenderers = Mapping[NotificationKind, EmailRenderer]
 
 
 class _EmailMetadata(BaseModel):
-    """The notification-metadata field every email reads: the template kind."""
+    """The notification-metadata field every email reads: its kind."""
 
-    kind: str | None = None
-
-
-@dataclass(frozen=True)
-class BriefingEmail:
-    """A daily or weekly briefing kind with its payload, heygaia.link and hosted edition image."""
-
-    kind: str
-    payload: BriefingPayload
-    brief_url: str
-    edition_image_url: str
+    kind: NotificationKind | None = None
 
 
 @dataclass(frozen=True)
-class EmailContent:
-    """What one email is rendered from.
-
-    briefing is set only for a briefing kind that carries its payload; everything
-    else renders the plain-notification template from title and body.
-    """
+class PlainEmail:
+    """A notification's title and body in the plain-notification template."""
 
     title: str
     body: str
-    briefing: BriefingEmail | None = None
+
+    def render(self, unsubscribe_url: str) -> tuple[str, str]:
+        subject = self.title or _DEFAULT_SUBJECT
+        return subject, render_plain_notification_email(subject, self.body, unsubscribe_url)
 
 
-class EmailChannelAdapter(ChannelAdapter[EmailContent]):
+class EmailChannelAdapter(ChannelAdapter[RenderableEmail]):
     """Sends notification content to the user's email address."""
+
+    def __init__(self, renderers: EmailRenderers) -> None:
+        self._renderers = renderers
 
     @property
     def channel_type(self) -> str:
@@ -89,31 +88,14 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
         """
         return True
 
-    async def transform(self, notification: NotificationRequest) -> EmailContent:
-        content = notification.content
+    async def transform(self, notification: NotificationRequest) -> RenderableEmail:
         kind = _EmailMetadata.model_validate(notification.metadata).kind
-        if kind is None or not is_edition_kind(kind):
-            return EmailContent(title=content.title, body=content.body)
+        renderer = self._renderers.get(kind) if kind is not None else None
+        if renderer is None:
+            return PlainEmail(title=notification.content.title, body=notification.content.body)
+        return await renderer(notification)
 
-        metadata = BriefNotificationMetadata.model_validate(notification.metadata)
-        card, brief_url = metadata.card, metadata.brief_url
-        if card is None or card.edition is None or brief_url is None:
-            raise ValueError(f"a {kind} notification carries no edition card or brief link")
-        brief = await briefing_repository.get(card.briefing_id, user_id=notification.user_id)
-        if brief is None:
-            raise LookupError(f"brief {card.briefing_id} of a {kind} notification is not stored")
-        return EmailContent(
-            title=content.title,
-            body=content.body,
-            briefing=BriefingEmail(
-                kind=kind,
-                payload=brief.payload,
-                brief_url=brief_url,
-                edition_image_url=card.edition.image_url,
-            ),
-        )
-
-    async def deliver(self, content: EmailContent, user_id: str) -> ChannelDeliveryStatus:
+    async def deliver(self, content: RenderableEmail, user_id: str) -> ChannelDeliveryStatus:
         if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
             log.info(f"{LogTag.NOTIFICATION} Email skipped: ESP not configured")
             return self._skipped("email: RESEND_API_KEY/EMAIL_UNSUBSCRIBE_SECRET not configured")
@@ -123,13 +105,7 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
         if not email:
             return self._skipped("email: no email address on file")
 
-        unsubscribe_url = build_unsubscribe_url(user_id)
-        if content.briefing is None:
-            subject = content.title or _DEFAULT_SUBJECT
-            html = render_plain_notification_email(subject, content.body, unsubscribe_url)
-        else:
-            subject, html = _render_briefing(content.briefing, content.title, unsubscribe_url)
-
+        subject, html = content.render(build_unsubscribe_url(user_id))
         await send_email(
             EmailMessage(
                 sender=settings.EMAIL_FROM,
@@ -140,14 +116,3 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
             )
         )
         return self._success()
-
-
-def _render_briefing(briefing: BriefingEmail, title: str, unsubscribe_url: str) -> tuple[str, str]:
-    """Return (subject, html) for a briefing: the headline over its edition image and message."""
-    html = render_edition_email(
-        briefing.payload,
-        image_url=briefing.edition_image_url,
-        brief_url=briefing.brief_url,
-        unsubscribe_url=unsubscribe_url,
-    )
-    return briefing.payload.headline or title or _EDITION_DEFAULT_SUBJECT, html

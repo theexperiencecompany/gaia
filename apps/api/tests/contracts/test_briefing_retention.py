@@ -14,6 +14,7 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.briefing import BRIEFING_RETENTION, BriefingKind
+from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
 from app.services.briefing.edition_image import store_edition
@@ -53,7 +54,7 @@ async def _brief(date: str, *, with_edition: bool, age: timedelta, raw_collectio
             kind=BriefingKind.DAILY,
             payload=make_briefing_payload(date=date),
             edition=edition,
-            delivery=BriefDelivery(push=True, notification_kind="briefing_daily"),
+            delivery=BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY),
         )
     )
     await raw_collection.update_one(

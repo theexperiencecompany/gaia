@@ -53,7 +53,7 @@ from app.models.subagent_models import Subagent
 from app.services.integrations.integration_accounts import get_account_record
 from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS
+from app.services.mcp.mcp_errors import MCP_SIGNED_OUT_ERRORS
 from app.services.user_instructions_service import get_instructions
 from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
@@ -92,7 +92,7 @@ _MCP_CONNECT_ERRORS: tuple[type[Exception], ...] = (
     McpError,
     McpUseError,
 )
-_MCP_ACTIVATION_ERRORS = (*MCP_SIGN_IN_ERRORS, *_MCP_CONNECT_ERRORS)
+_MCP_ACTIVATION_ERRORS = (*MCP_SIGNED_OUT_ERRORS, *_MCP_CONNECT_ERRORS)
 
 
 @dataclass(frozen=True)
@@ -196,7 +196,7 @@ async def _mcp_failure_text(
     target: Subagent | CustomMcpSubagent, user_id: str, error: Exception
 ) -> str:
     """Log a failed MCP connect and say what the model should do; auth failures show the connect card."""
-    auth_failed = isinstance(error, MCP_SIGN_IN_ERRORS)
+    auth_failed = isinstance(error, MCP_SIGNED_OUT_ERRORS)
     log.set_ns("activation", error_type=type(error).__name__)
     log.warning(
         f"{LogTag.AGENT} Activation could not connect the MCP server",

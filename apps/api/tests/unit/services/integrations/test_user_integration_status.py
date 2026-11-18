@@ -1,20 +1,27 @@
-"""Tests for the OAuth callbacks' reconnect lookup."""
+"""Tests for the OAuth callbacks' reconnect lookup and what a new connection sets off."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Iterator
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch, sentinel
 
 from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.scouts import LEARN_SCOUT_TASK
 from app.constants.waits import WaitCondition
+from app.services.briefing.scouts.lifecycle import SCOUT_INTEGRATION_HOOKS
 from app.services.integrations.user_integration_status import (
     publish_connected,
     reconnect_or_unknown,
 )
+from app.utils.redis_utils import RedisPoolManager
 
 MODULE = "app.services.integrations.user_integration_status"
+LIFECYCLE = "app.services.briefing.scouts.lifecycle"
+HOOKS = "app.services.integrations.hook_registry"
 
 
 async def _answer(value: bool) -> bool:
@@ -49,22 +56,36 @@ class TestReconnectOrUnknown:
             await reconnect_or_unknown(_raise(RuntimeError("bug")), "gmail")
 
 
+@contextmanager
+def _connect_seams(
+    get_pool: AsyncMock, enqueue: AsyncMock, *, report: AsyncMock | None = None
+) -> Iterator[AsyncMock]:
+    """Stub Redis, the ARQ enqueue and the page push; the integration hooks run for real."""
+    broadcast = AsyncMock()
+    with (
+        patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
+        patch.object(RedisPoolManager, "get_pool", get_pool),
+        patch(f"{LIFECYCLE}.enqueue_worker_job", enqueue),
+        patch(f"{MODULE}.websocket_manager.broadcast_to_user", broadcast),
+        patch(f"{MODULE}.report_wait_met", report or AsyncMock()),
+    ):
+        yield broadcast
+
+
 class TestPublishConnected:
     async def test_a_scout_learn_that_cannot_be_queued_is_logged_and_the_connect_stands(
         self,
     ) -> None:
-        broadcast = AsyncMock()
+        down = AsyncMock(side_effect=ConnectionError("down"))
         with (
-            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
-            patch(f"{MODULE}.queue_scout_learn", AsyncMock(side_effect=ConnectionError("down"))),
-            patch(f"{MODULE}.websocket_manager.broadcast_to_user", broadcast),
-            patch(f"{MODULE}.report_wait_met", AsyncMock()),
-            patch(f"{MODULE}.log") as log,
+            _connect_seams(down, AsyncMock()) as broadcast,
+            patch(f"{HOOKS}.log") as log,
         ):
             await publish_connected("user-1", "linear")
 
         log.warning.assert_called_once_with(
-            f"{LogTag.INTEGRATION} Failed to queue the brief scout's learn",
+            f"{LogTag.INTEGRATION} An integration connect hook failed",
+            hook=SCOUT_INTEGRATION_HOOKS.name,
             integration_id="linear",
             error="down",
             error_type="ConnectionError",
@@ -72,24 +93,21 @@ class TestPublishConnected:
         broadcast.assert_awaited_once()
 
     async def test_a_new_connection_queues_that_users_scout_for_that_integration(self) -> None:
-        queue = AsyncMock()
-        with (
-            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
-            patch(f"{MODULE}.queue_scout_learn", queue),
-            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
-            patch(f"{MODULE}.report_wait_met", AsyncMock()),
-        ):
+        enqueue = AsyncMock()
+        with _connect_seams(AsyncMock(return_value=sentinel.pool), enqueue):
             await publish_connected("user-1", "linear")
 
-        queue.assert_awaited_once_with("user-1", "linear")
+        enqueue.assert_awaited_once_with(
+            sentinel.pool,
+            LEARN_SCOUT_TASK,
+            "user-1",
+            "linear",
+            _job_id=f"{LEARN_SCOUT_TASK}:user-1:linear",
+        )
 
     async def test_a_connect_meets_everything_waiting_on_that_integration(self) -> None:
-        with (
-            patch(f"{MODULE}.schedule_user_integrations_sync"),
-            patch(f"{MODULE}.queue_scout_learn", AsyncMock()),
-            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
-            patch(f"{MODULE}.report_wait_met", AsyncMock()) as report,
-        ):
+        report = AsyncMock()
+        with _connect_seams(AsyncMock(), AsyncMock(), report=report):
             await publish_connected("user-1", "gmail")
 
         report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")

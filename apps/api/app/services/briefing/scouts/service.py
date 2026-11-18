@@ -12,16 +12,22 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import (
     SCOUT_CONCURRENCY,
     SCOUT_RELEARN_BACKOFF,
     SCOUT_REPLAY_FAILURES_BEFORE_RELEARN,
+    SCOUT_TIME_CAP,
     SCOUT_TURN_TIMEOUT,
+    SCOUTS_REFRESHED_KEY,
+    SCOUTS_REFRESHED_TTL,
 )
 from app.constants.user_activity import ActivityStatus
+from app.db.redis import AsyncRedisCommands
 from app.db.repositories.scouts import scouts_repository
 from app.decorators.entitlements import is_paid
 from app.models.scout_models import (
+    RefreshedScouts,
     RememberedSignal,
     ScoutDocument,
     ScoutOutcome,
@@ -33,6 +39,7 @@ from app.models.user_models import UserDocument
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.memory import remember
 from app.services.briefing.scouts.metrics import record_scout_turn
+from app.services.briefing.scouts.redis_client import scouts_redis
 from app.services.briefing.scouts.spend import reserve_learn
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -41,7 +48,7 @@ from app.services.briefing.scouts.tools import (
     scout_tools,
 )
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
-from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS, MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import MCP_SIGNED_OUT_ERRORS, MCPIntegrationNotFoundError
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.timezone import Timezone
@@ -225,19 +232,32 @@ async def _scouted(
     return await _replay(user, integration, tools, scout)
 
 
-async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> ScoutResult:
-    """Run one scout; any failure is that scout's skipped result, never the brief's.
+async def _scout_turn(
+    user: UserDocument, integration: ScoutIntegration, cap_at: float
+) -> ScoutResult:
+    """Run one scout until its own timeout or the brief's cap_at (loop time), whichever is first.
 
-    A dead sign-in is its own reason, so the brief can ask for the reconnect that fixes it.
+    Any failure is that scout's skipped result, never the brief's. A dead sign-in is its own
+    reason, so the brief can ask for the reconnect that fixes it; a scout the cap stops is too.
     """
-    if integration.signed_out:
+    if integration.status == IntegrationStatus.EXPIRED:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
+    now = asyncio.get_running_loop().time()
+    # At cap_at == now the deadline below expires at once: the same skip either way.
+    if cap_at <= now:  # pragma: no mutate -- equivalent at equality, see above
+        return _skipped(integration, ScoutSkipReason.OUT_OF_TIME)
+    turn_ends = now + SCOUT_TURN_TIMEOUT.total_seconds()
+    deadline = asyncio.timeout_at(min(turn_ends, cap_at))
     try:
-        async with asyncio.timeout(SCOUT_TURN_TIMEOUT.total_seconds()):
+        async with deadline:
             return await _run_scout(user, integration)
-    except MCP_SIGN_IN_ERRORS:
+    except MCP_SIGNED_OUT_ERRORS:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     except Exception as exc:
+        # At cap_at == turn_ends both deadlines are one instant; either reading is right.
+        if deadline.expired() and cap_at < turn_ends:  # pragma: no mutate -- equivalent at equality
+            log.warning("briefing.scout_out_of_time", integration_id=integration.integration_id)
+            return _skipped(integration, ScoutSkipReason.OUT_OF_TIME)
         # Broad on purpose: an app being down, a bad report or a timeout must cost the
         # brief this one app's signals only. The error still lands on the wide event.
         log.error(
@@ -271,11 +291,12 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
         log.set_ns("scouts", skipped=skipped.value)
         return []
     slots = asyncio.Semaphore(SCOUT_CONCURRENCY)
+    cap_at = asyncio.get_running_loop().time() + SCOUT_TIME_CAP.total_seconds()
 
     async def turn(integration: ScoutIntegration) -> ScoutResult:
-        # The turn's timeout starts once it holds a slot, never while it waits for one.
+        # The turn's own timeout starts once it holds a slot; the brief's cap runs throughout.
         async with slots:
-            return await _scout_turn(user, integration)
+            return await _scout_turn(user, integration, cap_at)
 
     results = list(await asyncio.gather(*(turn(i) for i in await scout_integrations(user.id))))
     for result in results:
@@ -302,9 +323,36 @@ class ScoutSignals:
     results: list[ScoutResult]
 
 
-async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
-    """Run the scouts and pair every signal they found with what earlier briefs remember of it."""
+def _refreshed() -> AsyncRedisCommands:
+    return scouts_redis(
+        message="refreshed scout results cannot be kept or taken",
+        why="Redis is unavailable, so a brief cannot take the results refreshed ahead of it",
+        fix="restore Redis; the brief runs its scouts itself meanwhile",
+    )
+
+
+async def refresh_scouts(user: UserDocument) -> None:
+    """Run the user's scouts ahead of their brief and keep the results for it to take."""
     results = await run_scouts(user)
+    await _refreshed().setex(
+        SCOUTS_REFRESHED_KEY.format(user_id=user.id),
+        int(SCOUTS_REFRESHED_TTL.total_seconds()),
+        RefreshedScouts(results=results).model_dump_json(),
+    )
+
+
+async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
+    """Take the scouts' refreshed results, or run them now, and pair every signal with its memory.
+
+    Refreshed results are taken once: a second brief the same hour runs the scouts again.
+    """
+    kept = await _refreshed().getdel(SCOUTS_REFRESHED_KEY.format(user_id=user.id))
+    log.set_ns("scouts", refreshed_ahead=kept is not None)
+    results = (
+        RefreshedScouts.model_validate_json(kept).results
+        if kept is not None
+        else await run_scouts(user)
+    )
     remembered = await remember(user.id, [s for r in results for s in r.signals], now)
     criteria = {
         r.app: r.criteria.line()

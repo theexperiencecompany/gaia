@@ -350,7 +350,13 @@ class BaseSchedulerService(ABC):
         return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
-        """Enqueue a task in ARQ."""
+        """Enqueue a task in ARQ, on the shared queue."""
+        return await self._enqueue_on(task_id, scheduled_at, None)
+
+    async def _enqueue_on(
+        self, task_id: str, scheduled_at: datetime, queue_name: str | None
+    ) -> bool:
+        """Enqueue a task's fire on queue_name (None is the shared queue); False when already enqueued."""
         log.set(scheduler_task_id=task_id, scheduler_scheduled_at=str(scheduled_at))
         if not self.arq_pool:
             log.error("ARQ pool not initialized")
@@ -397,6 +403,7 @@ class BaseSchedulerService(ABC):
             job_name,
             *self._build_job_args(task_id, armed_for),
             _job_id=job_id,
+            _queue_name=queue_name,
             _defer_until=scheduled_at,
         )
 

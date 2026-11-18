@@ -282,6 +282,8 @@ class ScoutSkipReason(StrEnum):
     UNKNOWN_INTEGRATION = "unknown_integration"
     #: The app's sign-in expired or was revoked: only the user reconnecting it brings it back.
     SIGNED_OUT = "signed_out"
+    #: The brief's scouts reached their total time cap before this one finished, or began.
+    OUT_OF_TIME = "out_of_time"
     #: Scouts are a Pro feature: a free user's brief runs none.
     FREE_PLAN = "free_plan"
     #: A dormant user's brief runs none: nobody would read what they found.
@@ -349,3 +351,9 @@ class RememberedSignal(BaseModel):
     memory: SignalMemoryDocument | None = None
     #: The state memory held before today's, when it moved.
     previous_state: str | None = None
+
+
+class RefreshedScouts(BaseModel):
+    """One brief's scout results, refreshed ahead of its slot and kept until the brief takes them."""
+
+    results: list[ScoutResult]

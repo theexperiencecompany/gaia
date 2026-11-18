@@ -14,7 +14,11 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
+from app.constants.integrations import (
+    INTEGRATION_ACCOUNT_ID_PREFIX,
+    ConnectMode,
+    IntegrationStatus,
+)
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
@@ -23,12 +27,8 @@ from app.models.oauth_models import IntegrationContent, OAuthIntegration
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
 
-# Connection state of a user's integration. `expired` means "was connected and no
-# longer works" (revoked grant / dead refresh token) — distinct from `created`
-# ("added, never authenticated") and from the absence of a record entirely.
-UserIntegrationStatus = Literal["created", "connected", "expired"]
-
-IntegrationAccountStatus = Literal["connected", "expired"]
+# One account is live or signed out; only a whole integration can be never signed in.
+IntegrationAccountStatus = Literal[IntegrationStatus.CONNECTED, IntegrationStatus.EXPIRED]
 
 
 def new_account_id() -> str:
@@ -47,7 +47,7 @@ class IntegrationAccount(BaseModel):
     identity: dict[str, str] = Field(default_factory=dict)
     label: str
     nickname: str | None = None
-    status: IntegrationAccountStatus = "connected"
+    status: IntegrationAccountStatus = IntegrationStatus.CONNECTED
     connected_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     expired_at: datetime | None = None
     expired_reason: str | None = None
@@ -257,8 +257,8 @@ class UserIntegration(BaseModel):
 
     user_id: str = Field(..., description="User's MongoDB ObjectId as string")
     integration_id: str = Field(..., description="Reference to integration")
-    status: UserIntegrationStatus = Field(
-        "created",
+    status: IntegrationStatus = Field(
+        IntegrationStatus.CREATED,
         description=(
             "'created' = added but not authenticated, 'connected' = ready to use, "
             "'expired' = was connected but the upstream grant died"
@@ -285,7 +285,7 @@ class UserIntegrationDocument(UserScopedDocument):
     incidental; access is always by the business pair."""
 
     integration_id: str
-    status: UserIntegrationStatus = "created"
+    status: IntegrationStatus = IntegrationStatus.CREATED
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     connected_at: datetime | None = None
     expired_at: datetime | None = None
@@ -311,7 +311,7 @@ class UserIntegrationUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: UserIntegrationStatus | None = None
+    status: IntegrationStatus | None = None
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
@@ -461,7 +461,7 @@ class UserIntegrationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     integration_id: str
-    status: UserIntegrationStatus
+    status: IntegrationStatus
     created_at: datetime
     connected_at: datetime | None = None
     expired_at: datetime | None = None

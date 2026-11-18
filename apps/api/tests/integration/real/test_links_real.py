@@ -23,7 +23,7 @@ from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind, EditionFamily
-from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
+from app.constants.notifications import NotificationKind
 from app.constants.short_links import MAX_RESOLVE_MISSES, TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
@@ -1074,7 +1074,7 @@ class TestTheBriefsLink:
                 "2026-11-09",
                 BriefingKind.DAILY,
                 payload,
-                BriefDelivery(push=True, notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY),
+                BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY),
             )
 
         link_url = stored.payload.link or ""

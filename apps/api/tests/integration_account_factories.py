@@ -1,10 +1,10 @@
 """Integration account factories, kept apart so suites that never touch accounts import none of their schema."""
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import (
     IntegrationAccount,
     IntegrationAccountStatus,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 
 
@@ -15,7 +15,7 @@ def provider_account_id(account_id: str) -> str:
 
 def make_integration_account(
     account_id: str,
-    status: IntegrationAccountStatus = "connected",
+    status: IntegrationAccountStatus = IntegrationStatus.CONNECTED,
     *,
     label: str | None = None,
     nickname: str | None = None,
@@ -37,7 +37,7 @@ def make_integration_record(
     user_id: str,
     integration_id: str = "gmail",
     primary: str | None = "ca_1",
-    status: UserIntegrationStatus = "connected",
+    status: IntegrationStatus = IntegrationStatus.CONNECTED,
 ) -> UserIntegrationDocument:
     """Build a user's integration record holding these accounts."""
     return UserIntegrationDocument(

@@ -18,10 +18,6 @@ from app.constants.briefing import (
     PAPER_MARKER_SELECTOR,
     EditionFamily,
 )
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-)
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.message import (
@@ -175,9 +171,3 @@ def render_edition_email(
         )
         + "</div>"
     )
-
-
-def is_edition_kind(kind: str | None) -> bool:
-    """Both daily and weekly briefings render as editions."""
-
-    return kind in (NOTIFICATION_KIND_BRIEFING_DAILY, NOTIFICATION_KIND_BRIEFING_WEEKLY)
