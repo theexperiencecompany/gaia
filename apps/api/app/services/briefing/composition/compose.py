@@ -1,20 +1,19 @@
 """Compose a brief over its fact pool in one structured call, held to the pool.
 
 A composition that breaks its contract, or heads a group with words untrue of its items,
-is sent back once with every problem named; a second failure fails the run loud, before
-anything is stored or sent.
+is sent back once with every problem named; past the last attempt code salvages what holds
+of it (the checked-call policy, briefing.checked_call).
 """
 
 from dataclasses import dataclass
 
-from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
-from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
-from app.constants.briefing import (
-    BRIEF_COMPOSITION_LABEL,
-    BRIEFING_KIND_WEEKLY,
-    MAX_COMPOSITION_ATTEMPTS,
+from app.agents.prompts.brief_fact_prompts import (
+    EMPTY_DIGEST,
+    NO_WHOLE_COMPOSITION,
+    UNREADABLE_COMPOSITION,
 )
+from app.constants.briefing import BRIEF_COMPOSITION_LABEL, MAX_COMPOSITION_ATTEMPTS
 from app.models.brief_composition_models import (
     BriefComposition,
     ComposedBlock,
@@ -22,19 +21,20 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
 )
-from app.models.briefing_models import BriefingKind
+from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
-from app.services.briefing.composition.repair import FALLBACK_HEADINGS, repaired, salvaged
-from app.services.briefing.context import due_on
+from app.services.briefing.composition.repair import repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
-from app.services.briefing.slots import BriefFact, SlotValues, render_slots, series_figures
-from shared.py.wide_events import log
-
-#: The provider holds the composition to its schema, so no weaker model can drop a field.
-_SCHEMA_HELD = StructuredCallOptions(schema_held=True)
+from app.services.briefing.kinds import BriefKindSpec
+from app.services.briefing.slots import (
+    SlotValues,
+    candidate_fact,
+    render_slots,
+    series_figures,
+)
 
 
 @dataclass(frozen=True)
@@ -50,14 +50,7 @@ def pool_values(pool: FactPool) -> SlotValues:
     """Return what a composition's slots render: each item's title and due date, each series' figures."""
     clock = pool.context.clock
     return SlotValues(
-        facts={
-            i: BriefFact(
-                title=c.title,
-                time=c.time or (due_on(c.due_at, clock) if c.due_at is not None else None),
-                count=c.count,
-            )
-            for i, c in pool.items.items()
-        },
+        facts={i: candidate_fact(c, clock) for i, c in pool.items.items()},
         counts={},
         series={s.id: series_figures(s) for s in pool.series},
     )
@@ -91,78 +84,73 @@ def rendered(composition: BriefComposition, values: SlotValues) -> BriefComposit
     return BriefComposition(blocks=[_filled(b, values) for b in composition.blocks])
 
 
-#: A digest that places nothing recaps nothing; a daily may leave its whole pool out as noise.
-_EMPTY_WEEKLY = (
-    "a weekly digest recaps the week: place what its pool holds of it (what got done, "
-    "its series, each goal's progress, even a stalled one) instead of nothing"
-)
-
-
 async def _problems(
-    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, kind: BriefingKind
+    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, must_place: bool
 ) -> list[str]:
     """Return the contract's problems, else every heading untrue of its items."""
-    if kind == BRIEFING_KIND_WEEKLY and not answer.blocks:
-        return [_EMPTY_WEEKLY]
+    if must_place and not answer.blocks:
+        return [EMPTY_DIGEST]
     return composition_problems(answer, pool, values) or list(
         (await heading_problems(user_id, rendered(answer, values), pool)).values()
     )
 
 
-async def _salvaged(
-    user_id: str, answer: BriefComposition | None, pool: FactPool, values: SlotValues
+def _salvaged(
+    answer: BriefComposition | None, pool: FactPool, values: SlotValues
 ) -> BriefComposition:
-    """Keep what holds of the last answer, a misfit heading given way to its state's, else build from the pool."""
+    """Keep what holds of the last answer, else build from the pool; every group heads by its state.
+
+    A salvage asks no model, so no heading the check never passed is shown: each group takes
+    the heading code derives from its state.
+    """
     kept = salvaged(answer or BriefComposition(blocks=[]), pool, values)
-    misfits = await heading_problems(user_id, rendered(kept, values), pool)
-    blocks = [
-        b.model_copy(update={"heading": FALLBACK_HEADINGS[b.state]})
-        if isinstance(b, ComposedItems) and index + 1 in misfits
-        else b
-        for index, b in enumerate(kept.blocks)
-    ]
-    return BriefComposition(blocks=blocks)
+    return BriefComposition(
+        blocks=[
+            b.model_copy(update={"heading": b.state.fallback_heading})
+            if isinstance(b, ComposedItems)
+            else b
+            for b in kept.blocks
+        ]
+    )
 
 
-async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Composed:
+def _unreadable_note(problems: list[str], _reply: str) -> str:
+    return COMPOSITION_RETRY_NOTE.format(
+        problems=UNREADABLE_COMPOSITION.format(problems="; ".join(problems)),
+        last=NO_WHOLE_COMPOSITION,
+    )
+
+
+async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Composed:
     """Compose the brief over the pool; a pool with nothing but the calendar needs no call."""
     values = pool_values(pool)
     if not pool.composable:
         empty = BriefComposition(blocks=[])
         return Composed(written=empty, rendered=empty, values=values)
-    facts = pool_block(pool)
-    prompt = composition_prompt(pool, kind, facts)
 
-    async def attempt(note: str | None = None) -> tuple[BriefComposition | None, list[str]]:
-        try:
-            answer = await ainvoke_structured(
-                BriefComposition,
-                f"{prompt}\n\n{note}" if note else prompt,
-                label=BRIEF_COMPOSITION_LABEL,
-                config=metered_config(user_id),
-                options=_SCHEMA_HELD,
-            )
-        except MalformedStructuredOutputError as exc:
-            # A reply that is no whole composition is a broken answer like any other: named, asked again.
-            return None, [f"the answer was not a whole BriefComposition tool call ({exc.reason})"]
-        held = repaired(answer, pool)
-        return held, await _problems(user_id, held, pool, values, kind)
+    def done(answer: BriefComposition) -> Composed:
+        return Composed(written=answer, rendered=rendered(answer, values), values=values)
 
-    answer, problems = await attempt()
-    for _ in range(MAX_COMPOSITION_ATTEMPTS - 1):
+    async def held(answer: BriefComposition) -> Composed | Rejected[BriefComposition]:
+        kept = repaired(answer, pool)
+        problems = await _problems(user_id, kept, pool, values, spec.must_place)
         if not problems:
-            break
-        log.warning("briefing.composition_rejected", problems=problems)
-        last = answer.model_dump_json() if answer is not None else "(no whole composition)"
-        answer, problems = await attempt(
-            COMPOSITION_RETRY_NOTE.format(problems="; ".join(problems), last=last)
+            return done(kept)
+        note = COMPOSITION_RETRY_NOTE.format(
+            problems="; ".join(problems), last=kept.model_dump_json()
         )
-    if problems or answer is None:
-        # Loud, but never the user's loss: the brief goes out with what holds of it.
-        log.error(
-            "briefing.composition_salvaged",
-            problems=problems,
-            answer=answer.model_dump() if answer is not None else None,
-        )
-        answer = await _salvaged(user_id, answer, pool, values)
-    return Composed(written=answer, rendered=rendered(answer, values), values=values)
+        return Rejected(problems, note, kept)
+
+    return await checked_structured_call(
+        user_id,
+        composition_prompt(pool, spec.frame, pool_block(pool)),
+        CheckedCall(
+            name="composition",
+            schema=BriefComposition,
+            label=BRIEF_COMPOSITION_LABEL,
+            attempts=MAX_COMPOSITION_ATTEMPTS,
+            check=held,
+            unreadable=_unreadable_note,
+            salvage=lambda last: done(_salvaged(last, pool, values)),
+        ),
+    )

@@ -6,14 +6,15 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.constants.briefing import POSTAL_FAMILY
+from app.constants.briefing import EditionFamily
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_document_models import EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services.briefing import store
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.postmarks import collected_postmarks
+from app.services.briefing.render import RenderedImage
 from app.services.dev_postmarks_seed import seed_dev_postmarks
 from app.utils.errors import AppError
 
@@ -30,19 +31,18 @@ async def dev_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[UserDocument
 
 @pytest.fixture
 def hosted_editions(monkeypatch: pytest.MonkeyPatch) -> list[BriefingPayload]:
-    """Stand in for the CDN render: record each payload and host it at a per-key URL."""
+    """Stand in for the Chromium render and the blob store: record each payload rendered."""
     rendered: list[BriefingPayload] = []
 
-    async def fake_host(
-        payload: BriefingPayload, *, owner_id: str, render_key: str
-    ) -> HostedEditionImage:
+    async def fake_render(payload: BriefingPayload) -> RenderedImage:
         rendered.append(payload)
-        return HostedEditionImage(
-            display_url=f"https://cdn.test/{render_key}.png",
-            chat_url=f"https://cdn.test/{render_key}.jpg",
-        )
+        return RenderedImage(image=b"png")
 
-    monkeypatch.setattr(store, "host_edition_image", fake_host)
+    async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
+        return f"key-{briefing_id}"
+
+    monkeypatch.setattr(store, "render_edition_png", fake_render)
+    monkeypatch.setattr(store, "store_edition", fake_store)
     return rendered
 
 
@@ -56,12 +56,10 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
     assert len(briefs) == SEEDED
     assert len({b.payload.stamp_city for b in briefs}) == SEEDED
     assert len({b.date for b in briefs}) == SEEDED
-    assert all(b.payload.template_family == POSTAL_FAMILY for b in briefs)
+    assert all(b.payload.template_family == EditionFamily.POSTAL for b in briefs)
     assert all(b.delivered_channels for b in briefs)
     assert len(hosted_editions) == 2 * SEEDED
-    assert all(
-        b.edition_image_url and b.edition_image_url.startswith("https://cdn.test/") for b in briefs
-    )
+    assert all(b.edition == EditionRender(key=f"key-{b.id}") for b in briefs)
     assert len({b.payload.headline for b in briefs}) == SEEDED
     # A reseed keeps each brief's id, so its edition still encodes the one link it was given.
     assert len({b.payload.link for b in briefs}) == SEEDED

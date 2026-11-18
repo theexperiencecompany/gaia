@@ -599,6 +599,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings/editions/{key}/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Edition Image
+         * @description Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.
+         */
+        get: operations["briefings_get_edition_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/briefings/postmarks": {
         parameters: {
             query?: never;
@@ -7161,12 +7181,8 @@ export interface components {
             count: number;
             /** Detail */
             detail: string | null;
-            /**
-             * Kind
-             * @default note
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** @default note */
+            kind: components["schemas"]["ItemState"];
             /** Link */
             link: string | null;
             /** Offer */
@@ -7184,6 +7200,12 @@ export interface components {
             url: string | null;
         };
         /**
+         * BriefingKind
+         * @description Which brief a run makes; keys the payload variant and the one-per-day constraint.
+         * @enum {string}
+         */
+        BriefingKind: "daily" | "weekly";
+        /**
          * BriefingListResponse
          * @description One page of the archive, newest first, and where the next page starts.
          */
@@ -7196,6 +7218,12 @@ export interface components {
              */
             next_cursor: string | null;
         };
+        /**
+         * BriefingMood
+         * @description The hero treatment a brief is drawn with; the voice picks one of the daily moods.
+         * @enum {string}
+         */
+        BriefingMood: "clear" | "packed" | "idle" | "winback" | "weekly";
         /**
          * BriefingPayload
          * @description The structured briefing the run emits and every channel renders.
@@ -7248,11 +7276,7 @@ export interface components {
              * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
              */
             message: string | null;
-            /**
-             * Mood
-             * @enum {string}
-             */
-            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            mood: components["schemas"]["BriefingMood"];
             /** @description Set when this brief's stamp is one the user had not collected before. */
             new_stamp: components["schemas"]["NewStamp"] | null;
             /**
@@ -7277,11 +7301,8 @@ export interface components {
             /** Stats */
             stats: components["schemas"]["BriefingStat"][];
             tallies: components["schemas"]["BriefingTallies"] | null;
-            /**
-             * Template Family
-             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.
-             */
-            template_family: string;
+            /** @description The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none. */
+            template_family: components["schemas"]["EditionFamily"] | null;
             /**
              * Uncomposed
              * @description Everything the brief read that the composition left out, for its full page.
@@ -7382,29 +7403,23 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Date */
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD.
+             */
             date: string;
             /** Delivered Channels */
             delivered_channels: string[];
-            /** Edition Fold */
-            edition_fold: number | null;
-            /** Edition Image Url */
-            edition_image_url: string | null;
+            /** @description The edition image; None for a quiet note. */
+            edition: components["schemas"]["EditionImage"] | null;
             /**
              * Edition Name
              * @description The daily edition family's name; None for the weekly recap and a quiet note.
              */
             edition_name: string | null;
-            /** Edition Paper */
-            edition_paper: number[] | null;
             /** Id */
             id: string;
-            /**
-             * Kind
-             * @default daily
-             * @enum {string}
-             */
-            kind: "daily" | "weekly";
+            kind: components["schemas"]["BriefingKind"];
             /**
              * Needs You Count
              * @description Items in the brief's Needs you section, as its edition lists them.
@@ -7418,10 +7433,6 @@ export interface components {
              * @description Air Mail only: the stamp city's name.
              */
             stamp_city_name: string | null;
-            /** Updated At */
-            updated_at: string | null;
-            /** User Id */
-            user_id: string;
         };
         /**
          * BriefingWeek
@@ -7459,11 +7470,7 @@ export interface components {
             app: string;
             /** Detail */
             detail: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            kind: components["schemas"]["ItemState"];
             /** Title */
             title: string;
             /** Todo Id */
@@ -9487,6 +9494,42 @@ export interface components {
          */
         EditionChoice: "on" | "off" | "favourite";
         /**
+         * EditionFamily
+         * @description Every edition family a brief is drawn in, one per vendored explorer template.
+         *
+         *     WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+         *     carries a city stamp. The editions package checks this set against the templates at import.
+         * @enum {string}
+         */
+        EditionFamily: "almanac" | "band" | "boardingpass" | "broadsheet" | "exhibition" | "flightplan" | "gradient" | "instrument" | "invoice" | "librarycard" | "memo" | "menu" | "metromap" | "playfair" | "postal" | "receipt" | "swiss" | "weekly";
+        /**
+         * EditionImage
+         * @description A brief's edition as a surface loads it: its signed URL, its fold and its paper.
+         */
+        EditionImage: {
+            /**
+             * Fold
+             * @description Share of the edition's height where its letter folds.
+             */
+            fold: number | null;
+            /**
+             * Image Url
+             * @description A signed URL that loads the edition image for a year.
+             */
+            image_url: string;
+            /**
+             * Paper
+             * @description The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.
+             */
+            paper: number[] | null;
+        };
+        /**
+         * EditionVariant
+         * @description One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.
+         * @enum {string}
+         */
+        EditionVariant: "png" | "jpg";
+        /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
          */
@@ -10979,6 +11022,14 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * ItemState
+         * @description How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.
+         *
+         *     An item's text is only its title, so no renderer repeats its state.
+         * @enum {string}
+         */
+        ItemState: "gaia" | "you" | "lookback" | "failed" | "note";
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -13496,21 +13547,8 @@ export interface components {
              * @description User-local YYYY-MM-DD the stamp first arrived.
              */
             date: string;
-            /**
-             * Edition Fold
-             * @description Share of the edition's height where its letter folds.
-             */
-            edition_fold: number | null;
-            /**
-             * Edition Image Url
-             * @description That brief's hosted edition render.
-             */
-            edition_image_url: string | null;
-            /**
-             * Edition Paper
-             * @description The paper's box on its desk as [left, top, right, bottom] shares.
-             */
-            edition_paper: number[] | null;
+            /** @description That brief's edition image. */
+            edition: components["schemas"]["EditionImage"] | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -13821,11 +13859,7 @@ export interface components {
         PublicBriefing: {
             /** Edition Image Url */
             edition_image_url: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "daily" | "weekly";
+            kind: components["schemas"]["BriefingKind"];
             payload: components["schemas"]["PublicBriefingPayload"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -13851,11 +13885,7 @@ export interface components {
          *     heygaia.link; the todo id it is bound to stays private.
          */
         PublicBriefingItem: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            kind: components["schemas"]["ItemState"];
             /** Link */
             link: string | null;
             /** Text */
@@ -13880,11 +13910,7 @@ export interface components {
             kicker: string;
             /** Lede */
             lede: string;
-            /**
-             * Mood
-             * @enum {string}
-             */
-            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            mood: components["schemas"]["BriefingMood"];
             /** Sections */
             sections: components["schemas"]["PublicBriefingSection"][];
             /** Stats */
@@ -18093,7 +18119,9 @@ export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpda
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingKind = components['schemas']['BriefingKind'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingMood = components['schemas']['BriefingMood'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
 export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
 export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
@@ -18218,6 +18246,9 @@ export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type EditionChoice = components['schemas']['EditionChoice'];
+export type EditionFamily = components['schemas']['EditionFamily'];
+export type EditionImage = components['schemas']['EditionImage'];
+export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -18304,6 +18335,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemState = components['schemas']['ItemState'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -20184,6 +20216,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BriefingView"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_edition_image: {
+        parameters: {
+            query: {
+                /** @description The signature the brief's edition URL carries. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                key: string;
+                variant: components["schemas"]["EditionVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
                 };
             };
             /** @description Unprocessable Entity */

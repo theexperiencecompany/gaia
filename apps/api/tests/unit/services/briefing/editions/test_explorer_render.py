@@ -8,10 +8,13 @@ from collections.abc import Iterator
 import json
 import re
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
-from app.models.briefing_models import BriefingPayload
+from app.constants.briefing import EditionFamily
+from app.models.brief_payload_models import BriefingPayload
+from app.services.briefing import editions
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
@@ -127,6 +130,26 @@ class TestFamilyIds:
     def test_result_is_cached_so_the_js_files_are_read_once(self) -> None:
         assert explorer_family_ids() is explorer_family_ids()
 
+    def test_edition_families_are_exactly_the_vendored_templates(self) -> None:
+        assert set(EXPLORER_RENDERER) == set(explorer_family_ids()) == set(EditionFamily)
+
+    @pytest.mark.parametrize(
+        ("templates", "named"),
+        [
+            ((*EditionFamily, "playbill"), "templates without a family ['playbill']"),
+            (tuple(f for f in EditionFamily if f is not EditionFamily.MENU), "['menu']"),
+        ],
+        ids=["template-without-family", "family-without-template"],
+    )
+    def test_a_family_and_template_set_that_disagree_fail_loud(
+        self, templates: tuple[str, ...], named: str
+    ) -> None:
+        with (
+            patch.object(editions, "explorer_family_ids", return_value=templates),
+            pytest.raises(RuntimeError, match=re.escape(named)),
+        ):
+            editions._checked_families()
+
     def test_each_family_carries_its_register_call_display_name(self) -> None:
         names = explorer_family_names()
 
@@ -206,7 +229,7 @@ class TestDocumentShell:
             "days": [{"you": 0, "gaia": 0}] * 7,
             "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
         }
-        payload = _payload(template_family="weekly", calendar=[], week=week)
+        payload = _payload(template_family=EditionFamily.WEEKLY, calendar=[], week=week)
 
         html = _render(payload, family="weekly")
 

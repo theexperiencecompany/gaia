@@ -54,6 +54,7 @@ import time_machine
 import uvicorn
 from workos.session import SessionModule
 
+from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.config.rate_limits import RateLimitConfig
 from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
@@ -65,7 +66,7 @@ from app.constants.trigger_gates import GateKind
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.auth_utils import session_hint_cookie_domain
@@ -347,6 +348,21 @@ def email_verdict_answers(
         "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
     }
     return {"answers": answers}
+
+
+_FENCE_RE = re.compile(r"<<[0-9a-f]{8,}>>")
+
+
+def unfenced(prompt: str) -> str:
+    """Return the prompt outside its untrusted-data fences; fails unless it has one fence, announced once."""
+    fences = set(_FENCE_RE.findall(prompt))
+    assert len(fences) == 1, f"expected one untrusted-data fence, found {sorted(fences)}"
+    (fence,) = fences
+    announced = UNTRUSTED_DATA_NOTE.format(fence=fence)
+    assert prompt.count(announced) == 1, "the fence is never said to hold data, not instructions"
+    parts = prompt.replace(announced, "").split(fence)
+    assert len(parts) % 2 == 1, "a fence is opened and never closed"
+    return "".join(parts[0::2])
 
 
 def user_clock(tz_name: str, day: date, hour: int = 8) -> UserClock:

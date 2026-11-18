@@ -4,7 +4,7 @@
    Reading order: headline -> the brief's blocks in GAIA's order -> figures.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   const grain = (id, freq) =>
     `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
   const pad2 = (n) => String(n).padStart(2, "0");

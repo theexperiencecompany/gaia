@@ -3,14 +3,18 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
-from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.briefing_models import (
+from app.config.settings import settings
+from app.constants.briefing import BriefAction, BriefOutcome, EditionFamily
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import (
+    BriefingEvent,
     BriefingItem,
-    BriefingModel,
+    BriefingMood,
     BriefingPayload,
     BriefingSection,
 )
-from app.services.briefing.view import briefing_view
+from app.services.briefing.view import briefing_view, public_view
 
 
 def _brief(
@@ -28,7 +32,7 @@ def _brief(
             date="2026-10-21",
             headline="Three things wait on you",
             lede="A short day.",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="Onward.",
             template_family=template_family,
             stamp_city=stamp_city,
@@ -37,50 +41,94 @@ def _brief(
     )
 
 
-def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
-    view = briefing_view(_brief(template_family="postal", stamp_city="bogota"))
+async def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
+    view = await briefing_view(_brief(template_family=EditionFamily.POSTAL, stamp_city="bogota"))
 
     assert (view.edition_name, view.stamp_city_name) == ("Air Mail", "Bogotá")
     assert view.id == "brief_1"
 
 
-def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
+async def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
     """The lead can be a needs-you item too; the editions list it with the other decisions."""
     lead = BriefingSection(
         numeral="I",
         title="First up",
-        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind="you")],
+        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind=ItemState.YOU)],
     )
     needs_you = BriefingSection(
         numeral="II",
         title="Needs you",
         items=[
-            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind="you"),
-            BriefingItem(text="The export", action=BriefAction.RETRY, kind="failed"),
+            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind=ItemState.YOU),
+            BriefingItem(text="The export", action=BriefAction.RETRY, kind=ItemState.FAILED),
         ],
     )
     gaias_work = BriefingSection(
         numeral="III",
         title="GAIA's work",
         items=[
-            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind="lookback"),
+            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind=ItemState.LOOKBACK),
             BriefingItem(text="FYI", outcome=BriefOutcome.CHANGED),
         ],
     )
 
-    view = briefing_view(
-        _brief(template_family="flightplan", sections=[lead, needs_you, gaias_work])
+    view = await briefing_view(
+        _brief(template_family=EditionFamily.FLIGHTPLAN, sections=[lead, needs_you, gaias_work])
     )
 
     assert view.needs_you_count == 3
 
 
-def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
-    view = briefing_view(_brief(template_family="flightplan"))
+async def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
+    view = await briefing_view(_brief(template_family=EditionFamily.FLIGHTPLAN))
 
     assert (view.edition_name, view.stamp_city_name) == ("The Blueprint", None)
 
 
-def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
-    assert briefing_view(_brief(template_family="weekly")).edition_name is None
-    assert briefing_view(_brief(template_family="")).edition_name is None
+async def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
+    assert (await briefing_view(_brief(template_family=EditionFamily.WEEKLY))).edition_name is None
+    assert (await briefing_view(_brief(template_family=None))).edition_name is None
+
+
+async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() -> None:
+    stored = _brief(template_family=EditionFamily.MEMO).model_copy(
+        update={"edition": EditionRender(key="k1", fold=0.3, paper=None)}
+    )
+
+    view = await briefing_view(stored)
+
+    assert view.edition is not None
+    assert view.edition.image_url.startswith(f"{settings.HOST}/api/v1/briefings/editions/k1/png?t=")
+    assert (view.edition.fold, view.edition.paper) == (0.3, None)
+    assert (await briefing_view(_brief(template_family=None))).edition is None
+
+
+async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar() -> None:
+    owned = _brief(
+        template_family=EditionFamily.MEMO,
+        sections=[
+            BriefingSection(
+                numeral="I",
+                title="Waiting on you",
+                items=[
+                    BriefingItem(
+                        text="Reply to Priya", action=BriefAction.REPLY, kind=ItemState.YOU
+                    )
+                ],
+            )
+        ],
+    )
+    calendar = [BriefingEvent(date="2026-10-21", start="11:00", title="Therapy")]
+    owned = owned.model_copy(
+        update={
+            "payload": owned.payload.model_copy(update={"calendar": calendar}),
+            "edition": EditionRender(key="k1"),
+        }
+    )
+
+    seen = (await public_view(owned)).model_dump_json()
+
+    assert "Three things wait on you" in seen
+    assert "k1/png?t=" in seen
+    for private in ("Reply to Priya", "Waiting on you", "Therapy", "user-1", "brief_1"):
+        assert private not in seen

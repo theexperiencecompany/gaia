@@ -24,7 +24,7 @@ from PIL import Image
 from tests import offline_env  # noqa: F401 -- must run before any app import
 from tests.integration.brief_compositions import composed_payload
 
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.dev_postmarks_seed import sample_edition_payload
@@ -88,8 +88,7 @@ async def main() -> None:
     drop_stale(OUT, families)
     drop_stale(DEMO_OUT, families)
     for family in families:
-        payload = sample_edition_payload(family, RECIPIENT)
-        payload.link = SAMPLE_LINK
+        payload = sample_edition_payload(family, RECIPIENT).model_copy(update={"link": SAMPLE_LINK})
         rendered = await render_edition_png(payload)
         (OUT / f"{family}.webp").write_bytes(thumbnail(rendered.image))
         shown = await render_edition_png(demo_payload(family))

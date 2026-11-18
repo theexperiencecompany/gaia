@@ -16,7 +16,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefingFrequency, EditionChoice
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import (
+from app.models.brief_settings_models import (
     BriefingEditions,
     BriefingSchedule,
     BriefingScheduleUpdate,

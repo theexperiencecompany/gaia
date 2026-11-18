@@ -7,13 +7,14 @@ from tests.factories import make_user_id
 
 from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
 from app.models.todo_models import TodoDocument
-from app.services.briefing.context import StatedGoal
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.quotes import quote_spans, verbatim_span
+from app.services.briefing.goals import StatedGoal
 
 USER_ID = make_user_id()
 MAYA = (
@@ -39,7 +40,13 @@ def _message(
         author=author if author is not None else (people[0] if people else None),
     )
     return BriefCandidate(
-        source="gmail", app="Gmail", state="you", title=title, people=people, signal=signal
+        origin=CandidateOrigin.APP_SIGNAL,
+        source="gmail",
+        app="Gmail",
+        state=ItemState.YOU,
+        title=title,
+        people=people,
+        signal=signal,
     )
 
 
@@ -111,7 +118,13 @@ class TestQuoteSpans:
             4: _message("Can we move the offsite to the week after Diwali?", ["Priya Raman"]),
             5: _message(None, ["Arjun"]),
             6: _message("A message nobody signed, which has no author.", []),
-            7: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Deck"),
+            7: BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.LOOKBACK,
+                title="Deck",
+            ),
         }
 
         quotes = quote_spans(items)
@@ -132,7 +145,13 @@ class TestQuoteSpans:
 
     def test_an_item_with_nothing_to_quote_does_not_end_the_search(self) -> None:
         items = {
-            1: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Deck"),
+            1: BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.LOOKBACK,
+                title="Deck",
+            ),
             2: _message("ok thanks", ["Priya Raman"]),
             3: _message("Can we move the offsite to the week after Diwali?", ["Priya Raman"]),
         }

@@ -21,7 +21,7 @@ from scripts.analytics_ops.e2e_journeys import (
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
+from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.workflow_models import CreateWorkflowRequest
 
 WORKFLOW = "wf_1"

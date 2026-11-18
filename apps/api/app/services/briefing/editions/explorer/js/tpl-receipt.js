@@ -16,7 +16,7 @@
    Reading order: deck -> awaiting payment -> today -> overnight -> totals.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   const caps = (s) => esc(String(s).toUpperCase());
   const pad2 = (n) => String(n).padStart(2, "0");
 

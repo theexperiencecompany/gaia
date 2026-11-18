@@ -1,21 +1,18 @@
-"""Draw a brief's edition family, stamp and painting from the user's shuffle bags, and persist the draws once it went out."""
+"""Draw a brief's edition (its family, stamp and painting) from the user's shuffle bags, and persist the draws once it went out."""
 
 from collections.abc import Mapping, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import random
 
 from app.constants.briefing import (
     FAVOURITE_WEIGHT_FACTOR,
-    POSTAL_FAMILY,
     ArtFamily,
     BriefingBag,
     EditionChoice,
+    EditionFamily,
 )
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import BriefBlock
-from app.models.briefing_models import (
-    BriefingPayload,
-)
 from app.models.user_models import ShuffleBag, UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
@@ -43,7 +40,7 @@ def draw_from_bag(
 ) -> BagDraw:
     """Draw today's member from one of the user's shuffle bags, off the loaded user.
 
-    Nothing is persisted here: publish_brief saves the draw only once the brief went out,
+    Nothing is persisted here: publish saves the draw only once a pushed brief went out,
     so a failed run does not burn a member of the pass.
     """
     state = (user.briefing_shuffle_bags or {}).get(bag)
@@ -51,7 +48,7 @@ def draw_from_bag(
     return BagDraw(bag=bag, member=member, next_state=next_state)
 
 
-def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]:
+def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[EditionFamily, int]:
     """Return the user's daily bag: families turned off left out, each favourite at twice its weight.
 
     Settings keep one family on, so the bag is empty only when every family left on was
@@ -71,14 +68,20 @@ def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]
 
 @dataclass(frozen=True)
 class EditionDraw:
-    """Today's edition family, and the composed blocks it draws and leaves to the brief's page."""
+    """Today's edition: its family, the blocks it draws and leaves to the brief's page, its stamp or painting.
 
-    family: BagDraw
+    draws are the bag draws the edition spent, persisted once a pushed brief went out.
+    """
+
+    family: EditionFamily
     drawn: list[BriefBlock]
     undrawn: list[BriefBlock]
+    stamp_city: str | None = None
+    artwork_id: str | None = None
+    draws: list[BagDraw] = field(default_factory=list)
 
 
-def draw_edition(user: UserDocument, blocks: list[BriefBlock]) -> EditionDraw:
+def _drawn_family(user: UserDocument, blocks: list[BriefBlock]) -> BagDraw:
     """Draw today's family from the user's bag, among its families that can draw every block.
 
     When no family in the user's rotation can draw the whole composition, the bag's next
@@ -87,15 +90,49 @@ def draw_edition(user: UserDocument, blocks: list[BriefBlock]) -> EditionDraw:
     """
     weights = daily_family_weights(user.briefing_editions)
     fits = families_drawing(weights, blocks)
-    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, weights, eligible=fits or None)
-    drawn, undrawn = split_drawable(family.member, blocks)
+    # A bag holds its members as the strings the user doc stores.
+    return draw_from_bag(
+        user,
+        BriefingBag.EDITION_FAMILY,
+        {family.value: weight for family, weight in weights.items()},
+        eligible={family.value for family in fits} or None,
+    )
+
+
+def draw_edition(
+    user: UserDocument, blocks: list[BriefBlock], fixed_family: EditionFamily | None
+) -> EditionDraw:
+    """Draw the edition the blocks print in: its family, then its stamp city or its painting.
+
+    The family is fixed for the kind or drawn from the user's bag; an Air Mail edition carries
+    a stamp, a framed family a painting.
+    """
+    family_draws = [] if fixed_family is not None else [_drawn_family(user, blocks)]
+    family = fixed_family if fixed_family is not None else EditionFamily(family_draws[0].member)
+    drawn, undrawn = split_drawable(family, blocks)
     if undrawn:
-        log.info(
-            "briefing.blocks_undrawn",
-            family=family.member,
-            kinds=[block.kind for block in undrawn],
+        log.info("briefing.blocks_undrawn", family=family, kinds=[b.kind for b in undrawn])
+    if family == EditionFamily.POSTAL:
+        stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
+        return EditionDraw(
+            family=family,
+            drawn=drawn,
+            undrawn=undrawn,
+            stamp_city=stamp.member,
+            draws=[*family_draws, stamp],
         )
-    return EditionDraw(family=family, drawn=drawn, undrawn=undrawn)
+    if family in ArtFamily:
+        artwork = draw_from_bag(
+            user, BriefingBag.ARTWORK, artwork_weights(), eligible=artworks_for(ArtFamily(family))
+        )
+        return EditionDraw(
+            family=family,
+            drawn=drawn,
+            undrawn=undrawn,
+            artwork_id=artwork.member,
+            draws=[*family_draws, artwork],
+        )
+    return EditionDraw(family=family, drawn=drawn, undrawn=undrawn, draws=family_draws)
 
 
 async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:
@@ -104,22 +141,3 @@ async def persist_draws(user_id: str, draws: list[BagDraw]) -> None:
         log.info(
             "briefing.bag_drawn", user_id=user_id, bag=bag_draw.bag.value, member=bag_draw.member
         )
-
-
-def draw_stamp_or_artwork(user: UserDocument, payload: BriefingPayload) -> list[BagDraw]:
-    """Record an Air Mail brief's stamp city, or a framed family's painting, on its payload.
-
-    Returns the stamp or painting draw, persisted once the brief is delivered.
-    """
-    family = payload.template_family
-    if family == POSTAL_FAMILY:
-        stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
-        payload.stamp_city = stamp.member
-        return [stamp]
-    if family in ArtFamily:
-        artwork = draw_from_bag(
-            user, BriefingBag.ARTWORK, artwork_weights(), eligible=artworks_for(ArtFamily(family))
-        )
-        payload.artwork_id = artwork.member
-        return [artwork]
-    return []

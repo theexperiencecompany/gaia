@@ -8,28 +8,31 @@ editions draws one per other daily family, plus a weekly recap. Fixed dates key 
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    POSTAL_FAMILY,
     SECTION_NUMERALS,
-    WEEKLY_FAMILY,
     WEEKLY_KICKER,
     ArtFamily,
     BriefAction,
+    BriefingKind,
     BriefOutcome,
+    EditionFamily,
     hue_for_day,
 )
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import (
+    NOTIFICATION_KIND_BRIEFING_DAILY,
+    NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    NotificationChannel,
+)
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
-from app.models.briefing_models import (
+from app.models.brief_document_models import BriefDelivery, DeliveryStep
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingKind,
     BriefingMood,
     BriefingPayload,
     BriefingSection,
@@ -45,6 +48,10 @@ from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
+_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
+    BriefingKind.DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BriefingKind.WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+}
 # Anchored, not today-relative: a today-relative range would add a brief on every new day.
 _LAST_SEEDED_DATE = date(2026, 10, 1)
 # Editions run forward from the day after the last postmark; the recap closes their week.
@@ -82,7 +89,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Two signatures and a quiet afternoon",
         lede="The Northwind contract is ready to sign, and nothing is booked after 2 PM.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Sign early, then take the afternoon back.",
         needs_you=(
             (BriefAction.APPROVE, "Northwind services agreement"),
@@ -98,7 +105,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="A packed Thursday, mostly meetings",
         lede="Five calls back to back; I moved the 1:1 with Sam so you get lunch.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Eat before the 1 PM.",
         needs_you=((BriefAction.REPLY, "Offsite venue, by noon"),),
         events=(
@@ -117,7 +124,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The invoice went out, the bug did not come back",
         lede="Acme paid overnight and the login fix held through the weekend traffic.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="A clean slate for Monday.",
         needs_you=((BriefAction.REVIEW, "Draft pricing page copy"),),
         events=(_SeedEvent("14:00", "Pricing sync", "Zoom"),),
@@ -131,7 +138,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Your flight to Lisbon is on time",
         lede="Boarding at 6:40 PM from gate B12; the hotel confirmed early check-in.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Pack the charger this time.",
         needs_you=((BriefAction.REVIEW, "Return flight seat"),),
         events=(
@@ -147,7 +154,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Three replies are waiting on you",
         lede="Recruiting, the landlord and the conference talk all need a yes or no.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Ten minutes clears all three.",
         needs_you=(
             (BriefAction.REPLY, "Jordan's senior engineer offer"),
@@ -161,7 +168,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Nothing on the calendar, plenty done",
         lede="A free Saturday; overnight I cleared the reading list and booked the dentist.",
-        mood="idle",
+        mood=BriefingMood.IDLE,
         caption="Enjoy the slow one.",
         needs_you=(),
         events=(),
@@ -174,7 +181,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The board deck needs your numbers",
         lede="Slides 4 to 9 are drafted; the revenue chart is waiting on the final close.",
-        mood="packed",
+        mood=BriefingMood.PACKED,
         caption="Numbers first, polish later.",
         needs_you=(
             (BriefAction.REVIEW, "Board deck revenue slide"),
@@ -191,7 +198,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Your mother's birthday is Sunday",
         lede="The flowers are ordered for Saturday delivery; the card still needs your words.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Write it from the heart.",
         needs_you=((BriefAction.ATTEND, "Birthday card, before Friday"),),
         events=(_SeedEvent("19:00", "Dinner with Alex", "Osteria Nove"),),
@@ -204,7 +211,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="The release shipped while you slept",
         lede="Version 2.4 is live for everyone, and the changelog went out at 6 AM.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Celebrate the team at standup.",
         needs_you=((BriefAction.APPROVE, "Blog post about 2.4"),),
         events=(_SeedEvent("09:30", "Standup"), _SeedEvent("15:00", "Retro", "Zoom")),
@@ -218,7 +225,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="A renewal is due before Friday",
         lede="The insurance policy lapses on the 3rd; the cheaper quote is ready to compare.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="One decision, then you are covered.",
         needs_you=((BriefAction.APPROVE, "Home insurance renewal"),),
         events=(_SeedEvent("11:00", "Call with the accountant"),),
@@ -232,7 +239,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="Gym at seven, deep work until noon",
         lede="I blocked the morning for the proposal and muted Slack until 12.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Protect the morning.",
         needs_you=(),
         events=(
@@ -249,7 +256,7 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
     _SeedDay(
         headline="One payment failed overnight",
         lede="The card on the design tool expired; everything else renewed fine.",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Update the card and it retries.",
         needs_you=((BriefAction.APPROVE, "New card for Figma billing"),),
         events=(_SeedEvent("13:00", "Lunch and learn", "Kitchen"),),
@@ -275,7 +282,7 @@ def _brief_payload(
     day: date,
     seed: _SeedDay,
     recipient_name: str | None,
-    family: str,
+    family: EditionFamily,
     *,
     city_slug: str | None = None,
     artwork_id: str | None = None,
@@ -284,16 +291,19 @@ def _brief_payload(
     keyed_items = (
         (
             _ASKS_HEADING,
-            [BriefingItem(text=text, action=action, kind="you") for action, text in seed.needs_you],
+            [
+                BriefingItem(text=text, action=action, kind=ItemState.YOU)
+                for action, text in seed.needs_you
+            ],
         ),
         (
             _DONE_HEADING,
             [
-                BriefingItem(text=text, outcome=outcome, kind="lookback")
+                BriefingItem(text=text, outcome=outcome, kind=ItemState.LOOKBACK)
                 for outcome, text in seed.done
             ]
             + [
-                BriefingItem(text=text, outcome=BriefOutcome.STARTED, kind="gaia")
+                BriefingItem(text=text, outcome=BriefOutcome.STARTED, kind=ItemState.GAIA)
                 for text in seed.running
             ],
         ),
@@ -326,14 +336,14 @@ def _brief_payload(
     )
 
 
-def sample_edition_payload(family: str, recipient_name: str) -> BriefingPayload:
+def sample_edition_payload(family: EditionFamily, recipient_name: str) -> BriefingPayload:
     """Return the first seeded day as a daily brief in family, with its stamp or painting."""
     return _brief_payload(
         _FIRST_EDITION_DATE,
         _SEED_DAYS[0],
         recipient_name,
         family,
-        city_slug=min(hosted_stamp_weights()) if family == POSTAL_FAMILY else None,
+        city_slug=min(hosted_stamp_weights()) if family == EditionFamily.POSTAL else None,
         artwork_id=min(artworks_for(ArtFamily(family))) if family in ArtFamily else None,
     )
 
@@ -353,14 +363,14 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
         await _store(
             user,
-            _brief_payload(day, seed, user.name, POSTAL_FAMILY, city_slug=slug),
-            BRIEFING_KIND_DAILY,
+            _brief_payload(day, seed, user.name, EditionFamily.POSTAL, city_slug=slug),
+            BriefingKind.DAILY,
         )
 
 
 async def seed_dev_editions(user: UserDocument, count: int) -> None:
     """Render, host and upsert count daily briefs, one per non-postal family, then a weekly recap."""
-    families = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+    families = sorted(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
     if count > len(families):
         raise create_error(
             message=f"Cannot seed {count} editions",
@@ -379,9 +389,9 @@ async def seed_dev_editions(user: UserDocument, count: int) -> None:
         await _store(
             user,
             _brief_payload(day, seed, user.name, family, artwork_id=artwork_id),
-            BRIEFING_KIND_DAILY,
+            BriefingKind.DAILY,
         )
-    await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)
+    await _store(user, _weekly_payload(user), BriefingKind.WEEKLY)
 
 
 def _weekly_payload(user: UserDocument) -> BriefingPayload:
@@ -397,24 +407,28 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
                 numeral=SECTION_NUMERALS[0],
                 title=_ASKS_HEADING,
                 items=[
-                    BriefingItem(text="Offsite venue", action=BriefAction.REPLY, kind="you"),
-                    BriefingItem(text="New lease terms", action=BriefAction.APPROVE, kind="you"),
+                    BriefingItem(
+                        text="Offsite venue", action=BriefAction.REPLY, kind=ItemState.YOU
+                    ),
+                    BriefingItem(
+                        text="New lease terms", action=BriefAction.APPROVE, kind=ItemState.YOU
+                    ),
                 ],
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
                 title=_DONE_HEADING,
                 items=[
-                    BriefingItem(text=text, outcome=outcome, kind="lookback")
+                    BriefingItem(text=text, outcome=outcome, kind=ItemState.LOOKBACK)
                     for outcome, text in shipped
                 ],
             ),
         ],
         blocks=_section_blocks(2),
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="Two decisions and the week is closed.",
         hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),
-        template_family=WEEKLY_FAMILY,
+        template_family=EditionFamily.WEEKLY,
         recipient_name=user.name,
         generated_at=_GENERATED_AT,
         tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),
@@ -430,6 +444,14 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
 
 
 async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
-    """Store the brief with its rendered edition, marked delivered in-app and by email."""
-    await store_brief(user.id, payload.date, kind, payload)
-    await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)
+    """Store the brief with its rendered edition, its delivery done in-app and by email."""
+    delivered = BriefDelivery(
+        push=True,
+        notification_kind=_SEEDED_NOTIFICATION_KINDS[kind],
+        done=list(DeliveryStep),
+        completed_at=datetime.now(UTC),
+    )
+    stored = await store_brief(user.id, payload.date, kind, payload, delivered)
+    await briefing_repository.record_step(
+        user.id, stored.id, DeliveryStep.NOTIFICATION, _SEEDED_CHANNELS
+    )

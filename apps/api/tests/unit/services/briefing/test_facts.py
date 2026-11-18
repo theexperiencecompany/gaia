@@ -5,14 +5,20 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
 from app.constants.briefing import (
-    CALENDAR_UNAVAILABLE,
-    NO_CALENDAR_CONNECTED,
     BriefAction,
     BriefOutcome,
 )
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingSection,
+    UnreadSource,
+)
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -20,15 +26,11 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
-from app.models.briefing_models import (
-    BriefingEvent,
-    BriefingItem,
-    BriefingSection,
-    UnreadSource,
-)
+from app.models.brief_slot_models import CountName, SeriesField
 from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
-from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
+from app.services.briefing.calendar_read import CalendarGap, CalendarRead
+from app.services.briefing.clock import UserClock
 from app.services.briefing.facts import (
     TODAY,
     WEEK_AHEAD,
@@ -39,7 +41,7 @@ from app.services.briefing.facts import (
     user_todos_note,
 )
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
+from app.services.briefing.slots import BriefFact
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +70,7 @@ def _sources(
     *,
     artifacts: dict[str, ArtifactFact] | None = None,
     open_todos: int = 0,
-    calendar: list[BriefingEvent] | CalendarUnread | None = None,
+    calendar: list[BriefingEvent] | CalendarRead | None = None,
     event_ids: list[int] | None = None,
     span: BriefSpan = TODAY,
     blocks: list[BriefBlock] | None = None,
@@ -76,7 +78,9 @@ def _sources(
     return FactSources(
         artifacts=artifacts or {},
         open_todos=open_todos,
-        calendar=[] if calendar is None else calendar,
+        calendar=calendar
+        if isinstance(calendar, CalendarRead)
+        else CalendarRead(events=calendar or []),
         event_ids=event_ids or [],
         span=span,
         todos_note=None,
@@ -87,12 +91,13 @@ def _sources(
 class TestTheFactLines:
     def test_an_item_line_says_its_app_when_it_is_due_its_detail_and_how_many_asked(self) -> None:
         item = BriefingItem(
-            text="Reply to Maya", kind="you", app="Gmail", count=3, action=BriefAction.REPLY
+            text="Reply to Maya", kind=ItemState.YOU, app="Gmail", count=3, action=BriefAction.REPLY
         )
         candidate = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Re: term sheet",
             detail="needs sign-off",
             due_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
@@ -101,12 +106,12 @@ class TestTheFactLines:
 
         facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
+        assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.OPEN_TODOS: 4}
         assert facts.values.facts[1] == BriefFact(
             title="Reply to Maya",
             time="Fri Nov 13",
             count=3,
-            kind="you",
+            kind=ItemState.YOU,
             words="Re: term sheet needs sign-off",
         )
         assert facts.block.splitlines()[:3] == [
@@ -119,10 +124,15 @@ class TestTheFactLines:
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
         """Replay of 2026-11-14: placing an own todo raised KeyError on its todo id."""
         item = BriefingItem(
-            text="Sort the garage", kind="you", action=BriefAction.ATTEND, todo_id="own-1"
+            text="Sort the garage", kind=ItemState.YOU, action=BriefAction.ATTEND, todo_id="own-1"
         )
         candidate = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Sort the garage", todo_id="own-1"
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Sort the garage",
+            todo_id="own-1",
         )
 
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
@@ -131,9 +141,16 @@ class TestTheFactLines:
         assert facts.deliverables == {}
 
     def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
-        item = BriefingItem(text="Venue", kind="you", todo_id="t1", action=BriefAction.REPLY)
+        item = BriefingItem(
+            text="Venue", kind=ItemState.YOU, todo_id="t1", action=BriefAction.REPLY
+        )
         candidate = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Venue", detail="Lisbon or Porto?"
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Venue",
+            detail="Lisbon or Porto?",
         )
         art = ArtifactFact(snippet="", chars=0, action=True)
 
@@ -147,11 +164,12 @@ class TestTheFactLines:
 
 class TestWhatProseMayQuote:
     def test_the_date_an_items_standing_says_may_be_quoted(self) -> None:
-        item = BriefingItem(text="Pitch prep", kind="gaia", outcome=BriefOutcome.STARTED)
+        item = BriefingItem(text="Pitch prep", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED)
         candidate = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Pitch prep",
             standing="GAIA looks at it again Tue Nov 17",
         )
@@ -165,14 +183,27 @@ class TestWhatProseMayQuote:
 
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
         first = (
-            BriefingItem(text="Q3 plan", kind="you", todo_id="t1", action=BriefAction.REPLY),
+            BriefingItem(
+                text="Q3 plan", kind=ItemState.YOU, todo_id="t1", action=BriefAction.REPLY
+            ),
             BriefCandidate(
-                source="gaia", app="GAIA", state="you", title="Q3 plan", detail="due by 5pm"
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.YOU,
+                title="Q3 plan",
+                detail="due by 5pm",
             ),
         )
         second = (
-            BriefingItem(text="Q4 plan", kind="you", action=BriefAction.REPLY),
-            BriefCandidate(source="gaia", app="GAIA", state="you", title="Q4 plan"),
+            BriefingItem(text="Q4 plan", kind=ItemState.YOU, action=BriefAction.REPLY),
+            BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.YOU,
+                title="Q4 plan",
+            ),
         )
         art = ArtifactFact(snippet="42 slides", chars=900, action=False)
 
@@ -191,9 +222,14 @@ class TestWhatProseMayQuote:
             state="P1 open",
             text="repro on build 88",
         )
-        item = BriefingItem(text="Fix login", kind="you", action=BriefAction.REPLY)
+        item = BriefingItem(text="Fix login", kind=ItemState.YOU, action=BriefAction.REPLY)
         candidate = BriefCandidate(
-            source="linear", app="Linear", state="you", title="Fix login 4", signal=signal
+            origin=CandidateOrigin.APP_SIGNAL,
+            source="linear",
+            app="Linear",
+            state=ItemState.YOU,
+            title="Fix login 4",
+            signal=signal,
         )
 
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
@@ -224,7 +260,7 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-11", start="15:00", title="Board call"),
             BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
         ]
-        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.")
+        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.", words="this week")
 
         facts = build_facts(
             Chosen(sections=[], picked=[]),
@@ -245,7 +281,9 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-12", start=None, title="Offsite"),
             BriefingEvent(date="2026-11-13", start="09:30", title="Dentist"),
         ]
-        span = BriefSpan(heading="The days ahead", empty="Nothing.", no_items="None.", days=days)
+        span = BriefSpan(
+            heading="The days ahead", empty="Nothing.", no_items="None.", words="ahead", days=days
+        )
 
         facts = build_facts(
             Chosen(sections=[], picked=[]),
@@ -255,10 +293,10 @@ class TestTheCalendarAndTheCharts:
 
         assert facts.block.splitlines()[-6:] == [
             "The days ahead, 3 event(s):",
-            "Thursday Nov 12, 2 event(s), the week's busiest:",
+            "Thu Nov 12, 2 event(s), the week's busiest:",
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
             "- fact 8 | all day: Offsite",
-            "Friday Nov 13, 1 event(s):",
+            "Fri Nov 13, 1 event(s):",
             "- fact 9 | [[fact:9.time]] (9:30 AM): Dentist",
         ]
 
@@ -276,14 +314,14 @@ class TestTheCalendarAndTheCharts:
 
         assert facts.block.splitlines()[-5:] == [
             "The week ahead, 2 event(s):",
-            "Thursday Nov 12, 1 event(s):",
+            "Thu Nov 12, 1 event(s):",
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
-            "Friday Nov 13, 1 event(s):",
+            "Fri Nov 13, 1 event(s):",
             "- fact 8 | all day: Offsite",
         ]
 
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
-        unconnected = _sources(calendar=CalendarUnread(CalendarGap.NOT_CONNECTED))
+        unconnected = _sources(calendar=CalendarRead(gap=CalendarGap.NOT_CONNECTED))
 
         facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
 
@@ -292,7 +330,7 @@ class TestTheCalendarAndTheCharts:
 
     def test_a_calendar_that_did_not_answer_is_never_an_empty_day(self) -> None:
         """Regression: a calendar read that failed told the voice the day was free."""
-        unread = _sources(calendar=CalendarUnread(CalendarGap.UNAVAILABLE))
+        unread = _sources(calendar=CalendarRead(gap=CalendarGap.UNAVAILABLE))
 
         facts = build_facts(Chosen(sections=[], picked=[]), unread, _CLOCK)
 
@@ -304,48 +342,92 @@ class TestEachCountClaimsOnlyItsOwn:
     def test_only_held_results_are_while_away_and_an_event_or_backlog_never_waits(self) -> None:
         """Regression: every placed note was counted as come in while away, a calendar lead too."""
         held = BriefCandidate(
-            source="gaia", app="GAIA", state="note", title="Digest: 3 papers", held_id="h1"
+            origin=CandidateOrigin.HELD,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.NOTE,
+            title="Digest: 3 papers",
+            held_id="h1",
         )
-        signal = BriefCandidate(source="linear", app="Linear", state="you", title="ENG-12 merged")
+        signal = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="linear",
+            app="Linear",
+            state=ItemState.YOU,
+            title="ENG-12 merged",
+        )
         event = BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board",
-            is_event=True,
         )
         backlog = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True
+            origin=CandidateOrigin.BACKLOG,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Plan Q1",
         )
-        waiting = BriefCandidate(source="gmail", app="Gmail", state="you", title="Reply to Maya")
+        waiting = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gmail",
+            app="Gmail",
+            state=ItemState.YOU,
+            title="Reply to Maya",
+        )
         placed = [
-            (BriefingItem(text="Board", kind="you", action=BriefAction.ATTEND), event),
-            (BriefingItem(text="Digest", kind="note", outcome=BriefOutcome.FINISHED), held),
-            (BriefingItem(text="ENG-12", kind="note", outcome=BriefOutcome.CHANGED), signal),
-            (BriefingItem(text="Plan Q1", kind="you", action=BriefAction.ATTEND), backlog),
-            (BriefingItem(text="Maya", kind="you", action=BriefAction.REPLY), waiting),
+            (BriefingItem(text="Board", kind=ItemState.YOU, action=BriefAction.ATTEND), event),
+            (BriefingItem(text="Digest", kind=ItemState.NOTE, outcome=BriefOutcome.FINISHED), held),
+            (
+                BriefingItem(text="ENG-12", kind=ItemState.NOTE, outcome=BriefOutcome.CHANGED),
+                signal,
+            ),
+            (BriefingItem(text="Plan Q1", kind=ItemState.YOU, action=BriefAction.ATTEND), backlog),
+            (BriefingItem(text="Maya", kind=ItemState.YOU, action=BriefAction.REPLY), waiting),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.WHILE_AWAY: 1}
+        assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.WHILE_AWAY: 1}
         assert "- fact 4 | On their list, undated: Plan Q1" in facts.block
 
     def test_done_and_in_progress_count_one_each_of_their_own_kind(self) -> None:
-        done = BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Filed taxes")
-        running = BriefCandidate(source="gaia", app="GAIA", state="gaia", title="Venue search")
+        done = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.LOOKBACK,
+            title="Filed taxes",
+        )
+        running = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.GAIA,
+            title="Venue search",
+        )
         placed = [
             (
-                BriefingItem(text="Filed taxes", kind="lookback", outcome=BriefOutcome.FINISHED),
+                BriefingItem(
+                    text="Filed taxes", kind=ItemState.LOOKBACK, outcome=BriefOutcome.FINISHED
+                ),
                 done,
             ),
-            (BriefingItem(text="Venue", kind="gaia", outcome=BriefOutcome.STARTED), running),
-            (BriefingItem(text="Venue 2", kind="gaia", outcome=BriefOutcome.STARTED), running),
+            (
+                BriefingItem(text="Venue", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+                running,
+            ),
+            (
+                BriefingItem(text="Venue 2", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+                running,
+            ),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.DONE: 1, CountSlot.IN_PROGRESS: 2}
+        assert facts.values.counts == {CountName.DONE: 1, CountName.IN_PROGRESS: 2}
 
     def test_the_spans_events_are_counted(self) -> None:
         events = [
@@ -357,7 +439,7 @@ class TestEachCountClaimsOnlyItsOwn:
             Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]), _CLOCK
         )
 
-        assert facts.values.counts == {CountSlot.EVENTS: 2}
+        assert facts.values.counts == {CountName.EVENTS: 2}
 
 
 class TestARepeatIsSaidAsStillOpen:
@@ -378,14 +460,29 @@ class TestARepeatIsSaidAsStillOpen:
             integration_id="linear", app="Linear", external_id="E-1", kind="issue", title="E-1"
         )
         app_item = BriefCandidate(
-            source="linear", app="Linear", state="you", title="E-1", signal=signal
+            origin=CandidateOrigin.APP_SIGNAL,
+            source="linear",
+            app="Linear",
+            state=ItemState.YOU,
+            title="E-1",
+            signal=signal,
         )
         shown = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Approve the MSA", memory=self._SHOWN
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Approve the MSA",
+            memory=self._SHOWN,
         )
         placed = [
-            (BriefingItem(text="E-1", kind="you", action=BriefAction.REVIEW), app_item),
-            (BriefingItem(text="Approve the MSA", kind="you", action=BriefAction.APPROVE), shown),
+            (BriefingItem(text="E-1", kind=ItemState.YOU, action=BriefAction.REVIEW), app_item),
+            (
+                BriefingItem(
+                    text="Approve the MSA", kind=ItemState.YOU, action=BriefAction.APPROVE
+                ),
+                shown,
+            ),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
@@ -398,15 +495,16 @@ class TestARepeatIsSaidAsStillOpen:
 
     def test_a_repeat_with_a_deliverable_is_said_as_still_open_too(self) -> None:
         shown = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Investor list",
             todo_id="t1",
             memory=self._SHOWN.model_copy(update={"last_state": "gaia"}),
         )
         item = BriefingItem(
-            text="Investor list", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+            text="Investor list", kind=ItemState.GAIA, todo_id="t1", outcome=BriefOutcome.STARTED
         )
 
         facts = build_facts(
@@ -449,8 +547,14 @@ class TestTheEmptyBriefAndTheLead:
     def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
         def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
             return (
-                BriefingItem(text=text, kind="you", action=BriefAction.REPLY),
-                BriefCandidate(source="gaia", app="GAIA", state="you", title=text),
+                BriefingItem(text=text, kind=ItemState.YOU, action=BriefAction.REPLY),
+                BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
+                    source="gaia",
+                    app="GAIA",
+                    state=ItemState.YOU,
+                    title=text,
+                ),
             )
 
         sections = [
@@ -486,8 +590,14 @@ class TestTheWeekRecap:
     _UNITLESS = _FINISHED.model_copy(update={"id": "runs", "label": "Runs", "unit": None})
 
     def test_totals_and_goals_read_as_slotted_lines_and_quotable_titles(self) -> None:
-        item = BriefingItem(text="Q3 board pack", kind="you", action=BriefAction.REVIEW)
-        candidate = BriefCandidate(source="gaia", app="GAIA", state="you", title="Q3 board pack")
+        item = BriefingItem(text="Q3 board pack", kind=ItemState.YOU, action=BriefAction.REVIEW)
+        candidate = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Q3 board pack",
+        )
         goals = [
             GoalState(
                 id="g1",
@@ -505,7 +615,7 @@ class TestTheWeekRecap:
         sources = FactSources(
             artifacts={},
             open_todos=0,
-            calendar=[],
+            calendar=CalendarRead(),
             event_ids=[],
             span=WEEK_AHEAD,
             todos_note=None,
@@ -537,7 +647,7 @@ class TestTheClosingLines:
         sources = FactSources(
             artifacts={},
             open_todos=0,
-            calendar=[],
+            calendar=CalendarRead(),
             event_ids=[],
             span=WEEK_AHEAD,
             todos_note="The user's own todo list is empty.",

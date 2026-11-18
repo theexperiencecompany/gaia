@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
+
 
 class CreateDevUserRequest(BaseModel):
     """Mint (find-or-create) a dev user by email."""
@@ -88,6 +90,14 @@ class RunDevAgentRequest(BaseModel):
         max_length=100,
         description="DEV_MODEL_OPTIONS key (e.g. custom, minimax-m3). Unset = DEV_DEFAULT_MODEL.",
     )
+
+
+class DevBriefingRunResponse(BaseModel):
+    """How a dev-triggered briefing run ended."""
+
+    user_id: str
+    kind: BriefingKind
+    outcome: BriefingRunOutcome
 
 
 class DevAgentRunResponse(BaseModel):

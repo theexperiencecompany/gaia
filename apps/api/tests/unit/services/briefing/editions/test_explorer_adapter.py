@@ -10,7 +10,7 @@ import pytest
 from tests.factories import make_brief_item as _item
 
 from app.constants.briefing import BriefAction
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.codes import Symbology, code_geometry
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
 from app.services.briefing.editions.stamps import stamp_for

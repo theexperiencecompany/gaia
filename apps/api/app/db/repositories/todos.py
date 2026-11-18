@@ -430,40 +430,9 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
-    async def list_open_user_todos(
-        self, user_id: str, *, limit: int, due_before: datetime | None = None
-    ) -> list[TodoDocument]:
-        """Return the user's own (non-tracked) open todos, most-recently-updated first.
-
-        due_before keeps only the ones due strictly before it, most overdue first, so a
-        read cut at limit keeps the oldest debts; undated todos drop out.
-        """
-        if due_before is None:
-            return await self._find(
-                _own_open_query(user_id), sort=[("updated_at", -1)], limit=limit
-            )
-        return await self._find(
-            {**_own_open_query(user_id), "due_date": {"$lt": due_before}},
-            sort=[("due_date", 1)],
-            limit=limit,
-        )
-
-    async def list_undated_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """Return the user's own open todos with no due date, oldest first."""
-        return await self._find(
-            {**_own_open_query(user_id), "due_date": None},
-            sort=[("created_at", 1)],
-            limit=limit,
-        )
-
-    async def count_open_user_todos(
-        self, user_id: str, *, due_before: datetime | None = None
-    ) -> int:
-        """Count every open todo of the user's own, however long the list; due_before, only those due before it."""
-        query = _own_open_query(user_id)
-        if due_before is not None:
-            query["due_date"] = {"$lt": due_before}
-        return await self._count(query)
+    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Return the user's own (non-tracked) open todos, most-recently-updated first."""
+        return await self._find(_own_open_query(user_id), sort=[("updated_at", -1)], limit=limit)
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.

@@ -15,18 +15,20 @@ from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.scout_models import Signal
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
+from app.services.briefing.clock import DayWindow
 from app.services.briefing.fact_pool.calendar_series import calendar_series
 from app.services.briefing.fact_pool.mail_series import sorted_mail_series, thread_series
 from app.services.briefing.fact_pool.render import series_line
 from app.services.briefing.fact_pool.run_series import run_series
+from app.services.briefing.fact_pool.series import SeriesName, day_series
 from app.services.briefing.fact_pool.signal_series import signal_series
-from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series
 from app.services.briefing.fact_pool.work_series import work_series
+from app.services.briefing.work import CompletedWork
 
 USER_ID = make_user_id()
 KOLKATA = ZoneInfo("Asia/Kolkata")
 # Thursday 5 Nov to Wednesday 11 Nov 2026, on a Kolkata clock (UTC+5:30).
-WINDOW = SeriesWindow(first_day=date(2026, 11, 5), days=7, tz=KOLKATA)
+WINDOW = DayWindow(first_day=date(2026, 11, 5), days=7, tz=KOLKATA)
 DAYS = [f"2026-11-{d:02d}" for d in range(5, 12)]
 
 
@@ -77,7 +79,7 @@ class TestWorkSeries:
             _todo("Before records", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(8, 9)),
         ]
 
-        gaia, user = work_series(completed, WINDOW)
+        gaia, user = work_series(CompletedWork.of(completed), WINDOW)
 
         assert (gaia.id, gaia.shape, gaia.points) == (
             "gaia_finished",
@@ -105,12 +107,12 @@ class TestWorkSeries:
         )
         done = _done("Board memo", TodoCompleter.GAIA, _local(6, 11))
 
-        assert [(s.id, s.points) for s in work_series([thread, triaged, done], WINDOW)] == [
-            ("gaia_finished", _ys([0, 1, 0, 0, 0, 0, 0]))
-        ]
+        assert [
+            (s.id, s.points) for s in work_series(CompletedWork.of([thread, triaged, done]), WINDOW)
+        ] == [("gaia_finished", _ys([0, 1, 0, 0, 0, 0, 0]))]
 
     def test_nothing_finished_is_no_series(self) -> None:
-        assert work_series([], WINDOW) == []
+        assert work_series(CompletedWork.of([]), WINDOW) == []
 
 
 def _event(
@@ -401,4 +403,4 @@ def test_a_series_must_have_one_value_per_window_day() -> None:
 def test_a_window_moment_outside_every_day_counts_nowhere() -> None:
     later = [_todo("Late", completed=True, completed_at=WINDOW.end + timedelta(minutes=1))]
 
-    assert work_series(later, WINDOW) == []
+    assert work_series(CompletedWork.of(later), WINDOW) == []

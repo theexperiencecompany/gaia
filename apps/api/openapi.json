@@ -2054,15 +2054,7 @@
             "title": "Detail"
           },
           "kind": {
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState"
           },
           "title": {
             "minLength": 1,
@@ -2298,16 +2290,8 @@
             "title": "Detail"
           },
           "kind": {
-            "default": "note",
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState",
+            "default": "note"
           },
           "link": {
             "anyOf": [
@@ -2406,6 +2390,15 @@
         "title": "BriefingItem",
         "type": "object"
       },
+      "BriefingKind": {
+        "description": "Which brief a run makes; keys the payload variant and the one-per-day constraint.",
+        "enum": [
+          "daily",
+          "weekly"
+        ],
+        "title": "BriefingKind",
+        "type": "string"
+      },
       "BriefingListResponse": {
         "description": "One page of the archive, newest first, and where the next page starts.",
         "properties": {
@@ -2435,6 +2428,18 @@
         ],
         "title": "BriefingListResponse",
         "type": "object"
+      },
+      "BriefingMood": {
+        "description": "The hero treatment a brief is drawn with; the voice picks one of the daily moods.",
+        "enum": [
+          "clear",
+          "packed",
+          "idle",
+          "winback",
+          "weekly"
+        ],
+        "title": "BriefingMood",
+        "type": "string"
       },
       "BriefingPayload": {
         "description": "The structured briefing the run emits and every channel renders.",
@@ -2562,15 +2567,7 @@
             "title": "Message"
           },
           "mood": {
-            "enum": [
-              "clear",
-              "packed",
-              "idle",
-              "winback",
-              "weekly"
-            ],
-            "title": "Mood",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingMood"
           },
           "new_stamp": {
             "anyOf": [
@@ -2647,9 +2644,15 @@
             ]
           },
           "template_family": {
-            "description": "The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.",
-            "title": "Template Family",
-            "type": "string"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditionFamily"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none."
           },
           "uncomposed": {
             "description": "Everything the brief read that the composition left out, for its full page.",
@@ -2894,6 +2897,7 @@
             "type": "string"
           },
           "date": {
+            "description": "User-local YYYY-MM-DD.",
             "title": "Date",
             "type": "string"
           },
@@ -2904,27 +2908,16 @@
             "title": "Delivered Channels",
             "type": "array"
           },
-          "edition_fold": {
+          "edition": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/EditionImage"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Edition Fold"
-          },
-          "edition_image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition Image Url"
+            "description": "The edition image; None for a quiet note."
           },
           "edition_name": {
             "anyOf": [
@@ -2938,32 +2931,12 @@
             "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
             "title": "Edition Name"
           },
-          "edition_paper": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition Paper"
-          },
           "id": {
             "title": "Id",
             "type": "string"
           },
           "kind": {
-            "default": "daily",
-            "enum": [
-              "daily",
-              "weekly"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingKind"
           },
           "needs_you_count": {
             "description": "Items in the brief's Needs you section, as its edition lists them.",
@@ -2997,37 +2970,17 @@
             ],
             "description": "Air Mail only: the stamp city's name.",
             "title": "Stamp City Name"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "user_id",
           "date",
           "kind",
           "payload",
           "delivered_channels",
-          "edition_image_url",
-          "edition_fold",
-          "edition_paper",
           "opened_at",
           "created_at",
-          "updated_at",
+          "edition",
           "edition_name",
           "stamp_city_name",
           "needs_you_count"
@@ -7310,6 +7263,84 @@
         "title": "EditionChoice",
         "type": "string"
       },
+      "EditionFamily": {
+        "description": "Every edition family a brief is drawn in, one per vendored explorer template.\n\nWEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone\ncarries a city stamp. The editions package checks this set against the templates at import.",
+        "enum": [
+          "almanac",
+          "band",
+          "boardingpass",
+          "broadsheet",
+          "exhibition",
+          "flightplan",
+          "gradient",
+          "instrument",
+          "invoice",
+          "librarycard",
+          "memo",
+          "menu",
+          "metromap",
+          "playfair",
+          "postal",
+          "receipt",
+          "swiss",
+          "weekly"
+        ],
+        "title": "EditionFamily",
+        "type": "string"
+      },
+      "EditionImage": {
+        "description": "A brief's edition as a surface loads it: its signed URL, its fold and its paper.",
+        "properties": {
+          "fold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the edition's height where its letter folds.",
+            "title": "Fold"
+          },
+          "image_url": {
+            "description": "A signed URL that loads the edition image for a year.",
+            "title": "Image Url",
+            "type": "string"
+          },
+          "paper": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.",
+            "title": "Paper"
+          }
+        },
+        "required": [
+          "fold",
+          "paper",
+          "image_url"
+        ],
+        "title": "EditionImage",
+        "type": "object"
+      },
+      "EditionVariant": {
+        "description": "One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.",
+        "enum": [
+          "png",
+          "jpg"
+        ],
+        "title": "EditionVariant",
+        "type": "string"
+      },
       "EmailSearchResponse": {
         "description": "Contact-email addresses extracted from a web search, plus the raw search data.",
         "properties": {
@@ -10421,6 +10452,18 @@
         ],
         "title": "InviteResponse",
         "type": "object"
+      },
+      "ItemState": {
+        "description": "How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.\n\nAn item's text is only its title, so no renderer repeats its state.",
+        "enum": [
+          "gaia",
+          "you",
+          "lookback",
+          "failed",
+          "note"
+        ],
+        "title": "ItemState",
+        "type": "string"
       },
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
@@ -15874,44 +15917,16 @@
             "title": "Date",
             "type": "string"
           },
-          "edition_fold": {
+          "edition": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/EditionImage"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Share of the edition's height where its letter folds.",
-            "title": "Edition Fold"
-          },
-          "edition_image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "That brief's hosted edition render.",
-            "title": "Edition Image Url"
-          },
-          "edition_paper": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The paper's box on its desk as [left, top, right, bottom] shares.",
-            "title": "Edition Paper"
+            "description": "That brief's edition image."
           },
           "lat": {
             "title": "Lat",
@@ -15935,9 +15950,7 @@
           "stamp_url",
           "date",
           "briefing_id",
-          "edition_image_url",
-          "edition_fold",
-          "edition_paper"
+          "edition"
         ],
         "title": "Postmark",
         "type": "object"
@@ -16568,12 +16581,7 @@
             "title": "Edition Image Url"
           },
           "kind": {
-            "enum": [
-              "daily",
-              "weekly"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingKind"
           },
           "payload": {
             "$ref": "#/components/schemas/PublicBriefingPayload"
@@ -16630,15 +16638,7 @@
         "description": "An item as the brief page lists it. ``link`` is the item's own public\nheygaia.link; the todo id it is bound to stays private.",
         "properties": {
           "kind": {
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState"
           },
           "link": {
             "anyOf": [
@@ -16700,15 +16700,7 @@
             "type": "string"
           },
           "mood": {
-            "enum": [
-              "clear",
-              "packed",
-              "idle",
-              "winback",
-              "weekly"
-            ],
-            "title": "Mood",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingMood"
           },
           "sections": {
             "items": {
@@ -26983,6 +26975,86 @@
           }
         },
         "summary": "List Briefings",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/editions/{key}/{variant}": {
+      "get": {
+        "description": "Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.",
+        "operationId": "briefings_get_edition_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "variant",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EditionVariant"
+            }
+          },
+          {
+            "description": "The signature the brief's edition URL carries.",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "description": "The signature the brief's edition URL carries.",
+              "title": "T",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {},
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Edition Image",
         "tags": [
           "Briefings",
           "Briefings"

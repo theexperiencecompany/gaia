@@ -6,10 +6,12 @@ is mounted by ``create_app`` only when ``ENV == development`` and
 ``DEV_AUTH_BYPASS_EMAIL`` is set, so every route here 404s in production.
 """
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, File, Form, Header, UploadFile, status
 from langgraph.errors import GraphRecursionError
 
+from app.constants.briefing import (
+    BriefingKind,
+)
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.db.repositories.users import user_repository
 from app.models.files_models import FileDocument
@@ -18,13 +20,13 @@ from app.schemas.dev_schemas import (
     CreateDevUserRequest,
     DeleteDevUserResponse,
     DevAgentRunResponse,
+    DevBriefingRunResponse,
     RunDevAgentRequest,
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
-from app.services.briefing.daily import run_daily_briefing
 from app.services.briefing.errors import BriefingGenerationError
-from app.services.briefing.weekly import run_weekly_digest
+from app.services.briefing.pipeline import run_brief
 from app.services.dev_agent_service import run_executor_direct
 from app.services.dev_service import (
     attach_dev_file,
@@ -36,8 +38,6 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
-
-_BRIEFING_RUNS = {"daily": run_daily_briefing, "weekly": run_weekly_digest}
 
 
 @router.post("/users")
@@ -121,24 +121,23 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
 
 
 @router.post("/briefing/{kind}/{email}")
-async def run_briefing_now(kind: str, email: str) -> JSONResponse:
+async def run_briefing_now(kind: BriefingKind, email: str) -> DevBriefingRunResponse:
     """Run the full daily/weekly briefing pipeline for a dev user, synchronously.
 
     The founder-day harness's trigger: same code path as the cron (curation →
     context → silent agent run → persist → deliver), without waiting for 8am.
     """
     log.set(dev={"operation": "run_briefing", "kind": kind, "email": email})
-    run = _BRIEFING_RUNS.get(kind)
-    if run is None:
-        raise HTTPException(status_code=400, detail="kind must be 'daily' or 'weekly'")
     user = await user_repository.get_by_email(email)
     if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No GAIA user exists for '{email}' — mint it via POST /api/v1/dev/users",
+        raise create_error(
+            message=f"No GAIA user exists for '{email}'",
+            fix="Mint it via POST /api/v1/dev/users",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="dev_user_not_found",
         )
     try:
-        outcome = await run(user.id)
+        outcome = await run_brief(user.id, kind)
     except BriefingGenerationError as e:
         # The model's output failed validation: an upstream failure the harness must see.
         raise create_error(
@@ -150,6 +149,4 @@ async def run_briefing_now(kind: str, email: str) -> JSONResponse:
             user_id=user.id,
         ) from e
     log.set(dev={"user_id": user.id, "outcome": outcome.value})
-    return JSONResponse(
-        content={"user_id": user.id, "kind": kind, "status": "completed", "outcome": outcome.value}
-    )
+    return DevBriefingRunResponse(user_id=user.id, kind=kind, outcome=outcome)

@@ -21,12 +21,15 @@ import pytest
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
+from app.constants.briefing import BriefingKind, EditionFamily
+from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
 from app.constants.short_links import MAX_RESOLVE_MISSES
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_document_models import BriefDelivery
+from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -40,7 +43,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.blob_store import LocalVolumeBlobStore
 from app.services.briefing import store as brief_store
-from app.services.briefing.edition_email import HostedEditionImage
+from app.services.briefing.render import RenderedImage
 from app.services.links import abuse, content as link_content
 from app.services.links.backfill import backfill_snapshots
 from app.services.links.service import optional_short_link
@@ -936,22 +939,32 @@ class TestTheBriefsLink:
             date="2026-11-09",
             headline="Google Cloud waits",
             lede="One upload.",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="c",
-            template_family="memo",
+            template_family=EditionFamily.MEMO,
         )
-        hosted = HostedEditionImage("https://cdn.example/b", "https://cdn.example/b", 0.4, None)
+        rendered = RenderedImage(image=b"png", fold=0.4)
 
-        with patch.object(brief_store, "host_edition_image", AsyncMock(return_value=hosted)):
-            stored = await brief_store.store_brief(OWNER.user_id, "2026-11-09", "daily", payload)
+        with (
+            patch.object(brief_store, "render_edition_png", AsyncMock(return_value=rendered)),
+            patch.object(brief_store, "store_edition", AsyncMock(return_value="edition-key")),
+        ):
+            stored = await brief_store.store_brief(
+                OWNER.user_id,
+                "2026-11-09",
+                BriefingKind.DAILY,
+                payload,
+                BriefDelivery(push=True, notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY),
+            )
 
-        slug = stored.link.removeprefix("https://heygaia.link/") if stored.link else ""
+        link_url = stored.payload.link or ""
+        slug = link_url.removeprefix("https://heygaia.link/")
         link = await _stored(slug)
         assert (link.target_type, link.target_id) == (
             ShortLinkTargetType.BRIEFING,
-            stored.briefing.id,
+            stored.id,
         )
-        assert stored.briefing.payload.link == stored.link
+        assert link_url.startswith("https://heygaia.link/")
         viewer.user = OWNER
         opened = await _open(client, slug)
         assert opened.status_code == 200, opened.text

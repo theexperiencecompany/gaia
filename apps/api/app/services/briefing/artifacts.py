@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 
-from app.services.briefing import context
 from app.services.briefing.slots import sentences
+from app.services.briefing.work import TrackedWork
 from app.services.canvas_markdown import deliverable_markdown, deliverable_size
 from app.utils.general_utils import ELLIPSIS
 
@@ -54,7 +54,7 @@ def _whole_sentences(text: str, limit: int) -> str:
     return text[: limit - len(ELLIPSIS) + 1].rsplit(" ", 1)[0] + ELLIPSIS
 
 
-def gather_artifacts(work: context.TrackedWork) -> dict[str, ArtifactFact]:
+def gather_artifacts(work: TrackedWork) -> dict[str, ArtifactFact]:
     """Build, per tracked item, a summary and the voice pass's two signals.
 
     The signals are whether the deliverable is big and whether it waits on the user.

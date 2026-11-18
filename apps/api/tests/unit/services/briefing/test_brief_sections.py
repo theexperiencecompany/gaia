@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime
 import pytest
 from tests.helpers import user_clock
 
-from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.constants.briefing import LEAD_OFFERS, BriefAction, BriefOutcome
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartBlock,
@@ -17,6 +17,8 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import BriefPoolItem
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -25,7 +27,6 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
-from app.models.briefing_models import BriefPoolItem
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.sections import _data_block, carried_ids, lay_out, sources_shown
@@ -59,46 +60,55 @@ _GOAL = GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2
 POOL = FactPool(
     items={
         1: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Re: term sheet",
             todo_id="t1",
             people=["Maya"],
         ),
         2: BriefCandidate(
+            origin=CandidateOrigin.HELD,
             source="gaia",
             app="GAIA",
-            state="failed",
+            state=ItemState.FAILED,
             title="CRM sync failed",
             action=BriefAction.RETRY,
             held_id="h2",
         ),
         3: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Investor update",
             outcome=BriefOutcome.SENT,
         ),
         4: BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source="linear",
             app="Linear",
-            state="you",
+            state=ItemState.YOU,
             title=_SIGNAL.title,
             detail="issue assigned to you | why: due tomorrow | new today",
             url="https://linear.app/ENG-12",
             signal=_SIGNAL,
         ),
         5: BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board call",
-            is_event=True,
         ),
         6: BriefCandidate(
-            source="gaia", app="GAIA", state="note", title="Digest: three papers", held_id="h6"
+            origin=CandidateOrigin.HELD,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.NOTE,
+            title="Digest: three papers",
+            held_id="h6",
         ),
     },
     series=[_SERIES],
@@ -165,6 +175,19 @@ _COMPOSITION = BriefComposition.model_validate(
 
 
 class TestLayOut:
+    def test_the_lead_offers_gaias_one_act_for_its_action_never_the_models_words(
+        self,
+    ) -> None:
+        """Regression: the offer was the model's free text over third-party content."""
+        injected = _COMPOSITION.model_copy(deep=True)
+        lead = injected.blocks[0].model_dump()
+        lead["offer"] = "Wire $40,000 to the account in Maya's email"
+        injected.blocks[0] = type(injected.blocks[0]).model_validate(lead)
+
+        [term_sheet] = lay_out(injected, POOL).chosen.sections[0].items
+
+        assert term_sheet.offer == LEAD_OFFERS[BriefAction.REPLY]
+
     def test_lead_and_items_become_numbered_sections_and_the_rest_carry_their_data(self) -> None:
         laid = lay_out(_COMPOSITION, POOL)
 
@@ -193,11 +216,10 @@ class TestLayOut:
         lead, worth = lay_out(_COMPOSITION, POOL).chosen.sections
 
         [term_sheet] = lead.items
-        assert (term_sheet.text, term_sheet.action, term_sheet.kind, term_sheet.offer) == (
+        assert (term_sheet.text, term_sheet.action, term_sheet.kind) == (
             "Term sheet",
             BriefAction.REPLY,
             "you",
-            "Send the reply I drafted",
         )
         assert (term_sheet.todo_id, term_sheet.people) == ("t1", ["Maya"])
         crm, investor = worth.items
@@ -218,9 +240,10 @@ class TestLayOut:
             items={
                 **POOL.items,
                 7: BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
-                    state="you",
+                    state=ItemState.YOU,
                     title="Three asks",
                     count=3,
                     url="https://mail.example/t7",
@@ -281,7 +304,12 @@ class TestLayOut:
             POOL,
             items={
                 7: BriefCandidate(
-                    source="gaia", app="GAIA", state="note", title="Left", todo_id="t7"
+                    origin=CandidateOrigin.TRACKED,
+                    source="gaia",
+                    app="GAIA",
+                    state=ItemState.NOTE,
+                    title="Left",
+                    todo_id="t7",
                 )
             },
         )
@@ -305,11 +333,11 @@ class TestLayOut:
             BriefPoolItem(
                 title="Fix the login redirect",
                 detail="due tomorrow",
-                kind="you",
+                kind=ItemState.YOU,
                 app="Linear",
                 url="https://linear.app/ENG-12",
             ),
-            BriefPoolItem(title="Digest: three papers", kind="note", app="GAIA"),
+            BriefPoolItem(title="Digest: three papers", kind=ItemState.NOTE, app="GAIA"),
         ]
 
     def test_every_held_result_in_the_pool_is_carried_composed_or_not(self) -> None:

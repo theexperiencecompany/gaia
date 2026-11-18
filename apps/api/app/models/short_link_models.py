@@ -18,8 +18,10 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
-from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import BriefingMood, BriefingStat
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
@@ -213,7 +215,7 @@ class PublicBriefingItem(_PublicView):
     heygaia.link; the todo id it is bound to stays private."""
 
     text: str
-    kind: BriefingItemKind
+    kind: ItemState
     link: str | None
 
 

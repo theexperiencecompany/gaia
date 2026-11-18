@@ -22,9 +22,10 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import GoalOrigin
-from app.models.briefing_models import BriefingSchedule
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.user_models import DayZeroHello, UserDocument
-from app.services.briefing import context, silent_turn
+from app.services.briefing import silent_turn
+from app.services.briefing.goals import StatedGoal
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import day_zero_hello_tasks as hello
@@ -53,14 +54,14 @@ class Seams:
         self.get_user = AsyncMock(return_value=_user())
         self.mark_sent = AsyncMock()
         self.goal = AsyncMock(
-            return_value=[context.StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
+            return_value=[StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
         )
         self.agent = AsyncMock(return_value=SimpleNamespace(message='["Hi Ada!", "Brief at 8."]'))
         self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         self.capture = MagicMock()
         monkeypatch.setattr(user_repository, "get", self.get_user)
         monkeypatch.setattr(user_repository, "mark_day_zero_hello_sent", self.mark_sent)
-        monkeypatch.setattr(context, "stated_goals", self.goal)
+        monkeypatch.setattr(hello, "stated_goals", self.goal)
         monkeypatch.setattr(silent_turn, "call_agent_silent", self.agent)
         monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
         monkeypatch.setattr(hello, "capture", self.capture)

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.models.briefing_models import BriefingPayload, NewStamp
+from app.models.brief_payload_models import BriefingPayload, NewStamp
 from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader
 from app.utils.message_breaks import split_message_bubbles
 

@@ -4,7 +4,7 @@ import pytest
 
 from app.models.todo_models import TodoDocument
 from app.services.briefing.artifacts import ArtifactFact, gather_artifacts
-from app.services.briefing.context import TrackedWork
+from app.services.briefing.work import TrackedWork
 
 pytestmark = pytest.mark.unit
 

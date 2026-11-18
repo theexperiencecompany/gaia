@@ -9,25 +9,24 @@ from bson import ObjectId
 import pytest
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    POSTAL_FAMILY,
     SECTION_NUMERALS,
-    WEEKLY_FAMILY,
     ArtFamily,
     BriefAction,
+    BriefingKind,
     BriefOutcome,
+    EditionFamily,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
-from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.brief_document_models import DeliveryStep, EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artworks_for
+from app.services.briefing.render import RenderedImage
 from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
@@ -50,10 +49,10 @@ class Seeded:
 
     def stored(self) -> list[_Call]:
         """Return the upserts that store each brief with its edition, not the earlier one its link needs."""
-        return [call for call in self.upsert.await_args_list if call.kwargs["edition"]]
+        return [call for call in self.upsert.await_args_list if call.args[0].edition]
 
     def payloads(self) -> list[BriefingPayload]:
-        return [call.args[3] for call in self.stored()]
+        return [call.args[0].payload for call in self.stored()]
 
 
 @pytest.fixture
@@ -68,28 +67,28 @@ def seeded() -> Iterator[Seeded]:
     rendered: list[tuple[BriefingPayload, str]] = []
     owners: list[str] = []
 
-    async def fake_host(
-        payload: BriefingPayload, *, owner_id: str, render_key: str
-    ) -> HostedEditionImage:
+    async def fake_render(payload: BriefingPayload) -> RenderedImage:
+        rendered.append((payload, payload.date))
+        return RenderedImage(image=b"png")
+
+    async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
         owners.append(owner_id)
-        rendered.append((payload, render_key))
-        return HostedEditionImage(
-            display_url=f"https://cdn.test/{render_key}.png",
-            chat_url=f"https://cdn.test/{render_key}.jpg",
-        )
+        return f"key-{briefing_id}"
 
     with (
         patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
-        patch(f"{STORE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.render_edition_png", side_effect=fake_render),
+        patch(f"{STORE}.store_edition", side_effect=fake_store),
         patch(f"{STORE}.optional_short_link", AsyncMock(return_value=SHORT_LINK)),
         patch(
             f"{MODULE}.briefing_repository.briefing_id_for",
             AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),
         ),
-        patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
         patch(
-            f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock
-        ) as deliver,
+            f"{MODULE}.briefing_repository.upsert_briefing",
+            AsyncMock(side_effect=lambda brief: brief),
+        ) as upsert,
+        patch(f"{MODULE}.briefing_repository.record_step", new_callable=AsyncMock) as deliver,
     ):
         yield Seeded(rendered, owners, upsert, deliver)
 
@@ -107,13 +106,13 @@ async def test_each_city_gets_one_brief_on_consecutive_days_ending_at_the_anchor
         dev_postmarks_seed._SEED_DAYS[i % len(dev_postmarks_seed._SEED_DAYS)].headline
         for i in range(len(CITIES))
     ]
-    assert all(p.template_family == POSTAL_FAMILY for p in payloads)
+    assert all(p.template_family == EditionFamily.POSTAL for p in payloads)
     assert all(p.kicker == DAILY_KICKER for p in payloads)
     assert all(p.recipient_name == "Ada" for p in payloads)
     assert seeded.owners == [user.id] * len(CITIES)
 
 
-async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its_own_render(
+async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_its_own_id(
     user, seeded
 ) -> None:
     await seed_dev_postmarks(user, 3)
@@ -128,20 +127,24 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.deliver.await_args_list,
         strict=True,
     ):
-        assert first_call.args == upsert_call.args
-        assert first_call.kwargs == {"briefing_id": f"brief_{payload.date}", "edition": None}
-        assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
+        first, brief = first_call.args[0], upsert_call.args[0]
+        assert first.edition is None
+        assert (first.id, first.user_id, first.kind) == (brief.id, brief.user_id, brief.kind)
+        assert (brief.user_id, brief.date, brief.kind) == (user.id, payload.date, "daily")
+        assert brief.payload == payload
         assert payload.link == SHORT_LINK
-        assert upsert_call.kwargs == {
-            "briefing_id": f"brief_{payload.date}",
-            "edition": EditionRender(
-                image_url=f"https://cdn.test/{key}.png", fold=None, paper=None
-            ),
-        }
+        assert brief.id == f"brief_{payload.date}"
+        assert brief.edition == EditionRender(key=f"key-brief_{payload.date}")
+        delivered = brief.delivery
+        assert delivered is not None
+        assert (set(delivered.done), delivered.completed_at is not None) == (
+            set(DeliveryStep),
+            True,
+        )
         assert deliver_call.args == (
             user.id,
-            payload.date,
-            BRIEFING_KIND_DAILY,
+            f"brief_{payload.date}",
+            DeliveryStep.NOTIFICATION,
             [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value],
         )
 
@@ -202,16 +205,16 @@ async def test_every_city_can_be_seeded_but_not_one_more(user, seeded) -> None:
     assert len(seeded.payloads()) == len(CITIES)
 
 
-NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
 
 
 async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
     await seed_dev_editions(user, 4)
 
-    kinds = [call.args[2] for call in seeded.stored()]
+    kinds = [call.args[0].kind for call in seeded.stored()]
     payloads = seeded.payloads()
-    assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
-    assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]
+    assert kinds == [BriefingKind.DAILY] * 4 + [BriefingKind.WEEKLY]
+    assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], EditionFamily.WEEKLY]
     assert [p.date for p in payloads[:4]] == [
         "2026-10-02",
         "2026-10-03",
@@ -268,7 +271,7 @@ async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -
 async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
     user, seeded
 ) -> None:
-    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
 
     with pytest.raises(AppError) as raised:
         await seed_dev_editions(user, families + 1)
@@ -280,7 +283,7 @@ async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
 
 
 async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
-    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
 
     await seed_dev_editions(user, families)
 
@@ -291,7 +294,7 @@ async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
 class TestSampleEditionPayload:
     def test_air_mail_carries_a_stamp_and_a_framed_family_a_painting(self) -> None:
         with patch(f"{MODULE}.hosted_stamp_weights", return_value={"paris": 1, "lisbon": 1}):
-            postal = dev_postmarks_seed.sample_edition_payload(POSTAL_FAMILY, "Alex")
+            postal = dev_postmarks_seed.sample_edition_payload(EditionFamily.POSTAL, "Alex")
         framed = dev_postmarks_seed.sample_edition_payload(ArtFamily.ALMANAC, "Alex")
         plain = dev_postmarks_seed.sample_edition_payload("swiss", "Alex")
 
@@ -300,7 +303,7 @@ class TestSampleEditionPayload:
         assert framed.artwork_id == min(artworks_for(ArtFamily.ALMANAC))
         assert (plain.stamp_city, plain.artwork_id) == (None, None)
         assert [p.template_family for p in (postal, framed, plain)] == [
-            POSTAL_FAMILY,
+            EditionFamily.POSTAL,
             ArtFamily.ALMANAC,
             "swiss",
         ]

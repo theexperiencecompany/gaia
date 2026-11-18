@@ -15,7 +15,7 @@
    P.S., and needs set first in the letter with red-ribbon verbs.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   const B = EXPLORER.blocks;
 
   /* Every texture, tilt and noise seed is drawn from the edition's date, so one day always prints the same envelope. */

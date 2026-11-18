@@ -1,22 +1,16 @@
-"""Briefing artifact models.
+"""A brief's payload: the structured brief the run emits and every channel renders, never markup.
 
-The briefing run emits a Pydantic-validated ``BriefingPayload`` — never markup.
-One payload feeds every renderer (dashboard OpenUI card, email, Telegram prose),
-so styling is entirely client-owned and the payload only fills slots. Payloads
-are persisted in the ``briefings`` collection, one per user/date/kind.
-"""
+One payload feeds every renderer (the edition, email, chat prose), so styling is the
+renderers' and the payload only fills slots."""
 
-from datetime import UTC, datetime
-from typing import Literal, Self
-import uuid
+from enum import StrEnum
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.briefing import (
     BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
-    BRIEFING_KIND_DAILY,
-    DAILY_BRIEFING_HOUR,
     HUE_MAX,
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
@@ -24,114 +18,25 @@ from app.constants.briefing import (
     MAX_BRIEF_MESSAGE_CHARS,
     BriefAction,
     BriefForm,
-    BriefingFrequency,
     BriefOutcome,
-    EditionChoice,
+    EditionFamily,
 )
-from app.constants.workflows import WorkflowDelivery
-from app.db.repositories.base import UserScopedDocument
 from app.models.brief_composition_models import BriefBlock
+from app.models.brief_item_models import ItemState
 from app.models.calendar_models import CalendarResponse
 from app.models.scout_models import ScoutSkipReason
-from app.schemas.common import ResponseModel
-from app.schemas.errors import ErrorEnvelope
 
-BriefingKind = Literal["daily", "weekly"]
 
 # ``mood`` keys the hero treatment (gradient + typographic emphasis) client-side.
 # A closed set so renderers can switch on it; the prompt is held to these values.
-BriefingMood = Literal["clear", "packed", "idle", "winback", "weekly"]
+class BriefingMood(StrEnum):
+    """The hero treatment a brief is drawn with; the voice picks one of the daily moods."""
 
-# ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
-# user ask, a look-back note, work that failed, a plain highlight). The kind is
-# the item's state; ``text`` is only its title, so no renderer repeats the state.
-BriefingItemKind = Literal["gaia", "you", "lookback", "failed", "note"]
-
-# The state each kind reads as where plain text is all there is (the voice facts).
-BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
-    "you": "Waiting on you",
-    "gaia": "In progress",
-    "lookback": "Done",
-    "failed": "Failed",
-    "note": "Note",
-}
-# The kinds that wait on the reader: their own asks and work that failed.
-NEEDS_YOU_ITEM_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
-
-
-class BriefingSchedule(BaseModel):
-    """When the user wants their briefs: how often, and the daily brief's local hour."""
-
-    frequency: BriefingFrequency = BriefingFrequency.DAILY
-    hour: int = Field(default=DAILY_BRIEFING_HOUR, ge=0, le=23)
-
-
-class BriefingScheduleState(BriefingSchedule):
-    """The stored schedule and whether it runs: briefs on a schedule are a Pro feature."""
-
-    paused_for_plan: bool = Field(
-        description="The schedule sends briefs, but none run: the user is not on Pro."
-    )
-    next_daily_brief_at: datetime | None = Field(
-        description="When the next daily brief runs (UTC); None while no daily brief runs."
-    )
-
-
-#: Where a workflow's results can go once there is no brief to hold them.
-BriefFreeDelivery = Literal[WorkflowDelivery.NOW, WorkflowDelivery.SILENT]
-
-
-class BriefingScheduleUpdate(BriefingSchedule):
-    """A new briefing schedule; turning briefs off also says where brief-delivery workflows go."""
-
-    workflow_deliveries: dict[str, BriefFreeDelivery] = Field(
-        default_factory=dict,
-        description="New delivery per workflow id, for workflows that deliver to the brief",
-    )
-
-    @model_validator(mode="after")
-    def deliveries_only_when_turning_off(self) -> "BriefingScheduleUpdate":
-        """Refuse new deliveries unless briefs are being turned off."""
-        if self.workflow_deliveries and self.frequency is not BriefingFrequency.OFF:
-            raise ValueError("workflow_deliveries is only accepted when frequency is off")
-        return self
-
-    def schedule(self) -> BriefingSchedule:
-        """Return the schedule to store, without the one-off deliveries."""
-        return BriefingSchedule(frequency=self.frequency, hour=self.hour)
-
-
-class BriefingEdition(BaseModel):
-    """One daily edition family, and where the user put it."""
-
-    family: str
-    name: str
-    choice: EditionChoice
-
-
-class BriefingEditions(BaseModel):
-    """Every daily edition family a brief can draw, and where the user put each."""
-
-    editions: list[BriefingEdition]
-
-
-class BriefingEditionsUpdate(BaseModel):
-    """Where the user puts each daily edition family; a family not named stays in the rotation."""
-
-    choices: dict[str, EditionChoice]
-
-
-class BriefDeliveryWorkflow(BaseModel):
-    """A workflow whose results wait for the brief."""
-
-    id: str
-    title: str
-
-
-class BriefDeliveryWorkflowsConflict(ErrorEnvelope):
-    """The 409 body when briefs cannot turn off: the workflows still delivering to the brief."""
-
-    workflows: list[BriefDeliveryWorkflow]
+    CLEAR = "clear"
+    PACKED = "packed"
+    IDLE = "idle"
+    WINBACK = "winback"
+    WEEKLY = "weekly"
 
 
 class BriefingStat(BaseModel):
@@ -159,7 +64,7 @@ class BriefingItem(BaseModel):
     outcome: BriefOutcome | None = None
     detail: str | None = Field(default=None, min_length=1, max_length=BRIEF_ITEM_DETAIL_MAX_CHARS)
     todo_id: str | None = None
-    kind: BriefingItemKind = "note"
+    kind: ItemState = ItemState.NOTE
     # heygaia.link to the item's artifact (canvas), a capability anyone holding it opens. The
     # chat message links to this instead of dumping the content; the dashboard
     # card renders it as a tappable item.
@@ -201,10 +106,14 @@ class BriefPoolItem(BaseModel):
 
     title: str = Field(min_length=1)
     detail: str | None = None
-    kind: BriefingItemKind
+    kind: ItemState
     app: str
     url: str | None = None
     todo_id: str | None = None
+
+
+#: How a BriefingEvent stores a time on the user's clock: "14:30".
+EVENT_TIME_FORMAT = "%H:%M"
 
 
 class BriefingEvent(BaseModel):
@@ -281,7 +190,7 @@ class BriefVoice(BaseModel):
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
 
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+    model_config = ConfigDict(frozen=True, json_schema_serialization_defaults_required=True)
 
     kicker: str
     date: str
@@ -292,10 +201,10 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
-    template_family: str = Field(
+    template_family: EditionFamily | None = Field(
         description=(
-            "The edition template family this brief was drawn in. Persisted so "
-            "the archive re-renders identically forever."
+            "The edition template family this brief was drawn in, persisted so the archive "
+            "re-renders identically forever; None for a quiet note, which is drawn in none."
         ),
     )
     stamp_city: str | None = Field(
@@ -372,128 +281,3 @@ class BriefingPayload(BaseModel):
             "moved out of blocks onto the brief's full page."
         ),
     )
-
-
-def new_briefing_id() -> str:
-    """Return a fresh brief id."""
-    return f"brief_{uuid.uuid4().hex[:12]}"
-
-
-class EditionRender(BaseModel):
-    """Where a brief's hosted edition render lives, and where its letter sits on it."""
-
-    model_config = ConfigDict(frozen=True)
-
-    image_url: str
-    fold: float | None = None
-    paper: list[float] | None = None
-
-
-class BriefingModel(UserScopedDocument):
-    """Persisted briefing document (``briefings`` collection).
-
-    Doubles as the repository's document model (``BriefingsRepository`` in
-    ``app/db/repositories/briefings.py``) — one canonical model for the
-    persisted shape and every consumer (endpoints, ``BriefingListResponse``,
-    the archive/dashboard reads). Identity is the string business key ``id``,
-    persisted as Mongo's ``_id`` (``uses_object_id=False``).
-    """
-
-    model_config = ConfigDict(
-        extra="ignore", from_attributes=True, json_schema_serialization_defaults_required=True
-    )
-
-    id: str = Field(default_factory=new_briefing_id)
-    date: str  # user-local YYYY-MM-DD
-    kind: BriefingKind = BRIEFING_KIND_DAILY
-    payload: BriefingPayload
-    delivered_channels: list[str] = Field(default_factory=list)
-    #: The hosted full edition render: the in-app page, the email and the short link show it.
-    edition_image_url: str | None = None
-    #: Share of the edition image's height where its letter folds, read from the template's marker.
-    edition_fold: float | None = None
-    #: The paper's box on its desk as [left, top, right, bottom] shares of the edition image.
-    edition_paper: list[float] | None = None
-    opened_at: datetime | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = None
-
-
-class BriefingUpdate(BaseModel):
-    """Typed ``$set`` fields for a briefing. Every real write (payload swap,
-    delivered-channels list, the idempotent opened-at stamp) goes through its
-    own named repository method with its own filter guard, so this exists only
-    to satisfy the repository base's typed-update-model contract."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    payload: BriefingPayload | None = None
-    delivered_channels: list[str] | None = None
-    opened_at: datetime | None = None
-
-
-class BriefingView(BriefingModel):
-    """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
-
-    edition_name: str | None = Field(
-        description="The daily edition family's name; None for the weekly recap and a quiet note."
-    )
-    stamp_city_name: str | None = Field(description="Air Mail only: the stamp city's name.")
-    needs_you_count: int = Field(
-        ge=0, description="Items in the brief's Needs you section, as its edition lists them."
-    )
-
-
-class BriefingCardData(BaseModel):
-    """A brief folded to its card: what the in-app notification and GAIA's chat message carry."""
-
-    briefing_id: str
-    date: str
-    kind: BriefingKind
-    headline: str
-    edition_image_url: str | None
-    edition_fold: float | None
-    edition_paper: list[float] | None
-    edition_name: str | None
-    stamp_city_name: str | None
-    needs_you_count: int = Field(ge=0)
-
-
-class BriefingListResponse(BaseModel):
-    """One page of the archive, newest first, and where the next page starts."""
-
-    briefings: list[BriefingView]
-    next_cursor: str | None = Field(
-        description="Pass as before to read the next page; None on the last page."
-    )
-
-
-class Postmark(ResponseModel):
-    """One collected Air Mail stamp: its city, where it sits, and the brief it came on.
-
-    It carries that brief's edition, so the page can ready the letter before the
-    stamp is pressed without fetching the brief, which would mark it opened.
-    """
-
-    city_slug: str
-    city: str
-    country: str
-    lat: float
-    lng: float
-    stamp_url: str
-    date: str = Field(description="User-local YYYY-MM-DD the stamp first arrived.")
-    briefing_id: str = Field(description="The brief that first carried the stamp.")
-    edition_image_url: str | None = Field(description="That brief's hosted edition render.")
-    edition_fold: float | None = Field(
-        description="Share of the edition's height where its letter folds."
-    )
-    edition_paper: list[float] | None = Field(
-        description="The paper's box on its desk as [left, top, right, bottom] shares."
-    )
-
-
-class PostmarksResponse(ResponseModel):
-    """The user's stamp collection, first arrival first."""
-
-    total: int = Field(ge=0, description="How many city stamps can be collected.")
-    postmarks: list[Postmark]

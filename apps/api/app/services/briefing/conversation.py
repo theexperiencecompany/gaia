@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.db.repositories.conversations import conversation_repository
-from app.models.briefing_models import BriefingCardData
+from app.models.brief_view_models import BriefingCardData
 from app.models.chat_models import (
     MessageModel,
     SystemPurpose,

@@ -29,7 +29,7 @@ export const BACK_TO_BRIEFINGS: StandalonePageBack = {
   label: "Briefings",
 };
 
-/** Where a brief item stands, in a few words. Mirrors BRIEFING_ITEM_STATES in apps/api/app/models/briefing_models.py. */
+/** Where a brief item stands, in a few words. Mirrors ItemState's labels in apps/api/app/models/brief_item_models.py. */
 export const BRIEF_ITEM_STATES: Record<BriefPoolItem["kind"], string> = {
   you: "Waiting on you",
   gaia: "In progress",

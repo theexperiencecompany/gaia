@@ -11,22 +11,30 @@ be served by a single-id entity cache.
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, BriefForm
+from pydantic import BaseModel
+
+from app.constants.briefing import (
+    BriefForm,
+    BriefingKind,
+)
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import (
-    BriefingKind,
+from app.models.brief_document_models import (
     BriefingModel,
-    BriefingPayload,
     BriefingUpdate,
-    EditionRender,
+    DeliveryStep,
     new_briefing_id,
 )
 from app.utils.errors import AppError
 
-# A brief counts as delivered once it reached at least one channel; one stored but
-# delivered nowhere (its run failed mid-delivery) was never received.
-_DELIVERED: dict[str, object] = {"delivered_channels.0": {"$exists": True}}
+
+class _BriefingOwner(BaseModel):
+    user_id: str
+
+
+# A brief counts as delivered once every step of its delivery is done; one whose run died
+# mid-delivery is finished by the next run, never regenerated or dropped.
+_DELIVERED: dict[str, object] = {"delivery.completed_at": {"$ne": None}}
 
 
 class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
@@ -86,35 +94,39 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             sort=[("date", 1)],
         )
 
+    async def owner_of_edition(self, key: str) -> str | None:
+        """Return who owns the brief an edition key belongs to, for a caller holding its signed URL."""
+        owner = await self._find_one_projected(
+            {"edition.key": key}, {"user_id": 1, "_id": 0}, _BriefingOwner
+        )
+        return owner.user_id if owner is not None else None
+
     async def has_daily_briefing(self, user_id: str) -> bool:
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
-        return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0
+        return await self._count({"user_id": user_id, "kind": BriefingKind.DAILY}) > 0
 
     async def was_delivered(self, user_id: str, date: str, kind: BriefingKind) -> bool:
-        """Whether the (user, date, kind) brief already reached at least one channel.
+        """Whether the (user, date, kind) brief's delivery completed.
 
-        An undelivered brief does not count, so a retry can still send it.
+        A brief whose delivery never completed does not count, so a retry can still finish it.
         """
         return await self._count({"user_id": user_id, "date": date, "kind": kind, **_DELIVERED}) > 0
 
+    async def find_for_date(
+        self, user_id: str, date: str, kind: BriefingKind
+    ) -> BriefingModel | None:
+        """Return the (user, date, kind) brief, delivered or not."""
+        return await self._find_one({"user_id": user_id, "date": date, "kind": kind})
+
     async def briefing_id_for(self, user_id: str, date: str, kind: BriefingKind) -> str:
         """Return the id the (user, date, kind) brief has, or the fresh one it will be stored under."""
-        existing = await self._find_one({"user_id": user_id, "date": date, "kind": kind})
+        existing = await self.find_for_date(user_id, date, kind)
         return existing.id if existing else new_briefing_id()
 
     # ----------------------------------------------------------------- writes
 
-    async def upsert_briefing(
-        self,
-        user_id: str,
-        date: str,
-        kind: BriefingKind,
-        payload: BriefingPayload,
-        *,
-        briefing_id: str,
-        edition: EditionRender | None,
-    ) -> BriefingModel:
-        """Store the payload (one per user/date/kind) under briefing_id, from briefing_id_for.
+    async def upsert_briefing(self, brief: BriefingModel) -> BriefingModel:
+        """Store the brief's payload, edition and delivery plan (one per user/date/kind) under its id.
 
         Preserves opened_at and delivered_channels across a same-day rerun. Persisted
         BEFORE delivery so the dashboard never misses a brief that reached a channel.
@@ -122,13 +134,12 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         of the unique (user, date, kind) key, so the write fails instead of overwriting it.
         """
         doc = await self._apply_raw_update(
-            {"_id": briefing_id, "user_id": user_id, "date": date, "kind": kind},
+            {"_id": brief.id, "user_id": brief.user_id, "date": brief.date, "kind": brief.kind},
             {
                 "$set": {
-                    "payload": payload.model_dump(),
-                    "edition_image_url": edition.image_url if edition else None,
-                    "edition_fold": edition.fold if edition else None,
-                    "edition_paper": edition.paper if edition else None,
+                    "payload": brief.payload.model_dump(),
+                    "edition": brief.edition.model_dump() if brief.edition else None,
+                    "delivery": brief.delivery.model_dump() if brief.delivery else None,
                 },
                 "$setOnInsert": {
                     "created_at": datetime.now(UTC),
@@ -136,7 +147,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
                     "opened_at": None,
                 },
             },
-            scope=user_id,
+            scope=brief.user_id,
             upsert=True,
         )
         if doc is None:
@@ -145,12 +156,26 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             raise AppError(message="briefing upsert returned no document")  # pragma: no mutate
         return doc
 
-    async def set_delivered_channels(
-        self, user_id: str, date: str, kind: BriefingKind, channels: list[str]
+    async def record_step(
+        self, user_id: str, briefing_id: str, step: DeliveryStep, reached: list[str]
     ) -> None:
+        """Record one delivery step done, and the channels it reached the user on."""
         await self._apply_raw_update(
-            {"user_id": user_id, "date": date, "kind": kind},
-            {"$set": {"delivered_channels": channels}},
+            {"_id": briefing_id, "user_id": user_id},
+            {
+                "$addToSet": {
+                    "delivery.done": step.value,
+                    "delivered_channels": {"$each": reached},
+                }
+            },
+            scope=user_id,
+        )
+
+    async def complete_delivery(self, user_id: str, briefing_id: str) -> None:
+        """Mark the brief's delivery complete: every step is done and its held results consumed."""
+        await self._apply_raw_update(
+            {"_id": briefing_id, "user_id": user_id},
+            {"$set": {"delivery.completed_at": datetime.now(UTC)}},
             scope=user_id,
         )
 

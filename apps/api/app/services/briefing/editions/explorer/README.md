@@ -240,6 +240,11 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
      take as many columns as there are figures, never a lone third. Air Mail,
      the weekly and the almanac say "1 thing" and "1 task".
 
+14. **One escaper (2026-11-18).** Each template's own `esc` escaped `&`, `<` and
+   `>` but not quotes, so a `"` in printed text closed the attribute it sat in
+   (a painting's `alt`). Every template binds `esc` to `EXPLORER.blocks.esc`
+   (`shell/blocks.js`), which escapes both quotes too.
+
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that
 family's frame (`editions/artworks.py`), and recorded on the payload as

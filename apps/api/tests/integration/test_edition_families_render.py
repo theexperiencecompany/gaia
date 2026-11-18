@@ -22,9 +22,10 @@ from playwright.async_api import async_playwright
 import pytest
 
 from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
-from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
+from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
 from tests.factories import make_brief_item
 
@@ -550,3 +551,31 @@ async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> N
     left, top, right, bottom = rendered.paper
     assert 0 < left < 0.2 and 0.8 < right < 1, f"{family} paper sides at {left:.2f}, {right:.2f}"
     assert 0 <= top < 0.2 and 0.8 < bottom <= 1, f"{family} paper ends at {top:.2f}, {bottom:.2f}"
+
+
+_QUOTED_TITLE = 'Wheat "Field" with Cypresses'
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("family", sorted(ArtFamily))
+async def test_a_quote_in_printed_text_stays_inside_its_attribute(
+    family: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artwork = artwork_catalogue()[_ARTWORK]
+    monkeypatch.setattr(
+        explorer_render,
+        "artwork_catalogue",
+        lambda: {_ARTWORK: artwork.model_copy(update={"title": _QUOTED_TITLE})},
+    )
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            page = await browser.new_page(viewport={"width": 540, "height": 800})
+            await page.set_content(_render_html(family, _as_rendered(family, _DAILY)))
+            alts = await page.evaluate(
+                "() => [...document.querySelectorAll('img[alt]')].map((img) => img.alt)"
+            )
+        finally:
+            await browser.close()
+
+    assert any(alt.startswith(_QUOTED_TITLE) for alt in alts), alts

@@ -15,9 +15,9 @@ from datetime import UTC, date, datetime
 import pytest
 
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
-from app.models.briefing_models import BriefingItemKind
+from app.models.brief_item_models import ItemState
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from tests.helpers import user_clock
@@ -27,20 +27,22 @@ pytestmark = pytest.mark.model_onboarding
 _USER = "64f1c0ffee0000000000abcd"
 _Side = BriefAction | BriefOutcome
 # Each pool item: its title, the state its producer gave it, and its action or outcome.
-_ITEMS: dict[int, tuple[str, BriefingItemKind, _Side]] = {
-    1: ("Priya's offsite venues", "you", BriefAction.APPROVE),
-    2: ("Competitor pricing research", "lookback", BriefOutcome.FINISHED),
-    3: ("Investor update", "lookback", BriefOutcome.SENT),
-    4: ("Board deck numbers", "gaia", BriefOutcome.STARTED),
-    5: ("Acme invoice", "you", BriefAction.REVIEW),
-    6: ("Reply to Maya on the term sheet", "you", BriefAction.REPLY),
-    7: ("CRM sync", "failed", BriefAction.RETRY),
-    8: ("Globex invoice", "you", BriefAction.APPROVE),
-    9: ("Lisbon flights", "lookback", BriefOutcome.BOOKED),
+_ITEMS: dict[int, tuple[str, ItemState, _Side]] = {
+    1: ("Priya's offsite venues", ItemState.YOU, BriefAction.APPROVE),
+    2: ("Competitor pricing research", ItemState.LOOKBACK, BriefOutcome.FINISHED),
+    3: ("Investor update", ItemState.LOOKBACK, BriefOutcome.SENT),
+    4: ("Board deck numbers", ItemState.GAIA, BriefOutcome.STARTED),
+    5: ("Acme invoice", ItemState.YOU, BriefAction.REVIEW),
+    6: ("Reply to Maya on the term sheet", ItemState.YOU, BriefAction.REPLY),
+    7: ("CRM sync", ItemState.FAILED, BriefAction.RETRY),
+    8: ("Globex invoice", ItemState.YOU, BriefAction.APPROVE),
+    9: ("Lisbon flights", ItemState.LOOKBACK, BriefOutcome.BOOKED),
 }
 _POOL = FactPool(
     items={
-        i: BriefCandidate(source="gaia", app="GAIA", state=state, title=title)
+        i: BriefCandidate(
+            origin=CandidateOrigin.TRACKED, source="gaia", app="GAIA", state=state, title=title
+        )
         for i, (title, state, _) in _ITEMS.items()
     },
     series=[],

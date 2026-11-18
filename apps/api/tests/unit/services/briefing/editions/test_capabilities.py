@@ -9,7 +9,7 @@ import pytest
 
 from app.constants.briefing import EditionChoice
 from app.models.brief_composition_models import BriefBlock, ChartKind
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
 from app.services.briefing.edition_draws import daily_family_weights, draw_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS, EXPLORER_RENDERER
@@ -142,18 +142,18 @@ def _pass_opening_with(first: str) -> list[str]:
 @pytest.mark.unit
 class TestDrawEdition:
     def test_the_bags_next_family_draws_when_it_can_draw_everything(self) -> None:
-        draw = draw_edition(_user(_pass_opening_with("menu")), _blocks(_NOTE))
+        draw = draw_edition(_user(_pass_opening_with("menu")), _blocks(_NOTE), None)
 
-        assert draw.family.member == "menu"
+        assert draw.family == "menu"
         assert draw.undrawn == []
 
     def test_a_family_that_cannot_draw_a_block_keeps_its_turn_for_a_later_day(self) -> None:
         order = _pass_opening_with("menu")
 
-        draw = draw_edition(_user(order), _blocks(_NOTE, _PROGRESS))
+        draw = draw_edition(_user(order), _blocks(_NOTE, _PROGRESS), None)
 
-        assert draw.family.member == order[1]
-        assert draw.family.next_state.order[1] == "menu"
+        assert draw.family == order[1]
+        assert draw.draws[0].next_state.order[1] == "menu"
         assert [b.kind for b in draw.drawn] == ["note", "progress"]
         assert draw.undrawn == []
 
@@ -162,9 +162,9 @@ class TestDrawEdition:
     ) -> None:
         user = _user_choosing(_only_on("menu", "postal"))
 
-        draw = draw_edition(user, _blocks(_NOTE, _chart(ChartKind.LINE)))
+        draw = draw_edition(user, _blocks(_NOTE, _chart(ChartKind.LINE)), None)
 
-        assert draw.family.member in {"menu", "postal"}
+        assert draw.family in {"menu", "postal"}
         assert [b.kind for b in draw.drawn] == ["note"]
         assert [b.kind for b in draw.undrawn] == ["chart"]
 
@@ -180,7 +180,7 @@ def _only_on(*families: str) -> dict[str, EditionChoice]:
 def _draw_days(user: UserDocument, days: int, blocks: list[BriefBlock]) -> list[str]:
     picks: list[str] = []
     for _ in range(days):
-        family = draw_edition(user, blocks).family
+        family = draw_edition(user, blocks, None).draws[0]
         picks.append(family.member)
         user = user.model_copy(update={"briefing_shuffle_bags": {family.bag: family.next_state}})
     return picks

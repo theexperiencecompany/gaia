@@ -1,76 +1,64 @@
 """Give a brief its id and link, render its edition around that link, then store it.
 
 The edition's QR and barcodes encode the brief's link, so the brief is stored and its link
-minted before the render: a link is minted only to a target that exists. Every brief that is stored (the daily, the weekly, the dev seed)
-goes through store_brief.
+minted before the render: a link is minted only to a target that exists. Every brief that is
+stored (the daily, the weekly, the dev seed) goes through store_brief.
 """
 
-from dataclasses import dataclass
-from uuid import uuid4
-
+from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import (
-    BriefingKind,
-    BriefingModel,
-    BriefingPayload,
-    EditionRender,
-)
+from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
+from app.models.brief_payload_models import BriefingPayload
 from app.models.short_link_models import ShortLinkTargetType
-from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
+from app.services.briefing.edition_email import render_edition_png
+from app.services.briefing.edition_image import store_edition
 from app.services.briefing.message import full_brief_url
 from app.services.links.service import optional_short_link
 
 
-@dataclass(frozen=True)
-class StoredBrief:
-    """A stored brief, its hosted edition and the link that edition encodes."""
-
-    briefing: BriefingModel
-    #: None for a quiet day's note, which has no edition and nothing to open.
-    image: HostedEditionImage | None
-    link: str | None
+async def _draft(
+    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload, delivery: BriefDelivery
+) -> BriefingModel:
+    """Return the brief as it is stored, under the id its (user, date, kind) has or will have."""
+    return BriefingModel(
+        id=await briefing_repository.briefing_id_for(user_id, date, kind),
+        user_id=user_id,
+        date=date,
+        kind=kind,
+        payload=payload,
+        delivery=delivery,
+    )
 
 
 async def store_brief(
-    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload
-) -> StoredBrief:
-    """Store the brief, mint its link (whose target must exist), render and host the edition, then store it with both.
+    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload, delivery: BriefDelivery
+) -> BriefingModel:
+    """Store the brief, mint its link (whose target must exist), render and store the edition, then store it with both.
 
     A render failure raises, leaving the brief stored without its edition and undelivered.
     Without a heygaia.link (sharing is off, or minting failed, which logs an error) the link
     is the brief's page, which its owner can always open.
     """
-    briefing_id = await briefing_repository.briefing_id_for(user_id, date, kind)
-    await briefing_repository.upsert_briefing(
-        user_id, date, kind, payload, briefing_id=briefing_id, edition=None
-    )
+    draft = await _draft(user_id, date, kind, payload, delivery)
+    await briefing_repository.upsert_briefing(draft)
     link = await optional_short_link(
-        user_id, ShortLinkTargetType.BRIEFING, briefing_id
-    ) or full_brief_url(briefing_id)
-    payload.link = link
-    # A fresh random key per render: the hosted URL reaches emails and public links.
-    image = await host_edition_image(payload, owner_id=user_id, render_key=uuid4().hex)
-    briefing = await briefing_repository.upsert_briefing(
-        user_id,
-        date,
-        kind,
-        payload,
-        briefing_id=briefing_id,
-        edition=EditionRender(
-            image_url=image.display_url,
-            fold=image.fold,
-            paper=list(image.paper) if image.paper else None,
-        ),
+        user_id, ShortLinkTargetType.BRIEFING, draft.id
+    ) or full_brief_url(draft.id)
+    payload = payload.model_copy(update={"link": link})
+    rendered = await render_edition_png(payload)
+    key = await store_edition(user_id, draft.id, rendered.image)
+    edition = EditionRender(
+        key=key, fold=rendered.fold, paper=list(rendered.paper) if rendered.paper else None
     )
-    return StoredBrief(briefing=briefing, image=image, link=link)
+    return await briefing_repository.upsert_briefing(
+        draft.model_copy(update={"payload": payload, "edition": edition})
+    )
 
 
 async def store_note(
-    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload
-) -> StoredBrief:
+    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload, delivery: BriefDelivery
+) -> BriefingModel:
     """Store a quiet day's note: no edition is rendered and no link is minted."""
-    briefing_id = await briefing_repository.briefing_id_for(user_id, date, kind)
-    briefing = await briefing_repository.upsert_briefing(
-        user_id, date, kind, payload, briefing_id=briefing_id, edition=None
+    return await briefing_repository.upsert_briefing(
+        await _draft(user_id, date, kind, payload, delivery)
     )
-    return StoredBrief(briefing=briefing, image=None, link=None)

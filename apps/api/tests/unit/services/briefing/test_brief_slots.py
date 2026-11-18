@@ -1,14 +1,19 @@
 """The brief's slots are filled from the facts, and a slot the facts cannot fill is named."""
 
-import pytest
+from datetime import UTC, date, datetime
 
+import pytest
+from tests.helpers import user_clock
+
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_slot_models import CountName, SeriesField
 from app.services.briefing.slots import (
     BriefFact,
-    CountSlot,
-    SeriesField,
     SlotError,
     SlotValues,
+    candidate_fact,
     figures_in,
     referenced_facts,
     render_slots,
@@ -25,7 +30,7 @@ _VALUES = SlotValues(
         7: BriefFact(title="Q4 board deck"),
         9: BriefFact(title="Sequoia partner meeting", time="11:00 AM"),
     },
-    counts={CountSlot.NEEDS_YOU: 2, CountSlot.EVENTS: 1},
+    counts={CountName.NEEDS_YOU: 2, CountName.EVENTS: 1},
 )
 _DECK = "https://heygaia.link/deck"
 _OFFERED = "(offered: needs_you, events)"
@@ -78,6 +83,46 @@ class TestRendering:
 
 
 class TestProblems:
+    @pytest.mark.parametrize(
+        ("written", "problem"),
+        [
+            ("[[count:needs_you.total]]", "[[count:needs_you.total]]: a count slot has no field"),
+            (
+                "[[count:done]]",
+                "[[count:done]] is not a count the facts list (offered: needs_you, events)",
+            ),
+            ("[[fact:7.time]]", "[[fact:7.time]]: fact 7 has no time"),
+            ("[[fact:7.count]]", "[[fact:7.count]]: fact 7 has no count"),
+            (
+                "[[fact:7.when]]",
+                "[[fact:7.when]]: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]",
+            ),
+        ],
+        ids=["count-with-field", "count-not-offered", "no-time", "no-count", "unknown-field"],
+    )
+    def test_a_slot_the_facts_cannot_fill_is_named_exactly(
+        self, written: str, problem: str
+    ) -> None:
+        assert slot_problems("lede", f"Then {written}.", _VALUES) == [f"the lede: {problem}"]
+
+    def test_a_figure_typed_from_a_series_value_names_the_series_slot_that_writes_it(
+        self,
+    ) -> None:
+        values = SlotValues(
+            facts={},
+            counts={},
+            series={"hours": {SeriesField.PEAK_AT: "9:00", SeriesField.PEAK: "4"}},
+        )
+
+        assert slot_problems("lede", "Busiest at 9 sharp.", values) == [
+            "the lede types '9' itself; write [[series:hours.peak_at]] where it says 9"
+        ]
+
+    def test_a_title_said_in_words_beside_its_slot_is_named_by_its_field(self) -> None:
+        assert slot_problems("lede", "The Q4 board deck is ready: [[fact:7]].", _VALUES) == [
+            "the lede names 'Q4 board deck' in words and again with [[fact:7]]; keep one"
+        ]
+
     def test_well_formed_prose_has_none(self) -> None:
         written = "[[count:events]] meeting today: [[fact:9]] at [[fact:9.time]]."
 
@@ -95,7 +140,7 @@ class TestProblems:
         )
 
     def test_a_day_with_no_counts_says_none_were_offered(self) -> None:
-        values = SlotValues(facts={}, counts={CountSlot.DONE: 0})
+        values = SlotValues(facts={}, counts={CountName.DONE: 0})
 
         assert slot_problems("message", "[[count:done]] done", values) == [
             "the message: [[count:done]] is not a count the facts list (offered: none today)"
@@ -362,3 +407,40 @@ class TestUnslotted:
 class TestFiguresIn:
     def test_each_word_with_a_digit_is_kept_without_the_punctuation_around_it(self) -> None:
         assert figures_in(["up by (8).", "the Q3 plan,", "no figures here"]) == {"8", "Q3"}
+
+
+_CLOCK = user_clock("Asia/Kolkata", date(2026, 11, 11))
+
+
+def _candidate(**fields: object) -> BriefCandidate:
+    return BriefCandidate.model_validate(
+        {"origin": CandidateOrigin.TRACKED, "source": "gaia", "app": "GAIA", "state": "you"}
+        | {"title": "Approve the Acme MSA renewal"}
+        | fields
+    )
+
+
+class TestAPoolItemsFact:
+    def test_it_is_its_title_its_due_day_on_the_users_clock_and_its_count(self) -> None:
+        due = datetime(2026, 11, 12, 20, 0, tzinfo=UTC)  # Friday 01:30 in Kolkata
+
+        fact = candidate_fact(_candidate(due_at=due, count=3), _CLOCK)
+
+        assert fact == BriefFact(title="Approve the Acme MSA renewal", time="Fri Nov 13", count=3)
+
+    def test_a_time_of_its_own_beats_its_due_day(self) -> None:
+        candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
+
+        assert candidate_fact(candidate, _CLOCK).time == "4:00 PM"
+
+    def test_the_briefs_own_wording_its_state_and_its_words_ride_along(self) -> None:
+        fact = candidate_fact(
+            _candidate(), _CLOCK, title="Acme renewal", kind=ItemState.YOU, words="by Friday"
+        )
+
+        assert (fact.title, fact.time, fact.kind, fact.words) == (
+            "Acme renewal",
+            None,
+            ItemState.YOU,
+            "by Friday",
+        )

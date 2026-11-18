@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, SECTION_NUMERALS
+from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, LEAD_OFFERS, SECTION_NUMERALS
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import (
     BriefBlock,
@@ -23,13 +23,8 @@ from app.models.brief_composition_models import (
     SectionBlock,
     placed_items,
 )
-from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
-    BriefingItem,
-    BriefingItemKind,
-    BriefingSection,
-    BriefPoolItem,
-)
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import BriefingItem, BriefingSection, BriefPoolItem
 from app.models.scout_models import RememberedSignal
 from app.services.briefing.fact_pool.pool import FactPool
 from shared.py.wide_events import log
@@ -52,12 +47,12 @@ class Laid:
     uncomposed: list[BriefPoolItem]
 
 
-def _item_kind(asks: bool, candidate: BriefCandidate) -> BriefingItemKind:
+def _item_kind(asks: bool, candidate: BriefCandidate) -> ItemState:
     """How a placed item reads: its own state, unless placing it says it waits on the user or not."""
-    if asks and candidate.state not in NEEDS_YOU_ITEM_KINDS:
-        return "you"
-    if not asks and candidate.state in NEEDS_YOU_ITEM_KINDS:
-        return "note"
+    if asks and not candidate.state.needs_you:
+        return ItemState.YOU
+    if not asks and candidate.state.needs_you:
+        return ItemState.NOTE
     return candidate.state
 
 
@@ -82,11 +77,12 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
 
 def _section(block: ComposedLead | ComposedItems, pool: FactPool, numeral: str) -> BriefingSection:
     if isinstance(block, ComposedLead):
-        offer = block.offer.strip() or None
+        candidate = pool.items[block.item.id]
+        action = candidate.action or block.item.action
         return BriefingSection(
             numeral=numeral,
             title=LEAD_HEADING,
-            items=[_item(block.item, pool.items[block.item.id], offer)],
+            items=[_item(block.item, candidate, LEAD_OFFERS[action] if action else None)],
         )
     return BriefingSection(
         numeral=numeral,

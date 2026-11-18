@@ -758,7 +758,11 @@ module = [
   "app.models.sandbox_models",
   "app.models.support_models",
   "app.models.notification.notification_models",
-  "app.models.briefing_models",
+  "app.models.brief_document_models",
+  "app.models.brief_item_models",
+  "app.models.brief_payload_models",
+  "app.models.brief_settings_models",
+  "app.models.brief_view_models",
   "app.models.platform_models",
   "app.models.short_link_models",
 ]

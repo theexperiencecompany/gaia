@@ -8,7 +8,7 @@
    where every row has one (calendar times). */
 EXPLORER.blocks = (() => {
   const esc = (s) =>
-    String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   // Whole numbers print bare, the rest to one decimal, as explorer_blocks.py prints values.
   const fmt = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 

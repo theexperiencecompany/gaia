@@ -8,7 +8,7 @@ negates ("not yet", "hasn't") is left alone: it may be saying the item is not th
 
 import re
 
-from app.models.briefing_models import BRIEFING_ITEM_STATES, BriefingItemKind
+from app.models.brief_item_models import ItemState
 from app.services.briefing.slots import (
     BriefFact,
     SlotValues,
@@ -26,10 +26,10 @@ _SAYS_FAILED = re.compile(r"\b(?:failed|failing|broke|broken|bounced|rejected)\b
 _NEGATES = re.compile(r"\b(?:not|no longer|never|yet)\b|n't\b", re.IGNORECASE)
 
 #: The claims each item state cannot carry, as the pattern that finds them.
-_CONTRADICTED_BY: dict[BriefingItemKind, re.Pattern[str]] = {
-    "failed": _SAYS_DONE,
-    "lookback": _SAYS_FAILED,
-    "you": _SAYS_DONE,
+_CONTRADICTED_BY: dict[ItemState, re.Pattern[str]] = {
+    ItemState.FAILED: _SAYS_DONE,
+    ItemState.LOOKBACK: _SAYS_FAILED,
+    ItemState.YOU: _SAYS_DONE,
 }
 
 
@@ -54,7 +54,7 @@ def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
             if said is not None:
                 problems.append(
                     f"the {field} says fact {fact_id} {said.group(0)!r}, but its state is "
-                    f"{BRIEFING_ITEM_STATES[fact.kind].lower()}; say where it stands as its line does"
+                    f"{fact.kind.label.lower()}; say where it stands as its line does"
                 )
         own = _figures(fact) | {str(fact.count)}
         others = {

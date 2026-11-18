@@ -1,51 +1,78 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from itertools import groupby
 
-from app.constants.briefing import (
+from app.agents.prompts.brief_fact_prompts import (
+    ALL_DAY,
     CALENDAR_UNAVAILABLE,
-    GAIA_APP_NAME,
+    COUNTS_HEADER,
+    GOALS_THIS_WEEK_HEADER,
     NO_CALENDAR_CONNECTED,
+    ONLY_TRACKED_TODOS,
+    OWN_TODOS_COUNTED,
+    OWN_TODOS_EMPTY,
+    OWN_TODOS_OVERDUE,
+    TODAY_EMPTY,
+    TODAY_HEADING,
+    TODAY_NO_ITEMS,
+    TODAY_SPAN,
+    TRACKED_BESIDE_OWN,
+    WEEK_AHEAD_EMPTY,
+    WEEK_AHEAD_HEADING,
+    WEEK_AHEAD_NO_ITEMS,
+    WEEK_AHEAD_SPAN,
+    WEEK_IN_NUMBERS_HEADER,
 )
+from app.constants.briefing import GAIA_APP_NAME
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
-from app.models.brief_pool_models import DataSeries, GoalState
-from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
+from app.models.brief_item_models import GroupState
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
     BriefingSection,
     BriefingStat,
     UnreadSource,
 )
-from app.services.briefing import context
+from app.models.brief_pool_models import DataSeries, GoalState
+from app.models.brief_slot_models import (
+    CountName,
+    CountSlot,
+    FactField,
+    FactSlot,
+    SeriesField,
+    SeriesSlot,
+)
 from app.services.briefing.artifacts import ArtifactFact
+from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import event_detail, start_time
 from app.services.briefing.candidates.subjects import subject_key
+from app.services.briefing.clock import DayWindow, UserClock
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
     charted_figures,
     voiced_block_lines,
 )
-from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock, due_on
 from app.services.briefing.fact_pool.render import (
-    ON_ONE_SUBJECT,
+    count_part,
     goal_progress,
     item_state,
     repeat_note,
+    stands_part,
     unread_note,
 )
+from app.services.briefing.formats import day
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import (
     BriefFact,
-    CountSlot,
-    SeriesField,
     SlotValues,
+    candidate_fact,
     figures_in,
     series_figures,
 )
+from app.services.briefing.work import TrackedWork
 
 
 def _fact_line(
@@ -56,14 +83,14 @@ def _fact_line(
     line = f"- fact {fact_id} | {state}: {item.text}"
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
-    if candidate.standing is not None:
-        line += f" | stands: {candidate.standing}"
+    if (stands := stands_part(candidate)) is not None:
+        line += f" | {stands}"
     if fact.time:
-        line += f" | time: [[fact:{fact_id}.time]] ({fact.time})"
+        line += f" | time: {FactSlot(fact_id, FactField.TIME)} ({fact.time})"
     if candidate.detail:
         line += f" | detail: {candidate.detail}"
-    if fact.count > 1:
-        line += f" | [[fact:{fact_id}.count]] ({fact.count}) {ON_ONE_SUBJECT}"
+    if (counted := count_part(fact.count, FactSlot(fact_id, FactField.COUNT))) is not None:
+        line += f" | {counted}"
     if (repeat := repeat_note(candidate, clock)) is not None:
         line += f" | {repeat}"
     return line
@@ -103,7 +130,7 @@ class Facts:
     lead: int | None
 
 
-def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
+def work_stats(work: TrackedWork) -> list[BriefingStat]:
     """Build the stat row: one figure per non-empty tracked-work state, each subject once, in full."""
     figures = (
         (len({subject_key(d) for d in work.completed}), "done since last brief"),
@@ -115,28 +142,32 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
 
 @dataclass(frozen=True)
 class BriefSpan:
-    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items.
+    """The days a brief's calendar and what falls due cover, and how its facts name them.
 
-    days is how many local days the calendar covers; a span of several lists it under each
-    day's heading, with its count.
+    It starts starts_in days from today and covers days local days; a span of several lists
+    its calendar under each day's heading, with its count. words names it in the pool context.
     """
 
     heading: str
     empty: str
     no_items: str
+    words: str
+    starts_in: int = 0
     days: int = 1
 
+    def window(self, clock: UserClock) -> DayWindow:
+        return clock.days(clock.today + timedelta(days=self.starts_in), self.days)
 
-_NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
+
 TODAY = BriefSpan(
-    heading="Today's calendar",
-    empty="The user's calendar has nothing today.",
-    no_items=f"No tracked work, results or app items need them today. {_NO_CLAIM}",
+    heading=TODAY_HEADING, empty=TODAY_EMPTY, no_items=TODAY_NO_ITEMS, words=TODAY_SPAN
 )
 WEEK_AHEAD = BriefSpan(
-    heading="The week ahead",
-    empty="The user's calendar has nothing in the week ahead.",
-    no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
+    heading=WEEK_AHEAD_HEADING,
+    empty=WEEK_AHEAD_EMPTY,
+    no_items=WEEK_AHEAD_NO_ITEMS,
+    words=WEEK_AHEAD_SPAN,
+    starts_in=1,
     days=7,
 )
 
@@ -159,8 +190,8 @@ class FactSources:
     #: GAIA's tracked work by todo id; the user's own todos have no deliverable here.
     artifacts: dict[str, ArtifactFact]
     open_todos: int
-    #: The span's events, or why its calendar went unread: never an empty day.
-    calendar: list[BriefingEvent] | CalendarUnread
+    #: The calendar's read: the span's events, or why it went unread (never an empty day).
+    calendar: CalendarRead
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
     span: BriefSpan
@@ -179,25 +210,25 @@ class FactSources:
 
 def _counts(
     placed: list[tuple[BriefingItem, BriefCandidate]], sources: FactSources, events: int
-) -> dict[CountSlot, int]:
-    """Return the counts a [[count:...]] slot voices, each counting only what its name claims, zeros left out.
+) -> dict[CountName, int]:
+    """Return the counts a count slot voices, each counting only what its name claims, zeros left out.
 
     Waiting on you leaves out a calendar event and backlog; while away is what came in to be
     held for the brief.
     """
     counts = {
-        CountSlot.NEEDS_YOU: sum(
-            1
-            for it, c in placed
-            if it.kind in NEEDS_YOU_ITEM_KINDS and not (c.is_event or c.backlog)
+        CountName.NEEDS_YOU: sum(
+            1 for it, c in placed if it.kind.needs_you and not (c.is_event or c.backlog)
         ),
-        CountSlot.DONE: sum(1 for it, _ in placed if it.kind == "lookback"),
-        CountSlot.IN_PROGRESS: sum(1 for it, _ in placed if it.kind == "gaia"),
-        CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
-        CountSlot.OPEN_TODOS: sources.open_todos,
-        CountSlot.OVERDUE_TODOS: sources.overdue_todos,
-        CountSlot.OPEN_TRACKED: sources.open_tracked,
-        CountSlot.EVENTS: events,
+        CountName.DONE: sum(1 for it, _ in placed if it.kind.group is GroupState.DONE),
+        CountName.IN_PROGRESS: sum(
+            1 for it, _ in placed if it.kind.group is GroupState.IN_PROGRESS
+        ),
+        CountName.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
+        CountName.OPEN_TODOS: sources.open_todos,
+        CountName.OVERDUE_TODOS: sources.overdue_todos,
+        CountName.OPEN_TRACKED: sources.open_tracked,
+        CountName.EVENTS: events,
     }
     return {slot: n for slot, n in counts.items() if n}
 
@@ -225,12 +256,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             elif candidate.url:
                 addresses[fact_id] = candidate.url
             words = _own_words(candidate, it, art)
-            facts[fact_id] = BriefFact(
-                title=it.text,
-                time=due_on(candidate.due_at, clock) if candidate.due_at else None,
-                count=it.count,
-                kind=it.kind,
-                words=" ".join(words),
+            facts[fact_id] = candidate_fact(
+                candidate, clock, title=it.text, kind=it.kind, words=" ".join(words)
             )
             linkable = fact_id in deliverables or fact_id in addresses
             own_words += words
@@ -243,11 +270,11 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 else _work_fact_line(fact_id, it, facts[fact_id], candidate, art, clock)
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
-    calendar = sources.calendar if isinstance(sources.calendar, list) else []
+    calendar = sources.calendar.events
     counts = _counts(placed, sources, len(calendar))
-    voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
+    voiced = " · ".join(f"{CountSlot(name)} ({n})" for name, n in counts.items())
     if voiced:
-        fact_lines.insert(0, f"[COUNTS] {voiced}")
+        fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
     events = list(zip(sources.event_ids, calendar, strict=True))
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
@@ -314,7 +341,7 @@ def _own_words(
 
 
 def _event_slot(fact_id: int, time: str | None) -> str:
-    return f"[[fact:{fact_id}.time]] ({time})" if time else "all day"
+    return f"{FactSlot(fact_id, FactField.TIME)} ({time})" if time else ALL_DAY
 
 
 def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
@@ -330,22 +357,23 @@ def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
 
     A day is the busiest only beside a lighter day that has events: equal days have none.
     """
-    days = {day: list(group) for day, group in groupby(events, key=lambda pair: pair[1].date)}
+    days = {on: list(group) for on, group in groupby(events, key=lambda pair: pair[1].date)}
     counts = [len(group) for group in days.values()]
     busiest = max(counts) if max(counts) > min(counts) else None
     lines: list[str] = []
-    for day, group in days.items():
+    for on, group in days.items():
         busy = ", the week's busiest" if len(group) == busiest else ""
-        label = date.fromisoformat(day).strftime("%A %b %-d")
-        lines += [f"{label}, {len(group)} event(s){busy}:", *_event_lines(group)]
+        lines += [
+            f"{day(date.fromisoformat(on))}, {len(group)} event(s){busy}:",
+            *_event_lines(group),
+        ]
     return lines
 
 
 def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources) -> str:
-    if isinstance(sources.calendar, CalendarUnread):
-        if sources.calendar.gap is CalendarGap.UNAVAILABLE:
-            return CALENDAR_UNAVAILABLE
-        return NO_CALENDAR_CONNECTED
+    gap = sources.calendar.gap
+    if gap is not None:
+        return CALENDAR_UNAVAILABLE if gap is CalendarGap.UNAVAILABLE else NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty
     if sources.span.days > 1:
@@ -362,16 +390,14 @@ def _recap_lines(recap: WeekRecap) -> list[str]:
     """Say the week's totals as one grouped recap, and what moved and what stuck on each goal."""
     lines: list[str] = []
     if recap.series:
-        lines.append(
-            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
-        )
+        lines.append(WEEK_IN_NUMBERS_HEADER)
         lines += [
-            f"- {s.label}: [[series:{s.id}.total]] ({series_figures(s)[SeriesField.TOTAL]}"
+            f"- {s.label}: {SeriesSlot(s.id, SeriesField.TOTAL)} ({series_figures(s)[SeriesField.TOTAL]}"
             f"{f' {s.unit}' if s.unit else ''})"
             for s in recap.series
         ]
     if recap.goals:
-        lines.append("[GOALS THIS WEEK]")
+        lines.append(GOALS_THIS_WEEK_HEADER)
         lines += [_goal_week_line(goal) for goal in recap.goals]
     return lines
 
@@ -391,26 +417,7 @@ def _goal_week_line(goal: GoalState) -> str:
 
 def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) -> str:
     """Say what the user's todo list holds: their own todos, and beside them GAIA's open tracked ones."""
-    tracked = (
-        f" GAIA's tracked work holds [[count:{CountSlot.OPEN_TRACKED.value}]] open beside them."
-        if tracked_open
-        else ""
-    )
     if not open_count:
-        if tracked_open:
-            return (
-                "The user has no todos of their own outside GAIA's tracked work, which holds "
-                f"[[count:{CountSlot.OPEN_TRACKED.value}]] open: never call their todo list "
-                "empty or clear."
-            )
-        return "The user's own todo list is empty."
-    note = (
-        "The user's own open todos are counted in [COUNTS]"
-        "; never voice that list as clear or empty."
-    )
-    if overdue:
-        note += (
-            " [[count:overdue_todos]] of them are past due: say that count in one plain line,"
-            " never list them."
-        )
-    return note + tracked
+        return ONLY_TRACKED_TODOS if tracked_open else OWN_TODOS_EMPTY
+    overdue_note = OWN_TODOS_OVERDUE if overdue else ""
+    return OWN_TODOS_COUNTED + overdue_note + (TRACKED_BESIDE_OWN if tracked_open else "")

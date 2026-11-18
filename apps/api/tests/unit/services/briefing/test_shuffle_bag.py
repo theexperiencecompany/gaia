@@ -7,11 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
+from app.constants.briefing import EditionFamily
 from app.models.user_models import ShuffleBag
 from app.services.briefing.editions import (
     DAILY_FAMILY_WEIGHTS,
     EXPLORER_RENDERER,
-    WEEKLY_FAMILY,
 )
 from app.services.briefing.shuffle_bag import draw
 
@@ -187,7 +187,7 @@ class TestEligibleDraw:
 class TestDailyFamilyWeights:
     def test_postal_is_twice_as_common_and_every_daily_family_is_in(self) -> None:
         assert DAILY_FAMILY_WEIGHTS["postal"] == 2
-        assert set(DAILY_FAMILY_WEIGHTS) == set(EXPLORER_RENDERER) - {WEEKLY_FAMILY}
+        assert set(DAILY_FAMILY_WEIGHTS) == set(EXPLORER_RENDERER) - {EditionFamily.WEEKLY}
         assert "metromap" in DAILY_FAMILY_WEIGHTS
         assert all(w == 1 for f, w in DAILY_FAMILY_WEIGHTS.items() if f != "postal")
 

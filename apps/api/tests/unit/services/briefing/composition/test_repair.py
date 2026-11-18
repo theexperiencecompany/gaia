@@ -6,7 +6,7 @@ import pytest
 from tests.helpers import user_clock
 
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
@@ -16,8 +16,8 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
     ComposedNote,
-    GroupState,
 )
+from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition.compose import pool_values
 from app.services.briefing.composition.repair import pool_composition, repaired, salvaged
@@ -45,7 +45,14 @@ NOTE = ComposedNote(kind="note", text="A light day.")
 
 def _candidate(title: str, **fields: object) -> BriefCandidate:
     return BriefCandidate.model_validate(
-        {"source": "gaia", "app": "GAIA", "state": "you", "title": title, "gaia_acts": True}
+        {
+            "origin": CandidateOrigin.TRACKED,
+            "source": "gaia",
+            "app": "GAIA",
+            "state": "you",
+            "title": title,
+            "gaia_acts": True,
+        }
         | fields
     )
 
@@ -76,7 +83,7 @@ def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> Co
 
 
 def _lead(item: ComposedItem) -> ComposedLead:
-    return ComposedLead(kind="lead", item=item, offer="Send the reply I drafted")
+    return ComposedLead(kind="lead", item=item)
 
 
 def _chart(title: str) -> ComposedChart:
@@ -107,7 +114,9 @@ class TestTheProducersSide:
         )
 
     def test_an_outcome_the_producer_named_replaces_what_the_model_said(self) -> None:
-        pool = _pool(_candidate("Weekly update", state="lookback", outcome=BriefOutcome.SENT))
+        pool = _pool(
+            _candidate("Weekly update", state=ItemState.LOOKBACK, outcome=BriefOutcome.SENT)
+        )
         said = _item(1, action=BriefAction.REPLY)
 
         assert repaired(_of(_group(said, state=GroupState.DONE)), pool) == _of(
@@ -131,7 +140,7 @@ class TestTheProducersSide:
         assert group.state is GroupState.NEEDS_YOU
 
     def test_a_group_whose_items_differ_keeps_its_declared_state(self) -> None:
-        pool = _pool(_candidate("Ask"), _candidate("Done", state="lookback"))
+        pool = _pool(_candidate("Ask"), _candidate("Done", state=ItemState.LOOKBACK))
         mixed = _group(
             _item(1), _item(2, action=None, outcome=BriefOutcome.FINISHED), state=GroupState.DONE
         )
@@ -228,10 +237,10 @@ class TestThePoolsOwnBrief:
     def test_its_news_is_grouped_by_state_with_each_items_own_side(self) -> None:
         pool = _pool(
             _candidate("Reply to Maya"),
-            _candidate("Board deck", state="lookback"),
-            _candidate("Weekly update", state="lookback", outcome=BriefOutcome.SENT),
-            _candidate("Inbox triage", state="gaia"),
-            _candidate("Standup", state="note", is_event=True),
+            _candidate("Board deck", state=ItemState.LOOKBACK),
+            _candidate("Weekly update", state=ItemState.LOOKBACK, outcome=BriefOutcome.SENT),
+            _candidate("Inbox triage", state=ItemState.GAIA),
+            _candidate("Standup", state=ItemState.NOTE, origin=CandidateOrigin.EVENT),
         )
 
         assert pool_composition(pool, pool_values(pool)) == _of(
@@ -259,7 +268,7 @@ class TestThePoolsOwnBrief:
         )
 
     def test_a_failed_item_asks_the_user_to_look(self) -> None:
-        pool = _pool(_candidate("Sync job", state="failed"))
+        pool = _pool(_candidate("Sync job", state=ItemState.FAILED))
 
         assert pool_composition(pool, pool_values(pool)) == _of(
             ComposedItems(

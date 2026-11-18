@@ -21,7 +21,7 @@ import pytest_asyncio
 
 from app.constants.briefing import EXPLORER_SCALE, ArtFamily, BriefAction
 from app.models.brief_composition_models import ChartBlock, NoteBlock, ProgressBlock, QuoteBlock
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.explorer_blocks import build_blocks
 from app.services.briefing.editions.explorer_render import EXPLORER_CANVAS_PX

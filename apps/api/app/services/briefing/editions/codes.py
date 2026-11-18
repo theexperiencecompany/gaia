@@ -12,6 +12,8 @@ from barcode import Code128
 import pdf417gen
 import segno
 
+from app.constants.briefing import EditionFamily
+
 # M recovers ~15% of the symbol: room for the paper grain printed over the Invoice's QR.
 _QR_ERROR_LEVEL = "m"
 _DARK = "1"
@@ -34,10 +36,10 @@ class CodeGeometry(TypedDict):
 
 
 # The codes each family prints; the Boarding Pass's skin picks one of its two.
-FAMILY_SYMBOLOGIES: dict[str, tuple[Symbology, ...]] = {
-    "invoice": (Symbology.QR,),
-    "receipt": (Symbology.CODE128,),
-    "boardingpass": (Symbology.CODE128, Symbology.PDF417),
+FAMILY_SYMBOLOGIES: dict[EditionFamily, tuple[Symbology, ...]] = {
+    EditionFamily.INVOICE: (Symbology.QR,),
+    EditionFamily.RECEIPT: (Symbology.CODE128,),
+    EditionFamily.BOARDINGPASS: (Symbology.CODE128, Symbology.PDF417),
 }
 
 
@@ -77,7 +79,7 @@ def code_geometry(symbology: Symbology, link: str) -> CodeGeometry:
     return _geometry(_pdf417_rows(link))
 
 
-def family_codes(family: str, link: str | None) -> dict[Symbology, CodeGeometry]:
+def family_codes(family: EditionFamily, link: str | None) -> dict[Symbology, CodeGeometry]:
     """Return every code the family prints, keyed by symbology, each encoding link.
 
     Raises ValueError when the family prints a code and the brief has no link yet.

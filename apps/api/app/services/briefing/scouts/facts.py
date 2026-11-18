@@ -12,7 +12,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.utils.timezone import as_utc
 
 SIGNALS_HEADER = "[ACROSS THEIR APPS]"

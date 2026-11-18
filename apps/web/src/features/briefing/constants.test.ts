@@ -9,21 +9,20 @@ const API_CONSTANTS = resolve(
   "../../../../api/app/constants/briefing.py",
 );
 
-const API_MODELS = resolve(
+const API_ITEM_STATES = resolve(
   __dirname,
-  "../../../../api/app/models/briefing_models.py",
+  "../../../../api/app/models/brief_item_models.py",
 );
 
 describe("BRIEF_ITEM_STATES", () => {
   it("names each item state as the API's voice facts do", () => {
-    const block = readFileSync(API_MODELS, "utf8").match(
-      /BRIEFING_ITEM_STATES[^=]*= \{([^}]*)\}/,
+    const block = readFileSync(API_ITEM_STATES, "utf8").match(
+      /^_LABELS[^=]*= MappingProxyType\(\s*\{([^}]*)\}/m,
     );
     const declared = Object.fromEntries(
-      [...(block?.[1] ?? "").matchAll(/"(\w+)": "([^"]+)"/g)].map((entry) => [
-        entry[1],
-        entry[2],
-      ]),
+      [...(block?.[1] ?? "").matchAll(/ItemState\.(\w+): "([^"]+)"/g)].map(
+        (entry) => [entry[1].toLowerCase(), entry[2]],
+      ),
     );
 
     expect(Object.keys(declared)).toHaveLength(5);

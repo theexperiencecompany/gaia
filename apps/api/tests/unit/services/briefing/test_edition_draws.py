@@ -2,15 +2,18 @@
 
 import pytest
 
-from app.constants.briefing import ArtFamily, BriefingBag
-from app.models.briefing_models import BriefingPayload
+from app.constants.briefing import ArtFamily, BriefingBag, EditionFamily
+from app.models.brief_composition_models import ChartBlock, ChartKind
+from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.edition_draws import draw_from_bag, draw_stamp_or_artwork
+from app.services.briefing.edition_draws import draw_edition, draw_from_bag
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import (
     artwork_catalogue,
     artwork_weights,
     artworks_for,
 )
+from app.services.briefing.editions.capabilities import edition_capabilities
 
 _USER = "64f1c0ffee0000000000abcd"
 
@@ -34,18 +37,6 @@ def _user_whose_bag_opens_on(slug: str) -> UserDocument:
     )
 
 
-def _payload(family: str) -> BriefingPayload:
-    return BriefingPayload(
-        kicker="k",
-        date="2026-10-14",
-        headline="h",
-        lede="l",
-        mood="clear",
-        caption="c",
-        template_family=family,
-    )
-
-
 @pytest.mark.unit
 class TestDrawFromBag:
     def test_only_an_eligible_member_is_drawn_and_the_others_keep_their_turn(self) -> None:
@@ -61,12 +52,55 @@ class TestDrawFromBag:
 
 
 @pytest.mark.unit
-class TestDrawStampOrArtwork:
+class TestDrawEdition:
+    def test_a_daily_edition_is_drawn_among_the_families_that_can_draw_its_blocks(
+        self,
+    ) -> None:
+        pool = sorted(f.value for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n))
+        pool.remove(EditionFamily.MENU.value)
+        bag = ShuffleBag(order=[EditionFamily.MENU.value, *pool], index=0)
+        user = UserDocument(
+            id=_USER,
+            email="ada@example.com",
+            name="Ada",
+            briefing_shuffle_bags={BriefingBag.EDITION_FAMILY: bag},
+        )
+        chart = ChartBlock(
+            chart=ChartKind.LINE,
+            title="Meetings",
+            takeaway="A busy week",
+            series=[
+                DataSeries(
+                    id="meetings",
+                    label="Meetings",
+                    source="gaia",
+                    app="GAIA",
+                    shape=SeriesShape.TIME_SERIES,
+                    points=[SeriesPoint(x=f"2026-11-{d:02d}", y=d) for d in range(5, 12)],
+                )
+            ],
+        )
+
+        edition = draw_edition(user, [chart], None)
+
+        assert edition.family is not EditionFamily.MENU
+        assert edition_capabilities(edition.family).draws(chart)
+
+    def test_a_daily_edition_is_the_family_its_bag_drew_first(self) -> None:
+        user = UserDocument(id=_USER, email="ada@example.com", name="Ada")
+
+        edition = draw_edition(user, [], None)
+
+        first = edition.draws[0]
+        assert first.bag is BriefingBag.EDITION_FAMILY
+        assert edition.family is EditionFamily(first.member)
+        assert edition.family in DAILY_FAMILY_WEIGHTS
+
     def test_a_framed_family_hangs_a_painting_that_fits_its_frame(self) -> None:
         family, unfit = _family_with_a_work_it_cannot_hang()
-        payload = _payload(family.value)
 
-        [drawn] = draw_stamp_or_artwork(_user_whose_bag_opens_on(unfit), payload)
+        edition = draw_edition(_user_whose_bag_opens_on(unfit), [], family.value)
 
-        assert payload.artwork_id == drawn.member
+        [drawn] = edition.draws
+        assert edition.artwork_id == drawn.member
         assert drawn.member in artworks_for(family)

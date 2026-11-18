@@ -13,7 +13,6 @@ from app.constants.briefing import (
     BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEF_NOTE_MAX_CHARS,
-    BRIEF_OFFER_MAX_CHARS,
     BRIEF_TAKEAWAY_MAX_CHARS,
     MAX_BAR_CATEGORIES,
     MAX_BRIEF_BLOCKS,
@@ -23,8 +22,9 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition, ComposedItems
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -71,6 +71,7 @@ def _item(title: str, **fields: object) -> BriefCandidate:
     """Return one of GAIA's own items, which GAIA can act on, unless fields say otherwise."""
     return BriefCandidate.model_validate(
         {
+            "origin": CandidateOrigin.TRACKED,
             "source": "gaia",
             "app": "GAIA",
             "state": "you",
@@ -100,11 +101,11 @@ _TITLES = [
 POOL = FactPool(
     items={
         **{n: _item(title) for n, title in enumerate(_TITLES, start=1)},
-        13: _item("Board call", state="note", is_event=True, time="4:00 PM"),
+        13: _item("Board call", state=ItemState.NOTE, origin=CandidateOrigin.EVENT, time="4:00 PM"),
         14: _item("Re: Re: Fwd: the revised Series A term sheet, with all redlines"),
-        15: _item("Board deck numbers", state="gaia", outcome=BriefOutcome.STARTED),
-        16: _item("CRM sync", state="failed", action=BriefAction.RETRY),
-        17: _item("Growth experiments", action=BriefAction.ATTEND, backlog=True),
+        15: _item("Board deck numbers", state=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+        16: _item("CRM sync", state=ItemState.FAILED, action=BriefAction.RETRY),
+        17: _item("Growth experiments", action=BriefAction.ATTEND, origin=CandidateOrigin.BACKLOG),
         18: _item("Fix the flaky deploy", source="github", app="GitHub", gaia_acts=False),
     },
     series=[
@@ -458,10 +459,9 @@ class TestEachBlockHasItsShape:
 
         assert _problems(untitled) == ["block 1 (items), item 1: no title"]
 
-    def test_a_lead_opens_the_brief_with_an_offer(self) -> None:
-        assert _problems(_items(1), {"kind": "lead", "item": _ask(2), "offer": " "}) == [
+    def test_a_lead_opens_the_brief(self) -> None:
+        assert _problems(_items(1), {"kind": "lead", "item": _ask(2)}) == [
             "block 2 (lead): a lead opens the brief, so it is block 1",
-            "block 2 (lead): no offer",
         ]
 
     def test_a_lead_reports_nothing_it_asks(self) -> None:
@@ -497,8 +497,8 @@ class TestEachBlockHasItsShape:
         readonly = _placed(18, action="review", title="Flaky deploy")
 
         assert _problems({"kind": "lead", "item": readonly, "offer": "Fix the deploy"}) == [
-            "block 1 (lead): GAIA can only read GitHub, so it cannot do what the offer says on "
-            "item 18; lead with something GAIA can act on, or with nothing"
+            "block 1 (lead): GAIA can only read GitHub, so it cannot help with item 18; lead "
+            "with something GAIA can act on, or with nothing"
         ]
 
     def test_two_leads_are_refused(self) -> None:
@@ -617,13 +617,6 @@ class TestTextIsMeasuredAsTheBriefShowsIt:
 
         assert _problems({"kind": "note", "text": text}) == [
             f"block 1 (note): a text of {chars} characters, over {BRIEF_NOTE_MAX_CHARS}"
-        ]
-
-    def test_a_lead_offer_is_measured_filled(self) -> None:
-        text, chars = _filled_to(2)
-
-        assert _problems({"kind": "lead", "item": _ask(1), "offer": text}) == [
-            f"block 1 (lead): a offer of {chars} characters, over {BRIEF_OFFER_MAX_CHARS}"
         ]
 
     def test_a_field_exactly_at_its_limit_holds(self) -> None:

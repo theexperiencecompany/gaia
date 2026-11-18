@@ -4,15 +4,13 @@ from datetime import UTC, datetime, timedelta
 
 from app.constants.briefing import (
     BOOTSTRAP_GRACE_DAYS,
+    BriefingKind,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import (
-    BriefingKind,
-)
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from shared.py.wide_events import log
 
 

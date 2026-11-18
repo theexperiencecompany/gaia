@@ -12,12 +12,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config.settings import settings
-from app.constants.briefing import BriefOutcome
+from app.constants.briefing import BriefOutcome, EditionFamily
 from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
-from app.models.briefing_models import (
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingModel,
     BriefingPayload,
     BriefingSection,
 )
@@ -108,10 +109,10 @@ class TestBriefing:
             id="brief_abc",
             user_id="owner",
             date="2026-10-14",
-            edition_image_url="https://cdn.heygaia.io/editions/brief.png",
+            edition=EditionRender(key="edition-key"),
             payload=BriefingPayload(
                 kicker="Tuesday",
-                template_family="swiss",
+                template_family=EditionFamily.SWISS,
                 date="Oct 14",
                 headline="A clear day",
                 lede="Two things moved.",
@@ -150,10 +151,14 @@ class TestBriefing:
         for leaked in ("todo-secret-id", PRIVATE_EMAIL, "brief_abc", "owner", "Room 4B"):
             assert leaked not in body
         repo.get.assert_awaited_once_with("brief_abc", user_id="owner")
+        assert isinstance(view, PublicBriefing) and view.edition_image_url is not None
+        assert view.edition_image_url.startswith(
+            f"{settings.HOST}/api/v1/briefings/editions/edition-key/png?t="
+        )
         assert view == PublicBriefing(
             target_type=ShortLinkTargetType.BRIEFING,
             kind=briefing.kind,
-            edition_image_url="https://cdn.heygaia.io/editions/brief.png",
+            edition_image_url=view.edition_image_url,
             payload=PublicBriefingPayload(
                 kicker="Tuesday",
                 date="Oct 14",
@@ -167,7 +172,7 @@ class TestBriefing:
                         items=[
                             PublicBriefingItem(
                                 text="Sent the Acme reply",
-                                kind="note",
+                                kind=ItemState.NOTE,
                                 link="https://heygaia.link/xyz",
                             )
                         ],

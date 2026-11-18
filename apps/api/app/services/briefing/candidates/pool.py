@@ -5,9 +5,9 @@ from datetime import datetime
 
 from app.constants.briefing import GAIA_SOURCE
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.briefing_models import BriefingEvent, UnreadSource
+from app.models.brief_payload_models import BriefingEvent, UnreadSource
 from app.models.scout_models import SignalImportance
 from app.models.todo_models import TodoDocument
 from app.services.briefing.candidates.app_signals import app_signal_candidates
@@ -24,8 +24,9 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork, UserClock, day_start_utc
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.service import ScoutSignals
+from app.services.briefing.work import TrackedWork
 from app.services.integrations.user_integrations import get_connected_integration_ids
 
 
@@ -51,17 +52,19 @@ class GatheredCandidates:
 class CandidateSources:
     """What the run already read, which the producers turn into candidates.
 
-    ahead_days is how many local days from today the brief looks ahead for what is due:
-    a reminder or a dated todo of their own. user_done is what the user finished themselves,
-    which only the weekly recaps.
+    due_before is when the brief's span ends: a reminder or a dated todo of their own due
+    before it is the brief's. user_done is what the user finished themselves, which only
+    the weekly recaps.
     """
 
     work: TrackedWork
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+    due_before: datetime
+    #: Every open todo of the user's own, from the run's one read of the todos store.
+    open_own: list[TodoDocument]
     #: The results held for the daily brief; the weekly carries none.
     held: list[PendingBriefItemDocument] = field(default_factory=list)
-    ahead_days: int = 1
     user_done: list[TodoDocument] = field(default_factory=list)
 
 
@@ -89,7 +92,7 @@ def _merged(first: BriefCandidate, again: BriefCandidate) -> BriefCandidate:
 
 def _one_per_thing(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
     """Fold candidates about the same outside thing into one, in the order each was first found."""
-    by_ref: dict[str, int] = {}
+    by_ref: dict[OutsideRef, int] = {}
     kept: list[BriefCandidate] = []
     for candidate in candidates:
         if candidate.ref is not None and candidate.ref in by_ref:
@@ -145,14 +148,14 @@ async def gather_candidates(
 ) -> GatheredCandidates:
     """Run every producer, needs-you sources first, remember each find, and number them."""
     work = sources.work
-    day_start = day_start_utc(clock)
-    day_end = day_start_utc(clock, days_ago=-sources.ahead_days)
+    day_start = clock.day_start()
+    day_end = sources.due_before
     open_todo_ids = {doc.id for doc in [*work.blocked, *work.failed, *work.running]}
     candidates = [
         *waiting_candidates(work),
         *await approval_candidates(user_id, now, open_todo_ids),
         *await reminder_candidates(user_id, day_start, day_end),
-        *await own_todo_candidates(user_id, day_end, work),
+        *own_todo_candidates(sources.open_own, day_end, work),
         *await failed_run_candidates(user_id, since),
         *app_signal_candidates(sources.scouts.remembered, clock),
         *await held_candidates(user_id, sources.held),

@@ -3,28 +3,32 @@
 from contextlib import asynccontextmanager, contextmanager
 from datetime import timedelta
 import io
-import json
 from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 import zipfile
 
 from bson import ObjectId
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import pytest
 
-from app.api.v1.endpoints.dev import _BRIEFING_RUNS, run_briefing_now, seed_dev_user_data
+from app.api.v1.endpoints.dev import run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
-from app.constants.briefing import BriefingRunOutcome
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_PRO_TERM_DAYS
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
+from app.schemas.dev_schemas import (
+    DevAgentRunResponse,
+    DevBriefingRunResponse,
+    SeedDevDataRequest,
+    SeedDevDataResponse,
+)
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.errors import AppError
@@ -916,11 +920,10 @@ class TestDevAttachments:
 
 class TestDevBriefingRun:
     async def test_runs_the_kinds_pipeline_for_the_users_id(self):
-        run_daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
-        run_weekly = AsyncMock()
+        run_brief = AsyncMock(return_value=BriefingRunOutcome.SENT)
         user = SimpleNamespace(id="u-brief")
         with (
-            patch.dict(_BRIEFING_RUNS, {"daily": run_daily, "weekly": run_weekly}),
+            patch("app.api.v1.endpoints.dev.run_brief", run_brief),
             patch(
                 "app.api.v1.endpoints.dev.user_repository.get_by_email",
                 new_callable=AsyncMock,
@@ -928,17 +931,13 @@ class TestDevBriefingRun:
             ) as get_by_email,
         ):
             async with captured_wide_event() as event:
-                response = await run_briefing_now("daily", DEV_EMAIL)
+                response = await run_briefing_now(BriefingKind.DAILY, DEV_EMAIL)
 
         get_by_email.assert_awaited_once_with(DEV_EMAIL)
-        run_daily.assert_awaited_once_with("u-brief")
-        run_weekly.assert_not_awaited()
-        assert json.loads(response.body) == {
-            "user_id": "u-brief",
-            "kind": "daily",
-            "status": "completed",
-            "outcome": "sent",
-        }
+        run_brief.assert_awaited_once_with("u-brief", BriefingKind.DAILY)
+        assert response == DevBriefingRunResponse(
+            user_id="u-brief", kind="daily", outcome=BriefingRunOutcome.SENT
+        )
         assert event["dev"] == {
             "operation": "run_briefing",
             "kind": "daily",
@@ -947,7 +946,7 @@ class TestDevBriefingRun:
             "outcome": "sent",
         }
 
-    async def test_an_unknown_kind_is_a_400_through_the_mounted_route(self, monkeypatch):
+    async def test_an_unknown_kind_is_refused_by_the_route_itself(self, monkeypatch):
         from app.config.settings import settings as app_settings
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
@@ -955,27 +954,25 @@ class TestDevBriefingRun:
         async with client:
             response = await client.post(f"/api/v1/dev/briefing/monthly/{DEV_EMAIL}")
 
-        assert (response.status_code, response.json()["message"]) == (
-            400,
-            "kind must be 'daily' or 'weekly'",
-        )
+        assert response.status_code == 422
 
     async def test_an_unknown_email_is_a_404_naming_how_to_mint_it(self):
         run_daily = AsyncMock()
         with (
-            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch("app.api.v1.endpoints.dev.run_brief", run_daily),
             patch(
                 "app.api.v1.endpoints.dev.user_repository.get_by_email",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            pytest.raises(HTTPException) as caught,
+            pytest.raises(AppError) as caught,
         ):
-            await run_briefing_now("daily", "ghost@gaia.local")
+            await run_briefing_now(BriefingKind.DAILY, "ghost@gaia.local")
 
         assert caught.value.status_code == 404
-        assert caught.value.detail == (
-            "No GAIA user exists for 'ghost@gaia.local' — mint it via POST /api/v1/dev/users"
+        assert (caught.value.message, caught.value.fix) == (
+            "No GAIA user exists for 'ghost@gaia.local'",
+            "Mint it via POST /api/v1/dev/users",
         )
         run_daily.assert_not_awaited()
 
@@ -986,7 +983,7 @@ class TestDevBriefingRun:
         reason = "The brief's headline and lede contradict its items: x"
         run_daily = AsyncMock(side_effect=BriefingGenerationError(reason))
         with (
-            patch.dict(_BRIEFING_RUNS, {"daily": run_daily}),
+            patch("app.api.v1.endpoints.dev.run_brief", run_daily),
             patch(
                 "app.api.v1.endpoints.dev.user_repository.get_by_email",
                 new_callable=AsyncMock,
@@ -1009,7 +1006,7 @@ class TestDevBriefingRun:
     async def test_a_failed_generation_carries_the_user_id_and_cause_for_the_wide_event(self):
         failure = BriefingGenerationError("the lede contradicts the items")
         with (
-            patch.dict(_BRIEFING_RUNS, {"weekly": AsyncMock(side_effect=failure)}),
+            patch("app.api.v1.endpoints.dev.run_brief", AsyncMock(side_effect=failure)),
             patch(
                 "app.api.v1.endpoints.dev.user_repository.get_by_email",
                 new_callable=AsyncMock,
@@ -1017,7 +1014,7 @@ class TestDevBriefingRun:
             ),
             pytest.raises(AppError) as caught,
         ):
-            await run_briefing_now("weekly", DEV_EMAIL)
+            await run_briefing_now(BriefingKind.WEEKLY, DEV_EMAIL)
 
         assert caught.value.meta == {"user_id": "u-brief"}
         assert caught.value.__cause__ is failure

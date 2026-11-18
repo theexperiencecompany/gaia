@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.constants.briefing import GAIA_SOURCE
 from app.db.repositories.signal_memory import signal_memory_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, GaiaRef, GaiaRefKind
 from app.models.scout_models import Sighting
 
 
@@ -19,9 +19,10 @@ def sighting(candidate: BriefCandidate) -> Sighting | None:
         signal = candidate.signal
         return Sighting(signal.integration_id, signal.external_id, signal.state)
     if candidate.todo_id is not None:
-        return Sighting(GAIA_SOURCE, f"todo:{candidate.todo_id}", candidate.state)
+        todo = GaiaRef(kind=GaiaRefKind.TODO, id=candidate.todo_id)
+        return Sighting(GAIA_SOURCE, str(todo), candidate.state)
     if candidate.seen_as is not None:
-        return Sighting(GAIA_SOURCE, candidate.seen_as, candidate.state)
+        return Sighting(GAIA_SOURCE, str(candidate.seen_as), candidate.state)
     return None
 
 

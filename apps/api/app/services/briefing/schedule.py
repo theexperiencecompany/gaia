@@ -11,16 +11,15 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
+    BRIEFING_KIND_BY_WORKFLOW_KEY,
     DAILY_BRIEFING_WORKFLOW_KEY,
     ENABLED_BRIEFING_KEYS,
     EVERY_DAY_CRON_DAYS,
     WEEKDAYS_CRON_DAYS,
     WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_HOUR,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
+    BriefingKind,
 )
 from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
 from app.constants.workflows import WorkflowDelivery
@@ -28,10 +27,9 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
-from app.models.briefing_models import (
+from app.models.brief_settings_models import (
     BriefDeliveryWorkflow,
     BriefFreeDelivery,
-    BriefingKind,
     BriefingSchedule,
     BriefingScheduleState,
 )
@@ -39,7 +37,7 @@ from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
-from app.services.briefing import context
+from app.services.briefing.clock import resolve_clock
 from app.services.briefing.held import daily_brief_is_live, release_held_items
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
@@ -52,12 +50,6 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffResolved,
 )
 from shared.py.wide_events import log
-
-_KIND_BY_WORKFLOW_KEY: dict[str, BriefingKind] = {
-    DAILY_BRIEFING_WORKFLOW_KEY: BRIEFING_KIND_DAILY,
-    WEEKLY_DIGEST_WORKFLOW_KEY: BRIEFING_KIND_WEEKLY,
-}
-
 
 _FREQUENCY_DESCRIPTIONS: dict[BriefingFrequency, str] = {
     BriefingFrequency.DAILY: "a daily brief every day at {time}, plus the Sunday evening weekly digest",
@@ -135,7 +127,7 @@ async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
     if DAILY_BRIEFING_WORKFLOW_KEY not in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
         return None
     workflows = await workflow_repository.find_system_workflows(
-        user.id, tuple(_KIND_BY_WORKFLOW_KEY)
+        user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
     daily = next(
         (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
@@ -187,9 +179,9 @@ async def _next_run_base(user: UserDocument, kind: BriefingKind) -> datetime:
     a second one; else from the start of today, so a slot moved earlier than now still
     fires today instead of being skipped (a past-due next run fires at once).
     """
-    clock = context.resolve_clock(user.timezone)
+    clock = resolve_clock(user.timezone)
     delivered = await briefing_repository.was_delivered(user.id, clock.date_str, kind)
-    return context.day_start_utc(clock, days_ago=-1 if delivered else 0)
+    return clock.day_start(days_ago=-1 if delivered else 0)
 
 
 async def _apply_frequency(workflow: Workflow, user: UserDocument, enabled: bool) -> None:
@@ -212,10 +204,10 @@ async def resync_briefing_schedules(user: UserDocument) -> None:
     timezone = Timezone.parse(user.timezone).value
     enabled_keys = ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]
     workflows = await workflow_repository.find_system_workflows(
-        user.id, tuple(_KIND_BY_WORKFLOW_KEY)
+        user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
     by_key = {workflow.system_workflow_key: workflow for workflow in workflows}
-    for key, kind in _KIND_BY_WORKFLOW_KEY.items():
+    for key, kind in BRIEFING_KIND_BY_WORKFLOW_KEY.items():
         workflow = by_key.get(key)
         if workflow is None:
             continue

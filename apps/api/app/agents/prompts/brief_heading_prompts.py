@@ -36,7 +36,10 @@ Wording and style never count, and neither does anything the group leaves out.
 When the heading can be said truthfully of every item under it, it fits.
 
 ## The groups
+{untrusted}
+{fence}
 {groups}
+{fence}
 
 Answer one verdict per group, by its block number: why in a few words, the ids of the items it
 is not true of (empty when it fits), then whether it fits."""

@@ -3,8 +3,9 @@
 Each edition is a pure payload-to-HTML renderer, self-contained so a headless
 browser can rasterize it. This package is also the registry of template families:
 a daily brief draws its family from the user's shuffle bag (DAILY_FAMILY_WEIGHTS),
-the weekly recap is always WEEKLY_FAMILY, and a persisted template_family selects
-the renderer forever so the archive re-renders identically.
+the weekly recap is always EditionFamily.WEEKLY, and a persisted template_family selects
+the renderer forever so the archive re-renders identically. Every EditionFamily has its
+vendored template and every template its EditionFamily, checked at import.
 """
 
 from dataclasses import dataclass
@@ -14,10 +15,9 @@ from app.constants.briefing import (
     DESK_FAMILIES,
     DESK_SHADOW_BLEED_PX,
     EXPLORER_SCALE,
-    POSTAL_FAMILY,
-    WEEKLY_FAMILY,
+    EditionFamily,
 )
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
     EXPLORER_CANVAS_PX,
     explorer_family_ids,
@@ -38,7 +38,7 @@ class EditionRenderer(Protocol):
     ) -> str: ...
 
 
-def _make_explorer_renderer(family: str) -> EditionRenderer:
+def _make_explorer_renderer(family: EditionFamily) -> EditionRenderer:
     """Close over one explorer family id and return an EditionRenderer."""
 
     def _render(
@@ -60,18 +60,31 @@ def _make_explorer_renderer(family: str) -> EditionRenderer:
     return _render
 
 
-# Every vendored explorer template family (app/services/briefing/editions/explorer/),
-# each wired to render_explorer_edition via a closure over its family id.
-EXPLORER_RENDERER: dict[str, EditionRenderer] = {
-    family: _make_explorer_renderer(family) for family in explorer_family_ids()
+def _checked_families() -> tuple[EditionFamily, ...]:
+    """Return every edition family once each has a vendored template and each template a family."""
+    vendored = set(explorer_family_ids())
+    declared = {family.value for family in EditionFamily}
+    if vendored != declared:
+        raise RuntimeError(
+            "EditionFamily and the vendored explorer templates disagree: "
+            f"templates without a family {sorted(vendored - declared)}, "
+            f"families without a template {sorted(declared - vendored)}"
+        )
+    return tuple(EditionFamily)
+
+
+# Every edition family (app/services/briefing/editions/explorer/), each wired to
+# render_explorer_edition via a closure over its family id.
+EXPLORER_RENDERER: dict[EditionFamily, EditionRenderer] = {
+    family: _make_explorer_renderer(family) for family in _checked_families()
 }
 
 
 # How many times each daily family appears in one pass of a user's shuffle bag
 # (app/services/briefing/shuffle_bag.py): every daily family once, Air Mail twice.
-DAILY_FAMILY_WEIGHTS: dict[str, int] = {
-    family: 2 if family == POSTAL_FAMILY else 1
-    for family in sorted(set(EXPLORER_RENDERER) - {WEEKLY_FAMILY})
+DAILY_FAMILY_WEIGHTS: dict[EditionFamily, int] = {
+    family: 2 if family == EditionFamily.POSTAL else 1
+    for family in sorted(set(EXPLORER_RENDERER) - {EditionFamily.WEEKLY})
 }
 
 
@@ -100,7 +113,7 @@ DESK_MARGIN_PX = 16
 _EXPLORER_ROOT = "#root > article"
 
 
-def edition_frame(family: str) -> EditionFrame:
+def edition_frame(family: EditionFamily) -> EditionFrame:
     """Return how the family's page is rasterized and cropped."""
     on_a_desk = family in DESK_FAMILIES
     bleed = DESK_SHADOW_BLEED_PX if on_a_desk else 0
@@ -116,8 +129,6 @@ def edition_frame(family: str) -> EditionFrame:
 __all__ = [
     "DAILY_FAMILY_WEIGHTS",
     "EXPLORER_RENDERER",
-    "POSTAL_FAMILY",
-    "WEEKLY_FAMILY",
     "render_explorer_edition",
     "EditionFrame",
     "edition_frame",

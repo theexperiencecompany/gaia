@@ -1,14 +1,18 @@
 """Briefing read endpoints: the archive, the Postmarks stamp collection, and one brief."""
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.briefing import EDITION_IMAGE_MAX_AGE_SECONDS, EditionVariant
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingListResponse, BriefingView, PostmarksResponse
+from app.models.brief_view_models import BriefingListResponse, BriefingView, PostmarksResponse
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.briefing.view import briefing_view
 from shared.py.analytics import UserId
@@ -41,7 +45,7 @@ async def list_briefings(
     )
     page = found[:limit]
     return BriefingListResponse(
-        briefings=[briefing_view(b) for b in page],
+        briefings=[await briefing_view(b) for b in page],
         next_cursor=page[-1].id if len(found) > limit else None,
     )
 
@@ -76,4 +80,26 @@ async def get_briefing(
         if opened is not None:
             capture(UserId(user_id), BriefingOpened(kind=briefing.kind))
             briefing = opened
-    return briefing_view(briefing)
+    return await briefing_view(briefing)
+
+
+@router.get(
+    "/editions/{key}/{variant}",
+    response_class=Response,
+    responses={200: {"content": {t: {} for t in EDITION_CONTENT_TYPES.values()}}},
+)
+async def get_edition_image(
+    key: str,
+    variant: EditionVariant,
+    t: Annotated[str, Query(description="The signature the brief's edition URL carries.")],
+) -> Response:
+    """Serve a brief's edition image to whoever holds its signed URL; anything else is a 404."""
+    log.set(briefing={"operation": "edition_image", "variant": variant.value})
+    image = await signed_edition(key, variant, t, datetime.now(UTC))
+    if image is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
+    return Response(
+        image,
+        media_type=EDITION_CONTENT_TYPES[variant],
+        headers={"Cache-Control": f"private, max-age={EDITION_IMAGE_MAX_AGE_SECONDS}"},
+    )

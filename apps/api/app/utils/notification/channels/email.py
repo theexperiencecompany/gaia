@@ -7,7 +7,7 @@ as failed.
 
 Template selection keys off notification.metadata["kind"]: briefing_daily and
 briefing_weekly embed the edition image the briefing service already rendered and
-hosted (metadata["edition_image_url"]), linked to the brief's heygaia.link
+stored (metadata["edition"]["image_url"], a signed URL), linked to the brief's heygaia.link
 (metadata["brief_url"]). A briefing notification missing either, or its
 content.rich_content payload, fails at transform. Anything else renders the
 plain-notification template.
@@ -23,7 +23,8 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationChannel
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_document_models import EditionImage
+from app.models.brief_payload_models import BriefingPayload
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
@@ -51,10 +52,10 @@ class _EmailMetadata(BaseModel):
 
 
 class _BriefingEmailMetadata(_EmailMetadata):
-    """A briefing's metadata: its heygaia.link and its already-hosted edition image."""
+    """A briefing's metadata: its heygaia.link and its stored edition image."""
 
     brief_url: str
-    edition_image_url: str
+    edition: EditionImage
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
                 kind=kind,
                 payload=BriefingPayload.model_validate(content.rich_content),
                 brief_url=metadata.brief_url,
-                edition_image_url=metadata.edition_image_url,
+                edition_image_url=metadata.edition.image_url,
             ),
         )
 

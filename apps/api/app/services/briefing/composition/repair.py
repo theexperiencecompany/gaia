@@ -21,28 +21,13 @@ from app.models.brief_composition_models import (
     ComposedItem,
     ComposedItems,
     ComposedLead,
-    GroupState,
 )
-from app.models.briefing_models import BriefingItemKind
+from app.models.brief_item_models import GroupState
 from app.services.briefing.composition.checks import block_problems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotValues
 
-#: The heading a group falls back to when the model's is untrue of its items.
-FALLBACK_HEADINGS: dict[GroupState, str] = {
-    GroupState.NEEDS_YOU: "Needs you",
-    GroupState.DONE: "Done",
-    GroupState.IN_PROGRESS: "Still in progress",
-}
 _ELLIPSIS = "…"
-#: The outcome an item gets when its producer named none: done work finished, the rest changed.
-_UNSAID_OUTCOMES: dict[BriefingItemKind, BriefOutcome] = {
-    "lookback": BriefOutcome.FINISHED,
-    "gaia": BriefOutcome.STARTED,
-    "note": BriefOutcome.CHANGED,
-    "you": BriefOutcome.CHANGED,
-    "failed": BriefOutcome.CHANGED,
-}
 
 
 def _sided(item: ComposedItem, candidate: BriefCandidate) -> ComposedItem:
@@ -104,11 +89,11 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
 
 
 def _as_group(lead: ComposedLead) -> ComposedItems:
-    """Turn a lead whose offer cannot stand into a one-item group: the item still matters."""
+    """Turn a lead that cannot stand into a one-item group: the item still matters."""
     return ComposedItems(
         kind="items",
         state=GroupState.NEEDS_YOU,
-        heading=FALLBACK_HEADINGS[GroupState.NEEDS_YOU],
+        heading=GroupState.NEEDS_YOU.fallback_heading,
         items=[lead.item],
     )
 
@@ -116,13 +101,13 @@ def _as_group(lead: ComposedLead) -> ComposedItems:
 def _sound(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> ComposedBlock | None:
-    """Return the block once it holds its contract, its heading or offer given way if need be; else None."""
+    """Return the block once it holds its contract, its heading or its lead given way if need be; else None."""
     if not block_problems(index, block, pool, values):
         return block
     if isinstance(block, ComposedLead):
         block = _as_group(block)
     if isinstance(block, ComposedItems):
-        block = block.model_copy(update={"heading": FALLBACK_HEADINGS[block.state]})
+        block = block.model_copy(update={"heading": block.state.fallback_heading})
         items = [
             item
             for item in block.items
@@ -154,11 +139,11 @@ def _short(title: str) -> str:
 
 
 def _placed(item_id: int, candidate: BriefCandidate) -> ComposedItem:
-    asks = candidate.state in ("you", "failed")
+    asks = candidate.state.needs_you
     return ComposedItem(
         id=item_id,
         action=(candidate.action or BriefAction.REVIEW) if asks else None,
-        outcome=None if asks else (candidate.outcome or _UNSAID_OUTCOMES[candidate.state]),
+        outcome=None if asks else (candidate.outcome or candidate.state.unsaid_outcome),
         title=_short(candidate.title),
         detail=None,
     )
@@ -175,7 +160,7 @@ def pool_composition(pool: FactPool, values: SlotValues) -> BriefComposition:
         ComposedItems(
             kind="items",
             state=state,
-            heading=FALLBACK_HEADINGS[state],
+            heading=state.fallback_heading,
             items=items[:MAX_ITEMS_PER_BLOCK],
         )
         for state, items in by_state.items()
