@@ -55,6 +55,7 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
@@ -92,13 +93,13 @@ EXECUTOR_REPORT = "Checked staging. The deploy failed on migration 42; needs a r
 NARRATED = f"Staging deploy failed on migration 42.{NEW_MESSAGE_BREAKER}Want me to roll it back?"
 
 
-def _todo(*, notify_on_run: bool = True) -> TodoDocument:
+def _todo(*, delivery: WorkflowDelivery = WorkflowDelivery.NOW) -> TodoDocument:
     return TodoDocument(
         id=TODO_ID,
         user_id=USER.user_id,
         title="Watch the staging deploy",
         labels=["gaia-tracked"],
-        notify_on_run=notify_on_run,
+        delivery=delivery,
         canvas_content="## Standing rules\n- Tell me when a deploy fails.\n\n## Current State\n- green\n",
     )
 
@@ -475,8 +476,8 @@ class TestNothingIsSentWhenNothingShouldBe:
         assert "result not sent: the write-up was a reaction" in _activity(seams)
 
     async def test_delivery_turned_off_during_the_run_is_honoured(self) -> None:
-        """notify_on_run is read at the end: the prod run turned it off mid-run and still pinged."""
-        with _seams(todo=_todo(notify_on_run=False)) as seams:
+        """Delivery is read at the end: the prod run turned it off mid-run and still pinged."""
+        with _seams(todo=_todo(delivery=WorkflowDelivery.SILENT)) as seams:
             await run_todo_on_executor(_request())
 
         seams.narrate.assert_not_awaited()
@@ -672,7 +673,7 @@ _LIVE_BRIEF = SimpleNamespace(activated=True)
 
 
 def _desk() -> TodoDocument:
-    desk = _todo()
+    desk = _todo(delivery=WorkflowDelivery.BRIEF)
     desk.title = "Inbox desk"
     desk.external_ref = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
     return desk
@@ -759,6 +760,26 @@ class TestTheInboxDeskFeedsTheMorningBrief:
             await run_todo_on_executor(_request())
 
         seams.send.assert_awaited_once()
+
+    async def test_the_brief_is_the_todos_delivery_not_its_ref(self) -> None:
+        """Any todo delivering to the brief has its scheduled findings held one per line."""
+        with _seams(
+            todo=_todo(delivery=WorkflowDelivery.BRIEF),
+            narrated=_DESK_FINDINGS,
+            daily_brief=_LIVE_BRIEF,
+        ) as seams:
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_not_awaited()
+        assert len(seams.hold.await_args_list) == 2
+
+    async def test_a_desk_switched_to_now_sends_its_sweep(self) -> None:
+        desk = _desk().model_copy(update={"delivery": WorkflowDelivery.NOW})
+        with _seams(todo=desk, narrated=EXECUTOR_REPORT, daily_brief=_LIVE_BRIEF) as seams:
+            await run_todo_on_executor(_desk_request(TriggerType.SCHEDULED_TODO))
+
+        seams.send.assert_awaited_once()
+        seams.hold.assert_not_awaited()
 
 
 _BRIEF_LINE = "Staging is green again after Tuesday's rollback"

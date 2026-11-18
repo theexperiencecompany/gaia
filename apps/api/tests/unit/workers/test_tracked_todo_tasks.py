@@ -92,6 +92,7 @@ from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.user_activity import ActivityStatus
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import TodoRunWake
 from app.models.notification.notification_models import (
@@ -865,7 +866,7 @@ class TestDeliveryContractInThePrompt:
 
     def test_a_delivering_run_is_told_its_message_reaches_the_user(self):
         prompt = _prompt(
-            _doc(title="Chase Acme", notify_on_run=True),
+            _doc(title="Chase Acme", delivery=WorkflowDelivery.NOW),
         )
 
         assert DELIVERED_RESULT_GUIDANCE in prompt
@@ -873,7 +874,7 @@ class TestDeliveryContractInThePrompt:
 
     def test_a_silent_run_is_told_its_message_reaches_nobody(self):
         prompt = _prompt(
-            _doc(title="Chase Acme", notify_on_run=False),
+            _doc(title="Chase Acme", delivery=WorkflowDelivery.SILENT),
         )
 
         assert SILENT_RUN_GUIDANCE in prompt
@@ -883,7 +884,7 @@ class TestDeliveryContractInThePrompt:
         """The default "what you checked" report comes last; the desk writes its briefing, not a run log."""
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 
-        prompt = _prompt(_doc(notify_on_run=True, external_ref=desk))
+        prompt = _prompt(_doc(delivery=WorkflowDelivery.BRIEF, external_ref=desk))
 
         assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
         assert DELIVERED_REPORT_FORM not in prompt
@@ -992,7 +993,7 @@ class TestDeliveryContractInThePrompt:
     def test_a_thread_todo_reports_in_its_own_alert_form_not_the_default(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
 
-        prompt = _prompt(_doc(notify_on_run=True, external_ref=thread))
+        prompt = _prompt(_doc(delivery=WorkflowDelivery.NOW, external_ref=thread))
 
         assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
         assert DELIVERED_REPORT_FORM not in prompt

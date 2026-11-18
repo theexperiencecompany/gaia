@@ -54,6 +54,7 @@ from app.agents.tools.tracked_todo_tools import (
 from app.constants import todos as todo_constants
 from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.workflows import WorkflowDelivery
 from app.models import agent_models
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import (
@@ -549,7 +550,7 @@ class TestUpdateTrackedTodoValidation:
         )
         user_tz.assert_awaited_once_with("u1")
 
-    @pytest.mark.parametrize("value", [True, False])
+    @pytest.mark.parametrize("value", [WorkflowDelivery.NOW, WorkflowDelivery.SILENT])
     async def test_toggling_delivery_writes_that_field(self, value):
         """A mistyped key or a dropped value leaves the todo on its old setting, silently."""
         existing = TodoDocument(id="t1", user_id="u1", title="t")
@@ -566,12 +567,12 @@ class TestUpdateTrackedTodoValidation:
             ) as update,
         ):
             result = await update_tracked_todo.coroutine(
-                config=_config(), todo_id="t1", notify_on_run=value
+                config=_config(), todo_id="t1", delivery=value
             )
 
         written = update.await_args.kwargs["update"]
-        assert written.model_dump(exclude_unset=True) == {"notify_on_run": value}
-        assert "notify_on_run" in result
+        assert written.model_dump(exclude_unset=True) == {"delivery": value}
+        assert "delivery" in result
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -779,7 +780,7 @@ class TestCreateTrackedTodoValidation:
             await create_tracked_todo.coroutine(config=_config(), title="t")
 
         # Unset reaches the service, which delivers a top-level todo's runs and not a sub-todo's.
-        assert create.await_args.kwargs["notify_on_run"] is None
+        assert create.await_args.kwargs["delivery"] is None
 
     @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
     async def test_a_todo_with_no_next_step_gets_a_refusal_the_model_can_act_on(self) -> None:
@@ -858,9 +859,11 @@ class TestCreateTrackedTodoValidation:
                 ),
                 reopened=False,
             )
-            await create_tracked_todo.coroutine(config=_config(), title="t", notify_on_run=False)
+            await create_tracked_todo.coroutine(
+                config=_config(), title="t", delivery=WorkflowDelivery.SILENT
+            )
 
-        assert create.await_args.kwargs["notify_on_run"] is False
+        assert create.await_args.kwargs["delivery"] is WorkflowDelivery.SILENT
 
     @pytest.mark.regression
     @pytest.mark.parametrize(("recurrence", "message"), _REFUSED_RECURRENCES)
@@ -2343,7 +2346,7 @@ class TestCreateThreadTrackedTodo:
                 initial_canvas="# Lease",
                 labels=["waiting-for-reply"],
                 priority=Priority.HIGH,
-                notify_on_run=False,
+                delivery=WorkflowDelivery.SILENT,
                 gmail_thread_id="abc",
                 done_when=["Sam replied about the lease"],
                 evidence="a reply in the lease thread",
@@ -2356,7 +2359,7 @@ class TestCreateThreadTrackedTodo:
             "labels": ["waiting-for-reply"],
             "priority": Priority.HIGH,
             "source_conversation_id": None,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
             "references": None,
             "parent_todo_id": None,
@@ -2670,9 +2673,9 @@ class TestSubTodoTools:
         # Moved under a parent, it reports there like a new sub-todo.
         assert written.model_dump(exclude_unset=True) == {
             "parent_todo_id": self.DESK,
-            "notify_on_run": False,
+            "delivery": WorkflowDelivery.SILENT,
         }
-        assert result == "Updated tracked todo t1: parent_todo_id, notify_on_run"
+        assert result == "Updated tracked todo t1: parent_todo_id, delivery"
 
     async def test_a_thread_todo_moved_under_a_parent_still_tells_the_user(self):
         """A thread's news cannot wait for its parent's next run, so moving it keeps it speaking."""
@@ -2691,7 +2694,7 @@ class TestSubTodoTools:
                 config=_config(), todo_id="t1", parent_todo_id=self.DESK
             )
 
-        assert update.await_args.kwargs["update"].notify_on_run is True
+        assert update.await_args.kwargs["update"].delivery is WorkflowDelivery.NOW
 
     async def test_a_parent_completed_mid_move_rolls_the_move_back(self, recorded_changes):
         moving = TodoDocument(

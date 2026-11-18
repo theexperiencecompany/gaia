@@ -13,7 +13,9 @@ from app.constants.todos import (
     TodoCompleter,
     WaitingOn,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
+from app.models.brief_settings_models import BriefFreeDelivery
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
@@ -68,11 +70,14 @@ class ExternalRef(BaseModel):
     account: str | None = None
 
 
-def default_notify_on_run(*, parent_todo_id: str | None, external_ref: ExternalRef | None) -> bool:
-    """Say whether a todo's runs reach the user when nobody chose: a sub-todo reports to its parent unless its kind speaks."""
-    return parent_todo_id is None or (
+def default_delivery(
+    *, parent_todo_id: str | None, external_ref: ExternalRef | None
+) -> BriefFreeDelivery:
+    """Say where a todo's runs report when nobody chose: a sub-todo reports to its parent unless its kind speaks."""
+    speaks = parent_todo_id is None or (
         external_ref is not None and external_ref.source.speaks_under_parent
     )
+    return WorkflowDelivery.NOW if speaks else WorkflowDelivery.SILENT
 
 
 class SubTask(ResponseModel):
@@ -139,12 +144,12 @@ class TodoBase(BaseModel):
         default_factory=list,
         description="IDs of related past tracked todos (institutional memory references)",
     )
-    notify_on_run: bool = Field(
-        default=True,
+    delivery: WorkflowDelivery = Field(
+        default=WorkflowDelivery.NOW,
         description=(
-            "Deliver this tracked todo's run result to the user's chat platform when a "
-            "scheduled or triggered run finishes. The tracked-todo equivalent of a "
-            "workflow's delivery mode; unrelated to the todo being marked completed."
+            "Where a tracked todo's scheduled or triggered run result goes: now to the "
+            "user's chat platform (comms may hold one that can wait for the brief), into "
+            "the next brief, or nowhere. Unrelated to the todo being marked completed."
         ),
     )
 
@@ -184,7 +189,7 @@ class TodoUpdateRequest(BaseModel):
     scheduled_at: datetime | None = None
     recurrence: str | None = None
     expires_at: datetime | None = None
-    notify_on_run: bool | None = None
+    delivery: WorkflowDelivery | None = None
 
 
 # For responses with ID and user_id
@@ -554,7 +559,7 @@ class TodoDocument(UserScopedDocument):
     references: list[str] = Field(default_factory=list)
     # Set only through tracked_todo_service, which enforces one level under an open tracked todo.
     parent_todo_id: str | None = None
-    notify_on_run: bool = True
+    delivery: WorkflowDelivery = WorkflowDelivery.NOW
     #: Why the system paused this tracked todo's runs; None while it runs normally.
     pause_reason: DeactivationReason | None = None
     # A tracked todo's open state: what it waits for until scheduled_at (see open_state.py).
@@ -611,7 +616,7 @@ class TodoUpdate(BaseModel):
     expires_at: datetime | None = None
     references: list[str] | None = None
     parent_todo_id: str | None = None
-    notify_on_run: bool | None = None
+    delivery: WorkflowDelivery | None = None
     pause_reason: DeactivationReason | None = None
     waiting_on: WaitingOn | None = None
     question: str | None = None

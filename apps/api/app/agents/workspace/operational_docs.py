@@ -228,8 +228,8 @@ nothing. So end with a factual report of what you did and what changed, and do
 NOT call `send_notification` to announce it, which sends it twice. Every run's
 outcome, sent or not, is recorded in activity.md.
 
-`notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
-turns that delivery off entirely. It is the user's setting: change it only when
+`delivery` (on `create_tracked_todo` / `update_tracked_todo`, default `now`)
+set to `silent` turns that delivery off entirely. It is the user's setting: change it only when
 they ask. A silent todo reaches the user only if the run deliberately calls
 `send_notification`.
 
@@ -411,11 +411,11 @@ to announce one of them sends it to the user twice:
   plus in-app, unless the workflow is silent. See the `workflows` doc.
 - A finished **tracked todo** run is reported to the user's chat app when it
   found something that matters and cannot wait, or held for their next morning
-  brief when it can, unless that todo has `notify_on_run` off. See the
+  brief when it can, unless that todo's `delivery` is `silent`. See the
   `tracked-todos` doc.
 
 When one of these delivers the result, do not announce it again. A silent
-workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+workflow, or a todo whose `delivery` is `silent`, delivers nothing, so there a
 notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """

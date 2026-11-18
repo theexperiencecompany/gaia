@@ -21344,6 +21344,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "default": "now",
+            "description": "Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed."
+          },
           "description": {
             "anyOf": [
               {
@@ -21409,12 +21414,6 @@
             "maxItems": 10,
             "title": "Labels",
             "type": "array"
-          },
-          "notify_on_run": {
-            "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
-            "title": "Notify On Run",
-            "type": "boolean"
           },
           "priority": {
             "$ref": "#/components/schemas/Priority",
@@ -21546,6 +21545,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "default": "now",
+            "description": "Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed."
+          },
           "description": {
             "anyOf": [
               {
@@ -21616,12 +21620,6 @@
             "maxItems": 10,
             "title": "Labels",
             "type": "array"
-          },
-          "notify_on_run": {
-            "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
-            "title": "Notify On Run",
-            "type": "boolean"
           },
           "parent_todo_id": {
             "anyOf": [
@@ -21787,7 +21785,7 @@
           "gaia_retry_count",
           "expires_at",
           "references",
-          "notify_on_run",
+          "delivery",
           "id",
           "user_id",
           "created_at",
@@ -21908,6 +21906,16 @@
             ],
             "title": "Completed"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -21968,17 +21976,6 @@
               }
             ],
             "title": "Labels"
-          },
-          "notify_on_run": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify On Run"
           },
           "priority": {
             "anyOf": [

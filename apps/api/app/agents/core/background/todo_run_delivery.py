@@ -227,11 +227,11 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
-    if todo.notify_on_run:
-        resolution = await _narrate_and_deliver(finished, user, todo)
-    else:
+    if todo.delivery is WorkflowDelivery.SILENT:
         await record_executor_report(finished.conversation_id, finished.result_text, "result")
         resolution = _not_sent(TodoRunDeliveryOutcome.NOTIFY_OFF)
+    else:
+        resolution = await _narrate_and_deliver(finished, user, todo)
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
@@ -250,11 +250,10 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
     return f"{resolution.note} (summary={summary!r})", todo.user_id
 
 
-def _is_desk_sweep(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
-    """Return whether this is the inbox desk's scheduled sweep, whose findings feed the brief."""
+def _sweeps_into_brief(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
+    """Return whether this run's findings go whole into the next brief: a brief todo's scheduled run."""
     return (
-        todo.external_ref is not None
-        and todo.external_ref.source is ExternalRefSource.INBOX_DESK
+        todo.delivery is WorkflowDelivery.BRIEF
         and finished.trigger_type is TriggerType.SCHEDULED_TODO
     )
 
@@ -324,10 +323,10 @@ async def _narrate_and_deliver(
     """Have comms write the result up (or decline to), then send it or hold it for the brief.
 
     A report whose form its todo's guidance sets is delivered as written: comms decides
-    only whether. The inbox desk's scheduled findings go into the next brief, never a message.
+    only whether. A brief todo's scheduled findings go into the next brief, never a message.
     """
-    desk_sweep = _is_desk_sweep(todo, finished)
-    may_wait = (desk_sweep or _can_wait(todo, finished)) and await brief_will_carry(todo.user_id)
+    sweep = _sweeps_into_brief(todo, finished)
+    may_wait = (sweep or _can_wait(todo, finished)) and await brief_will_carry(todo.user_id)
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(
@@ -341,7 +340,7 @@ async def _narrate_and_deliver(
                 _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
                 runs_once=finished.runs_once,
                 run_history=recent_run_outcomes(todo.activity_content, DELIVERY_RUN_HISTORY_LINES),
-                may_wait=may_wait and not desk_sweep,
+                may_wait=may_wait and not sweep,
             ),
         ),
         _lookup_target(todo),
@@ -366,18 +365,18 @@ async def _narrate_and_deliver(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    # What may wait goes into the next brief: the desk's findings, one per line by its run
-    # guidance, or the one result comms chose to hold.
+    # What may wait goes into the next brief: a brief todo's sweep, one item per line by its
+    # run guidance, or the one result comms chose to hold.
     delivery = (
         WorkflowDelivery.BRIEF
-        if desk_sweep or directive.kind is CommsDirectiveKind.BRIEF
+        if sweep or directive.kind is CommsDirectiveKind.BRIEF
         else WorkflowDelivery.NOW
     )
     if delivery is WorkflowDelivery.BRIEF and may_wait:
         await hold_for_brief(
             todo.user_id,
             HeldSource(BriefItemSource.TODO, todo.id, todo.title, finished.conversation_id),
-            message.splitlines() if desk_sweep else [directive.payload],
+            message.splitlines() if sweep else [directive.payload],
         )
         return _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
     if directive.kind is CommsDirectiveKind.BRIEF:

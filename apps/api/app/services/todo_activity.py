@@ -11,6 +11,7 @@ import re
 from typing import Protocol
 
 from app.constants.todos import NoReplyPlan, TodoActivityEvent, WaitingOn
+from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.services.todo_canvas_storage import append_activity
 from shared.py.wide_events import log
@@ -75,7 +76,7 @@ class ScheduleFieldChanges(Protocol):
 
     scheduled_at: datetime | None
     recurrence: str | None
-    notify_on_run: bool | None
+    delivery: WorkflowDelivery | None
     expires_at: datetime | None
     due_date: datetime | None
 
@@ -112,6 +113,13 @@ def _waiting_entry(update: WaitingFieldChanges) -> str | None:
     return ", ".join(parts) or "waiting details cleared"
 
 
+_DELIVERY_DETAIL: dict[WorkflowDelivery, str] = {
+    WorkflowDelivery.NOW: "runs may message the user",
+    WorkflowDelivery.BRIEF: "runs report in the next brief",
+    WorkflowDelivery.SILENT: "runs never message the user",
+}
+
+
 def _schedule_field_entries(
     update: ScheduleFieldChanges, *, by: str
 ) -> list[tuple[TodoActivityEvent, str]]:
@@ -127,11 +135,8 @@ def _schedule_field_entries(
     if "recurrence" in fields:
         detail = f"repeats {update.recurrence}" if update.recurrence else "no longer repeats"
         entries.append((TodoActivityEvent.RECURRENCE_CHANGED, detail))
-    if "notify_on_run" in fields and update.notify_on_run is not None:
-        detail = (
-            "runs may message the user" if update.notify_on_run else "runs never message the user"
-        )
-        entries.append((TodoActivityEvent.DELIVERY_CHANGED, detail))
+    if "delivery" in fields and update.delivery is not None:
+        entries.append((TodoActivityEvent.DELIVERY_CHANGED, _DELIVERY_DETAIL[update.delivery]))
     if "expires_at" in fields:
         detail = f"expires {update.expires_at.isoformat()}" if update.expires_at else "no expiry"
         entries.append((TodoActivityEvent.EXPIRY_CHANGED, detail))
