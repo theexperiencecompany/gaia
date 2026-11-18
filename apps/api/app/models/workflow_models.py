@@ -864,6 +864,34 @@ class PublicWorkflowRow(WorkflowDocument):
     use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
 
 
+class UnstoredDeliveryRow(BaseModel):
+    """Projection of a workflow stored before delivery modes: its id and the delivery its flag meant."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(validation_alias="_id")
+    delivery: WorkflowDelivery
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_notify_flag_is_a_delivery(cls, data: object) -> object:
+        """Map the stored flag the way WorkflowDocument reads it."""
+        return delivery_from_legacy_flag(
+            data, flag_key=LEGACY_WORKFLOW_NOTIFY_KEY, delivery_key="delivery"
+        )
+
+
+class StoredTriggerRow(BaseModel):
+    """Projection of a workflow whose stored trigger type no TriggerType names."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(validation_alias="_id")
+    user_id: str
+    activated: bool = False
+    trigger_type: str
+
+
 class WorkflowUpdate(BaseModel):
     """Partial ``$set`` update for a workflow — the flat, top-level fields the
     owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator

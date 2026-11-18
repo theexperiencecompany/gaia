@@ -75,7 +75,7 @@ async def clear_email_derived_names(*, apply: bool) -> CleanupResult:
     result.candidates = [
         DerivedName(user_id=user.id, name=user.name)
         for user in users
-        if user.name and user.email and user.name == derive_name_from_email(user.email)
+        if user.name == derive_name_from_email(user.email)
     ]
     if not apply:
         return result

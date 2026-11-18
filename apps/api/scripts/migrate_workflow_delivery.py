@@ -6,7 +6,8 @@ Workflows that already carry a delivery are left alone, so re-running is safe.
 
 WorkflowDocument reads an unmigrated record the same way at load time, so the
 deploy does not depend on this having run; running it retires that mapping's
-work and is safe before or after the new code ships.
+work and is safe before or after the new code ships. Each record is read as its
+id and flag only, so a field GAIA has since dropped cannot stop the run.
 
     cd apps/api && uv run python -m scripts.migrate_workflow_delivery [--apply]
 """

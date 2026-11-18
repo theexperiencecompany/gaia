@@ -30,14 +30,16 @@ from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
 from scripts.provision_daily_briefings import rollout as provision_daily_briefings
 from scripts.resync_brief_schedules import resync as resync_brief_schedules
+from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
-#: Order matters: shapes are copied before anything reads them (links, editions, briefing state),
-#: activity is backfilled before dormancy reads it, briefs exist before the desk follows them,
-#: and every brief workflow is provisioned before the resync moves it to its slot minute.
+#: Order matters: shapes are migrated before anything reads them, activity is backfilled before
+#: dormancy reads it, and briefs are provisioned before the desk and the resync follow them.
+#: A migration reads only the fields it rewrites, never a whole old document.
 POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_short_link_targets", migrate_short_link_targets),
     ("migrate_brief_storage", migrate_brief_storage),
     ("migrate_briefing_state", migrate_briefing_state),
+    ("retire_legacy_triggers", retire_legacy_triggers),
     ("backfill_last_active_at", backfill_last_active_at),
     ("provision_daily_briefings", provision_daily_briefings),
     ("migrate_inbox_desk_recurrence", migrate_inbox_desk_recurrence),

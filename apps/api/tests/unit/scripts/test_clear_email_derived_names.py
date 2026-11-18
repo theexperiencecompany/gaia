@@ -9,12 +9,12 @@ from scripts.clear_email_derived_names import (
     derive_name_from_email,
 )
 
-from app.models.user_models import UserDocument
+from app.models.user_models import NamedEmailRow
 
 REPO = "scripts.clear_email_derived_names.user_repository"
-GUESSED = UserDocument(id="u-guessed", name="Aryan Randeriya", email="aryan.randeriya@x.com")
-CHOSEN = UserDocument(id="u-chosen", name="Ari", email="aryan.randeriya@x.com")
-CASED = UserDocument(id="u-cased", name="aryan randeriya", email="aryan.randeriya@x.com")
+GUESSED = NamedEmailRow(id="u-guessed", name="Aryan Randeriya", email="aryan.randeriya@x.com")
+CHOSEN = NamedEmailRow(id="u-chosen", name="Ari", email="aryan.randeriya@x.com")
+CASED = NamedEmailRow(id="u-cased", name="aryan randeriya", email="aryan.randeriya@x.com")
 
 
 @pytest.mark.unit

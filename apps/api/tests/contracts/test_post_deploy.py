@@ -3,10 +3,18 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
+import uuid
 
 import pytest
+from scripts.retire_legacy_triggers import UnknownTriggerTypeError
 
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.workflows import workflow_repository
+from app.models.scheduler_models import DeactivationReason
+from app.models.trigger_configs import GmailNewMessageConfig
+from app.models.workflow_models import TriggerType
 from scripts import post_deploy
+from tests.factories import make_user_id
 
 
 def _steps(*names: str) -> dict[str, AsyncMock]:
@@ -84,3 +92,96 @@ async def test_a_stale_claim_is_taken_over(steps: dict[str, AsyncMock], raw_coll
     )
 
     assert await post_deploy.run_post_deploy(apply=True) == ["first", "second"]
+
+
+#: The workflow migrations, in the order the real release runs them.
+_WORKFLOW_STEPS = ("retire_legacy_triggers", "migrate_workflow_delivery")
+
+
+def _legacy_email_workflow(*, activated: bool) -> dict[str, object]:
+    """Build a workflow as stored before trigger types became integrations and before delivery."""
+    return {
+        "_id": f"wf_{uuid.uuid4().hex[:12]}",
+        "user_id": make_user_id(),
+        "title": "Sort my inbox",
+        "description": "Label every new email",
+        "steps": [{"id": "s1", "title": "Label", "category": "gmail", "description": "label it"}],
+        "trigger_config": {"type": "email", "enabled": activated},
+        "activated": activated,
+        "notify_on_completion": False,
+        "status": "scheduled",
+        "created_at": datetime(2025, 11, 2, tzinfo=UTC),
+        "updated_at": datetime(2025, 11, 2, tzinfo=UTC),
+    }
+
+
+@pytest.fixture
+async def workflow_release(raw_collection, monkeypatch: pytest.MonkeyPatch):
+    """Run only the real workflow steps, over raw_collection, marking them in a collection apart."""
+    markers = raw_collection.database[f"{raw_collection.name}_deploy_steps"]
+    monkeypatch.setattr(post_deploy, "deploy_steps", markers)
+    monkeypatch.setattr(
+        post_deploy,
+        "POST_DEPLOY_STEPS",
+        tuple(step for step in post_deploy.POST_DEPLOY_STEPS if step[0] in _WORKFLOW_STEPS),
+    )
+    yield
+    await markers.drop()
+
+
+@pytest.mark.usefixtures("workflow_release")
+class TestLegacyEmailTrigger:
+    """A workflow on the retired "email" trigger once stopped the release with a ValidationError."""
+
+    async def test_the_release_applies_and_the_workflow_reads_as_a_switched_off_gmail_trigger(
+        self, raw_collection
+    ) -> None:
+        legacy = _legacy_email_workflow(activated=True)
+        await raw_collection.insert_one(legacy)
+
+        assert await post_deploy.run_post_deploy(apply=True) == list(_WORKFLOW_STEPS)
+
+        workflow = await workflow_repository.get_for_user(
+            str(legacy["_id"]), str(legacy["user_id"])
+        )
+        assert workflow is not None
+        assert workflow.trigger_config.type is TriggerType.INTEGRATION
+        assert workflow.trigger_config.trigger_name == "gmail_new_message"
+        assert workflow.trigger_config.trigger_data == GmailNewMessageConfig()
+        assert workflow.trigger_config.enabled is False
+        assert workflow.activated is False
+        assert workflow.deactivated_reason is DeactivationReason.TRIGGER_RETIRED
+        assert workflow.delivery is WorkflowDelivery.SILENT
+
+    async def test_one_its_owner_had_switched_off_moves_without_a_system_reason(
+        self, raw_collection
+    ) -> None:
+        legacy = _legacy_email_workflow(activated=False)
+        await raw_collection.insert_one(legacy)
+
+        await post_deploy.run_post_deploy(apply=True)
+
+        workflow = await workflow_repository.get_for_user(
+            str(legacy["_id"]), str(legacy["user_id"])
+        )
+        assert workflow is not None
+        assert workflow.trigger_config.trigger_name == "gmail_new_message"
+        assert workflow.deactivated_reason is None
+
+    async def test_a_dry_run_writes_nothing(self, raw_collection) -> None:
+        legacy = _legacy_email_workflow(activated=True)
+        await raw_collection.insert_one(legacy)
+
+        await post_deploy.run_post_deploy(apply=False)
+
+        assert await raw_collection.find_one({"_id": legacy["_id"]}) == legacy
+
+    async def test_a_type_neither_current_nor_retired_stops_the_release_by_name(
+        self, raw_collection
+    ) -> None:
+        await raw_collection.insert_one(
+            {**_legacy_email_workflow(activated=True), "trigger_config": {"type": "fax"}}
+        )
+
+        with pytest.raises(UnknownTriggerTypeError, match="fax"):
+            await post_deploy.run_post_deploy(apply=True)

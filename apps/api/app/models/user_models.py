@@ -605,6 +605,14 @@ class UserDocument(MongoDocument):
         return self.quiet_hours or DEFAULT_QUIET_HOURS
 
 
+class NamedEmailRow(BaseModel):
+    """Projection of a user's id, name and email: all the derived-name cleanup reads."""
+
+    id: str
+    name: str
+    email: str
+
+
 class AuthenticatedUser(BaseModel):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 

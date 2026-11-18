@@ -51,6 +51,7 @@ from app.models.quiet_hours_models import QuietHours
 from app.models.user_activity_models import UserActivityDates, UserActivityRow, status_window
 from app.models.user_models import (
     BioStatus,
+    NamedEmailRow,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
@@ -102,9 +103,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Return every user id — the bulk workspace-provisioning scan."""
         return [doc.id for doc in await self._find({})]
 
-    async def find_named_with_email(self) -> list[UserDocument]:
+    async def find_named_with_email(self) -> list[NamedEmailRow]:
         """Return every user holding both a name and an email — the derived-name cleanup scan."""
-        return await self._find({"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}})
+        return await self._aggregate(
+            [
+                {"$match": {"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}}},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "name": 1, "email": 1}},
+            ],
+            NamedEmailRow,
+        )
 
     async def count_created_before(self, created_at: datetime) -> int:
         """Return the number of users created before created_at — the holo-card rank."""
