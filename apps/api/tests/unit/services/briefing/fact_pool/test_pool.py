@@ -416,8 +416,7 @@ class TestTheVoicesLine:
             state=ItemState.YOU,
             title="Reply to Maya",
             gaia_acts=True,
-            **fields,
-        )
+        ).model_copy(update=fields)
 
     def test_a_timed_item_says_its_time_and_count_by_their_slots_and_the_brief_title(
         self,
