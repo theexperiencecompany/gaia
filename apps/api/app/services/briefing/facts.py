@@ -235,10 +235,15 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     voiced = " · ".join(f"{CountSlot(name)} ({n})" for name, n in counts.items())
     if voiced:
         fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
-    events = list(zip(sources.event_items, calendar, strict=True))
-    for fact_id, event in events:
+    events: list[tuple[BriefingEvent, str]] = []
+    for (fact_id, candidate), event in zip(sources.event_items.items(), calendar, strict=True):
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
-    fact_lines += _closing_lines(chosen, sources, events, facts, clock)
+        said = Voiced(facts[fact_id], linkable=False)
+        line = item_line(
+            fact_id, candidate, clock, said
+        )  # pragma: no mutate — never due, never a repeat: reads no clock
+        events.append((event, line))
+    fact_lines += _closing_lines(chosen, sources, events)
     if sources.recap is not None:
         own_words += [title for goal in sources.recap.goals for title in goal.linked]
     return Facts(
@@ -264,11 +269,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
 
 
 def _closing_lines(
-    chosen: Chosen,
-    sources: FactSources,
-    events: list[tuple[int, BriefingEvent]],
-    facts: dict[int, BriefFact],
-    clock: UserClock,
+    chosen: Chosen, sources: FactSources, events: list[tuple[BriefingEvent, str]]
 ) -> list[str]:
     """Return what follows the items: an empty day, what went unread, the blocks, the recap, todos, the calendar."""
     lines = [sources.span.no_items] if not chosen.sections else []
@@ -279,7 +280,7 @@ def _closing_lines(
         lines += _recap_lines(sources.recap)
     if sources.todos_note is not None:
         lines.append(sources.todos_note)
-    return [*lines, _calendar_note(events, sources, facts, clock)]
+    return [*lines, _calendar_note(events, sources)]
 
 
 def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
@@ -305,29 +306,12 @@ def _own_words(
     return [w for w in words if w]
 
 
-def _event_lines(
-    events: list[tuple[int, BriefingEvent]],
-    sources: FactSources,
-    facts: dict[int, BriefFact],
-    clock: UserClock,
-) -> list[str]:
-    return [
-        item_line(fact_id, sources.event_items[fact_id], clock, Voiced(facts[fact_id], False))
-        for fact_id, _ in events
-    ]
-
-
-def _by_day(
-    events: list[tuple[int, BriefingEvent]],
-    sources: FactSources,
-    facts: dict[int, BriefFact],
-    clock: UserClock,
-) -> list[str]:
-    """List the events under each day's heading and count, naming the busiest days.
+def _by_day(events: list[tuple[BriefingEvent, str]]) -> list[str]:
+    """List the events' lines under each day's heading and count, naming the busiest days.
 
     A day is the busiest only beside a lighter day that has events: equal days have none.
     """
-    days = {on: list(group) for on, group in groupby(events, key=lambda pair: pair[1].date)}
+    days = {on: list(group) for on, group in groupby(events, key=lambda pair: pair[0].date)}
     counts = [len(group) for group in days.values()]
     busiest = max(counts) if max(counts) > min(counts) else None
     lines: list[str] = []
@@ -335,30 +319,20 @@ def _by_day(
         busy = ", the week's busiest" if len(group) == busiest else ""
         lines += [
             f"{day(date.fromisoformat(on))}, {len(group)} event(s){busy}:",
-            *_event_lines(group, sources, facts, clock),
+            *(line for _, line in group),
         ]
     return lines
 
 
-def _calendar_note(
-    events: list[tuple[int, BriefingEvent]],
-    sources: FactSources,
-    facts: dict[int, BriefFact],
-    clock: UserClock,
-) -> str:
+def _calendar_note(events: list[tuple[BriefingEvent, str]], sources: FactSources) -> str:
     gap = sources.calendar.gap
     if gap is not None:
         return CALENDAR_UNAVAILABLE if gap is CalendarGap.UNAVAILABLE else NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty
     if sources.span.days > 1:
-        return "\n".join(
-            [
-                f"{sources.span.heading}, {len(events)} event(s):",
-                *_by_day(events, sources, facts, clock),
-            ]
-        )
-    return f"{sources.span.heading}:\n" + "\n".join(_event_lines(events, sources, facts, clock))
+        return "\n".join([f"{sources.span.heading}, {len(events)} event(s):", *_by_day(events)])
+    return f"{sources.span.heading}:\n" + "\n".join(line for _, line in events)
 
 
 def _signals_block(
