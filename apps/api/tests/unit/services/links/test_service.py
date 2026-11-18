@@ -42,7 +42,6 @@ from app.models.short_link_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import analytics_day_start
-from app.services.links import service as links_service
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
 from app.services.links.registry import REGISTRY
 from app.services.links.service import (
@@ -1191,15 +1190,16 @@ def _todo(todo_id: str) -> RecordTarget:
 class TestBriefItemsFollowTheBrief:
     """A brief's GAIA-attached item links take the brief's access as it changes (L-bug2)."""
 
+    carries: AsyncMock
+
     @pytest.fixture
     def items(self, store: Store) -> Iterator[dict[str, ShortLink]]:
         children = {
             "attached": _link("item1", target=_todo("attached"), gaia_attached=True),
             "owner_set": _link("item2", target=_todo("owner_set"), access=LinkAccess.PUBLIC),
         }
-        brief_spec = replace(
-            REGISTRY[BRIEF], carries=AsyncMock(return_value=[_todo(key) for key in children])
-        )
+        self.carries = AsyncMock(return_value=[_todo(key) for key in children])
+        brief_spec = replace(REGISTRY[BRIEF], carries=self.carries)
         store.links.get_live_for_target.side_effect = lambda _u, target: children.get(target.id)
         with patch.dict(f"{_SVC}.REGISTRY", {BRIEF: brief_spec}):
             yield children
@@ -1210,9 +1210,7 @@ class TestBriefItemsFollowTheBrief:
         return {c.args[1]: c.args[2].model_dump(exclude_unset=True) for c in calls}
 
     def _assert_read_under_the_owner(self, store: Store) -> None:
-        carries = links_service.REGISTRY[BRIEF].carries
-        assert isinstance(carries, AsyncMock)
-        carries.assert_awaited_once_with(OWNER, BRIEF_T)
+        self.carries.assert_awaited_once_with(OWNER, BRIEF_T)
         read = [c.args for c in store.links.get_live_for_target.await_args_list]
         assert (OWNER, _todo("attached")) in read
         assert {owner for owner, _ in read} == {OWNER}
