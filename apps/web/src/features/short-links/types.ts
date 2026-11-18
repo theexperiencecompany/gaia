@@ -7,23 +7,17 @@ import type {
   ShortLinkTargetType,
 } from "@/types/features/shortLinkTypes";
 
-import type {
-  GATED_LINK_DENIALS,
-  LINK_LOOKUP_LOCKED_CODE,
-  RATE_LIMITED_CODE,
-} from "./constants";
+import type { GATED_LINK_DENIALS } from "./constants";
+import type { LINK_CONSTANTS } from "./link-constants.generated";
 
-/** A denial that means the link will never open again (or never did). */
-export type DeadLinkDenial = Exclude<
-  LinkDenial,
+/** Every refusal the link page has copy for: a denial, the guessing lockout or the rate limit. */
+type LinkPageCode = keyof typeof LINK_CONSTANTS.pageCopy;
+
+/** Every state that renders the dead-link page: a refusal the viewer can't get past. */
+export type DeadLinkState = Exclude<
+  LinkPageCode,
   (typeof GATED_LINK_DENIALS)[number]
 >;
-
-/** Every state that renders the dead-link page: a dead denial, the guessing lockout or the rate limit. */
-export type DeadLinkState =
-  | DeadLinkDenial
-  | typeof LINK_LOOKUP_LOCKED_CODE
-  | typeof RATE_LIMITED_CODE;
 
 /** What a viewer sees instead of the link's target. */
 export type LinkUnavailableState =

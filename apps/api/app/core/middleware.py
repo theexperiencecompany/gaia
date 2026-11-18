@@ -27,13 +27,11 @@ from app.api.v1.middleware.unhandled_exception import UnhandledExceptionMiddlewa
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.deployment import OriginPolicy
 from app.config.settings import settings
-from app.constants.http import RETRY_AFTER_HEADER
+from app.constants.http import RATE_LIMIT_EXCEEDED_CODE, RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
 from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
-
-RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
 
 
 def _retry_after_seconds(request: Request) -> int | None:

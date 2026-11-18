@@ -12,7 +12,7 @@ import {
 import { type KeyboardEvent, useState } from "react";
 import { z } from "zod";
 
-import { MAX_GRANTEES } from "@/features/short-links/constants";
+import { LINK_CONSTANTS } from "@/features/short-links/link-constants.generated";
 
 const emailSchema = z.email();
 const SEPARATOR_KEYS = new Set(["Enter", ","]);
@@ -41,8 +41,10 @@ export function GranteeEmailsInput({
       return;
     }
     if (!emails.includes(email)) {
-      if (emails.length >= MAX_GRANTEES) {
-        setError(`You can share with up to ${MAX_GRANTEES} people.`);
+      if (emails.length >= LINK_CONSTANTS.maxGrantees) {
+        setError(
+          `You can share with up to ${LINK_CONSTANTS.maxGrantees} people.`,
+        );
         return;
       }
       onEmailsChange([...emails, email]);

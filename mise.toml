@@ -576,7 +576,7 @@ description = "Regenerate the CLI's vendored API config schema (packages/cli/src
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
 
 [tasks."links:constants"]
-description = "Regenerate the usercontent Worker's and CLI's link-constants.generated.json from apps/api/app/constants/short_links.py and check the self-host Caddyfile spells the same routes — CI's link-constants check fails when they drift"
+description = "Regenerate the web's link-constants.generated.ts and the usercontent Worker's and CLI's link-constants.generated.json from the API's link constants, access order and page copy, and check the self-host Caddyfile spells the same routes — CI's link-constants check fails when they drift"
 run = "node scripts/ci/checks.mjs link-constants --write"
 
 [tasks."openui:prompts"]

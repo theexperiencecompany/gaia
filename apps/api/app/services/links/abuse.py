@@ -31,9 +31,9 @@ from app.services.email.models import EmailMessage
 from app.services.email.service import send_email
 from app.services.links.access import is_open
 from app.services.links.content import delete_snapshot
+from app.services.links.errors import LinkLookupLockedError
 from app.services.links.urls import build_url
 from app.services.support_service import SUPPORT_EMAILS
-from app.utils.errors import AppError
 from app.utils.log_identifiers import hash_short_link_slug
 from app.utils.timezone import as_utc
 from shared.py.analytics import UserId
@@ -44,19 +44,10 @@ from shared.py.wide_events import log
 _ACTIVE_RENDERS = frozenset({RenderMode.FRAME_ACTIVE, RenderMode.DOWNLOAD})
 
 
-def _locked_out() -> AppError:
-    return AppError(
-        message="Too many links that don't exist were opened from here",
-        fix="Try again in an hour",
-        status_code=429,
-        code="link_lookup_locked",
-    )
-
-
 async def refuse_when_locked_out(viewer: str) -> None:
     """Raise 429 while viewer is locked out for guessing slugs."""
     if await redis_cache.client.exists(RESOLVE_LOCKOUT_KEY.format(viewer=viewer)):
-        raise _locked_out()
+        raise LinkLookupLockedError()
 
 
 async def record_miss(viewer: str, slug: str) -> None:
@@ -69,7 +60,7 @@ async def record_miss(viewer: str, slug: str) -> None:
             RESOLVE_LOCKOUT_KEY.format(viewer=viewer), RESOLVE_MISS_LOCKOUT_SECONDS, "1"
         )
         log.warning("short_link.lookup_locked_out")
-        raise _locked_out()
+        raise LinkLookupLockedError()
 
 
 def _threshold(link: ShortLink) -> int:
