@@ -254,7 +254,9 @@ class TestHowARunEnds:
     async def test_a_brief_stored_without_a_delivery_plan_is_not_delivered(
         self, world: World
     ) -> None:
-        stored = stored_brief(DATE, BriefForm.EDITION, message="Gym")
+        stored = stored_brief(DATE, BriefForm.EDITION, message="Gym").model_copy(
+            update={"delivery": None}
+        )
 
         with pytest.raises(
             ValueError, match=f"^brief {stored.id} was stored without a delivery plan$"

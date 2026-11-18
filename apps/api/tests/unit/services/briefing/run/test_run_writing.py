@@ -9,12 +9,14 @@ import pytest
 from tests.briefing_run_world import (
     BRIEF_ID,
     BRIEF_LINK,
+    DATE,
     USER,
     VOICE,
     World,
     brief_work,
     completions,
     composed,
+    delivered_plan,
     fact_id,
     items_block,
     own,
@@ -179,6 +181,28 @@ class TestTheVoice:
             captions=["Onward."] * 2,
             openings=["Priya replied overnight."],
         )
+
+    async def test_a_retry_of_a_brief_that_never_went_out_is_not_held_to_its_own_draft(
+        self, world: World
+    ) -> None:
+        """Regression: a same-day retry was told it repeated the undelivered brief it replaces."""
+        undelivered = stored_brief(DATE, BriefForm.EDITION, headline=VOICE["headline"])
+        world.briefs_read(
+            [
+                undelivered.model_copy(
+                    update={
+                        "delivery": delivered_plan().model_copy(
+                            update={"done": [], "completed_at": None}
+                        )
+                    }
+                )
+            ]
+        )
+
+        await run_brief(USER, BriefingKind.DAILY)
+
+        assert world.voice.await_count == 1
+        assert world.stored().headline == VOICE["headline"]
 
     async def test_a_message_that_leaves_out_the_lead_is_sent_back_until_it_names_it(
         self, world: World

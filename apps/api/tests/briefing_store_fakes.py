@@ -157,6 +157,8 @@ class InMemoryBriefings(Store):
             for b in self._of(user_id)
             if (kind is None or b.kind == kind)
             and not (editions_only and b.payload.form is BriefForm.QUIET_NOTE)
+            and b.delivery is not None
+            and b.delivery.completed_at is not None
         ]
         found.sort(key=lambda b: (b.date, b.kind), reverse=True)
         return [b.model_copy(deep=True) for b in _limited(found, limit)]

@@ -63,6 +63,21 @@ async def _upsert(
     )
 
 
+async def _delivered(
+    repo: BriefingsRepository,
+    user_id: str,
+    date: str,
+    kind: BriefingKind,
+    payload: BriefingPayload,
+    *,
+    edition: EditionRender | None,
+) -> BriefingModel:
+    """Store the brief, then deliver it in-app."""
+    stored = await _upsert(repo, user_id, date, kind, payload, edition=edition)
+    await _deliver(repo, user_id, date, kind, ["inapp"])
+    return stored
+
+
 async def _deliver(
     repo: BriefingsRepository, user_id: str, date: str, kind: BriefingKind, channels: list[str]
 ) -> None:
@@ -365,9 +380,10 @@ class TestBriefingsReads:
             is None
         )
 
-    async def test_list_recent_is_newest_first_and_scoped(self, repo):
-        user_id = "u-recent"
-        await _upsert(
+    async def test_list_recent_reads_only_briefs_whose_delivery_completed(self, repo):
+        """A brief stored but never delivered, or delivered part-way, is not one the user received."""
+        user_id = "u-undelivered"
+        delivered = await _upsert(
             repo,
             user_id,
             "2026-08-05",
@@ -375,7 +391,8 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        newest = await _upsert(
+        await _deliver(repo, user_id, "2026-08-05", BriefingKind.DAILY, ["inapp"])
+        await _upsert(
             repo,
             user_id,
             "2026-08-06",
@@ -383,7 +400,37 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        await _upsert(
+        part_way = await _upsert(
+            repo,
+            user_id,
+            "2026-08-07",
+            BriefingKind.DAILY,
+            make_briefing_payload(),
+            edition=_EDITION,
+        )
+        await repo.record_step(user_id, part_way.id, DeliveryStep.NOTIFICATION, ["inapp"])
+
+        assert [b.id for b in await repo.list_recent(user_id, limit=10)] == [delivered.id]
+
+    async def test_list_recent_is_newest_first_and_scoped(self, repo):
+        user_id = "u-recent"
+        await _delivered(
+            repo,
+            user_id,
+            "2026-08-05",
+            BriefingKind.DAILY,
+            make_briefing_payload(),
+            edition=_EDITION,
+        )
+        newest = await _delivered(
+            repo,
+            user_id,
+            "2026-08-06",
+            BriefingKind.DAILY,
+            make_briefing_payload(),
+            edition=_EDITION,
+        )
+        await _delivered(
             repo,
             "other-user",
             "2026-08-06",
@@ -398,7 +445,7 @@ class TestBriefingsReads:
     async def test_the_archive_lists_editions_and_leaves_quiet_notes_out(self, repo):
         """A quiet day's note has no edition to show: the archive is editions only."""
         user_id = "u-quiet"
-        edition = await _upsert(
+        edition = await _delivered(
             repo,
             user_id,
             "2026-08-05",
@@ -406,7 +453,7 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        note = await _upsert(
+        note = await _delivered(
             repo,
             user_id,
             "2026-08-06",
@@ -447,7 +494,7 @@ class TestBriefingsReads:
     async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
         """A backfilled brief is written after newer days but still lists by its own date."""
         user_id = "u-backfilled"
-        later_day = await _upsert(
+        later_day = await _delivered(
             repo,
             user_id,
             "2026-08-06",
@@ -455,7 +502,7 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        earlier_day = await _upsert(
+        earlier_day = await _delivered(
             repo,
             user_id,
             "2026-08-05",
@@ -463,7 +510,7 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        weekly_same_day = await _upsert(
+        weekly_same_day = await _delivered(
             repo,
             user_id,
             "2026-08-06",
@@ -645,7 +692,7 @@ class TestBriefingsReads:
 
     async def test_list_recent_honours_the_limit_and_the_kind(self, repo, raw_collection):
         user_id = "u-recent-kind"
-        oldest = await _upsert(
+        oldest = await _delivered(
             repo,
             user_id,
             "2026-08-05",
@@ -653,7 +700,7 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        newest_daily = await _upsert(
+        newest_daily = await _delivered(
             repo,
             user_id,
             "2026-08-06",
@@ -661,7 +708,7 @@ class TestBriefingsReads:
             make_briefing_payload(),
             edition=_EDITION,
         )
-        weekly = await _upsert(
+        weekly = await _delivered(
             repo,
             user_id,
             "2026-08-07",

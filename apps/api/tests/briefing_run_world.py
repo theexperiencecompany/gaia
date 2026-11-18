@@ -534,13 +534,21 @@ def local_midnight(day: str) -> datetime:
 def stored_brief(
     day: str, form: BriefForm, kind: BriefingKind = BriefingKind.DAILY, **payload: Any
 ) -> BriefingModel:
-    """Return a brief of day as the store holds it, written at that day's local midnight."""
+    """Return a brief of day as the store holds it once delivered, written at that day's local midnight."""
+    note = form is BriefForm.QUIET_NOTE
     return BriefingModel(
         id=f"b-{day}-{kind}",
         user_id=USER,
         date=day,
         kind=kind,
         payload=make_briefing_payload(date=day, form=form, **payload),
+        delivery=delivered_plan(
+            NotificationKind.BRIEFING_NOTE
+            if note
+            else NotificationKind.BRIEFING_WEEKLY
+            if kind is BriefingKind.WEEKLY
+            else NotificationKind.BRIEFING_DAILY
+        ),
         created_at=local_midnight(day),
     )
 
