@@ -21,7 +21,7 @@ SLEEP = re.compile(r"(?:^|[;&|({\n]|\bdo|\bthen|\belse)\s*sleep\s+(\d+(?:\.\d+)?
 UNIT_SECONDS = {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}
 
 WATCH_ADVICE = (
-    "Wait on CI with `mise ci:watch <PR>` (exits on the first red lane and prints its failure), "
+    "Wait on CI with `mise ci:watch <PR>` (exits on the first red check that blocks merge and prints its failure), "
     "run it in the background, and read the result when it exits."
 )
 

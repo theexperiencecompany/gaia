@@ -111,7 +111,6 @@ apps/web/src/features/skills/api/types.ts:DiscoveredSkill=DiscoveredSkillInfo
 apps/web/src/features/skills/components/SkillPreviewModal.tsx:SkillPreview=BuiltinSkillInfo
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactFormData=Body_support_submit_support_request_with_attachments
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactSupportInitialValues=Body_support_submit_support_request_with_attachments
-apps/web/src/features/team/api/teamApi.ts:TeamMember=AuthorDetails
 apps/web/src/features/thanks/components/Thanks.tsx:ToolMetadata=URLResponse
 apps/web/src/features/thanks/components/ToolCard.tsx:ToolMetadata=URLResponse
 apps/web/src/features/todo/components/shared/TodoFieldsRow.tsx:TodoFieldsRowProps=TodoModel

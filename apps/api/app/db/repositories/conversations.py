@@ -586,6 +586,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             return None
         return row.messages[0]
 
+    async def recent_messages(
+        self, conversation_id: str, *, user_id: str, limit: int
+    ) -> list[MessageModel]:
+        """Return the newest limit messages, oldest first, without loading the whole array."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {
+                "_id": 0,  # pragma: no mutate — the row model ignores _id
+                "messages": {"$slice": -limit},
+            },
+            _MessageProjectionRow,
+        )
+        return [] if row is None else row.messages
+
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
         row = await self._find_one_projected(

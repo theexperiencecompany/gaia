@@ -26,6 +26,7 @@ import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
+import { ReplyPlaceholder } from "../../../../../libs/shared/ts/src/bots/utils/placeholder";
 import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 interface GaiaSharedMockOptions {
@@ -113,6 +114,24 @@ export function makeGaiaSharedMock(
     // adapter's own wiring; real implementations are covered by shared tests.
 
     private readonly _welcomed = new Set<string>();
+    /** Mirrors the real base: asked fresh each time, a failed check is `unknown`. */
+    protected async linkState(
+      userId: string,
+    ): Promise<"linked" | "unlinked" | "unknown"> {
+      try {
+        const status = await (
+          this.gaia as unknown as {
+            checkAuthStatus: (
+              platform: string,
+              id: string,
+            ) => Promise<{ authenticated: boolean }>;
+          }
+        ).checkAuthStatus(this.platform, userId);
+        return status.authenticated ? "linked" : "unlinked";
+      } catch {
+        return "unknown";
+      }
+    }
     protected shouldSendWelcome(userId: string): boolean {
       if (this._welcomed.has(userId)) return false;
       this._welcomed.add(userId);
@@ -213,6 +232,9 @@ export function makeGaiaSharedMock(
     MEDIA_READ_TIMEOUT_MS: 30_000,
     // The real outcome set, so an adapter's reaction result is production's value.
     REACTION_OUTCOME,
+    // The real placeholder: what an adapter's edits land on when it fails to post
+    // is exactly the behavior its tests pin.
+    ReplyPlaceholder,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

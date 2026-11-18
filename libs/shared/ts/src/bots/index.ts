@@ -171,6 +171,7 @@ export {
   parseTextArgs,
   processBotMedia,
   REACTION_OUTCOME,
+  ReplyPlaceholder,
   readBodyBounded,
   readBodyBytesBounded,
   readResponseBytesCapped,

@@ -12,14 +12,13 @@ process, so its writes are picked up at the next TTL refresh
 (GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS); the TTL is the cross-process bound.
 """
 
-import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
 import math
 from time import monotonic
 from typing import Any, cast
-import weakref
 
+from chromadb.api.types import GetResult
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, Field, field_validator
 
@@ -27,6 +26,7 @@ from app.constants.chroma import GAIA_KNOWLEDGE_SNAPSHOT_TTL_SECONDS
 from app.core.lazy_loader import providers
 from app.db.chroma.chromadb import ChromaClient
 from app.utils.log_identifiers import user_text_shape
+from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
 
@@ -79,24 +79,6 @@ def _normalized(vector: Sequence[float]) -> tuple[float, ...]:
 def _dot(left: Sequence[float], right: Sequence[float]) -> float:
     """Dot product of two equal-length vectors."""
     return sum(a * b for a, b in zip(left, right))
-
-
-#: Load locks per event loop, since an asyncio.Lock binds to the loop that first
-#: awaits it and this service is a process singleton. Keyed weakly by the loop
-#: object: keying by id(loop) collides once a dead loop's id is reused.
-_load_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
-    weakref.WeakKeyDictionary()
-)
-
-
-def _load_lock() -> asyncio.Lock:
-    """Return the reload lock for the running event loop."""
-    loop = asyncio.get_running_loop()
-    lock = _load_locks.get(loop)
-    if lock is None:
-        lock = asyncio.Lock()
-        _load_locks[loop] = lock
-    return lock
 
 
 class GaiaKnowledgeService:
@@ -214,36 +196,42 @@ class GaiaKnowledgeService:
     async def _snapshot_or_reload(self) -> _Snapshot | None:
         """Return the current snapshot, reloading when missing or past its TTL.
 
+        Concurrent searches share one reload, and a search that stops waiting (its
+        context section ran out of budget) leaves it running, so the next turn
+        finds the corpus loaded instead of starting, and losing, the load again.
+        """
+        if self._fresh():
+            return self._snapshot
+        return await coalesce_request(f"gaia_knowledge_snapshot:{id(self)}", self._reload)
+
+    async def _reload(self) -> _Snapshot:
+        """Load the corpus and hold it.
+
         A reload that fails while a snapshot is held keeps serving the last good
         corpus and backs off until the next TTL — a corpus is enrichment, and a
         refresh blip must not blank a section.
         """
-        if self._fresh():
-            return self._snapshot
-        async with _load_lock():
-            if self._fresh():
-                return self._snapshot
-            previous = self._snapshot
-            try:
-                snapshot = await self._load_snapshot()
-            except Exception as e:
-                if previous is None:
-                    raise
-                log.warning(
-                    "gaia_knowledge snapshot refresh failed; serving the previous corpus",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                self._loaded_at = monotonic()
-                return previous
-            self._snapshot = snapshot
+        previous = self._snapshot
+        try:
+            snapshot = await self._load_snapshot()
+        except Exception as e:
+            if previous is None:
+                raise
+            log.warning(
+                "gaia_knowledge snapshot refresh failed; serving the previous corpus",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             self._loaded_at = monotonic()
-            return snapshot
+            return previous
+        self._snapshot = snapshot
+        self._loaded_at = monotonic()
+        return snapshot
 
     async def _load_snapshot(self) -> _Snapshot:
         client = await ChromaClient.get_client()
         collection = await client.get_or_create_collection(name=self.collection_name)
-        result = await collection.get(include=["documents", "metadatas"])
+        result: GetResult = await collection.get(include=["documents", "metadatas"])
         documents = result.get("documents") or []
         metadatas = result.get("metadatas") or []
         if not documents:
