@@ -29,9 +29,14 @@ from app.db.repositories.cache import CachePolicy
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
+class _FixtureDetail(BaseModel):
+    note: str | None
+
+
 class _FixtureDocument(UserScopedDocument):
     title: str
     count: int = 0
+    detail: _FixtureDetail | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -93,6 +98,18 @@ class TestFixtureRepository(UserScopedRepositoryContract):
 
 
 class TestBasePrimitives:
+    async def test_a_required_none_round_trips_while_a_defaulted_none_stays_absent(
+        self, repo, make_doc, raw_collection
+    ):
+        """A sparse index needs an unset field absent; a required one read back needs its null."""
+        created = await repo.create(make_doc(user_id="u", detail=_FixtureDetail(note=None)))
+
+        assert created.detail == _FixtureDetail(note=None)
+        raw = await raw_collection.find_one({"_id": ObjectId(created.id)})
+        assert raw["detail"] == {"note": None}
+        bare = await repo.create(make_doc(user_id="u"))
+        assert "detail" not in await raw_collection.find_one({"_id": ObjectId(bare.id)})
+
     async def test_find_filters_sorts_and_paginates(self, repo, make_doc):
         for i, title in enumerate(["a", "b", "c"]):
             await repo.create(make_doc(user_id="u", title=title, count=i))

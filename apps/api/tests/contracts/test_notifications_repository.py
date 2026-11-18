@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants.briefing import BriefingKind, EditionFamily
+from app.constants.notifications import NotificationKind
 from app.db.repositories.notifications import NotificationRepository
+from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_view_models import BriefEditionNotification, BriefNoteNotification
+from app.models.notification.details_models import NotificationDetails
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -16,6 +21,9 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationStatus,
 )
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.view import briefing_card
+from tests.factories import make_briefing_payload
 
 
 def _record(**overrides: object) -> NotificationRecord:
@@ -31,6 +39,26 @@ def _record(**overrides: object) -> NotificationRecord:
     }
     data.update(overrides)
     return NotificationRecord(**data)
+
+
+async def _edition_details(family: EditionFamily) -> BriefEditionNotification:
+    weekly = family is EditionFamily.WEEKLY
+    brief = BriefingModel(
+        id="brief-1",
+        user_id="u1",
+        date="2026-11-08",
+        kind=BriefingKind.WEEKLY if weekly else BriefingKind.DAILY,
+        edition=EditionRender(key="k1"),
+        payload=make_briefing_payload(
+            template_family=family,
+            stamp_city="bogota" if family is EditionFamily.POSTAL else None,
+        ),
+    )
+    return BriefEditionNotification(
+        kind=NotificationKind.BRIEFING_WEEKLY if weekly else NotificationKind.BRIEFING_DAILY,
+        brief_url="https://heygaia.link/b1",
+        card=await briefing_card(brief),
+    )
 
 
 @pytest.fixture
@@ -151,3 +179,24 @@ class TestMarkAllReadForUser:
         email_notification = await repo.get_for_user("email", "channels")
         assert email_notification is not None
         assert email_notification.status == NotificationStatus.DELIVERED
+
+
+class TestBriefNotificationsRoundTrip:
+    """Regression: every brief but Air Mail's failed to save, its card's None fields dropped then required."""
+
+    @pytest.mark.parametrize("family", [*DAILY_FAMILY_WEIGHTS, EditionFamily.WEEKLY])
+    async def test_an_edition_notification_reads_back_as_saved(self, repo, family):
+        await self._assert_round_trips(repo, await _edition_details(family))
+
+    async def test_a_quiet_note_notification_reads_back_as_saved(self, repo):
+        await self._assert_round_trips(
+            repo, BriefNoteNotification(kind=NotificationKind.BRIEFING_NOTE)
+        )
+
+    async def _assert_round_trips(self, repo, details: NotificationDetails) -> None:
+        request = _record().original_request.model_copy(update={"details": details})
+        await repo.create(_record(id="brief-note", original_request=request))
+
+        fetched = await repo.get_for_user("brief-note", "u1")
+
+        assert fetched is not None and fetched.original_request.details == details
