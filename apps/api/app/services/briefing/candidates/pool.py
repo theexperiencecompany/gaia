@@ -135,14 +135,17 @@ def _rank(candidate: BriefCandidate) -> tuple[bool, bool, bool]:
 def _capped(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
     """Keep each source's BRIEF_POOL_PER_SOURCE best-ranked candidates, in the order they were found.
 
-    A held result left out stays held for a later brief.
+    The calendar's events are all kept: the brief lists its span's calendar whole. A held
+    result left out stays held for a later brief.
     """
     ranked = sorted(range(len(candidates)), key=lambda i: (_rank(candidates[i]), i))
     taken: Counter[str] = Counter()
     kept: set[int] = set()
     for i in ranked:
         source = candidates[i].source
-        if taken[source] < BRIEF_POOL_PER_SOURCE:
+        if candidates[i].is_event:
+            kept.add(i)
+        elif taken[source] < BRIEF_POOL_PER_SOURCE:
             taken[source] += 1
             kept.add(i)
     if dropped := len(candidates) - len(kept):

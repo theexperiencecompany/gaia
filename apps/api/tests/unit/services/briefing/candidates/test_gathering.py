@@ -473,3 +473,18 @@ class TestEachSourceIsCappedByRank:
             "Thread 101",
         ]
         assert [c.title for c in gathered.pool.values() if c.is_event] == ["Board call"]
+
+    async def test_every_calendar_event_stays_for_the_calendar_is_listed_whole(self) -> None:
+        events = [
+            BriefingEvent(
+                date="2026-11-11", start=f"{9 + n // 2:02d}:{30 * (n % 2):02d}", title=f"Call {n}"
+            )
+            for n in range(BRIEF_POOL_PER_SOURCE + 3)
+        ]
+        sources = CandidateSources(
+            TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1), []
+        )
+
+        gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+        assert [c.title for c in gathered.pool.values()] == [e.title for e in events]
