@@ -19,25 +19,33 @@ Every assertion here is about that gap closing:
     because that mismatch scoped a gate to 119 modules instead of 11;
   - `--json` carries the same four things so an agent can parse them.
 
-The network seam is mocked at `gh` / `gh_bytes` — the two functions that shell
-out. Everything above them is the real code.
+The network seam is HTTP: every read goes through the real lib/github.py client
+(retries included) to scripts/ci/tests/github_fake.py's local server, the PR
+lookup and the `--rerun-timeouts` write included. Only `gh stack view`, which
+reads the local gh-stack extension, still shells out.
 
 Run: uv run pytest scripts/dev/tests/test_ci_remote.py -p no:xdist
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import io
 import json
+import os
 from pathlib import Path
+import signal
 import sys
 from typing import Any
+import urllib.parse
 import zipfile
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ci" / "tests"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ci_remote  # the path insert above must precede this import
+from github_fake import FakeGitHub, Reply, Request, serve
 
 # A trimmed excerpt of the real job log for `mutation (shard 3/6 (19 modules))` — the bytes
 # `gh api .../jobs/103050508136/logs` returns, ISO prefixes and all. The last
@@ -81,12 +89,22 @@ PR_META: dict[str, Any] = {
     "title": "feat: a thing",
     "url": "https://github.com/o/r/pull/7",
     "headRefOid": "abc123",
+    "state": "OPEN",
+    "isCrossRepository": False,
     "baseRefName": "master",
     "headRefName": "feat/thing",
     "isDraft": False,
     "mergeable": "MERGEABLE",
     "reviewDecision": None,
     "reviewThreads": {"totalCount": 1, "nodes": [{"isResolved": True}]},
+}
+OPEN_PR_NODE: dict[str, Any] = {
+    "number": 7,
+    "url": "https://github.com/o/r/pull/7",
+    "headRefOid": "abc123",
+    "state": "OPEN",
+    "isCrossRepository": False,
+    "headRepositoryOwner": {"login": "o"},
 }
 
 FAILED_CHECK: dict[str, Any] = {
@@ -104,6 +122,67 @@ PASSED_CHECK: dict[str, Any] = {
     "app": {"slug": "github-actions"},
 }
 
+# The two checks master's ruleset requires, both green: what a finished run has.
+REQUIRED_GREEN: list[dict[str, Any]] = [
+    dict(
+        PASSED_CHECK,
+        name="quality-gate",
+        html_url="https://github.com/o/r/actions/runs/99/job/1299",
+    ),
+    dict(
+        PASSED_CHECK,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5500",
+    ),
+]
+
+
+# The master ruleset's required checks, as `rules/branches/master` returns them.
+MASTER_RULES: list[dict[str, Any]] = [
+    {"type": "merge_queue", "parameters": {}},
+    {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [
+                {"context": "Validate PR Title", "integration_id": 15368},
+                {"context": "quality-gate", "integration_id": 15368},
+            ]
+        },
+    },
+]
+# Run 99 is ci.yml, the workflow whose quality-gate job is required.
+
+
+def workflow_run(run_id: int, workflow_id: int, name: str, path: str) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "workflow_id": workflow_id,
+        "name": name,
+        "path": f".github/workflows/{path}",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": f"https://github.com/o/r/actions/runs/{run_id}",
+    }
+
+
+CI_RUN = workflow_run(99, 394732533, "CI", "ci.yml")
+REACT_DOCTOR_RUN = workflow_run(77, 2, "React Doctor", "react-doctor.yml")
+PR_TITLE_RUN = workflow_run(55, 3, "PR Title", "pr-title.yml")
+REACT_DOCTOR_RED: dict[str, Any] = {
+    "name": "react-doctor",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/o/r/actions/runs/77/job/7701",
+    "app": {"slug": "github-actions"},
+}
+SONAR_RED: dict[str, Any] = {
+    "name": "SonarCloud Code Analysis",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://sonarcloud.io/dashboard?id=x",
+    "app": {"slug": "sonarqubecloud"},
+}
+
 
 def verdict_zip(*verdicts: dict[str, Any]) -> bytes:
     buffer = io.BytesIO()
@@ -114,7 +193,7 @@ def verdict_zip(*verdicts: dict[str, Any]) -> bytes:
 
 
 class FakeGh:
-    """Routes `gh` argv to canned payloads and records what was asked for."""
+    """Answers GitHub API requests with canned payloads and records the paths asked for."""
 
     def __init__(
         self,
@@ -133,48 +212,82 @@ class FakeGh:
         # Keyed by artifact id; the None key is served for any artifact id.
         self.zip_blobs = zip_blobs or {}
         self.job_log = job_log
+        # Every PR ever opened from the branch, newest first, as the lookup serves them.
+        self.branch_prs = [OPEN_PR_NODE]
+        # Branch name -> head sha on origin; read only when a branch has no PR.
+        self.branch_heads = {"master": "f00dbabe", "feat/thing": "abc123"}
         self.calls: list[str] = []
+        self.rules: dict[str, list[dict[str, Any]]] = {"master": MASTER_RULES}
+        # The head's Actions runs: CI by default; the superseded-run and merge-gate tests set others.
+        self.workflow_runs: list[dict[str, Any]] = [CI_RUN]
 
-    def text(
-        self, args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        endpoint = args[1] if len(args) > 1 else ""
-        self.calls.append(endpoint)
-        if endpoint == "graphql":
-            return 0, json.dumps({"data": {"repository": {"pullRequest": self.pr_meta}}}), ""
-        if "/check-runs" in endpoint:
-            return 0, json.dumps({"check_runs": self.checks}), ""
-        if "/status?" in endpoint:
-            return 0, json.dumps({"statuses": self.statuses}), ""
-        if "/artifacts" in endpoint:
-            return 0, json.dumps({"artifacts": self.artifacts}), ""
-        raise AssertionError(f"unexpected gh call: {args}")
+    def respond(self, req: Request) -> Reply:
+        path = req.path
+        self.calls.append(path)
+        if path == "/graphql":
+            return self.graphql(req)
+        if req.method == "POST" and path.endswith("/rerun-failed-jobs"):
+            return Reply(201)
+        return self.repo_read(path) or self.run_read(path)
 
-    def binary(self, args: list[str], timeout_s: int) -> tuple[int, bytes, str]:
-        endpoint = args[-1]
-        self.calls.append(endpoint)
-        if endpoint.endswith("/zip"):
-            artifact_id = int(endpoint.rsplit("/", 2)[-2])
-            return 0, self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")), ""
-        if endpoint.endswith("/logs"):
-            return 0, self.job_log.encode(), ""
-        raise AssertionError(f"unexpected gh_bytes call: {args}")
+    def graphql(self, req: Request) -> Reply:
+        query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+        if "pullRequests(headRefName" in query:
+            repository = {"pullRequests": {"nodes": self.branch_prs}}
+        else:
+            repository = {"pullRequest": self.pr_meta}
+        return Reply(body={"data": {"repository": repository}})
+
+    def repo_read(self, path: str) -> Reply | None:
+        """Answer reads of the repository itself: its rulesets, default branch and branch heads."""
+        if "/rules/branches/" in path:
+            return Reply(body=self.rules.get(path.split("/rules/branches/", 1)[1], []))
+        if path == "/repos/o/r":
+            return Reply(body={"default_branch": "master"})
+        if not path.startswith("/repos/o/r/branches/"):
+            return None
+        branch = urllib.parse.unquote(path.removeprefix("/repos/o/r/branches/"))
+        if branch not in self.branch_heads:
+            return Reply(404, {"message": "Branch not found"})
+        return Reply(body={"name": branch, "commit": {"sha": self.branch_heads[branch]}})
+
+    def run_read(self, path: str) -> Reply:
+        """Answer reads of a head: its runs, checks and statuses, and what its jobs uploaded."""
+        listings = {
+            "/check-runs": ("check_runs", self.checks),
+            "/status": ("statuses", self.statuses),
+            "/actions/runs": ("workflow_runs", self.workflow_runs),
+            "/artifacts": ("artifacts", self.artifacts),
+        }
+        for suffix, (key, items) in listings.items():
+            if path.endswith(suffix):
+                return Reply(body={key: items})
+        if path.endswith("/zip"):
+            artifact_id = int(path.rsplit("/", 2)[-2])
+            return Reply(body=self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")))
+        if path.endswith("/logs"):
+            return Reply(body=self.job_log.encode())
+        return Reply(418, {"message": f"unexpected request {path}"})
 
 
 @pytest.fixture
-def wire(monkeypatch: pytest.MonkeyPatch):
-    """Install a FakeGh and stub the git / gh-stack lookups around it."""
+def api(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeGitHub]:
+    """Serve a local GitHub that the real lib/github.py client talks to."""
+    with serve() as fake_api:
+        fake_api.point_client(monkeypatch)
+        yield fake_api
+
+
+@pytest.fixture
+def wire(api: FakeGitHub, monkeypatch: pytest.MonkeyPatch):
+    """Serve a FakeGh's payloads over HTTP and stub the git / gh-stack lookups around it."""
 
     def install(fake: FakeGh, stack: dict[str, Any] | None = None) -> FakeGh:
-        monkeypatch.setattr(ci_remote, "gh", fake.text)
-        monkeypatch.setattr(ci_remote, "gh_bytes", fake.binary)
+        # Looked up per request, so a test can swap fake.respond after wiring.
+        for method in ("GET", "POST"):
+            api.on(method, ".*", responder=lambda req: fake.respond(req))
         monkeypatch.setattr(ci_remote, "parse_repo", lambda: ("o", "r"))
         monkeypatch.setattr(ci_remote, "current_branch", lambda: "feat/thing")
-        monkeypatch.setattr(
-            ci_remote,
-            "resolve_pr",
-            lambda *_a, **_k: (7, "https://github.com/o/r/pull/7", "abc123"),
-        )
         monkeypatch.setattr(ci_remote, "fetch_stack", lambda _repo: stack)
         # Off the box by default: the real call shells out to runner.py, and a
         # suite whose output depends on the host's load average is not a test.
@@ -284,6 +397,31 @@ def test_the_verdict_is_preferred_and_the_job_log_is_not_fetched(
     assert "verdict artifact" in capsys.readouterr().out
 
 
+class ReplacedVerdict(FakeGh):
+    """The lane re-uploads its verdict between the listing and the download, so the listed id is gone."""
+
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/artifacts/55/zip"):
+            self.calls.append(req.path)
+            return Reply(404, {"message": "Not Found"})
+        out = super().respond(req)
+        if req.path.endswith("/artifacts"):
+            self.artifacts = [{"id": 56, "name": "verdict-mutation-shard-3", "expired": False}]
+        return out
+
+
+def test_a_verdict_artifact_replaced_while_it_is_read_is_read_from_its_replacement(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(ReplacedVerdict(checks=[FAILED_CHECK], zip_blobs={56: verdict_zip(VERDICT)}))
+    fake.artifacts = [{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}]
+
+    run_cli(monkeypatch, ["--verbose"])
+
+    assert "verdict artifact" in capsys.readouterr().out
+    assert any(call.endswith("/artifacts/56/zip") for call in fake.calls)
+
+
 def test_a_lane_with_no_verdict_falls_back_to_the_job_log_and_says_so(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -334,17 +472,143 @@ def test_a_failing_verdict_whose_lane_matches_no_check_is_still_printed(
     assert "3 unused exports" in out
 
 
+# ---------------------------------------------------------------------------- PR lookup
+
+
+def graphql_variables(api: FakeGitHub, marker: str) -> list[Any]:
+    """List the variables of every GraphQL request whose query contains marker."""
+    return [
+        r.body["variables"]
+        for r in api.requests
+        if r.path == "/graphql" and isinstance(r.body, dict) and marker in r.body["query"]
+    ]
+
+
+def test_a_branch_with_no_pr_is_read_at_its_head_commit(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, []) == 0
+    assert "/repos/o/r/commits/abc123/check-runs" in fake.calls
+    assert "Branch feat/thing @ abc123 (no PR)" in capsys.readouterr().out
+
+
+def test_a_branch_with_no_pr_and_none_on_origin_fails_loud(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    fake.branch_heads = {}
+    wire(fake)
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 2
+    out = capsys.readouterr().out
+    assert "no PR and no branch 'feat/thing' on o/r" in json.loads(out)["error"]
+
+
+def test_ci_watch_master_waits_for_the_gate_its_push_run_creates(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch could not watch master, so an agent hand-wrote an API poller."""
+    fake = SequencedGh(
+        [[PENDING_CHECK], [PASSED_CHECK], [PASSED_CHECK, REQUIRED_GREEN[0]]],
+        run_polls=[[ci_run(99, "in_progress")], [CI_RUN], [CI_RUN]],
+    )
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 0
+    # Validate PR Title never runs on a push, so master's watch does not wait for it.
+    assert fake.check_polls == 3, "settled before quality-gate reported"
+    assert "/repos/o/r/commits/f00dbabe/check-runs" in fake.calls
+
+
+def test_ci_watch_master_stops_at_a_red_lane_of_its_push_run(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK]], job_log="")
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_a_branch_no_workflow_runs_on_needs_no_required_check(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    wire(fake)
+    run_cli(monkeypatch, ["--json", "--no-stack", "feat/thing"])
+    report = json.loads(capsys.readouterr().out)
+    assert report["pr"] is None
+    assert report["head"] == {"branch": "feat/thing", "sha": "abc123"}
+    assert report["unreported_required"] == []
+
+
+def test_the_open_pr_wins_over_a_newer_closed_one_on_the_same_branch(
+    wire, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, number=9, state="CLOSED"), OPEN_PR_NODE]
+    wire(fake)
+    run_cli(monkeypatch, [])
+    [lookup] = graphql_variables(api, "pullRequests(headRefName")
+    assert lookup == {"owner": "o", "name": "r", "branch": "feat/thing"}
+    assert [v["number"] for v in graphql_variables(api, "reviewDecision")] == [7]
+
+
+def test_a_branch_whose_only_pr_merged_still_reports_that_pr(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, state="MERGED")]
+    wire(fake)
+    assert run_cli(monkeypatch, []) == 0
+    assert "PR #7 feat: a thing" in capsys.readouterr().out
+
+
+def test_master_is_read_at_its_head_not_through_an_old_closed_pr_named_after_it(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: `ci:remote master` reported closed PR #420, whose fork branch was also named master."""
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, number=420, state="CLOSED", headRefOid="0ld")]
+    wire(fake)
+    assert run_cli(monkeypatch, ["--no-stack", "master"]) == 0
+    assert "Branch master @ f00dbabe (no PR)" in capsys.readouterr().out
+
+
+def test_an_open_pr_from_a_fork_does_not_stand_in_for_the_branch(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, isCrossRepository=True, headRefOid="f0rk")]
+    wire(fake)
+    assert run_cli(monkeypatch, ["--no-stack", "master"]) == 0
+    assert "Branch master @ f00dbabe (no PR)" in capsys.readouterr().out
+
+
+def test_a_pr_number_is_looked_up_by_number_not_as_a_branch(
+    wire, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    assert run_cli(monkeypatch, ["#7"]) == 0
+    assert graphql_variables(api, "pullRequests(headRefName") == []
+    assert "PR #7 feat: a thing" in capsys.readouterr().out
+
+
 # -------------------------------------------------------------------- output discipline
 
 
 def test_a_green_pr_prints_a_header_and_nothing_that_looks_like_a_failure(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[PASSED_CHECK]))
+    wire(FakeGh(checks=[PASSED_CHECK, *REQUIRED_GREEN]))
     assert run_cli(monkeypatch, []) == 0
     out = capsys.readouterr().out
     assert "PR #7 feat: a thing" in out
-    assert "checks: 1 pass / 0 fail / 0 pending / 0 skipped" in out
+    assert "checks: 3 pass / 0 fail / 0 pending / 0 skipped" in out
     assert "FAIL" not in out and "PEND" not in out
     assert "Nothing blocking on GitHub's side" in out
 
@@ -435,19 +699,16 @@ def stacked(wire, monkeypatch: pytest.MonkeyPatch):
     def install(*prs: tuple[int, str]) -> FakeGh:
         fake = FakeGh(checks=[PASSED_CHECK])
         wire(fake, stack=STACK)
-        rollup = json.dumps(stack_rollup(*prs))
-        seen = {"graphql": 0}
+        rollup = stack_rollup(*prs)
+        respond = fake.respond
 
-        def router(
-            args: list[str], timeout_s: int, stdin_text: str | None = None
-        ) -> tuple[int, str, str]:
-            if args[1] == "graphql":
-                seen["graphql"] += 1
-                if seen["graphql"] > 1:  # first is PR state, second is the stack rollup
-                    return 0, rollup, ""
-            return fake.text(args, timeout_s, stdin_text)
+        def router(req: Request) -> Reply:
+            query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+            if req.path == "/graphql" and "mergeStateStatus" in query:
+                return Reply(body=rollup)
+            return respond(req)
 
-        monkeypatch.setattr(ci_remote, "gh", router)
+        monkeypatch.setattr(fake, "respond", router)
         return fake
 
     return install
@@ -639,41 +900,48 @@ def test_a_pending_check_is_not_a_failure(
     assert "1 check still running" in out
 
 
+def answer(monkeypatch: pytest.MonkeyPatch, fake: FakeGh, path_end: str, reply: Reply) -> None:
+    """Answer every request whose path ends in path_end with reply; the rest as before."""
+    respond = fake.respond
+    monkeypatch.setattr(
+        fake, "respond", lambda req: reply if req.path.endswith(path_end) else respond(req)
+    )
+
+
 def test_an_auth_failure_names_the_endpoint_and_exits_one(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[]))
-    monkeypatch.setattr(
-        ci_remote, "gh", lambda *_a, **_k: (4, "", "gh: Bad credentials (HTTP 401)")
-    )
-    with pytest.raises(SystemExit) as exc:
-        run_cli(monkeypatch, [])
-    assert exc.value.code == 1
-    assert "POST /graphql (pull request state) failed" in capsys.readouterr().err
+    answer(monkeypatch, wire(FakeGh(checks=[])), "/graphql", Reply(401, {"message": "nope"}))
+    assert run_cli(monkeypatch, []) == 1
+    assert "/graphql failed after 1 attempt(s) — HTTP 401" in capsys.readouterr().err
 
 
 def test_a_graphql_errors_payload_exits_two_without_a_traceback(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[]))
-    monkeypatch.setattr(
-        ci_remote, "gh", lambda *_a, **_k: (0, json.dumps({"errors": [{"message": "nope"}]}), "")
-    )
-    with pytest.raises(SystemExit) as exc:
-        run_cli(monkeypatch, [])
-    assert exc.value.code == 2
-    assert "GraphQL errors (pull request state)" in capsys.readouterr().err
+    errors = Reply(body={"errors": [{"message": "nope"}]})
+    answer(monkeypatch, wire(FakeGh(checks=[])), "/graphql", errors)
+    assert run_cli(monkeypatch, []) == 2
+    assert "graphql query failed" in capsys.readouterr().err
 
 
 def test_a_missing_job_log_says_so_instead_of_printing_an_empty_section(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[FAILED_CHECK]))
-    monkeypatch.setattr(ci_remote, "gh_bytes", lambda *_a, **_k: (1, b"", "HTTP 404: Not Found"))
+    answer(monkeypatch, wire(FakeGh(checks=[FAILED_CHECK])), "/logs", Reply(404, {}))
     assert run_cli(monkeypatch, []) == 1
     out = capsys.readouterr().out
     assert "no log yet" in out
     assert "logs appear once the run completes" in out
+
+
+def test_an_expired_job_log_is_named_not_a_crash(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: master's head had a red job whose log GitHub answered 410, and ci:remote exited 2."""
+    answer(monkeypatch, wire(FakeGh(checks=[FAILED_CHECK])), "/logs", Reply(410, {}))
+    assert run_cli(monkeypatch, []) == 1
+    assert "log gone: GET" in capsys.readouterr().out
 
 
 def test_an_aggregate_gate_job_gets_its_own_log_not_another_lanes_verdict(
@@ -1119,35 +1387,26 @@ def test_rerun_timeouts_reruns_the_failed_jobs_when_nothing_survived(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = wire_shard_record(wire, [ERROR_MODULE], NO_STATE_LOG)
-    reruns: list[list[str]] = []
-
-    def router(
-        args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        if args[0] == "run":
-            reruns.append(args)
-            return 0, "", ""
-        return fake.text(args, timeout_s, stdin_text)
-
-    monkeypatch.setattr(ci_remote, "gh", router)
     assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 0
-    assert reruns == [["run", "rerun", "99", "--failed"]]
+    posts = [c for c in fake.calls if c.endswith("/rerun-failed-jobs")]
+    assert posts == ["/repos/o/r/actions/runs/99/rerun-failed-jobs"]
     assert "re-ran the failed jobs of run 99" in capsys.readouterr().out
+
+
+def test_a_refused_rerun_exits_one_and_names_the_endpoint(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire_shard_record(wire, [ERROR_MODULE], NO_STATE_LOG)
+    answer(monkeypatch, fake, "/rerun-failed-jobs", Reply(403, {"message": "forbidden"}))
+    assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 1
+    assert "rerun-failed-jobs failed after 1 attempt(s) — HTTP 403" in capsys.readouterr().err
 
 
 def test_rerun_timeouts_refuses_when_a_mutant_actually_survived(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A re-run cannot turn a surviving mutant green; it only spends the box."""
-    fake = wire_shard_record(wire, [SURVIVOR_MODULE], SURVIVOR_LOG)
-
-    def router(
-        args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        assert args[0] != "run", "rerun issued for a surviving mutant"
-        return fake.text(args, timeout_s, stdin_text)
-
-    monkeypatch.setattr(ci_remote, "gh", router)
+    wire_shard_record(wire, [SURVIVOR_MODULE], SURVIVOR_LOG)
     assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 1
     out = capsys.readouterr().out
     assert "refusing" in out
@@ -1158,15 +1417,7 @@ def test_rerun_timeouts_refuses_when_one_module_died_and_another_had_a_survivor(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A shard can produce no state for one module and still prove a test gap in another."""
-    fake = wire_shard_record(wire, [ERROR_MODULE, SURVIVOR_MODULE], NO_STATE_LOG)
-
-    def router(
-        args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        assert args[0] != "run", "rerun issued for a shard that also had a survivor"
-        return fake.text(args, timeout_s, stdin_text)
-
-    monkeypatch.setattr(ci_remote, "gh", router)
+    wire_shard_record(wire, [ERROR_MODULE, SURVIVOR_MODULE], NO_STATE_LOG)
     assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 1
     assert "refusing" in capsys.readouterr().out
 
@@ -1239,21 +1490,19 @@ def rich_stack(wire, monkeypatch: pytest.MonkeyPatch):
     def install(*prs: tuple[int, str, str]) -> FakeGh:
         fake = FakeGh(checks=[PASSED_CHECK])
         wire(fake, stack=STACK)
-        payload = json.dumps(
-            {"data": {"repository": {f"p{n}": rich_pr(n, b, h) for n, b, h in prs}}}
-        )
+        payload = {"data": {"repository": {f"p{n}": rich_pr(n, b, h) for n, b, h in prs}}}
+        respond = fake.respond
 
-        def router(
-            args: list[str], timeout_s: int, stdin_text: str | None = None
-        ) -> tuple[int, str, str]:
+        def router(req: Request) -> Reply:
             # The stack query is the one asking for mergeStateStatus; the PR-state
             # query never does. Counting calls would mis-route --stack, which
             # makes no PR-state call at all.
-            if args[1] == "graphql" and "mergeStateStatus" in (stdin_text or ""):
-                return 0, payload, ""
-            return fake.text(args, timeout_s, stdin_text)
+            query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+            if req.path == "/graphql" and "mergeStateStatus" in query:
+                return Reply(body=payload)
+            return respond(req)
 
-        monkeypatch.setattr(ci_remote, "gh", router)
+        monkeypatch.setattr(fake, "respond", router)
         return fake
 
     return install
@@ -1429,15 +1678,7 @@ def test_no_state_without_a_single_timeout_is_not_safe_to_rerun(
 def test_rerun_timeouts_refuses_a_shard_that_never_hit_the_timeout(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake = wire_shard_record(wire, [ERROR_MODULE], NO_TIMEOUT_LOG)
-
-    def router(
-        args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        assert args[0] != "run", "rerun issued for a shard whose suite simply failed"
-        return fake.text(args, timeout_s, stdin_text)
-
-    monkeypatch.setattr(ci_remote, "gh", router)
+    wire_shard_record(wire, [ERROR_MODULE], NO_TIMEOUT_LOG)
     assert run_cli(monkeypatch, ["--rerun-timeouts"]) == 1
     assert "refusing" in capsys.readouterr().out
 
@@ -1485,18 +1726,25 @@ def test_only_the_newest_upload_of_a_shard_name_is_read(
 class SequencedGh(FakeGh):
     """Serves the next check set on each check-runs poll, repeating the last one."""
 
-    def __init__(self, polls: list[list[dict[str, Any]]], **kwargs: Any) -> None:
+    def __init__(
+        self,
+        polls: list[list[dict[str, Any]]],
+        run_polls: list[list[dict[str, Any]]] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(checks=polls[0], **kwargs)
         self.polls = polls
+        # The head's Actions runs as each poll sees them, in step with polls; None keeps the default.
+        self.run_polls = run_polls
         self.check_polls = 0
 
-    def text(
-        self, args: list[str], timeout_s: int, stdin_text: str | None = None
-    ) -> tuple[int, str, str]:
-        if "/check-runs" in (args[1] if len(args) > 1 else ""):
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/check-runs"):
             self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
             self.check_polls += 1
-        return super().text(args, timeout_s, stdin_text)
+        if self.run_polls and req.path.endswith("/actions/runs"):
+            self.workflow_runs = self.run_polls[min(self.check_polls, len(self.run_polls) - 1)]
+        return super().respond(req)
 
 
 PENDING_CHECK: dict[str, Any] = dict(
@@ -1504,9 +1752,22 @@ PENDING_CHECK: dict[str, Any] = dict(
 )
 
 
+class FakeClock:
+    """ci_remote's clock: a sleep advances it, so a watch that never settles ends at --max-wait."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
 @pytest.fixture
 def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ci_remote.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(ci_remote, "time", FakeClock())
 
 
 def test_fail_fast_stops_at_the_first_red_check_and_prints_its_failure(
@@ -1530,7 +1791,13 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = wire(
-        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+        SequencedGh(
+            [
+                [PENDING_CHECK],
+                [FAILED_CHECK, PENDING_CHECK],
+                [FAILED_CHECK, PASSED_CHECK, *REQUIRED_GREEN],
+            ]
+        )
     )
     assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
     assert fake.check_polls == 3
@@ -1540,7 +1807,7 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
 def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]]))
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 3
 
@@ -1549,9 +1816,53 @@ def test_a_watch_started_before_the_run_registers_any_check_keeps_waiting(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Regression: right after a push the head had no checks yet, and the watch exited green on it."""
-    fake = wire(SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]]))
+    live = ci_run(99, "in_progress")
+    fake = wire(
+        SequencedGh(
+            [[], [], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]],
+            run_polls=[[], [], [live], [CI_RUN]],
+        )
+    )
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 4
+
+
+def test_a_watch_does_not_settle_until_every_required_check_has_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: 12 georgetown watches exited green on poll 1 with `0 pass / 0 fail / 0 pending / 1 skipped`."""
+    skipped = dict(PASSED_CHECK, name="changelog-sync", conclusion="skipped")
+    fake = wire(SequencedGh([[skipped], [skipped, PENDING_CHECK], [skipped, *REQUIRED_GREEN]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+    assert "gate: quality-gate passed" in capsys.readouterr().out
+
+
+def test_a_head_whose_lanes_finished_before_the_gate_exists_is_not_nothing_blocking(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    out = capsys.readouterr().out
+    assert "Nothing blocking" not in out
+    assert "Required Validate PR Title, quality-gate not reported yet: `mise ci:watch" in out
+
+
+def test_compact_json_names_the_required_checks_not_reported_yet(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    report = json.loads(capsys.readouterr().out)
+    assert report["unreported_required"] == ["Validate PR Title", "quality-gate"]
+
+
+def test_a_watch_out_of_time_names_the_required_check_that_never_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(SequencedGh([[PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+    assert "(Validate PR Title, quality-gate never reported)" in capsys.readouterr().out
 
 
 def test_a_watch_that_runs_out_of_time_is_not_green(
@@ -1559,6 +1870,267 @@ def test_a_watch_that_runs_out_of_time_is_not_green(
 ) -> None:
     wire(SequencedGh([[PENDING_CHECK]]))
     assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+
+
+def test_fail_fast_does_not_stop_at_a_red_check_that_does_not_block_merge(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a red react-doctor or SonarCloud ended ci:watch ~40s in, long before quality-gate."""
+    fake = wire(
+        SequencedGh(
+            [
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK, *REQUIRED_GREEN],
+            ]
+        )
+    )
+    run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"])
+    out = capsys.readouterr().out
+    assert fake.check_polls == 3, "stopped on a check merge does not wait for"
+    assert "stopping at the first failure" not in out
+    assert "FAIL  react-doctor  [not required for merge]" in out
+
+
+def test_a_red_lane_of_the_gates_workflow_trips_fail_fast_before_the_gate_job_exists(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[REACT_DOCTOR_RED, PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_a_stacked_pr_is_gated_by_the_checks_its_trunk_requires(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    red_title = dict(
+        REACT_DOCTOR_RED,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5501",
+    )
+    fake = wire(
+        SequencedGh(
+            [[REACT_DOCTOR_RED, PENDING_CHECK], [red_title, PENDING_CHECK]],
+            pr_meta=dict(PR_META, baseRefName="feat/parent"),
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_compact_json_says_which_red_checks_do_not_block_merge(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[FAILED_CHECK, REACT_DOCTOR_RED, SONAR_RED]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    failed = {c["name"]: c["blocks_merge"] for c in json.loads(capsys.readouterr().out)["failed"]}
+    assert failed == {
+        "mutation (shard 3/6 (19 modules))": True,
+        "react-doctor": False,
+        "SonarCloud Code Analysis": False,
+    }
+
+
+def test_a_fail_fast_stop_never_advises_the_watch_that_would_stop_on_the_same_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1463 stopped on lint-python and advised `mise ci:watch 1463` for its 8 pending lanes."""
+    wire(SequencedGh([[FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert "`mise ci:watch" not in out
+    assert "1 check still running behind the failure: `mise ci:remote --watch feat/thing`" in out
+
+
+def test_a_green_pr_with_running_checks_still_advises_ci_watch(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK, PENDING_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    assert "1 check still running: `mise ci:watch feat/thing`" in capsys.readouterr().out
+
+
+def test_the_watch_line_counts_the_red_check_that_stopped_it(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1735 printed `0 failed, 3 pending` and then stopped at the first failure."""
+    wire(
+        SequencedGh(
+            [[RUNNING_LINT, PENDING_CHECK]],
+            artifacts=[{"id": 70, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("watch[1]"))
+    assert ": 1 failed (1 still running), 1 pending " in line
+
+
+def ci_run(run_id: int, status: str, conclusion: str | None = None) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "workflow_id": 394732533,
+        "name": "CI",
+        "path": ".github/workflows/ci.yml",
+        "status": status,
+        "conclusion": conclusion,
+        "html_url": f"https://github.com/o/r/actions/runs/{run_id}",
+    }
+
+
+def job_in(check: dict[str, Any], run_id: int) -> dict[str, Any]:
+    return dict(check, html_url=f"https://github.com/o/r/actions/runs/{run_id}/job/{run_id + 1}")
+
+
+SUPERSEDED_GATE = job_in(dict(FAILED_CHECK, name="quality-gate"), 98)
+
+
+def test_a_superseded_runs_failed_gate_does_not_stop_the_watch(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a stacked push started two CI runs on one head, and the cancelled one's gate read as red."""
+    cancelled = ci_run(98, "completed", "cancelled")
+    fake = SequencedGh(
+        [
+            [SUPERSEDED_GATE, job_in(PENDING_CHECK, 99)],
+            [SUPERSEDED_GATE, job_in(PASSED_CHECK, 99), *REQUIRED_GREEN],
+        ],
+        run_polls=[
+            [cancelled, ci_run(99, "in_progress")],
+            [cancelled, ci_run(99, "completed", "success")],
+        ],
+        job_log="",
+    )
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2
+    assert "FAIL" not in capsys.readouterr().out
+
+
+def test_the_newest_run_with_no_job_listed_yet_is_pending(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    title = job_in(dict(PASSED_CHECK, name="Validate PR Title"), 97)
+    cancelled = ci_run(98, "completed", "cancelled")
+    fake = SequencedGh(
+        [
+            [SUPERSEDED_GATE, title],
+            [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99), *REQUIRED_GREEN],
+        ],
+        run_polls=[
+            [cancelled, ci_run(99, "queued")],
+            [cancelled, ci_run(99, "completed", "success")],
+        ],
+    )
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2, "settled green before the live run listed a job"
+
+
+def test_a_live_run_with_one_job_passed_is_still_pending(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A job waiting on needs (the gate) has no check yet, so a live run's one passed job is not green."""
+    gate = dict(
+        PASSED_CHECK, name="quality-gate", html_url="https://github.com/o/r/actions/runs/99/job/101"
+    )
+    fake = SequencedGh(
+        [[job_in(PASSED_CHECK, 99)], [job_in(PASSED_CHECK, 99), gate, REQUIRED_GREEN[1]]],
+        run_polls=[[ci_run(99, "in_progress")], [ci_run(99, "completed", "success")]],
+    )
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 2, "settled green while the run was still in progress"
+
+
+def test_a_newest_run_that_never_started_a_job_still_reports_its_failure(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[SUPERSEDED_GATE], job_log="")
+    fake.workflow_runs = [
+        ci_run(98, "completed", "cancelled"),
+        ci_run(99, "completed", "startup_failure"),
+    ]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  CI  [error]" in capsys.readouterr().out
+
+
+class RunEndsMidSnapshot(FakeGh):
+    """The run's gate fails and the run completes the moment the first of the two reads returns."""
+
+    def respond(self, req: Request) -> Reply:
+        out = super().respond(req)
+        if req.path.endswith(("/check-runs", "/actions/runs")):
+            self.checks = [
+                job_in(PASSED_CHECK, 99),
+                dict(
+                    FAILED_CHECK,
+                    name="quality-gate",
+                    html_url="https://github.com/o/r/actions/runs/99/job/101",
+                ),
+            ]
+            self.workflow_runs = [ci_run(99, "completed", "failure")]
+        return out
+
+
+def test_a_run_that_fails_between_the_two_reads_is_never_green(
+    wire, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = RunEndsMidSnapshot(checks=[job_in(PASSED_CHECK, 99)], job_log="")
+    fake.workflow_runs = [ci_run(99, "in_progress")]
+    wire(fake)
+
+    assert run_cli(monkeypatch, ["--no-stack"]) != 0
+
+
+def test_the_stack_rollup_skips_a_superseded_runs_checks() -> None:
+    def node(run_id: int, conclusion: str) -> dict[str, Any]:
+        return {
+            "__typename": "CheckRun",
+            "name": "quality-gate",
+            "status": "COMPLETED",
+            "conclusion": conclusion,
+            "checkSuite": {
+                "workflowRun": {"databaseId": run_id, "workflow": {"databaseId": 394732533}}
+            },
+        }
+
+    status = {
+        "__typename": "StatusContext",
+        "context": "ci / node / biome",
+        "state": "FAILURE",
+        "targetUrl": "https://github.com/o/r/actions/runs/98/job/5",
+    }
+    rollup = {"contexts": {"nodes": [node(98, "FAILURE"), status, node(99, "SUCCESS")]}}
+    pr_state = {"commits": {"nodes": [{"commit": {"statusCheckRollup": rollup}}]}}
+
+    assert ci_remote.rollup_contexts(pr_state) == [("quality-gate", "passed")]
+
+
+def test_a_cancelled_run_with_no_replacement_still_shows_its_failures(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[SUPERSEDED_GATE], job_log=""))
+    fake.workflow_runs = [ci_run(98, "completed", "cancelled")]
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  quality-gate" in capsys.readouterr().out
+
+
+def test_a_cancelled_run_newer_than_its_passed_twin_is_the_one_reported(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    passed_gate = job_in(dict(PASSED_CHECK, name="quality-gate"), 97)
+    fake = wire(FakeGh(checks=[passed_gate, SUPERSEDED_GATE], job_log=""))
+    fake.workflow_runs = [ci_run(97, "completed", "success"), ci_run(98, "completed", "cancelled")]
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  quality-gate" in capsys.readouterr().out
 
 
 def test_fail_fast_without_watch_is_a_usage_error(
@@ -1621,6 +2193,86 @@ def test_a_running_jobs_failing_verdict_is_printed_in_full_and_reds_the_exit(
     assert ":0" not in out
 
 
+def test_a_rerun_job_ignores_the_failing_verdict_of_its_previous_attempt(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: after `gh run rerun --failed` the watch exited red on attempt 1's verdict."""
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    out = capsys.readouterr().out
+    assert "[still running" not in out
+    assert "verdict with no matching check run" not in out
+    assert "PEND  lint-python" in out
+
+
+def test_a_verdict_uploaded_by_the_current_attempt_still_reds_a_running_job(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:33:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 1
+    assert "FAIL  lint-python  [still running" in capsys.readouterr().out
+
+
+def test_a_rerun_shard_ignores_its_stale_rollup_when_a_passed_sibling_shares_the_lane(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: shard 2's lane prefix kept shard 3's attempt-1 rollup alive after a rerun."""
+    rerun = dict(
+        SHARD_3_CHECK, status="in_progress", conclusion=None, started_at="2026-11-12T16:31:09Z"
+    )
+    sibling = dict(
+        SHARD_3_CHECK,
+        name="mutation (shard 2/6 (20 modules))",
+        conclusion="success",
+        html_url="https://github.com/o/r/actions/runs/99/job/1233",
+        started_at="2026-11-12T16:00:00Z",
+    )
+    wire(
+        FakeGh(
+            checks=[rerun, sibling],
+            artifacts=[
+                {
+                    "id": 77,
+                    "name": "verdict-test-mutation-2",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={77: verdict_zip(SHARD_2_ROLLUP)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    assert "[still running" not in capsys.readouterr().out
+
+
 def test_a_running_job_with_no_failing_verdict_is_only_pending(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1646,7 +2298,121 @@ def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
             zip_blobs={72: verdict_zip(EARLY_VERDICT)},
         )
     )
-    repo = ci_remote.Repo("o", "r", 10)
+    repo = ci_remote.Repo("o", "r", 10, ci_remote.GitHub.from_env())
     for _ in range(3):
-        ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+        ci_remote.snapshot_once(repo, ci_remote.Target("feat/thing", 7), with_stack=False)
     assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1
+
+
+# ------------------------------------------------------------------ transient GitHub errors
+# `mise ci:watch` died on one `GET .../artifacts/13965539937/zip -> HTTP 503` (2026-11-12).
+
+
+class FlakyZip(SequencedGh):
+    """The artifact download answers with status for every request made while poll N is running."""
+
+    def __init__(self, *args: Any, status: int, during_poll: int, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.status = status
+        self.during_poll = during_poll
+
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/zip") and self.check_polls == self.during_poll:
+            self.calls.append(req.path)
+            return Reply(self.status, {"message": "unavailable"})
+        return super().respond(req)
+
+
+def flaky_zip(status: int, during_poll: int = 1) -> FlakyZip:
+    return FlakyZip(
+        [[RUNNING_LINT], [PASSED_CHECK, *REQUIRED_GREEN]],
+        status=status,
+        during_poll=during_poll,
+        artifacts=[{"id": 72, "name": "verdict-lint-python", "expired": False}],
+        zip_blobs={72: verdict_zip(dict(EARLY_VERDICT, status="pass", findings=[]))},
+    )
+
+
+def test_an_outage_that_outlasts_the_retries_skips_one_poll_not_the_watch(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(flaky_zip(503))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 0
+    assert fake.check_polls == 2
+    assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 3, "retried, then skipped"
+    assert "watch[1]" in capsys.readouterr().err
+
+
+def test_a_5xx_is_retried_inside_the_read(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(
+        checks=[FAILED_CHECK],
+        artifacts=[{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}],
+        zip_blobs={None: verdict_zip(VERDICT)},
+    )
+    outages = [Reply(502, {}), Reply(429, {}, headers={"Retry-After": "0"})]
+    respond = fake.respond
+    monkeypatch.setattr(
+        fake,
+        "respond",
+        lambda req: outages.pop(0) if req.path.endswith("/zip") and outages else respond(req),
+    )
+    wire(fake)
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "app/api/v1/endpoints/bot.py:212" in capsys.readouterr().out
+
+
+def test_a_permanent_error_still_ends_the_watch(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Not a 404: a verdict zip that 404s was replaced mid-read, and is listed again.
+    fake = wire(flaky_zip(422))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 2
+    assert fake.check_polls == 1
+    assert "/actions/artifacts/72/zip failed after 1 attempt(s) — HTTP 422" in (
+        capsys.readouterr().err
+    )
+
+
+# ------------------------------------------------------------- failures under --json
+# `mise ci:status 1784` once printed nothing: the failure went to a discarded stderr.
+
+
+class RejectsCheckRuns(FakeGh):
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/check-runs"):
+            self.calls.append(req.path)
+            return Reply(422, {"message": "Validation Failed"})
+        return super().respond(req)
+
+
+def test_a_failed_read_under_json_still_prints_its_reason_on_stdout(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(RejectsCheckRuns(checks=[]))
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 2
+    failure = json.loads(capsys.readouterr().out)
+    assert "check-runs" in failure["error"]
+    assert "HTTP 422" in failure["error"]
+    assert failure["exit_code"] == 2
+
+
+def test_a_terminated_read_under_json_says_so_on_stdout(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An outer `timeout` sends SIGTERM; the reader still learns why the report is missing."""
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def terminated(*_args: Any, **_kwargs: Any) -> tuple[dict, int]:
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("SIGTERM did not interrupt the read")
+
+    monkeypatch.setattr(ci_remote, "snapshot_once", terminated)
+    try:
+        code = run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert code == 143
+    assert "SIGTERM" in json.loads(capsys.readouterr().out)["error"]
