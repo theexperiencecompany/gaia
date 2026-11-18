@@ -35,9 +35,12 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
-from app.services.chat.stream import run_chat_stream_background
+from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
+from app.services.chat.turn_prep import start_turn_prep
 from app.services.conversation_service import require_owned_conversation
 from app.services.latency_metrics import observe_sse_delivery
+from app.services.turn_clock import TurnClock
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -128,6 +131,7 @@ async def _stream_from_redis(
                     )
                     break
                 yield chunk
+                note_reply_delivered(stream_id, chunk)
         except GeneratorExit:
             delivery_status = "abandoned"
             raise
@@ -173,7 +177,8 @@ async def chat_stream_endpoint(
     # Cost wall: the decorator above caps how MANY messages; this caps how
     # EXPENSIVE they were. 429s before any stream work when the day's LLM
     # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
-    await enforce_cost_budget(user_id, feature_key="chat_messages")
+    with turn_step(TurnStep.CHARGE):
+        await enforce_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = user.with_timezone(home_timezone)
@@ -186,7 +191,8 @@ async def chat_stream_endpoint(
     )
 
     if body.conversation_id is not None:
-        await require_owned_conversation(body.conversation_id, user_id)
+        with turn_step(TurnStep.OWNERSHIP):
+            await require_owned_conversation(body.conversation_id, user_id)
 
     # Idempotency: the client stamps each SEND with a turn_id that survives its
     # retries. First claim wins atomically; a duplicate POST gets a 409 instead
@@ -204,14 +210,18 @@ async def chat_stream_endpoint(
                 detail=_DUPLICATE_TURN,
             )
 
-    await stream_manager.start_stream(
-        stream_id=stream_id,
-        conversation_id=conversation_id,
-        user_id=user_id,
-    )
+    # Only once every refusal above has passed (prep spends provider calls), and
+    # before stream start so its background work overlaps the rest of the turn.
+    start_turn_prep(body.message)
+    with turn_step(TurnStep.START_STREAM):
+        await stream_manager.start_stream(
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
     # Request-accepted clock for TTFT/E2E; past the rate limit and cost
     # budget so it counts turns actually accepted.
-    t0_perf = time.perf_counter()
+    clock = TurnClock.accepted(request)
     # The ONE event for a chat message: fires for every surface, no ad blocker
     # can drop it, and lands only once rate limit + cost budget pass. A
     # duplicate client-side `chat:message_sent` emitter has been removed.
@@ -242,7 +252,7 @@ async def chat_stream_endpoint(
             user=user,
             conversation_id=conversation_id,
             source=request_client_source(request).value,
-            t0_perf=t0_perf,
+            clock=clock,
         )
     )
 

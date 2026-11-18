@@ -196,6 +196,9 @@ importers:
         specifier: workspace:*
         version: link:../../libs/shared/ts
     devDependencies:
+      '@grammyjs/runner':
+        specifier: ^2.0.3
+        version: 2.0.3(grammy@1.44.0(encoding@0.1.14))
       '@grammyjs/types':
         specifier: ^3.28.0
         version: 3.28.0
@@ -205,6 +208,9 @@ importers:
       discord.js:
         specifier: ^14.26.5
         version: 14.26.5
+      grammy:
+        specifier: ^1.44.0
+        version: 1.44.0(encoding@0.1.14)
       hono:
         specifier: ^4.13.14
         version: 4.13.14
@@ -329,6 +335,9 @@ importers:
       '@gaia/shared':
         specifier: workspace:*
         version: link:../../../libs/shared/ts
+      '@grammyjs/runner':
+        specifier: ^2.0.3
+        version: 2.0.3(grammy@1.44.0(encoding@0.1.14))
       '@grammyjs/types':
         specifier: ^3.28.0
         version: 3.28.0
@@ -3543,6 +3552,12 @@ packages:
     peerDependencies:
       react: 19.2.3
       react-native: '*'
+
+  '@grammyjs/runner@2.0.3':
+    resolution: {integrity: sha512-nckmTs1dPWfVQteK9cxqxzE+0m1VRvluLWB8UgFzsjg62w3qthPJt0TYtJBEdG7OedvfQq4vnFAyE6iaMkR42A==}
+    engines: {node: '>=12.20.0 || >=14.13.1'}
+    peerDependencies:
+      grammy: ^1.13.1
 
   '@grammyjs/types@3.28.0':
     resolution: {integrity: sha512-4JvXCdxRZHCje0M4gHzLwtB4bLno3WD28xd8CNfk4POWIu73BFnSvGeW6OQ5gPem4eYTEwkD9yDaXssixl6tMQ==}
@@ -19180,6 +19195,11 @@ snapshots:
       nanoid: 3.3.18
       react: 19.2.3
       react-native: 0.86.3(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
+
+  '@grammyjs/runner@2.0.3(grammy@1.44.0(encoding@0.1.14))':
+    dependencies:
+      abort-controller: 3.0.0
+      grammy: 1.44.0(encoding@0.1.14)
 
   '@grammyjs/types@3.28.0': {}
 

@@ -19,7 +19,7 @@ from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALI
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.platform_links import Platform
-from app.core.stream_manager import stream_manager, with_heartbeat
+from app.core.stream_manager import sse_payload, stream_manager, with_heartbeat
 from app.db.redis import redis_cache
 from app.decorators import (
     SubscriptionRequiredException,
@@ -61,6 +61,7 @@ from app.services.bot.stream_frames import (
     keepalive_frame,
     message_boundary_frame,
     notice_frame,
+    reply_complete_frame,
     session_token_frame,
     stream_error_frame,
     text_frame,
@@ -71,7 +72,8 @@ from app.services.bot_service import (
     charge_bot_turn,
 )
 from app.services.bot_token_service import create_bot_session_token
-from app.services.chat.stream import run_chat_stream_background
+from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
+from app.services.chat.turn_prep import start_turn_prep
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.latency_metrics import observe_sse_delivery
@@ -80,6 +82,8 @@ from app.services.platform_link_service import (
     PlatformLinkService,
     platform_requires_upgrade,
 )
+from app.services.turn_clock import TurnClock
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -370,11 +374,7 @@ def _bot_stream_control_frame(
     if chunk.startswith(":"):
         return chunk, None, False
 
-    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...") for
-    # Last-Event-ID resume — split the id line off before the data checks, or
-    # every content frame is silently dropped.
-    if chunk.startswith("id: "):
-        _, _, chunk = chunk.partition("\n")
+    chunk = sse_payload(chunk)
 
     if not chunk.startswith("data: "):
         return None, None, False
@@ -458,6 +458,9 @@ def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
             emoji=data.emoji_ack.emoji,
             reacts_to_message_id=data.emoji_ack.reacts_to_message_id,
         ), False
+
+    if data.main_response_complete:
+        return reply_complete_frame(), False
 
     # Skip web-only fields.
     if present & _WEB_ONLY_STREAM_FIELDS:
@@ -543,6 +546,7 @@ async def _forward_bot_frames(
         payload_frame, stop = await _bot_stream_payload_frame(data, upgrade_url)
         if payload_frame is not None:
             yield payload_frame
+            note_reply_delivered(stream_id, chunk)
         if stop:
             return
 
@@ -625,9 +629,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     """Stream a bot chat reply as SSE, resolving the linked user and replaying history."""
     await require_bot_api_key(request)
     log.set(operation="bot_chat_stream", platform=body.platform)
-    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RATE_LIMIT):
+        await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
 
-    user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RESOLVE_USER):
+        user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
 
     if user is None:
         log.set(
@@ -641,17 +647,25 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = user.user_id
     log.set(user={"id": user_id}, outcome="success")
 
-    if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
+    with turn_step(TurnStep.PAYWALL):
+        refusal = await _bot_stream_entitlement_gate(user_id, body.platform)
+    if refusal is not None:
         return refusal
 
     stream_id = str(uuid4())
-    await charge_bot_turn(user_id, body, stream_id)
+    with turn_step(TurnStep.CHARGE):
+        await charge_bot_turn(user_id, body, stream_id)
+    # Only once admitted (linked, paid, within quota and budget): prep spends
+    # provider calls. Before the lookups below, so its work overlaps them.
+    start_turn_prep(body.message)
 
-    conversation_id = await BotService.get_or_create_session(
-        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
-    )
+    with turn_step(TurnStep.SESSION):
+        conversation_id = await BotService.get_or_create_session(
+            body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
+        )
 
-    message_request = await build_bot_message_request(body, conversation_id, user_id)
+    with turn_step(TurnStep.HISTORY):
+        message_request = await build_bot_message_request(body, conversation_id, user_id)
 
     # Generate session token upfront so it can be sent in the stream
     session_token = create_bot_session_token(
@@ -661,10 +675,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         expires_minutes=15,
     )
 
-    await stream_manager.start_stream(stream_id, conversation_id, user_id)
+    with turn_step(TurnStep.START_STREAM):
+        await stream_manager.start_stream(stream_id, conversation_id, user_id)
     # Same request-accepted clock as the web endpoint, so bot turns share
     # the web turns' TTFT/E2E definition.
-    t0_perf = time.perf_counter()
+    clock = TurnClock.accepted(request)
 
     # Launch background task
     spawn_background_task(
@@ -674,7 +689,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             user=user,
             conversation_id=conversation_id,
             source=body.platform,
-            t0_perf=t0_perf,
+            clock=clock,
         ),
         on_done=_bot_stream_failure_logger(stream_id, conversation_id),
     )

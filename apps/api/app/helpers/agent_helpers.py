@@ -27,6 +27,7 @@ from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lan
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
@@ -479,6 +480,10 @@ class AgentTurn:
     """Where the user is, as captured by the interactive turn that started this tree.
     Inherited from the parent when omitted; a root run without one reads it."""
 
+    stream_id: str | None = None
+    """The stream a root run publishes to (cancellation, executor capture, the turn
+    clock). Read only at a root; a child always takes its parent's."""
+
 
 @dataclass(frozen=True)
 class AgentTracing:
@@ -618,6 +623,7 @@ async def build_agent_config(
         writing_style=writing_style,
         execution_mode=execution_mode,
         presence=presence,
+        stream_id=turn.stream_id,
     )
     resolved = _inherit_from_parent_configurable(parent, current)
 
@@ -731,6 +737,8 @@ async def build_agent_config(
             llm_label=identity.agent_name,
         ),
     }
+    if resolved.stream_id:
+        metadata["stream_id"] = resolved.stream_id
     _stamp_langfuse(
         configurable,
         metadata,
@@ -872,7 +880,7 @@ async def execute_graph_silent(
     Returns (complete_message, tool_data).
     """
     acc = _SilentAccumulators()
-    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
+    is_comms = _RunConfigView.model_validate(config).agent_name == COMMS_AGENT_NAME
 
     # Get user_id for metadata lookup (not for storage - caller handles that)
     user_id = read_agent_configurable(config).user_id
@@ -1352,7 +1360,7 @@ async def execute_graph_streaming(
     scope = read_agent_configurable(config)
     stream_id = scope.stream_id
     user_id = scope.user_id
-    is_comms = _RunConfigView.model_validate(config).agent_name == "comms_agent"
+    is_comms = _RunConfigView.model_validate(config).agent_name == COMMS_AGENT_NAME
 
     # ``state.held`` holds streamed text per message until known to be
     # a real reply, not a handoff preamble (text deltas precede tool-call deltas

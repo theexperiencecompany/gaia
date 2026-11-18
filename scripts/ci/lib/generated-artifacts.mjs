@@ -12,7 +12,6 @@ import { join, resolve } from "node:path";
 export const OPENAPI_JSON = "apps/api/openapi.json";
 const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
 const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
-const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
 const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
 const LINK_CONSTANTS = [
   "apps/usercontent-worker/src/link-constants.generated.json",
@@ -76,14 +75,16 @@ function regenerateApiSchema() {
   // tools/api-codegen is outside the workspace: it needs the JS compiler API
   // (ts.createPrinter), which the native 7.x package does not ship.
   const codegenDir = resolve("tools/api-codegen");
-  const codegenBin =
-    process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
-  if (!existsSync(codegenBin)) {
-    // Never pass on the committed schema when regeneration was skipped.
-    console.error(
-      `❌ ${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
+  const override = process.env.GAIA_OPENAPI_TS;
+  const codegenBin = override || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
+  if (!override && !existsSync(codegenBin)) {
+    // A root `pnpm install` never reaches it, so a fresh checkout installs it here.
+    console.log(`Installing the API codegen toolchain into ${codegenDir}`);
+    execFileSync(
+      "pnpm",
+      ["--dir", codegenDir, "install", "--frozen-lockfile", "--ignore-workspace", "--prefer-offline"],
+      opts,
     );
-    process.exit(1);
   }
   execFileSync(
     codegenBin,
@@ -128,11 +129,6 @@ export function cmdAnalyticsCatalog(argv) {
       "shared.py.analytics.codegen",
     ],
     { ...opts, env: QUIET_ENV },
-  );
-  execFileSync(
-    "pnpm",
-    ["exec", "biome", "format", "--write", ANALYTICS_CATALOG_JSON],
-    opts,
   );
   failOnDrift(argv, [ANALYTICS_GENERATED_DIR], {
     drift: "Analytics catalog drifted — run `mise analytics:types` and commit",

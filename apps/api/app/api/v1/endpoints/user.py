@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from urllib.parse import urlencode
 
@@ -19,7 +20,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.config.settings import settings
-from app.config.workos import get_workos_client
+from app.config.workos import get_workos_client, with_shared_signing_keys
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
@@ -410,9 +411,11 @@ async def logout(
     try:
         log.set(operation="logout")
 
-        session = get_workos_client().user_management.load_sealed_session(
-            sealed_session=wos_session,
-            cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+        session = with_shared_signing_keys(
+            get_workos_client().user_management.load_sealed_session(
+                sealed_session=wos_session,
+                cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+            )
         )
 
         if not session:
@@ -427,12 +430,14 @@ async def logout(
         if user_email and user_id:  # pragma: no mutate
             capture(UserId(user_id), UserLoggedOut())
 
+        # Verifies the session's JWT synchronously (a key fetch on a cache miss): off the loop.
         logout_url = (
-            session.get_logout_url(
-                return_to=f"{settings.FRONTEND_URL}/login?{urlencode({'return_url': return_url})}"
+            await asyncio.to_thread(
+                session.get_logout_url,
+                return_to=f"{settings.FRONTEND_URL}/login?{urlencode({'return_url': return_url})}",
             )
             if return_url
-            else session.get_logout_url()
+            else await asyncio.to_thread(session.get_logout_url)
         )
 
         log.audit("logged out", actor=user_id)

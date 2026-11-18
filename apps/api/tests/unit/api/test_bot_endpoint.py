@@ -18,6 +18,10 @@ from httpx import AsyncClient
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.core.background.executor_capture import (
+    register_executor_capture,
+    teardown_executor_capture,
+)
 from app.api.v1.endpoints import bot as bot_module
 from app.api.v1.endpoints.bot import (
     _bot_rate_limit_notice,
@@ -40,6 +44,8 @@ from app.models.payment_models import (
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.audio_transcription_service import AudioTooLargeError
+from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused, ChatMessageSubmitted
@@ -1124,6 +1130,119 @@ class TestBotChatStream:
         assert message_request.conversation_id == "conv-77"
         spawn_call = mock_spawn.call_args
         assert spawn_call.kwargs["on_done"].__name__ == "_log_stream_failure"
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token", new=MagicMock())
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch(
+        "app.services.bot_service.BotService.load_conversation_history",
+        new=AsyncMock(return_value=[]),
+    )
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.charge_bot_turn")
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
+    async def test_an_admitted_message_starts_prep_after_charging_and_before_the_session(
+        self,
+        mock_prep: MagicMock,
+        mock_charge: AsyncMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """Prep spends provider calls, so it waits for admission; it then overlaps the remaining lookups."""
+        order: list[str] = []
+
+        async def session(*_args: object, **_kwargs: object) -> str:
+            order.append("session")
+            return "conv-1"
+
+        async def charge(*_args: object, **_kwargs: object) -> None:
+            order.append("charge")
+
+        mock_charge.side_effect = charge
+        mock_prep.side_effect = lambda _text: order.append("prep")
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(side_effect=session)
+        mock_sm.start_stream = AsyncMock()
+        mock_get_user.return_value = UserDocument(id=USER_ID)
+        body = BotChatRequest.model_validate(
+            {"message": "who am I dating", "platform": "telegram", "platform_user_id": "tg_1"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+        timings = begin_turn_timings()
+
+        await bot_chat_stream(request, body)
+
+        mock_prep.assert_called_once_with("who am I dating")
+        assert order == ["charge", "prep", "session"]
+        assert list(timings.steps) == [
+            (TurnPhase.INGRESS, step)
+            for step in (
+                TurnStep.RATE_LIMIT,
+                TurnStep.RESOLVE_USER,
+                TurnStep.PAYWALL,
+                TurnStep.CHARGE,
+                TurnStep.SESSION,
+                TurnStep.HISTORY,
+                TurnStep.START_STREAM,
+            )
+        ]
+
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new=AsyncMock(return_value=UserDocument(id=USER_ID)),
+    )
+    @patch("app.api.v1.endpoints.bot._bot_stream_entitlement_gate")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
+    async def test_a_refused_message_starts_no_prep(
+        self, mock_prep: MagicMock, mock_bot_svc: MagicMock, mock_gate: AsyncMock
+    ):
+        """A turn the paywall refuses must cost no provider call."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_gate.return_value = MagicMock()
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "telegram", "platform_user_id": "tg_1"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+
+        await bot_chat_stream(request, body)
+
+        mock_prep.assert_not_called()
+
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new=AsyncMock(return_value=None),
+    )
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
+    async def test_an_unlinked_message_starts_no_prep(
+        self, mock_prep: MagicMock, mock_bot_svc: MagicMock
+    ):
+        """A stranger's text must not reach the embedding provider before they are a GAIA user."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "telegram", "platform_user_id": "stranger"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+
+        await bot_chat_stream(request, body)
+
+        mock_prep.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -2453,7 +2572,7 @@ class TestForwarderWiring:
             # The background turn is handed the same request-accepted clock the
             # web endpoint passes, so bot TTFT/E2E share the web definition.
             # Dropped or nulled, every bot latency reports an unbounded duration.
-            patch("app.api.v1.endpoints.bot.time.perf_counter", return_value=123.5),
+            patch("app.services.turn_clock.time.perf_counter", return_value=123.5),
         ):
             bot_svc.enforce_rate_limit = AsyncMock()
             bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
@@ -2474,8 +2593,40 @@ class TestForwarderWiring:
             "session_token": "tok",
             "platform": "discord",
         }
-        assert bg.call_args.kwargs["t0_perf"] == 123.5
+        assert bg.call_args.kwargs["clock"].marks[TurnMark.T0] == 123.5
         assert bg.call_args.kwargs["stream_id"] == started_stream_id
+
+
+class TestBotReplyDeliveryStamp:
+    """The bot reader stamps the turn's frame_written mark, the end of the egress stretch."""
+
+    async def test_the_first_reply_frame_sent_to_the_bot_stamps_the_turn_clock(self) -> None:
+        clock = TurnClock(received=1.0)
+        register_executor_capture("bot-stamp", clock=clock)
+
+        async def frames() -> AsyncGenerator[str, None]:
+            yield 'id: 1700000000000-0\ndata: {"response": "hello"}\n\n'
+            yield "data: [DONE]\n\n"
+
+        request = MagicMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+        try:
+            with patch.object(bot_module, "stream_manager") as sm:
+                sm.subscribe_stream.return_value = frames()
+                sent = [
+                    frame
+                    async for frame in bot_module._forward_bot_frames(
+                        request,
+                        stream_id="bot-stamp",
+                        conversation_id="conv-1",
+                        upgrade_url=_never_upgrade,
+                    )
+                ]
+        finally:
+            teardown_executor_capture("bot-stamp")
+
+        assert any('"text": "hello"' in frame for frame in sent)
+        assert TurnMark.FRAME_WRITTEN in clock.marks
 
 
 class TestBotStreamDeliveryMetrics:

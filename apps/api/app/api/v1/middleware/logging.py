@@ -23,6 +23,7 @@ from starlette.responses import Response
 
 from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
+from app.services.turn_clock import stamp_received
 from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
@@ -77,6 +78,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self._SKIP_PATHS:
             return await call_next(request)
+
+        # First thing on arrival: a chat turn's ingress stretch is measured from here.
+        stamp_received(request)
 
         # Fresh wide event for this request — ContextVar isolated per async task
         wide_log.reset()

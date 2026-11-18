@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -39,6 +40,8 @@ _MEMORY_SEARCH_TSV = (
     "setweight(to_tsvector('english', content), 'A') || "
     "setweight(to_tsvector('english', replace(category_path, '/', ' ')), 'B')"
 )
+
+_MEMORY_ID_FK = "memories.id"
 
 
 class MemoryRecord(Base):
@@ -109,6 +112,33 @@ class MemoryRecord(Base):
     )
 
 
+class MemoryVector(Base):
+    """One memory's embedding under one hosted model, as packed little-endian float32.
+
+    Keyed by model so a model change backfills beside the vectors in use, and the
+    fast lane reads a user's whole set in one query without dragging vectors into
+    every memory row read.
+    """
+
+    __tablename__ = "memory_vectors"
+
+    memory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), nullable=False
+    )
+    #: Advanced on every upsert, so a process holding the set reads only what changed.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_memory_vectors_user_model", "user_id", "model"),)
+
+
 class MemoryEntity(Base):
     """A named entity (person, place, project, ...) mentioned in memories."""
 
@@ -136,7 +166,7 @@ class MemoryEntityLink(Base):
     __tablename__ = "memory_entity_links"
 
     memory_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="CASCADE"), primary_key=True
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("memory_entities.id", ondelete="CASCADE"), primary_key=True
@@ -158,7 +188,7 @@ class MemoryGraphEdge(Base):
     )
     relationship: Mapped[str] = mapped_column(String(255), nullable=False)
     memory_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False

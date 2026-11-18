@@ -8,14 +8,14 @@ repos:
     hooks:
       - id: ruff
         name: ruff check
-        entry: uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
+        entry: mise exec -- uv run --frozen --no-build --isolated --only-group lint ruff check --force-exclude --fix --exit-non-zero-on-fix
         language: system
         types_or: [python, pyi]
         stages: [pre-commit]
         priority: 0
       - id: ruff-format
         name: ruff format
-        entry: uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
+        entry: mise exec -- uv run --frozen --no-build --isolated --only-group lint ruff format --force-exclude
         language: system
         types_or: [python, pyi]
         stages: [pre-commit]
@@ -32,7 +32,7 @@ repos:
         language: system
         # Load [tool.bandit] skips from the root pyproject.toml — bandit's config
         # discovery only looks in the hook cwd (apps/api), which has no section.
-        entry: bash -c "uv run --frozen --no-build --isolated --only-group lint bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
+        entry: mise exec -- bash -c "uv run --frozen --no-build --isolated --only-group lint bandit -c \"$(git rev-parse --show-toplevel)/pyproject.toml\" -r app --exclude app/agents/prompts"
         types: [python]
         pass_filenames: false
         priority: 0
@@ -40,7 +40,7 @@ repos:
       - id: pip-audit
         name: Pip Audit
         language: system
-        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uv run --frozen --no-build --isolated --only-group lint pip-audit --disable-pip --no-deps -r /dev/stdin"
+        entry: mise exec -- bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uv run --frozen --no-build --isolated --only-group lint pip-audit --disable-pip --no-deps -r /dev/stdin"
         pass_filenames: false
         priority: 0
 
@@ -50,7 +50,7 @@ repos:
         # uv runs it on the .python-version interpreter, not the system python3
         # (3.9 on macOS cannot parse the app's 3.10+ syntax), and needs no venv;
         # paths are apps/api-relative because this nested config runs with cwd=apps/api.
-        entry: uv run --no-project --isolated python scripts/check_outbound_topology_parity.py
+        entry: mise exec -- uv run --no-project --isolated python scripts/check_outbound_topology_parity.py
         # libs/shared/ts/src/bots/consumer/topology.ts is outside apps/api and cannot
         # be matched from this nested config; the root config must guard that side.
         files: ^(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)$
@@ -64,7 +64,7 @@ repos:
         # interpreter replaces the system python3 (3.9 on macOS crashes ast.parse
         # on the app's 3.10+ syntax). tools/lints/*.py is outside apps/api and
         # cannot be matched here; the root config must guard that side.
-        entry: uv run --no-project --isolated python ../../tools/lints/run.py app tests
+        entry: mise exec -- uv run --no-project --isolated python ../../tools/lints/run.py app tests
         files: ^(app|tests)/.*\.py$
         pass_filenames: false
         priority: 0
@@ -77,7 +77,7 @@ repos:
         # sync command when there is none. `--report` matches the CI step: it
         # measures and prints, and gates nothing until the base layers stop
         # importing upward (tools/lints/check_import_cost.py).
-        entry: uv run --no-project --isolated python ../../tools/lints/check_import_cost.py --report
+        entry: mise exec -- uv run --no-project --isolated python ../../tools/lints/check_import_cost.py --report
         files: ^(app/(constants|config|utils|models)/.*\.py|app/(main|worker)\.py|tests/conftest\.py)$
         pass_filenames: false
         priority: 0
@@ -89,7 +89,7 @@ repos:
         # the repo root — neither a root-relative path nor the system python3
         # works here. tools/lints/*.py cannot be matched from this nested
         # config; the root config must guard that side.
-        entry: uv run --no-project --isolated python ../../tools/lints/check_ignore_whys.py
+        entry: mise exec -- uv run --no-project --isolated python ../../tools/lints/check_ignore_whys.py
         files: ^pyproject\.toml$
         pass_filenames: false
         priority: 0
@@ -106,7 +106,7 @@ repos:
         # passes; and cwd=apps/api has no [tool.mypy], so the root config has
         # to be named explicitly. `uv run --frozen` pins the version from
         # uv.lock, which is what the uvx pin was reaching for.
-        entry: bash -c 'uv run --project . --frozen --group backend --group dev mypy --config-file ../../pyproject.toml --ignore-missing-imports "$@"' --
+        entry: mise exec -- bash -c 'uv run --project . --frozen --group backend --group dev mypy --config-file ../../pyproject.toml --ignore-missing-imports "$@"' --
         # apps/api-relative: this nested config runs with cwd=apps/api, so
         # ^apps/api/app/ can never match and the hook would always skip.
         # `.py` is load-bearing: `^app/` alone also matches the SKILL.md files

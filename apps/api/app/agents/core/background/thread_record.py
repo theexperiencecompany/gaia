@@ -14,8 +14,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from app.agents.core.background.executor_queue import break_holder_lock, try_acquire_lock
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_writes import with_message_ids
-from app.constants.agents import COMMS_AGENT_NAME
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     PROACTIVE_RECORD_JOB_PREFIX,
