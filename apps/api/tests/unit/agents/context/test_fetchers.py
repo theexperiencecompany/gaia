@@ -57,6 +57,7 @@ from app.agents.prompts.new_user_prompts import (
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
@@ -364,7 +365,7 @@ class TestConnectedIntegrationsManifest:
                         id="ca_2",
                         connected_account_id="ca_2",
                         label="me@gmail.com",
-                        status="expired",
+                        status=IntegrationStatus.EXPIRED,
                     ),
                 ],
                 primary_account_id="ca_1",
@@ -650,7 +651,9 @@ class TestProviderMetadataBlock:
         record = self._record(
             make_integration_account("ca_1", label="work@acme.com"),
             make_integration_account("ca_2", label="me@gmail.com", nickname="Personal"),
-            make_integration_account("ca_3", label="old@acme.com", status="expired"),
+            make_integration_account(
+                "ca_3", label="old@acme.com", status=IntegrationStatus.EXPIRED
+            ),
             primary="ca_2",
         )
         with patch(

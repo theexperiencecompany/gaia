@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.db.repositories.user_integrations import UserIntegrationsRepository
 from app.models.integration_models import IntegrationAccount
 
@@ -54,7 +55,7 @@ class TestSaveAccounts:
             INTEGRATION_ID,
             accounts=[account],
             primary_account_id="ca_1",
-            status="connected",
+            status=IntegrationStatus.CONNECTED,
         )
 
         assert doc.integration_id == INTEGRATION_ID
@@ -82,7 +83,11 @@ class TestSaveAccounts:
     ) -> None:
         with patch.object(UserIntegrationsRepository, "_invalidate", AsyncMock()) as invalidate:
             await UserIntegrationsRepository().save_accounts(
-                USER_ID, INTEGRATION_ID, accounts=[], primary_account_id=None, status="created"
+                USER_ID,
+                INTEGRATION_ID,
+                accounts=[],
+                primary_account_id=None,
+                status=IntegrationStatus.CREATED,
             )
 
         invalidate.assert_awaited_once_with(USER_ID)
@@ -94,7 +99,11 @@ class TestSaveAccounts:
             RuntimeError, match="^user_integrations upsert returned nothing for gmail$"
         ):
             await UserIntegrationsRepository().save_accounts(
-                USER_ID, INTEGRATION_ID, accounts=[], primary_account_id=None, status="created"
+                USER_ID,
+                INTEGRATION_ID,
+                accounts=[],
+                primary_account_id=None,
+                status=IntegrationStatus.CREATED,
             )
 
 

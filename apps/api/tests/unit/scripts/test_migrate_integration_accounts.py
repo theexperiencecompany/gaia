@@ -14,7 +14,7 @@ from bson import ObjectId
 import pytest
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import ComposioAuthConfigSource
+from app.constants.integrations import ComposioAuthConfigSource, IntegrationStatus
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
 from app.scripts import migrate_integration_accounts as migration
@@ -309,7 +309,7 @@ async def test_untracked_copies_of_every_tracked_identity_are_revoked() -> None:
 
 
 async def test_a_tracked_account_composio_reports_dead_stays_as_gaia_has_it() -> None:
-    expired = make_integration_account("acct_work", "expired")
+    expired = make_integration_account("acct_work", IntegrationStatus.EXPIRED)
     plan = await _plan(
         _gmail(),
         _record("ca_old", "connected", [expired], "acct_work"),

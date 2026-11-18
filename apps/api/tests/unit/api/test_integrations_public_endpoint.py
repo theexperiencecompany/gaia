@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.helpers.integration_helpers import ParsedIntegrationSlug
 from app.models.integration_models import (
     Integration,
@@ -240,7 +241,7 @@ class TestAddPublicIntegration:
             "mcp_config": None,
         }
         existing = UserIntegrationDocument(
-            user_id="u1", integration_id="integ1", status="connected"
+            user_id="u1", integration_id="integ1", status=IntegrationStatus.CONNECTED
         )
 
         with (
@@ -398,7 +399,9 @@ class TestAddPublicIntegration:
             "is_public": True,
             "mcp_config": {"server_url": "https://mcp.example.com"},
         }
-        existing = UserIntegrationDocument(user_id="u1", integration_id="integ4", status="created")
+        existing = UserIntegrationDocument(
+            user_id="u1", integration_id="integ4", status=IntegrationStatus.CREATED
+        )
 
         connect_result = MagicMock()
         connect_result.status = "connected"

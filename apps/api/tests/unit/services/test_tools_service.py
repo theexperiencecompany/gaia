@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
 from app.models.hil_models import HILPreferences
 from app.models.integration_models import McpToolsRollupEntry, StoredIntegrationTool
@@ -19,6 +20,7 @@ from app.services.tools.tools_service import (
     get_tools_by_category,
 )
 from tests.helpers import captured_wide_event
+from tests.integration_account_factories import make_integration_record
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -152,7 +154,13 @@ class TestWorkspaceScoping:
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",
                 new_callable=AsyncMock,
-                return_value=[{"integration_id": "custom_1", "status": "connected"}],
+                return_value=[
+                    make_integration_record(
+                        user_id="user_123",
+                        integration_id="custom_1",
+                        status=IntegrationStatus.CONNECTED,
+                    )
+                ],
             ),
         ):
             result = await _build_tools_response("user_123")
@@ -277,7 +285,11 @@ class TestBuildToolsResponse:
             }
         }
         # User has custom_abc added and connected
-        user_records = [{"integration_id": "custom_abc", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="custom_abc", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
@@ -310,7 +322,11 @@ class TestBuildToolsResponse:
                 "tools": [{"name": "search_wiki"}],
             }
         }
-        user_records = [{"integration_id": "deepwiki", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="deepwiki", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
@@ -341,7 +357,11 @@ class TestBuildToolsResponse:
 
     async def test_mcp_skips_empty_tools_list(self):
         global_mcp = {"my_int": {"name": "My Int", "icon_url": None, "tools": []}}
-        user_records = [{"integration_id": "my_int", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="my_int", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
@@ -356,7 +376,11 @@ class TestBuildToolsResponse:
                 "tools": [{"name": ""}, {"name": "valid_tool"}],
             }
         }
-        user_records = [{"integration_id": "cust_1", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="cust_1", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
@@ -372,7 +396,11 @@ class TestBuildToolsResponse:
                 "tools": [{"name": "shared_tool"}, {"name": "unique_tool"}],
             }
         }
-        user_records = [{"integration_id": "other_int", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="other_int", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with self._patch_deps({"cat1": cat}, global_mcp, user_records=user_records):
             with patch("app.services.tools.tools_service.get_integration_name", return_value=None):
@@ -392,22 +420,17 @@ class TestBuildToolsResponse:
             }
         }
         # added but not connected
-        user_records = [{"integration_id": "my_mcp", "status": "added"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="my_mcp", status=IntegrationStatus.CREATED
+            )
+        ]
 
         with self._patch_deps({}, global_mcp, user_records=user_records):
             result = await _build_tools_response("user_123")
 
         assert result.total_count == 1
         assert result.tools[0].locked is True
-
-    async def test_a_record_with_no_integration_id_does_not_hide_the_ones_after_it(self):
-        global_mcp = {"my_mcp": {"name": "My MCP", "tools": [{"name": "a_tool"}]}}
-        user_records = [{"integration_id": None}, {"integration_id": "my_mcp", "status": "added"}]
-
-        with self._patch_deps({}, global_mcp, user_records=user_records):
-            result = await _build_tools_response("user_123")
-
-        assert [t.name for t in result.tools] == ["a_tool"]
 
     async def test_a_registry_integration_is_scoped_and_locked_by_the_workspace(self):
         registry = {
@@ -416,8 +439,12 @@ class TestBuildToolsResponse:
             "NOTION": _mock_category(tools=[_mock_tool("NOTION_ADD")], require_integration=True),
         }
         user_records = [
-            {"integration_id": "gmail", "status": "connected"},
-            {"integration_id": "slack", "status": "added"},
+            make_integration_record(
+                user_id="user_123", integration_id="gmail", status=IntegrationStatus.CONNECTED
+            ),
+            make_integration_record(
+                user_id="user_123", integration_id="slack", status=IntegrationStatus.CREATED
+            ),
         ]
 
         with self._patch_deps(registry, {}, user_records=user_records):
@@ -434,8 +461,12 @@ class TestBuildToolsResponse:
             "two": {"name": "Two", "tools": [{"name": "t3"}]},
         }
         user_records = [
-            {"integration_id": "one", "status": "connected"},
-            {"integration_id": "two", "status": "added"},
+            make_integration_record(
+                user_id="user_123", integration_id="one", status=IntegrationStatus.CONNECTED
+            ),
+            make_integration_record(
+                user_id="user_123", integration_id="two", status=IntegrationStatus.CREATED
+            ),
         ]
 
         with (
@@ -450,7 +481,11 @@ class TestBuildToolsResponse:
 
     async def test_a_nameless_mcp_tool_is_logged_against_the_asking_user(self):
         global_mcp = {"cust_1": {"name": "Cust", "tools": [{"name": ""}]}}
-        user_records = [{"integration_id": "cust_1", "status": "connected"}]
+        user_records = [
+            make_integration_record(
+                user_id="user_123", integration_id="cust_1", status=IntegrationStatus.CONNECTED
+            )
+        ]
 
         with (
             self._patch_deps({}, global_mcp, user_records=user_records),
@@ -560,7 +595,13 @@ class TestLockedAndFilteredTools:
 
     async def test_the_workspace_is_read_for_the_asking_user(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
-        records = {"user_123": [{"integration_id": "m1", "status": "connected"}]}
+        records = {
+            "user_123": [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ]
+        }
         mock_registry = AsyncMock()
         mock_registry.get_all_category_objects = MagicMock(return_value={})
 
@@ -588,13 +629,27 @@ class TestLockedAndFilteredTools:
 
     async def test_connected_integration_tools_not_locked(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
-        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ],
+            global_mcp,
+        )
         assert result.total_count == 1
         assert result.tools[0].locked is False
 
     async def test_added_not_connected_tools_are_locked(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": [{"name": "t1"}]}}
-        result = await self._build([{"integration_id": "m1", "status": "added"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CREATED
+                )
+            ],
+            global_mcp,
+        )
         assert result.total_count == 1
         assert result.tools[0].locked is True
 
@@ -605,7 +660,14 @@ class TestLockedAndFilteredTools:
 
     async def test_the_stored_integration_name_is_the_display_name(self):
         global_mcp = {"m1": {"name": "MCP One", "icon_url": None, "tools": [{"name": "tool_a"}]}}
-        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ],
+            global_mcp,
+        )
         assert result.tools[0].display_name == "MCP One"
 
     async def test_icon_url_forwarded_from_mcp_store(self):
@@ -616,7 +678,14 @@ class TestLockedAndFilteredTools:
                 "tools": [{"name": "tool_a"}, {"name": "tool_b"}],
             }
         }
-        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ],
+            global_mcp,
+        )
         assert result.total_count == 2
         assert all(t.icon_url == "https://example.com/icon.png" for t in result.tools)
 
@@ -628,8 +697,12 @@ class TestLockedAndFilteredTools:
         }
         result = await self._build(
             [
-                {"integration_id": "m1", "status": "connected"},
-                {"integration_id": "m2", "status": "connected"},
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                ),
+                make_integration_record(
+                    user_id="user_123", integration_id="m2", status=IntegrationStatus.CONNECTED
+                ),
             ],
             global_mcp,
         )
@@ -637,7 +710,14 @@ class TestLockedAndFilteredTools:
 
     async def test_empty_tools_list_skipped(self):
         global_mcp = {"m1": {"name": "M1", "icon_url": None, "tools": []}}
-        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ],
+            global_mcp,
+        )
         assert result.total_count == 0
 
     async def test_tool_with_no_name_skipped(self):
@@ -648,7 +728,14 @@ class TestLockedAndFilteredTools:
                 "tools": [{"name": ""}, {"name": "valid"}],
             }
         }
-        result = await self._build([{"integration_id": "m1", "status": "connected"}], global_mcp)
+        result = await self._build(
+            [
+                make_integration_record(
+                    user_id="user_123", integration_id="m1", status=IntegrationStatus.CONNECTED
+                )
+            ],
+            global_mcp,
+        )
         assert result.total_count == 1
         assert result.tools[0].name == "valid"
 

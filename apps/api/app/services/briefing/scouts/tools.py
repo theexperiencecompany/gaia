@@ -17,6 +17,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_composio_service, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import (
     ACCOUNT_PERSON_KEYS,
     SCOUT_MAX_BOUND_TOOLS,
@@ -39,7 +40,7 @@ from app.utils.errors import AppError
 
 @dataclass(frozen=True, slots=True)
 class ScoutIntegration:
-    """A connected integration a scout watches; signed_out when its sign-in died and it waits on a reconnect.
+    """A connected integration a scout watches; status is its record's, EXPIRED while it waits on a reconnect.
 
     handles are the user's own identity on the app (login, user id, email), casefolded: a
     person on an item holding one is the user. Empty when the account carries none.
@@ -47,7 +48,7 @@ class ScoutIntegration:
 
     integration_id: str
     name: str
-    signed_out: bool = False
+    status: IntegrationStatus = IntegrationStatus.CONNECTED
     handles: frozenset[str] = frozenset()
 
 
@@ -70,10 +71,13 @@ async def scout_integrations(user_id: str) -> list[ScoutIntegration]:
         ScoutIntegration(
             integration_id=entry["id"],
             name=entry["name"],
-            signed_out=dead,
+            status=status,
             handles=handles.get(entry["id"], frozenset()),
         )
-        for entries, dead in ((connected, False), (signed_out, True))
+        for entries, status in (
+            (connected, IntegrationStatus.CONNECTED),
+            (signed_out, IntegrationStatus.EXPIRED),
+        )
         for entry in entries
         if entry["id"] not in SCOUTED_ELSEWHERE and _is_external(entry["id"])
     ]

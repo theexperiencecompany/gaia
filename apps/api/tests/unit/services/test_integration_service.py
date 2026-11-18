@@ -31,7 +31,7 @@ from app.agents.core.integration_capabilities import (
 )
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, IntegrationStatus
 from app.db.repositories.scouts import scouts_repository
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.helpers.mcp_helpers import get_api_base_url
@@ -47,7 +47,6 @@ from app.models.integration_models import (
     UpdateCustomIntegrationRequest,
     UserIntegrationDocument,
     UserIntegrationsListResponse,
-    UserIntegrationStatus,
 )
 from app.models.mcp_config import (
     ComposioConfig,
@@ -674,7 +673,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status.assert_awaited_once_with(
             USER_ID,
             INTEGRATION_ID,
-            status="connected",
+            status=IntegrationStatus.CONNECTED,
             expired_reason=None,
         )
         mock_sched.assert_called_once_with(USER_ID)
@@ -723,7 +722,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status.assert_awaited_once_with(
             USER_ID,
             INTEGRATION_ID,
-            status="created",
+            status=IntegrationStatus.CREATED,
             expired_reason=None,
         )
         mock_sched.assert_not_called()
@@ -745,7 +744,7 @@ class TestUpdateUserIntegrationStatus:
         mock_repo.set_status.assert_awaited_once_with(
             USER_ID,
             INTEGRATION_ID,
-            status="expired",
+            status=IntegrationStatus.EXPIRED,
             expired_reason="refresh_token_revoked",
         )
         mock_sched.assert_not_called()
@@ -760,7 +759,7 @@ class TestUpdateUserIntegrationStatus:
         mock_ws.broadcast_to_user = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
-            USER_ID, INTEGRATION_ID, "connected"
+            USER_ID, INTEGRATION_ID, IntegrationStatus.CONNECTED
         )
 
         assert result is False
@@ -788,7 +787,7 @@ def _async_find_cursor(docs: list[dict]) -> MagicMock:
 def _ui_doc(
     integration_id: str,
     *,
-    status: UserIntegrationStatus = "connected",
+    status: IntegrationStatus = IntegrationStatus.CONNECTED,
     connected: bool = True,
     expired_at: datetime | None = None,
 ):
@@ -839,7 +838,7 @@ class TestGetUserIntegrations:
             tools=[StoredIntegrationTool(name="do_thing")],
         )
         mock_repo.list_for_user_newest_first = AsyncMock(
-            return_value=[_ui_doc("custom-uuid", status="connected")]
+            return_value=[_ui_doc("custom-uuid", status=IntegrationStatus.CONNECTED)]
         )
         mock_int_repo.find_by_ids = AsyncMock(return_value=[stored])
         mock_users_col.find_by_ids = AsyncMock(
@@ -916,7 +915,11 @@ class TestGetUserIntegrations:
         """Dropping expired_at here leaves the UI unable to say how long a connection has been dead."""
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_repo.list_for_user_newest_first = AsyncMock(
-            return_value=[_ui_doc("github", status="expired", connected=False, expired_at=died)]
+            return_value=[
+                _ui_doc(
+                    "github", status=IntegrationStatus.EXPIRED, connected=False, expired_at=died
+                )
+            ]
         )
         mock_int_repo.find_by_ids = AsyncMock(return_value=[])
         mock_users_col.find_by_ids = AsyncMock(return_value=[])
@@ -971,28 +974,21 @@ class TestGetUserIntegrations:
 
 class TestGetUserConnectedIntegrations:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_returns_serialized_documents(self, mock_repo):
-        mock_repo.list_for_user = AsyncMock(return_value=[_ui_doc("github")])
+    async def test_returns_the_stored_documents(self, mock_repo):
+        doc = _ui_doc("github")
+        mock_repo.list_for_user = AsyncMock(return_value=[doc])
 
-        with (
-            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-        ):
-            result = await get_user_integration_records(USER_ID)
+        result = await get_user_integration_records(USER_ID)
 
-        assert len(result) == 1
-        assert result[0]["integration_id"] == "github"
-        assert "id" in result[0]  # the document's id field is present
+        assert result == [doc]
+        mock_repo.list_for_user.assert_awaited_once_with(USER_ID)
 
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_empty_list_when_no_integrations(self, mock_repo):
         mock_repo.list_for_user = AsyncMock(return_value=[])
 
-        with (
-            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
-            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-        ):
-            result = await get_user_integration_records(USER_ID)
+        result = await get_user_integration_records(USER_ID)
+
         assert result == []
 
 
@@ -1114,7 +1110,9 @@ class TestAddUserIntegration:
         mock_repo.exists = AsyncMock(return_value=False)
         mock_repo.create = AsyncMock()
 
-        result = await _uncached(add_user_integration)(USER_ID, "x", initial_status="connected")
+        result = await _uncached(add_user_integration)(
+            USER_ID, "x", initial_status=IntegrationStatus.CONNECTED
+        )
 
         assert result.status == "connected"
 
@@ -2286,8 +2284,8 @@ class TestCreateAndConnectCustomIntegration:
                 USER_ID, request, mock_mcp_client
             )
 
-            assert result_status["status"] == "connected"
-            assert result_status["tools_count"] == 2
+            assert result_status.status == IntegrationStatus.CONNECTED
+            assert result_status.tools_count == 2
             mock_store_instance.store_bearer_token.assert_awaited_once()
 
     @patch(
@@ -2323,8 +2321,8 @@ class TestCreateAndConnectCustomIntegration:
             USER_ID, request, mock_mcp_client
         )
 
-        assert result_status["status"] == "failed"
-        assert "Connection refused" in result_status["error"]
+        assert result_status.status == "failed"
+        assert "Connection refused" in (result_status.error or "")
 
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
@@ -2372,8 +2370,8 @@ class TestCreateAndConnectCustomIntegration:
             USER_ID, request, mock_mcp_client
         )
 
-        assert result_status["status"] == "requires_oauth"
-        assert result_status["oauth_url"] == "https://auth.example.com"
+        assert result_status.status == "requires_oauth"
+        assert result_status.oauth_url == "https://auth.example.com"
         mock_mcp_client.probe_connection.assert_awaited_once_with(SERVER_URL)
 
     @patch(
@@ -2410,8 +2408,8 @@ class TestCreateAndConnectCustomIntegration:
             USER_ID, request, mock_mcp_client
         )
 
-        assert result_status["status"] == "connected"
-        assert result_status["tools_count"] == 3
+        assert result_status.status == IntegrationStatus.CONNECTED
+        assert result_status.tools_count == 3
 
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
@@ -2459,7 +2457,7 @@ class TestCreateAndConnectCustomIntegration:
             USER_ID, request, mock_mcp_client
         )
 
-        assert result_status["status"] == "requires_oauth"
+        assert result_status.status == "requires_oauth"
 
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
@@ -2495,8 +2493,8 @@ class TestCreateAndConnectCustomIntegration:
             USER_ID, request, mock_mcp_client
         )
 
-        assert result_status["status"] == "failed"
-        assert "Server down" in result_status["error"]
+        assert result_status.status == "failed"
+        assert "Server down" in (result_status.error or "")
 
 
 # ---------------------------------------------------------------------------
@@ -2915,7 +2913,7 @@ def _slack_accounts(*statuses: IntegrationAccountStatus) -> UserIntegrationDocum
     return UserIntegrationDocument(
         user_id=USER_ID,
         integration_id="slack",
-        status="connected",
+        status=IntegrationStatus.CONNECTED,
         accounts=[
             IntegrationAccount(
                 id=f"acct_{i}", connected_account_id=f"ca_{i}", label=f"acct {i}", status=status
@@ -3009,7 +3007,7 @@ class TestConnectComposioIntegration:
     async def test_adding_an_account_leaves_a_working_integration_connected(
         self, seams: dict[str, MagicMock]
     ) -> None:
-        seams["record"].return_value = _slack_accounts("connected")
+        seams["record"].return_value = _slack_accounts(IntegrationStatus.CONNECTED)
 
         async with captured_wide_event() as event:
             result = await self._connect()
@@ -3023,7 +3021,7 @@ class TestConnectComposioIntegration:
         self, seams: dict[str, MagicMock], last: IntegrationAccountStatus
     ) -> None:
         """An expired account counts: reconnecting it happens in place, never as an addition."""
-        connected: list[IntegrationAccountStatus] = ["connected"] * (
+        connected: list[IntegrationAccountStatus] = [IntegrationStatus.CONNECTED] * (
             MAX_ACCOUNTS_PER_INTEGRATION - 1
         )
         seams["record"].return_value = _slack_accounts(*connected, last)
@@ -3041,10 +3039,10 @@ class TestConnectComposioIntegration:
     async def test_reconnecting_an_expired_account_signs_in_that_same_account(
         self, seams: dict[str, MagicMock]
     ) -> None:
-        connected: list[IntegrationAccountStatus] = ["connected"] * (
+        connected: list[IntegrationAccountStatus] = [IntegrationStatus.CONNECTED] * (
             MAX_ACCOUNTS_PER_INTEGRATION - 1
         )
-        seams["record"].return_value = _slack_accounts(*connected, "expired")
+        seams["record"].return_value = _slack_accounts(*connected, IntegrationStatus.EXPIRED)
         last = MAX_ACCOUNTS_PER_INTEGRATION - 1
         seams["service"].reauthorize_account.return_value["connection_id"] = f"ca_{last}"
 
@@ -3071,7 +3069,9 @@ class TestConnectComposioIntegration:
     async def test_only_a_tracked_expired_account_can_be_reconnected(
         self, seams: dict[str, MagicMock], account_id: str, error: str
     ) -> None:
-        seams["record"].return_value = _slack_accounts("connected", "expired")
+        seams["record"].return_value = _slack_accounts(
+            IntegrationStatus.CONNECTED, IntegrationStatus.EXPIRED
+        )
 
         result = await self._connect(reconnect_account_id=account_id)
 

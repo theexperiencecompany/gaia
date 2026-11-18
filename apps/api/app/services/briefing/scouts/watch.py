@@ -18,7 +18,10 @@ from app.utils.errors import AppError
 
 @dataclass
 class ScoutSourceFailed(AppError):
-    """The app did not answer a frozen call: an outage, a rate limit or a dead sign-in."""
+    """The app did not answer a frozen call: an outage, a rate limit, anything the replay reports.
+
+    A sign-in that dies mid-replay lands here too: the replay keeps the failure's text, not its type.
+    """
 
 
 @dataclass(frozen=True, slots=True)

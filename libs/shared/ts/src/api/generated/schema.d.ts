@@ -6363,11 +6363,7 @@ export interface components {
         };
         /** AddUserIntegrationResponse */
         AddUserIntegrationResponse: {
-            /**
-             * Connectionstatus
-             * @enum {string}
-             */
-            connectionStatus: "created" | "connected" | "expired";
+            connectionStatus: components["schemas"]["IntegrationStatus"];
             /** Integrationid */
             integrationId: string;
             /** Message */
@@ -10954,11 +10950,8 @@ export interface components {
              * @description Integration name
              */
             name: string;
-            /**
-             * Status
-             * @description Integration status: 'created' or 'connected'
-             */
-            status: string;
+            /** @description Integration connection status */
+            status: components["schemas"]["IntegrationStatus"];
         };
         /**
          * IntegrationRef
@@ -11031,6 +11024,12 @@ export interface components {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
+        /**
+         * IntegrationStatus
+         * @description Connection state of a user's integration, as stored and sent to clients.
+         * @enum {string}
+         */
+        IntegrationStatus: "created" | "connected" | "expired";
         /**
          * IntegrationStatusesResponse
          * @description Current connection status map, fetched independently of the catalog.
@@ -12546,11 +12545,8 @@ export interface components {
              * @enum {string}
              */
             source: "platform" | "custom";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "connected" | "created" | "expired" | "not_connected";
+            /** Status */
+            status: components["schemas"]["IntegrationStatus"] | "not_connected";
             /**
              * Toolcount
              * @default 0
@@ -18476,6 +18472,7 @@ export type IntegrationInfo = components['schemas']['IntegrationInfo'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
+export type IntegrationStatus = components['schemas']['IntegrationStatus'];
 export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];

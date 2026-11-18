@@ -19,11 +19,16 @@ MAX_INTEGRATION_TOOLS_FOR_LLM = 40
 # integrations can truncate get_my_integrations at all.
 MAX_MY_INTEGRATIONS_RESULTS = 100
 
-# Integration connection status values. `Final` keeps the literal type so these
-# still satisfy update_user_integration_status's UserIntegrationStatus.
-INTEGRATION_STATUS_CREATED: Final = "created"
-INTEGRATION_STATUS_CONNECTED: Final = "connected"
-INTEGRATION_STATUS_EXPIRED: Final = "expired"
+
+class IntegrationStatus(StrEnum):
+    """Connection state of a user's integration, as stored and sent to clients."""
+
+    #: Added to the workspace, never signed in.
+    CREATED = "created"
+    CONNECTED = "connected"
+    #: Signed out: it was connected and its sign-in died; only the user reconnecting fixes it.
+    EXPIRED = "expired"
+
 
 # WebSocket message type pushed to an integrations UI (or chat connect card) on
 # a status change. Referenced by both publish sites (expiry, connected) so it

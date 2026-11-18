@@ -17,11 +17,10 @@ from tests.integration_account_factories import (
     with_nickname,
 )
 
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, IntegrationStatus
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 
 BASE = "/api/v1/integrations"
@@ -41,7 +40,7 @@ def repo(fake_redis: object) -> Iterator[MagicMock]:
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> UserIntegrationDocument:
         doc = UserIntegrationDocument(
@@ -95,7 +94,7 @@ class TestListAccounts:
     ) -> None:
         repo.get_for_user.return_value = _record(
             make_integration_account("ca_1"),
-            make_integration_account("ca_2", status="expired"),
+            make_integration_account("ca_2", status=IntegrationStatus.EXPIRED),
             primary="ca_1",
         )
 
@@ -194,7 +193,8 @@ class TestUpdateAccount:
         self, client: AsyncClient, repo: MagicMock, composio: MagicMock
     ) -> None:
         repo.get_for_user.return_value = _record(
-            make_integration_account("ca_1"), make_integration_account("ca_2", "expired")
+            make_integration_account("ca_1"),
+            make_integration_account("ca_2", IntegrationStatus.EXPIRED),
         )
 
         resp = await client.patch(f"{BASE}/gmail/accounts/ca_2", json={"isPrimary": True})

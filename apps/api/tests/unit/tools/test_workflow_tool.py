@@ -11,6 +11,7 @@ from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_MY_INTEGRATIONS_RESULTS,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
@@ -694,7 +695,7 @@ def _my_integration(
         category="productivity",
         source=source,
         managed_by="composio",
-        status="connected" if connected else "not_connected",
+        status=IntegrationStatus.CONNECTED if connected else "not_connected",
         available=True,
     )
 

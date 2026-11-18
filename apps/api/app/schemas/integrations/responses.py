@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.models.integration_models import UserIntegrationStatus
+from app.constants.integrations import IntegrationStatus
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import ResponseModel, SuccessResponse
 
@@ -60,11 +60,13 @@ class IntegrationSuccessResponse(SuccessResponse, CamelModel):
 
 class AddUserIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
-    connection_status: UserIntegrationStatus
+    connection_status: IntegrationStatus
 
 
 class CustomIntegrationConnectionResult(CamelModel):
-    status: Literal["created", "connected", "requires_oauth", "failed"]
+    status: Literal[
+        IntegrationStatus.CREATED, IntegrationStatus.CONNECTED, "requires_oauth", "failed"
+    ]
     tools_count: int | None = None
     oauth_url: str | None = None
     error: str | None = None
@@ -123,6 +125,10 @@ class MarketplaceResponse(BaseModel):
     total: int = 0
 
 
+# A catalog integration the user never added has no record, so no IntegrationStatus.
+MyIntegrationStatus = IntegrationStatus | Literal["not_connected"]
+
+
 class MyIntegrationItem(CamelModel, CloneCountMixin):
     """One integration as it pertains to the current user: catalog metadata plus
     their connection `status`, without the heavy per-tool schemas (only `tool_count`).
@@ -135,7 +141,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     category: str
     source: Literal["platform", "custom"]
     managed_by: Literal["self", "composio", "mcp", "internal"]
-    status: Literal["connected", "created", "expired", "not_connected"]
+    status: MyIntegrationStatus
     # When the upstream grant died, so the UI can say how long it has been broken.
     expired_at: datetime | None = None
     requires_auth: bool = False

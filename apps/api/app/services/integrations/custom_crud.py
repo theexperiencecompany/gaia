@@ -1,7 +1,7 @@
 """Custom integration CRUD operations."""
 
 from datetime import UTC, datetime
-from typing import Literal, TypedDict, cast
+from typing import cast
 import uuid
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
@@ -9,6 +9,7 @@ from pymongo.errors import DuplicateKeyError
 from sqlalchemy import delete
 
 from app.constants.device_bridge import DEVICE_CATEGORY
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
@@ -26,6 +27,7 @@ from app.models.integration_models import (
     UpdateCustomIntegrationRequest,
 )
 from app.models.mcp_config import MCPConfig, McpProbeResult
+from app.schemas.integrations.responses import CustomIntegrationConnectionResult
 from app.services.device.device_service import (
     deregister_device_server_for_integration,
 )
@@ -111,7 +113,9 @@ async def create_custom_integration(
         return winner
 
     try:
-        await add_user_integration(user_id, integration_id, initial_status="created")
+        await add_user_integration(
+            user_id, integration_id, initial_status=IntegrationStatus.CREATED
+        )
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Failed to add user_integration, rolling back",
@@ -329,28 +333,11 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     return await _unlink_member(user_id, integration_id)
 
 
-#: Mirrors CustomIntegrationConnectionResult.status on the wire.
-CustomConnectionStatus = Literal["created", "connected", "requires_oauth", "failed"]
-
-
-class CustomConnectionResult(TypedDict, total=False):
-    """What a custom-integration connect attempt reports back to the route.
-
-    total=False: the four keys are mutually exclusive by outcome — connected
-    carries tools_count, requires_oauth carries oauth_url, failed carries error.
-    """
-
-    status: CustomConnectionStatus
-    tools_count: int
-    oauth_url: str
-    error: str
-
-
 async def create_and_connect_custom_integration(
     user_id: str,
     request: CreateCustomIntegrationRequest,
     mcp_client: MCPClient,
-) -> tuple[Integration, CustomConnectionResult]:
+) -> tuple[Integration, CustomIntegrationConnectionResult]:
     """Create a custom integration and attempt connection."""
     log.set(
         integration={
@@ -403,18 +390,17 @@ async def _probe_connection_safely(mcp_client: MCPClient, server_url: str) -> Mc
 
 async def _connect_with_bearer_token(
     user_id: str, integration_id: str, bearer_token: str, mcp_client: MCPClient
-) -> tuple[Integration | None, CustomConnectionResult]:
+) -> tuple[Integration | None, CustomIntegrationConnectionResult]:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
     await token_store.store_bearer_token(integration_id, bearer_token)
 
     try:
         tools = await mcp_client.connect(integration_id)
-        await update_user_integration_status(user_id, integration_id, "connected")
-        return await _get_integration(integration_id), {
-            "status": "connected",
-            "tools_count": len(tools) if tools else 0,
-        }
+        await update_user_integration_status(user_id, integration_id, IntegrationStatus.CONNECTED)
+        return await _get_integration(integration_id), CustomIntegrationConnectionResult(
+            status=IntegrationStatus.CONNECTED, tools_count=len(tools) if tools else 0
+        )
     except Exception as e:
         return await _get_integration(integration_id), _connect_failed(
             integration_id, str(e), type(e).__name__
@@ -423,14 +409,13 @@ async def _connect_with_bearer_token(
 
 async def _connect_without_auth(
     integration: Integration, mcp_client: MCPClient
-) -> tuple[Integration, CustomConnectionResult]:
+) -> tuple[Integration, CustomIntegrationConnectionResult]:
     """Attempt connection without authentication."""
     try:
         tools = await mcp_client.connect(integration.integration_id)
-        return integration, {
-            "status": "connected",
-            "tools_count": len(tools) if tools else 0,
-        }
+        return integration, CustomIntegrationConnectionResult(
+            status=IntegrationStatus.CONNECTED, tools_count=len(tools) if tools else 0
+        )
     except OAuthAuthenticationError:
         await mcp_client.update_integration_auth_status(
             integration.integration_id, requires_auth=True, auth_type="oauth"
@@ -442,7 +427,7 @@ async def _connect_without_auth(
 
 def _connect_failed(
     integration_id: str, error: str, error_type: str | None = None
-) -> CustomConnectionResult:
+) -> CustomIntegrationConnectionResult:
     """Warn a custom server's connect failure and answer it to its owner, who added that server."""
     log.warning(
         f"{LogTag.INTEGRATION} Custom integration connect failed",
@@ -451,7 +436,7 @@ def _connect_failed(
         integration_id=integration_id,
     )
     log.set(integration={"id": integration_id, "status": "error"})
-    return {"status": "failed", "error": error}
+    return CustomIntegrationConnectionResult(status="failed", error=error)
 
 
 async def _get_integration(integration_id: str) -> Integration | None:
@@ -459,7 +444,9 @@ async def _get_integration(integration_id: str) -> Integration | None:
     return await integration_repository.get(integration_id)
 
 
-async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> CustomConnectionResult:
+async def _build_oauth_result(
+    mcp_client: MCPClient, integration_id: str
+) -> CustomIntegrationConnectionResult:
     """Build OAuth redirect result."""
     try:
         auth_url = await build_oauth_auth_url(
@@ -468,7 +455,7 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
             redirect_uri=get_mcp_oauth_redirect_uri(),
             redirect_path="/integrations",
         )
-        return {"status": "requires_oauth", "oauth_url": auth_url}
+        return CustomIntegrationConnectionResult(status="requires_oauth", oauth_url=auth_url)
     except _EXPECTED_OAUTH_DISCOVERY_ERRORS as e:
         # Remote-server policy (its redirect_uri allowlist, missing AS metadata,
         # DCR disabled), returned to the user; warn to keep it out of Sentry High.
@@ -478,10 +465,9 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
             error_type=type(e).__name__,
             integration_id=integration_id,
         )
-        return {
-            "status": "failed",
-            "error": f"OAuth required but discovery failed: {e}",
-        }
+        return CustomIntegrationConnectionResult(
+            status="failed", error=f"OAuth required but discovery failed: {e}"
+        )
     except Exception as e:
         # Unexpected internal failure in build_oauth_auth_url; keep error-level
         # monitoring so a GAIA bug that blocks OAuth is not hidden as a warning.
@@ -491,7 +477,6 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
             error_type=type(e).__name__,
             integration_id=integration_id,
         )
-        return {
-            "status": "failed",
-            "error": f"OAuth required but discovery failed: {e}",
-        }
+        return CustomIntegrationConnectionResult(
+            status="failed", error=f"OAuth required but discovery failed: {e}"
+        )

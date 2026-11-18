@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.config.settings import settings
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import with_doc
@@ -90,7 +91,7 @@ async def find_integration(
                 "id": item.id,
                 "name": item.name,
                 "description": _one_line(item.description),
-                "connected": item.status == "connected",
+                "connected": item.status == IntegrationStatus.CONNECTED,
                 "source": item.source,
             }
             for item in (await match_my_integrations(user_id, query))[:MAX_DISCOVERY_RESULTS]

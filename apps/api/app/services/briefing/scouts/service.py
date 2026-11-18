@@ -12,6 +12,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import (
     SCOUT_CONCURRENCY,
     SCOUT_RELEARN_BACKOFF,
@@ -41,7 +42,7 @@ from app.services.briefing.scouts.tools import (
     scout_tools,
 )
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
-from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS, MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import MCP_SIGNED_OUT_ERRORS, MCPIntegrationNotFoundError
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.timezone import Timezone
@@ -230,12 +231,12 @@ async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> Scou
 
     A dead sign-in is its own reason, so the brief can ask for the reconnect that fixes it.
     """
-    if integration.signed_out:
+    if integration.status == IntegrationStatus.EXPIRED:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     try:
         async with asyncio.timeout(SCOUT_TURN_TIMEOUT.total_seconds()):
             return await _run_scout(user, integration)
-    except MCP_SIGN_IN_ERRORS:
+    except MCP_SIGNED_OUT_ERRORS:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     except Exception as exc:
         # Broad on purpose: an app being down, a bad report or a timeout must cost the

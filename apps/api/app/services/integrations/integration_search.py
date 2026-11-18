@@ -7,6 +7,7 @@ connected-first ordering and the owned-integration exclusion from drifting
 between tiers.
 """
 
+from app.constants.integrations import IntegrationStatus
 from app.helpers.integration_helpers import build_search_matcher
 from app.schemas.integrations.responses import CommunityIntegrationItem, MyIntegrationItem
 from app.services.integrations.community_service import list_community_integrations
@@ -25,7 +26,7 @@ async def match_my_integrations(user_id: str, query: str | None) -> list[MyInteg
     ]
     # Connected first: if a cap ever bites, what gets dropped is an integration
     # the user has not set up, never one they can already use.
-    matched.sort(key=lambda item: item.status != "connected")
+    matched.sort(key=lambda item: item.status != IntegrationStatus.CONNECTED)
     return matched
 
 
