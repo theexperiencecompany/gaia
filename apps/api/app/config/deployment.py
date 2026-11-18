@@ -87,6 +87,8 @@ class DeploymentProfile:
     hosted_bots: bool
     # GAIA Cloud's own PostHog project receives this instance's product analytics.
     product_analytics: bool
+    # Email goes out from heygaia.io, which only GAIA Cloud's Resend account verifies.
+    gaia_mail_domain: bool
     # Unreachable infrastructure stops the boot; off only in development.
     fail_fast: bool
     # A key the capability table needs refuses the boot. Self-host only: its
@@ -180,6 +182,7 @@ def deployment_profile(
         gaia_support=kind is not DeploymentKind.SELFHOST,
         hosted_bots=kind is not DeploymentKind.SELFHOST,
         product_analytics=kind is DeploymentKind.PRODUCTION,
+        gaia_mail_domain=kind is not DeploymentKind.SELFHOST,
         fail_fast=kind is not DeploymentKind.DEVELOPMENT,
         requires_complete_config=kind is DeploymentKind.SELFHOST,
         public_readiness=kind is not DeploymentKind.PRODUCTION,

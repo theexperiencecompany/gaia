@@ -25,7 +25,7 @@ from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.explorer_blocks import build_blocks
 from app.services.briefing.editions.explorer_render import EXPLORER_CANVAS_PX
-from tests.integration.brief_compositions import COMPOSITIONS, composed_payload
+from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 

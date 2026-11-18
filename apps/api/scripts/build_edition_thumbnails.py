@@ -5,30 +5,24 @@ cropped to the card's 3:4 top as a small thumbnail, and the busy composition (le
 needs-you, done, calendar, chart, quote, note) whole, as the full-size demo the card opens.
 Re-run when an edition's design or the family list changes.
 
-Usage (from apps/api)::
+Usage (from apps/api, with a development apps/api/.env; nothing is read from its services)::
 
-    LOG_LEVEL=ERROR PYTHONPATH=. uv run --group backend --group dev python scripts/build_edition_thumbnails.py
+    LOG_LEVEL=ERROR uv run --group backend --group dev python -m scripts.build_edition_thumbnails
 """
 
 import asyncio
 import io
-import os
 from pathlib import Path
-import sys
-
-API_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(API_ROOT))
-os.chdir(API_ROOT)
 
 from PIL import Image
-from tests import offline_env  # noqa: F401 -- must run before any app import
-from tests.integration.brief_compositions import composed_payload
 
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.dev_brief_compositions import composed_payload
 from app.services.dev_postmarks_seed import sample_edition_payload
 
+API_ROOT = Path(__file__).resolve().parent.parent
 OUT = API_ROOT.parent / "web/public/images/briefing/editions"
 DEMO_OUT = OUT / "demo"
 DEMO_COMPOSITION = "busy"

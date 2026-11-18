@@ -201,7 +201,6 @@ async def _unconnected_refusal(user_id: str, needs_integrations: list[str]) -> s
 
 async def _creation_refusal(
     config: RunnableConfig,
-    user_id: str,
     references: list[str] | None,
     parent_todo_id: str | None,
     initial_canvas: str | None,
@@ -212,6 +211,7 @@ async def _creation_refusal(
 
     A thread watch needs Gmail whether or not the caller listed it.
     """
+    user_id = get_user_id(config)
     if references and (refusal := await _references_refusal(user_id, references)):
         return refusal
     if gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
@@ -417,7 +417,6 @@ async def create_tracked_todo(
         return planned
     if refusal := await _creation_refusal(
         config,
-        user_id,
         references,
         parent_todo_id,
         initial_canvas,

@@ -211,7 +211,7 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
     ),
     _ExpectedGroup(
         "Resend Email Service",
-        ["RESEND_API_KEY", "RESEND_AUDIENCE_ID", "EMAIL_UNSUBSCRIBE_SECRET"],
+        ["RESEND_API_KEY", "RESEND_AUDIENCE_ID", "EMAIL_UNSUBSCRIBE_SECRET", "EMAIL_FROM"],
         "Resend email delivery service",
         "Email notifications and communication",
         True,

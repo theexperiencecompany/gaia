@@ -33,6 +33,7 @@ from app.constants.bot import (
     GAIA_CLOUD_WHATSAPP_NUMBER,
 )
 from app.constants.browser import BrowserAgentEffort
+from app.constants.email import BRIEF_SENDER, BRIEF_SENDER_MAILBOX
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
 from app.constants.llm import DevLLMApi
@@ -159,8 +160,9 @@ class Settings(BrowserHostSettings):
     # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
     # FRONTEND_URL/l, the instance's own route. No trailing slash.
     SHORTLINK_BASE_URL: str = "https://heygaia.link"
-    # Sender address for outbound briefing email; the same in every environment.
-    EMAIL_FROM: str = "brief@heygaia.io"
+    # Sender of notification and brief email. Unset on a self-host, it is
+    # brief@<FRONTEND_URL's host>: a domain its own Resend account must verify.
+    EMAIL_FROM: str = BRIEF_SENDER
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
@@ -690,6 +692,13 @@ class Settings(BrowserHostSettings):
             and "SHORTLINK_BASE_URL" not in self.model_fields_set
         ):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
+        return self
+
+    @model_validator(mode="after")
+    def _email_from_the_instances_domain(self) -> Self:
+        """Send from the instance's own web domain unless it is GAIA Cloud's or EMAIL_FROM is set."""
+        if not self.deployment.gaia_mail_domain and "EMAIL_FROM" not in self.model_fields_set:
+            self.EMAIL_FROM = f"{BRIEF_SENDER_MAILBOX}@{urlsplit(self.FRONTEND_URL).hostname}"
         return self
 
     @field_validator(
