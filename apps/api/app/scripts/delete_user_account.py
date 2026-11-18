@@ -59,6 +59,7 @@ from e2b import AsyncSandbox
 import gridfs
 import psycopg
 from psycopg.rows import TupleRow
+from pydantic import BaseModel
 from pymongo import MongoClient
 from pymongo.database import Database
 import redis as redislib
@@ -168,6 +169,12 @@ def _like_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
+class _PinnedLink(BaseModel):
+    """A short link read only for the snapshot whose bytes it pinned."""
+
+    snapshot: LinkSnapshot
+
+
 @dataclass
 class _Footprint:
     """Open clients plus everything teardown and verification need for one user."""
@@ -216,7 +223,7 @@ async def _build_footprint(
     ]
     platform_links = linked_platforms_of(user)
     link_snapshots = [
-        LinkSnapshot.model_validate(link["snapshot"])
+        _PinnedLink.model_validate(link).snapshot
         for link in db.short_links.find(
             {"user_id": uid, "snapshot.content_id": {"$ne": None}}, {"snapshot": 1}
         )

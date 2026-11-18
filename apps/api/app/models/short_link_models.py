@@ -14,7 +14,7 @@ raw canvas.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self, get_args
 
 from pydantic import (
     AwareDatetime,
@@ -54,11 +54,16 @@ RecordTargetType = Literal[
     ShortLinkTargetType.OPENUI_ARTIFACT,
 ]
 
+WorkspaceFileTargetType = Literal[ShortLinkTargetType.WORKSPACE_FILE]
+
 
 class RecordTarget(BaseModel):
     """A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    #: The target types this reference takes, read off the Literal its type field declares.
+    TYPES: ClassVar[frozenset[ShortLinkTargetType]] = frozenset(get_args(RecordTargetType))
 
     type: RecordTargetType
     id: str = Field(min_length=1)
@@ -69,7 +74,9 @@ class WorkspaceFileTarget(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    type: Literal[ShortLinkTargetType.WORKSPACE_FILE]
+    TYPES: ClassVar[frozenset[ShortLinkTargetType]] = frozenset(get_args(WorkspaceFileTargetType))
+
+    type: WorkspaceFileTargetType
     conversation_id: SafePathId
     path: str = Field(min_length=1)
 

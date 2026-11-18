@@ -41,6 +41,14 @@ class _Request(BaseModel):
     headers: dict[str, object] = {}
 
 
+class _Span(BaseModel):
+    """A trace span; only its data is rewritten, the rest passes through untouched."""
+
+    model_config = ConfigDict(extra="allow")
+
+    data: dict[str, object] | None = None
+
+
 class _TransactionInfo(BaseModel):
     source: str | None = None
 
@@ -51,6 +59,8 @@ class _Routed(BaseModel):
     request: _Request | None = None
     transaction: str | None = None
     transaction_info: _TransactionInfo = _TransactionInfo()
+    #: The span dicts, or the AnnotatedValue Sentry leaves in their place when it trimmed them.
+    spans: object = None
 
     def route(self) -> str | None:
         """Return the matched route template, or None when the name is a raw URL."""
@@ -111,14 +121,11 @@ def _filtered(value: object, secrets: frozenset[str]) -> object:
     return value
 
 
-def _drop_span_queries(event: dict[str, object]) -> None:
-    spans = event.get("spans")
-    if not isinstance(spans, list):
-        return
-    for span in spans:
-        data = span.get("data") if isinstance(span, dict) else None
-        if isinstance(data, dict):
-            data.pop(_SPAN_QUERY_KEY, None)
+def _without_query(span: object) -> dict[str, object]:
+    parsed = _Span.model_validate(span)
+    if parsed.data is not None:
+        parsed.data.pop(_SPAN_QUERY_KEY, None)
+    return parsed.model_dump(exclude_unset=True)
 
 
 def scrub_request(event: Event) -> Event:
@@ -128,7 +135,8 @@ def scrub_request(event: Event) -> Event:
     scrubbed: dict[str, object] = dict(event)
     if routed.transaction is not None and route is None:
         scrubbed["transaction"] = UNROUTED
-    _drop_span_queries(scrubbed)
+    if isinstance(routed.spans, list):
+        scrubbed["spans"] = [_without_query(span) for span in routed.spans]
     if routed.request is None:
         return cast(Event, scrubbed)
     secrets = frozenset(_request_secrets(routed.request, route))

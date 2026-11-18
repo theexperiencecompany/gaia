@@ -27,6 +27,7 @@ from langchain_core.outputs import ChatResult
 from mcp_use.client.connectors.http import HttpConnector
 import pytest
 import sentry_sdk
+from sentry_sdk._types import AnnotatedValue
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
 from sentry_sdk.types import Event, Hint
@@ -662,3 +663,27 @@ async def test_a_trace_carries_no_link_slug_content_token_or_viewer_ip(
     for secret in ("unlisted-secret-slug", "content-token-secret", "203.0.113.9"):
         assert secret not in carried
     assert transaction["transaction"] == "/api/v1/l/{slug}"
+
+
+def test_a_trace_span_loses_its_query_string_and_keeps_the_rest() -> None:
+    raw: Event = {
+        "transaction": "/api/v1/l/{slug}",
+        "transaction_info": {"source": "route"},
+        "spans": [
+            {"op": "http.client", "data": {"http.query": "X-Amz-Signature=sig", "url": "u"}},
+            {"op": "db"},
+        ],
+    }
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["spans"] == [{"op": "http.client", "data": {"url": "u"}}, {"op": "db"}]
+
+
+def test_spans_sentry_already_trimmed_pass_through() -> None:
+    trimmed = AnnotatedValue.removed_because_over_size_limit()
+    raw: Event = {"transaction": "/x", "transaction_info": {"source": "route"}, "spans": trimmed}
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["spans"] is trimmed
