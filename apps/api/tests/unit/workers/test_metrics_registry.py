@@ -8,6 +8,7 @@ reminder/workflow-triggered runs.
 
 from app.services import latency_metrics
 from app.services.briefing.metrics import create_brief_run_series
+from app.services.links.metrics import create_link_mint_series
 from app.workers.metrics import REGISTRY as WORKER_REGISTRY
 
 
@@ -29,3 +30,11 @@ def test_every_briefing_run_series_is_served_by_the_worker_before_its_first_run(
     for kind in ("daily", "weekly"):
         labels = {"kind": kind, "outcome": "failed"}
         assert WORKER_REGISTRY.get_sample_value("gaia_brief_run_total", labels) is not None
+
+
+def test_the_link_mint_failure_series_is_served_by_the_worker_before_its_first_mint() -> None:
+    """Briefs and workflow results mint their links on the worker; the alert reads the failed series."""
+    create_link_mint_series()
+
+    labels = {"outcome": "failed"}
+    assert WORKER_REGISTRY.get_sample_value("gaia_link_mint_total", labels) is not None

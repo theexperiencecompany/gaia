@@ -14,6 +14,7 @@ import re
 from typing import Final
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from prometheus_client import REGISTRY as METRICS
 from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 import pytest
 import time_machine
@@ -119,6 +120,10 @@ async def _share() -> ShortLink:
     return await share(OWNER, TODO_T, LinkSettings())
 
 
+def _mints(outcome: str) -> float:
+    return METRICS.get_sample_value("gaia_link_mint_total", {"outcome": outcome}) or 0.0
+
+
 class TestShare:
     async def test_an_existing_live_link_is_reused_not_reminted(self, repo):
         repo.get_live_for_target.return_value = _link("existing")
@@ -196,6 +201,25 @@ class TestGaiaAttachedLinks:
             assert await attach_link(OWNER, TODO_T) is None
 
         assert event["errors"][0]["msg"] == "short_link.mint_failed"
+
+    @pytest.mark.regression
+    async def test_a_failed_mint_is_counted_where_the_alert_reads_it(self, repo):
+        """The link-mint alert reads gaia_link_mint_total{outcome="failed"}; nothing emitted it, so it could never fire."""
+        repo.create.side_effect = ServerSelectionTimeoutError("no primary")
+        before = _mints("failed")
+
+        assert await attach_link(OWNER, TODO_T) is None
+
+        assert _mints("failed") == before + 1
+
+    @pytest.mark.regression
+    async def test_a_minted_link_is_counted(self, repo):
+        repo.create.side_effect = lambda link: link
+        before = _mints("minted")
+
+        assert await attach_link(OWNER, TODO_T) is not None
+
+        assert _mints("minted") == before + 1
 
     async def test_a_storage_outage_is_not_swallowed_as_a_failed_mint(self, repo):
         outage = AppError(message="storage down", status_code=503, code="workspace_storage_offline")

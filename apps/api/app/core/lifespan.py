@@ -21,6 +21,7 @@ from app.services.device.revoke_listener import (
     stop_revoke_listener,
 )
 from app.services.device.up_listener import start_up_listener, stop_up_listener
+from app.services.links.metrics import create_link_mint_series
 from app.services.render.chromium import close_chromium
 from app.utils.browser_reaper import start_browser_reaper, stop_browser_reaper
 from app.utils.context_utils import _CONTEXT_EXECUTOR
@@ -59,6 +60,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
             start_revoke_listener()
             start_up_listener()
             start_runtime_config_subscriber()
+            create_link_mint_series()
         yield
 
     except Exception as e:
