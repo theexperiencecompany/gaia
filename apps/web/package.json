@@ -23,7 +23,7 @@
     "image-dimensions": "node scripts/generate-image-dimensions.mjs",
     "test": "vitest run",
     "prebuild": "npm run extract-icons && npm run extract-blog && npm run sync-wake-word-runtime && npm run image-dimensions && npm run area-css",
-    "predev": "npm run sync-wake-word-runtime && npm run area-css && node scripts/clean-corrupt-dev-manifest.mjs",
+    "predev": "bash ../../scripts/dev/require-worktree-env.sh && npm run sync-wake-word-runtime && npm run area-css && node scripts/clean-corrupt-dev-manifest.mjs",
     "dev": "nx next:dev --turbopack --port=${WEB_PORT:-3000}",
     "build": "npm run type-check && nx next:build",
     "start": "nx next:start",
