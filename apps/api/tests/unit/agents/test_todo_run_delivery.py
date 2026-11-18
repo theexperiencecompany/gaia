@@ -15,6 +15,7 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.config.settings import settings
 from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -23,10 +24,12 @@ from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.links.placeholders import link_placeholder
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
@@ -114,6 +117,25 @@ def _todo(**fields: object) -> TodoDocument:
     return TodoDocument.model_validate(
         {"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
     )
+
+
+class TestALinkInTheWriteUp:
+    async def test_reaches_the_user_as_its_live_link(self) -> None:
+        """Narration returns the model's placeholder; this delivery is where it becomes the URL."""
+        target = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="todo-1")
+        narrated = f"Deploy failed. [The log]({link_placeholder(target)})"
+        live = ShortLink(slug="loglink1234", user_id=USER_ID, target=target)
+        with (
+            _seams(todo=_todo(), narrated=narrated) as seams,
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                AsyncMock(return_value=live),
+            ),
+        ):
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        body = seams.in_app.await_args.args[0].content.body
+        assert body == f"Deploy failed. [The log]({settings.SHORTLINK_BASE_URL}/loglink1234)"
 
 
 class TestResultsThatReachNobody:

@@ -60,6 +60,7 @@ from app.services.delivery.chat_channel import (
     proactive_destination,
     resolve_proactive_target,
 )
+from app.services.links.placeholders import resolve_link_placeholders
 from app.services.notification_service import notification_service
 from app.services.todo_activity import (
     recent_run_outcomes,
@@ -345,6 +346,7 @@ async def _narrate_and_deliver(
         ),
         _lookup_target(todo),
     )
+    text = await resolve_link_placeholders(user.user_id, text)
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
         return _not_sent(TodoRunDeliveryOutcome.NARRATION_FAILED)
