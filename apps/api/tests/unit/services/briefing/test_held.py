@@ -26,8 +26,8 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.briefing_state_models import (
     BriefingBootstrap,
-    BriefingDormancy,
     BriefingStateDocument,
+    BriefingWindDown,
 )
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
@@ -131,7 +131,7 @@ class TestBriefWillCarry:
 
     @pytest.mark.regression
     async def test_a_dormant_loop_does_not(self, seams: _Seams) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
         seams.last_active_at = _NOW - timedelta(days=5)
 
         assert not await held.brief_will_carry(seams.user.id)
@@ -139,7 +139,7 @@ class TestBriefWillCarry:
     async def test_activity_since_dormancy_wakes_the_next_run_so_it_carries(
         self, seams: _Seams
     ) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
 
         assert await held.brief_will_carry(seams.user.id)
 
@@ -171,7 +171,7 @@ class TestReleaseAfterDailyRun:
     async def test_a_run_the_loop_stopped_releases_what_was_held(
         self, seams: _Seams, outcome: BriefingRunOutcome
     ) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
         seams.last_active_at = None
 
         await held.release_after_daily_run(seams.user.id, outcome)

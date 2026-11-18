@@ -64,8 +64,8 @@ class BriefSettlement(BaseModel):
     clears_bootstrap: bool = False
     #: The brief asked about the user's goal, or for one.
     asked_goal: bool = False
-    #: The brief said the idle ladder's goodbye: the loop goes dormant.
-    goes_dormant: bool = False
+    #: The brief said the idle ladder's goodbye: the loop winds down.
+    winds_down: bool = False
 
 
 class BriefDelivery(BaseModel):
