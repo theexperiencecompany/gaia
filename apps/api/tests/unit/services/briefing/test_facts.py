@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.factories import make_user_id
 
 from app.agents.prompts.brief_fact_prompts import (
     CALENDAR_UNAVAILABLE,
@@ -557,7 +558,7 @@ class TestTheAppsBlock:
 
 class TestARepeatIsSaidAsStillOpen:
     _SHOWN = SignalMemoryDocument(
-        user_id="u1",
+        user_id=make_user_id(),
         integration_id="gaia",
         external_id="todo:t1",
         first_seen=datetime(2026, 11, 8, 3, tzinfo=UTC),

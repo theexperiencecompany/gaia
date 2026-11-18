@@ -13,9 +13,10 @@ from app.models.user_models import UserDocument
 from app.utils.occurrence import occurrence_stamp
 from app.workers.tasks import scout_tasks
 from app.workers.tasks.scout_tasks import learn_scout_task, refresh_scouts_task
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 USER = UserDocument(id=USER_ID, timezone="UTC")
 
 

@@ -27,6 +27,7 @@ from app.models.workflow_models import (
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -37,7 +38,7 @@ RUNS = "app.services.system_workflows.definitions.briefing_runs"
 BRIEFING_SUMMARY = "Briefing delivered"
 
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 def _briefing_workflow(system_workflow_key: str) -> Workflow:
