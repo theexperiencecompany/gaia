@@ -118,7 +118,7 @@ _CARD: dict[str, Any] = {
     "stamp_city_name": None,
     "needs_you_count": 1,
 }
-_BRIEFING_METADATA = {"brief_url": _BRIEF_URL, "card": _CARD}
+_BRIEFING_METADATA: dict[str, object] = {"brief_url": _BRIEF_URL, "card": _CARD}
 
 
 @pytest.fixture(autouse=True)
@@ -221,7 +221,7 @@ class TestEmailChannelAdapterContract:
     async def test_transform_reads_a_briefing_kinds_stored_brief_by_its_card(
         self, briefing: BriefingEmail, stored_brief: AsyncMock
     ) -> None:
-        notification = _make_request(kind=briefing.kind, **_BRIEFING_METADATA)
+        notification = _make_request(kind=briefing.kind, metadata=_BRIEFING_METADATA)
 
         assert await EmailChannelAdapter().transform(notification) == _content(briefing)
         stored_brief.assert_awaited_once_with(_BRIEF_ID, user_id=_USER_ID)
@@ -241,7 +241,9 @@ class TestEmailChannelAdapterContract:
         self, stored_brief: AsyncMock
     ) -> None:
         stored_brief.return_value = None
-        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, **_BRIEFING_METADATA)
+        notification = _make_request(
+            kind=NOTIFICATION_KIND_BRIEFING_DAILY, metadata=_BRIEFING_METADATA
+        )
 
         with pytest.raises(LookupError, match=_BRIEF_ID):
             await EmailChannelAdapter().transform(notification)
@@ -250,8 +252,7 @@ class TestEmailChannelAdapterContract:
     async def test_transform_fails_loud_on_a_malformed_card(self) -> None:
         notification = _make_request(
             kind=NOTIFICATION_KIND_BRIEFING_DAILY,
-            brief_url=_BRIEF_URL,
-            card={"headline": "only this"},
+            metadata={"brief_url": _BRIEF_URL, "card": {"headline": "only this"}},
         )
 
         with pytest.raises(ValidationError):
@@ -272,7 +273,7 @@ class TestEmailChannelAdapterContract:
     async def test_transform_fails_loud_on_a_briefing_without_its_hosted_edition(
         self, missing: dict[str, object], raised: type[Exception]
     ) -> None:
-        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, **missing)
+        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_DAILY, metadata=missing)
 
         with pytest.raises(raised):
             await EmailChannelAdapter().transform(notification)
@@ -281,7 +282,7 @@ class TestEmailChannelAdapterContract:
 def _make_request(
     kind: str | None = None,
     rich_content: dict[str, Any] | None = None,
-    **briefing_metadata: object,
+    metadata: dict[str, object] | None = None,
 ) -> NotificationRequest:
     return NotificationRequest(
         id="notif-1",
@@ -295,7 +296,7 @@ def _make_request(
             body="Stand-up in 10 minutes",
             rich_content=rich_content,
         ),
-        metadata={**({"kind": kind} if kind else {}), **briefing_metadata},
+        metadata={**({"kind": kind} if kind else {}), **(metadata or {})},
     )
 
 
@@ -525,7 +526,9 @@ class TestDeliverBriefings:
     async def test_transform_then_deliver_sends_the_stored_image(self) -> None:
         route = _mock_send()
         adapter = EmailChannelAdapter()
-        notification = _make_request(kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, **_BRIEFING_METADATA)
+        notification = _make_request(
+            kind=NOTIFICATION_KIND_BRIEFING_WEEKLY, metadata=_BRIEFING_METADATA
+        )
 
         await adapter.deliver(await adapter.transform(notification), _USER_ID)
 

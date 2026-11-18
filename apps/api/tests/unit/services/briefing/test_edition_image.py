@@ -102,10 +102,10 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
     stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
-    view = await briefing_view(stored)
+    edition = (await briefing_view(stored)).card.edition
 
-    assert view.edition is not None
-    app_image = await client.get(_path(view.edition.image_url))
+    assert edition is not None
+    app_image = await client.get(_path(edition.image_url))
     assert stored.edition is not None
     chat_url = await edition_url(stored.edition.key, EditionVariant.JPG, _NOW)
     chat_image = await client.get(_path(chat_url))
@@ -115,8 +115,8 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
         assert (png.format, png.width, png.mode) == ("PNG", EDITION_DELIVERY_MAX_WIDTH_PX, "RGBA")
     with Image.open(io.BytesIO(chat_image.content)) as jpg:
         assert (jpg.format, jpg.mode) == ("JPEG", "RGB")
-    assert _USER not in view.edition.image_url
-    assert _BRIEF_ID not in view.edition.image_url
+    assert _USER not in edition.image_url
+    assert _BRIEF_ID not in edition.image_url
 
 
 @time_machine.travel(_NOW, tick=False)
@@ -140,9 +140,9 @@ async def test_a_url_serves_nothing_once_tampered_retargeted_expired_or_deleted(
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
     stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
-    view = await briefing_view(stored)
-    assert view.edition is not None
-    url = _path(view.edition.image_url)
+    edition = (await briefing_view(stored)).card.edition
+    assert edition is not None
+    url = _path(edition.image_url)
 
     tampered = await client.get(url[:-2] + ("AA" if not url.endswith("AA") else "BB"))
     retargeted = await client.get(url.replace("/png?", "/jpg?"))
