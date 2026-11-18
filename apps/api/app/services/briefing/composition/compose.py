@@ -12,8 +12,8 @@ from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
 from app.constants.briefing import (
     BRIEF_COMPOSITION_LABEL,
-    BRIEFING_KIND_WEEKLY,
     MAX_COMPOSITION_ATTEMPTS,
+    BriefingKind,
 )
 from app.models.brief_composition_models import (
     BriefComposition,
@@ -22,7 +22,6 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
 )
-from app.models.briefing_models import BriefingKind
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
@@ -102,7 +101,7 @@ async def _problems(
     user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, kind: BriefingKind
 ) -> list[str]:
     """Return the contract's problems, else every heading untrue of its items."""
-    if kind == BRIEFING_KIND_WEEKLY and not answer.blocks:
+    if kind == BriefingKind.WEEKLY and not answer.blocks:
         return [_EMPTY_WEEKLY]
     return composition_problems(answer, pool, values) or list(
         (await heading_problems(user_id, rendered(answer, values), pool)).values()

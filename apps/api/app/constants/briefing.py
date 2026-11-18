@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final, Literal
+from typing import Final
 
 # Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
 # run fails loud and retries next week instead of hanging the worker slot.
@@ -37,9 +37,13 @@ WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
 WEEKLY_DIGEST_HOUR: Final[int] = 17
 WEEKLY_DIGEST_CRON: Final[str] = f"0 {WEEKLY_DIGEST_HOUR} * * 0"
 
-# Briefing kinds — key the payload variant and the unique-per-day constraint.
-BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
-BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
+
+class BriefingKind(StrEnum):
+    """Which brief a run makes; keys the payload variant and the one-per-day constraint."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
 
 # Masthead labels, set by code on each kind's payload (never by the model).
 DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
@@ -205,19 +209,19 @@ class BriefForm(StrEnum):
 #: filler. Its first line says what is new, then how the calendar stands; a quiet brief after
 #: a quiet brief says it is still quiet and since when, so a quiet streak never reads the same.
 QUIET_NOTE_HEADLINES: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: "Nothing needs you today",
-    BRIEFING_KIND_WEEKLY: "Nothing needs you this week",
+    BriefingKind.DAILY: "Nothing needs you today",
+    BriefingKind.WEEKLY: "Nothing needs you this week",
 }
 QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: "Nothing new needs you today",
-    BRIEFING_KIND_WEEKLY: "Nothing moved this week",
+    BriefingKind.DAILY: "Nothing new needs you today",
+    BriefingKind.WEEKLY: "Nothing moved this week",
 }
 QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
 QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new since your brief {when}"
 QUIET_NOTE_STILL_FOR: Final[str] = "Still nothing new: {days} days since your brief {when}"
 QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: ", and your calendar is clear.",
-    BRIEFING_KIND_WEEKLY: ", and next week's calendar is clear.",
+    BriefingKind.DAILY: ", and your calendar is clear.",
+    BriefingKind.WEEKLY: ", and next week's calendar is clear.",
 }
 QUIET_NOTE_NO_CALENDAR: Final[str] = "."
 QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (

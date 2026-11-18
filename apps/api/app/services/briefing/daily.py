@@ -9,11 +9,11 @@ from app.agents.prompts.briefing_prompts import (
     build_briefing_voice_prompt,
 )
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
     DAILY_KICKER,
     RECENT_BRIEFS_RECALLED,
     TODAY_SPAN,
     UNNAMED_READER,
+    BriefingKind,
     BriefingRunOutcome,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
@@ -160,7 +160,7 @@ async def _composed_day(
         pool_context,
         datetime.now(UTC),
     )
-    composed = await compose_brief(user.id, pool, BRIEFING_KIND_DAILY)
+    composed = await compose_brief(user.id, pool, BriefingKind.DAILY)
     laid = lay_out(composed.rendered, pool)
     log_composition(pool, laid)
     return pool, laid
@@ -169,7 +169,7 @@ async def _composed_day(
 async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     """Look back, plan, and deliver one daily briefing for the user; return how it ended."""
     log.set(component="briefing", operation="run_daily_briefing", user_id=user_id)
-    return await counted_run(BRIEFING_KIND_DAILY, _daily(user_id))
+    return await counted_run(BriefingKind.DAILY, _daily(user_id))
 
 
 async def _daily(user_id: str) -> BriefingRunOutcome:
@@ -177,9 +177,9 @@ async def _daily(user_id: str) -> BriefingRunOutcome:
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     clock = context.resolve_clock(user.timezone)
-    if await already_delivered(user_id, clock, BRIEFING_KIND_DAILY):
+    if await already_delivered(user_id, clock, BriefingKind.DAILY):
         return BriefingRunOutcome.ALREADY_DELIVERED
-    if await finish_started_delivery(user, clock, BRIEFING_KIND_DAILY):
+    if await finish_started_delivery(user, clock, BriefingKind.DAILY):
         return BriefingRunOutcome.SENT
 
     dstate = await wake_or_skip(user)
@@ -325,7 +325,7 @@ async def _daily(user_id: str) -> BriefingRunOutcome:
     await publish_brief(
         user,
         clock,
-        BRIEFING_KIND_DAILY,
+        BriefingKind.DAILY,
         payload,
         [edition.family],
         # The idle ladder's goal question, warning and goodbye are messages in
@@ -354,7 +354,7 @@ async def _quiet_day(
     """Send the quiet note, or nothing when the last daily already was one: until something real happens."""
     day, overdue = reads
     gathered, pool, ladder = run
-    if last_was_quiet(briefs, BRIEFING_KIND_DAILY):
+    if last_was_quiet(briefs, BriefingKind.DAILY):
         # Nothing is shown: no question went out, and the held results wait for the next brief.
         log.info("briefing.quiet_day_silent", user_id=user.id)
         return BriefingRunOutcome.SILENT
@@ -363,8 +363,8 @@ async def _quiet_day(
     await publish_quiet_note(
         user,
         clock,
-        BRIEFING_KIND_DAILY,
-        quiet_note(clock, BRIEFING_KIND_DAILY, facts),
+        BriefingKind.DAILY,
+        quiet_note(clock, BriefingKind.DAILY, facts),
         Push(
             push=True,
             pool=PoolCounts.of(pool),

@@ -13,11 +13,13 @@ from typing import ClassVar
 
 from pydantic import BaseModel
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, BriefForm
+from app.constants.briefing import (
+    BriefForm,
+    BriefingKind,
+)
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.models.briefing_models import (
-    BriefingKind,
     BriefingModel,
     BriefingUpdate,
     DeliveryStep,
@@ -101,7 +103,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
 
     async def has_daily_briefing(self, user_id: str) -> bool:
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
-        return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0
+        return await self._count({"user_id": user_id, "kind": BriefingKind.DAILY}) > 0
 
     async def was_delivered(self, user_id: str, date: str, kind: BriefingKind) -> bool:
         """Whether the (user, date, kind) brief's delivery completed.

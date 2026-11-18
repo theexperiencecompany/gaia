@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
@@ -20,6 +18,7 @@ from app.constants.briefing import (
     WEEKLY_KICKER,
     ArtFamily,
     BriefAction,
+    BriefingKind,
     BriefOutcome,
     hue_for_day,
 )
@@ -34,7 +33,6 @@ from app.models.briefing_models import (
     BriefDelivery,
     BriefingEvent,
     BriefingItem,
-    BriefingKind,
     BriefingMood,
     BriefingPayload,
     BriefingSection,
@@ -52,8 +50,8 @@ from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
 _SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, str] = {
-    BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
-    BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    BriefingKind.DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BriefingKind.WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
 }
 # Anchored, not today-relative: a today-relative range would add a brief on every new day.
 _LAST_SEEDED_DATE = date(2026, 10, 1)
@@ -364,7 +362,7 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         await _store(
             user,
             _brief_payload(day, seed, user.name, POSTAL_FAMILY, city_slug=slug),
-            BRIEFING_KIND_DAILY,
+            BriefingKind.DAILY,
         )
 
 
@@ -389,9 +387,9 @@ async def seed_dev_editions(user: UserDocument, count: int) -> None:
         await _store(
             user,
             _brief_payload(day, seed, user.name, family, artwork_id=artwork_id),
-            BRIEFING_KIND_DAILY,
+            BriefingKind.DAILY,
         )
-    await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)
+    await _store(user, _weekly_payload(user), BriefingKind.WEEKLY)
 
 
 def _weekly_payload(user: UserDocument) -> BriefingPayload:

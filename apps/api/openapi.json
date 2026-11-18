@@ -2406,6 +2406,15 @@
         "title": "BriefingItem",
         "type": "object"
       },
+      "BriefingKind": {
+        "description": "Which brief a run makes; keys the payload variant and the one-per-day constraint.",
+        "enum": [
+          "daily",
+          "weekly"
+        ],
+        "title": "BriefingKind",
+        "type": "string"
+      },
       "BriefingListResponse": {
         "description": "One page of the archive, newest first, and where the next page starts.",
         "properties": {
@@ -2937,12 +2946,7 @@
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "daily",
-              "weekly"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingKind"
           },
           "needs_you_count": {
             "description": "Items in the brief's Needs you section, as its edition lists them.",
@@ -16550,12 +16554,7 @@
             "title": "Edition Image Url"
           },
           "kind": {
-            "enum": [
-              "daily",
-              "weekly"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/BriefingKind"
           },
           "payload": {
             "$ref": "#/components/schemas/PublicBriefingPayload"

@@ -12,7 +12,6 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_voice_prompt,
 )
 from app.constants.briefing import (
-    BRIEFING_KIND_WEEKLY,
     GAIA_SOURCE,
     RECENT_BRIEFS_RECALLED,
     UNNAMED_READER,
@@ -20,6 +19,7 @@ from app.constants.briefing import (
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
+    BriefingKind,
     BriefingRunOutcome,
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -118,12 +118,12 @@ async def _send_quiet_week(
     ahead, overdue = reads
     gap = ahead.gap if isinstance(ahead, context.CalendarUnread) else None
     unread = pool.context.unread
-    facts = await quiet_facts(user.id, BRIEFING_KIND_WEEKLY, briefs, (gap, overdue, unread))
+    facts = await quiet_facts(user.id, BriefingKind.WEEKLY, briefs, (gap, overdue, unread))
     await publish_quiet_note(
         user,
         clock,
-        BRIEFING_KIND_WEEKLY,
-        quiet_note(clock, BRIEFING_KIND_WEEKLY, facts),
+        BriefingKind.WEEKLY,
+        quiet_note(clock, BriefingKind.WEEKLY, facts),
         Push(push=True, pool=PoolCounts.of(pool)),
     )
 
@@ -131,7 +131,7 @@ async def _send_quiet_week(
 async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     """Zoom out on the week since Monday and the week ahead; return how it ended."""
     log.set(component="briefing", operation="run_weekly_digest", user_id=user_id)
-    return await counted_run(BRIEFING_KIND_WEEKLY, _weekly(user_id))
+    return await counted_run(BriefingKind.WEEKLY, _weekly(user_id))
 
 
 async def _weekly(user_id: str) -> BriefingRunOutcome:
@@ -139,9 +139,9 @@ async def _weekly(user_id: str) -> BriefingRunOutcome:
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     clock = context.resolve_clock(user.timezone)
-    if await already_delivered(user_id, clock, BRIEFING_KIND_WEEKLY):
+    if await already_delivered(user_id, clock, BriefingKind.WEEKLY):
         return BriefingRunOutcome.ALREADY_DELIVERED
-    if await finish_started_delivery(user, clock, BRIEFING_KIND_WEEKLY):
+    if await finish_started_delivery(user, clock, BriefingKind.WEEKLY):
         return BriefingRunOutcome.SENT
 
     # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
@@ -206,7 +206,7 @@ async def _weekly(user_id: str) -> BriefingRunOutcome:
     if _is_empty_week(pool):
         await _send_quiet_week(user, clock, briefs, (ahead, todos.overdue), pool)
         return BriefingRunOutcome.SENT
-    composed = await compose_brief(user_id, pool, BRIEFING_KIND_WEEKLY)
+    composed = await compose_brief(user_id, pool, BriefingKind.WEEKLY)
     laid = lay_out(composed.rendered, pool)
     log_composition(pool, laid)
     remembered = chosen_signals(laid.chosen, scouts.remembered)
@@ -274,7 +274,7 @@ async def _weekly(user_id: str) -> BriefingRunOutcome:
     await publish_brief(
         user,
         clock,
-        BRIEFING_KIND_WEEKLY,
+        BriefingKind.WEEKLY,
         payload,
         [],
         Push(push=True, signal_count=len(remembered), pool=PoolCounts.of(pool)),

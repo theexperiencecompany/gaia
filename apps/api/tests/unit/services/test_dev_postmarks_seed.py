@@ -9,14 +9,13 @@ from bson import ObjectId
 import pytest
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
     WEEKLY_FAMILY,
     ArtFamily,
     BriefAction,
+    BriefingKind,
     BriefOutcome,
     hue_for_day,
 )
@@ -214,7 +213,7 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
 
     kinds = [call.args[0].kind for call in seeded.stored()]
     payloads = seeded.payloads()
-    assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
+    assert kinds == [BriefingKind.DAILY] * 4 + [BriefingKind.WEEKLY]
     assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]
     assert [p.date for p in payloads[:4]] == [
         "2026-10-02",

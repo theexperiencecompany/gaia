@@ -14,8 +14,6 @@ from app.constants.briefing import (
     BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEF_NOTE_MAX_CHARS,
     BRIEF_TAKEAWAY_MAX_CHARS,
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     MAX_BAR_CATEGORIES,
     MAX_BRIEF_BLOCKS,
     MAX_BRIEF_CHARTS,
@@ -23,16 +21,16 @@ from app.constants.briefing import (
     MAX_ITEMS_PER_BLOCK,
     MIN_TREND_POINTS,
     BriefAction,
+    BriefingKind,
     BriefOutcome,
 )
-from app.models.briefing_models import BriefingKind
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import context_block
 from app.services.hil.utils import untrusted_fence
 
 _FRAMES: dict[BriefingKind, str] = {
-    BRIEFING_KIND_DAILY: DAILY_FRAME,
-    BRIEFING_KIND_WEEKLY: WEEKLY_FRAME,
+    BriefingKind.DAILY: DAILY_FRAME,
+    BriefingKind.WEEKLY: WEEKLY_FRAME,
 }
 
 

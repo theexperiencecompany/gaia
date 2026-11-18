@@ -12,11 +12,11 @@ from enum import StrEnum
 from fastapi import HTTPException
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
     LOOKBACK_MAX_DAYS,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
+    BriefingKind,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.memory import MemoryKind
@@ -37,7 +37,6 @@ from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     BriefingEvent,
-    BriefingKind,
     BriefingModel,
     BriefingMood,
     BriefingWeek,
@@ -190,7 +189,7 @@ def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
 
 
 async def last_brief(
-    user_id: str, clock: UserClock, kind: BriefingKind = BRIEFING_KIND_DAILY
+    user_id: str, clock: UserClock, kind: BriefingKind = BriefingKind.DAILY
 ) -> BriefingModel | None:
     """Return the latest brief of kind before today; a same-day re-run looks past its own."""
     return await briefing_repository.get_before_date(user_id, kind=kind, before_date=clock.date_str)
@@ -401,7 +400,7 @@ async def compute_winback_state(user: UserDocument, recent: int = 10) -> Winback
     so winback would never fire. The user's last activity is read once.
     """
     briefings = await briefing_repository.list_recent(
-        user.id, limit=recent, kind=BRIEFING_KIND_DAILY
+        user.id, limit=recent, kind=BriefingKind.DAILY
     )
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)

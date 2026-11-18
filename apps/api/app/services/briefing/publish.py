@@ -7,8 +7,6 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     QUIET_NOTE_CALENDAR_CLEAR,
     QUIET_NOTE_CALENDAR_UNREAD,
@@ -26,6 +24,7 @@ from app.constants.briefing import (
     QUIET_NOTE_WATCH,
     WEEKLY_KICKER,
     BriefForm,
+    BriefingKind,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -36,7 +35,6 @@ from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock
 from app.models.briefing_models import (
     BriefDelivery,
-    BriefingKind,
     BriefingModel,
     BriefingMood,
     BriefingPayload,
@@ -84,13 +82,13 @@ class Push:
 QUIET_NOTE_FAMILY = "none"
 
 _KICKERS: dict[BriefingKind, str] = {
-    BRIEFING_KIND_DAILY: DAILY_KICKER,
-    BRIEFING_KIND_WEEKLY: WEEKLY_KICKER,
+    BriefingKind.DAILY: DAILY_KICKER,
+    BriefingKind.WEEKLY: WEEKLY_KICKER,
 }
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
-    BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
-    BRIEFING_KIND_WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
+    BriefingKind.DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
+    BriefingKind.WEEKLY: NOTIFICATION_KIND_BRIEFING_WEEKLY,
 }
 
 

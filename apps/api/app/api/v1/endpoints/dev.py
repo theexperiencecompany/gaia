@@ -11,10 +11,12 @@ from collections.abc import Awaitable, Callable
 from fastapi import APIRouter, File, Form, Header, UploadFile, status
 from langgraph.errors import GraphRecursionError
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, BRIEFING_KIND_WEEKLY, BriefingRunOutcome
+from app.constants.briefing import (
+    BriefingKind,
+    BriefingRunOutcome,
+)
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.db.repositories.users import user_repository
-from app.models.briefing_models import BriefingKind
 from app.models.files_models import FileDocument
 from app.models.user_models import UserDocument
 from app.schemas.dev_schemas import (
@@ -42,8 +44,8 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/dev", tags=["Dev"])
 
 _BRIEFING_RUNS: dict[BriefingKind, Callable[[str], Awaitable[BriefingRunOutcome]]] = {
-    BRIEFING_KIND_DAILY: run_daily_briefing,
-    BRIEFING_KIND_WEEKLY: run_weekly_digest,
+    BriefingKind.DAILY: run_daily_briefing,
+    BriefingKind.WEEKLY: run_weekly_digest,
 }
 
 

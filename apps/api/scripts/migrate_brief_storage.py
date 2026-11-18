@@ -23,7 +23,9 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.constants.briefing import BRIEFING_KIND_DAILY
+from app.constants.briefing import (
+    BriefingKind,
+)
 from app.constants.files import BLOB_DOWNLOAD_TIMEOUT_SECONDS
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -93,7 +95,7 @@ async def _complete_deliveries(apply: bool, mode: str) -> None:
         delivered = BriefDelivery(
             push=True,
             notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY
-            if doc.get("kind", BRIEFING_KIND_DAILY) == BRIEFING_KIND_DAILY
+            if doc.get("kind", BriefingKind.DAILY) == BriefingKind.DAILY
             else NOTIFICATION_KIND_BRIEFING_WEEKLY,
             done=list(DeliveryStep),
             completed_at=doc["created_at"],

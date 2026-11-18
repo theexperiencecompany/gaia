@@ -6,12 +6,11 @@ increase increase() can see.
 """
 
 from collections.abc import Awaitable
-from typing import Final, get_args
+from typing import Final
 
 from prometheus_client import Counter
 
-from app.constants.briefing import BriefingRunOutcome
-from app.models.briefing_models import BriefingKind
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.services.storage.metrics import _register_once
 from shared.py.wide_events import log
 
@@ -43,6 +42,6 @@ async def counted_run(kind: BriefingKind, run: Awaitable[BriefingRunOutcome]) ->
 
 def create_briefing_run_series() -> None:
     """Create every briefing run series at zero, so its first increment is visible."""
-    for kind in get_args(BriefingKind):
+    for kind in BriefingKind:
         for outcome in [*(o.value for o in BriefingRunOutcome), FAILED]:
             BRIEFING_RUN_TOTAL.labels(kind, outcome)

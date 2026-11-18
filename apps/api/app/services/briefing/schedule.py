@@ -11,8 +11,6 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
-    BRIEFING_KIND_WEEKLY,
     DAILY_BRIEFING_WORKFLOW_KEY,
     ENABLED_BRIEFING_KEYS,
     EVERY_DAY_CRON_DAYS,
@@ -21,6 +19,7 @@ from app.constants.briefing import (
     WEEKLY_DIGEST_HOUR,
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
+    BriefingKind,
 )
 from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
 from app.constants.workflows import WorkflowDelivery
@@ -31,7 +30,6 @@ from app.decorators.entitlements import is_paid
 from app.models.briefing_models import (
     BriefDeliveryWorkflow,
     BriefFreeDelivery,
-    BriefingKind,
     BriefingSchedule,
     BriefingScheduleState,
 )
@@ -54,8 +52,8 @@ from shared.py.analytics.catalog.settings import (
 from shared.py.wide_events import log
 
 _KIND_BY_WORKFLOW_KEY: dict[str, BriefingKind] = {
-    DAILY_BRIEFING_WORKFLOW_KEY: BRIEFING_KIND_DAILY,
-    WEEKLY_DIGEST_WORKFLOW_KEY: BRIEFING_KIND_WEEKLY,
+    DAILY_BRIEFING_WORKFLOW_KEY: BriefingKind.DAILY,
+    WEEKLY_DIGEST_WORKFLOW_KEY: BriefingKind.WEEKLY,
 }
 
 

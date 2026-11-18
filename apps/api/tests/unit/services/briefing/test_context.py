@@ -15,9 +15,9 @@ import pytest
 from tests.helpers import captured_wide_event, local_timezone
 
 from app.constants.briefing import (
-    BRIEFING_KIND_DAILY,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
+    BriefingKind,
     BriefOutcome,
 )
 from app.constants.memory import MemoryEntityType, MemoryKind
@@ -953,7 +953,7 @@ class TestWinbackReads:
 
         await context.compute_winback_state(_WINBACK_USER)
 
-        listing.assert_awaited_once_with(_USER, limit=10, kind=BRIEFING_KIND_DAILY)
+        listing.assert_awaited_once_with(_USER, limit=10, kind=BriefingKind.DAILY)
         assert signal.await_args.args[0] == _USER
 
     async def test_no_briefs_means_no_winback_went_out(

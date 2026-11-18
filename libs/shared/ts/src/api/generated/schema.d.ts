@@ -7204,6 +7204,12 @@ export interface components {
             url: string | null;
         };
         /**
+         * BriefingKind
+         * @description Which brief a run makes; keys the payload variant and the one-per-day constraint.
+         * @enum {string}
+         */
+        BriefingKind: "daily" | "weekly";
+        /**
          * BriefingListResponse
          * @description One page of the archive, newest first, and where the next page starts.
          */
@@ -7420,11 +7426,7 @@ export interface components {
             edition_name: string | null;
             /** Id */
             id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "daily" | "weekly";
+            kind: components["schemas"]["BriefingKind"];
             /**
              * Needs You Count
              * @description Items in the brief's Needs you section, as its edition lists them.
@@ -13851,11 +13853,7 @@ export interface components {
         PublicBriefing: {
             /** Edition Image Url */
             edition_image_url: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "daily" | "weekly";
+            kind: components["schemas"]["BriefingKind"];
             payload: components["schemas"]["PublicBriefingPayload"];
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -18119,6 +18117,7 @@ export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpda
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingKind = components['schemas']['BriefingKind'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingMood = components['schemas']['BriefingMood'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];

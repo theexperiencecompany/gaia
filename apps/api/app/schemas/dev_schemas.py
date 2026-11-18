@@ -2,8 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from app.constants.briefing import BriefingRunOutcome
-from app.models.briefing_models import BriefingKind
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
 
 
 class CreateDevUserRequest(BaseModel):

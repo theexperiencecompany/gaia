@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.constants.briefing import (
     BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
-    BRIEFING_KIND_DAILY,
     DAILY_BRIEFING_HOUR,
     HUE_MAX,
     MAX_BRIEF_CAPTION_CHARS,
@@ -26,6 +25,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefForm,
     BriefingFrequency,
+    BriefingKind,
     BriefOutcome,
     EditionChoice,
 )
@@ -36,8 +36,6 @@ from app.models.calendar_models import CalendarResponse
 from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
 from app.schemas.errors import ErrorEnvelope
-
-BriefingKind = Literal["daily", "weekly"]
 
 
 # ``mood`` keys the hero treatment (gradient + typographic emphasis) client-side.
@@ -454,7 +452,7 @@ class BriefingModel(UserScopedDocument):
 
     id: str = Field(default_factory=new_briefing_id)
     date: str  # user-local YYYY-MM-DD
-    kind: BriefingKind = BRIEFING_KIND_DAILY
+    kind: BriefingKind = BriefingKind.DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
     #: The stored edition render; None for a quiet day's note, which has none.

@@ -5,10 +5,10 @@ minted before the render: a link is minted only to a target that exists. Every b
 stored (the daily, the weekly, the dev seed) goes through store_brief.
 """
 
+from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import (
     BriefDelivery,
-    BriefingKind,
     BriefingModel,
     BriefingPayload,
     EditionRender,

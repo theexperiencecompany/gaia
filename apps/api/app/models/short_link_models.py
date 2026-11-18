@@ -18,8 +18,13 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
-from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
+from app.models.briefing_models import (
+    BriefingItemKind,
+    BriefingMood,
+    BriefingStat,
+)
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel

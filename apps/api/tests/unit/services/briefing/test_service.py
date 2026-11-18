@@ -52,6 +52,7 @@ from app.constants.briefing import (
     BriefForm,
     BriefingBag,
     BriefingFrequency,
+    BriefingKind,
     BriefingRunOutcome,
     BriefItemSource,
     BriefOutcome,
@@ -83,7 +84,6 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
-    BriefingKind,
     BriefingModel,
     BriefingPayload,
     BriefingSchedule,
