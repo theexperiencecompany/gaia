@@ -11,8 +11,10 @@ import base64
 import binascii
 import re
 
+from pydantic import TypeAdapter, ValidationError
+
 from app.db.repositories.short_links import short_link_repository
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import LinkTarget
 from app.services.links.urls import build_url
 
 PLACEHOLDER_PREFIX = "gaia-link:"
@@ -26,31 +28,27 @@ _PLACEHOLDER_CHARS = "A-Za-z0-9_-"
 _PLACEHOLDER = re.compile(rf"{PLACEHOLDER_PREFIX}([{_PLACEHOLDER_CHARS}]+)")
 # A markdown link around a placeholder: an unresolvable one keeps its label as plain text.
 _MARKDOWN_LINK = re.compile(rf"\[([^\]\n]*)\]\({PLACEHOLDER_PREFIX}([{_PLACEHOLDER_CHARS}]+)\)")
-_TARGET_SEPARATOR = ":"  # pragma: no mutate — a target type never holds a colon
+_TARGET: TypeAdapter[LinkTarget] = TypeAdapter(LinkTarget)
 
 
-def link_placeholder(target_type: ShortLinkTargetType, target_id: str) -> str:
+def link_placeholder(target: LinkTarget) -> str:
     """Return the stand-in for the target's link that a model may carry and repeat."""
-    raw = f"{target_type.value}{_TARGET_SEPARATOR}{target_id}".encode()
+    raw = _TARGET.dump_json(target)
     return PLACEHOLDER_PREFIX + base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
 
-def _target(token: str) -> tuple[ShortLinkTargetType, str] | None:
+def _target(token: str) -> LinkTarget | None:
     try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
-    except (binascii.Error, UnicodeDecodeError):
+        return _TARGET.validate_json(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)))
+    except (binascii.Error, ValidationError):
         return None
-    type_value, separator, target_id = raw.partition(_TARGET_SEPARATOR)
-    if not separator or not target_id or type_value not in ShortLinkTargetType:
-        return None
-    return ShortLinkTargetType(type_value), target_id
 
 
 async def _live_url(user_id: str, token: str) -> str | None:
     target = _target(token)
     if target is None:
         return None
-    link = await short_link_repository.get_live_for_target(user_id, *target)
+    link = await short_link_repository.get_live_for_target(user_id, target)
     return build_url(link.slug) if link is not None else None
 
 

@@ -33,13 +33,13 @@ from app.models.short_link_models import (
     LinkSettingsUpdate,
     LinkSnapshot,
     LinkState,
+    LinkTarget,
     LinkViewer,
     LinkViewerKind,
     PublicShortLinkView,
     RevokeReason,
     ShortLink,
     ShortLinkResponse,
-    ShortLinkTargetType,
     ShortLinkUpdate,
 )
 from app.services.analytics_service import analytics_day_start, capture
@@ -141,19 +141,17 @@ async def _grantee_ids(emails: list[str]) -> list[str]:
     return ids
 
 
-async def _snapshot_for(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> LinkSnapshot | None:
+async def _snapshot_for(user_id: str, target: LinkTarget) -> LinkSnapshot | None:
     """Publish the target's bytes when its type serves any; raise when the owner has no such target."""
-    spec = REGISTRY[target_type]
+    spec = REGISTRY[target.type]
     if spec.source is None:
-        if await spec.preview(user_id, target_id, None) is None:
+        if await spec.preview(user_id, target, None) is None:
             raise LinkTargetNotFoundError()
         return None
-    source = await spec.source(user_id, target_id)
+    source = await spec.source(user_id, target)
     if source is None:
         raise LinkTargetNotFoundError()
-    return await publish(user_id, target_type, source)
+    return await publish(user_id, target.type, source)
 
 
 async def _release_snapshot(user_id: str, snapshot: LinkSnapshot | None) -> None:
@@ -185,11 +183,9 @@ async def _insert(link_fields: ShortLink) -> ShortLink | None:
     )
 
 
-async def _live_link(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> ShortLink | None:
+async def _live_link(user_id: str, target: LinkTarget) -> ShortLink | None:
     """Return the target's live link; an expired one is revoked here so the next share mints afresh."""
-    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+    live = await short_link_repository.get_live_for_target(user_id, target)
     if live is None or dead_state(live, _now()) is not LinkDenial.EXPIRED:
         return live
     await short_link_repository.revoke(user_id, live.slug, RevokeReason.EXPIRED)
@@ -199,8 +195,7 @@ async def _live_link(
 
 async def share(
     user_id: str,
-    target_type: ShortLinkTargetType,
-    target_id: str,
+    target: LinkTarget,
     link_settings: LinkSettings,
     *,
     gaia_attached: bool = False,
@@ -211,17 +206,16 @@ async def share(
     the ownership check) is the only path that re-enables a target they stopped
     sharing. Idempotent: racing callers all get the one live link.
     """
-    existing = await _live_link(user_id, target_type, target_id)
+    existing = await _live_link(user_id, target)
     if existing is not None:
         return existing
     grantees = [str(email) for email in link_settings.grantees]
     grantee_ids = await _grantee_ids(grantees)
-    snapshot = await _snapshot_for(user_id, target_type, target_id)
+    snapshot = await _snapshot_for(user_id, target)
     candidate = ShortLink(
         slug="",  # pragma: no mutate — _insert mints the slug before any write
         user_id=user_id,
-        target_type=target_type,
-        target_id=target_id,
+        target=target,
         access=link_settings.access,
         grantees=grantees,
         grantee_ids=grantee_ids,
@@ -239,11 +233,11 @@ async def share(
         # Lost a concurrent mint: the winner's link is the one live link, and the snapshot just
         # published belongs to nobody.
         await _release_snapshot(user_id, snapshot)
-        return await share(user_id, target_type, target_id, link_settings)
+        return await share(user_id, target, link_settings)
     capture(
         UserId(user_id),
         ShortLinkCreated(
-            target_type=target_type.value,
+            target_type=target.type.value,
             access=minted.access.value,
             origin="gaia_attached" if gaia_attached else "owner_share",
             has_expiry=minted.expires_at is not None,
@@ -252,22 +246,20 @@ async def share(
     return minted
 
 
-async def live_share_link(
-    user_id: str, target_type: ShortLinkTargetType, target_id: str
-) -> ShortLink | None:
+async def live_share_link(user_id: str, target: LinkTarget) -> ShortLink | None:
     """Return the owner's live link to a target, or None when it is not shared. Never mints."""
-    return await _live_link(user_id, target_type, target_id)
+    return await _live_link(user_id, target)
 
 
 async def _refresh_snapshot(link: ShortLink) -> None:
     """Point a live file link at the file as it is now, when its bytes changed."""
-    spec = REGISTRY[link.target_type]
+    spec = REGISTRY[link.target.type]
     if spec.source is None:
         return
-    source = await spec.source(link.user_id, link.target_id)
+    source = await spec.source(link.user_id, link.target)
     if source is None or unchanged(link.snapshot, source):
         return
-    fresh = await publish(link.user_id, link.target_type, source)
+    fresh = await publish(link.user_id, link.target.type, source)
     moved = await short_link_repository.update_live(
         link.user_id, link.slug, ShortLinkUpdate(snapshot=fresh)
     )
@@ -276,10 +268,7 @@ async def _refresh_snapshot(link: ShortLink) -> None:
 
 
 async def attach_link(
-    user_id: str,
-    target_type: ShortLinkTargetType,
-    target_id: str,
-    access: LinkAccess = LinkAccess.OWNER,
+    user_id: str, target: LinkTarget, access: LinkAccess = LinkAccess.OWNER
 ) -> ShortLink | None:
     """Return the link GAIA attaches to something it hands the owner, or None.
 
@@ -288,22 +277,20 @@ async def attach_link(
     the target (revoked by the owner, expired or taken down) or the mint itself failed.
     """
     try:
-        latest = await short_link_repository.get_latest_for_target(user_id, target_type, target_id)
+        latest = await short_link_repository.get_latest_for_target(user_id, target)
         state = link_state(latest, _now()) if latest is not None else None
         if state in SHARING_OFF:
-            log.info("short_link.sharing_disabled", user_id=user_id, target_type=target_type.value)
+            log.info("short_link.sharing_disabled", user_id=user_id, target_type=target.type.value)
             return None
         if latest is not None and state is LinkState.LIVE:
             await _refresh_snapshot(latest)
             return latest
-        return await share(
-            user_id, target_type, target_id, LinkSettings(access=access), gaia_attached=True
-        )
+        return await share(user_id, target, LinkSettings(access=access), gaia_attached=True)
     except _MINT_ERRORS as exc:
         log.error(
             "short_link.mint_failed",
             user_id=user_id,
-            target_type=target_type.value,
+            target_type=target.type.value,
             error_type=type(exc).__name__,
             error=str(exc),
         )
@@ -322,13 +309,11 @@ async def _carry_access(parent: ShortLink, follow: ShortLinkUpdate) -> None:
 
     A link the owner set themselves keeps its own settings.
     """
-    carries = REGISTRY[parent.target_type].carries
+    carries = REGISTRY[parent.target.type].carries
     if carries is None:
         return
-    for target_type, target_id in await carries(parent.user_id, parent.target_id):
-        child = await short_link_repository.get_live_for_target(
-            parent.user_id, target_type, target_id
-        )
+    for target in await carries(parent.user_id, parent.target):
+        child = await short_link_repository.get_live_for_target(parent.user_id, target)
         if child is not None and child.gaia_attached:
             await short_link_repository.update_live(parent.user_id, child.slug, follow)
 
@@ -366,7 +351,7 @@ async def update_settings(user_id: str, slug: str, change: LinkSettingsUpdate) -
         capture(
             UserId(user_id),
             ShortLinkAccessChanged(
-                target_type=link.target_type.value,
+                target_type=link.target.type.value,
                 from_access=link.access.value,
                 to_access=updated.access.value,
                 grantee_count=len(updated.grantees),
@@ -403,19 +388,19 @@ async def rotate(user_id: str, slug: str) -> ShortLink:
         )
     capture(
         UserId(user_id),
-        ShortLinkRotated(target_type=link.target_type.value, access=link.access.value),
+        ShortLinkRotated(target_type=link.target.type.value, access=link.access.value),
     )
     return minted
 
 
-async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id: str) -> bool:
+async def stop_sharing(user_id: str, target: LinkTarget) -> bool:
     """Turn sharing off for a target on its owner's behalf: its live link dies at once.
 
     The revoked link stays on record as the target's newest, which is what
     stops attach_link from handing out a fresh one. Idempotent; False
     when the target had no live link to revoke.
     """
-    live = await short_link_repository.get_live_for_target(user_id, target_type, target_id)
+    live = await short_link_repository.get_live_for_target(user_id, target)
     if live is None:
         return False
     revoked = await short_link_repository.revoke(user_id, live.slug, RevokeReason.OWNER)
@@ -426,21 +411,19 @@ async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id
     log.set(short_link={"slug_hash": hash_short_link_slug(live.slug)})
     capture(
         UserId(user_id),
-        ShortLinkRevoked(target_type=target_type.value, reason=RevokeReason.OWNER.value),
+        ShortLinkRevoked(target_type=target.type.value, reason=RevokeReason.OWNER.value),
     )
     return True
 
 
-async def revoke_deleted_targets(
-    user_id: str, target_type: ShortLinkTargetType, target_ids: list[str]
-) -> int:
+async def revoke_deleted_targets(user_id: str, targets: list[LinkTarget]) -> int:
     """Kill every live link to targets their owner deleted, and delete the snapshots they pinned.
 
     The one place a deleted source takes its links along: a snapshot outlives
     its file by design, so only this revocation stops it serving.
     """
     revoked = 0
-    for link in await short_link_repository.live_for_targets(user_id, target_type, target_ids):
+    for link in await short_link_repository.live_for_targets(user_id, targets):
         if await short_link_repository.revoke(user_id, link.slug, RevokeReason.TARGET_DELETED):
             await _release_snapshot(user_id, link.snapshot)
             revoked += 1
@@ -459,7 +442,7 @@ async def revoke_all_links_for_user(user_id: str) -> int:
             capture(
                 UserId(user_id),
                 ShortLinkRevoked(
-                    target_type=link.target_type.value, reason=RevokeReason.ACCOUNT_REMOVED.value
+                    target_type=link.target.type.value, reason=RevokeReason.ACCOUNT_REMOVED.value
                 ),
             )
             revoked += 1
@@ -471,8 +454,9 @@ async def revoke_conversation_links(user_id: str, conversation_id: str) -> None:
     """Kill the links to everything a conversation held, before the conversation's things are deleted."""
     for spec in REGISTRY.values():
         if spec.in_conversation is not None:
-            target_ids = await spec.in_conversation(user_id, conversation_id)
-            await revoke_deleted_targets(user_id, spec.type, target_ids)
+            await revoke_deleted_targets(
+                user_id, await spec.in_conversation(user_id, conversation_id)
+            )
 
 
 def _served(link: ShortLink) -> ShortLink:
@@ -522,7 +506,7 @@ async def _decide(link: ShortLink | None, viewer: LinkViewer) -> _GrantedView | 
     if isinstance(decision, Denied):
         return decision.denial
     served = _served(link)
-    view = await REGISTRY[link.target_type].project(served, decision.viewer_kind)
+    view = await REGISTRY[link.target.type].project(served, served.target, decision.viewer_kind)
     if view is None:
         return LinkDenial.TARGET_DELETED
     return _GrantedView(served, decision.viewer_kind, view)
@@ -548,12 +532,12 @@ def _envelope(granted: _GrantedView) -> LinkEnvelope:
     link, kind, now = granted.link, granted.viewer_kind, _now()
     return LinkEnvelope(
         access=link.access,
-        target_type=link.target_type,
+        target_type=link.target.type,
         view=granted.view,
         content=framed_content(link, now),
         downloadable=servable_content(link, now) is not None,
         is_owner=kind is LinkViewerKind.OWNER,
-        owner_target_id=link.target_id if kind is LinkViewerKind.OWNER else None,
+        owner_target=link.target if kind is LinkViewerKind.OWNER else None,
     )
 
 
@@ -561,7 +545,7 @@ def _count_denial(link: ShortLink, viewer: LinkViewer, denial: LinkDenial) -> No
     reason = denial.value.removeprefix("link_")
     capture(
         UserId(link.user_id),
-        ShortLinkDenied(target_type=link.target_type.value, reason=reason),
+        ShortLinkDenied(target_type=link.target.type.value, reason=reason),
         _day_dedupe(link.slug, viewer, reason),
     )
 
@@ -571,7 +555,7 @@ def _count_open(granted: _GrantedView, viewer: LinkViewer) -> None:
     capture(
         UserId(link.user_id),
         ShortLinkOpened(
-            target_type=link.target_type.value,
+            target_type=link.target.type.value,
             access=link.access.value,
             viewer_signed_in=viewer.user_id is not None,
         ),

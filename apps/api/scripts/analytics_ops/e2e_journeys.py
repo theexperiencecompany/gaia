@@ -327,9 +327,9 @@ def artifact(stack: Stack) -> None:
             HTTPStatus.OK,
         )
         state = _expect(
-            api.get(
+            api.post(
                 "/l/state",
-                params={"target_type": "openui_artifact", "target_id": artifact_id},
+                json={"target": {"type": "openui_artifact", "id": artifact_id}},
                 headers=stack.browser(),
             ),
             HTTPStatus.OK,
@@ -363,7 +363,7 @@ def link_share(stack: Stack) -> None:
             ),
             HTTPStatus.CREATED,
         ).json()
-        target = {"target_type": "todo_deliverable", "target_id": todo["id"]}
+        target = {"target": {"type": "todo_deliverable", "id": todo["id"]}}
         link = _expect(api.post("/l", json=target, headers=stack.browser()), HTTPStatus.OK).json()
         slug = link["slug"]
         _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)

@@ -9,9 +9,9 @@ import {
   ArtifactPdfDownload,
   PublicOpenUIArtifactView,
 } from "./components/PublicOpenUIArtifactView";
-import { PublicSessionArtifactView } from "./components/PublicSessionArtifactView";
 import { PublicTodoDeliverableView } from "./components/PublicTodoDeliverableView";
 import { PublicWorkflowRunView } from "./components/PublicWorkflowRunView";
+import { PublicWorkspaceFileView } from "./components/PublicWorkspaceFileView";
 import type { LinkViewProps } from "./types";
 
 export interface LinkViewEntry<T extends ShortLinkTargetType> {
@@ -45,8 +45,8 @@ export const LINK_VIEWS: {
     width: "reading",
     stopWarning: BRIEF_STOP_WARNING,
   },
-  session_artifact: {
-    component: PublicSessionArtifactView,
+  workspace_file: {
+    component: PublicWorkspaceFileView,
     label: "file",
     width: "reading",
     reportInView: true,

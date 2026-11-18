@@ -109,7 +109,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
     BriefingBootstrap,
@@ -175,17 +175,15 @@ _BRIEF_LINK = f"{settings.SHORTLINK_BASE_URL}/briefabc123"
 
 def _attached(
     mint: AsyncMock,
-) -> Callable[[str, ShortLinkTargetType, str], Awaitable[ShortLink | None]]:
+) -> Callable[[str, RecordTarget], Awaitable[ShortLink | None]]:
     """Attach the link whose URL mint names, so a test states links as the URLs they become."""
 
-    async def attach(
-        user_id: str, target_type: ShortLinkTargetType, target_id: str
-    ) -> ShortLink | None:
-        url = await mint(user_id, target_type, target_id)
+    async def attach(user_id: str, target: RecordTarget) -> ShortLink | None:
+        url = await mint(user_id, target.type, target.id)
         if url is None:
             return None
         slug = url.removeprefix(f"{settings.SHORTLINK_BASE_URL}/")
-        return ShortLink(slug=slug, user_id=user_id, target_type=target_type, target_id=target_id)
+        return ShortLink(slug=slug, user_id=user_id, target=target)
 
     return attach
 

@@ -33,6 +33,7 @@ from app.models.short_link_models import (
     ShortLink,
     ShortLinkTargetType,
     ShortLinkUpdate,
+    WorkspaceFileTarget,
 )
 from app.models.user_models import UserDocument
 from app.services.email.models import EmailMessage
@@ -60,8 +61,9 @@ def _link(**overrides: object) -> ShortLink:
     data: dict[str, object] = {
         "slug": SLUG,
         "user_id": OWNER,
-        "target_type": ShortLinkTargetType.SESSION_ARTIFACT,
-        "target_id": "conv-1/r.html",
+        "target": WorkspaceFileTarget(
+            type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="conv-1", path="r.html"
+        ),
         "access": LinkAccess.PUBLIC,
     }
     data.update(overrides)
@@ -159,7 +161,7 @@ def _reported(signed_in: bool = True) -> _Call:
     return call(
         UserId(OWNER),
         ShortLinkReported(
-            target_type="session_artifact", reason="phishing", reporter_signed_in=signed_in
+            target_type="workspace_file", reason="phishing", reporter_signed_in=signed_in
         ),
     )
 
@@ -167,7 +169,7 @@ def _reported(signed_in: bool = True) -> _Call:
 def _suspended() -> _Call:
     return call(
         UserId(OWNER),
-        ShortLinkTakenDown(target_type="session_artifact", reason="reports_threshold"),
+        ShortLinkTakenDown(target_type="workspace_file", reason="reports_threshold"),
     )
 
 
@@ -273,7 +275,7 @@ class TestReport:
             {
                 "msg": "short_link.review_requested",
                 "user_id": OWNER,
-                "target_type": "session_artifact",
+                "target_type": "workspace_file",
                 "slug_hash": hash_short_link_slug(SLUG),
                 "reporters": 3,
             }
@@ -301,14 +303,14 @@ class TestReport:
             {
                 "msg": "short_link.suspended",
                 "user_id": OWNER,
-                "target_type": "session_artifact",
+                "target_type": "workspace_file",
                 "slug_hash": hash_short_link_slug(SLUG),
                 "reporters": 5,
             }
         ]
         html = (
             f"<p>{settings.SHORTLINK_BASE_URL}/{SLUG} was suspended after 5 reports.</p>"
-            f"<p>Owner: {OWNER}. Type: session_artifact.</p>"
+            f"<p>Owner: {OWNER}. Type: workspace_file.</p>"
             "<p>Restore it with <code>apps/api/scripts/link_takedown.py --slug SLUG --restore</code>, "
             "or take it down with <code>--reason admin</code>.</p>"
         )
@@ -345,7 +347,7 @@ class TestTakedown:
         seams.links.revoke.assert_awaited_once_with(OWNER, SLUG, RevokeReason.TAKEDOWN)
         seams.delete_snapshot.assert_awaited_once_with(OWNER, snapshot)
         assert seams.capture.call_args_list == [
-            call(UserId(OWNER), ShortLinkTakenDown(target_type="session_artifact", reason="admin"))
+            call(UserId(OWNER), ShortLinkTakenDown(target_type="workspace_file", reason="admin"))
         ]
 
     async def test_a_link_without_a_file_has_nothing_to_delete(self, seams: Seams) -> None:

@@ -56,7 +56,7 @@ def test_the_unshare_route_is_not_mistaken_for_a_slug() -> None:
 def test_the_share_state_route_is_not_mistaken_for_a_slug() -> None:
     client, logged = _logged_paths()
 
-    client.get("/api/v1/l/state?target_type=briefing&target_id=b1")
+    client.post("/api/v1/l/state", json={"target": {"type": "briefing", "id": "b1"}})
 
     assert logged == ["/api/v1/l/state"]
 

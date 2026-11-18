@@ -6,12 +6,14 @@ from app.models.briefing_models import BriefingItem
 from app.models.short_link_models import (
     LinkAccess,
     LinkSnapshot,
+    LinkTarget,
     LinkViewerKind,
     PublicBriefing,
     PublicBriefingEvent,
     PublicBriefingItem,
     PublicBriefingPayload,
     PublicBriefingSection,
+    RecordTarget,
     ShortLink,
     ShortLinkTargetType,
 )
@@ -43,16 +45,18 @@ async def _item_link(owner_id: str, item: BriefingItem, cap: LinkAccess | None) 
     if item.todo_id is None or item.link is None:
         return item.link
     live = await short_link_repository.get_live_for_target(
-        owner_id, ShortLinkTargetType.TODO_DELIVERABLE, item.todo_id
+        owner_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=item.todo_id)
     )
     if live is None or (cap is not None and not at_most(live.access, cap)):
         return None
     return build_url(live.slug)
 
 
-async def _project(link: ShortLink, viewer: LinkViewerKind) -> PublicBriefing | None:
+async def _project(
+    link: ShortLink, target: RecordTarget, viewer: LinkViewerKind
+) -> PublicBriefing | None:
     """Project the brief; for anyone but its owner, no item link opens wider than the brief's own."""
-    briefing = await briefing_repository.get(link.target_id, user_id=link.user_id)
+    briefing = await briefing_repository.get(target.id, user_id=link.user_id)
     if briefing is None:
         return None
     cap = None if viewer is LinkViewerKind.OWNER else link.access
@@ -93,13 +97,13 @@ async def _project(link: ShortLink, viewer: LinkViewerKind) -> PublicBriefing | 
     )
 
 
-async def _carries(owner_id: str, target_id: str) -> list[tuple[ShortLinkTargetType, str]]:
+async def _carries(owner_id: str, target: RecordTarget) -> list[LinkTarget]:
     """Return the deliverables the brief links, whose GAIA-attached links follow the brief's access."""
-    briefing = await briefing_repository.get(target_id, user_id=owner_id)
+    briefing = await briefing_repository.get(target.id, user_id=owner_id)
     if briefing is None:
         return []
     return [
-        (ShortLinkTargetType.TODO_DELIVERABLE, item.todo_id)
+        RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=item.todo_id)
         for section in briefing.payload.sections
         for item in section.items
         if item.todo_id is not None and item.link is not None
@@ -107,9 +111,9 @@ async def _carries(owner_id: str, target_id: str) -> list[tuple[ShortLinkTargetT
 
 
 async def _preview(
-    owner_id: str, target_id: str, _snapshot: LinkSnapshot | None
+    owner_id: str, target: RecordTarget, _snapshot: LinkSnapshot | None
 ) -> PreviewFacts | None:
-    briefing = await briefing_repository.get(target_id, user_id=owner_id)
+    briefing = await briefing_repository.get(target.id, user_id=owner_id)
     if briefing is None:
         return None
     return PreviewFacts(
@@ -119,6 +123,7 @@ async def _preview(
 
 SPEC = LinkTargetSpec(
     type=ShortLinkTargetType.BRIEFING,
+    target=RecordTarget,
     kind_line="A brief from GAIA, the proactive personal assistant.",
     project=_project,
     preview=_preview,

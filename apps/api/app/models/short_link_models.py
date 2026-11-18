@@ -28,6 +28,7 @@ from pydantic import (
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
+from app.models.message_models import SafePathId
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
@@ -39,9 +40,40 @@ class ShortLinkTargetType(StrEnum):
 
     TODO_DELIVERABLE = "todo_deliverable"
     BRIEFING = "briefing"
-    SESSION_ARTIFACT = "session_artifact"
+    WORKSPACE_FILE = "workspace_file"
     WORKFLOW_RUN = "workflow_run"
     OPENUI_ARTIFACT = "openui_artifact"
+
+
+RecordTargetType = Literal[
+    ShortLinkTargetType.TODO_DELIVERABLE,
+    ShortLinkTargetType.BRIEFING,
+    ShortLinkTargetType.WORKFLOW_RUN,
+    ShortLinkTargetType.OPENUI_ARTIFACT,
+]
+
+
+class RecordTarget(BaseModel):
+    """A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: RecordTargetType
+    id: str = Field(min_length=1)
+
+
+class WorkspaceFileTarget(BaseModel):
+    """A file GAIA wrote in one conversation's workspace, by its path under the workspace's files."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: Literal[ShortLinkTargetType.WORKSPACE_FILE]
+    conversation_id: SafePathId
+    path: str = Field(min_length=1)
+
+
+#: One of the owner's things a link points at, told apart by its type.
+LinkTarget = Annotated[RecordTarget | WorkspaceFileTarget, Field(discriminator="type")]
 
 
 class LinkViewerKind(StrEnum):
@@ -194,8 +226,7 @@ class ShortLink(UserScopedDocument):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
 
     slug: str
-    target_type: ShortLinkTargetType
-    target_id: str
+    target: LinkTarget
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     #: The live/dead switch the unique live-target index is partial on.
@@ -301,8 +332,8 @@ class PublicBriefing(_PublicView):
     payload: PublicBriefingPayload
 
 
-class PublicSessionArtifact(_PublicView):
-    """A file GAIA produced in a session's sandbox, as its link pinned it.
+class PublicWorkspaceFile(_PublicView):
+    """A file GAIA wrote in a conversation's workspace, as its link pinned it.
 
     text is the file's text when it is shown as text (code, markdown, and HTML
     source where the instance has no content origin); the page renders it
@@ -310,7 +341,7 @@ class PublicSessionArtifact(_PublicView):
     or offered as a download.
     """
 
-    target_type: Literal[ShortLinkTargetType.SESSION_ARTIFACT]
+    target_type: Literal[ShortLinkTargetType.WORKSPACE_FILE]
     filename: str
     content_type: str
     size_bytes: int
@@ -343,7 +374,7 @@ class PublicOpenUIArtifact(_PublicView):
 PublicShortLinkView = Annotated[
     PublicTodoDeliverable
     | PublicBriefing
-    | PublicSessionArtifact
+    | PublicWorkspaceFile
     | PublicWorkflowRun
     | PublicOpenUIArtifact,
     Field(discriminator="target_type"),
@@ -370,8 +401,8 @@ class LinkEnvelope(ResponseModel):
     downloadable: bool
     #: The viewer is the link's owner, so the page offers its share settings.
     is_owner: bool
-    #: The target's id, for the owner's share settings; None for every other viewer.
-    owner_target_id: str | None
+    #: The target, for the owner's share settings; None for every other viewer.
+    owner_target: LinkTarget | None
 
 
 class LinkDenialEnvelope(ErrorEnvelope):
@@ -435,8 +466,7 @@ class ShortLinkTargetRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    target_type: ShortLinkTargetType
-    target_id: str = Field(min_length=1)
+    target: LinkTarget
 
 
 class ShareLinkRequest(ShortLinkTargetRequest):

@@ -35,23 +35,23 @@ async def preview_meta(link: ShortLink | None) -> LinkPreviewMeta:
     now = datetime.now(UTC)
     if link is None or dead_state(link, now) is not None:
         return _dead()
-    spec = REGISTRY[link.target_type]
+    spec = REGISTRY[link.target.type]
     if not is_open(link.access):
         return LinkPreviewMeta(
             live=True,
-            target_type=link.target_type,
+            target_type=link.target.type,
             access=link.access,
             indexable=False,
             title=GATED_TITLE,
             description=GATED_DESCRIPTION,
             image_url=None,
         )
-    facts = await spec.preview(link.user_id, link.target_id, servable_content(link, now))
+    facts = await spec.preview(link.user_id, link.target, servable_content(link, now))
     if facts is None:
         return _dead()
     return LinkPreviewMeta(
         live=True,
-        target_type=link.target_type,
+        target_type=link.target.type,
         access=link.access,
         indexable=link.access is LinkAccess.PUBLIC,
         title=facts.title,

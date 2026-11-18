@@ -34,7 +34,7 @@ const LIVE_LINK = {
 function renderControls() {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <ShareLinkControls targetType="briefing" targetId="b1" />
+      <ShareLinkControls target={{ type: "briefing", id: "b1" }} />
     </QueryClientProvider>,
   );
 }

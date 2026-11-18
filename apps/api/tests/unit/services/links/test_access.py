@@ -11,6 +11,7 @@ from app.models.short_link_models import (
     LinkSnapshot,
     LinkViewer,
     LinkViewerKind,
+    RecordTarget,
     RenderMode,
     RevokeReason,
     ShortLink,
@@ -45,8 +46,7 @@ def _link(access: LinkAccess, **overrides: object) -> ShortLink:
     data: dict[str, object] = {
         "slug": "abcdefghijk",
         "user_id": OWNER_ID,
-        "target_type": ShortLinkTargetType.TODO_DELIVERABLE,
-        "target_id": "t1",
+        "target": RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
         "access": access,
         "grantees": [GRANTEE_EMAIL],
     }

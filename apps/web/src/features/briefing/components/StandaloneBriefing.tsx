@@ -35,8 +35,7 @@ export function StandaloneBriefing({
       actions={
         ownedBriefingId && (
           <ShareLinkControls
-            targetType="briefing"
-            targetId={ownedBriefingId}
+            target={{ type: "briefing", id: ownedBriefingId }}
             stopWarning={BRIEF_STOP_WARNING}
           />
         )

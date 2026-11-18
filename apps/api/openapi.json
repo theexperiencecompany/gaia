@@ -10812,16 +10812,33 @@
             "title": "Is Owner",
             "type": "boolean"
           },
-          "owner_target_id": {
+          "owner_target": {
             "anyOf": [
               {
-                "type": "string"
+                "discriminator": {
+                  "mapping": {
+                    "briefing": "#/components/schemas/RecordTarget",
+                    "openui_artifact": "#/components/schemas/RecordTarget",
+                    "todo_deliverable": "#/components/schemas/RecordTarget",
+                    "workflow_run": "#/components/schemas/RecordTarget",
+                    "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RecordTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkspaceFileTarget"
+                  }
+                ]
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Owner Target Id"
+            "title": "Owner Target"
           },
           "target_type": {
             "$ref": "#/components/schemas/ShortLinkTargetType"
@@ -10831,9 +10848,9 @@
               "mapping": {
                 "briefing": "#/components/schemas/PublicBriefing",
                 "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
-                "session_artifact": "#/components/schemas/PublicSessionArtifact",
                 "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
-                "workflow_run": "#/components/schemas/PublicWorkflowRun"
+                "workflow_run": "#/components/schemas/PublicWorkflowRun",
+                "workspace_file": "#/components/schemas/PublicWorkspaceFile"
               },
               "propertyName": "target_type"
             },
@@ -10845,7 +10862,7 @@
                 "$ref": "#/components/schemas/PublicBriefing"
               },
               {
-                "$ref": "#/components/schemas/PublicSessionArtifact"
+                "$ref": "#/components/schemas/PublicWorkspaceFile"
               },
               {
                 "$ref": "#/components/schemas/PublicWorkflowRun"
@@ -10864,7 +10881,7 @@
           "content",
           "downloadable",
           "is_owner",
-          "owner_target_id"
+          "owner_target"
         ],
         "title": "LinkEnvelope",
         "type": "object"
@@ -17172,49 +17189,6 @@
         "title": "PublicOpenUIArtifact",
         "type": "object"
       },
-      "PublicSessionArtifact": {
-        "additionalProperties": false,
-        "description": "A file GAIA produced in a session's sandbox, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
-        "properties": {
-          "content_type": {
-            "title": "Content Type",
-            "type": "string"
-          },
-          "filename": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "target_type": {
-            "const": "session_artifact",
-            "title": "Target Type",
-            "type": "string"
-          },
-          "text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Text"
-          }
-        },
-        "required": [
-          "target_type",
-          "filename",
-          "content_type",
-          "size_bytes",
-          "text"
-        ],
-        "title": "PublicSessionArtifact",
-        "type": "object"
-      },
       "PublicSupportRequestCreate": {
         "description": "A contact-form request that may come from a visitor with no GAIA session.",
         "properties": {
@@ -17557,6 +17531,49 @@
         "title": "PublicWorkflowsResponse",
         "type": "object"
       },
+      "PublicWorkspaceFile": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in a conversation's workspace, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "target_type": {
+            "const": "workspace_file",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "target_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "text"
+        ],
+        "title": "PublicWorkspaceFile",
+        "type": "object"
+      },
       "PublishIntegrationResponse": {
         "properties": {
           "integrationId": {
@@ -17798,6 +17815,33 @@
           "dependencies"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RecordTarget": {
+        "additionalProperties": false,
+        "description": "A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "RecordTarget",
         "type": "object"
       },
       "RecordedCall": {
@@ -19423,18 +19467,30 @@
           "settings": {
             "$ref": "#/components/schemas/LinkSettings"
           },
-          "target_id": {
-            "minLength": 1,
-            "title": "Target Id",
-            "type": "string"
-          },
-          "target_type": {
-            "$ref": "#/components/schemas/ShortLinkTargetType"
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [
-          "target_type",
-          "target_id"
+          "target"
         ],
         "title": "ShareLinkRequest",
         "type": "object"
@@ -19518,18 +19574,30 @@
         "additionalProperties": false,
         "description": "One of the owner's artifacts, to read or stop sharing.",
         "properties": {
-          "target_id": {
-            "minLength": 1,
-            "title": "Target Id",
-            "type": "string"
-          },
-          "target_type": {
-            "$ref": "#/components/schemas/ShortLinkTargetType"
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [
-          "target_type",
-          "target_id"
+          "target"
         ],
         "title": "ShortLinkTargetRequest",
         "type": "object"
@@ -19539,7 +19607,7 @@
         "enum": [
           "todo_deliverable",
           "briefing",
-          "session_artifact",
+          "workspace_file",
           "workflow_run",
           "openui_artifact"
         ],
@@ -25251,6 +25319,34 @@
           "missing_integrations"
         ],
         "title": "WorkflowWithIntegrations",
+        "type": "object"
+      },
+      "WorkspaceFileTarget": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.",
+        "properties": {
+          "conversation_id": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "type": {
+            "const": "workspace_file",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "conversation_id",
+          "path"
+        ],
+        "title": "WorkspaceFileTarget",
         "type": "object"
       },
       "WritingStyleEditRequest": {
@@ -33067,29 +33163,19 @@
       }
     },
     "/api/v1/l/state": {
-      "get": {
-        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.",
+      "post": {
+        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.\n\nA POST only because a target is a structured reference, which a query string cannot carry.",
         "operationId": "short_links_get_share_state_route",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "target_type",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ShortLinkTargetType"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
             }
           },
-          {
-            "in": "query",
-            "name": "target_id",
-            "required": true,
-            "schema": {
-              "minLength": 1,
-              "title": "Target Id",
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {

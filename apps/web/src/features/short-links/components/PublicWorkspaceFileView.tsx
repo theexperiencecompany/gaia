@@ -11,7 +11,7 @@ import { FileContentRenderer } from "@/features/chat/components/artifacts/FileVi
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import type {
   LinkContent,
-  PublicSessionArtifact,
+  PublicWorkspaceFile,
 } from "@/types/features/shortLinkTypes";
 
 import { linkDownloadUrl } from "../api/linkViewerApi";
@@ -146,7 +146,7 @@ function TextContent({
   view,
   text,
 }: {
-  view: PublicSessionArtifact;
+  view: PublicWorkspaceFile;
   text: string;
 }) {
   const preview =
@@ -169,13 +169,13 @@ function TextContent({
  * content origin by its render mode, shown as text when the page renders it
  * itself, or described when it can only be downloaded.
  */
-export function PublicSessionArtifactView({
+export function PublicWorkspaceFileView({
   slug,
   view,
   content,
   downloadable,
   reportAction,
-}: LinkViewProps<"session_artifact">) {
+}: LinkViewProps<"workspace_file">) {
   return (
     <article className="flex flex-col gap-3">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-4 rounded-2xl bg-zinc-800 px-4 py-3">

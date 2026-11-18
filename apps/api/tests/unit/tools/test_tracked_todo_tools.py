@@ -55,7 +55,7 @@ from app.constants import todos as todo_constants
 from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models import agent_models
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -996,8 +996,7 @@ class TestCompleteTrackedTodo:
                 return_value=ShortLink(
                     slug="abcdefghijk",
                     user_id="user-1",
-                    target_type=ShortLinkTargetType.TODO_DELIVERABLE,
-                    target_id="t1",
+                    target=RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
                 ),
             ) as mint,
         ):
@@ -1007,9 +1006,14 @@ class TestCompleteTrackedTodo:
         assert "completed and archived" in result
         assert complete.await_args.kwargs["by"] is TodoCompleter.GAIA
         # The agent reads its own tool result, so it carries the link's placeholder, never its URL.
-        assert link_placeholder(ShortLinkTargetType.TODO_DELIVERABLE, "t1") in result
+        assert (
+            link_placeholder(RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"))
+            in result
+        )
         assert "abcdefghijk" not in result
-        mint.assert_awaited_once_with("user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+        mint.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        )
 
     async def test_no_link_when_sharing_is_off_still_confirms(self):
         """A todo the owner stopped sharing completes without handing out a link."""

@@ -6713,7 +6713,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6763,7 +6763,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6812,7 +6812,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6853,7 +6853,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6898,7 +6898,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6941,7 +6941,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -6981,7 +6981,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7017,7 +7017,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7057,7 +7057,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7100,7 +7100,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7136,7 +7136,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],

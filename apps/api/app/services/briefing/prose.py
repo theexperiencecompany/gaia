@@ -33,7 +33,7 @@ from app.models.briefing_models import (
     BriefingPayload,
     BriefVoice,
 )
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.claims import claim_problems
 from app.services.briefing.context import UserClock
@@ -66,7 +66,9 @@ async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
     for fact_id, todo_id in facts.deliverables.items():
         if fact_id not in linked:
             continue
-        link = await attach_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+        link = await attach_link(
+            user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+        )
         if link is not None:
             links[fact_id] = build_url(link.slug)
     return links

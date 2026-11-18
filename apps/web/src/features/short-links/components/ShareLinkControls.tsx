@@ -8,11 +8,10 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareLinkSettingsModal";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
-import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
+import type { LinkTarget } from "@/types/features/shortLinkTypes";
 
 interface ShareLinkControlsProps {
-  targetType: ShortLinkTargetType;
-  targetId: string;
+  target: LinkTarget;
   /** What stopping cannot take back, shown before and after stopping. */
   stopWarning?: string;
   /** A bare icon trigger for dense rows and toolbars; a labelled "Share" button otherwise. */
@@ -29,12 +28,11 @@ function stopPropagation(event: MouseEvent | KeyboardEvent) {
  * it can sit inside a pressable card or row without also opening it.
  */
 export function ShareLinkControls({
-  targetType,
-  targetId,
+  target,
   stopWarning,
   iconOnly = false,
 }: ShareLinkControlsProps) {
-  const share = useShareLink(targetType, targetId, stopWarning);
+  const share = useShareLink(target, stopWarning);
 
   return (
     <span

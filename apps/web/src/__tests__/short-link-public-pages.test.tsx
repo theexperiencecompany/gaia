@@ -46,16 +46,16 @@ vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
 
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
 import { PublicOpenUIArtifactView } from "@/features/short-links/components/PublicOpenUIArtifactView";
-import { PublicSessionArtifactView } from "@/features/short-links/components/PublicSessionArtifactView";
 import { PublicWorkflowRunView } from "@/features/short-links/components/PublicWorkflowRunView";
+import { PublicWorkspaceFileView } from "@/features/short-links/components/PublicWorkspaceFileView";
 import { DEAD_LINK_COPY } from "@/features/short-links/constants";
 import { LINK_VIEWS } from "@/features/short-links/registry";
 import type { DeadLinkDenial } from "@/features/short-links/types";
 import type {
   LinkContent,
   PublicOpenUIArtifact,
-  PublicSessionArtifact,
   PublicWorkflowRun,
+  PublicWorkspaceFile,
 } from "@/types/features/shortLinkTypes";
 
 const RUN: PublicWorkflowRun = {
@@ -233,8 +233,8 @@ describe("a shared artifact", () => {
 });
 
 describe("a shared file", () => {
-  const FILE: PublicSessionArtifact = {
-    target_type: "session_artifact",
+  const FILE: PublicWorkspaceFile = {
+    target_type: "workspace_file",
     filename: "report.html",
     content_type: "text/html",
     size_bytes: 2048,
@@ -250,7 +250,7 @@ describe("a shared file", () => {
   }
 
   function renderFile(
-    view: PublicSessionArtifact,
+    view: PublicWorkspaceFile,
     linkContent: LinkContent | null,
     downloadable = true,
   ) {
@@ -259,7 +259,7 @@ describe("a shared file", () => {
       expires_at: new Date(Date.now() + 600_000).toISOString(),
     });
     return render(
-      <PublicSessionArtifactView
+      <PublicWorkspaceFileView
         slug="abcdefghijk"
         view={view}
         content={linkContent}

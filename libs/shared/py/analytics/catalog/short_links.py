@@ -24,7 +24,7 @@ __all__ = [
 # set and the API's test_registry asserts they stay equal, the same way the
 # workflow events restate their delivery modes.
 ShortLinkTarget = Literal[
-    "todo_deliverable", "briefing", "session_artifact", "workflow_run", "openui_artifact"
+    "todo_deliverable", "briefing", "workspace_file", "workflow_run", "openui_artifact"
 ]
 ShortLinkAccess = Literal["public", "unlisted", "people", "owner"]
 ShortLinkRevokeReason = Literal[

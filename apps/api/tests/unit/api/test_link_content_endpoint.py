@@ -22,6 +22,7 @@ from app.models.short_link_models import (
     RevokeReason,
     ShortLink,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
 from app.services.links.content import issue_content_url
 from app.services.links.serving import SNAPSHOT_CACHE_CONTROL, THUMBNAIL_CACHE_CONTROL
@@ -47,8 +48,9 @@ SNAPSHOT = LinkSnapshot(
 LINK = ShortLink(
     slug=SLUG,
     user_id="owner",
-    target_type=ShortLinkTargetType.SESSION_ARTIFACT,
-    target_id="conv-1/q3.pdf",
+    target=WorkspaceFileTarget(
+        type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="conv-1", path="q3.pdf"
+    ),
     access=LinkAccess.PUBLIC,
     expires_at=datetime.now(UTC) + timedelta(days=1),
     snapshot=SNAPSHOT,

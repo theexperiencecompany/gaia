@@ -18,11 +18,10 @@ from app.agents.workspace.paths import (
     is_inlineable_content_type,
     session_artifacts,
 )
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import ShortLinkTargetType, WorkspaceFileTarget
 from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.links.service import attach_link
-from app.services.links.targets.session_artifact import session_artifact_target_id
 from app.services.links.urls import build_url
 from app.services.storage import ArtifactInfo
 
@@ -49,8 +48,11 @@ async def publish_artifact(
     link = (
         await attach_link(
             user_id,
-            ShortLinkTargetType.SESSION_ARTIFACT,
-            session_artifact_target_id(conv_id, artifact.path),
+            WorkspaceFileTarget(
+                type=ShortLinkTargetType.WORKSPACE_FILE,
+                conversation_id=conv_id,
+                path=artifact.path,
+            ),
         )
         if written_this_turn
         else None
@@ -58,7 +60,7 @@ async def publish_artifact(
     short_url = build_url(link.slug) if link else None
     event = upsert_event(conv_id, artifact, body=inline_body, short_url=short_url)
     await publish_artifact_event(user_id, event)
-    return link_placeholder(link.target_type, link.target_id) if link else None
+    return link_placeholder(link.target) if link else None
 
 
 def artifact_links_note(links: Mapping[str, str]) -> str:
