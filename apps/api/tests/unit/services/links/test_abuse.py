@@ -72,12 +72,7 @@ def _link(**overrides: object) -> ShortLink:
 
 
 class TestGuessingLockout:
-    async def test_a_viewer_with_no_lockout_passes(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await abuse.refuse_when_locked_out(VIEWER)
-
-    async def test_a_locked_out_viewer_is_refused_with_429(
+    async def test_a_locked_out_viewer_is_refused_with_429_and_another_viewer_is_not(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         await fake_redis.set(RESOLVE_LOCKOUT_KEY.format(viewer=VIEWER), "1")
