@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from prometheus_client import REGISTRY
+import pytest
 
 from app.agents.context import fetchers
 from app.agents.context.section_context import SectionContext
@@ -160,6 +161,7 @@ async def test_an_embedding_in_time_ranks_its_hits_first() -> None:
     lane.log.set_ns.assert_not_called()
 
 
+@pytest.mark.regression
 async def test_the_word_search_runs_while_the_embedding_is_still_pending() -> None:
     release, searched = asyncio.Event(), asyncio.Event()
 
