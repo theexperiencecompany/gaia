@@ -2,13 +2,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  applyComposeEvent,
+  createComposeProgress,
+} from "../../src/lib/compose-events.js";
+import {
   ComposeError,
   explainComposeFailure,
 } from "../../src/lib/compose-failure.js";
-import {
-  applyComposeEvent,
-  createComposeProgress,
-} from "../../src/lib/compose-progress.js";
 
 const UP = { rebuildCommand: "gaia up --build" };
 

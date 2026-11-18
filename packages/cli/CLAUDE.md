@@ -69,7 +69,7 @@ src/
     host-resources.ts       - Memory and disk thresholds shared by `gaia up` and `gaia doctor`
     domain-reachability.ts  - A --domain's DNS against this machine, and waiting for its HTTPS certificate
     local-name.ts / local-name-ipv6.ts - http://gaia.local via portless (gaia-2 … gaia-9.local when taken), avahi AAAA
-    compose-run.ts / compose-progress.ts / compose-failure.ts - Running compose, its progress, its errors in plain words
+    compose-run.ts / compose-events.ts / compose-progress.ts / compose-failure.ts - Running compose, folding its events, its progress, its errors in plain words
     pull-size.ts / progress.ts / eta.ts - Image download totals, amount-done and time-left captions
     readiness.ts / healthcheck.ts - Waiting for GAIA to answer, per-dependency health
     selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout

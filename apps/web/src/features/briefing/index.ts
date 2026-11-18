@@ -18,7 +18,6 @@ export { BRIEF_LETTER_MAX_WIDTH_PX, BRIEF_LETTER_WIDTH } from "./letterTokens";
 export {
   type BriefCard,
   briefPath,
-  type FoldedBriefSummary,
   foldedBrief,
   notificationBrief,
 } from "./utils/briefCard";

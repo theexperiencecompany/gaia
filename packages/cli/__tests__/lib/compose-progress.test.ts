@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyComposeEvent,
   createComposeProgress,
-  describeComposeProgress,
-} from "../../src/lib/compose-progress.js";
+} from "../../src/lib/compose-events.js";
+import { describeComposeProgress } from "../../src/lib/compose-progress.js";
 import type {
   ComposeEvent,
   ComposePhase,

@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const [nodeMajor] = process.versions.node.split(".");
 
 await build({
-  entryPoints: ["@gaia/artifacts/cli"],
+  entryPoints: [fileURLToPath(import.meta.resolve("@gaia/artifacts/cli"))],
   absWorkingDir: here,
   outfile: resolve(here, "dist/validate.cjs"),
   bundle: true,
