@@ -2,7 +2,7 @@
 
 Until the request middleware recorded activity on every surface, only a WorkOS web
 login wrote users.last_active_at, so a bot-only or self-host user reads as never
-seen and the 30-day dormancy sweep would pause them the day it ships. Every metered
+seen and the 30-day dormancy rule pauses their work the day it ships. Every metered
 action a user takes counts on usage_daily (count > 0; agent and brief runs only add
 cost), so the latest such day is a floor for when they were last active. The write
 only ever moves last_active_at forward ($max), so a re-run changes nothing.

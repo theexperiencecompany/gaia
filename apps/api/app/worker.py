@@ -87,7 +87,6 @@ from app.workers.tasks.tracked_todo_tasks import (
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.user_tasks import reactivate_user_task
 from app.workers.tasks.wait_tasks import resume_waiter
-from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
 # way main.py sets them for the API process. Process policy, so it lives in the
@@ -144,7 +143,6 @@ _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
-_sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
 _send_day_zero_hello = arq_task(send_day_zero_hello)
@@ -224,7 +222,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _backfill_user_memories,
     _send_day_zero_hello,
     _promote_usage_badges,
-    _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
     _deliver_signup_emails,
@@ -329,14 +326,6 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
-        minute=0,
-        second=0,
-    ),
-    # Pause workflows owned by dormant users — they otherwise fire (and bill)
-    # forever. Undone by the user's next activity (reactivate_user), not by this sweep.
-    cron(
-        cast(WorkerCoroutine, _sweep_dormant_user_workflows),
-        hour=6,  # Daily at 06:00 UTC
         minute=0,
         second=0,
     ),

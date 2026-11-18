@@ -20,11 +20,16 @@ def _subscription_active_by_default():
 
 @pytest.fixture(autouse=True)
 def _owners_are_active_by_default():
-    """Default every tracked-todo owner to active; the dormancy tests patch the same seams."""
+    """Default every tracked-todo and workflow owner to active; the dormancy tests patch the same seams."""
     # create=True: the regression lane runs these suites against a base without the seams.
     with (
         patch(
             "app.workers.tasks.tracked_todo_tasks.activity_status_of",
+            AsyncMock(return_value=ActivityStatus.ACTIVE),
+            create=True,
+        ),
+        patch(
+            "app.workers.tasks.workflow_tasks.activity_status_of",
             AsyncMock(return_value=ActivityStatus.ACTIVE),
             create=True,
         ),

@@ -46,6 +46,7 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
+from app.constants.user_activity import ActivityStatus
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.constants.workflows import WorkflowDelivery
 from app.core.websocket_manager import get_websocket_manager
@@ -98,6 +99,7 @@ from app.services.triggers.batching import (
     reschedule_if_refilled,
 )
 from app.services.triggers.trigger_gate import quiet_hours_hold
+from app.services.user_activity.status import activity_status_of
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_playbook_run_messages,
@@ -1498,6 +1500,30 @@ async def _skip_unpaid_fire(
     return f"Workflow {workflow_id} skipped — subscription required"
 
 
+async def _skip_dormant_owner_fire(
+    scheduler: WorkflowScheduler,
+    workflow: Workflow,
+    workflow_id: str,
+) -> str | None:
+    """Skip a fire whose owner is dormant and pause the workflow until they are back, or None.
+
+    The same rule as a tracked todo's: paused when it would next act, with the reason
+    reactivate_user resumes. A workflow declared unpausable (the briefs) winds itself down.
+    """
+    if not behaviour_of(workflow.system_workflow_key).pausable:
+        return None
+    if await activity_status_of(workflow.user_id) is not ActivityStatus.DORMANT:
+        return None
+    log.info(
+        f"{LogTag.WORKER} Workflow skipped — owner dormant",
+        workflow_id=workflow_id,
+        user_id=workflow.user_id,
+    )
+    if workflow.activated:
+        await scheduler.pause_for_reason(workflow, DeactivationReason.USER_DORMANT)
+    return f"Workflow {workflow_id} skipped — owner dormant"
+
+
 async def execute_workflow_by_id(
     ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     workflow_id: str,
@@ -1594,10 +1620,14 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             )
         )
 
-        # The paid gate runs first and short-circuits admission, so an unpaid
-        # fire never claims its scheduled occurrence.
-        skipped = await _skip_unpaid_fire(scheduler, workflow, workflow_id) or await _admit_fire(
-            workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+        # The paid and dormant-owner gates run first and short-circuit admission, so a
+        # withheld fire never claims its scheduled occurrence.
+        skipped = (
+            await _skip_unpaid_fire(scheduler, workflow, workflow_id)
+            or await _skip_dormant_owner_fire(scheduler, workflow, workflow_id)
+            or await _admit_fire(
+                workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+            )
         )
         if skipped:
             return skipped

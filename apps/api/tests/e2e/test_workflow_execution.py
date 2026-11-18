@@ -14,6 +14,7 @@ where separate thread_ids keep independent state. Doubled at I/O edges only: the
 and notification delivery.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -39,6 +40,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.agent_models import SilentRunResult
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
     RecordedCall,
@@ -558,6 +560,12 @@ class TestWorkflowExecutionFailurePropagation:
         # These tests are about the execution path, not the paid-only gate —
         # default the owner to an active subscription so it stays out of the way.
         monkeypatch.setattr(workflow_tasks, "is_paid", AsyncMock(return_value=True))
+        # Nor the dormant-owner gate: the owner was seen just now.
+        monkeypatch.setattr(
+            user_repository,
+            "get_activity_dates",
+            AsyncMock(return_value=UserActivityDates(last_active_at=datetime.now(UTC))),
+        )
 
         return {
             "records": records,
