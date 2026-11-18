@@ -431,35 +431,6 @@ export interface TwitterSearchData {
   next_token?: string;
 }
 
-export interface TwitterTimelineData {
-  tweets: TwitterTweetData[];
-}
-
-export type TwitterFollowersData = TwitterUserData[];
-
-export interface TwitterPostCreatedData {
-  id: string;
-  text: string;
-  url: string;
-}
-
-export interface TwitterPostPreviewData {
-  text: string;
-  quote_tweet_id?: string;
-  reply_to_tweet_id?: string;
-  media_ids?: string[];
-  poll_options?: string[];
-}
-
-export type TwitterData =
-  | { type: "search"; data: TwitterSearchData }
-  | { type: "timeline"; data: TwitterTimelineData }
-  | { type: "users"; data: TwitterUserData[] }
-  | { type: "followers"; data: TwitterFollowersData }
-  | { type: "following"; data: TwitterFollowersData }
-  | { type: "post_created"; data: TwitterPostCreatedData }
-  | { type: "post_preview"; data: TwitterPostPreviewData };
-
 // ---------------------------------------------------------------------------
 // Todos (agent task planning)
 // ---------------------------------------------------------------------------

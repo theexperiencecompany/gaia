@@ -149,12 +149,7 @@ libs/shared/ts/src/chat/types.ts:TodoToolStats
 libs/shared/ts/src/chat/types.ts:ToolCallEntry
 libs/shared/ts/src/chat/types.ts:ToolDataMap
 libs/shared/ts/src/chat/types.ts:ToolName
-libs/shared/ts/src/chat/types.ts:TwitterData
-libs/shared/ts/src/chat/types.ts:TwitterFollowersData
-libs/shared/ts/src/chat/types.ts:TwitterPostCreatedData
-libs/shared/ts/src/chat/types.ts:TwitterPostPreviewData
 libs/shared/ts/src/chat/types.ts:TwitterSearchData
-libs/shared/ts/src/chat/types.ts:TwitterTimelineData
 libs/shared/ts/src/chat/types.ts:TwitterTweetData
 libs/shared/ts/src/chat/types.ts:TwitterUserData
 libs/shared/ts/src/chat/types.ts:WeatherData
