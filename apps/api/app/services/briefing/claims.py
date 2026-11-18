@@ -39,6 +39,10 @@ def _said_of(fact: BriefFact) -> frozenset[str]:
     return figures_in([w for w in (fact.time, fact.words) if w])
 
 
+def _in_own_words(word: str, fact: BriefFact) -> bool:
+    return re.search(rf"\b{re.escape(word)}\b", fact.words or "", re.IGNORECASE) is not None
+
+
 def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
     """Name each sentence whose state or figures contradict the one fact it is about."""
     problems: list[str] = []
@@ -53,7 +57,8 @@ def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
         if fact.kind is not None and not _NEGATES.search(sentence):
             pattern = _CONTRADICTED_BY.get(fact.kind)
             said = pattern.search(sentence) if pattern is not None else None
-            if said is not None:
+            # A word the fact's own line says ("have you completed ...?") is quoted, not claimed.
+            if said is not None and not _in_own_words(said.group(0), fact):
                 problems.append(
                     f"the {field} says fact {fact_id} {said.group(0)!r}, but its state is "
                     f"{fact.kind.label.lower()}; say where it stands as its line does"

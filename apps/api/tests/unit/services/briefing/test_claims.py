@@ -26,6 +26,22 @@ class TestAStateTheFactDoesNotHold:
             _FAILED_SAID_DONE
         ]
 
+    def test_a_state_word_the_facts_own_question_asks_may_be_said(self) -> None:
+        """Dhruv replay 11-05 and 11-08: quoting "have you completed" sent the brief plain."""
+        values = SlotValues(
+            facts={
+                4: BriefFact(
+                    title="PostHog OAuth test",
+                    kind=ItemState.YOU,
+                    words="Have you completed one of the Infisical access options?",
+                )
+            },
+            counts={},
+        )
+        written = "I need to know whether you completed an Infisical option: [review it](fact:4)."
+
+        assert claim_problems("message", written, values) == []
+
     def test_a_sentence_that_negates_may_say_it_is_not_done(self) -> None:
         assert claim_problems("message", "[The payout](fact:1) is not done.", _VALUES) == []
 
