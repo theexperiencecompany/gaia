@@ -33,6 +33,7 @@ class TestQuietHoursEnd:
             end = await quiet_hours_end("user-1")
 
         assert end == datetime(2026, 10, 14, 13, 30, tzinfo=UTC)
+        owner.assert_awaited_once_with("user-1")
 
     async def test_outside_the_window_there_is_nothing_to_wait_for(self, owner: AsyncMock) -> None:
         with time_machine.travel(datetime(2026, 10, 14, 6, 0, tzinfo=UTC), tick=False):

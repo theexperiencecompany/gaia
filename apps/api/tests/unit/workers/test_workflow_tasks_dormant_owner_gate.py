@@ -57,10 +57,9 @@ def scheduler() -> Iterator[MagicMock]:
 
 async def _fire(scheduler: MagicMock, workflow: MagicMock, seen: UserActivityDates) -> str:
     scheduler.get_task = AsyncMock(return_value=workflow)
-    with patch(
-        "app.services.user_activity.status.user_repository.get_activity_dates",
-        AsyncMock(return_value=seen),
-    ):
+    # The owner's dates only: anyone else's read would find no such user.
+    dates = AsyncMock(side_effect=lambda user_id: seen if user_id == OWNER else None)
+    with patch("app.services.user_activity.status.user_repository.get_activity_dates", dates):
         return await execute_workflow_by_id({}, "wf-1", {"trigger_type": "schedule"})
 
 

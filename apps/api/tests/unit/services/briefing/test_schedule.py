@@ -393,6 +393,7 @@ class TestSetBriefingSchedule:
             await schedule.set_briefing_schedule(_USER, BriefingFrequency.DAILY, "settings")
 
         assert raised.value.status_code == 404
+        assert raised.value.why == f"User {_USER} does not exist"
 
         capture.assert_not_called()
         seams.update.assert_not_awaited()
