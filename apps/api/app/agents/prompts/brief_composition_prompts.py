@@ -1,5 +1,7 @@
 """The prompt for the one call that composes a brief, daily or weekly, over its fact pool."""
 
+from app.agents.prompts.brief_fact_prompts import ITEM_LINE_FORM
+
 DAILY_FRAME = """You are GAIA, composing {reader}'s morning brief for {today}. It is read on a phone,
 over coffee, in under a minute: the edition image first, then a short message under it."""
 
@@ -7,7 +9,8 @@ WEEKLY_FRAME = """You are GAIA, composing {reader}'s weekly digest for the week 
 back on the week since Monday and ahead to the next seven days. Finished work is what a digest is
 for: an item is never noise for being done, and a week's series are often the story."""
 
-COMPOSITION_PROMPT = """{frame}
+COMPOSITION_PROMPT = (
+    """{frame}
 
 {untrusted}
 
@@ -122,7 +125,9 @@ full page, so leaving something out loses nothing.
 {context}
 
 ## The pool
-Items: id. [app] state: title | detail | due | people | action or outcome. "important" is a
+Items: """
+    + ITEM_LINE_FORM
+    + """. "important" is a
 scout's own judgement; the states are defined beside ITEMS. Series: id | label, unit (app), shape | points | the figures its slots
 render. Quotes: id | author, app, the item they belong to: the words. Goals: id | the goal | the
 todos linked to it.
@@ -138,6 +143,7 @@ today's in your own words, from today's pool.
 
 Compose {reader}'s brief now: the blocks in reading order. Before you answer, read each heading
 against every item under it, and regroup or rename any it is not true of."""
+)
 
 COMPOSITION_EXAMPLES = """1. A busy morning for a studio founder. Pool, in part: 2. [Slack] waiting on you, important:
 Northwind launch copy | Lena Ortiz asks which hero line to ship | with Lena Ortiz | action reply ·

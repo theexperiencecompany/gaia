@@ -25,7 +25,6 @@ from app.models.brief_composition_models import (
 )
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingSection, BriefPoolItem
-from app.models.scout_models import RememberedSignal
 from app.services.briefing.fact_pool.pool import FactPool
 from shared.py.wide_events import log
 
@@ -167,19 +166,6 @@ def carried_ids(items: Mapping[int, BriefCandidate], duplicates: list[str]) -> l
     return [held for c in items.values() if (held := c.held_id) is not None] + duplicates
 
 
-def chosen_signals(
-    chosen: Chosen, remembered: list[RememberedSignal]
-) -> list[tuple[int, RememberedSignal]]:
-    """Return the app signals the composition placed, by fact id, with their memory for the apps block."""
-    by_key = {(r.signal.integration_id, r.signal.external_id): r for r in remembered}
-    return [
-        (fact_id, by_key[(c.signal.integration_id, c.signal.external_id)])
-        for picked in chosen.picked
-        for fact_id, c in picked
-        if c.signal is not None
-    ]
-
-
 def log_composition(pool: FactPool, laid: Laid) -> None:
     log.set_ns(
         "brief_composition",
@@ -193,6 +179,6 @@ def log_composition(pool: FactPool, laid: Laid) -> None:
     )
 
 
-def event_ids(pool: Mapping[int, BriefCandidate]) -> list[int]:
-    """Return the pool id of each calendar event, in calendar order."""
-    return [i for i, c in pool.items() if c.is_event]
+def event_items(pool: Mapping[int, BriefCandidate]) -> dict[int, BriefCandidate]:
+    """Return the pool's calendar events by id, in calendar order."""
+    return {i: c for i, c in pool.items() if c.is_event}

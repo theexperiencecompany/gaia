@@ -5,7 +5,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
+from app.agents.prompts.brief_fact_prompts import (
+    CALENDAR_UNAVAILABLE,
+    NO_CALENDAR_CONNECTED,
+    SHOWN_NOT_TOTAL,
+    SIGNALS_HEADER,
+)
 from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
@@ -27,9 +32,15 @@ from app.models.brief_pool_models import (
     SeriesShape,
 )
 from app.models.brief_slot_models import CountName, SeriesField
-from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
+from app.models.scout_models import (
+    ScoutSkipReason,
+    Signal,
+    SignalImportance,
+    SignalMemoryDocument,
+)
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
+from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.clock import UserClock
 from app.services.briefing.facts import (
     TODAY,
@@ -75,13 +86,13 @@ def _sources(
     span: BriefSpan = TODAY,
     blocks: list[BriefBlock] | None = None,
 ) -> FactSources:
+    read = calendar if isinstance(calendar, CalendarRead) else CalendarRead(events=calendar or [])
+    events = calendar_candidates(read.events, _CLOCK.date_str)
     return FactSources(
         artifacts=artifacts or {},
         open_todos=open_todos,
-        calendar=calendar
-        if isinstance(calendar, CalendarRead)
-        else CalendarRead(events=calendar or []),
-        event_ids=event_ids or [],
+        calendar=read,
+        event_items=dict(zip(event_ids or [], events, strict=False)),
         span=span,
         todos_note=None,
         blocks=blocks or [],
@@ -117,8 +128,9 @@ class TestTheFactLines:
         assert facts.block.splitlines()[:3] == [
             "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
             "[Waiting]",
-            "- fact 1 | Waiting on you: Reply to Maya | in Gmail | time: [[fact:1.time]] "
-            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) todos on this one subject",
+            "1. [Gmail] waiting on you: Reply to Maya | needs sign-off | due [[fact:1.time]] "
+            "(Fri Nov 13) | [[fact:1.count]] (3) todos on this one subject"
+            " | GAIA can only read Gmail: no offer on it",
         ]
 
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
@@ -137,7 +149,10 @@ class TestTheFactLines:
 
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
 
-        assert "- fact 1 | Waiting on you: Sort the garage\n" in f"{facts.block}\n"
+        assert (
+            "1. [GAIA] waiting on you: Sort the garage | GAIA can only read GAIA: no offer on it\n"
+            in f"{facts.block}\n"
+        )
         assert facts.deliverables == {}
 
     def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
@@ -157,8 +172,8 @@ class TestTheFactLines:
         facts = build_facts(_chosen((item, candidate)), _sources(artifacts={"t1": art}), _CLOCK)
 
         assert (
-            "- fact 1 | Waiting on you: Venue | detail: Lisbon or Porto? | artifact holds ~0 chars"
-            " | waiting on you"
+            "1. [GAIA] waiting on you: Venue | Lisbon or Porto?"
+            " | GAIA can only read GAIA: no offer on it | artifact holds ~0 chars | waiting on you"
         ) in facts.block
 
 
@@ -178,7 +193,8 @@ class TestWhatProseMayQuote:
 
         assert facts.values.quoted == {"17"}
         assert facts.block.splitlines()[2] == (
-            "- fact 1 | Open: Pitch prep | stands: GAIA looks at it again Tue Nov 17"
+            "1. [GAIA] open: Pitch prep | stands: GAIA looks at it again Tue Nov 17"
+            " | GAIA can only read GAIA: no offer on it"
         )
 
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
@@ -270,8 +286,9 @@ class TestTheCalendarAndTheCharts:
 
         assert facts.block.splitlines()[-3:] == [
             "This week:",
-            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
-            "- fact 8 | all day: Offsite",
+            "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
+            " | action attend | GAIA can only read Google Calendar: no offer on it",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
         ]
 
     @pytest.mark.parametrize("days", [2, 7], ids=["two-days", "a-week"])
@@ -294,10 +311,12 @@ class TestTheCalendarAndTheCharts:
         assert facts.block.splitlines()[-6:] == [
             "The days ahead, 3 event(s):",
             "Thu Nov 12, 2 event(s), the week's busiest:",
-            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
-            "- fact 8 | all day: Offsite",
+            "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
+            " | action attend | GAIA can only read Google Calendar: no offer on it",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
             "Fri Nov 13, 1 event(s):",
-            "- fact 9 | [[fact:9.time]] (9:30 AM): Dentist",
+            "9. [Google Calendar] calendar event: Dentist | at [[fact:9.time]] (9:30 AM)"
+            " | action attend | GAIA can only read Google Calendar: no offer on it",
         ]
 
     def test_days_with_as_many_events_as_each_other_have_no_busiest(self) -> None:
@@ -315,9 +334,10 @@ class TestTheCalendarAndTheCharts:
         assert facts.block.splitlines()[-5:] == [
             "The week ahead, 2 event(s):",
             "Thu Nov 12, 1 event(s):",
-            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
+            "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
+            " | action attend | GAIA can only read Google Calendar: no offer on it",
             "Fri Nov 13, 1 event(s):",
-            "- fact 8 | all day: Offsite",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
         ]
 
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
@@ -391,7 +411,7 @@ class TestEachCountClaimsOnlyItsOwn:
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
         assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.WHILE_AWAY: 1}
-        assert "- fact 4 | On their list, undated: Plan Q1" in facts.block
+        assert "4. [GAIA] on their list, undated: Plan Q1 |" in facts.block
 
     def test_done_and_in_progress_count_one_each_of_their_own_kind(self) -> None:
         done = BriefCandidate(
@@ -442,6 +462,69 @@ class TestEachCountClaimsOnlyItsOwn:
         assert facts.values.counts == {CountName.EVENTS: 2}
 
 
+class TestTheAppsBlock:
+    @staticmethod
+    def _placed(
+        app: str, n: int, importance: SignalImportance
+    ) -> tuple[BriefingItem, BriefCandidate]:
+        signal = Signal(
+            integration_id=app.lower(),
+            app=app,
+            external_id=f"E-{n}",
+            kind="issue",
+            title=f"Issue {n}",
+            importance=importance,
+        )
+        return (
+            BriefingItem(text=f"Issue {n}", kind=ItemState.YOU, action=BriefAction.REVIEW),
+            BriefCandidate(
+                origin=CandidateOrigin.APP_SIGNAL,
+                source=app.lower(),
+                app=app,
+                state=ItemState.YOU,
+                title=f"Issue {n}",
+                importance=importance,
+                due_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
+                signal=signal,
+            ),
+        )
+
+    def test_signals_are_grouped_per_app_important_first_on_the_shared_line_with_slots(
+        self,
+    ) -> None:
+        placed = [
+            self._placed("Linear", 1, SignalImportance.NORMAL),
+            self._placed("Jira", 2, SignalImportance.NORMAL),
+            self._placed("Linear", 3, SignalImportance.HIGH),
+        ]
+
+        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+
+        assert facts.signals.splitlines() == [
+            f"{SIGNALS_HEADER} 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
+            "[Jira] 1 item(s) shown",
+            "2. [Jira] waiting on you: Issue 2 | due [[fact:2.time]] (Fri Nov 13)"
+            " | GAIA can only read Jira: no offer on it",
+            "[Linear] 2 item(s) shown",
+            "3. [Linear] waiting on you, important: Issue 3 | due [[fact:3.time]] (Fri Nov 13)"
+            " | GAIA can only read Linear: no offer on it",
+            "1. [Linear] waiting on you: Issue 1 | due [[fact:1.time]] (Fri Nov 13)"
+            " | GAIA can only read Linear: no offer on it",
+        ]
+
+    def test_no_signal_placed_is_no_block(self) -> None:
+        item = BriefingItem(text="Q4 plan", kind=ItemState.YOU, action=BriefAction.REPLY)
+        candidate = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Q4 plan",
+        )
+
+        assert build_facts(_chosen((item, candidate)), _sources(), _CLOCK).signals == ""
+
+
 class TestARepeatIsSaidAsStillOpen:
     _SHOWN = SignalMemoryDocument(
         user_id="u1",
@@ -487,10 +570,14 @@ class TestARepeatIsSaidAsStillOpen:
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
-        assert "fact 1 |" not in facts.block
+        assert "1. [Linear]" not in facts.block
+        assert facts.signals.splitlines()[1:] == [
+            "[Linear] 1 item(s) shown",
+            "1. [Linear] waiting on you: E-1 | GAIA can only read Linear: no offer on it",
+        ]
         assert (
-            "- fact 2 | Waiting on you: Approve the MSA | already shown, still open"
-            " (first seen 3 days ago, mentioned 3 time(s), last yesterday)"
+            "2. [GAIA] waiting on you: Approve the MSA | GAIA can only read GAIA: no offer on it"
+            " | already shown, still open (first seen 3 days ago, mentioned 3 time(s), last yesterday)"
         ) in facts.block
 
     def test_a_repeat_with_a_deliverable_is_said_as_still_open_too(self) -> None:
@@ -616,7 +703,7 @@ class TestTheWeekRecap:
             artifacts={},
             open_todos=0,
             calendar=CalendarRead(),
-            event_ids=[],
+            event_items={},
             span=WEEK_AHEAD,
             todos_note=None,
             recap=WeekRecap(series=[self._FINISHED, self._UNITLESS], goals=goals),
@@ -648,7 +735,7 @@ class TestTheClosingLines:
             artifacts={},
             open_todos=0,
             calendar=CalendarRead(),
-            event_ids=[],
+            event_items={},
             span=WEEK_AHEAD,
             todos_note="The user's own todo list is empty.",
             recap=WeekRecap(series=[TestTheWeekRecap._FINISHED], goals=[]),

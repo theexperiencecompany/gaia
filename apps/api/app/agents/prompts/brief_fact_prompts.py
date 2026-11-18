@@ -82,6 +82,22 @@ STANDING_TIMED_WAITS = frozenset({WaitingOn.TIME, WaitingOn.UNPLANNED})
 
 #: What a calendar event's line adds to its title and start.
 ALL_DAY = "all day"
+#: How every item's line reads, to the composition and the voice alike.
+ITEM_LINE_FORM = "id. [app] state: title | detail | due | people | action or outcome"
+#: Tells the voice how its facts read: the composition's lines, numbered by fact.
+FACT_LINES_NOTE = (
+    f"Each item reads {ITEM_LINE_FORM}, its id the fact number its slots take; "
+    "a slot's value follows it in brackets."
+)
+#: Heads the voice's block of the app signals the brief placed.
+SIGNALS_HEADER = "[ACROSS THEIR APPS]"
+#: A scout reads one page of an app, capped at SCOUT_SIGNAL_CEILING, and the judge keeps
+#: only what matters: a count here is what the brief shows, never how many the app holds.
+SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
+#: Marks a fact with something to open: the voice may link it.
+LINKABLE = "linkable"
+#: Marks GAIA's work whose deliverable waits on the user.
+WAITING_ON_YOU = "waiting on you"
 EVENT_UNTIL = "until {time}"
 EVENT_ON_CALENDAR = "on the {calendar} calendar"
 EVENT_ORGANIZED_BY = "organized by {organizer}"

@@ -5,7 +5,6 @@ from datetime import date, timedelta
 from itertools import groupby
 
 from app.agents.prompts.brief_fact_prompts import (
-    ALL_DAY,
     CALENDAR_UNAVAILABLE,
     COUNTS_HEADER,
     GOALS_THIS_WEEK_HEADER,
@@ -14,6 +13,8 @@ from app.agents.prompts.brief_fact_prompts import (
     OWN_TODOS_COUNTED,
     OWN_TODOS_EMPTY,
     OWN_TODOS_OVERDUE,
+    SHOWN_NOT_TOTAL,
+    SIGNALS_HEADER,
     TODAY_EMPTY,
     TODAY_HEADING,
     TODAY_NO_ITEMS,
@@ -25,7 +26,6 @@ from app.agents.prompts.brief_fact_prompts import (
     WEEK_AHEAD_SPAN,
     WEEK_IN_NUMBERS_HEADER,
 )
-from app.constants.briefing import GAIA_APP_NAME
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_item_models import GroupState
@@ -40,14 +40,13 @@ from app.models.brief_pool_models import DataSeries, GoalState
 from app.models.brief_slot_models import (
     CountName,
     CountSlot,
-    FactField,
-    FactSlot,
     SeriesField,
     SeriesSlot,
 )
+from app.models.scout_models import SignalImportance
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
-from app.services.briefing.candidates.calendar import event_detail, start_time
+from app.services.briefing.candidates.calendar import start_time
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.clock import DayWindow, UserClock
 from app.services.briefing.composition.voiced_blocks import (
@@ -56,11 +55,9 @@ from app.services.briefing.composition.voiced_blocks import (
     voiced_block_lines,
 )
 from app.services.briefing.fact_pool.render import (
-    count_part,
+    Voiced,
     goal_progress,
-    item_state,
-    repeat_note,
-    stands_part,
+    item_line,
     unread_note,
 )
 from app.services.briefing.formats import day
@@ -75,44 +72,6 @@ from app.services.briefing.slots import (
 from app.services.briefing.work import TrackedWork
 
 
-def _fact_line(
-    fact_id: int, item: BriefingItem, fact: BriefFact, candidate: BriefCandidate, clock: UserClock
-) -> str:
-    said = item_state(candidate)
-    state = said[:1].upper() + said[1:]
-    line = f"- fact {fact_id} | {state}: {item.text}"
-    if item.app and item.app != GAIA_APP_NAME:
-        line += f" | in {item.app}"
-    if (stands := stands_part(candidate)) is not None:
-        line += f" | {stands}"
-    if fact.time:
-        line += f" | time: {FactSlot(fact_id, FactField.TIME)} ({fact.time})"
-    if candidate.detail:
-        line += f" | detail: {candidate.detail}"
-    if (counted := count_part(fact.count, FactSlot(fact_id, FactField.COUNT))) is not None:
-        line += f" | {counted}"
-    if (repeat := repeat_note(candidate, clock)) is not None:
-        line += f" | {repeat}"
-    return line
-
-
-def _work_fact_line(
-    fact_id: int,
-    item: BriefingItem,
-    fact: BriefFact,
-    candidate: BriefCandidate,
-    art: ArtifactFact,
-    clock: UserClock,
-) -> str:
-    line = _fact_line(fact_id, item, fact, candidate, clock)
-    if art.snippet:
-        line += f" | summary: {art.snippet}"
-    line += f" | artifact holds ~{art.chars} chars"
-    if art.action:
-        line += " | waiting on you"
-    return line
-
-
 @dataclass
 class Facts:
     """The brief's sections and stats, the facts block the model voices, and what its slots render.
@@ -124,6 +83,8 @@ class Facts:
 
     sections: list[BriefingSection]
     block: str
+    #: The app signals the brief placed, grouped per app, as the voice reads them; "" for none.
+    signals: str
     values: SlotValues
     deliverables: dict[int, str]
     addresses: dict[int, str]
@@ -192,8 +153,8 @@ class FactSources:
     open_todos: int
     #: The calendar's read: the span's events, or why it went unread (never an empty day).
     calendar: CalendarRead
-    #: The pool id of each calendar event, in calendar order.
-    event_ids: list[int]
+    #: The pool's calendar events by id, in calendar order.
+    event_items: dict[int, BriefCandidate]
     span: BriefSpan
     todos_note: str | None
     #: The composition's blocks, whose charts, quotes, progress and notes the voice is told of.
@@ -245,6 +206,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     deliverables: dict[int, str] = {}
     addresses: dict[int, str] = {}
     placed: list[tuple[BriefingItem, BriefCandidate]] = []
+    signals: list[tuple[int, BriefCandidate]] = []
     fact_lines: list[str] = []
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
@@ -259,31 +221,30 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             facts[fact_id] = candidate_fact(
                 candidate, clock, title=it.text, kind=it.kind, words=" ".join(words)
             )
-            linkable = fact_id in deliverables or fact_id in addresses
             own_words += words
             placed.append((it, candidate))
             if candidate.signal is not None:
+                signals.append((fact_id, candidate))
                 continue
-            line = (
-                _fact_line(fact_id, it, facts[fact_id], candidate, clock)
-                if art is None
-                else _work_fact_line(fact_id, it, facts[fact_id], candidate, art, clock)
+            linkable = fact_id in deliverables or fact_id in addresses
+            fact_lines.append(
+                item_line(fact_id, candidate, clock, Voiced(facts[fact_id], linkable, art))
             )
-            fact_lines.append(f"{line} | linkable" if linkable else line)
     calendar = sources.calendar.events
     counts = _counts(placed, sources, len(calendar))
     voiced = " · ".join(f"{CountSlot(name)} ({n})" for name, n in counts.items())
     if voiced:
         fact_lines.insert(0, f"{COUNTS_HEADER} {voiced}")
-    events = list(zip(sources.event_ids, calendar, strict=True))
+    events = list(zip(sources.event_items, calendar, strict=True))
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
-    fact_lines += _closing_lines(chosen, sources, events)
+    fact_lines += _closing_lines(chosen, sources, events, facts, clock)
     if sources.recap is not None:
         own_words += [title for goal in sources.recap.goals for title in goal.linked]
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
+        signals=_signals_block(signals, facts, addresses, clock),
         values=SlotValues(
             facts=facts,
             counts=counts,
@@ -303,7 +264,11 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
 
 
 def _closing_lines(
-    chosen: Chosen, sources: FactSources, events: list[tuple[int, BriefingEvent]]
+    chosen: Chosen,
+    sources: FactSources,
+    events: list[tuple[int, BriefingEvent]],
+    facts: dict[int, BriefFact],
+    clock: UserClock,
 ) -> list[str]:
     """Return what follows the items: an empty day, what went unread, the blocks, the recap, todos, the calendar."""
     lines = [sources.span.no_items] if not chosen.sections else []
@@ -314,7 +279,7 @@ def _closing_lines(
         lines += _recap_lines(sources.recap)
     if sources.todos_note is not None:
         lines.append(sources.todos_note)
-    return [*lines, _calendar_note(events, sources)]
+    return [*lines, _calendar_note(events, sources, facts, clock)]
 
 
 def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
@@ -340,19 +305,24 @@ def _own_words(
     return [w for w in words if w]
 
 
-def _event_slot(fact_id: int, time: str | None) -> str:
-    return f"{FactSlot(fact_id, FactField.TIME)} ({time})" if time else ALL_DAY
-
-
-def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
+def _event_lines(
+    events: list[tuple[int, BriefingEvent]],
+    sources: FactSources,
+    facts: dict[int, BriefFact],
+    clock: UserClock,
+) -> list[str]:
     return [
-        f"- fact {fact_id} | {_event_slot(fact_id, start_time(e))}: {e.title}"
-        + (f" | {detail}" if (detail := event_detail(e)) else "")
-        for fact_id, e in events
+        item_line(fact_id, sources.event_items[fact_id], clock, Voiced(facts[fact_id], False))
+        for fact_id, _ in events
     ]
 
 
-def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
+def _by_day(
+    events: list[tuple[int, BriefingEvent]],
+    sources: FactSources,
+    facts: dict[int, BriefFact],
+    clock: UserClock,
+) -> list[str]:
     """List the events under each day's heading and count, naming the busiest days.
 
     A day is the busiest only beside a lighter day that has events: equal days have none.
@@ -365,12 +335,17 @@ def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
         busy = ", the week's busiest" if len(group) == busiest else ""
         lines += [
             f"{day(date.fromisoformat(on))}, {len(group)} event(s){busy}:",
-            *_event_lines(group),
+            *_event_lines(group, sources, facts, clock),
         ]
     return lines
 
 
-def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources) -> str:
+def _calendar_note(
+    events: list[tuple[int, BriefingEvent]],
+    sources: FactSources,
+    facts: dict[int, BriefFact],
+    clock: UserClock,
+) -> str:
     gap = sources.calendar.gap
     if gap is not None:
         return CALENDAR_UNAVAILABLE if gap is CalendarGap.UNAVAILABLE else NO_CALENDAR_CONNECTED
@@ -380,10 +355,33 @@ def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources
         return "\n".join(
             [
                 f"{sources.span.heading}, {len(events)} event(s):",
-                *_by_day(events),
+                *_by_day(events, sources, facts, clock),
             ]
         )
-    return f"{sources.span.heading}:\n" + "\n".join(_event_lines(events))
+    return f"{sources.span.heading}:\n" + "\n".join(_event_lines(events, sources, facts, clock))
+
+
+def _signals_block(
+    signals: list[tuple[int, BriefCandidate]],
+    facts: dict[int, BriefFact],
+    addresses: dict[int, str],
+    clock: UserClock,
+) -> str:
+    """Group the placed app signals per app, important ones first; empty when there are none."""
+    if not signals:
+        return ""
+    ordered = sorted(
+        signals, key=lambda pair: (pair[1].app, pair[1].importance is not SignalImportance.HIGH)
+    )
+    apps = {c.source for _, c in signals}
+    lines = [
+        f"{SIGNALS_HEADER} {len(signals)} item(s) shown from {len(apps)} app(s). {SHOWN_NOT_TOTAL}"
+    ]
+    for app, items in groupby(ordered, key=lambda pair: pair[1].app):
+        group = list(items)
+        lines.append(f"[{app}] {len(group)} item(s) shown")
+        lines += [item_line(i, c, clock, Voiced(facts[i], i in addresses)) for i, c in group]
+    return "\n".join(lines)
 
 
 def _recap_lines(recap: WeekRecap) -> list[str]:

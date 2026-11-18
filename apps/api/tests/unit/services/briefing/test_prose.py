@@ -284,7 +284,7 @@ class TestAFigureTheFactsShow:
                 artifacts=gather_artifacts(TrackedWork(running=[doc])),
                 open_todos=0,
                 calendar=CalendarRead(),
-                event_ids=[],
+                event_items={},
                 span=TODAY,
                 todos_note=None,
             ),
@@ -422,6 +422,7 @@ class TestTheLinksAMessageMakes:
         facts = Facts(
             sections=[],
             block="",
+            signals="",
             values=_VALUES,
             deliverables={1: "t1", 2: "t2"},
             addresses={3: "https://linear.app/i/3", 4: "https://linear.app/i/4"},

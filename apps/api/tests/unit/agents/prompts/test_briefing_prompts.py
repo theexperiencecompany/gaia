@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from app.agents.prompts.brief_fact_prompts import FACT_LINES_NOTE
 from app.agents.prompts.briefing_prompts import (
     RecentLines,
     VoicePromptBlocks,
@@ -414,7 +415,7 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
     )
 
     assert (
-        f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_FENCE}\n{_BLOCKS.facts}"
+        f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{FACT_LINES_NOTE}\n{_FENCE}\n{_BLOCKS.facts}"
         in prompt
     )
     assert _GOAL in prompt

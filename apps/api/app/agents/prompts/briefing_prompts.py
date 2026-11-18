@@ -7,6 +7,7 @@ message, as one structured answer. The day-zero hello is still a silent agent tu
 
 from dataclasses import dataclass, field
 
+from app.agents.prompts.brief_fact_prompts import FACT_LINES_NOTE
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
     FREQUENCY_CLAIMS,
@@ -483,6 +484,7 @@ You are voicing this user's daily briefing for {date_local}.
 {blocks.reader}
 
 ## TODAY'S FACTS (final: voice them, never alter them)
+{FACT_LINES_NOTE}
 {fenced(blocks.facts, fence)}
 {_signals_section(blocks.signals, fence)}
 ## YESTERDAY (context for tone, not new facts)
@@ -577,6 +579,7 @@ This is a zoom-out, not a to-do list: the week since Monday, and the seven days 
 {blocks.reader}
 
 ## THIS WEEK'S FACTS (final: voice them, never alter them)
+{FACT_LINES_NOTE}
 {fenced(blocks.facts, fence)}
 {_signals_section(blocks.signals, fence)}
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)

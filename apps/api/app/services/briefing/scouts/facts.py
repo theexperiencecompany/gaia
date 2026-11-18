@@ -1,25 +1,17 @@
-"""Render today's signals, with their memory, as the facts block the brief's voice pass reads."""
+"""Say what a signal names and what earlier briefs remember of it, as an item's line carries it."""
 
 from collections.abc import Sequence
 from datetime import datetime
-from itertools import groupby
 
 from app.constants.scouts import SIGNAL_NEW_WITHIN
 from app.models.scout_models import (
     PeopleRole,
     RememberedSignal,
     Signal,
-    SignalImportance,
     SignalMemoryDocument,
 )
 from app.services.briefing.clock import UserClock
 from app.utils.timezone import as_utc
-
-SIGNALS_HEADER = "[ACROSS THEIR APPS]"
-#: A scout reads one page of an app, capped at SCOUT_SIGNAL_CEILING, and the judge keeps
-#: only what matters: a count here is what the brief shows, never how many the app holds.
-SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
-
 
 #: Marks the one person on an item who is the user: never a third person to them.
 YOU_MARK = "(this is the user: say you, never their name)"
@@ -73,46 +65,3 @@ def memory_note(item: RememberedSignal, clock: UserClock) -> str:
     if item.previous_state is not None:
         seen += f", moved from {item.previous_state} to {item.signal.state}"
     return seen
-
-
-def _line(fact_id: int, item: RememberedSignal, clock: UserClock) -> str:
-    signal = item.signal
-    parts = [
-        f"- fact {fact_id} | {'important' if signal.importance is SignalImportance.HIGH else 'other'}"
-        f" | {signal.kind}: {signal.title}"
-    ]
-    if signal.state:
-        parts.append(f"state: {signal.state}")
-    if signal.due_at is not None:
-        parts.append(f"due {clock.day_of(signal.due_at).isoformat()}")
-    if signal.people:
-        parts.append(people_note(signal.people, signal.people_role, signal.people_you))
-    if signal.url:
-        parts.append("linkable")
-    if signal.why:
-        parts.append(f"why: {signal.why}")
-    parts.append(memory_note(item, clock))
-    return " | ".join(parts)
-
-
-def signals_block(remembered: Sequence[tuple[int, RememberedSignal]], clock: UserClock) -> str:
-    """Group signals, each by its fact id, per app, important ones first; empty when there are none."""
-    if not remembered:
-        return ""
-    ordered = sorted(
-        remembered,
-        key=lambda pair: (
-            pair[1].signal.app,
-            pair[1].signal.importance is not SignalImportance.HIGH,
-        ),
-    )
-    apps = {r.signal.integration_id for _, r in remembered}
-    lines = [
-        f"{SIGNALS_HEADER} {len(remembered)} item(s) shown from {len(apps)} app(s). "
-        f"{SHOWN_NOT_TOTAL}"
-    ]
-    for app, items in groupby(ordered, key=lambda pair: pair[1].signal.app):
-        group = list(items)
-        lines.append(f"[{app}] {len(group)} item(s) shown")
-        lines.extend(_line(fact_id, item, clock) for fact_id, item in group)
-    return "\n".join(lines)

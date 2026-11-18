@@ -53,13 +53,11 @@ from app.services.briefing.postmarks import new_stamp
 from app.services.briefing.prose import Prose, links_in, recent_lines, written_brief
 from app.services.briefing.publish import PoolCounts, Sending, finish_started_delivery, publish
 from app.services.briefing.quiet_note import QuietFacts, continued, last_was_quiet, quiet_note
-from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import ScoutSignals, scout_signals
 from app.services.briefing.sections import (
     Laid,
     carried_ids,
-    chosen_signals,
-    event_ids,
+    event_items,
     lay_out,
     log_composition,
     sources_shown,
@@ -253,7 +251,7 @@ def _facts(run: Run, pool: FactPool, laid: Laid) -> Facts:
             artifacts=gather_artifacts(work),
             open_todos=todos.open,
             calendar=reads.calendar,
-            event_ids=event_ids(reads.gathered.pool),
+            event_items=event_items(reads.gathered.pool),
             span=spec.span,
             todos_note=user_todos_note(todos.open, todos.overdue, work.open_subjects.total),
             blocks=laid.blocks,
@@ -272,12 +270,11 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
     """Voice the brief over its facts, draw its edition, build its payload once and publish it."""
     user, clock, spec, standing, reads = run.user, run.clock, run.spec, run.standing, run.reads
     facts = _facts(run, pool, laid)
-    remembered = chosen_signals(laid.chosen, reads.scouts.remembered)
     voicing = await standing.voice(
         VoiceInputs(
             reads=reads.reads,
             facts=facts,
-            signals=signals_block(remembered, clock),
+            signals=facts.signals,
             recent=reads.recent,
         )
     )
@@ -317,7 +314,7 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
         Sending(
             push=standing.pushes(payload),
             pool=PoolCounts.of(pool),
-            signal_count=len(remembered),
+            signal_count=sum(c.signal is not None for p in laid.chosen.picked for _, c in p),
             held_ids=_carried(reads.gathered),
             draws=edition.draws,
         ),
