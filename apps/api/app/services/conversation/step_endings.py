@@ -227,12 +227,9 @@ async def _settle_rest(
 ) -> LoggedEntry | None:
     """Settle the inputs still unanswered on the open segment; None when there is nothing to settle.
 
-    Only a failure settles a message still owed: otherwise a closing tool names every one.
+    Only a failure finds a message still owed: a run that ends on its own named every one.
     """
-    owing = still_open(attempt.ledger)
-    covers = tuple(
-        logged for logged in attempt.unanswered if failed is not None or logged.seq not in owing
-    )
+    covers = attempt.unanswered
     await end_above(ports, attempt, covers)
     reply = base_reply(attempt)
     worded = bool(reply.text or reply.tool_data)
@@ -280,5 +277,3 @@ async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) 
     )
     if attempt.unanswered or isinstance(attempt.progress, Showing | Drafting):
         await _settle_rest(ports, attempt, ReplyOutcome.FAILED, failure)
-    else:
-        await _settle_rest(ports, attempt)

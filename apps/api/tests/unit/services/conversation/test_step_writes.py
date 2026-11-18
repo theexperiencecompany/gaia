@@ -168,6 +168,22 @@ async def test_a_stuttered_break_is_never_shown_so_nothing_shown_is_taken_back()
     assert deltas == [BubbleTextDelta(bubble=0, text="Hi")]
 
 
+async def test_a_path_held_back_while_it_streamed_reaches_clients_resolved_when_the_reply_saves() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [text("Saved to /workspace/sessions/s1/notes.txt"), Finished(Replied("unused"))]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    deltas = [f.payload for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
+    assert deltas == [
+        BubbleTextDelta(bubble=0, text="Saved to"),
+        BubbleTextDelta(bubble=0, text=" notes.txt"),
+    ]
+
+
 async def test_a_plain_turn_reads_nothing_its_own_writes_already_told_it() -> None:
     rt = Runtime()
     rt.runner.script([Finished(Replied("first"))], [text("hi"), Finished(Replied("hi"))])

@@ -52,7 +52,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
 )
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import barge, user
+from tests.unit.services.conversation.log_helpers import barge, fired, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
@@ -453,13 +453,72 @@ async def test_a_message_owed_after_the_reminder_fails_loudly_with_no_invented_h
     async with captured_wide_event() as event:
         await run(rt)
     assert [type(call) for call in rt.runner.calls] == [Started, Started]
-    assert [error["owed"] for error in event["errors"]] == [[1]]
+    assert event["errors"] == [
+        {
+            "msg": "comms run still owed messages after it was told which",
+            "owed": [1],
+            "conversation_id": CONVERSATION,
+            "attempt_id": "1.1",
+        }
+    ]
     [settle] = await settles(rt)
     assert (settle.outcome, settle.answers, settle.failure) == (
         ReplyOutcome.FAILED,
         ("u1",),
         FailureReason.MODEL_ERROR,
     )
+
+
+async def test_words_ending_a_workflow_fires_run_answer_the_fire() -> None:
+    # Only user messages are owed a closing tool: a fire is answered by the reply the run ends on.
+    rt = Runtime()
+    rt.runner.script([text("brief ready"), Finished(Replied("brief ready"))])
+    await send(rt, fired("wf1"))
+    await run(rt)
+    assert [reply.text for reply in await replies(rt)] == ["brief ready"]
+    assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("wf1",))]
+
+
+async def test_a_run_that_fails_before_writing_anything_fails_the_message_it_was_answering() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script([Fail(RuntimeError("model down"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    [settle] = await settles(rt)
+    assert (settle.outcome, settle.answers, settle.failure) == (
+        ReplyOutcome.FAILED,
+        ("u1",),
+        FailureReason.MODEL_ERROR,
+    )
+
+
+async def test_a_message_answered_before_an_earlier_one_leaves_only_the_earlier_one_waiting() -> (
+    None
+):
+    rt = Runtime()
+    waiting: list[tuple[int, ...]] = []
+
+    async def note_waiting() -> None:
+        waiting.append((await rt.log.state(CONVERSATION, USER)).unsettled_waking)
+
+    rt.runner.script(
+        [
+            Close(seqs=(2,)),
+            ModelOutput(False),
+            Do(note_waiting),
+            text("and the first"),
+            Finished(Replied("and the first")),
+        ]
+    )
+    await send(rt, user("u1"), user("u2"))
+    await run(rt)
+    assert waiting == [(1,)]
+    assert await outcomes(rt) == [
+        (ReplyOutcome.SILENT, ("u2",)),
+        (ReplyOutcome.ANSWERED, ("u1",)),
+    ]
 
 
 async def test_words_after_the_last_message_was_answered_end_as_an_interim_reply() -> None:

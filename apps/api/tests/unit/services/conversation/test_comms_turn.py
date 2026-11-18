@@ -221,7 +221,7 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
         }
     )
     batch = _batch(3, [entry.model_copy(update={"run": run})])
-    seams.conversations.get_source.return_value = ConversationSource.WEB
+    seams.conversations.get_source.return_value = ConversationSource.WORKFLOW_SYSTEM
 
     turn = await build_comms_turn(CLAIM, batch)
 

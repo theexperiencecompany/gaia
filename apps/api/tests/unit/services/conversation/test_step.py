@@ -180,6 +180,39 @@ async def test_taking_over_from_a_holder_that_died_between_attempts_only_goes_id
     assert set(rt.frames.conversations) == {CONVERSATION}
 
 
+async def test_recovering_a_dead_reply_fails_only_what_was_logged_below_it() -> None:
+    # u2 arrived after the dead reply opened: the failed reply never answers it, so it is run again.
+    rt = Runtime()
+    await send(rt, user("u1"))
+    dead = await rt.log.claim(CONVERSATION, USER)
+    assert dead is not None
+    await rt.log.append_fenced(dead, Reply(id="o", reply_id="r_dead", attempt_id="a1"))
+    await send(rt, user("u2"))
+    work = WorkStarted(id="w", task_id="t1", cause_through=3, answers=("u1", "u2"))
+    await rt.log.append_fenced(dead, work)
+    await rt.lapse()
+    rt.frames.conversations.clear()
+    rt.runner.script([Finished(Replied("again"))])
+    await run(rt)
+    assert [(item.reply_id, item.outcome, item.answers) for item in await settles(rt)] == [
+        ("r_dead", ReplyOutcome.FAILED, ("u1",)),
+        ("r2.1", ReplyOutcome.ANSWERED, ("u2",)),
+    ]
+    assert set(rt.frames.conversations) == {CONVERSATION}
+
+
+async def test_a_buttonless_message_with_no_approval_waiting_is_run_not_read_as_a_decision() -> (
+    None
+):
+    rt = Runtime()
+    rt.approvals.decision = "approve"
+    rt.runner.script([Finished(Replied("hi"))])
+    await send(rt, UserMessage(id="u1", text="yes", surface=ConversationSource.TELEGRAM))
+    await run(rt)
+    assert rt.approvals.asked == []
+    assert rt.runner.calls == [Started(batch=(1,), context=())]
+
+
 async def test_a_todo_run_that_found_nothing_settles_silently_without_a_run() -> None:
     rt = Runtime()
     woke = TodoWoke(id="tw", run=todo_run(TodoReportForm.AS_WRITTEN))
@@ -404,9 +437,19 @@ async def test_a_history_fold_whose_step_is_taken_over_ends_quietly() -> None:
     rt.runner.script([Do(take_over), text("hi"), Finished(Replied("hi"))])
     rt.runner.fold_plans = [_FOLD]
     await send(rt, user("u0"))
-    await step.fold_history(rt.ports, CONVERSATION, USER)
+    async with captured_wide_event() as event:
+        await step.fold_history(rt.ports, CONVERSATION, USER)
     assert [plan for _, plan in rt.runner.applied] == [_FOLD]
     assert await settles(rt) == []
+    assert event["warnings"] == [
+        {
+            "msg": "conversation step lost its claim; the next holder recovers it",
+            "conversation_id": CONVERSATION,
+            "epoch": 1,
+            "error_type": "ClaimLost",
+            "error": "",
+        }
+    ]
 
 
 async def test_a_history_fold_never_writes_while_a_turn_holds_the_step() -> None:

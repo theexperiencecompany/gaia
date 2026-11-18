@@ -57,7 +57,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     mode: Literal["interactive", "background"] = "interactive"
     if fired is not None:
         user, mode = user.with_timezone(fired.timezone), "background"
-    source = await _reply_surface(claim, said, fired)
+    source = await _reply_surface(claim, said)
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
     # Work that finished with no one asking switched no surface, so it gets no presence note.
     presence = (
@@ -195,9 +195,7 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
     return UNPROMPTED
 
 
-async def _reply_surface(
-    claim: StepClaim, said: list[UserMessage], fired: WorkflowRun | None
-) -> ConversationSource:
+async def _reply_surface(claim: StepClaim, said: list[UserMessage]) -> ConversationSource:
     """Return the surface the reply is read on, which picks its prompt.
 
     The newest message's, else the conversation's own. A background or workflow conversation has no
@@ -205,12 +203,9 @@ async def _reply_surface(
     """
     if said:
         return said[-1].surface
-    if fired is None:
-        stored = await conversation_repository.get_source(
-            claim.conversation_id, user_id=claim.user_id
-        )
-        if stored is None:
-            raise not_found(claim.conversation_id)
-        if SourceCategory.from_source(stored) is not SourceCategory.BG:
-            return stored
+    stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
+    if stored is None:
+        raise not_found(claim.conversation_id)
+    if SourceCategory.from_source(stored) is not SourceCategory.BG:
+        return stored
     return proactive_surface(await resolve_proactive_target(claim.user_id))
