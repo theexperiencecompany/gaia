@@ -449,6 +449,23 @@ def check_on_time(truth: Truth, brief: Brief) -> list[Finding]:
     ]
 
 
+def check_delivered(truth: Truth, brief: Brief) -> list[Finding]:
+    """Guard: a brief stored but never delivered. One planned as a push reached its channels."""
+    del truth
+    delivery = brief.doc.get("delivery") or {}
+    if not delivery.get("push") or brief.doc.get("delivered_channels"):
+        return []
+    return [
+        _finding(
+            "delivered",
+            brief,
+            f"{brief.kind} brief",
+            "delivered to its channels",
+            f"stored undelivered (delivery steps done: {delivery.get('done') or []})",
+        )
+    ]
+
+
 CHECKS: dict[str, Callable[[Truth, Brief], list[Finding]]] = {
     "local_date": check_local_date,
     "true_total": check_true_total,
@@ -458,6 +475,7 @@ CHECKS: dict[str, Callable[[Truth, Brief], list[Finding]]] = {
     "due_dates": check_due_dates,
     "credit_owner": check_credit_owner,
     "on_time": check_on_time,
+    "delivered": check_delivered,
 }
 
 

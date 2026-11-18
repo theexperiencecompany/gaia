@@ -69,6 +69,13 @@ class StoredEdition(TypedDict):
     key: str
 
 
+class StoredDelivery(TypedDict, total=False):
+    """A brief's delivery plan and which of its steps finished."""
+
+    push: bool
+    done: list[str]
+
+
 class StoredBrief(TypedDict, total=False):
     """A briefings document as run.py exported it (GAIA's BriefingModel, ids and dates as strings)."""
 
@@ -80,6 +87,7 @@ class StoredBrief(TypedDict, total=False):
     payload: StoredPayload
     delivered_channels: list[str]
     edition: "StoredEdition | None"
+    delivery: StoredDelivery | None
 
 
 def parse_instant(value: str) -> datetime:
