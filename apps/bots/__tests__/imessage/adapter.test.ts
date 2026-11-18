@@ -392,7 +392,7 @@ describe("handleInboundMessage routing", () => {
           items: { download: (maxBytes: number) => Promise<Uint8Array> }[],
         ) => {
           await items[0].download(1024);
-          return { replies: [], text: "media", attachments: [] };
+          return { notice: "", text: "media", attachments: [] };
         },
       );
 
@@ -416,13 +416,20 @@ describe("handleInboundMessage routing", () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
     const content = makeVoice({ id: undefined });
-    priv.handleInboundMessage(space, makeMessage({ content }));
-    await drainQueues(priv);
-
     const resolveMock = (
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
-    expect(resolveMock).not.toHaveBeenCalled();
+    resolveMock.mockResolvedValueOnce({
+      notice:
+        "Voice notes aren't supported here yet. Please type your message instead.",
+      text: "",
+      attachments: [],
+    });
+    priv.handleInboundMessage(space, makeMessage({ content }));
+    await drainQueues(priv);
+
+    // No attachment id: the part reaches the pipeline with no download to run.
+    expect(resolveMock.mock.calls[0][0][0].download).toBeUndefined();
     expect(content.stream).not.toHaveBeenCalled();
     expect(content.read).not.toHaveBeenCalled();
 
@@ -590,7 +597,7 @@ describe("multi-part (group) content", () => {
     const space = makeSpace();
     resolveMockOf(adapter).mockImplementation(
       async (items: { media: { caption?: string } }[]) => ({
-        replies: [],
+        notice: "",
         text: items[0]?.media.caption ?? "media",
         attachments: items.map((_, i) => ({
           fileId: `file-${i + 1}`,
@@ -634,6 +641,12 @@ describe("multi-part (group) content", () => {
   it("sends only the reply when no media part could be ingested", async () => {
     const { adapter, priv } = makeAdapter();
     const space = makeSpace();
+    resolveMockOf(adapter).mockResolvedValueOnce({
+      notice:
+        "Voice notes aren't supported here yet. Please type your message instead.",
+      text: "",
+      attachments: [],
+    });
     priv.handleInboundMessage(
       space,
       groupMessage([
@@ -643,7 +656,7 @@ describe("multi-part (group) content", () => {
     );
     await drainQueues(priv);
 
-    expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
+    expect(resolveMockOf(adapter).mock.calls[0][0][0].download).toBeUndefined();
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
       "Voice notes aren't supported here yet. Please type your message instead.",

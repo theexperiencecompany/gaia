@@ -28,7 +28,6 @@ import {
   type SentMessage,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
-  unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
@@ -590,41 +589,28 @@ export class ImessageAdapter extends BaseBotAdapter {
     try {
       await this.ensureWelcomed(handle, space);
 
-      const fetchable: IncomingAttachment[] = [];
-      for (const [index, content] of contents.entries()) {
-        const isVoiceNote = content.type === "voice";
-        if (!content.id) {
-          this.adapterLogger.info("media_unfetchable", {
-            user_hash: handleHash,
-            media_kind: kinds[index],
-            reason: "no_attachment_id",
-          });
-          await this.sendImessageText(
-            space,
-            unfetchableMediaMessage(kinds[index], isVoiceNote),
-          );
-          continue;
-        }
-        fetchable.push({
+      const items = contents.map(
+        (content, index): IncomingAttachment => ({
           media: {
             kind: kinds[index],
-            isVoiceNote,
+            isVoiceNote: content.type === "voice",
             mimeType: content.mimeType,
             filename: content.name,
             sizeBytes: content.size,
             caption,
           },
-          download: (maxBytes) => readMediaBytes(content, maxBytes),
-        });
-      }
-
-      if (fetchable.length === 0) return;
+          // A part with no attachment id carries metadata but no bytes.
+          download: content.id
+            ? (maxBytes) => readMediaBytes(content, maxBytes)
+            : undefined,
+        }),
+      );
       const {
-        replies,
+        notice,
         text,
         attachments: uploaded,
-      } = await this.resolveIncomingMedia(fetchable, handle, space.id);
-      for (const reply of replies) await this.sendImessageText(space, reply);
+      } = await this.resolveIncomingMedia(items, handle, space.id);
+      if (notice) await this.sendImessageText(space, notice);
       if (uploaded.length > 0 || text) {
         // Media turns carry no inbound message id (the media pipeline drops
         // it), so a later reaction to one falls back to a text bubble.

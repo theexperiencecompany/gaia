@@ -255,7 +255,7 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     // Short-circuit the media decision so no real download/upload runs; we only
     // assert the webhook extracted the media and routed it to resolveIncomingMedia.
     const resolveIncomingMedia = vi.fn(async () => ({
-      replies: ["I see your image."],
+      notice: "I see your image.",
       text: "",
       attachments: [],
     }));

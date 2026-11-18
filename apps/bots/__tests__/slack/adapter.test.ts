@@ -1009,7 +1009,7 @@ describe("SlackAdapter - inbound files", () => {
       adapter as unknown as { resolveIncomingMedia: ReturnType<typeof vi.fn> }
     ).resolveIncomingMedia;
     resolveMedia.mockResolvedValue({
-      replies: [],
+      notice: "",
       text: "summarize this",
       attachments: [UPLOADED],
     });
@@ -1122,7 +1122,7 @@ describe("SlackAdapter - inbound files", () => {
 
   it("posts the pipeline's notices, then streams what was read", async () => {
     resolveMedia.mockResolvedValueOnce({
-      replies: ["Up to 5 files per message. Read the first 5, skipped 1."],
+      notice: "Up to 5 files per message. Read the first 5, skipped 1.",
       text: "summarize this",
       attachments: [UPLOADED],
     });

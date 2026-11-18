@@ -109,7 +109,7 @@ const MOCK_CONFIG = {
 
 /** Outcome returned by the shared media pipeline (overridable per-test). */
 interface MediaOutcome {
-  replies: string[];
+  notice: string;
   text: string;
   attachments: {
     fileId: string;
@@ -250,7 +250,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("builds an IncomingMedia descriptor from the Kapso media for an image with a caption", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -276,7 +276,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("preserves the voice-note flag and audio mime type in the descriptor", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -298,7 +298,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("passes a download thunk that fetches the correct Kapso media bytes", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -324,7 +324,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("forwards the Kapso-declared media size so an oversize file skips the download", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: ["too large"], text: "", attachments: [] });
+    setOutcome(adapter, { notice: "too large", text: "", attachments: [] });
 
     await callHandle(adapter, media({ sizeBytes: 12_582_912 }));
 
@@ -339,7 +339,7 @@ describe("WhatsAppAdapter - media routing", () => {
     const { response, produced, cancelled } = endlessMediaResponse(chunk);
     mockMediaDownload.mockResolvedValue(response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-huge" }));
 
@@ -363,7 +363,7 @@ describe("WhatsAppAdapter - media routing", () => {
       body: null,
     } as unknown as Response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { replies: [], text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-gone" }));
 
@@ -377,7 +377,7 @@ describe("WhatsAppAdapter - media routing", () => {
   it("dispatches a 'chat' outcome to handleStreamingChat with fileIds and fileData", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      replies: [],
+      notice: "",
       text: "Please describe this image.",
       attachments: [
         {
@@ -405,7 +405,7 @@ describe("WhatsAppAdapter - media routing", () => {
   it("dispatches a transcript 'chat' outcome with no attachments", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      replies: [],
+      notice: "",
       text: "this is the transcribed voice note",
       attachments: [],
     });
@@ -424,9 +424,8 @@ describe("WhatsAppAdapter - media routing", () => {
   it("sends a 'reply' outcome verbatim and does NOT start a chat turn", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      replies: [
+      notice:
         "That file is too large to process (limit: 10 MB). Please share a smaller file.",
-      ],
       text: "",
       attachments: [],
     });

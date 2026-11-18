@@ -105,7 +105,7 @@ describe("BaseBotAdapter.resolveIncomingMedia", () => {
       "id-c.png",
     ]);
     expect(outcome.text).toBe("compare these");
-    expect(outcome.replies).toEqual([]);
+    expect(outcome.notice).toBe("");
   });
 
   it("reads up to the web composer's limit and tells the user how many it skipped", async () => {
@@ -117,9 +117,9 @@ describe("BaseBotAdapter.resolveIncomingMedia", () => {
     expect(BOT_MAX_FILES_PER_MESSAGE).toBe(5);
     expect(uploadFile).toHaveBeenCalledTimes(5);
     expect(outcome.attachments).toHaveLength(5);
-    expect(outcome.replies).toEqual([
+    expect(outcome.notice).toBe(
       "Up to 5 files per message. Read the first 5, skipped 2.",
-    ]);
+    );
   });
 
   it("keeps the other files when one upload fails, and says which kind failed", async () => {
@@ -135,8 +135,43 @@ describe("BaseBotAdapter.resolveIncomingMedia", () => {
     const outcome = await adapter.intake([image("big.png"), image("ok.png")]);
 
     expect(outcome.attachments.map((a) => a.fileId)).toEqual(["id-ok.png"]);
-    expect(outcome.replies).toEqual([
+    expect(outcome.notice).toBe(
       "That image is too large for me to process. Please share a smaller file.",
-    ]);
+    );
+  });
+
+  it("answers a file the platform sent without its bytes, and still reads the rest", async () => {
+    const { adapter, uploadFile } = setup(stored);
+    const voice: IncomingAttachment = {
+      media: { kind: "audio", isVoiceNote: true, mimeType: "audio/ogg" },
+    };
+
+    const outcome = await adapter.intake([voice, image("ok.png")]);
+
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(outcome.attachments.map((a) => a.fileId)).toEqual(["id-ok.png"]);
+    expect(outcome.notice).toBe(
+      "Voice notes aren't supported here yet. Please type your message instead.",
+    );
+  });
+
+  it("puts every notice in one message, in attachment order", async () => {
+    const { adapter } = setup(async () => {
+      throw Object.assign(new Error("too large"), {
+        response: { status: 413 },
+      });
+    });
+    const names = ["1", "2", "3", "4", "5", "6"].map((n) => `${n}.png`);
+
+    const outcome = await adapter.intake(names.map((n) => image(n)));
+
+    const tooLarge =
+      "That image is too large for me to process. Please share a smaller file.";
+    expect(outcome.notice).toBe(
+      [
+        ...Array(5).fill(tooLarge),
+        "Up to 5 files per message. Read the first 5, skipped 1.",
+      ].join("\n\n"),
+    );
   });
 });

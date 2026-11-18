@@ -897,7 +897,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         userId,
         chatId.toString(),
       );
-      for (const reply of outcome.replies) await ctx.reply(reply);
+      if (outcome.notice) await ctx.reply(outcome.notice);
       if (outcome.text || outcome.attachments.length > 0) {
         await this.handleTelegramStreaming(
           ctx,

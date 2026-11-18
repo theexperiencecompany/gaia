@@ -10,12 +10,13 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
 import { COMMAND_HELP } from "../utils/formatters";
+import { parseTextArgs } from "../utils/text";
 
 /** `/workflow` command definition with subcommands. */
 export const workflowCommand: BotCommand = {
