@@ -77,6 +77,12 @@ async def test_an_expired_brief_goes_with_its_image_and_a_younger_one_stays(
     kept = await _brief(
         "2026-10-01", with_edition=True, age=timedelta(days=1), raw_collection=raw_collection
     )
+    nearly = await _brief(
+        "2025-10-03",
+        with_edition=False,
+        age=BRIEFING_RETENTION - timedelta(hours=2),
+        raw_collection=raw_collection,
+    )
     assert expired.edition is not None and kept.edition is not None
 
     async with captured_wide_event() as event:
@@ -88,6 +94,7 @@ async def test_an_expired_brief_goes_with_its_image_and_a_younger_one_stays(
     assert await briefing_repository.get(expired.id, user_id=USER_ID) is None
     assert await briefing_repository.get(note.id, user_id=USER_ID) is None
     assert await briefing_repository.get(kept.id, user_id=USER_ID) is not None
+    assert await briefing_repository.get(nearly.id, user_id=USER_ID) is not None
     assert _images(tmp_path) == [
         f"brief-edition-{kept.edition.key}.jpg",
         f"brief-edition-{kept.edition.key}.png",
