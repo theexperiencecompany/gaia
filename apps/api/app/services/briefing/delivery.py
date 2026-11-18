@@ -16,12 +16,18 @@ from app.constants.briefing import (
 )
 from app.constants.notifications import (
     NotificationChannel,
+    NotificationKind,
     ProactiveMessageClass,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, DeliveryStep
-from app.models.brief_view_models import BriefCard, BriefNotificationMetadata
+from app.models.brief_view_models import (
+    BriefCard,
+    BriefEditionNotification,
+    BriefNoteNotification,
+    BriefNotificationMetadata,
+)
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -56,6 +62,17 @@ def _wants_email(user: UserDocument) -> bool:
     return prefs[NotificationChannel.EMAIL] and bool((user.email or "").strip())
 
 
+def _notification_metadata(
+    brief: BriefingModel, kind: NotificationKind, card: BriefCard | None
+) -> BriefNotificationMetadata:
+    """Return what the brief's notification carries: a note its kind, an edition its link and card."""
+    if kind is NotificationKind.BRIEFING_NOTE:
+        return BriefNoteNotification(kind=kind)
+    if brief.payload.link is None or card is None:
+        raise ValueError(f"{kind} brief {brief.id} was stored without its link or edition")
+    return BriefEditionNotification(kind=kind, brief_url=brief.payload.link, card=card)
+
+
 async def _notify(
     user: UserDocument, brief: BriefingModel, plan: BriefDelivery, card: BriefCard | None
 ) -> list[str]:
@@ -88,9 +105,7 @@ async def _notify(
                     )
                 ],
             ),
-            metadata=BriefNotificationMetadata(
-                kind=plan.notification_kind, brief_url=payload.link, card=card
-            ).model_dump(),
+            metadata=_notification_metadata(brief, plan.notification_kind, card).model_dump(),
         )
     )
     reached = [c.channel_type for c in record.channels if c.reached_user]

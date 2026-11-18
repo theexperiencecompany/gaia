@@ -26,6 +26,7 @@ from app.constants.briefing import (
     EditionFamily,
     EditionVariant,
 )
+from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel
 from app.services.briefing import edition_email, store
@@ -37,7 +38,7 @@ USER_ID = make_user_id()
 _DATE = "2026-10-14"
 _BRIEF_ID = "brief_0123456789ab"
 _NOW = datetime(2026, 10, 14, 7, 0, tzinfo=UTC)
-_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily")
+_PLAN = BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY)
 _BRIEF = make_briefing_payload(date=_DATE, template_family=EditionFamily.POSTAL)
 
 

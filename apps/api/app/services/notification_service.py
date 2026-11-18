@@ -9,11 +9,16 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationView,
 )
+from app.services.briefing.notification_email import BRIEFING_EMAIL_RENDERERS
 from app.utils.notification.actions import (
     ActionHandler,
 )
 from app.utils.notification.channels import ChannelAdapter
+from app.utils.notification.channels.email import EmailRenderers
 from app.utils.notification.orchestrator import NotificationOrchestrator
+
+#: Every notification kind's email renderer, as the email channel reads them.
+EMAIL_RENDERERS: EmailRenderers = {**BRIEFING_EMAIL_RENDERERS}
 
 
 # Service Factory
@@ -21,7 +26,7 @@ class NotificationService:
     """Main notification service - facade for the entire system."""
 
     def __init__(self) -> None:
-        self.orchestrator = NotificationOrchestrator()
+        self.orchestrator = NotificationOrchestrator(EMAIL_RENDERERS)
 
     # Expose orchestrator methods
     async def create_notification(self, request: NotificationRequest) -> NotificationRecord | None:

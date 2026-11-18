@@ -17,14 +17,9 @@ from app.constants.briefing import (
     PAPER_MARKER_SELECTOR,
     EditionFamily,
 )
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-)
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing import edition_email
 from app.services.briefing.edition_email import (
-    is_edition_kind,
     render_edition_email,
     render_edition_png,
 )
@@ -350,16 +345,3 @@ class TestEditionNumber:
     def test_editions_count_days_from_the_epoch(self) -> None:
         assert edition_email._edition_no("2026-01-01") == 1
         assert edition_email._edition_no("2026-10-14") == 287
-
-
-@pytest.mark.unit
-class TestIsEditionKind:
-    @pytest.mark.parametrize(
-        "kind", [NOTIFICATION_KIND_BRIEFING_DAILY, NOTIFICATION_KIND_BRIEFING_WEEKLY]
-    )
-    def test_briefing_kinds_render_as_editions(self, kind: str) -> None:
-        assert is_edition_kind(kind) is True
-
-    @pytest.mark.parametrize("kind", [None, "", "reminder", "briefing", "briefing_monthly"])
-    def test_everything_else_does_not(self, kind: str | None) -> None:
-        assert is_edition_kind(kind) is False

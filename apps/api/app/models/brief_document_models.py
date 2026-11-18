@@ -7,6 +7,7 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefingKind, EditionFamily
+from app.constants.notifications import NotificationKind
 from app.db.repositories.base import UserScopedDocument
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingPayload
@@ -59,7 +60,7 @@ class BriefDelivery(BaseModel):
 
     #: Whether it goes beyond in-app: email when wanted, and the chat app.
     push: bool
-    notification_kind: str
+    notification_kind: NotificationKind
     #: The held results it carries, consumed in the step that completes its delivery.
     held_ids: list[str] = Field(default_factory=list)
     done: list[DeliveryStep] = Field(default_factory=list)

@@ -1,10 +1,12 @@
 """A stored brief as the API shows it: its card, the owner's view, the public view, the archive and the postmarks."""
 
 from datetime import datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefingKind
+from app.constants.notifications import NotificationKind
 from app.models.brief_document_models import EditionImage
 from app.models.brief_payload_models import (
     BriefingEvent,
@@ -35,12 +37,24 @@ class BriefCard(BaseModel):
     )
 
 
-class BriefNotificationMetadata(BaseModel):
-    """What a brief's notification carries in its metadata, for the in-app card and the email."""
+class BriefEditionNotification(BaseModel):
+    """What a daily brief's or weekly recap's notification carries, for the in-app card and the email."""
 
-    kind: str = Field(description="The notification kind: a daily brief, a weekly recap or a note.")
-    brief_url: str | None = Field(description="The brief's heygaia.link.")
-    card: BriefCard | None = Field(description="The brief's card; None for a quiet note.")
+    kind: Literal[NotificationKind.BRIEFING_DAILY, NotificationKind.BRIEFING_WEEKLY]
+    brief_url: str = Field(description="The brief's heygaia.link.")
+    card: BriefCard
+
+
+class BriefNoteNotification(BaseModel):
+    """What a quiet note's notification carries: its kind alone, as it has no edition and no link."""
+
+    kind: Literal[NotificationKind.BRIEFING_NOTE]
+
+
+#: A brief notification's metadata, told apart by its kind.
+BriefNotificationMetadata = Annotated[
+    BriefEditionNotification | BriefNoteNotification, Field(discriminator="kind")
+]
 
 
 class UncomposedItem(BriefPoolItem):

@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefForm,
     BriefingKind,
 )
+from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
 from app.models.brief_document_models import (
@@ -31,7 +32,7 @@ from tests.factories import make_briefing_payload
 from tests.helpers import local_timezone
 
 _EDITION = EditionRender(key="edition-key")
-_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily", held_ids=["h1"])
+_PLAN = BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY, held_ids=["h1"])
 _FRESH = timedelta(minutes=1)
 
 

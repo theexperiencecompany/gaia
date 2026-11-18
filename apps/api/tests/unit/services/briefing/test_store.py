@@ -10,6 +10,7 @@ from tests.factories import make_briefing_payload, make_user_id
 
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind
+from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
@@ -19,7 +20,7 @@ from app.services.render.image import RenderedImage
 USER_ID = make_user_id()
 _DATE = "2026-10-14"
 _BRIEF_ID = "brief-1"
-_PLAN = BriefDelivery(push=True, notification_kind="briefing_daily")
+_PLAN = BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY)
 
 
 async def _upserted(brief: BriefingModel) -> BriefingModel:
