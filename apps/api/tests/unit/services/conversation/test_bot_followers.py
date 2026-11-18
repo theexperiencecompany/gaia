@@ -8,8 +8,8 @@ import pytest
 
 from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
 from app.db.repositories.conversation_sweep import SweepHead
-from app.models.bot_models import BotDelivery, BotSessionDocument
-from app.services.conversation.bot_followers import list_active_bot_conversations
+from app.models.bot_models import BotDelivery, BotSessionDocument, PartialReply
+from app.services.conversation.bot_followers import follow_start, list_active_bot_conversations
 from app.services.conversation.runtime import install_runtime_ports
 from tests.unit.services.conversation.log_helpers import fold, replied, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
@@ -150,3 +150,23 @@ async def test_a_live_head_is_followed_once_and_only_on_its_own_platform(store: 
         ("conv-owed", 5),
         ("conv-live", 6),
     ]
+
+
+async def test_a_follow_starts_at_the_cursor_of_a_session_that_still_owes(store: Store) -> None:
+    cut = BotDelivery(
+        delivered_seq=3, owed_seq=5, partial_reply=PartialReply(reply_id="r1", bubbles=1)
+    )
+    store.sessions["conv-owed"] = _session("conv-owed", "telegram", cut)
+
+    assert await follow_start("conv-owed", 9) == cut
+
+
+@pytest.mark.parametrize(
+    "delivery", [None, BotDelivery(delivered_seq=5, owed_seq=5)], ids=["no-cursor", "all-sent"]
+)
+async def test_a_follow_of_a_session_owing_nothing_starts_just_before_the_message(
+    store: Store, delivery: BotDelivery | None
+) -> None:
+    store.sessions["conv-done"] = _session("conv-done", "telegram", delivery)
+
+    assert await follow_start("conv-done", 9) == BotDelivery(delivered_seq=8)

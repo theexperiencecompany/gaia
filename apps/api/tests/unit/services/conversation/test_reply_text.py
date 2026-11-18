@@ -43,8 +43,12 @@ def test_streamed_text_only_appends_to_the_last_bubble_or_opens_later_ones(
 def test_bubbles_that_would_change_shown_text_are_refused(
     shown: tuple[str, ...], now: tuple[str, ...]
 ) -> None:
-    with pytest.raises(ShownTextTakenBackError):
+    with pytest.raises(
+        ShownTextTakenBackError,
+        match="^a reply's bubbles would change text a client already showed$",
+    ) as refused:
         bubble_deltas(shown, now)
+    assert refused.value.meta == {"shown": list(shown), "now": list(now)}
 
 
 @pytest.mark.parametrize(
