@@ -61,3 +61,24 @@ class TestAFigureOfAnotherFact:
         )
 
         assert claim_problems("message", "[Maya](fact:1) wrote 3 times.", values) == []
+
+    @pytest.mark.regression
+    def test_a_figure_that_names_another_fact_by_its_title_is_not_pinned_on_the_slotted_one(
+        self,
+    ) -> None:
+        """Replay (Dhruv 11-14): naming "Mercury 2FA setup" beside fact 6's due time was rejected."""
+        values = SlotValues(
+            facts={
+                6: BriefFact(
+                    title="Investigate PostHog event-budget loop alert", time="Fri Nov 13"
+                ),
+                9: BriefFact(title="Verify Mercury 2FA setup in Surat", time="Fri Nov 13"),
+            },
+            counts={},
+        )
+        text = (
+            "The PostHog event-budget alert was due [[fact:6.time]], and the Mercury 2FA setup "
+            "in Surat was due then too."
+        )
+
+        assert claim_problems("message", text, values) == []

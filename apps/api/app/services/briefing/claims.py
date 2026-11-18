@@ -2,7 +2,8 @@
 
 A sentence about exactly one fact (it links or slots that fact alone) may not call a failed item
 a success, a finished one a failure, or something still waiting on the user done; nor may it
-type a figure (a date, a time, an amount) that only another fact holds. A sentence that
+type a figure (a date, a time, an amount) that only another fact's time or words hold. A figure
+in another fact's title names that fact ("the Mercury 2FA setup"), so it is never pinned on this one. A sentence that
 negates ("not yet", "hasn't") is left alone: it may be saying the item is not there yet.
 """
 
@@ -33,8 +34,9 @@ _CONTRADICTED_BY: dict[ItemState, re.Pattern[str]] = {
 }
 
 
-def _figures(fact: BriefFact) -> frozenset[str]:
-    return figures_in([fact.title, *(w for w in (fact.time, fact.words) if w)])
+def _said_of(fact: BriefFact) -> frozenset[str]:
+    """Return the figures a fact's time and words hold: what it says, as against what names it."""
+    return figures_in([w for w in (fact.time, fact.words) if w])
 
 
 def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
@@ -56,12 +58,12 @@ def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
                     f"the {field} says fact {fact_id} {said.group(0)!r}, but its state is "
                     f"{fact.kind.label.lower()}; say where it stands as its line does"
                 )
-        own = _figures(fact) | {str(fact.count)}
+        own = figures_in([fact.title]) | _said_of(fact) | {str(fact.count)}
         others = {
             word
             for other_id, other in values.facts.items()
             if other_id != fact_id
-            for word in _figures(other)
+            for word in _said_of(other) - figures_in([other.title])
         }
         typed = figures_in([unslotted(sentence)]) - own
         problems += [
