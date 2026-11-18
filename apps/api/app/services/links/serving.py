@@ -2,7 +2,8 @@
 
 The content origin (a per-snapshot host such as <content_id>.heygaia.link) is
 cross-site from GAIA's app and carries no cookie, so active HTML can run there
-without reaching anything of the viewer's. The CSP sandbox still gives every
+without reaching anything of the viewer's; it can still send its own content
+out and show a convincing page, so it is isolation, not vetting. The CSP sandbox still gives every
 document an opaque origin; frame-ancestors pins framing to the app; HTML is only
 ever served into an iframe, so the content domain is never a landing page.
 """
@@ -12,7 +13,9 @@ from urllib.parse import quote
 from fastapi.responses import RedirectResponse, Response
 
 from app.config.settings import settings
+from app.constants.short_links import DOWNLOAD_MIME
 from app.models.short_link_models import LinkSnapshot, RenderMode
+from app.services.links.content import isolates_each_snapshot
 
 _SHARED_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -28,9 +31,9 @@ _SHARED_HEADERS = {
 SNAPSHOT_CACHE_CONTROL = "private, max-age=600"
 THUMBNAIL_CACHE_CONTROL = "public, max-age=3600"
 _INERT_CSP = "default-src 'none'; sandbox"
-_DOWNLOAD_MIME = "application/octet-stream"
-# Scripts, styles and fonts from any CDN (agent reports draw charts), but no way to send
-# anything anywhere: no fetch/XHR/WebSocket/beacon, no form post, no nested frame or worker.
+# Scripts, styles and fonts from any CDN (agent reports draw charts); no fetch, form post or frame.
+# Not silent: script/image/font URLs reach any https host and popups escape, so the page can
+# send out what it holds. It holds nothing of the viewer's (opaque origin, no cookie).
 _FRAME_ACTIVE_CSP = (
     "sandbox allow-scripts allow-forms allow-modals allow-popups "
     "allow-popups-to-escape-sandbox allow-downloads; "
@@ -39,7 +42,8 @@ _FRAME_ACTIVE_CSP = (
     "media-src data: blob: https:; connect-src 'none'; form-action 'none'; base-uri 'none'; "
     "frame-src 'none'; worker-src 'none'; frame-ancestors {app_origin}"
 )
-# Browsers refuse to render a PDF in a sandboxed document, so its isolation is the origin alone.
+# Browsers won't render a PDF in a sandbox, so a per-snapshot host is its only isolation;
+# without one (a self-host's single content host) a PDF is only ever a download.
 _PDF_CSP = "default-src 'none'; object-src 'self'; frame-ancestors {app_origin}"
 _SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
@@ -105,6 +109,8 @@ def snapshot_response(
                 varies_by_dest=True,
             )
         case RenderMode.PDF:
+            if not isolates_each_snapshot():
+                return download_response(body, snapshot)
             csp = _PDF_CSP.format(app_origin=app_origin)
             return _response(body, snapshot.mime, csp, "inline", SNAPSHOT_CACHE_CONTROL)
         case RenderMode.TEXT:
@@ -120,7 +126,7 @@ def snapshot_response(
 def download_response(body: bytes, snapshot: LinkSnapshot) -> Response:
     """Serve a snapshot as a file to save, never rendered: safe from any origin, the app's included."""
     return _response(
-        body, _DOWNLOAD_MIME, _INERT_CSP, _attachment(snapshot.filename), "private, no-store"
+        body, DOWNLOAD_MIME, _INERT_CSP, _attachment(snapshot.filename), "private, no-store"
     )
 
 

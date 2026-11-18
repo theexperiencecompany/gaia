@@ -3,7 +3,7 @@
  *
  * Imports ONLY `zod` — no `@/` aliases, no React, no browser deps — so both
  * the React component files (which add the views) and the Node prompt
- * generator (`scripts/openui/generate-prompt.ts`) can import it. The LLM
+ * generator (`scripts/openui/generate-prompts.ts`) can import it. The LLM
  * prompt's vocabulary is generated from `GAIA_COMPONENT_SPECS` + `@openuidev/react-ui`.
  */
 import { z } from "zod";

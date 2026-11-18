@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { ToolDataEntry } from "../api/generated";
+import type { ArtifactDeltaFrame, ToolDataEntry } from "../api/generated";
+import { ArtifactDeltaSchema } from "../artifacts/schema";
 
 /**
  * Zod mirror of the chat SSE event vocabulary; the source of truth is the backend at
@@ -161,13 +162,8 @@ const FileDataFrameSchema = z.object({
 
 /** One chunk of an artifact program from create_artifact; live only, never persisted. */
 const ArtifactDeltaFrameSchema = z.object({
-  artifact_delta: z.object({
-    stream_id: z.string(),
-    kind: z.string(),
-    title: z.string(),
-    delta: z.string(),
-  }),
-});
+  artifact_delta: ArtifactDeltaSchema,
+}) satisfies z.ZodType<ArtifactDeltaFrame>;
 
 /**
  * End of one assistant message. `discarded` is true when that message turned

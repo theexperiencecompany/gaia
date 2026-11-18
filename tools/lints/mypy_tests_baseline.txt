@@ -112,7 +112,6 @@ apps/api/tests/unit/agents/test_interruption.py	union-attr
 apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
-apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type

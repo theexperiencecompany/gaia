@@ -1,7 +1,6 @@
-"""A file GAIA wrote under a conversation's artifacts/, shared as the snapshot its link pinned.
+"""A file GAIA wrote in a conversation's workspace, shared as the snapshot its link pinned.
 
-The target id is conversation_id/path. The live file is read only to publish a
-snapshot; opening the link reads the snapshot alone.
+The live file is read only to publish a snapshot; opening the link reads the snapshot alone.
 """
 
 import asyncio
@@ -10,9 +9,12 @@ from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import (
     LinkSnapshot,
-    PublicSessionArtifact,
+    LinkViewerKind,
+    PublicWorkspaceFile,
     RenderMode,
+    ShortLink,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
 from app.services.links.content import (
     active_link_content,
@@ -27,27 +29,18 @@ from app.utils.errors import AppError
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
 
-def session_artifact_target_id(conversation_id: str, path: str) -> str:
-    """Return the target id of the file at path under one conversation's artifacts/.
-
-    Conversation ids are path-safe (no /), so the first / is always the separator.
-    """
-    return f"{conversation_id}/{path}"
-
-
-async def _source(owner_id: str, target_id: str) -> SnapshotSource | None:
-    """Read the owner's file now; None once it is gone or the id names no artifact.
+async def _source(owner_id: str, target: WorkspaceFileTarget) -> SnapshotSource | None:
+    """Read the owner's file now; None once it is gone or the path names no file.
 
     Workspace storage being offline is an outage, not a missing file: a 503 the caller sees.
     """
-    conversation_id, _, path = target_id.partition("/")
-    if not conversation_id or not path:
-        return None
     try:
-        info = await stat_artifact(owner_id, conversation_id, path)
+        info = await stat_artifact(owner_id, target.conversation_id, target.path)
         if info is None:
             return None
-        host_path = await resolve_session_path(owner_id, conversation_id, "artifacts", path)
+        host_path = await resolve_session_path(
+            owner_id, target.conversation_id, "artifacts", target.path
+        )
     except ValueError:
         return None
     except JuiceFSUnavailable as e:
@@ -80,21 +73,22 @@ async def _text(owner_id: str, snapshot: LinkSnapshot) -> str | None:
 
 
 async def _project(
-    owner_id: str, _target_id: str, snapshot: LinkSnapshot | None
-) -> PublicSessionArtifact | None:
+    link: ShortLink, _target: WorkspaceFileTarget, _viewer: LinkViewerKind
+) -> PublicWorkspaceFile | None:
+    snapshot = link.snapshot
     if snapshot is None:
         return None
-    return PublicSessionArtifact(
-        target_type=ShortLinkTargetType.SESSION_ARTIFACT,
+    return PublicWorkspaceFile(
+        target_type=ShortLinkTargetType.WORKSPACE_FILE,
         filename=snapshot.filename,
         content_type=snapshot.mime,
         size_bytes=snapshot.size_bytes,
-        text=await _text(owner_id, snapshot),
+        text=await _text(link.user_id, snapshot),
     )
 
 
 async def _preview(
-    _owner_id: str, _target_id: str, snapshot: LinkSnapshot | None
+    _owner_id: str, _target: WorkspaceFileTarget, snapshot: LinkSnapshot | None
 ) -> PreviewFacts | None:
     if snapshot is None:
         return None
@@ -105,20 +99,13 @@ async def _preview(
     )
 
 
-async def _in_conversation(owner_id: str, conversation_id: str) -> list[str]:
-    """Read the linked files from the links: a deleted chat's workspace may already be gone."""
-    return await short_link_repository.live_target_ids_under(
-        owner_id,
-        ShortLinkTargetType.SESSION_ARTIFACT,
-        session_artifact_target_id(conversation_id, ""),
-    )
-
-
 SPEC = LinkTargetSpec(
-    type=ShortLinkTargetType.SESSION_ARTIFACT,
+    type=ShortLinkTargetType.WORKSPACE_FILE,
+    target=WorkspaceFileTarget,
     kind_line="A file GAIA made, shared with you.",
     project=_project,
     preview=_preview,
     source=_source,
-    in_conversation=_in_conversation,
+    # Read from the links: a deleted chat's workspace may already be gone.
+    in_conversation=short_link_repository.live_workspace_files_in,
 )

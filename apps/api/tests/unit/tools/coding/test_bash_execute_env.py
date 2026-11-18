@@ -26,6 +26,8 @@ from app.constants.sandbox import (
     BASH_MAX_COMMAND_LENGTH,
     BASH_MAX_TIMEOUT_SECONDS,
 )
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
+from app.services.links.placeholders import link_placeholder
 from app.services.sandbox import SandboxAcquisitionError
 from app.services.storage import ArtifactInfo, FsOps, fs_timer
 from shared.py.wide_events import log
@@ -408,14 +410,26 @@ class TestBashArtifactLinks:
         )
         with (
             patch(
-                f"{ARTIFACTS_MODULE}.optional_short_link", new=AsyncMock(return_value=SHORT_URL)
+                f"{ARTIFACTS_MODULE}.attach_link",
+                new=AsyncMock(
+                    side_effect=lambda user_id, target: ShortLink(
+                        slug="abcdefghijk", user_id=user_id, target=target
+                    )
+                ),
             ) as mint,
             patch(f"{ARTIFACTS_MODULE}.publish_artifact_event", new=AsyncMock()) as pub,
         ):
             links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
-        assert links == {"skewed.md": SHORT_URL, "new.md": SHORT_URL}
+        assert links == {
+            name: link_placeholder(
+                WorkspaceFileTarget(
+                    type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="conv1", path=name
+                )
+            )
+            for name in ("skewed.md", "new.md")
+        }
         # Only what the run wrote is shared; listing an older file never mints for it.
-        assert [c.args[2] for c in mint.await_args_list] == ["conv1/skewed.md", "conv1/new.md"]
+        assert [c.args[1].path for c in mint.await_args_list] == ["skewed.md", "new.md"]
         # Every artifact is still published, linked or not, so its card stays live.
         assert [c.args[1]["path"] for c in pub.await_args_list] == [
             "old.md",

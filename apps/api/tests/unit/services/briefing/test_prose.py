@@ -10,10 +10,12 @@ from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
+from app.config.settings import settings
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import checked_call, prose
@@ -412,9 +414,11 @@ class TestTheLinksAMessageMakes:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mint = AsyncMock(
-            side_effect=lambda _user, _kind, todo_id: f"https://heygaia.link/{todo_id}"
+            side_effect=lambda user_id, target: ShortLink(
+                slug=f"link-{target.id}", user_id=user_id, target=target
+            )
         )
-        monkeypatch.setattr(prose, "optional_short_link", mint)
+        monkeypatch.setattr(prose, "attach_link", mint)
         facts = Facts(
             sections=[],
             block="",
@@ -426,5 +430,7 @@ class TestTheLinksAMessageMakes:
 
         links = await prose.links_in(_USER_ID, "[The memo](fact:2) and [the issue](fact:4).", facts)
 
-        assert links == {4: "https://linear.app/i/4", 2: "https://heygaia.link/t2"}
-        mint.assert_awaited_once()
+        assert links == {4: "https://linear.app/i/4", 2: f"{settings.SHORTLINK_BASE_URL}/link-t2"}
+        mint.assert_awaited_once_with(
+            _USER_ID, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t2")
+        )

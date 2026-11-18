@@ -88,7 +88,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Briefing
     monkeypatch.setattr(briefing_repository, "briefing_id_for", AsyncMock(return_value=_BRIEF_ID))
     monkeypatch.setattr(briefing_repository, "upsert_briefing", upsert)
     monkeypatch.setattr(briefing_repository, "owner_of_edition", owner_of_edition)
-    monkeypatch.setattr(store, "optional_short_link", AsyncMock(return_value=None))
+    monkeypatch.setattr(store, "attach_link", AsyncMock(return_value=None))
     return docs
 
 

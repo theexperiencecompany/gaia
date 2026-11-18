@@ -1,13 +1,4 @@
 import {
-  type ComponentRenderProps,
-  defineComponent,
-} from "@openuidev/react-lang";
-import Link from "next/link";
-import { useContext } from "react";
-import type { z } from "zod";
-import { GroundedText } from "../GroundedText";
-import { type ArtifactDensity, ArtifactDensityContext } from "../renderContext";
-import {
   artifactSchema,
   calloutSchema,
   type calloutTone,
@@ -19,7 +10,16 @@ import {
   sourcesSchema,
   takeawaysSchema,
   todoSchema,
-} from "../specs";
+} from "@gaia/artifacts/specs";
+import {
+  type ComponentRenderProps,
+  defineComponent,
+} from "@openuidev/react-lang";
+import Link from "next/link";
+import { useContext } from "react";
+import type { z } from "zod";
+import { GroundedText } from "../GroundedText";
+import { type ArtifactDensity, ArtifactDensityContext } from "../renderContext";
 
 // Views stay file-private: this module's surface is the defs (react-refresh/only-export-components).
 

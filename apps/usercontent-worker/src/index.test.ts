@@ -6,6 +6,7 @@ const HOST = `${CONTENT_ID}.heygaia.link`;
 const ENV: Env = {
   API_ORIGIN: "https://api.example.test",
   INTERNAL_API_TOKEN: "internal-token",
+  LINK_CONTENT_EDGE_TOKEN: "edge-token",
 };
 
 function upstreamReturning(response: Response) {
@@ -117,6 +118,7 @@ describe("request headers", () => {
           "X-Gaia-Internal": "forged",
           "X-Gaia-Viewer-IP": "6.6.6.6",
           "X-Gaia-Content-Host": "api.heygaia.io",
+          "X-Gaia-Content-Edge": "forged",
           Referer: "https://heygaia.io/l/abc",
         },
       }),
@@ -127,6 +129,7 @@ describe("request headers", () => {
     expect(headers.get("Authorization")).toBeNull();
     expect(headers.get("Referer")).toBeNull();
     expect(headers.get("X-Gaia-Internal")).toBe("internal-token");
+    expect(headers.get("X-Gaia-Content-Edge")).toBe("edge-token");
     expect(headers.get("X-Gaia-Content-Host")).toBe(HOST);
     // No CF-Connecting-IP: the forged viewer IP must not pass through either.
     expect(headers.get("X-Gaia-Viewer-IP")).toBeNull();

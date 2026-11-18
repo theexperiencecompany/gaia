@@ -55,7 +55,7 @@ from app.constants import todos as todo_constants
 from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models import agent_models
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -66,6 +66,7 @@ from app.models.todo_models import (
     TrackedTodoCreation,
 )
 from app.models.user_models import UserDocument
+from app.services.links.placeholders import link_placeholder
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import ExternalRefTakenError, OpenStateError, UnwatchedTodoKeptError
 from app.services.todos.todo_service import TodoService
@@ -990,9 +991,13 @@ class TestCompleteTrackedTodo:
                 return_value=True,
             ) as complete,
             patch(
-                "app.agents.tools.tracked_todo_tools.optional_short_link",
+                "app.agents.tools.tracked_todo_tools.attach_link",
                 new_callable=AsyncMock,
-                return_value="https://heygaia.link/abcdefghijk",
+                return_value=ShortLink(
+                    slug="abcdefghijk",
+                    user_id="user-1",
+                    target=RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
+                ),
             ) as mint,
         ):
             result = await complete_tracked_todo.coroutine(
@@ -1000,9 +1005,15 @@ class TestCompleteTrackedTodo:
             )
         assert "completed and archived" in result
         assert complete.await_args.kwargs["by"] is TodoCompleter.GAIA
-        # The agent reads its own tool result, so the link must be in it.
-        assert "https://heygaia.link/abcdefghijk" in result
-        mint.assert_awaited_once_with("user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1")
+        # The agent reads its own tool result, so it carries the link's placeholder, never its URL.
+        assert (
+            link_placeholder(RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"))
+            in result
+        )
+        assert "abcdefghijk" not in result
+        mint.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        )
 
     async def test_no_link_when_sharing_is_off_still_confirms(self):
         """A todo the owner stopped sharing completes without handing out a link."""
@@ -1018,7 +1029,7 @@ class TestCompleteTrackedTodo:
                 return_value=True,
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools.optional_short_link",
+                "app.agents.tools.tracked_todo_tools.attach_link",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -1052,7 +1063,7 @@ class TestCompleteTrackedTodo:
                 return_value=True,
             ) as complete,
             patch(
-                "app.agents.tools.tracked_todo_tools.optional_short_link",
+                "app.agents.tools.tracked_todo_tools.attach_link",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

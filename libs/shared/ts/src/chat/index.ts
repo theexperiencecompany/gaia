@@ -5,7 +5,7 @@ export {
 export type {
   ArtifactCardData,
   ArtifactCardStatus,
-  ArtifactDeltaFrame,
+  ArtifactDelta,
 } from "../artifacts/types";
 export type {
   ApprovalDecision,
@@ -57,7 +57,6 @@ export {
 } from "./turnAccumulator";
 export type {
   ApiFileData,
-  ApiToolData,
   ArtifactData,
   CalendarDeleteOptions,
   CalendarEditOptions,

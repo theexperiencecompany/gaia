@@ -122,7 +122,7 @@ def _chunk(
     }
 
 
-def _split(text: str, pieces: int) -> list[str]:
+def split_pieces(text: str, pieces: int) -> list[str]:
     if not text:
         return [""]
     size = max(1, -(-len(text) // pieces))  # ceil division
@@ -155,7 +155,7 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
             },
             None,
         )
-        for piece in _split(arguments, _STREAM_PIECES):
+        for piece in split_pieces(arguments, _STREAM_PIECES):
             yield _chunk(
                 model,
                 completion_id,
@@ -165,7 +165,7 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
             )
         finish_reason = "tool_calls"
     else:
-        for piece in _split(response.text, _STREAM_PIECES):
+        for piece in split_pieces(response.text, _STREAM_PIECES):
             yield _chunk(model, completion_id, created, {"content": piece}, None)
         if response.fail is not None:
             # Raising inside the body generator makes uvicorn drop the connection

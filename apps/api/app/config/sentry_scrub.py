@@ -14,10 +14,12 @@ from pydantic import BaseModel, ConfigDict
 from sentry_sdk.tracing import TransactionSource
 from sentry_sdk.types import Event
 
-from app.constants.http import INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
+from app.constants.http import CONTENT_EDGE_HEADER, INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
 
-#: Headers no event carries: the web server's internal token, and the viewer's forwarded IP.
-_DROPPED_HEADERS = frozenset(name.lower() for name in (INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER))
+#: Headers no event carries: the web server's and the content edge's tokens, and the viewer's IP.
+_DROPPED_HEADERS = frozenset(
+    name.lower() for name in (INTERNAL_CALLER_HEADER, CONTENT_EDGE_HEADER, VIEWER_IP_HEADER)
+)
 #: Path parameters that are capabilities: whoever holds one opens the link or its content.
 _CAPABILITY_PATH_PARAMS = frozenset({"slug", "content_id"})
 #: Shorter query values are flags and counts; filtering them everywhere would mangle the event.

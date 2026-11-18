@@ -93,9 +93,9 @@ With `--domain`, GAIA can use two more domains for what you share. Both are opti
 | Domain | What it does | Without it |
 | --- | --- | --- |
 | Short-link domain (`--link-domain`) | Links you share read `https://go.example.com/<code>`. Each one redirects to `https://gaia.example.com/l/<code>` | Links read `https://gaia.example.com/l/<code>` |
-| Shared-files domain (`--usercontent-domain`) | Serves the bytes of shared files. Shared HTML pages run in a locked-down frame, and PDFs open in the browser's viewer | Shared HTML shows as source code, and other files download |
+| Shared-files domain (`--usercontent-domain`) | Serves the bytes of shared files. Shared HTML pages run in a locked-down frame, and images and media show in the page | Shared HTML shows as source code, and other files download |
 
-Use a separate name for the shared-files domain, never a path on GAIA's own domain. It carries no GAIA cookie, and every page it serves runs in a sandbox with no access to your account. Give each domain a DNS record that points at the server, as you did for `--domain`. For example, an `A` record for `go.example.com` and one for `files.example.com`, each with the server's IP address. Caddy gets a certificate for each.
+Use a separate name for the shared-files domain, never a path on GAIA's own domain. It carries no GAIA cookie, and every page it serves runs in a sandbox with no access to your account. Shared PDFs still download: every shared file comes from this one domain, and a browser does not show a PDF inside a sandbox, so a PDF would have no barrier against the other files. GAIA Cloud gives each shared file its own domain and shows PDFs in the page. Give each domain a DNS record that points at the server, as you did for `--domain`. For example, an `A` record for `go.example.com` and one for `files.example.com`, each with the server's IP address. Caddy gets a certificate for each.
 
 ```bash
 gaia up --yes --domain gaia.example.com --link-domain go.example.com --usercontent-domain files.example.com

@@ -22,7 +22,6 @@ def artifact_response(artifact: OpenUIArtifact) -> OpenUIArtifactResponse:
         kind=artifact.kind,
         title=artifact.title,
         program=artifact.program,
-        version=artifact.version,
         conversation_id=artifact.conversation_id,
         created_at=artifact.created_at,
     )

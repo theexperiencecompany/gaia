@@ -163,20 +163,21 @@ FROM scratch AS obscura-bin
 COPY --from=obscura-builder /obscura/target/release/obscura /obscura
 COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
 
-# ---- Artifact validator: the web artifact library's validator as one Node script ----
+# ---- Artifact validator: @gaia/artifacts' validator as one Node script ----
 # create_artifact checks every generated program with it (app/services/openui_artifacts/
-# validate.py). Only this package's dependencies are installed, and only the bundle and
-# the node binary reach the runtime.
+# validate.py). Only the validator's and the library's runtime dependencies are installed,
+# and only the bundle and the node binary reach the runtime.
 FROM node:${NODE_VERSION}-slim AS artifact-validator
 WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY tools/artifact-validate/package.json ./tools/artifact-validate/
+COPY libs/artifacts/package.json ./libs/artifacts/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --filter @gaia/artifact-validate
+    pnpm install --frozen-lockfile --ignore-scripts --prod --filter "@gaia/artifact-validate..."
 COPY tools/artifact-validate ./tools/artifact-validate
-COPY apps/web/src/features/artifacts/openui ./apps/web/src/features/artifacts/openui
+COPY libs/artifacts/src ./libs/artifacts/src
 RUN node tools/artifact-validate/build.mjs
 
 # ---- Runtime: minimal production image ----

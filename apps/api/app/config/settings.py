@@ -41,10 +41,9 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from app.constants.short_links import SHORTLINK_WEB_ROUTE
 from shared.py.wide_events import log
 
-# The web app route a heygaia.link slug rewrites to.
-SHORTLINK_WEB_ROUTE = "/l"
 MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()
@@ -109,6 +108,9 @@ class Settings(BrowserHostSettings):
     LINK_CONTENT_URL_TEMPLATE: str | None = None
     # Signs the short-lived content tokens that origin checks (min 32 chars).
     LINK_CONTENT_SIGNING_KEY: str | None = None
+    # Shared with GAIA Cloud's usercontent Worker, the only caller whose named content
+    # host is believed. Unset (any self-host: its proxy keeps the Host), none is.
+    LINK_CONTENT_EDGE_TOKEN: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -690,7 +692,12 @@ class Settings(BrowserHostSettings):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
         return self
 
-    @field_validator("LINK_CONTENT_URL_TEMPLATE", "LINK_CONTENT_SIGNING_KEY", mode="after")
+    @field_validator(
+        "LINK_CONTENT_URL_TEMPLATE",
+        "LINK_CONTENT_SIGNING_KEY",
+        "LINK_CONTENT_EDGE_TOKEN",
+        mode="after",
+    )
     @classmethod
     def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
         # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.

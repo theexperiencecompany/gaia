@@ -28,7 +28,7 @@ from app.constants.briefing import (
 from app.models.brief_document_models import BriefingModel
 from app.models.brief_payload_models import BriefingMood, BriefVoice
 from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
 from app.services.briefing.claims import claim_problems
@@ -40,7 +40,8 @@ from app.services.briefing.slots import (
     render_slots,
     slot_problems,
 )
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link
+from app.services.links.urls import build_url
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
@@ -57,9 +58,11 @@ async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
     for fact_id, todo_id in facts.deliverables.items():
         if fact_id not in linked:
             continue
-        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
-        if url is not None:
-            links[fact_id] = url
+        link = await attach_link(
+            user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+        )
+        if link is not None:
+            links[fact_id] = build_url(link.slug)
     return links
 
 

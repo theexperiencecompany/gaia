@@ -1,3 +1,4 @@
+import type { ToolDataEntry } from "@gaia/shared/api/generated";
 import type {
   MemoryDocument,
   MemoryEntry,
@@ -182,15 +183,11 @@ const TOOL_REGISTRY = {
 export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
-// Tools Message Schema
-// Derived from TOOL_REGISTRY. Represents the tool-specific portion
-// of a message. Used by the base message registry.
-export interface TypedToolDataEntry {
+/** The API's tool-data entry with its tool name and data typed by TOOL_REGISTRY. */
+export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
-  tool_category: string;
   data: ToolDataMap[ToolName];
-  timestamp: string | null;
-}
+};
 
 // Optional wrapper for tool data in messages
 type ToolsMessageSchema = {

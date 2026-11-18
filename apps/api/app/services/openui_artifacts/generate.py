@@ -19,7 +19,13 @@ from openai.types.responses import (
     ResponseUsage,
 )
 
-from app.constants.llm import ARTIFACT_MODEL_NAME, ARTIFACT_REASONING_EFFORT
+from app.config.settings import settings
+from app.constants.llm import (
+    ARTIFACT_MODEL_NAME,
+    ARTIFACT_REASONING_EFFORT,
+    SIM_STUB_API_KEY,
+    SIM_STUB_BASE_URL,
+)
 from app.constants.openui_artifacts import (
     ARTIFACT_MAX_OUTPUT_TOKENS,
     ARTIFACT_PROMPTS_DIR,
@@ -97,6 +103,10 @@ def repair_input(brief: str, program: str, problems: list[str]) -> str:
 
 
 async def _client() -> AsyncOpenAI:
+    if settings.GAIA_SIM_MODE:
+        return AsyncOpenAI(
+            api_key=SIM_STUB_API_KEY, base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL
+        )
     config = await resolve(CredentialProviderName.OPENAI)
     if config is None or not config.api_key:
         raise ArtifactModelNotConfiguredError(

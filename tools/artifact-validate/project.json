@@ -9,7 +9,8 @@
       "executor": "nx:run-commands",
       "inputs": [
         "{projectRoot}/**/*",
-        "{workspaceRoot}/apps/web/src/features/artifacts/openui/**/*.ts",
+        "{workspaceRoot}/libs/artifacts/src/**/*.ts",
+        "{workspaceRoot}/libs/artifacts/package.json",
         "{workspaceRoot}/pnpm-lock.yaml"
       ],
       "outputs": ["{projectRoot}/dist"],

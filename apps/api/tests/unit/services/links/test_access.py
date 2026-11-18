@@ -2,18 +2,29 @@
 
 from datetime import UTC, datetime, timedelta
 
+from pydantic import ValidationError
 import pytest
 
 from app.models.short_link_models import (
     LinkAccess,
     LinkDenial,
+    LinkSnapshot,
     LinkViewer,
     LinkViewerKind,
+    RecordTarget,
+    RenderMode,
     RevokeReason,
     ShortLink,
     ShortLinkTargetType,
 )
-from app.services.links.access import Denied, Granted, at_most, evaluate
+from app.services.links.access import (
+    Denied,
+    Granted,
+    at_most,
+    evaluate,
+    is_open,
+    servable_content,
+)
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 OWNER_ID = "507f1f77bcf86cd799439011"
@@ -35,8 +46,7 @@ def _link(access: LinkAccess, **overrides: object) -> ShortLink:
     data: dict[str, object] = {
         "slug": "abcdefghijk",
         "user_id": OWNER_ID,
-        "target_type": ShortLinkTargetType.TODO_DELIVERABLE,
-        "target_id": "t1",
+        "target": RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
         "access": access,
         "grantees": [GRANTEE_EMAIL],
     }
@@ -97,8 +107,6 @@ DEAD_STATES = [
         LinkDenial.TARGET_DELETED,
         Denied(LinkDenial.TARGET_DELETED),
     ),
-    # A link revoked before reasons existed reads as the owner's revoke.
-    ({"revoked": True}, LinkDenial.REVOKED, _OWNER),
     ({"suspended": True}, LinkDenial.REMOVED, Denied(LinkDenial.REMOVED)),
     # Suspension wins over a later expiry: the link was removed first.
     (
@@ -168,3 +176,57 @@ def test_at_most_orders_levels_by_who_they_open_for(
     access: LinkAccess, cap: LinkAccess, fits: bool
 ) -> None:
     assert at_most(access, cap) is fits
+
+
+@pytest.mark.parametrize(
+    ("access", "opens"),
+    [
+        (LinkAccess.PUBLIC, True),
+        (LinkAccess.UNLISTED, True),
+        (LinkAccess.PEOPLE, False),
+        (LinkAccess.OWNER, False),
+    ],
+)
+def test_only_public_and_unlisted_links_are_open(access: LinkAccess, opens: bool) -> None:
+    assert is_open(access) is opens
+
+
+def _file(**overrides: object) -> LinkSnapshot:
+    data: dict[str, object] = {
+        "filename": "r.html",
+        "mime": "text/html",
+        "size_bytes": 4,
+        "render": RenderMode.FRAME_ACTIVE,
+        "content_id": "c" * 26,
+        "max_access": LinkAccess.PEOPLE,
+    }
+    data.update(overrides)
+    return LinkSnapshot.model_validate(data)
+
+
+@pytest.mark.parametrize(
+    ("link", "serves"),
+    [
+        (_link(LinkAccess.PEOPLE, snapshot=_file()), True),
+        (_link(LinkAccess.UNLISTED, snapshot=_file()), False),
+        (_link(LinkAccess.PEOPLE, snapshot=_file(content_id=None)), False),
+        (_link(LinkAccess.PEOPLE), False),
+        (_link(LinkAccess.PEOPLE, snapshot=_file(), suspended=True), False),
+        (_link(LinkAccess.PEOPLE, snapshot=_file(), expires_at=NOW), False),
+    ],
+)
+def test_a_link_serves_its_bytes_only_live_published_and_within_their_cap(
+    link: ShortLink, serves: bool
+) -> None:
+    assert (servable_content(link, NOW) is not None) is serves
+
+
+@pytest.mark.parametrize(
+    "fields", [{"revoked": True}, {"revoked": False, "revoked_reason": RevokeReason.OWNER}]
+)
+def test_a_link_is_revoked_exactly_when_it_says_why(fields: dict[str, object]) -> None:
+    with pytest.raises(ValidationError) as refused:
+        _link(LinkAccess.UNLISTED, **fields)
+    assert [error["msg"] for error in refused.value.errors()] == [
+        "Value error, a link is revoked exactly when it has a revoked_reason"
+    ]

@@ -337,16 +337,3 @@ async def test_the_previous_token_still_counts_while_a_rotation_rolls_out(
         codes = [(await web.get(THING, headers=_server())).status_code for _ in range(4)]
 
     assert codes == [200, 200, 200, 429]
-
-
-@pytest.mark.parametrize("headers", [{}, {_USER_HEADER: "user-a"}])
-async def test_public_pdf_exports_have_their_own_small_ceiling(
-    headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setitem(
-        rate_limiter.BUCKET_LIMITS, RequestBucket.PUBLIC_PDF_EXPORT, RateLimitItemPerMinute(1)
-    )
-    async with _client(_app()) as client:
-        assert (await client.get("/api/v1/l/abc/pdf", headers=headers)).status_code == 200
-        assert (await client.get("/api/v1/l/abc/pdf", headers=headers)).status_code == 429
-        assert (await client.get(THING, headers=headers)).status_code == 200

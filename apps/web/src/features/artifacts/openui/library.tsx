@@ -1,6 +1,8 @@
+import { ARTIFACT_ROOT } from "@gaia/artifacts/specs";
 import { createLibrary } from "@openuidev/react-lang";
 import { openuiLibrary } from "@openuidev/react-ui/genui-lib";
 import { pieChartDef } from "@/config/openui/components/charts";
+import { CHART_PALETTE } from "@/config/openui/theme";
 import {
   areaDef,
   barsDef,
@@ -24,8 +26,6 @@ import {
   takeawaysDef,
   todoDef,
 } from "./components/text";
-import { ARTIFACT_PALETTE } from "./constants";
-import { ARTIFACT_ROOT } from "./specs";
 
 /**
  * The artifact library: GAIA's artifact components (specs.ts) plus react-ui's PieChart, Slice
@@ -54,7 +54,7 @@ export const artifactLibrary = createLibrary({
     todoDef,
     sourcesDef,
     htmlArtifactDef,
-    pieChartDef(ARTIFACT_PALETTE),
+    pieChartDef(CHART_PALETTE),
     openuiLibrary.components.Slice,
     openuiLibrary.components.CodeBlock,
   ],

@@ -2,6 +2,7 @@ import { StandalonePage } from "@/components/layout/StandalonePage";
 import type {
   LinkContent,
   LinkEnvelope,
+  LinkTarget,
   ShortLinkTargetType,
 } from "@/types/features/shortLinkTypes";
 
@@ -16,7 +17,7 @@ function LinkPage<T extends ShortLinkTargetType>({
   view,
   content,
   downloadable,
-  ownerTargetId,
+  ownerTarget,
 }: {
   slug: string;
   targetType: T;
@@ -24,7 +25,7 @@ function LinkPage<T extends ShortLinkTargetType>({
   content: LinkContent | null;
   downloadable: boolean;
   /** Set only when the viewer owns the link: the target its share settings act on. */
-  ownerTargetId: string | null;
+  ownerTarget: LinkTarget | null;
 }) {
   const entry = LINK_VIEWS[targetType];
   const View = entry.component;
@@ -35,10 +36,9 @@ function LinkPage<T extends ShortLinkTargetType>({
       width={entry.width}
       actions={
         <>
-          {ownerTargetId && (
+          {ownerTarget && (
             <ShareLinkControls
-              targetType={targetType}
-              targetId={ownerTargetId}
+              target={ownerTarget}
               stopWarning={entry.stopWarning}
             />
           )}
@@ -73,7 +73,7 @@ export function PublicLinkView({
       view={envelope.view}
       content={envelope.content}
       downloadable={envelope.downloadable}
-      ownerTargetId={envelope.is_owner ? envelope.owner_target_id : null}
+      ownerTarget={envelope.is_owner ? envelope.owner_target : null}
     />
   );
 }

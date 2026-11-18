@@ -6,11 +6,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { loginHref } from "@/features/auth/utils/loginHref";
 
-import {
-  DEAD_LINK_COPY,
-  FORBIDDEN_COPY,
-  SIGN_IN_REQUIRED_COPY,
-} from "../constants";
+import { LINK_CONSTANTS } from "../link-constants.generated";
 import type { LinkUnavailableState } from "../types";
 
 function linkPath(slug: string): string {
@@ -32,7 +28,7 @@ function Message({ state }: { state: LinkUnavailableState }) {
     return (
       <>
         <h1 className="text-2xl font-medium text-balance text-white">
-          {SIGN_IN_REQUIRED_COPY}
+          {LINK_CONSTANTS.pageCopy.link_sign_in_required}
         </h1>
         <LinkButton
           href={loginHref(linkPath(state.slug))}
@@ -48,7 +44,7 @@ function Message({ state }: { state: LinkUnavailableState }) {
     return (
       <>
         <h1 className="text-2xl font-medium text-balance text-white">
-          {FORBIDDEN_COPY}
+          {LINK_CONSTANTS.pageCopy.link_forbidden}
         </h1>
         <p className="max-w-sm text-sm text-pretty text-zinc-400">
           You're signed in as {state.signedInAs}.
@@ -65,7 +61,7 @@ function Message({ state }: { state: LinkUnavailableState }) {
   return (
     <>
       <h1 className="text-2xl font-medium text-balance text-white">
-        {DEAD_LINK_COPY[state.denial]}
+        {LINK_CONSTANTS.pageCopy[state.denial]}
       </h1>
       <LinkButton href="/" variant="primary" className="mt-3">
         Go to GAIA

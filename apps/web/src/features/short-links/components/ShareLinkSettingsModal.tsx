@@ -22,9 +22,9 @@ import {
   EXPIRY_PRESETS,
   type ExpiryChoice,
   LINK_ACCESS_OPTIONS,
-  LINK_ACCESS_ORDER,
 } from "@/features/short-links/constants";
 import type { ShareLink } from "@/features/short-links/hooks/useShareLink";
+import { LINK_CONSTANTS } from "@/features/short-links/link-constants.generated";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import type {
   LinkAccess,
@@ -117,8 +117,8 @@ function ShareSettingsForm({
   const maxAccess = link?.content_max_access;
   const exceedsContent =
     maxAccess != null &&
-    LINK_ACCESS_OPTIONS[access].breadth >
-      LINK_ACCESS_OPTIONS[maxAccess].breadth;
+    LINK_CONSTANTS.accessWidestFirst.indexOf(access) <
+      LINK_CONSTANTS.accessWidestFirst.indexOf(maxAccess);
   const expiryChoices = [
     ...(link?.expires_at ? [{ key: "keep", label: "Keep current" }] : []),
     ...EXPIRY_PRESETS,
@@ -155,7 +155,7 @@ function ShareSettingsForm({
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {LINK_ACCESS_ORDER.map((level) => (
+              {LINK_CONSTANTS.accessWidestFirst.map((level) => (
                 <GaiaListBoxItem
                   key={level}
                   id={level}

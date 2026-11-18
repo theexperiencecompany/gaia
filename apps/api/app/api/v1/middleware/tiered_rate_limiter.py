@@ -26,6 +26,7 @@ from app.config.rate_limits import (
 )
 from app.config.settings import settings
 from app.constants.cache import RATE_LIMIT_KEY_PREFIX
+from app.constants.http import RATE_LIMIT_EXCEEDED_CODE
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -67,7 +68,7 @@ class RateLimitExceededException(HTTPException):
         current_plan: str | None = None,
     ) -> None:
         detail = {
-            "code": "rate_limit_exceeded",
+            "code": RATE_LIMIT_EXCEEDED_CODE,
             "feature": feature,
             "message": f"Rate limit exceeded for {feature}",
         }

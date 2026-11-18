@@ -23,13 +23,6 @@ export interface ApiFileData {
   url?: string;
 }
 
-export interface ApiToolData {
-  tool_name: string;
-  data: Record<string, unknown>;
-  timestamp?: string | null;
-  tool_category?: string;
-}
-
 export interface Conversation {
   id: string;
   title: string;

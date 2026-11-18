@@ -107,8 +107,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
         {execution.status !== "running" && (
           <ShareLinkControls
             iconOnly
-            targetType="workflow_run"
-            targetId={execution.execution_id}
+            target={{ type: "workflow_run", id: execution.execution_id }}
           />
         )}
         <span className="text-xs text-zinc-500">

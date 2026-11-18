@@ -9,11 +9,12 @@ from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
 from app.models.brief_payload_models import BriefingPayload
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.edition_image import store_edition
 from app.services.briefing.message import full_brief_url
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link
+from app.services.links.urls import build_url
 
 
 async def _draft(
@@ -41,9 +42,10 @@ async def store_brief(
     """
     draft = await _draft(user_id, date, kind, payload, delivery)
     await briefing_repository.upsert_briefing(draft)
-    link = await optional_short_link(
-        user_id, ShortLinkTargetType.BRIEFING, draft.id
-    ) or full_brief_url(draft.id)
+    short_link = await attach_link(
+        user_id, RecordTarget(type=ShortLinkTargetType.BRIEFING, id=draft.id)
+    )
+    link = build_url(short_link.slug) if short_link else full_brief_url(draft.id)
     payload = payload.model_copy(update={"link": link})
     rendered = await render_edition_png(payload)
     key = await store_edition(user_id, draft.id, rendered.image)

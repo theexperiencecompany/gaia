@@ -472,7 +472,7 @@ description = "Export apps/api/openapi.json and regenerate the TypeScript API ty
 run = "node scripts/ci/checks.mjs api-schema --write"
 
 [tasks."analytics:e2e"]
-description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, briefing schedule, bot via gaia-sim), then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
+description = "Boot the API and ARQ worker in sim mode sending to the gaia-test PostHog project, drive every analytics journey (onboarding, paywall, signed payment webhook, web chat, workflow, briefing schedule, artifact, link share, bot via gaia-sim) on the scripted LLM stub with no real model, then assert each event arrived exactly once, on the user's Mongo id, with catalog-valid properties, attribution and session. Needs POSTHOG_E2E_PROJECT_TOKEN and POSTHOG_E2E_PERSONAL_API_KEY; team members run it as `mise infisical analytics:e2e`"
 usage = '''
 flag "--no-assert" help="Drive the journeys without a personal API key and assert nothing (exits 2)"
 '''
@@ -574,6 +574,14 @@ run = "nx run cli:test"
 [tasks."cli:schema"]
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
+
+[tasks."links:constants"]
+description = "Regenerate the web's link-constants.generated.ts and the usercontent Worker's and CLI's link-constants.generated.json from the API's link constants, access order and page copy, and check the self-host Caddyfile spells the same routes — CI's link-constants check fails when they drift"
+run = "node scripts/ci/checks.mjs link-constants --write"
+
+[tasks."openui:prompts"]
+description = "Regenerate the comms OpenUI prompt (apps/api/app/agents/prompts/openui_generated.txt) and the artifact model's per-kind prompts (apps/api/app/agents/prompts/artifacts/) from the component libraries — CI's openui-prompts check fails when they drift"
+run = "node scripts/ci/checks.mjs openui-prompts --write"
 
 [tasks."deploy:templates"]
 description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"

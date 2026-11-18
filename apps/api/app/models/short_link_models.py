@@ -14,14 +14,23 @@ raw canvas.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingMood, BriefingStat
+from app.models.message_models import SafePathId
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
@@ -33,9 +42,40 @@ class ShortLinkTargetType(StrEnum):
 
     TODO_DELIVERABLE = "todo_deliverable"
     BRIEFING = "briefing"
-    SESSION_ARTIFACT = "session_artifact"
+    WORKSPACE_FILE = "workspace_file"
     WORKFLOW_RUN = "workflow_run"
     OPENUI_ARTIFACT = "openui_artifact"
+
+
+RecordTargetType = Literal[
+    ShortLinkTargetType.TODO_DELIVERABLE,
+    ShortLinkTargetType.BRIEFING,
+    ShortLinkTargetType.WORKFLOW_RUN,
+    ShortLinkTargetType.OPENUI_ARTIFACT,
+]
+
+
+class RecordTarget(BaseModel):
+    """A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: RecordTargetType
+    id: str = Field(min_length=1)
+
+
+class WorkspaceFileTarget(BaseModel):
+    """A file GAIA wrote in one conversation's workspace, by its path under the workspace's files."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: Literal[ShortLinkTargetType.WORKSPACE_FILE]
+    conversation_id: SafePathId
+    path: str = Field(min_length=1)
+
+
+#: One of the owner's things a link points at, told apart by its type.
+LinkTarget = Annotated[RecordTarget | WorkspaceFileTarget, Field(discriminator="type")]
 
 
 class LinkViewerKind(StrEnum):
@@ -67,6 +107,23 @@ class RevokeReason(StrEnum):
     EXPIRED = "expired"
     TAKEDOWN = "takedown"
     TARGET_DELETED = "target_deleted"
+    # The owner was removed from this GAIA (offboarding): every link they made dies with the account.
+    ACCOUNT_REMOVED = "account_removed"
+
+
+class LinkState(StrEnum):
+    """Where a link stands now: read from its stored fields and the clock by access.link_state alone."""
+
+    LIVE = "live"
+    #: Reports suspended it; an admin may restore it.
+    SUSPENDED = "suspended"
+    #: Past its expires_at, whether or not a read has revoked it yet.
+    EXPIRED = "expired"
+    STOPPED = "stopped"
+    ROTATED = "rotated"
+    TAKEN_DOWN = "taken_down"
+    TARGET_DELETED = "target_deleted"
+    ACCOUNT_REMOVED = "account_removed"
 
 
 class LinkDenial(StrEnum):
@@ -97,8 +154,18 @@ class PublishRejection(StrEnum):
     """Why a file's bytes were not published; the link then shows only the file's name and size."""
 
     TOO_LARGE = "too_large"
-    RESTRICTED_TYPE = "restricted_type"
     QUOTA = "quota"
+
+
+class ContentRestriction(StrEnum):
+    """What narrowed who a published file's bytes may be served to."""
+
+    # An installer or script: its owner only.
+    EXECUTABLE = "executable"
+    # HTML that looks like it asks for a password or a card: named people only.
+    CREDENTIAL_FORM = "credential_form"
+    # HTML from an owner GAIA has taken links down for before: named people only.
+    REPEAT_TAKEDOWNS = "repeat_takedowns"
 
 
 class ReportReason(StrEnum):
@@ -147,7 +214,7 @@ class LinkSnapshot(BaseModel):
     has_thumbnail: bool = False
     rejected: PublishRejection | None = None
     max_access: LinkAccess = LinkAccess.PUBLIC
-    restricted_by: PublishRejection | None = None
+    restricted_by: ContentRestriction | None = None
     published_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -161,8 +228,7 @@ class ShortLink(UserScopedDocument):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
 
     slug: str
-    target_type: ShortLinkTargetType
-    target_id: str
+    target: LinkTarget
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
     #: The live/dead switch the unique live-target index is partial on.
@@ -178,6 +244,15 @@ class ShortLink(UserScopedDocument):
     snapshot: LinkSnapshot | None = None
     #: Reports crossed the threshold; the link shows "removed" until an admin restores it.
     suspended: bool = False
+    #: GAIA attached it (the owner has not set it themselves), so a brief carrying it moves its access.
+    gaia_attached: bool = False
+
+    @model_validator(mode="after")
+    def _revoked_says_why(self) -> Self:
+        """Refuse a revoked link with no reason, or a reason on a live one: neither has a state."""
+        if self.revoked != (self.revoked_reason is not None):
+            raise ValueError("a link is revoked exactly when it has a revoked_reason")
+        return self
 
 
 class ShortLinkUpdate(BaseModel):
@@ -194,6 +269,7 @@ class ShortLinkUpdate(BaseModel):
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     suspended: bool | None = None
+    gaia_attached: bool | None = None
 
 
 class _PublicView(BaseModel):
@@ -258,8 +334,8 @@ class PublicBriefing(_PublicView):
     payload: PublicBriefingPayload
 
 
-class PublicSessionArtifact(_PublicView):
-    """A file GAIA produced in a session's sandbox, as its link pinned it.
+class PublicWorkspaceFile(_PublicView):
+    """A file GAIA wrote in a conversation's workspace, as its link pinned it.
 
     text is the file's text when it is shown as text (code, markdown, and HTML
     source where the instance has no content origin); the page renders it
@@ -267,7 +343,7 @@ class PublicSessionArtifact(_PublicView):
     or offered as a download.
     """
 
-    target_type: Literal[ShortLinkTargetType.SESSION_ARTIFACT]
+    target_type: Literal[ShortLinkTargetType.WORKSPACE_FILE]
     filename: str
     content_type: str
     size_bytes: int
@@ -292,7 +368,6 @@ class PublicOpenUIArtifact(_PublicView):
     kind: ArtifactKind
     title: str
     program: str
-    version: int
     created_at: datetime
     #: The owner's display name, never their email; None when they have none.
     shared_by: str | None
@@ -301,7 +376,7 @@ class PublicOpenUIArtifact(_PublicView):
 PublicShortLinkView = Annotated[
     PublicTodoDeliverable
     | PublicBriefing
-    | PublicSessionArtifact
+    | PublicWorkspaceFile
     | PublicWorkflowRun
     | PublicOpenUIArtifact,
     Field(discriminator="target_type"),
@@ -328,8 +403,8 @@ class LinkEnvelope(ResponseModel):
     downloadable: bool
     #: The viewer is the link's owner, so the page offers its share settings.
     is_owner: bool
-    #: The target's id, for the owner's share settings; None for every other viewer.
-    owner_target_id: str | None
+    #: The target, for the owner's share settings; None for every other viewer.
+    owner_target: LinkTarget | None
 
 
 class LinkDenialEnvelope(ErrorEnvelope):
@@ -393,8 +468,7 @@ class ShortLinkTargetRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    target_type: ShortLinkTargetType
-    target_id: str = Field(min_length=1)
+    target: LinkTarget
 
 
 class ShareLinkRequest(ShortLinkTargetRequest):
@@ -454,8 +528,9 @@ class LinkReport(MongoDocument):
     reason: ReportReason
     #: The signed-in reporter's user id, else a keyed hash of their address and browser.
     reporter_key: str
-    #: Only signed-in reports suspend a link: accounts cost more to fake than addresses.
     signed_in: bool
+    #: The reporter's account is old enough to count toward suspension; fresh accounts are cheap.
+    trusted: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

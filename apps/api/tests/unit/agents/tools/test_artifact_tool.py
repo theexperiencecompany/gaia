@@ -18,8 +18,13 @@ from app.constants.openui_artifacts import (
     ARTIFACT_DELTA_FLUSH_SECONDS,
     ARTIFACT_DONE_EVENT,
 )
-from app.models.openui_artifact_models import ArtifactFailureReason, ArtifactKind
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.openui_artifact_models import (
+    ArtifactFailureReason,
+    ArtifactKind,
+    ArtifactStreamHeader,
+)
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
+from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.openui_artifacts.create import ArtifactCreationError
 from app.services.openui_artifacts.generate import ArtifactRequest
 
@@ -28,6 +33,7 @@ CONFIG = RunnableConfig(
     metadata={"user_id": "user-1"},
     configurable={"user_id": "user-1", "vfs_session_id": "conv-1", "user_timezone": "+05:30"},
 )
+HEADER = ArtifactStreamHeader(stream_id="s1", kind=ArtifactKind.REPORT, title="Q3 plan")
 ARGS: dict[str, Any] = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
 
 INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
@@ -36,7 +42,7 @@ INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
 class TestDeltaBatcher:
     def _batcher(self) -> tuple[_DeltaBatcher, MagicMock]:
         writer = MagicMock()
-        return _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan"), writer
+        return _DeltaBatcher(writer, HEADER), writer
 
     async def test_small_deltas_wait_and_leave_as_one_frame_carrying_the_header(self) -> None:
         batcher, writer = self._batcher()
@@ -67,7 +73,7 @@ class TestDeltaBatcher:
     async def test_a_slow_delta_flushes_even_when_small(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 101.0, 101.0]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_called_once()
@@ -75,7 +81,7 @@ class TestDeltaBatcher:
     async def test_the_wait_is_over_exactly_at_the_flush_interval(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[0.0, ARTIFACT_DELTA_FLUSH_SECONDS, 0.0]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_called_once()
@@ -101,7 +107,7 @@ class TestDeltaBatcher:
     async def test_a_quick_small_delta_waits(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 100.01]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_not_called()
@@ -147,7 +153,14 @@ class TestCreateArtifact:
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=artifact)) as create,
             patch(
-                f"{_TOOL}.optional_short_link", AsyncMock(return_value="https://heygaia.link/abc")
+                f"{_TOOL}.attach_link",
+                AsyncMock(
+                    return_value=ShortLink(
+                        slug="abcdefghijk",
+                        user_id="user-1",
+                        target=RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1"),
+                    )
+                ),
             ) as link,
         ):
             result = await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
@@ -162,7 +175,9 @@ class TestCreateArtifact:
             interactive=False,
         )
         assert create.await_args.args[1] == "Q3 plan"
-        link.assert_awaited_once_with("user-1", ShortLinkTargetType.OPENUI_ARTIFACT, "a1")
+        link.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1")
+        )
         [done] = [c.args[0] for c in writer.call_args_list if ARTIFACT_DONE_EVENT in c.args[0]]
         card = done[ARTIFACT_DONE_EVENT]
         assert (card["kind"], card["title"], card["status"], card["artifact_id"]) == (
@@ -172,15 +187,19 @@ class TestCreateArtifact:
             "a1",
         )
         assert card["stream_id"]
+        placeholder = link_placeholder(
+            RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1")
+        )
         assert result == (
             'Created the report "Q3 plan". The user sees it as a card in chat and can open it '
-            "there; do not repeat its contents in your reply. Public link: https://heygaia.link/abc."
+            f"there; do not repeat its contents in your reply. {LINK_NOTE} Its link: {placeholder}"
         )
+        assert "abcdefghijk" not in result
 
     async def test_an_artifact_without_a_link_says_nothing_of_one(self, writer: MagicMock) -> None:
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             result = await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
@@ -194,7 +213,7 @@ class TestCreateArtifact:
             patch(
                 f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))
             ) as create,
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             await artifact_tool.create_artifact.ainvoke(INTERACTIVE_ARGS, config=CONFIG)
 
@@ -205,7 +224,7 @@ class TestCreateArtifact:
             patch(
                 f"{_TOOL}.create_openui_artifact", AsyncMock(return_value=MagicMock(id="a1"))
             ) as create,
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             tool = artifact_tool.create_artifact
             assert isinstance(tool, StructuredTool) and tool.coroutine is not None
@@ -225,7 +244,7 @@ class TestCreateArtifact:
         )
         with (
             patch(f"{_TOOL}.create_openui_artifact", AsyncMock(side_effect=failure)),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock()) as link,
+            patch(f"{_TOOL}.attach_link", AsyncMock()) as link,
         ):
             result = await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
@@ -247,7 +266,7 @@ class TestCreateArtifact:
 
         with (
             patch(f"{_TOOL}.create_openui_artifact", broken),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock()) as link,
+            patch(f"{_TOOL}.attach_link", AsyncMock()) as link,
             pytest.raises(ConnectionError, match="provider down"),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
@@ -265,7 +284,7 @@ class TestCreateArtifact:
 
         with (
             patch(f"{_TOOL}.create_openui_artifact", streaming),
-            patch(f"{_TOOL}.optional_short_link", AsyncMock(return_value=None)),
+            patch(f"{_TOOL}.attach_link", AsyncMock(return_value=None)),
         ):
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 

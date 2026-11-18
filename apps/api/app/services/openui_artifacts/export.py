@@ -1,6 +1,7 @@
-"""PDF export of an artifact: its heygaia.link page in print mode, cached per version."""
+"""PDF export of an artifact: its program on the print page, cached per program."""
 
 import base64
+import hashlib
 import json
 import re
 
@@ -37,14 +38,16 @@ async def render_program_to_pdf(program: str) -> tuple[bytes, int]:
 
 
 @Cacheable(key_pattern=ARTIFACT_PDF_CACHE_KEY, ttl=ARTIFACT_PDF_CACHE_TTL_SECONDS, model=PrintedPdf)
-async def _print_artifact(artifact_id: str, version: int, program: str) -> PrintedPdf:  # noqa: ARG001 -- id and version key the cache
+async def _print_program(program_sha256: str, program: str) -> PrintedPdf:  # noqa: ARG001 -- the hash keys the cache
     pdf, pages = await render_program_to_pdf(program)
     log.set_ns("artifact", pdf_rendered=True, pages=pages, pdf_bytes=len(pdf))
     return PrintedPdf(pdf_b64=base64.b64encode(pdf).decode(), pages=pages)
 
 
 async def _pdf_for(artifact: OpenUIArtifact) -> bytes:
-    printed = await _print_artifact(artifact.id, artifact.version, artifact.program)
+    printed = await _print_program(
+        hashlib.sha256(artifact.program.encode()).hexdigest(), artifact.program
+    )
     capture(
         UserId(artifact.user_id), ArtifactPdfExported(kind=artifact.kind.value, pages=printed.pages)
     )

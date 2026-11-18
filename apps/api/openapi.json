@@ -448,6 +448,142 @@
         "title": "ApprovePairingRequest",
         "type": "object"
       },
+      "ArtifactCard": {
+        "description": "Where a create_artifact run ended: the artifact_done tool_data entry's data.",
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactFailureReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArtifactStatus"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "kind",
+          "title",
+          "status"
+        ],
+        "title": "ArtifactCard",
+        "type": "object"
+      },
+      "ArtifactCardEntry": {
+        "description": "The tool_data entry an artifact_done payload becomes on the stream and in the stored turn.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ArtifactCard"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tool_name": {
+            "const": "artifact_done",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "data",
+          "timestamp"
+        ],
+        "title": "ArtifactCardEntry",
+        "type": "object"
+      },
+      "ArtifactCardFrame": {
+        "description": "The stream frame carrying an ArtifactCardEntry.",
+        "properties": {
+          "tool_data": {
+            "$ref": "#/components/schemas/ArtifactCardEntry"
+          }
+        },
+        "required": [
+          "tool_data"
+        ],
+        "title": "ArtifactCardFrame",
+        "type": "object"
+      },
+      "ArtifactDelta": {
+        "description": "A chunk of the first draft's program; the card appends it.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "kind",
+          "title",
+          "delta"
+        ],
+        "title": "ArtifactDelta",
+        "type": "object"
+      },
+      "ArtifactDeltaFrame": {
+        "description": "The live-only stream frame carrying an ArtifactDelta.",
+        "properties": {
+          "artifact_delta": {
+            "$ref": "#/components/schemas/ArtifactDelta"
+          }
+        },
+        "required": [
+          "artifact_delta"
+        ],
+        "title": "ArtifactDeltaFrame",
+        "type": "object"
+      },
+      "ArtifactFailureReason": {
+        "enum": [
+          "validation",
+          "refused",
+          "timeout",
+          "truncated"
+        ],
+        "title": "ArtifactFailureReason",
+        "type": "string"
+      },
       "ArtifactInfo": {
         "properties": {
           "content_type": {
@@ -489,7 +625,7 @@
         "type": "object"
       },
       "ArtifactKind": {
-        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).",
+        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).",
         "enum": [
           "dashboard",
           "report",
@@ -560,6 +696,15 @@
         ],
         "title": "ArtifactRegistryEntry",
         "type": "object"
+      },
+      "ArtifactStatus": {
+        "description": "Where a create_artifact run ended, as the chat card shows it.",
+        "enum": [
+          "ready",
+          "failed"
+        ],
+        "title": "ArtifactStatus",
+        "type": "string"
       },
       "AsanaTaskTriggerConfig": {
         "description": "Config for asana_task_trigger (Composio ASANA_TASK_CREATED).",
@@ -10729,16 +10874,33 @@
             "title": "Is Owner",
             "type": "boolean"
           },
-          "owner_target_id": {
+          "owner_target": {
             "anyOf": [
               {
-                "type": "string"
+                "discriminator": {
+                  "mapping": {
+                    "briefing": "#/components/schemas/RecordTarget",
+                    "openui_artifact": "#/components/schemas/RecordTarget",
+                    "todo_deliverable": "#/components/schemas/RecordTarget",
+                    "workflow_run": "#/components/schemas/RecordTarget",
+                    "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/RecordTarget"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkspaceFileTarget"
+                  }
+                ]
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Owner Target Id"
+            "title": "Owner Target"
           },
           "target_type": {
             "$ref": "#/components/schemas/ShortLinkTargetType"
@@ -10748,9 +10910,9 @@
               "mapping": {
                 "briefing": "#/components/schemas/PublicBriefing",
                 "openui_artifact": "#/components/schemas/PublicOpenUIArtifact",
-                "session_artifact": "#/components/schemas/PublicSessionArtifact",
                 "todo_deliverable": "#/components/schemas/PublicTodoDeliverable",
-                "workflow_run": "#/components/schemas/PublicWorkflowRun"
+                "workflow_run": "#/components/schemas/PublicWorkflowRun",
+                "workspace_file": "#/components/schemas/PublicWorkspaceFile"
               },
               "propertyName": "target_type"
             },
@@ -10762,7 +10924,7 @@
                 "$ref": "#/components/schemas/PublicBriefing"
               },
               {
-                "$ref": "#/components/schemas/PublicSessionArtifact"
+                "$ref": "#/components/schemas/PublicWorkspaceFile"
               },
               {
                 "$ref": "#/components/schemas/PublicWorkflowRun"
@@ -10781,7 +10943,7 @@
           "content",
           "downloadable",
           "is_owner",
-          "owner_target_id"
+          "owner_target"
         ],
         "title": "LinkEnvelope",
         "type": "object"
@@ -15117,10 +15279,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -15128,7 +15286,6 @@
           "kind",
           "title",
           "program",
-          "version",
           "conversation_id",
           "created_at"
         ],
@@ -17030,10 +17187,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -17041,54 +17194,10 @@
           "kind",
           "title",
           "program",
-          "version",
           "created_at",
           "shared_by"
         ],
         "title": "PublicOpenUIArtifact",
-        "type": "object"
-      },
-      "PublicSessionArtifact": {
-        "additionalProperties": false,
-        "description": "A file GAIA produced in a session's sandbox, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
-        "properties": {
-          "content_type": {
-            "title": "Content Type",
-            "type": "string"
-          },
-          "filename": {
-            "title": "Filename",
-            "type": "string"
-          },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "target_type": {
-            "const": "session_artifact",
-            "title": "Target Type",
-            "type": "string"
-          },
-          "text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Text"
-          }
-        },
-        "required": [
-          "target_type",
-          "filename",
-          "content_type",
-          "size_bytes",
-          "text"
-        ],
-        "title": "PublicSessionArtifact",
         "type": "object"
       },
       "PublicSupportRequestCreate": {
@@ -17433,6 +17542,49 @@
         "title": "PublicWorkflowsResponse",
         "type": "object"
       },
+      "PublicWorkspaceFile": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in a conversation's workspace, as its link pinned it.\n\ntext is the file's text when it is shown as text (code, markdown, and HTML\nsource where the instance has no content origin); the page renders it\nitself. Every other file is framed from the content origin (LinkEnvelope.content)\nor offered as a download.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "target_type": {
+            "const": "workspace_file",
+            "title": "Target Type",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "target_type",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "text"
+        ],
+        "title": "PublicWorkspaceFile",
+        "type": "object"
+      },
       "PublishIntegrationResponse": {
         "properties": {
           "integrationId": {
@@ -17674,6 +17826,33 @@
           "dependencies"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "RecordTarget": {
+        "additionalProperties": false,
+        "description": "A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ],
+        "title": "RecordTarget",
         "type": "object"
       },
       "RecordedCall": {
@@ -19301,18 +19480,30 @@
           "settings": {
             "$ref": "#/components/schemas/LinkSettings"
           },
-          "target_id": {
-            "minLength": 1,
-            "title": "Target Id",
-            "type": "string"
-          },
-          "target_type": {
-            "$ref": "#/components/schemas/ShortLinkTargetType"
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [
-          "target_type",
-          "target_id"
+          "target"
         ],
         "title": "ShareLinkRequest",
         "type": "object"
@@ -19396,18 +19587,30 @@
         "additionalProperties": false,
         "description": "One of the owner's artifacts, to read or stop sharing.",
         "properties": {
-          "target_id": {
-            "minLength": 1,
-            "title": "Target Id",
-            "type": "string"
-          },
-          "target_type": {
-            "$ref": "#/components/schemas/ShortLinkTargetType"
+          "target": {
+            "discriminator": {
+              "mapping": {
+                "briefing": "#/components/schemas/RecordTarget",
+                "openui_artifact": "#/components/schemas/RecordTarget",
+                "todo_deliverable": "#/components/schemas/RecordTarget",
+                "workflow_run": "#/components/schemas/RecordTarget",
+                "workspace_file": "#/components/schemas/WorkspaceFileTarget"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RecordTarget"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceFileTarget"
+              }
+            ],
+            "title": "Target"
           }
         },
         "required": [
-          "target_type",
-          "target_id"
+          "target"
         ],
         "title": "ShortLinkTargetRequest",
         "type": "object"
@@ -19417,7 +19620,7 @@
         "enum": [
           "todo_deliverable",
           "briefing",
-          "session_artifact",
+          "workspace_file",
           "workflow_run",
           "openui_artifact"
         ],
@@ -25131,6 +25334,34 @@
         "title": "WorkflowWithIntegrations",
         "type": "object"
       },
+      "WorkspaceFileTarget": {
+        "additionalProperties": false,
+        "description": "A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.",
+        "properties": {
+          "conversation_id": {
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "type": {
+            "const": "workspace_file",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "conversation_id",
+          "path"
+        ],
+        "title": "WorkspaceFileTarget",
+        "type": "object"
+      },
       "WritingStyleEditRequest": {
         "properties": {
           "edited_summary": {
@@ -29092,7 +29323,23 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ArtifactDeltaFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactCardFrame"
+                    }
+                  ],
+                  "title": "Response 200 Chat Chat Stream Endpoint",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts."
           },
           "422": {
             "content": {
@@ -33247,29 +33494,19 @@
       }
     },
     "/api/v1/l/state": {
-      "get": {
-        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.",
+      "post": {
+        "description": "Say whether one of your artifacts is shared, with its live link and settings. Never mints one.\n\nA POST only because a target is a structured reference, which a query string cannot carry.",
         "operationId": "short_links_get_share_state_route",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "target_type",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ShortLinkTargetType"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortLinkTargetRequest"
+              }
             }
           },
-          {
-            "in": "query",
-            "name": "target_id",
-            "required": true,
-            "schema": {
-              "minLength": 1,
-              "title": "Target Id",
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -33934,7 +34171,7 @@
     },
     "/api/v1/l/{slug}/pdf": {
       "get": {
-        "description": "The artifact behind a link as an A4 PDF, for whoever the link opens for.",
+        "description": "What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for.",
         "operationId": "short_links_get_short_link_pdf_route",
         "parameters": [
           {
@@ -42662,7 +42899,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ArtifactDeltaFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactCardFrame"
+                    }
+                  ],
+                  "title": "Response 200 Chat Subscribe Executor Stream",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts."
           },
           "422": {
             "content": {

@@ -1,6 +1,6 @@
+import type { funnelSchema } from "@gaia/artifacts/specs";
 import { ProgressBar } from "@heroui/react";
 import type { z } from "zod";
-import type { funnelSchema } from "../specs";
 import { Figure } from "./ChartFigure";
 
 export function FunnelView(props: z.infer<typeof funnelSchema>) {

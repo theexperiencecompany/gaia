@@ -10,6 +10,7 @@ import pytest
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
+from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import ToolReadOnlyVerdict
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.briefing.scouts import tools as scout_tools_module
@@ -145,9 +146,7 @@ class TestWhichIntegrations:
     @pytest.fixture(autouse=True)
     def accounts(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         listing = AsyncMock(return_value=[])
-        monkeypatch.setattr(
-            scout_tools_module.user_integration_repository, "list_for_user", listing
-        )
+        monkeypatch.setattr(user_integration_repository, "list_for_user", listing)
         return listing
 
     @pytest.mark.usefixtures("native")

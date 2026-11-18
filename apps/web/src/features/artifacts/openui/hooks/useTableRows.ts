@@ -1,7 +1,7 @@
+import type { ArtifactCell, dataTableSchema } from "@gaia/artifacts/specs";
 import type { SortDescriptor } from "@react-types/shared";
 import { useMemo, useState } from "react";
 import type { z } from "zod";
-import type { ArtifactCell, dataTableSchema } from "../specs";
 
 type TableProps = z.infer<typeof dataTableSchema>;
 

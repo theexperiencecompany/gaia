@@ -39,6 +39,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.config.settings import settings
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
@@ -57,7 +58,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
@@ -454,7 +455,15 @@ class TestWorkflowResultCarriesTheRunLink:
     history's copy button hands out.
     """
 
-    RUN_URL = "https://heygaia.link/runlink1234"
+    RUN_LINK = ShortLink(
+        slug="runlink1234",
+        user_id=USER_ID,
+        target=RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7"),
+    )
+
+    @property
+    def run_url(self) -> str:
+        return f"{settings.SHORTLINK_BASE_URL}/runlink1234"
 
     async def _deliver_workflow(self, run: ExecutorRun) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
         with (
@@ -474,7 +483,7 @@ class TestWorkflowResultCarriesTheRunLink:
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ),
             patch.object(
-                rd, "optional_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
+                rd, "attach_link", new_callable=AsyncMock, return_value=self.RUN_LINK
             ) as mint,
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
@@ -485,10 +494,12 @@ class TestWorkflowResultCarriesTheRunLink:
 
         save, deliver, mint = await self._deliver_workflow(run)
 
-        mint.assert_awaited_once_with(USER_ID, ShortLinkTargetType.WORKFLOW_RUN, "exec-7")
-        assert self.RUN_URL in deliver.await_args.kwargs["notification_text"]
+        mint.assert_awaited_once_with(
+            USER_ID, RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7")
+        )
+        assert self.run_url in deliver.await_args.kwargs["notification_text"]
         saved = save.await_args.args[0].messages[0]
-        assert self.RUN_URL in saved.response
+        assert self.run_url in saved.response
 
     async def test_a_run_without_an_execution_record_gets_no_link(self) -> None:
         save, deliver, mint = await self._deliver_workflow(_run(workflow=True))

@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from bson import ObjectId
 from fastapi import FastAPI
 from httpx import AsyncClient, Response
 from PIL import Image
@@ -23,7 +24,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind, EditionFamily
 from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
-from app.constants.short_links import MAX_RESOLVE_MISSES
+from app.constants.short_links import MAX_RESOLVE_MISSES, TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
@@ -34,10 +35,13 @@ from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkAccess,
+    LinkSettings,
+    RecordTarget,
     ReportReason,
     RevokeReason,
     ShortLink,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -45,8 +49,8 @@ from app.services.blob_store import LocalVolumeBlobStore
 from app.services.briefing import store as brief_store
 from app.services.briefing.render import RenderedImage
 from app.services.links import abuse, content as link_content
-from app.services.links.backfill import backfill_snapshots
-from app.services.links.service import optional_short_link
+from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
+from app.services.links.service import attach_link, revoke_all_links_for_user, share
 from app.services.storage import ArtifactInfo
 from shared.py.analytics import UserId
 from tests.conftest import FAKE_USER
@@ -67,7 +71,7 @@ REPORTERS = [
     for n in (41, 42, 43)
 ]
 TODO = "todo_deliverable"
-SESSION = "session_artifact"
+FILE = "workspace_file"
 OPENUI = "openui_artifact"
 ORIGIN_TEMPLATE = "http://{content_id}.u.test/api/v1/usercontent/{content_id}"
 BROWSER = "Mozilla/5.0 (Macintosh) Safari/605.1.15"
@@ -147,14 +151,15 @@ def content_origin(monkeypatch: pytest.MonkeyPatch, store: LocalVolumeBlobStore)
 
 
 class Workspace:
-    """The owner's artifacts/ folder, as the session-artifact spec reads it."""
+    """The owner's workspace files of conversation conv-1, as the workspace-file spec reads them."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def write(self, name: str, data: bytes) -> str:
+    def write(self, name: str, data: bytes) -> dict[str, str]:
+        """Write a file and return its target as the API takes it."""
         (self.root / name).write_bytes(data)
-        return f"conv-1/{name}"
+        return {"type": FILE, "conversation_id": "conv-1", "path": name}
 
 
 @pytest.fixture
@@ -176,7 +181,7 @@ def workspace(tmp_path: Path) -> Iterator[Workspace]:
     async def resolve(_user: str, _conv: str, _role: str, path: str) -> Path:
         return root / path
 
-    mod = "app.services.links.targets.session_artifact"
+    mod = "app.services.links.targets.workspace_file"
     with patch(f"{mod}.stat_artifact", stat), patch(f"{mod}.resolve_session_path", resolve):
         yield Workspace(root)
 
@@ -197,14 +202,20 @@ async def _artifact(conversation_id: str) -> str:
 
 
 async def _todo(title: str = "Reply to Acme") -> str:
-    todo = await todo_repository.create(TodoDocument(user_id=OWNER.user_id, title=title))
+    return await _todo_for(OWNER, title)
+
+
+async def _todo_for(owner: AuthenticatedUser, title: str = "Reply to Acme") -> str:
+    todo = await todo_repository.create(TodoDocument(user_id=owner.user_id, title=title))
     return todo.id
 
 
-async def _share(
-    client: AsyncClient, target_type: str, target_id: str, **link_settings: object
-) -> dict:
-    body: dict[str, object] = {"target_type": target_type, "target_id": target_id}
+def _rec(target_type: str, target_id: str) -> dict[str, str]:
+    return {"type": target_type, "id": target_id}
+
+
+async def _share(client: AsyncClient, target: dict[str, str], **link_settings: object) -> dict:
+    body: dict[str, object] = {"target": target}
     if link_settings:
         body["settings"] = link_settings
     response = await client.post("/api/v1/l", json=body)
@@ -226,8 +237,9 @@ class TestAccessLevels:
     async def test_specific_people_opens_for_the_owner_and_grantees_only(
         self, client: AsyncClient, viewer: Viewer, captured: list
     ) -> None:
+        todo_id = await _todo()
         link = await _share(
-            client, TODO, await _todo(), access="people", grantees=["Friend@Example.com"]
+            client, _rec(TODO, todo_id), access="people", grantees=["Friend@Example.com"]
         )
         slug = link["slug"]
         assert link["access"] == "people"
@@ -244,10 +256,10 @@ class TestAccessLevels:
 
         assert owner_view.status_code == 200
         assert owner_view.json()["is_owner"] is True
-        assert owner_view.json()["owner_target_id"] is not None
+        assert owner_view.json()["owner_target"] == {"type": TODO, "id": todo_id}
         assert grantee_view.status_code == 200
         assert grantee_view.json()["is_owner"] is False
-        assert grantee_view.json()["owner_target_id"] is None
+        assert grantee_view.json()["owner_target"] is None
         assert grantee_view.json()["view"]["title"] == "Reply to Acme"
         assert grantee_view.headers["cache-control"] == "private, no-store"
         assert (anonymous.status_code, anonymous.json()["code"]) == (401, "link_sign_in_required")
@@ -257,12 +269,18 @@ class TestAccessLevels:
         stored = await _stored(slug)
         assert stored.access is LinkAccess.PEOPLE
         assert stored.grantees == ["Friend@example.com"]
+        # The page's server-side read is no viewer's open: only the browser's /opened counts a denial.
+        assert _names(captured).count("ShortLinkDenied") == 0
+        for denied_viewer in (None, STRANGER):
+            viewer.user = denied_viewer
+            opened = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+            assert opened.status_code in (401, 403)
         assert _names(captured).count("ShortLinkDenied") == 2
 
     async def test_an_unlisted_link_opens_for_anyone_and_says_so(
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         opened = await _open(client, slug)
         assert opened.status_code == 200
         assert opened.json()["access"] == "unlisted"
@@ -272,7 +290,7 @@ class TestAccessLevels:
     async def test_owner_only_turns_away_everyone_else(
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
-        link = await _share(client, TODO, await _todo(), access="owner")
+        link = await _share(client, _rec(TODO, await _todo()), access="owner")
         viewer.user = GRANTEE
         assert (await _open(client, link["slug"])).status_code == 403
         viewer.user = OWNER
@@ -281,7 +299,7 @@ class TestAccessLevels:
     async def test_changing_access_takes_effect_on_the_next_open(
         self, client: AsyncClient, viewer: Viewer, captured: list
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         assert (await _open(client, slug)).status_code == 200
 
         changed = await client.patch(f"/api/v1/l/{slug}", json={"access": "owner"})
@@ -298,7 +316,7 @@ class TestAccessLevels:
     async def test_someone_elses_link_cannot_be_changed(
         self, client: AsyncClient, mongo_db
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         await mongo_db["short_links"].update_one(
             {"slug": slug}, {"$set": {"user_id": STRANGER.user_id}}
         )
@@ -312,8 +330,7 @@ class TestAccessLevels:
         response = await client.post(
             "/api/v1/l",
             json={
-                "target_type": TODO,
-                "target_id": await _todo(),
+                "target": _rec(TODO, await _todo()),
                 "settings": {"access": "people", "grantees": [f"p{n}@x.com" for n in range(51)]},
             },
         )
@@ -334,8 +351,7 @@ class TestLocalSignIn:
         response = await client.post(
             "/api/v1/l",
             json={
-                "target_type": TODO,
-                "target_id": await _todo(),
+                "target": _rec(TODO, await _todo()),
                 "settings": {"access": "people", "grantees": ["friend@example.com"]},
             },
         )
@@ -348,7 +364,7 @@ class TestLocalSignIn:
         inserted = await mongo_db["users"].insert_one({"email": "friend@example.com", "name": "F"})
         member_id = str(inserted.inserted_id)
         link = await _share(
-            client, TODO, await _todo(), access="people", grantees=["friend@example.com"]
+            client, _rec(TODO, await _todo()), access="people", grantees=["friend@example.com"]
         )
 
         viewer.user = AuthenticatedUser(
@@ -372,18 +388,18 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
         todo_id = await _todo()
-        slug = (await _share(client, TODO, todo_id))["slug"]
+        slug = (await _share(client, _rec(TODO, todo_id)))["slug"]
 
-        stopped = await client.post(
-            "/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id}
-        )
+        stopped = await client.post("/api/v1/l/unshare", json={"target": _rec(TODO, todo_id)})
 
         assert stopped.json() == {"revoked": True}
         dead = await _open(client, slug)
         assert (dead.status_code, dead.json()["code"]) == (410, "link_revoked")
         assert (await _stored(slug)).revoked_reason is RevokeReason.OWNER
         assert (
-            await optional_short_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+            await attach_link(
+                OWNER.user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+            )
             is None
         )
 
@@ -391,9 +407,9 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
         todo_id = await _todo()
-        old = (await _share(client, TODO, todo_id))["slug"]
+        old = (await _share(client, _rec(TODO, todo_id)))["slug"]
         new = (await client.post(f"/api/v1/l/{old}/rotate")).json()["slug"]
-        await client.post("/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id})
+        await client.post("/api/v1/l/unshare", json={"target": _rec(TODO, todo_id)})
 
         viewer.user = OWNER
         for slug in (old, new):
@@ -410,8 +426,8 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
         target = workspace.write("notes.md", b"# private")
-        slug = (await _share(client, SESSION, target))["slug"]
-        await client.post("/api/v1/l/unshare", json={"target_type": SESSION, "target_id": target})
+        slug = (await _share(client, target))["slug"]
+        await client.post("/api/v1/l/unshare", json={"target": target})
 
         viewer.user = OWNER
         opened = (await _open(client, slug)).json()
@@ -425,7 +441,9 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
         todo_id = await _todo()
-        old = await _share(client, TODO, todo_id, access="people", grantees=["friend@example.com"])
+        old = await _share(
+            client, _rec(TODO, todo_id), access="people", grantees=["friend@example.com"]
+        )
 
         rotated = await client.post(f"/api/v1/l/{old['slug']}/rotate")
 
@@ -439,16 +457,16 @@ class TestRevokeRotateExpire:
         assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
         assert (await _stored(old["slug"])).revoked_reason is RevokeReason.ROTATED
         # GAIA hands over the new URL, not nothing.
-        attached = await optional_short_link(
-            OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id
+        attached = await attach_link(
+            OWNER.user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
         )
-        assert attached is not None and attached.endswith(new["slug"])
+        assert attached is not None and attached.slug == new["slug"]
 
     async def test_an_expired_link_is_dead_and_sharing_again_mints_a_fresh_one(
         self, client: AsyncClient, viewer: Viewer, mongo_db
     ) -> None:
         todo_id = await _todo()
-        slug = (await _share(client, TODO, todo_id))["slug"]
+        slug = (await _share(client, _rec(TODO, todo_id)))["slug"]
         await mongo_db["short_links"].update_one(
             {"slug": slug}, {"$set": {"expires_at": datetime.now(UTC) - timedelta(minutes=1)}}
         )
@@ -456,24 +474,26 @@ class TestRevokeRotateExpire:
         expired = await _open(client, slug)
         assert (expired.status_code, expired.json()["code"]) == (410, "link_expired")
         assert (
-            await optional_short_link(OWNER.user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+            await attach_link(
+                OWNER.user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+            )
             is None
         )
 
-        fresh = await _share(client, TODO, todo_id)
+        fresh = await _share(client, _rec(TODO, todo_id))
 
         assert fresh["slug"] != slug
         assert (await _open(client, fresh["slug"])).status_code == 200
         assert (await _stored(slug)).revoked_reason is RevokeReason.EXPIRED
 
     async def test_an_expiry_in_the_past_is_refused(self, client: AsyncClient) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         response = await client.patch(f"/api/v1/l/{slug}", json={"expires_at": past})
         assert (response.status_code, response.json()["code"]) == (422, "link_expiry_in_past")
 
     async def test_a_future_expiry_is_kept_and_reported(self, client: AsyncClient) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         later = datetime.now(UTC) + timedelta(days=7)
         response = await client.patch(f"/api/v1/l/{slug}", json={"expires_at": later.isoformat()})
         assert response.status_code == 200
@@ -485,7 +505,7 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer, mongo_db
     ) -> None:
         todo_id = await _todo()
-        slug = (await _share(client, TODO, todo_id))["slug"]
+        slug = (await _share(client, _rec(TODO, todo_id)))["slug"]
         await todo_repository.delete(todo_id, user_id=OWNER.user_id)
 
         response = await _open(client, slug)
@@ -499,26 +519,28 @@ class TestRevokeRotateExpire:
 
 class TestPreviewMeta:
     async def test_an_unlisted_link_previews_its_title(self, client: AsyncClient) -> None:
-        slug = (await _share(client, TODO, await _todo("Q3 plan")))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo("Q3 plan"))))["slug"]
         meta = await client.get(f"/api/v1/l/{slug}/meta")
         assert meta.json()["title"] == "Q3 plan"
         assert meta.json()["indexable"] is False
         assert meta.headers["cache-control"] == "public, max-age=300"
 
     async def test_a_public_link_is_indexable(self, client: AsyncClient) -> None:
-        slug = (await _share(client, TODO, await _todo("Q3 plan"), access="public"))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo("Q3 plan")), access="public"))["slug"]
         assert (await client.get(f"/api/v1/l/{slug}/meta")).json()["indexable"] is True
 
     async def test_a_gated_link_previews_only_its_kind(self, client: AsyncClient) -> None:
-        slug = (await _share(client, TODO, await _todo("Secret merger"), access="people"))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo("Secret merger")), access="people"))[
+            "slug"
+        ]
         meta = (await client.get(f"/api/v1/l/{slug}/meta")).json()
         assert meta["title"] == "Shared from GAIA"
         assert "Secret merger" not in str(meta)
 
     async def test_a_dead_link_discloses_nothing(self, client: AsyncClient) -> None:
         todo_id = await _todo("Secret merger")
-        slug = (await _share(client, TODO, todo_id))["slug"]
-        await client.post("/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id})
+        slug = (await _share(client, _rec(TODO, todo_id)))["slug"]
+        await client.post("/api/v1/l/unshare", json={"target": _rec(TODO, todo_id)})
         meta = await client.get(f"/api/v1/l/{slug}/meta")
         assert meta.json() == {
             "live": False,
@@ -536,7 +558,7 @@ class TestOpens:
     async def test_only_a_recipient_counts_once_a_day(
         self, client: AsyncClient, viewer: Viewer, captured: list
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         captured.clear()
 
         viewer.user = OWNER
@@ -560,7 +582,7 @@ class TestMissLockout:
     async def test_the_twenty_first_unknown_slug_locks_the_viewer_out(
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
-        live = (await _share(client, TODO, await _todo()))["slug"]
+        live = (await _share(client, _rec(TODO, await _todo())))["slug"]
         statuses = [
             (await _open(client, f"miss{n:07d}")).status_code for n in range(MAX_RESOLVE_MISSES + 1)
         ]
@@ -584,7 +606,7 @@ class TestSharedFiles:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
         target = workspace.write("report.html", b"<h1>Q3</h1><script>draw()</script>")
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
 
         envelope = (await _open(client, slug)).json()
         content = envelope["content"]
@@ -621,7 +643,7 @@ class TestSharedFiles:
             f"https://heygaia.link/{slug}",
         )
 
-    async def test_a_forwarded_host_counts_only_with_the_internal_token(
+    async def test_a_forwarded_host_counts_only_with_the_content_edge_token(
         self,
         client: AsyncClient,
         viewer: Viewer,
@@ -630,23 +652,26 @@ class TestSharedFiles:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", "i" * 40)
-        slug = (await _share(client, SESSION, workspace.write("n.png", PNG)))["slug"]
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", "e" * 40)
+        slug = (await _share(client, workspace.write("n.png", PNG)))["slug"]
         url = (await client.post(f"/api/v1/l/{slug}/content-token")).json()["content_url"]
         cid = url.split("//", 1)[1].split(".", 1)[0]
         path = f"/api/v1/usercontent/{cid}?{url.split('?', 1)[1]}"
         forwarded = {"x-gaia-content-host": f"{cid}.u.test", "sec-fetch-dest": "image"}
 
         spoofed = await client.get(path, headers=forwarded)
-        worker = await client.get(path, headers={**forwarded, "x-gaia-internal": "i" * 40})
+        internal = await client.get(path, headers={**forwarded, "x-gaia-internal": "i" * 40})
+        worker = await client.get(path, headers={**forwarded, "x-gaia-content-edge": "e" * 40})
 
         assert spoofed.status_code == 404
+        assert internal.status_code == 404
         assert worker.status_code == 200
         assert worker.headers["content-type"] == "image/png"
 
     async def test_a_png_named_html_is_only_ever_a_download(
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
-        slug = (await _share(client, SESSION, workspace.write("evil.html", PNG)))["slug"]
+        slug = (await _share(client, workspace.write("evil.html", PNG)))["slug"]
 
         envelope = (await _open(client, slug)).json()
         download = await client.get(f"/api/v1/l/{slug}/download")
@@ -669,7 +694,7 @@ class TestSharedFiles:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", None)
-        slug = (await _share(client, SESSION, workspace.write("r.html", b"<b>hi</b>")))["slug"]
+        slug = (await _share(client, workspace.write("r.html", b"<b>hi</b>")))["slug"]
 
         envelope = (await _open(client, slug)).json()
 
@@ -681,7 +706,7 @@ class TestSharedFiles:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
     ) -> None:
         target = workspace.write("notes.md", b"# first")
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
         workspace.write("notes.md", b"# edited by hand")
 
         assert (await _open(client, slug)).json()["view"]["text"] == "# first"
@@ -690,16 +715,14 @@ class TestSharedFiles:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
     ) -> None:
         target = workspace.write("notes.md", b"# first")
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
         first = (await _stored(slug)).snapshot
         assert first is not None and first.content_id is not None
 
         workspace.write("notes.md", b"# second")
-        again = await optional_short_link(
-            OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target
-        )
+        again = await attach_link(OWNER.user_id, WorkspaceFileTarget.model_validate(target))
 
-        assert again is not None and again.endswith(slug)
+        assert again is not None and again.slug == slug
         assert (await _open(client, slug)).json()["view"]["text"] == "# second"
         with pytest.raises(FileNotFoundError):
             await link_content.read_snapshot(OWNER.user_id, first.content_id)
@@ -708,10 +731,10 @@ class TestSharedFiles:
         self, client: AsyncClient, workspace: Workspace, store: LocalVolumeBlobStore
     ) -> None:
         target = workspace.write("notes.md", b"# same")
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
         before = (await _stored(slug)).snapshot
 
-        await optional_short_link(OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, target)
+        await attach_link(OWNER.user_id, WorkspaceFileTarget.model_validate(target))
 
         assert (await _stored(slug)).snapshot == before
 
@@ -719,11 +742,11 @@ class TestSharedFiles:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
         target = workspace.write("chart.png", PNG)
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
         url = (await client.post(f"/api/v1/l/{slug}/content-token")).json()["content_url"]
         cid = url.split("//", 1)[1].split(".", 1)[0]
 
-        await client.post("/api/v1/l/unshare", json={"target_type": SESSION, "target_id": target})
+        await client.post("/api/v1/l/unshare", json={"target": target})
 
         served = await client.get(
             f"/api/v1/usercontent/{cid}?{url.split('?', 1)[1]}",
@@ -736,7 +759,7 @@ class TestSharedFiles:
     async def test_rotation_keeps_the_bytes_for_the_new_url(
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
-        slug = (await _share(client, SESSION, workspace.write("chart.png", PNG)))["slug"]
+        slug = (await _share(client, workspace.write("chart.png", PNG)))["slug"]
         new = (await client.post(f"/api/v1/l/{slug}/rotate")).json()["slug"]
 
         token = await client.post(f"/api/v1/l/{new}/content-token")
@@ -748,7 +771,7 @@ class TestSharedFiles:
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
     ) -> None:
         target = workspace.write("login.html", b"<form><input type=password></form>")
-        link = await _share(client, SESSION, target)
+        link = await _share(client, target)
 
         assert link["content_max_access"] == "people"
         refused = (await _open(client, link["slug"])).json()
@@ -772,7 +795,7 @@ class TestSharedFiles:
     ) -> None:
         monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", None)
         target = workspace.write("login.html", b"<form><input type=password></form>")
-        slug = (await _share(client, SESSION, target))["slug"]
+        slug = (await _share(client, target))["slug"]
 
         assert (await _open(client, slug)).json()["view"]["text"] is None
 
@@ -790,9 +813,7 @@ class TestSharedFiles:
     ) -> None:
         image = tmp_path / "big.png"
         Image.new("RGB", (300, 200), (10, 120, 200)).save(image)
-        slug = (await _share(client, SESSION, workspace.write("big.png", image.read_bytes())))[
-            "slug"
-        ]
+        slug = (await _share(client, workspace.write("big.png", image.read_bytes())))["slug"]
         meta = (await client.get(f"/api/v1/l/{slug}/meta")).json()
         cid = meta["image_url"].split("//", 1)[1].split(".", 1)[0]
         assert meta["image_url"] == f"http://{cid}.u.test/api/v1/usercontent/{cid}/thumb.jpg"
@@ -805,16 +826,51 @@ class TestSharedFiles:
         assert (await client.get(thumb_path, headers={"host": f"{cid}.u.test"})).status_code == 404
 
 
+async def _accounts(mongo_db, users: list[AuthenticatedUser], age: timedelta) -> None:
+    """Store users as accounts made age ago."""
+    created_at = datetime.now(UTC) - age
+    await mongo_db["users"].delete_many({"_id": {"$in": [ObjectId(u.user_id) for u in users]}})
+    await mongo_db["users"].insert_many(
+        [{"_id": ObjectId(u.user_id), "email": u.email, "created_at": created_at} for u in users]
+    )
+
+
+ESTABLISHED = timedelta(days=TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS + 1)
+
+
 class TestReportsAndTakedown:
-    async def test_three_reporters_suspend_an_active_file_link(
+    async def test_three_fresh_accounts_queue_a_review_but_never_suspend(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        store: LocalVolumeBlobStore,
+        mongo_db,
+    ) -> None:
+        await _accounts(mongo_db, REPORTERS, timedelta(hours=1))
+        slug = (await _share(client, workspace.write("r.html", b"<p>x</p>")))["slug"]
+
+        with patch("app.services.links.abuse.send_email", AsyncMock()) as send_email:
+            for reporter in REPORTERS:
+                viewer.user = reporter
+                await client.post(f"/api/v1/l/{slug}/report", json={"reason": "phishing"})
+
+        assert (await _stored(slug)).suspended is False
+        assert (await _open(client, slug)).status_code == 200
+        (sent,) = {c.args[0].subject for c in send_email.await_args_list}
+        assert sent == "A shared GAIA link needs review"
+
+    async def test_three_established_reporters_suspend_an_active_file_link(
         self,
         client: AsyncClient,
         viewer: Viewer,
         workspace: Workspace,
         store: LocalVolumeBlobStore,
         captured: list,
+        mongo_db,
     ) -> None:
-        slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
+        await _accounts(mongo_db, REPORTERS, ESTABLISHED)
+        slug = (await _share(client, workspace.write("r.html", b"<p>x</p>")))["slug"]
 
         for reporter in [REPORTERS[0], REPORTERS[0], REPORTERS[1]]:
             viewer.user = reporter
@@ -837,34 +893,37 @@ class TestReportsAndTakedown:
     async def test_signed_out_reports_never_suspend(
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
     ) -> None:
-        slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
+        slug = (await _share(client, workspace.write("r.html", b"<p>x</p>")))["slug"]
         viewer.user = None
         assert (
             await client.post(f"/api/v1/l/{slug}/report", json={"reason": "phishing"})
         ).status_code == 204
         link = await _stored(slug)
         for n in range(5):
-            await abuse.report(link, ReportReason.PHISHING, f"address-{n}", signed_in=False)
+            await abuse.report(link, ReportReason.PHISHING, f"address-{n}", reporter_id=None)
         assert (await _stored(slug)).suspended is False
 
     async def test_a_link_without_active_content_needs_five_reporters(
-        self, client: AsyncClient, viewer: Viewer
+        self, client: AsyncClient, viewer: Viewer, mongo_db
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
-        for n in range(4):
-            viewer.user = AuthenticatedUser(
-                user_id=f"507f1f77bcf86cd7994391{n:02d}", auth_provider="workos"
-            )
+        reporters = [
+            AuthenticatedUser(user_id=f"507f1f77bcf86cd7994391{n:02d}", auth_provider="workos")
+            for n in range(5)
+        ]
+        await _accounts(mongo_db, reporters, ESTABLISHED)
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
+        for reporter in reporters[:4]:
+            viewer.user = reporter
             await client.post(f"/api/v1/l/{slug}/report", json={"reason": "other"})
         assert (await _stored(slug)).suspended is False
-        viewer.user = AuthenticatedUser(user_id="507f1f77bcf86cd799439199", auth_provider="workos")
+        viewer.user = reporters[4]
         await client.post(f"/api/v1/l/{slug}/report", json={"reason": "other"})
         assert (await _stored(slug)).suspended is True
 
     async def test_takedown_kills_the_link_for_good_and_deletes_its_file(
         self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
     ) -> None:
-        slug = (await _share(client, SESSION, workspace.write("r.html", b"<p>x</p>")))["slug"]
+        slug = (await _share(client, workspace.write("r.html", b"<p>x</p>")))["slug"]
         link = await _stored(slug)
         assert link.snapshot is not None and link.snapshot.content_id is not None
 
@@ -876,17 +935,12 @@ class TestReportsAndTakedown:
         assert (await _stored(slug)).revoked_reason is RevokeReason.TAKEDOWN
         with pytest.raises(FileNotFoundError):
             await link_content.read_snapshot(OWNER.user_id, link.snapshot.content_id)
-        assert (
-            await optional_short_link(
-                OWNER.user_id, ShortLinkTargetType.SESSION_ARTIFACT, link.target_id
-            )
-            is None
-        )
+        assert await attach_link(OWNER.user_id, link.target) is None
 
     async def test_restore_lifts_a_report_suspension(
         self, client: AsyncClient, viewer: Viewer, mongo_db
     ) -> None:
-        slug = (await _share(client, TODO, await _todo()))["slug"]
+        slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         await mongo_db["short_links"].update_one({"slug": slug}, {"$set": {"suspended": True}})
         assert (await _open(client, slug)).status_code == 410
 
@@ -909,11 +963,11 @@ class TestDeletingTheSource:
                 user_id=OWNER.user_id, conversation_id="conv-1", createdAt="2026-11-01T00:00:00Z"
             )
         )
-        file_slug = (await _share(client, SESSION, workspace.write("chart.png", PNG)))["slug"]
+        file_slug = (await _share(client, workspace.write("chart.png", PNG)))["slug"]
         cid = (await _stored(file_slug)).snapshot.content_id
         artifact_id = await _artifact("conv-1")
-        artifact_slug = (await _share(client, OPENUI, artifact_id))["slug"]
-        elsewhere_slug = (await _share(client, OPENUI, await _artifact("conv-2")))["slug"]
+        artifact_slug = (await _share(client, _rec(OPENUI, artifact_id)))["slug"]
+        elsewhere_slug = (await _share(client, _rec(OPENUI, await _artifact("conv-2"))))["slug"]
 
         with patch("app.services.conversation_service.capture"):
             deleted = await client.delete("/api/v1/conversations/conv-1")
@@ -927,6 +981,72 @@ class TestDeletingTheSource:
             await link_content.read_snapshot(OWNER.user_id, cid)
         assert await mongo_db["artifacts"].count_documents({"conversation_id": "conv-1"}) == 0
         assert (await _open(client, elsewhere_slug)).status_code == 200
+
+
+class TestGaiaAttachedLinks:
+    async def test_an_attached_link_opens_for_its_owner_alone_and_reaches_them_by_placeholder(
+        self, client: AsyncClient, viewer: Viewer
+    ) -> None:
+        todo_id = await _todo()
+        link = await attach_link(
+            OWNER.user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+        )
+        assert link is not None and link.access is LinkAccess.OWNER
+
+        viewer.user = OWNER
+        assert (await _open(client, link.slug)).status_code == 200
+        viewer.user = STRANGER
+        assert (await _open(client, link.slug)).status_code == 403
+
+        placeholder = link_placeholder(link.target)
+        delivered = await resolve_link_placeholders(OWNER.user_id, f"[Your plan]({placeholder})")
+        assert delivered == f"[Your plan]({settings.SHORTLINK_BASE_URL}/{link.slug})"
+        # Another user's reply cannot resolve this owner's placeholder.
+        assert await resolve_link_placeholders(STRANGER.user_id, placeholder) == ""
+
+        viewer.user = OWNER
+        rotated = (await client.post(f"/api/v1/l/{link.slug}/rotate")).json()["slug"]
+        assert await resolve_link_placeholders(OWNER.user_id, placeholder) == (
+            f"{settings.SHORTLINK_BASE_URL}/{rotated}"
+        )
+        await client.post("/api/v1/l/unshare", json={"target": _rec(TODO, todo_id)})
+        assert await resolve_link_placeholders(OWNER.user_id, f"[Your plan]({placeholder})") == (
+            "Your plan"
+        )
+
+
+class TestRemovingTheOwner:
+    async def test_revoking_all_of_a_users_links_kills_each_and_deletes_their_files(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        content_origin: None,
+        captured: list,
+    ) -> None:
+        file_slug = (await _share(client, workspace.write("chart.png", PNG)))["slug"]
+        cid = (await _stored(file_slug)).snapshot.content_id
+        todo_slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
+        others = await share(
+            GRANTEE.user_id,
+            RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=await _todo_for(GRANTEE)),
+            LinkSettings(),
+        )
+        others_slug = others.slug
+
+        assert await revoke_all_links_for_user(OWNER.user_id) == 2
+        assert await revoke_all_links_for_user(OWNER.user_id) == 0
+
+        for slug in (file_slug, todo_slug):
+            gone = await _open(client, slug)
+            assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
+            assert (await _stored(slug)).revoked_reason is RevokeReason.ACCOUNT_REMOVED
+        with pytest.raises(FileNotFoundError):
+            await link_content.read_snapshot(OWNER.user_id, cid)
+        assert (await _open(client, others_slug)).status_code == 200
+        assert await attach_link(OWNER.user_id, (await _stored(todo_slug)).target) is None
+        revoked = [event for _, event in captured if type(event).__name__ == "ShortLinkRevoked"]
+        assert [event.reason for event in revoked] == ["account_removed", "account_removed"]
 
 
 class TestTheBriefsLink:
@@ -960,44 +1080,12 @@ class TestTheBriefsLink:
         link_url = stored.payload.link or ""
         slug = link_url.removeprefix("https://heygaia.link/")
         link = await _stored(slug)
-        assert (link.target_type, link.target_id) == (
-            ShortLinkTargetType.BRIEFING,
-            stored.id,
-        )
+        assert link.target == RecordTarget(type=ShortLinkTargetType.BRIEFING, id=stored.id)
         assert link_url.startswith("https://heygaia.link/")
         viewer.user = OWNER
         opened = await _open(client, slug)
         assert opened.status_code == 200, opened.text
         assert opened.json()["view"]["payload"]["headline"] == "Google Cloud waits"
-
-
-class TestBackfill:
-    async def test_a_legacy_file_link_gets_its_snapshot_and_a_gone_file_says_deleted(
-        self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
-    ) -> None:
-        present = workspace.write("kept.md", b"# kept")
-        for slug, target in (("legacyAAAAA", present), ("legacyBBBBB", "conv-1/gone.md")):
-            await short_link_repository.create(
-                ShortLink(
-                    slug=slug,
-                    user_id=OWNER.user_id,
-                    target_type=ShortLinkTargetType.SESSION_ARTIFACT,
-                    target_id=target,
-                )
-            )
-
-        dry = await backfill_snapshots(apply=False)
-        assert (dry.pending, dry.published, dry.target_deleted) == (2, 0, 0)
-        assert (await _stored("legacyAAAAA")).snapshot is None
-
-        applied = await backfill_snapshots(apply=True)
-        again = await backfill_snapshots(apply=False)
-
-        assert (applied.pending, applied.published, applied.target_deleted) == (2, 1, 1)
-        assert again.pending == 0
-        assert (await _open(client, "legacyAAAAA")).json()["view"]["text"] == "# kept"
-        gone = await _open(client, "legacyBBBBB")
-        assert (gone.status_code, gone.json()["code"]) == (410, "link_target_deleted")
 
 
 @pytest.fixture(autouse=True)

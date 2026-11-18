@@ -5,16 +5,16 @@ import { Download01Icon, File01Icon, LinkSquare02Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 
+import { AgentHtmlFrame } from "@/components/shared/AgentHtmlFrame";
 import { LinkButton } from "@/components/shared/LinkButton";
-import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
+import { FileContentRenderer } from "@/features/chat/components/artifacts/FileViewerBody";
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import type {
   LinkContent,
-  PublicSessionArtifact,
+  PublicWorkspaceFile,
 } from "@/types/features/shortLinkTypes";
 
 import { linkDownloadUrl } from "../api/linkViewerApi";
-import { ACTIVE_CONTENT_SANDBOX } from "../constants";
 import { useLinkContentUrl } from "../hooks/useLinkContentUrl";
 import type { LinkViewProps } from "../types";
 
@@ -47,11 +47,10 @@ function FramedContent({
   switch (content.render) {
     case "frame_active":
       return (
-        <iframe
+        <AgentHtmlFrame
+          trust="page"
           title={filename}
           src={url}
-          sandbox={ACTIVE_CONTENT_SANDBOX}
-          referrerPolicy="no-referrer"
           allow=""
           loading="lazy"
           className={FRAME_CLASS}
@@ -143,21 +142,22 @@ function MetadataCard({ message }: { message: string }) {
   );
 }
 
-function TextContent({ view }: { view: PublicSessionArtifact }) {
+function TextContent({
+  view,
+  text,
+}: {
+  view: PublicWorkspaceFile;
+  text: string;
+}) {
   const preview =
     view.content_type !== HTML_CONTENT_TYPE &&
     PREVIEWABLE_CONTENT_TYPES.has(view.content_type);
   return (
     <div className="py-2">
-      <FileViewerBody
-        isImage={false}
-        isPdf={false}
-        loading={false}
-        error={false}
-        content={view.text}
+      <FileContentRenderer
+        content={text}
         contentType={view.content_type}
         filename={view.filename}
-        fileUrl=""
         viewMode={preview ? "preview" : "source"}
       />
     </div>
@@ -169,13 +169,13 @@ function TextContent({ view }: { view: PublicSessionArtifact }) {
  * content origin by its render mode, shown as text when the page renders it
  * itself, or described when it can only be downloaded.
  */
-export function PublicSessionArtifactView({
+export function PublicWorkspaceFileView({
   slug,
   view,
   content,
   downloadable,
   reportAction,
-}: LinkViewProps<"session_artifact">) {
+}: LinkViewProps<"workspace_file">) {
   return (
     <article className="flex flex-col gap-3">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-4 rounded-2xl bg-zinc-800 px-4 py-3">
@@ -211,7 +211,7 @@ export function PublicSessionArtifactView({
             content={content}
           />
         ) : view.text !== null ? (
-          <TextContent view={view} />
+          <TextContent view={view} text={view.text} />
         ) : (
           <MetadataCard message={downloadable ? CANNOT_PREVIEW : CANNOT_OPEN} />
         )}
