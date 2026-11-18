@@ -35,7 +35,7 @@ _TARGET: TypeAdapter[LinkTarget] = TypeAdapter(LinkTarget)
 def link_placeholder(target: LinkTarget) -> str:
     """Return the stand-in for the target's link that a model may carry and repeat."""
     raw = _TARGET.dump_json(target)
-    return PLACEHOLDER_PREFIX + base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+    return PLACEHOLDER_PREFIX + base64.urlsafe_b64encode(raw).replace(b"=", b"").decode()
 
 
 def _target(token: str) -> LinkTarget | None:

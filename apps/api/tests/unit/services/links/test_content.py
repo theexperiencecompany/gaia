@@ -774,6 +774,8 @@ def _framed(snapshot: LinkSnapshot | None, access: LinkAccess) -> LinkContent | 
         target=WorkspaceFileTarget(type=FILE, conversation_id="conv-1", path="a"),
         access=access,
         snapshot=snapshot,
+        # Live until after NOW: the frame is read at the time it is asked for.
+        expires_at=NOW + timedelta(minutes=1),
     )
     return framed_content(link, NOW)
 

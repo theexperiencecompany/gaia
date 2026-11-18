@@ -245,6 +245,33 @@ class TestBriefItemLinks:
             RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="a"),
             RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="b"),
         ]
+        repo.get.assert_awaited_once_with(BRIEF.id, user_id="owner")
+
+    async def test_an_item_missing_its_todo_or_its_link_is_neither_carried_nor_relinked(
+        self,
+    ) -> None:
+        brief = _brief_with_items("unlinked", "external")
+        unlinked, external = brief.payload.sections[0].items
+        unlinked.link = None
+        external.todo_id = None
+        external.link = "https://news.example/story"
+        with (
+            patch("app.services.links.targets.briefing.briefing_repository") as repo,
+            _item_links({"unlinked": LinkAccess.UNLISTED}),
+        ):
+            repo.get = AsyncMock(return_value=brief)
+            spec = REGISTRY[ShortLinkTargetType.BRIEFING]
+            assert spec.carries is not None
+            carried = await spec.carries("owner", BRIEF)
+            link = _link(BRIEF, "owner", access=LinkAccess.UNLISTED)
+            view = await spec.project(link, link.target, LinkViewerKind.RECIPIENT)
+
+        assert carried == []
+        assert isinstance(view, PublicBriefing)
+        assert [item.link for item in view.payload.sections[0].items] == [
+            None,
+            "https://news.example/story",
+        ]
 
 
 class TestBriefing:

@@ -146,6 +146,7 @@ def test_on_one_content_host_a_pdf_is_only_ever_a_download(
     )
     assert response.headers["content-type"] == "application/octet-stream"
     assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''d.pdf"
+    assert response.body == b"%PDF"
 
 
 @pytest.mark.parametrize(

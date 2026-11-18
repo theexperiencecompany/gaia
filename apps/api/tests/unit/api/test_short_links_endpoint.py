@@ -7,8 +7,10 @@ import so the request shape, status codes and log fields are pinned alone.
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+import ipaddress
 from typing import Final
 from unittest.mock import AsyncMock, patch
+import uuid
 
 from fastapi import FastAPI
 from httpx import AsyncClient
@@ -17,6 +19,7 @@ import pytest
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
+from app.constants.http import INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
 from app.constants.short_links import DOWNLOAD_RATE_LIMIT, PDF_EXPORT_RATE_LIMIT
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -24,9 +27,11 @@ from app.models.short_link_models import (
     LinkDenial,
     LinkEnvelope,
     LinkSettings,
+    LinkSnapshot,
     LinkViewer,
     PublicTodoDeliverable,
     RecordTarget,
+    RenderMode,
     ShortLink,
     ShortLinkTargetType,
     WorkspaceFileTarget,
@@ -389,6 +394,30 @@ class TestSlugNeverLoggedInPlaintext:
         assert cid not in str(event)
 
 
+class TestDownload:
+    async def test_a_link_the_viewer_may_open_saves_its_file_as_an_attachment(
+        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+    ) -> None:
+        snapshot = LinkSnapshot(
+            filename="q3.csv",
+            mime="text/csv",
+            size_bytes=3,
+            render=RenderMode.TEXT,
+            content_id="c" * 26,
+        )
+        link = _LINK.model_copy(update={"snapshot": snapshot})
+        with (
+            patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=link)),
+            patch(f"{_ENDPOINT}.read_snapshot", AsyncMock(return_value=b"a,b")) as read,
+        ):
+            response = await unauthed_client.get(f"{BASE}/{SLUG}/download")
+
+        assert response.status_code == 200
+        assert response.content == b"a,b"
+        assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''q3.csv"
+        read.assert_awaited_once_with("owner", "c" * 26)
+
+
 class TestShortLinkPdf:
     async def test_a_link_the_viewer_may_open_serves_its_pdf(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
@@ -464,27 +493,28 @@ class TestFileRouteLimits:
     """The routes that hand out bytes with no sign-in are bounded per viewer."""
 
     @pytest.fixture
-    def limited(self) -> Iterator[None]:
-        limiter.reset()
+    def limited(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, str]]:
+        """Turn the limiter on for one viewer of its own, so no other run's counts reach it."""
+        monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", "t0ken")
+        viewer = str(ipaddress.IPv6Address(uuid.uuid4().int))
         limiter.enabled = True
         try:
-            yield
+            yield {INTERNAL_CALLER_HEADER: "t0ken", VIEWER_IP_HEADER: viewer}
         finally:
             limiter.enabled = False
-            limiter.reset()
 
-    @pytest.mark.usefixtures("limited", "known_slug")
+    @pytest.mark.usefixtures("known_slug")
     @pytest.mark.parametrize(
         ("route", "limit"), [("download", DOWNLOAD_RATE_LIMIT), ("pdf", PDF_EXPORT_RATE_LIMIT)]
     )
     async def test_a_viewer_past_the_limit_is_refused(
-        self, unauthed_client: AsyncClient, route: str, limit: str
+        self, unauthed_client: AsyncClient, limited: dict[str, str], route: str, limit: str
     ) -> None:
         allowed = int(limit.split("/")[0])
         denied = LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
         with patch(f"{_ENDPOINT}.openable_link", AsyncMock(side_effect=denied)):
             codes = [
-                (await unauthed_client.get(f"{BASE}/{SLUG}/{route}")).status_code
+                (await unauthed_client.get(f"{BASE}/{SLUG}/{route}", headers=limited)).status_code
                 for _ in range(allowed + 1)
             ]
 

@@ -42,6 +42,7 @@ from app.models.short_link_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import analytics_day_start
+from app.services.links import service as links_service
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
 from app.services.links.registry import REGISTRY
 from app.services.links.service import (
@@ -981,6 +982,19 @@ class TestResolve:
             _denied_dedupe("s1", "u-eve", "forbidden"),
         )
 
+    async def test_a_server_side_forbidden_read_also_says_who_they_are_signed_in_as(
+        self, frozen: None
+    ) -> None:
+        link = _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"])
+        viewer = LinkViewer(
+            user_id="u-eve", email=None, ip=IP, user_agent=UA, signed_in_as="eve@x.com"
+        )
+
+        with pytest.raises(LinkDeniedError) as raised:
+            await resolve(link, viewer)
+
+        assert raised.value.public == {"signed_in_as": "eve@x.com"}
+
     async def test_a_browser_open_of_a_deleted_target_is_denied_and_counted(
         self, specs: Specs, frozen: None
     ) -> None:
@@ -1033,7 +1047,7 @@ class TestResolve:
     ) -> None:
         monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
         monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
-        link = _link("s1", target=FILE_T, snapshot=FRESH)
+        link = _link("s1", target=FILE_T, snapshot=FRESH, expires_at=NOW + timedelta(hours=1))
 
         envelope = await resolve(link, AS_OWNER)
 
@@ -1191,10 +1205,17 @@ class TestBriefItemsFollowTheBrief:
             yield children
 
     def _writes(self, store: Store) -> dict[str, dict[str, object]]:
-        return {
-            c.args[1]: c.args[2].model_dump(exclude_unset=True)
-            for c in store.links.update_live.await_args_list
-        }
+        calls = store.links.update_live.await_args_list
+        assert {c.args[0] for c in calls} == {OWNER}
+        return {c.args[1]: c.args[2].model_dump(exclude_unset=True) for c in calls}
+
+    def _assert_read_under_the_owner(self, store: Store) -> None:
+        carries = links_service.REGISTRY[BRIEF].carries
+        assert isinstance(carries, AsyncMock)
+        carries.assert_awaited_once_with(OWNER, BRIEF_T)
+        read = [c.args for c in store.links.get_live_for_target.await_args_list]
+        assert (OWNER, _todo("attached")) in read
+        assert {owner for owner, _ in read} == {OWNER}
 
     async def test_changing_a_briefs_access_carries_it_to_its_attached_items_only(
         self, store: Store, frozen: None, items: dict[str, ShortLink]
@@ -1208,6 +1229,8 @@ class TestBriefItemsFollowTheBrief:
         )
 
         await update_settings(OWNER, "brief1", LinkSettingsUpdate(access=LinkAccess.UNLISTED))
+
+        self._assert_read_under_the_owner(store)
 
         assert self._writes(store) == {
             "brief1": {"access": LinkAccess.UNLISTED, "gaia_attached": False},
@@ -1224,6 +1247,8 @@ class TestBriefItemsFollowTheBrief:
         store.links.revoke.return_value = brief
 
         assert await stop_sharing(OWNER, BRIEF_T)
+
+        self._assert_read_under_the_owner(store)
 
         assert self._writes(store) == {
             "item1": {"access": LinkAccess.OWNER, "grantees": [], "grantee_ids": []}
