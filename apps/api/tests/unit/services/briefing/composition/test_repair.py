@@ -73,9 +73,11 @@ def _item(
     *,
     action: BriefAction | None = BriefAction.REVIEW,
     outcome: BriefOutcome | None = None,
-    title: str = "Term sheet",
+    title: str | None = None,
 ) -> ComposedItem:
-    return ComposedItem(id=item_id, action=action, outcome=outcome, title=title, detail=None)
+    return ComposedItem(
+        id=item_id, action=action, outcome=outcome, title=title or f"Ask {item_id}", detail=None
+    )
 
 
 def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> ComposedItems:
@@ -166,6 +168,17 @@ class TestTheLead:
         composition = _of(_lead(_item(1)), _group(_item(1), _item(2)))
 
         assert repaired(composition, MANY) == _of(_lead(_item(1)), _group(_item(2)))
+
+    @pytest.mark.regression
+    def test_a_second_item_the_composer_titles_as_an_earlier_one_is_dropped(self) -> None:
+        """Replay: two todos from Mercury's repeated email both read "Mercury application questions"."""
+        mercury = "Mercury application questions"
+        composition = _of(
+            _lead(_item(1, title=mercury)),
+            _group(_item(2), _item(3, title=f" {mercury.upper()} ")),
+        )
+
+        assert repaired(composition, MANY) == _of(_lead(_item(1, title=mercury)), _group(_item(2)))
 
 
 class TestThePageBudget:

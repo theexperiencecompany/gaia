@@ -1,7 +1,7 @@
 """Hold a composition to what code can enforce, and salvage a correct brief when the model never does.
 
-Code fixes what it can decide alone (an id twice or unknown, a producer's action or outcome, the
-page budget by the composition's own order); a block that still breaks its contract after the
+Code fixes what it can decide alone (an id twice or unknown, a second item titled as an earlier
+one, a producer's action or outcome, the page budget by the composition's own order); a block that still breaks its contract after the
 retry is dropped, a misfit heading gives way to one code derives from the group's state, and a
 composition with nothing left is built from the pool. The user always gets a correct brief.
 """
@@ -23,6 +23,7 @@ from app.models.brief_composition_models import (
     ComposedLead,
 )
 from app.models.brief_item_models import GroupState
+from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.composition.checks import block_problems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotValues
@@ -53,8 +54,10 @@ def _shared_state(items: list[ComposedItem]) -> GroupState | None:
 
 
 def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
-    """Enforce what code decides alone: known ids once each, producers' sides, one lead, the budget."""
+    """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget."""
     seen: set[int] = set()
+    # Two items the composer titles alike are one subject to the reader, even from two todos.
+    titles: set[str] = set()
     left = MAX_BRIEF_ITEMS
     charts = 0
     blocks: list[ComposedBlock] = []
@@ -64,15 +67,18 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
             if blocks or candidate is None:
                 continue
             seen.add(block.item.id)
+            titles.add(same_text_key(block.item.title))
             left -= 1
             blocks.append(block.model_copy(update={"item": _sided(block.item, candidate)}))
         elif isinstance(block, ComposedItems):
             items: list[ComposedItem] = []
             for item in block.items:
                 candidate = pool.items.get(item.id)
-                if candidate is None or item.id in seen or len(items) >= left:
+                title = same_text_key(item.title)
+                if candidate is None or item.id in seen or title in titles or len(items) >= left:
                     continue
                 seen.add(item.id)
+                titles.add(title)
                 items.append(_sided(item, candidate))
             if not items:
                 continue
