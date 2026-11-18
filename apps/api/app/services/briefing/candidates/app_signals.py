@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.scout_models import RememberedSignal
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.facts import memory_note
 
 

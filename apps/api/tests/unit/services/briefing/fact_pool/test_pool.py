@@ -46,7 +46,8 @@ from app.models.scout_models import (
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
-from app.services.briefing.context import CalendarGap, StatedGoal
+from app.services.briefing.calendar_read import CalendarGap
+from app.services.briefing.clock import DayWindow
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.render import (
     context_block,
@@ -55,11 +56,12 @@ from app.services.briefing.fact_pool.render import (
     pool_block,
     series_line,
 )
-from app.services.briefing.fact_pool.window import SeriesWindow
+from app.services.briefing.goals import StatedGoal
+from app.services.briefing.work import read_work
 
 USER_ID = make_user_id()
 KOLKATA = ZoneInfo("Asia/Kolkata")
-WINDOW = SeriesWindow(first_day=date(2026, 11, 5), days=7, tz=KOLKATA)
+WINDOW = DayWindow(first_day=date(2026, 11, 5), days=7, tz=KOLKATA)
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
 CONTEXT = PoolContext(
     reader="Ada",
@@ -157,7 +159,7 @@ def stores(monkeypatch: pytest.MonkeyPatch) -> Stores:
     return Stores(monkeypatch)
 
 
-def _reads() -> PoolReads:
+async def _reads() -> PoolReads:
     items = {
         1: BriefCandidate(
             source="gmail",
@@ -187,11 +189,12 @@ def _reads() -> PoolReads:
         calendar=[meeting],
         goals=[StatedGoal("Launch the GAIA mobile app", GoalOrigin.MEMORY, ("GAIA",))],
         criteria={"Gmail": "a person waiting on a reply"},
+        work=await read_work(USER_ID, WINDOW.start),
     )
 
 
 async def _pool() -> FactPool:
-    return await build_fact_pool(USER_ID, WINDOW, _reads(), CONTEXT, NOW)
+    return await build_fact_pool(USER_ID, WINDOW, await _reads(), CONTEXT, NOW)
 
 
 class TestTheFactPool:
@@ -255,9 +258,14 @@ class TestTheFactPool:
     ) -> None:
         for mock in (stores.completed, stores.threads, stores.verdicts, stores.runs):
             mock.return_value = []
-        reads = _reads()
+        reads = await _reads()
         only_event = PoolReads(
-            items={3: reads.items[3]}, signals=[], calendar=[], goals=[], criteria={}
+            items={3: reads.items[3]},
+            signals=[],
+            calendar=[],
+            goals=[],
+            criteria={},
+            work=reads.work,
         )
 
         pool = await build_fact_pool(USER_ID, WINDOW, only_event, CONTEXT, NOW)
@@ -662,8 +670,8 @@ class TestAnEmptyPool:
             " news, so it never leads)"
         )
 
-    def test_several_items_each_take_a_line(self) -> None:
-        reads = _reads()
+    async def test_several_items_each_take_a_line(self, stores: Stores) -> None:
+        reads = await _reads()
         pool = FactPool(
             items=reads.items, series=[], quotes=[], goals=[], context=CONTEXT, criteria={}
         )

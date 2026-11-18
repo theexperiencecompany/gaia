@@ -11,9 +11,9 @@ from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
 from app.models.todo_models import TodoDocument
-from app.services.briefing.context import StatedGoal
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.quotes import quote_spans, verbatim_span
+from app.services.briefing.goals import StatedGoal
 
 USER_ID = make_user_id()
 MAYA = (

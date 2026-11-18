@@ -12,18 +12,19 @@ from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
-from app.models.briefing_models import BriefingItem, BriefingSection, BriefVoice
+from app.models.briefing_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
-from app.services.briefing import prose
+from app.services.briefing import checked_call, prose
 from app.services.briefing.artifacts import gather_artifacts
+from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.tracked import gaia_work_candidates
-from app.services.briefing.context import TrackedWork, UserClock
-from app.services.briefing.errors import VoiceUnreadableError
+from app.services.briefing.clock import UserClock
 from app.services.briefing.facts import TODAY, FactSources, build_facts
 from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots
+from app.services.briefing.work import TrackedWork
 
 pytestmark = pytest.mark.unit
 
@@ -72,39 +73,6 @@ class TestReaderBlock:
         ]
 
 
-class TestAnUnreadableReply:
-    async def test_each_field_the_reply_got_wrong_is_named_without_its_text(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with pytest.raises(ValidationError) as invalid:
-            BriefVoice.model_validate({"headline": "x"})
-        malformed = MalformedStructuredOutputError("bad", llm_output="half")
-        malformed.__cause__ = invalid.value
-        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=malformed))
-
-        with pytest.raises(VoiceUnreadableError) as raised:
-            await prose._voice(_USER_ID, "prompt")
-
-        assert raised.value.problems == [
-            "lede: Field required",
-            "caption: Field required",
-            "mood: Field required",
-            "message: Field required",
-        ]
-        assert raised.value.reply == "half"
-
-    async def test_a_reply_with_no_schema_error_is_told_why(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        malformed = MalformedStructuredOutputError("the reply was cut short", llm_output=None)
-        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=malformed))
-
-        with pytest.raises(VoiceUnreadableError) as raised:
-            await prose._voice(_USER_ID, "prompt")
-
-        assert raised.value.problems == ["the reply was cut short"]
-
-
 class TestAVoiceThatBreaksItsFacts:
     async def test_it_is_sent_back_once_with_the_problems_and_its_own_words(
         self, monkeypatch: pytest.MonkeyPatch
@@ -112,7 +80,7 @@ class TestAVoiceThatBreaksItsFacts:
         broke = _voice(message="Nothing to say.")
         mended = _voice()
         asked = AsyncMock(side_effect=[broke, mended])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         voice, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
@@ -132,7 +100,7 @@ class TestAVoiceThatRepeatsOrOverclaims:
     @staticmethod
     def _asked(monkeypatch: pytest.MonkeyPatch, *voices: BriefVoice) -> AsyncMock:
         asked = AsyncMock(side_effect=list(voices))
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
         return asked
 
     async def test_a_headline_or_opening_a_recent_brief_printed_is_sent_back(
@@ -211,7 +179,7 @@ class TestAVoiceThatSaysATitleTwice:
     ) -> None:
         echoed = _voice(message="The northwind invoice is still past due: [[fact:1]].")
         asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is past due.")])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
@@ -228,7 +196,7 @@ class TestAVoiceThatSaysATitleTwice:
     ) -> None:
         again = _voice(message="[[fact:1]] is past due. The Northwind invoice went out Monday.")
         asked = AsyncMock(side_effect=[again])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
@@ -248,7 +216,7 @@ class TestAVoiceThatSaysATitleTwice:
         )
         echoed = _voice(message="After [[fact:2]], the Northwind invoice: [[fact:1]].")
         asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is due.")])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
 
@@ -264,7 +232,7 @@ class TestAVoiceThatSaysATitleTwice:
         )
         both = _voice(message="A 1:1 at [[fact:1.time]], then [[fact:2]] [the 1:1](fact:1).")
         asked = AsyncMock(side_effect=[both])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
 
@@ -308,7 +276,7 @@ class TestAFigureTheFactsShow:
             FactSources(
                 artifacts=gather_artifacts(TrackedWork(running=[doc])),
                 open_todos=0,
-                calendar=[],
+                calendar=CalendarRead(),
                 event_ids=[],
                 span=TODAY,
                 todos_note=None,
@@ -317,7 +285,7 @@ class TestAFigureTheFactsShow:
         )
         quoted = _voice(message="[The pitch research](fact:1) gets another look Tue Nov 17.")
         asked = AsyncMock(side_effect=[quoted, _voice()])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
 
@@ -332,7 +300,7 @@ class TestTheBriefsWideEvent:
     ) -> None:
         """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
         asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Still none.")])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
             voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
@@ -342,15 +310,15 @@ class TestTheBriefsWideEvent:
             "words as [your phrase](fact:1)"
         )
         assert voice == prose.plain_voice(Writing(values=_VALUES, lead=1))
-        assert event["brief_voice"] == {"attempts": 2, "plain": True, "rejections": [missed] * 2}
+        assert event["brief_voice"] == {"attempts": 2, "salvaged": True, "rejections": [missed] * 2}
 
     async def test_a_brief_voiced_first_time_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
 
         async with captured_wide_event() as event:
             await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
-        assert event["brief_voice"] == {"attempts": 1, "plain": False, "rejections": []}
+        assert event["brief_voice"] == {"attempts": 1, "salvaged": False, "rejections": []}
 
     async def test_an_unreadable_reply_is_on_the_event_as_every_field_it_got_wrong(
         self, monkeypatch: pytest.MonkeyPatch
@@ -360,7 +328,7 @@ class TestTheBriefsWideEvent:
         malformed = MalformedStructuredOutputError("bad", llm_output="half")
         malformed.__cause__ = invalid.value
         asked = AsyncMock(side_effect=[malformed, _voice()])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
             await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
@@ -374,7 +342,7 @@ class TestTheBriefsWideEvent:
     ) -> None:
         stale = _voice(headline="An open day", message="[Reply to Dan](fact:1) before lunch.")
         asked = AsyncMock(side_effect=[stale, _voice()])
-        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
         recent = RecentLines(headlines=["An open day"], openings=["Reply to Dan before lunch."])
 
         async with captured_wide_event() as event:
@@ -398,7 +366,7 @@ class TestThePlainVoice:
             headline="Your brief",
             lede="",
             caption="",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             message="- [[fact:2]] ([[fact:2.time]])\n- [[fact:1]]",
         )
 

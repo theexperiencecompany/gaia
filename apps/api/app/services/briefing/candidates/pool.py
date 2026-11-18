@@ -24,8 +24,9 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork, UserClock, day_start_utc
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.service import ScoutSignals
+from app.services.briefing.work import TrackedWork
 from app.services.integrations.user_integrations import get_connected_integration_ids
 
 
@@ -51,17 +52,17 @@ class GatheredCandidates:
 class CandidateSources:
     """What the run already read, which the producers turn into candidates.
 
-    ahead_days is how many local days from today the brief looks ahead for what is due:
-    a reminder or a dated todo of their own. user_done is what the user finished themselves,
-    which only the weekly recaps.
+    due_before is when the brief's span ends: a reminder or a dated todo of their own due
+    before it is the brief's. user_done is what the user finished themselves, which only
+    the weekly recaps.
     """
 
     work: TrackedWork
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+    due_before: datetime
     #: The results held for the daily brief; the weekly carries none.
     held: list[PendingBriefItemDocument] = field(default_factory=list)
-    ahead_days: int = 1
     user_done: list[TodoDocument] = field(default_factory=list)
 
 
@@ -145,8 +146,8 @@ async def gather_candidates(
 ) -> GatheredCandidates:
     """Run every producer, needs-you sources first, remember each find, and number them."""
     work = sources.work
-    day_start = day_start_utc(clock)
-    day_end = day_start_utc(clock, days_ago=-sources.ahead_days)
+    day_start = clock.day_start()
+    day_end = sources.due_before
     open_todo_ids = {doc.id for doc in [*work.blocked, *work.failed, *work.running]}
     candidates = [
         *waiting_candidates(work),

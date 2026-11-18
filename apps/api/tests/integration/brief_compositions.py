@@ -10,7 +10,7 @@ from typing import Any
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.capabilities import split_drawable
-from app.services.briefing.fact_pool.window import SeriesName
+from app.services.briefing.fact_pool.series import SeriesName
 from tests.factories import make_brief_item
 
 TODAY = "2026-11-10"

@@ -9,8 +9,10 @@ from httpx import AsyncClient
 
 from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
 from app.config.settings import settings
+from app.constants.briefing import BriefingKind
 from app.models.briefing_models import (
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     EditionImage,
     EditionRender,
@@ -32,14 +34,14 @@ def _brief(*, opened: bool) -> BriefingModel:
         id="brief_abc123",
         user_id=FAKE_USER.user_id,
         date="2026-10-14",
-        kind="daily",
+        kind=BriefingKind.DAILY,
         payload=BriefingPayload(
             kicker="THE MORNING BRIEF",
             template_family="swiss",
             date="2026-10-14",
             headline="Two replies need you",
             lede="Priya and Dhruv.",
-            mood="packed",
+            mood=BriefingMood.PACKED,
             caption="Onward.",
         ),
         edition=EditionRender(key="k1", fold=0.3),
@@ -66,7 +68,9 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
     )
     get.assert_awaited_once_with("brief_abc123", user_id=FAKE_USER.user_id)
     mark.assert_awaited_once_with(FAKE_USER.user_id, "brief_abc123")
-    capture.assert_called_once_with(UserId(FAKE_USER.user_id), BriefingOpened(kind="daily"))
+    capture.assert_called_once_with(
+        UserId(FAKE_USER.user_id), BriefingOpened(kind=BriefingKind.DAILY)
+    )
 
 
 async def test_reopening_a_brief_reports_nothing(client: AsyncClient) -> None:

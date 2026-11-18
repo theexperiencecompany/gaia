@@ -1,11 +1,6 @@
 """Fill the composition prompt from the pool, the page budget and the day's context."""
 
-from app.agents.prompts.brief_composition_prompts import (
-    COMPOSITION_EXAMPLES,
-    COMPOSITION_PROMPT,
-    DAILY_FRAME,
-    WEEKLY_FRAME,
-)
+from app.agents.prompts.brief_composition_prompts import COMPOSITION_EXAMPLES, COMPOSITION_PROMPT
 from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.constants.briefing import (
     BRIEF_CHART_TITLE_MAX_CHARS,
@@ -21,21 +16,15 @@ from app.constants.briefing import (
     MAX_ITEMS_PER_BLOCK,
     MIN_TREND_POINTS,
     BriefAction,
-    BriefingKind,
     BriefOutcome,
 )
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import context_block
 from app.services.hil.utils import untrusted_fence
 
-_FRAMES: dict[BriefingKind, str] = {
-    BriefingKind.DAILY: DAILY_FRAME,
-    BriefingKind.WEEKLY: WEEKLY_FRAME,
-}
 
-
-def composition_prompt(pool: FactPool, kind: BriefingKind, facts: str) -> str:
-    """Return the prompt that composes the kind of brief over the pool, laid out as facts.
+def composition_prompt(pool: FactPool, frame: str, facts: str) -> str:
+    """Return the prompt that composes a brief over the pool, laid out as facts, in its kind's frame.
 
     The pool and the scouts' criteria are read from the user's apps, so both sit inside a fence.
     """
@@ -44,7 +33,7 @@ def composition_prompt(pool: FactPool, kind: BriefingKind, facts: str) -> str:
     return COMPOSITION_PROMPT.format(
         untrusted=UNTRUSTED_DATA_NOTE.format(fence=fence),
         fence=fence,
-        frame=_FRAMES[kind].format(reader=context.reader, today=context.clock.date_str),
+        frame=frame.format(reader=context.reader, today=context.clock.date_str),
         reader=context.reader,
         criteria="\n".join(f"- {app}: {text}" for app, text in pool.criteria.items())
         or "- (no app wrote criteria)",

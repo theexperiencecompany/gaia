@@ -64,7 +64,8 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork, UserClock
+from app.services.briefing.clock import UserClock
+from app.services.briefing.work import TrackedWork
 from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 

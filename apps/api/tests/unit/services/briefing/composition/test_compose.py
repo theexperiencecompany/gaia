@@ -11,7 +11,7 @@ from tests.helpers import user_clock
 
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
-from app.constants.briefing import BRIEF_COMPOSITION_LABEL, BriefAction, BriefOutcome
+from app.constants.briefing import BRIEF_COMPOSITION_LABEL, BriefAction, BriefingKind, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import (
     BriefComposition,
@@ -20,11 +20,16 @@ from app.models.brief_composition_models import (
     ComposedItems,
 )
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.services.briefing import checked_call
 from app.services.briefing.composition import compose
 from app.services.briefing.composition.compose import compose_brief, pool_values
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
+from app.services.briefing.kinds import KIND_SPECS
+from app.utils.errors import AppError
 
 USER = "64f1c0ffee0000000000abcd"
+DAILY = KIND_SPECS[BriefingKind.DAILY]
+WEEKLY = KIND_SPECS[BriefingKind.WEEKLY]
 _CONTEXT = PoolContext(
     reader="Ada",
     clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
@@ -139,7 +144,7 @@ _STRAY_PROBLEM = (
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock(return_value=_GOOD)
-    monkeypatch.setattr(compose, "ainvoke_structured", mock)
+    monkeypatch.setattr(checked_call, "ainvoke_structured", mock)
     return mock
 
 
@@ -158,7 +163,7 @@ class TestOneCall:
     async def test_a_holding_composition_comes_back_with_its_slots_filled(
         self, model: AsyncMock
     ) -> None:
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == _GOOD
         chart = composed.rendered.blocks[1]
@@ -170,7 +175,7 @@ class TestOneCall:
     async def test_the_prompt_holds_the_whole_pool_the_criteria_and_the_day(
         self, model: AsyncMock
     ) -> None:
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         prompt = _prompt(model)
         assert "Ada's morning brief for 2026-11-11" in prompt
@@ -189,7 +194,7 @@ class TestOneCall:
         assert "{" not in prompt.split("## The pool", 1)[1].split("## Three compositions", 1)[0]
 
     async def test_a_weekly_composition_is_framed_as_the_week(self, model: AsyncMock) -> None:
-        await compose_brief(USER, POOL, "weekly")
+        await compose_brief(USER, POOL, WEEKLY)
 
         assert "Ada's weekly digest for the week ending 2026-11-11" in _prompt(model)
 
@@ -211,7 +216,7 @@ class TestOneCall:
             criteria={},
         )
 
-        composed = await compose_brief(USER, only_event, "daily")
+        composed = await compose_brief(USER, only_event, DAILY)
 
         assert composed.rendered.blocks == []
         model.assert_not_awaited()
@@ -223,7 +228,7 @@ class TestTheHeadingCheck:
     ) -> None:
         model.return_value = _GROUPED
 
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         user_id, shown, pool = headings.await_args.args
         assert (user_id, pool) == (USER, POOL)
@@ -238,7 +243,7 @@ class TestTheHeadingCheck:
             {},
         ]
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == _GOOD
         assert 'block 1 heading "Landed overnight" is not true of item(s) 1' in _prompt(model, 1)
@@ -270,7 +275,7 @@ class TestItemWording:
         )
         model.return_value = worded
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         group = composed.rendered.blocks[0]
         assert isinstance(group, ComposedItems)
@@ -302,7 +307,7 @@ class TestItemWording:
         )
         model.side_effect = [bad, _GOOD]
 
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         assert "the block 1 (items) item 1 detail: [[fact:1.time]]: fact 1 has no time" in _prompt(
             model, 1
@@ -315,7 +320,7 @@ class TestRetryThenFailLoud:
     ) -> None:
         model.side_effect = [_STRAY_FIGURE, _GOOD]
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == _GOOD
         retry = _prompt(model, 1)
@@ -330,7 +335,7 @@ class TestRetryThenFailLoud:
         """Dhruv's Nov 8: 11 items over the cap of 10 failed the brief and he got nothing."""
         model.return_value = _items_block(_item(7), _item(1), _item(1))
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         (group,) = composed.written.blocks
         assert isinstance(group, ComposedItems)
@@ -348,7 +353,7 @@ class TestRetryThenFailLoud:
             _GOOD,
         ]
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == _GOOD
         assert "the answer was not a whole BriefComposition tool call" in _prompt(model, 1)
@@ -357,12 +362,12 @@ class TestRetryThenFailLoud:
         self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         log = MagicMock()
-        monkeypatch.setattr(compose, "log", log)
+        monkeypatch.setattr(checked_call, "log", log)
         model.side_effect = MalformedStructuredOutputError(
             "BriefComposition: reply stopped at the output cap"
         )
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         asks, done = composed.rendered.blocks
         assert isinstance(asks, ComposedItems) and isinstance(done, ComposedItems)
@@ -376,15 +381,16 @@ class TestRetryThenFailLoud:
         )
         assert model.await_count == 2
         (salvaged,) = log.error.call_args_list
-        assert salvaged.args == ("briefing.composition_salvaged",)
-        assert "reply stopped at the output cap" in salvaged.kwargs["problems"][0]
+        assert salvaged.args == ("briefing.checked_call_salvaged",)
+        assert salvaged.kwargs["call"] == "composition"
+        assert "reply stopped at the output cap" in salvaged.kwargs["problems"]
 
     async def test_broken_twice_keeps_what_holds_under_a_heading_code_derives(
         self, model: AsyncMock
     ) -> None:
         model.return_value = _STRAY_FIGURE
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         (group,) = composed.rendered.blocks
         assert isinstance(group, ComposedItems)
@@ -394,11 +400,9 @@ class TestRetryThenFailLoud:
         )
         assert model.await_count == 2
 
-    async def test_a_salvaged_brief_keeps_a_true_heading_judged_for_the_user_as_shown(
-        self, model: AsyncMock, headings: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    async def test_a_salvaged_brief_heads_each_group_by_its_state_without_asking_a_model(
+        self, model: AsyncMock, headings: AsyncMock
     ) -> None:
-        log = MagicMock()
-        monkeypatch.setattr(compose, "log", log)
         group = _items_block(_item(1, title="[[fact:1]]")).blocks[0]
         stray_chart = ComposedChart(
             kind="chart",
@@ -407,15 +411,27 @@ class TestRetryThenFailLoud:
             title="Meeting hours",
             takeaway="A busy week.",
         )
-        broken = BriefComposition(blocks=[group, stray_chart])
-        model.return_value = broken
+        model.return_value = BriefComposition(blocks=[group, stray_chart])
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         shown = _items_block(_item(1, title="Re: Series A term sheet"))
-        assert headings.await_args.args == (USER, shown, POOL)
-        assert composed.rendered == shown
-        assert log.error.call_args.kwargs["answer"] == broken.model_dump()
+        assert composed.rendered == BriefComposition(
+            blocks=[shown.blocks[0].model_copy(update={"heading": "Needs you"})]
+        )
+        headings.assert_not_awaited()
+
+    async def test_a_heading_check_that_fails_cannot_fail_the_salvage(
+        self, model: AsyncMock, headings: AsyncMock
+    ) -> None:
+        """Regression: a salvage that re-ran the heading check failed when it left a group unjudged."""
+        model.return_value = _STRAY_FIGURE
+        headings.side_effect = AppError(message="unjudged", why="no verdict", fix="retry")
+
+        composed = await compose_brief(USER, POOL, DAILY)
+
+        (group,) = composed.rendered.blocks
+        assert isinstance(group, ComposedItems) and group.heading == "Needs you"
 
     async def test_a_heading_still_untrue_after_the_retry_gives_way_to_its_states(
         self, model: AsyncMock, headings: AsyncMock
@@ -424,7 +440,7 @@ class TestRetryThenFailLoud:
         model.return_value = _GROUPED
         headings.return_value = {1: 'block 1 heading "Landed overnight" is not true of item 1'}
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         (group,) = composed.rendered.blocks
         assert isinstance(group, ComposedItems)
@@ -493,7 +509,7 @@ class TestWhatSlotsRender:
             }
         )
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         lead = composed.rendered.blocks[0]
         assert lead.model_dump()["item"]["title"] == "Re: Series A term sheet"
@@ -504,7 +520,7 @@ class TestWhatSlotsRender:
     ) -> None:
         model.return_value = _items_block(_item(1, title="[Maya's thread](fact:1)"))
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         group = composed.rendered.blocks[0]
         assert isinstance(group, ComposedItems)
@@ -527,7 +543,7 @@ class TestWhatSlotsRender:
             }
         )
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         group = composed.rendered.blocks[0]
         assert isinstance(group, ComposedItems)
@@ -538,7 +554,7 @@ class TestTheCallItself:
     async def test_the_call_is_labelled_metered_for_the_user_and_held_to_the_schema(
         self, model: AsyncMock
     ) -> None:
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         assert model.await_args.kwargs == {
             "label": BRIEF_COMPOSITION_LABEL,
@@ -547,7 +563,7 @@ class TestTheCallItself:
         }
 
     async def test_the_first_ask_is_the_bare_prompt(self, model: AsyncMock) -> None:
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         assert not _prompt(model).endswith("\n\n")
         assert "Your last composition was sent back" not in _prompt(model)
@@ -573,14 +589,14 @@ class TestTheCallItself:
             criteria={},
         )
 
-        composed = await compose_brief(USER, only_event, "daily")
+        composed = await compose_brief(USER, only_event, DAILY)
 
         assert composed.written == BriefComposition(blocks=[])
         assert composed.values == pool_values(only_event)
         assert composed.values.facts[1].time == "9:00 AM"
 
     async def test_the_composed_values_are_what_the_pool_renders(self, model: AsyncMock) -> None:
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.values == pool_values(POOL)
         assert composed.values.facts[1].title == "Re: Series A term sheet"
@@ -591,18 +607,20 @@ class TestWhatARejectionSays:
         self, model: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         log = MagicMock()
-        monkeypatch.setattr(compose, "log", log)
+        monkeypatch.setattr(checked_call, "log", log)
         broken = _items_block(_item(1, detail="x" * 200))
         stray = broken.blocks[0].model_copy(update={"heading": "9 replies waiting"})
         model.side_effect = [broken.model_copy(update={"blocks": [stray]}), _GOOD]
 
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         problems = [
             "block 1 (items), item 1: a detail over 80 characters",
             _STRAY_PROBLEM,
         ]
-        log.warning.assert_called_once_with("briefing.composition_rejected", problems=problems)
+        log.warning.assert_called_once_with(
+            "briefing.checked_call_rejected", call="composition", problems=problems
+        )
         assert f"was sent back: {'; '.join(problems)}.\n" in _prompt(model, 1)
 
     async def test_a_reply_that_was_no_composition_is_retried_with_no_last_answer_and_its_reason(
@@ -610,7 +628,7 @@ class TestWhatARejectionSays:
     ) -> None:
         model.side_effect = [MalformedStructuredOutputError("cut off at the cap"), _GOOD]
 
-        await compose_brief(USER, POOL, "daily")
+        await compose_brief(USER, POOL, DAILY)
 
         assert (
             "was sent back: the answer was not a whole BriefComposition tool call "
@@ -625,7 +643,7 @@ class TestAWeeklyRecaps:
     ) -> None:
         model.side_effect = [BriefComposition(blocks=[]), _GOOD]
 
-        composed = await compose_brief(USER, POOL, "weekly")
+        composed = await compose_brief(USER, POOL, WEEKLY)
 
         assert composed.written == _GOOD
         assert (
@@ -636,7 +654,7 @@ class TestAWeeklyRecaps:
     async def test_a_daily_may_leave_its_whole_pool_out(self, model: AsyncMock) -> None:
         model.return_value = BriefComposition(blocks=[])
 
-        composed = await compose_brief(USER, POOL, "daily")
+        composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == BriefComposition(blocks=[])
         model.assert_awaited_once()

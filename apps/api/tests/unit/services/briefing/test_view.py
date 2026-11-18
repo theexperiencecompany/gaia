@@ -9,6 +9,7 @@ from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     BriefingSection,
     EditionRender,
@@ -31,7 +32,7 @@ def _brief(
             date="2026-10-21",
             headline="Three things wait on you",
             lede="A short day.",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="Onward.",
             template_family=template_family,
             stamp_city=stamp_city,
@@ -113,8 +114,13 @@ async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar
             )
         ],
     )
-    owned.payload.calendar = [BriefingEvent(date="2026-10-21", start="11:00", title="Therapy")]
-    owned = owned.model_copy(update={"edition": EditionRender(key="k1")})
+    calendar = [BriefingEvent(date="2026-10-21", start="11:00", title="Therapy")]
+    owned = owned.model_copy(
+        update={
+            "payload": owned.payload.model_copy(update={"calendar": calendar}),
+            "edition": EditionRender(key="k1"),
+        }
+    )
 
     seen = (await public_view(owned)).model_dump_json()
 

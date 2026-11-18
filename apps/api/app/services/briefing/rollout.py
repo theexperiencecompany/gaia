@@ -9,7 +9,7 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.services.analytics_service import capture
-from app.services.briefing import context
+from app.services.briefing.goals import stated_goals
 from app.services.system_workflows.provisioner import provision_briefing_workflows
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingProvisioned
@@ -40,7 +40,7 @@ async def provision_existing_user(user_id: str) -> str:
     if user.briefing_bootstrap is not None or await briefing_repository.has_daily_briefing(user_id):
         return "already_rolled_out"
 
-    has_goal = bool(await context.stated_goals(user_id, user))
+    has_goal = bool(await stated_goals(user_id, user))
     integrations = await user_integration_repository.count_for_user(user_id)
     if not has_goal and integrations <= _SPARSE_INTEGRATION_MAX:
         await user_repository.set_briefing_bootstrap_pending(user_id)

@@ -25,7 +25,8 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.subjects import subject_key
-from app.services.briefing.context import TrackedWork, UserClock, due_on, finished_by
+from app.services.briefing.clock import UserClock, due_on
+from app.services.briefing.work import TrackedWork, finished_by
 
 
 def _source(doc: TodoDocument) -> tuple[str, str]:

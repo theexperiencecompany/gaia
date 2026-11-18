@@ -11,9 +11,9 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
-# Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
-# run fails loud and retries next week instead of hanging the worker slot.
-WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
+# Hard ceiling on a brief's voice call, daily or weekly; expiry raises so a stalled
+# run fails loud and retries at its next run instead of hanging the worker slot.
+BRIEF_VOICE_TIMEOUT_SECONDS: Final[int] = 420
 
 # System-workflow keys; the workflow ARQ path routes these into the briefing service.
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
@@ -98,7 +98,8 @@ SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "
 # Every brief item is a short noun-phrase title and at most one muted detail line.
 BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
 BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
-#: Composition calls per brief: one more when the answer breaks the contract, then the run fails.
+#: Composition calls per brief: one more when the answer breaks the contract, then code
+#: salvages what holds of it (briefing.checked_call).
 MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
 #: The composition call's metering label, and its heading check's.
 BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
@@ -175,7 +176,7 @@ FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
     "once again",
 )
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
-# mend shows it what it wrote), then the run fails rather than ship it.
+# mend shows it what it wrote), then code voices it plainly from its facts (briefing.checked_call).
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 #: The plain voice a brief gets when the model's never holds to its facts.
 PLAIN_BRIEF_HEADLINE: Final[str] = "Your brief"
@@ -208,21 +209,15 @@ class BriefForm(StrEnum):
 #: A quiet day's or week's note: nothing new and nothing on the calendar, so no edition, no
 #: filler. Its first line says what is new, then how the calendar stands; a quiet brief after
 #: a quiet brief says it is still quiet and since when, so a quiet streak never reads the same.
-QUIET_NOTE_HEADLINES: Final[dict[str, str]] = {
-    BriefingKind.DAILY: "Nothing needs you today",
-    BriefingKind.WEEKLY: "Nothing needs you this week",
-}
-QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
-    BriefingKind.DAILY: "Nothing new needs you today",
-    BriefingKind.WEEKLY: "Nothing moved this week",
-}
+DAILY_QUIET_HEADLINE: Final[str] = "Nothing needs you today"
+WEEKLY_QUIET_HEADLINE: Final[str] = "Nothing needs you this week"
+DAILY_QUIET_NOTHING_NEW: Final[str] = "Nothing new needs you today"
+WEEKLY_QUIET_NOTHING_NEW: Final[str] = "Nothing moved this week"
 QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
 QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new since your brief {when}"
 QUIET_NOTE_STILL_FOR: Final[str] = "Still nothing new: {days} days since your brief {when}"
-QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
-    BriefingKind.DAILY: ", and your calendar is clear.",
-    BriefingKind.WEEKLY: ", and next week's calendar is clear.",
-}
+DAILY_QUIET_CALENDAR_CLEAR: Final[str] = ", and your calendar is clear."
+WEEKLY_QUIET_CALENDAR_CLEAR: Final[str] = ", and next week's calendar is clear."
 QUIET_NOTE_NO_CALENDAR: Final[str] = "."
 QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
     ". I couldn't read your calendar, so check it before you plan."

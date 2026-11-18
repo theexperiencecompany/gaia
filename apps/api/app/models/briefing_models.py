@@ -289,7 +289,7 @@ class BriefVoice(BaseModel):
 class BriefingPayload(BaseModel):
     """The structured briefing the run emits and every channel renders."""
 
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+    model_config = ConfigDict(frozen=True, json_schema_serialization_defaults_required=True)
 
     kicker: str
     date: str

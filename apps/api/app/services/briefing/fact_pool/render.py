@@ -13,7 +13,8 @@ from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
 from app.models.briefing_models import BRIEFING_ITEM_STATES, UnreadSource
 from app.models.scout_models import ScoutSkipReason, SignalImportance
-from app.services.briefing.context import CalendarGap, UserClock
+from app.services.briefing.calendar_read import CalendarGap
+from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.scouts.facts import people_note, seen_note
 from app.services.briefing.slots import figure, series_figures

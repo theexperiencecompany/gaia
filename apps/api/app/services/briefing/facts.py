@@ -1,13 +1,15 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from itertools import groupby
 
 from app.constants.briefing import (
     CALENDAR_UNAVAILABLE,
     GAIA_APP_NAME,
     NO_CALENDAR_CONNECTED,
+    TODAY_SPAN,
+    WEEK_AHEAD_SPAN,
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
@@ -20,16 +22,16 @@ from app.models.briefing_models import (
     BriefingStat,
     UnreadSource,
 )
-from app.services.briefing import context
 from app.services.briefing.artifacts import ArtifactFact
+from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import event_detail, start_time
 from app.services.briefing.candidates.subjects import subject_key
+from app.services.briefing.clock import DayWindow, UserClock, due_on
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
     charted_figures,
     voiced_block_lines,
 )
-from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock, due_on
 from app.services.briefing.fact_pool.render import (
     ON_ONE_SUBJECT,
     goal_progress,
@@ -46,6 +48,7 @@ from app.services.briefing.slots import (
     figures_in,
     series_figures,
 )
+from app.services.briefing.work import TrackedWork
 
 
 def _fact_line(
@@ -103,7 +106,7 @@ class Facts:
     lead: int | None
 
 
-def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
+def work_stats(work: TrackedWork) -> list[BriefingStat]:
     """Build the stat row: one figure per non-empty tracked-work state, each subject once, in full."""
     figures = (
         (len({subject_key(d) for d in work.completed}), "done since last brief"),
@@ -115,16 +118,21 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
 
 @dataclass(frozen=True)
 class BriefSpan:
-    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items.
+    """The days a brief's calendar and what falls due cover, and how its facts name them.
 
-    days is how many local days the calendar covers; a span of several lists it under each
-    day's heading, with its count.
+    It starts starts_in days from today and covers days local days; a span of several lists
+    its calendar under each day's heading, with its count. words names it in the pool context.
     """
 
     heading: str
     empty: str
     no_items: str
+    words: str
+    starts_in: int = 0
     days: int = 1
+
+    def window(self, clock: UserClock) -> DayWindow:
+        return clock.days(clock.today + timedelta(days=self.starts_in), self.days)
 
 
 _NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
@@ -132,11 +140,14 @@ TODAY = BriefSpan(
     heading="Today's calendar",
     empty="The user's calendar has nothing today.",
     no_items=f"No tracked work, results or app items need them today. {_NO_CLAIM}",
+    words=TODAY_SPAN,
 )
 WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
     empty="The user's calendar has nothing in the week ahead.",
     no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
+    words=WEEK_AHEAD_SPAN,
+    starts_in=1,
     days=7,
 )
 
@@ -159,8 +170,8 @@ class FactSources:
     #: GAIA's tracked work by todo id; the user's own todos have no deliverable here.
     artifacts: dict[str, ArtifactFact]
     open_todos: int
-    #: The span's events, or why its calendar went unread: never an empty day.
-    calendar: list[BriefingEvent] | CalendarUnread
+    #: The calendar's read: the span's events, or why it went unread (never an empty day).
+    calendar: CalendarRead
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
     span: BriefSpan
@@ -243,7 +254,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 else _work_fact_line(fact_id, it, facts[fact_id], candidate, art, clock)
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
-    calendar = sources.calendar if isinstance(sources.calendar, list) else []
+    calendar = sources.calendar.events
     counts = _counts(placed, sources, len(calendar))
     voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
     if voiced:
@@ -342,10 +353,9 @@ def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
 
 
 def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources) -> str:
-    if isinstance(sources.calendar, CalendarUnread):
-        if sources.calendar.gap is CalendarGap.UNAVAILABLE:
-            return CALENDAR_UNAVAILABLE
-        return NO_CALENDAR_CONNECTED
+    gap = sources.calendar.gap
+    if gap is not None:
+        return CALENDAR_UNAVAILABLE if gap is CalendarGap.UNAVAILABLE else NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty
     if sources.span.days > 1:

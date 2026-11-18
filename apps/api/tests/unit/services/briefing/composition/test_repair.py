@@ -76,7 +76,7 @@ def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> Co
 
 
 def _lead(item: ComposedItem) -> ComposedLead:
-    return ComposedLead(kind="lead", item=item, offer="Send the reply I drafted")
+    return ComposedLead(kind="lead", item=item)
 
 
 def _chart(title: str) -> ComposedChart:

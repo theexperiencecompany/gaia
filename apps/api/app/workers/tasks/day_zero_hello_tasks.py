@@ -18,7 +18,8 @@ from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
-from app.services.briefing import context
+from app.services.briefing.clock import resolve_clock
+from app.services.briefing.goals import format_goal_block, stated_goals
 from app.services.briefing.schedule import next_brief_lands
 from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
@@ -95,12 +96,13 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="not_linked")
             return f"skip {user_id}: {platform} not linked"
 
-        goal_block, has_goal = context.format_goal_block(await context.stated_goals(user_id, user))
+        goals = await stated_goals(user_id, user)
+        has_goal = bool(goals)
         prompt = build_day_zero_hello_prompt(
             first_name=display_first_name(user) or "there",
-            goal_block=goal_block,
+            goal_block=format_goal_block(goals),
             has_goal=has_goal,
-            first_brief=next_brief_lands(user, context.resolve_clock(user.timezone).now_local),
+            first_brief=next_brief_lands(user, resolve_clock(user.timezone).now_local),
         )
         auth_user = build_user_context(user, auth_provider=None)
         reply = await run_silent_turn(

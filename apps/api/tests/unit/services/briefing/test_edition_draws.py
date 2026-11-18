@@ -3,9 +3,8 @@
 import pytest
 
 from app.constants.briefing import ArtFamily, BriefingBag
-from app.models.briefing_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.edition_draws import draw_from_bag, draw_stamp_or_artwork
+from app.services.briefing.edition_draws import draw_edition, draw_from_bag
 from app.services.briefing.editions.artworks import (
     artwork_catalogue,
     artwork_weights,
@@ -34,18 +33,6 @@ def _user_whose_bag_opens_on(slug: str) -> UserDocument:
     )
 
 
-def _payload(family: str) -> BriefingPayload:
-    return BriefingPayload(
-        kicker="k",
-        date="2026-10-14",
-        headline="h",
-        lede="l",
-        mood="clear",
-        caption="c",
-        template_family=family,
-    )
-
-
 @pytest.mark.unit
 class TestDrawFromBag:
     def test_only_an_eligible_member_is_drawn_and_the_others_keep_their_turn(self) -> None:
@@ -61,12 +48,12 @@ class TestDrawFromBag:
 
 
 @pytest.mark.unit
-class TestDrawStampOrArtwork:
+class TestDrawEdition:
     def test_a_framed_family_hangs_a_painting_that_fits_its_frame(self) -> None:
         family, unfit = _family_with_a_work_it_cannot_hang()
-        payload = _payload(family.value)
 
-        [drawn] = draw_stamp_or_artwork(_user_whose_bag_opens_on(unfit), payload)
+        edition = draw_edition(_user_whose_bag_opens_on(unfit), [], family.value)
 
-        assert payload.artwork_id == drawn.member
+        [drawn] = edition.draws
+        assert edition.artwork_id == drawn.member
         assert drawn.member in artworks_for(family)

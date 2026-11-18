@@ -21,10 +21,11 @@ from app.config.settings import settings
 from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
     EDITION_URL_TTL_DAYS,
+    BriefingKind,
     EditionVariant,
 )
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefDelivery, BriefingModel, BriefingPayload
+from app.models.briefing_models import BriefDelivery, BriefingModel, BriefingMood, BriefingPayload
 from app.services.briefing import edition_email, store
 from app.services.briefing.edition_image import delete_edition, edition_url
 from app.services.briefing.render import RenderedImage
@@ -52,7 +53,7 @@ def _payload() -> BriefingPayload:
         date=_DATE,
         headline="h",
         lede="l",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="c",
         template_family="postal",
     )
@@ -98,7 +99,7 @@ def _path(url: str) -> str:
 async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_url(
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
-    stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
     view = await briefing_view(stored)
 
     assert view.edition is not None
@@ -120,8 +121,8 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
 async def test_a_rerun_overwrites_the_one_image_its_brief_has(
     world: dict[str, BriefingModel], tmp_path: Path
 ) -> None:
-    first = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
-    second = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    first = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
+    second = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
 
     assert first.edition is not None and second.edition is not None
     key = first.edition.key
@@ -136,7 +137,7 @@ async def test_a_rerun_overwrites_the_one_image_its_brief_has(
 async def test_a_url_serves_nothing_once_tampered_retargeted_expired_or_deleted(
     world: dict[str, BriefingModel], client: AsyncClient
 ) -> None:
-    stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+    stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
     view = await briefing_view(stored)
     assert view.edition is not None
     url = _path(view.edition.image_url)

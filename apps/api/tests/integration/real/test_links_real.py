@@ -21,13 +21,14 @@ import pytest
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
+from app.constants.briefing import BriefingKind
 from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
 from app.constants.short_links import MAX_RESOLVE_MISSES
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
-from app.models.briefing_models import BriefDelivery, BriefingPayload
+from app.models.briefing_models import BriefDelivery, BriefingMood, BriefingPayload
 from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -937,7 +938,7 @@ class TestTheBriefsLink:
             date="2026-11-09",
             headline="Google Cloud waits",
             lede="One upload.",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="c",
             template_family="memo",
         )
@@ -950,7 +951,7 @@ class TestTheBriefsLink:
             stored = await brief_store.store_brief(
                 OWNER.user_id,
                 "2026-11-09",
-                "daily",
+                BriefingKind.DAILY,
                 payload,
                 BriefDelivery(push=True, notification_kind=NOTIFICATION_KIND_BRIEFING_DAILY),
             )

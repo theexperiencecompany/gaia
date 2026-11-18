@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import time_machine
 
+from app.constants.briefing import BriefingKind
 from app.models.briefing_models import BriefingCardData, EditionImage
 from app.models.chat_models import SystemPurpose
 from app.services.briefing.conversation import (
@@ -18,7 +19,7 @@ MODULE = "app.services.briefing.conversation"
 CARD = BriefingCardData(
     briefing_id="brief_1",
     date="2026-10-23",
-    kind="daily",
+    kind=BriefingKind.DAILY,
     headline="Three decisions are waiting",
     edition=EditionImage(image_url="https://cdn.test/brief_1.png", fold=0.3),
     edition_name="Air Mail",

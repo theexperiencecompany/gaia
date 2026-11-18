@@ -14,7 +14,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL, memory_note, signals_block
 from app.services.briefing.scouts.memory import remember
 

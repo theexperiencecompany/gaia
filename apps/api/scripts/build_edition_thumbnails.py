@@ -88,8 +88,7 @@ async def main() -> None:
     drop_stale(OUT, families)
     drop_stale(DEMO_OUT, families)
     for family in families:
-        payload = sample_edition_payload(family, RECIPIENT)
-        payload.link = SAMPLE_LINK
+        payload = sample_edition_payload(family, RECIPIENT).model_copy(update={"link": SAMPLE_LINK})
         rendered = await render_edition_png(payload)
         (OUT / f"{family}.webp").write_bytes(thumbnail(rendered.image))
         shown = await render_edition_png(demo_payload(family))

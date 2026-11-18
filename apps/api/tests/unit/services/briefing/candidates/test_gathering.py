@@ -38,8 +38,9 @@ from app.services.briefing.candidates.pool import (
     _one_per_thing,
     gather_candidates,
 )
-from app.services.briefing.context import TrackedWork, UserClock
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.service import ScoutSignals
+from app.services.briefing.work import TrackedWork
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
@@ -112,7 +113,9 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
 
 
 async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidates:
-    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, []))
+    return await gather_candidates(
+        USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, [], CLOCK.day_start(days_ago=-1))
+    )
 
 
 def _found(
@@ -189,7 +192,7 @@ class TestFoldingTwoFindsOfOneThing:
 class TestTheCalendarJoinsThePool:
     async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
-        sources = CandidateSources(TrackedWork(), _scouts(), events)
+        sources = CandidateSources(TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1))
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
@@ -335,7 +338,11 @@ class TestWhereGaiaCanAct:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
 
         gathered = await gather_candidates(
-            USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, events)
+            USER_ID,
+            CLOCK,
+            NOW,
+            NOW,
+            CandidateSources(work, scouts, events, CLOCK.day_start(days_ago=-1)),
         )
 
         assert [(c.source, c.gaia_acts) for c in gathered.pool.values()] == [

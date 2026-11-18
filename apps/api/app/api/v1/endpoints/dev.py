@@ -6,14 +6,11 @@ is mounted by ``create_app`` only when ``ENV == development`` and
 ``DEV_AUTH_BYPASS_EMAIL`` is set, so every route here 404s in production.
 """
 
-from collections.abc import Awaitable, Callable
-
 from fastapi import APIRouter, File, Form, Header, UploadFile, status
 from langgraph.errors import GraphRecursionError
 
 from app.constants.briefing import (
     BriefingKind,
-    BriefingRunOutcome,
 )
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.db.repositories.users import user_repository
@@ -28,9 +25,8 @@ from app.schemas.dev_schemas import (
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
-from app.services.briefing.daily import run_daily_briefing
 from app.services.briefing.errors import BriefingGenerationError
-from app.services.briefing.weekly import run_weekly_digest
+from app.services.briefing.pipeline import run_brief
 from app.services.dev_agent_service import run_executor_direct
 from app.services.dev_service import (
     attach_dev_file,
@@ -42,11 +38,6 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
-
-_BRIEFING_RUNS: dict[BriefingKind, Callable[[str], Awaitable[BriefingRunOutcome]]] = {
-    BriefingKind.DAILY: run_daily_briefing,
-    BriefingKind.WEEKLY: run_weekly_digest,
-}
 
 
 @router.post("/users")
@@ -146,7 +137,7 @@ async def run_briefing_now(kind: BriefingKind, email: str) -> DevBriefingRunResp
             code="dev_user_not_found",
         )
     try:
-        outcome = await _BRIEFING_RUNS[kind](user.id)
+        outcome = await run_brief(user.id, kind)
     except BriefingGenerationError as e:
         # The model's output failed validation: an upstream failure the harness must see.
         raise create_error(

@@ -8,18 +8,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
-from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
 from app.models.briefing_models import UnreadSource
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import Signal
 from app.models.todo_models import ExternalRefSource, TodoDocument
-from app.services.briefing.context import CalendarGap, StatedGoal, UserClock
+from app.services.briefing.calendar_read import CalendarGap
+from app.services.briefing.clock import DayWindow, UserClock
 from app.services.briefing.fact_pool.calendar_series import calendar_series
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.mail_series import (
@@ -30,8 +29,9 @@ from app.services.briefing.fact_pool.mail_series import (
 from app.services.briefing.fact_pool.quotes import quote_spans
 from app.services.briefing.fact_pool.run_series import run_series
 from app.services.briefing.fact_pool.signal_series import signal_series
-from app.services.briefing.fact_pool.window import SeriesWindow
 from app.services.briefing.fact_pool.work_series import work_series
+from app.services.briefing.goals import StatedGoal
+from app.services.briefing.work import BriefReads
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,8 @@ class PoolReads:
     calendar: Sequence[GoogleCalendarEventResource]
     goals: Sequence[StatedGoal]
     criteria: Mapping[str, str]
+    #: The run's one read of the user's work, which the work series and goals count from.
+    work: BriefReads
 
 
 def _distinct(todos: Sequence[TodoDocument]) -> list[TodoDocument]:
@@ -100,42 +102,36 @@ def _distinct(todos: Sequence[TodoDocument]) -> list[TodoDocument]:
 
 
 async def _series(
-    user_id: str, window: SeriesWindow, reads: PoolReads, now: datetime
-) -> tuple[list[DataSeries], list[TodoDocument]]:
-    """Run every series producer over the window; return the series and the todos finished in it."""
-    completed = await todo_repository.list_completed_since(user_id, since=window.start)
+    user_id: str, window: DayWindow, reads: PoolReads, now: datetime
+) -> list[DataSeries]:
+    """Run every series producer over the window."""
     threads = await todo_repository.list_external_ref_activity_since(
         user_id, ExternalRefSource.GMAIL_THREAD, since=window.start
     )
     verdicts = await email_verdict_repository.list_since(user_id, since=now - SORT_SPAN)
-    rhythm = await workflow_repository.find_system_workflows(user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS)
     runs = await workflow_executions_repository.list_run_moments_since(
-        user_id, window.start, exclude_workflow_ids=[w.id for w in rhythm]
+        user_id, window.start, exclude_workflow_ids=reads.work.rhythm_workflow_ids
     )
-    series = [
-        *work_series(completed, window),
+    return [
+        *work_series(reads.work.completed.since(window.start), window),
         *calendar_series(reads.calendar, window),
         *thread_series(threads, window),
         *sorted_mail_series(verdicts),
         *run_series(runs, window),
         *signal_series(reads.signals),
     ]
-    return series, completed
 
 
 async def build_fact_pool(
-    user_id: str, window: SeriesWindow, reads: PoolReads, context: PoolContext, now: datetime
+    user_id: str, window: DayWindow, reads: PoolReads, context: PoolContext, now: datetime
 ) -> FactPool:
     """Build the brief's fact pool: the numbered items, then every series, quote and goal."""
-    series, completed = await _series(user_id, window, reads, now)
+    completed = reads.work.completed.since(window.start).docs
     # Every open todo, so a goal's open count is whole: the user's own and GAIA's tracked ones.
-    open_todos = [
-        *await todo_repository.list_open_user_todos(user_id, limit=0),
-        *await todo_repository.list_active_tracked(user_id, limit=0),
-    ]
+    open_todos = [*reads.work.open_own, *reads.work.open_tracked]
     return FactPool(
         items=reads.items,
-        series=series,
+        series=await _series(user_id, window, reads, now),
         quotes=quote_spans(reads.items),
         goals=goal_states(reads.goals, _distinct([*completed, *open_todos]), now, window.dates[0]),
         context=context,

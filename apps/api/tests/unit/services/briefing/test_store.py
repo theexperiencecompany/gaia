@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.constants.briefing import BriefingKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import (
     BriefDelivery,
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     EditionRender,
 )
@@ -30,7 +32,7 @@ def _payload() -> BriefingPayload:
         date=_DATE,
         headline="h",
         lede="l",
-        mood="clear",
+        mood=BriefingMood.CLEAR,
         caption="c",
         template_family="memo",
     )
@@ -65,14 +67,15 @@ class TestStoreBrief:
     ) -> None:
         payload = _payload()
 
-        stored = await store.store_brief(_USER, _DATE, "daily", payload, _PLAN)
+        stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, payload, _PLAN)
 
         seams["briefing_id_for"].assert_awaited_once_with(_USER, _DATE, "daily")
         seams["optional_short_link"].assert_awaited_once_with(
             _USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID
         )
-        assert payload.link == "https://heygaia.link/abc"
-        assert seams["render_edition_png"].await_args.args == (payload,)
+        linked = payload.model_copy(update={"link": "https://heygaia.link/abc"})
+        assert payload.link is None
+        assert seams["render_edition_png"].await_args.args == (linked,)
         seams["store_edition"].assert_awaited_once_with(_USER, _BRIEF_ID, b"png")
         [brief] = seams["upsert_briefing"].await_args.args
         assert (brief.id, brief.user_id, brief.date, brief.kind) == (
@@ -81,7 +84,7 @@ class TestStoreBrief:
             _DATE,
             "daily",
         )
-        assert (brief.payload, brief.delivery) == (payload, _PLAN)
+        assert (brief.payload, brief.delivery) == (linked, _PLAN)
         assert brief.edition == EditionRender(
             key="edition-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
         )
@@ -104,7 +107,7 @@ class TestStoreBrief:
         seams["upsert_briefing"].side_effect = stored
         seams["optional_short_link"].side_effect = minted
 
-        await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+        await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
 
         assert order == ["stored", "minted", "stored with its edition"]
 
@@ -116,7 +119,7 @@ class TestStoreBrief:
             "app.services.briefing.message.settings.FRONTEND_URL", "https://app.test"
         )
 
-        stored = await store.store_brief(_USER, _DATE, "daily", _payload(), _PLAN)
+        stored = await store.store_brief(_USER, _DATE, BriefingKind.DAILY, _payload(), _PLAN)
 
         assert stored.payload.link == "https://app.test/brief/brief-1"
 
@@ -125,7 +128,7 @@ class TestStoreBrief:
     ) -> None:
         seams["render_edition_png"].return_value = RenderedImage(image=b"png")
 
-        await store.store_brief(_USER, _DATE, "weekly", _payload(), _PLAN)
+        await store.store_brief(_USER, _DATE, BriefingKind.WEEKLY, _payload(), _PLAN)
 
         assert seams["upsert_briefing"].await_args.args[0].edition == EditionRender(
             key="edition-key"
@@ -141,7 +144,7 @@ class TestStoreNote:
         )
         payload = _payload()
 
-        stored = await store.store_note(_USER, _DATE, "weekly", payload, _PLAN)
+        stored = await store.store_note(_USER, _DATE, BriefingKind.WEEKLY, payload, _PLAN)
 
         [brief] = seams["upsert_briefing"].await_args.args
         assert (brief.id, brief.kind, brief.payload) == (_BRIEF_ID, "weekly", payload)

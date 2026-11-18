@@ -37,7 +37,7 @@ from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
-from app.services.briefing import context
+from app.services.briefing.clock import resolve_clock
 from app.services.briefing.held import daily_brief_is_live, release_held_items
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
@@ -185,9 +185,9 @@ async def _next_run_base(user: UserDocument, kind: BriefingKind) -> datetime:
     a second one; else from the start of today, so a slot moved earlier than now still
     fires today instead of being skipped (a past-due next run fires at once).
     """
-    clock = context.resolve_clock(user.timezone)
+    clock = resolve_clock(user.timezone)
     delivered = await briefing_repository.was_delivered(user.id, clock.date_str, kind)
-    return context.day_start_utc(clock, days_ago=-1 if delivered else 0)
+    return clock.day_start(days_ago=-1 if delivered else 0)
 
 
 async def _apply_frequency(workflow: Workflow, user: UserDocument, enabled: bool) -> None:

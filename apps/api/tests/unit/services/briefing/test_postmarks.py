@@ -10,6 +10,7 @@ from tests.helpers import captured_wide_event
 from app.config.settings import settings
 from app.models.briefing_models import (
     BriefingModel,
+    BriefingMood,
     BriefingPayload,
     EditionImage,
     EditionRender,
@@ -44,7 +45,7 @@ def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
             date=date,
             headline="Postcard",
             lede="From afar.",
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="Onward.",
             template_family="postal",
             stamp_city=stamp_city,

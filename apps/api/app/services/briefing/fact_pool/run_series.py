@@ -9,7 +9,8 @@ from collections.abc import Sequence
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE
 from app.models.brief_pool_models import DataSeries
 from app.models.workflow_execution_models import RunMoment, WorkflowExecutionStatus
-from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series, per_day
+from app.services.briefing.clock import DayWindow
+from app.services.briefing.fact_pool.series import SeriesName, day_series, per_day
 
 _RUN_SERIES: dict[WorkflowExecutionStatus, SeriesName] = {
     "success": SeriesName(
@@ -29,7 +30,7 @@ _RUN_SERIES: dict[WorkflowExecutionStatus, SeriesName] = {
 }
 
 
-def run_series(runs: Sequence[RunMoment], window: SeriesWindow) -> list[DataSeries]:
+def run_series(runs: Sequence[RunMoment], window: DayWindow) -> list[DataSeries]:
     """Return the runs that succeeded and failed on each day; a series with none is left out."""
     found = (
         day_series(

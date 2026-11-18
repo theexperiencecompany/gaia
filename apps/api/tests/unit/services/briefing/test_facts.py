@@ -28,7 +28,8 @@ from app.models.briefing_models import (
 )
 from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
-from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
+from app.services.briefing.calendar_read import CalendarGap, CalendarRead
+from app.services.briefing.clock import UserClock
 from app.services.briefing.facts import (
     TODAY,
     WEEK_AHEAD,
@@ -68,7 +69,7 @@ def _sources(
     *,
     artifacts: dict[str, ArtifactFact] | None = None,
     open_todos: int = 0,
-    calendar: list[BriefingEvent] | CalendarUnread | None = None,
+    calendar: list[BriefingEvent] | CalendarRead | None = None,
     event_ids: list[int] | None = None,
     span: BriefSpan = TODAY,
     blocks: list[BriefBlock] | None = None,
@@ -76,7 +77,9 @@ def _sources(
     return FactSources(
         artifacts=artifacts or {},
         open_todos=open_todos,
-        calendar=[] if calendar is None else calendar,
+        calendar=calendar
+        if isinstance(calendar, CalendarRead)
+        else CalendarRead(events=calendar or []),
         event_ids=event_ids or [],
         span=span,
         todos_note=None,
@@ -224,7 +227,7 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-11", start="15:00", title="Board call"),
             BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
         ]
-        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.")
+        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.", words="this week")
 
         facts = build_facts(
             Chosen(sections=[], picked=[]),
@@ -245,7 +248,9 @@ class TestTheCalendarAndTheCharts:
             BriefingEvent(date="2026-11-12", start=None, title="Offsite"),
             BriefingEvent(date="2026-11-13", start="09:30", title="Dentist"),
         ]
-        span = BriefSpan(heading="The days ahead", empty="Nothing.", no_items="None.", days=days)
+        span = BriefSpan(
+            heading="The days ahead", empty="Nothing.", no_items="None.", words="ahead", days=days
+        )
 
         facts = build_facts(
             Chosen(sections=[], picked=[]),
@@ -283,7 +288,7 @@ class TestTheCalendarAndTheCharts:
         ]
 
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
-        unconnected = _sources(calendar=CalendarUnread(CalendarGap.NOT_CONNECTED))
+        unconnected = _sources(calendar=CalendarRead(gap=CalendarGap.NOT_CONNECTED))
 
         facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
 
@@ -292,7 +297,7 @@ class TestTheCalendarAndTheCharts:
 
     def test_a_calendar_that_did_not_answer_is_never_an_empty_day(self) -> None:
         """Regression: a calendar read that failed told the voice the day was free."""
-        unread = _sources(calendar=CalendarUnread(CalendarGap.UNAVAILABLE))
+        unread = _sources(calendar=CalendarRead(gap=CalendarGap.UNAVAILABLE))
 
         facts = build_facts(Chosen(sections=[], picked=[]), unread, _CLOCK)
 
@@ -505,7 +510,7 @@ class TestTheWeekRecap:
         sources = FactSources(
             artifacts={},
             open_todos=0,
-            calendar=[],
+            calendar=CalendarRead(),
             event_ids=[],
             span=WEEK_AHEAD,
             todos_note=None,
@@ -537,7 +542,7 @@ class TestTheClosingLines:
         sources = FactSources(
             artifacts={},
             open_todos=0,
-            calendar=[],
+            calendar=CalendarRead(),
             event_ids=[],
             span=WEEK_AHEAD,
             todos_note="The user's own todo list is empty.",

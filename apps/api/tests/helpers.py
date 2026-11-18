@@ -66,7 +66,7 @@ from app.constants.trigger_gates import GateKind
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.auth_utils import session_hint_cookie_domain

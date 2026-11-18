@@ -80,9 +80,9 @@ class TestBriefingEditions:
         )
         user = await user_repository.get(FAKE_USER.user_id)
         assert user is not None
-        draw = draw_edition(user, [SectionBlock(kind="items", section=0)])
-        assert draw.family.next_state.order.count("swiss") == 2
-        assert "menu" not in draw.family.next_state.order
+        draw = draw_edition(user, [SectionBlock(kind="items", section=0)], None)
+        assert draw.draws[0].next_state.order.count("swiss") == 2
+        assert "menu" not in draw.draws[0].next_state.order
 
     async def test_turning_every_edition_off_is_refused_and_nothing_is_stored(
         self, client: AsyncClient, mongo_db, captured: MagicMock
