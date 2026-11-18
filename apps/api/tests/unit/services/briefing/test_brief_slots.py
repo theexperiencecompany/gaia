@@ -58,6 +58,32 @@ class TestRendering:
             "the deck and the MSA"
         )
 
+    @pytest.mark.parametrize(
+        ("written", "rendered"),
+        [
+            ("were due [[fact:1.time]] and [[fact:2.time]].", "were due Fri Nov 13."),
+            (
+                "due [[fact:1.time]], [[fact:2.time]] and [[fact:3.time]], respectively.",
+                "due Fri Nov 13.",
+            ),
+            ("due [[fact:1.time]] and [[fact:4.time]].", "due Fri Nov 13 and Sat Nov 14."),
+        ],
+        ids=["two alike", "three alike, respectively", "different"],
+    )
+    def test_a_list_of_slots_that_render_alike_says_the_value_once(
+        self, written: str, rendered: str
+    ) -> None:
+        """Replay of Dhruv's Nov 14: "were due Fri Nov 13 and Fri Nov 13"."""
+        values = SlotValues(
+            facts={
+                n: BriefFact(title=f"Task {n}", time="Sat Nov 14" if n == 4 else "Fri Nov 13")
+                for n in range(1, 5)
+            },
+            counts={},
+        )
+
+        assert render_slots(written, values, {}) == rendered
+
     def test_a_title_holding_a_slot_shape_is_not_filled_again(self) -> None:
         values = SlotValues(facts={1: BriefFact(title="Read [[fact:1]]")}, counts={})
 

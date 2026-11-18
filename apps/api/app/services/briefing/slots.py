@@ -115,6 +115,11 @@ _SLOT_RESIDUE_RE = re.compile(
 _WEB_ADDRESS_RE = re.compile(r"\S*(?:://|www\.)\S*")
 _TITLE_SLOT_RE = re.compile(rf"\[\[{_FACT}:(\d+)\]\]")
 _ANY_SLOT_RE = re.compile(rf"\[\[(?:{_KINDS}):\w+(?:\.\w+)?\]\]")
+# A value slot, or several listed ("[[fact:1.time]], [[fact:2.time]] and [[fact:3.time]]").
+_SLOT_LIST_RE = re.compile(
+    rf"{_ANY_SLOT_RE.pattern}(?:(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+){_ANY_SLOT_RE.pattern})*"
+    r"(?:,\s*respectively)?"
+)
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
@@ -403,7 +408,15 @@ def render_slots(text: str, values: SlotValues, links: Mapping[int, str]) -> str
         linked.add(fact_id)
         return f"[{phrase}]({url})"
 
-    return _VALUE_SLOT_RE.sub(lambda m: _value(m, values), LINK_SLOT_RE.sub(link, text))
+    def fill(listed: re.Match[str]) -> str:
+        """Fill the slots; a list of them that all render one value says it once."""
+        written = listed.group(0)
+        said = {_value(m, values) for m in _VALUE_SLOT_RE.finditer(written)}
+        if len(said) == 1 and len(_VALUE_SLOT_RE.findall(written)) > 1:
+            return said.pop()
+        return _VALUE_SLOT_RE.sub(lambda m: _value(m, values), written)
+
+    return _SLOT_LIST_RE.sub(fill, LINK_SLOT_RE.sub(link, text))
 
 
 def referenced_facts(text: str) -> set[int]:
