@@ -5,12 +5,13 @@ the daily pool holds is remembered here, under GAIA's own key for it.
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from app.constants.briefing import GAIA_SOURCE
+from app.constants.briefing import GAIA_SOURCE, OVERDUE_RESHOW_DAYS
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.brief_candidate_models import BriefCandidate, GaiaRef, GaiaRefKind
 from app.models.scout_models import Sighting
+from app.services.briefing.clock import UserClock
 
 
 def sighting(candidate: BriefCandidate) -> Sighting | None:
@@ -52,3 +53,13 @@ async def remember_candidates(
         remembered.append(candidate.model_copy(update={"memory": memory, "moved": moved}))
     await signal_memory_repository.record_seen(user_id, list(keyed.values()), now)
     return remembered
+
+
+def rests_today(candidate: BriefCandidate, clock: UserClock) -> bool:
+    """Whether a daily brief holds back an overdue item: past its first day overdue and shown too recently."""
+    memory = candidate.memory
+    if candidate.due_at is None or memory is None or memory.last_shown is None:
+        return False
+    first_overdue = clock.day_of(candidate.due_at) + timedelta(days=1)
+    shown_ago = (clock.today - clock.day_of(memory.last_shown)).days
+    return candidate.is_repeat and clock.today > first_overdue and shown_ago < OVERDUE_RESHOW_DAYS

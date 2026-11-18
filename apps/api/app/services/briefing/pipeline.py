@@ -27,7 +27,7 @@ from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead, read_calendar
-from app.services.briefing.candidates.memory import sighting
+from app.services.briefing.candidates.memory import rests_today, sighting
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
@@ -181,12 +181,16 @@ async def _read(
 
 
 async def _pool(run: Run) -> FactPool:
+    """Build the brief's fact pool; a daily leaves out the overdue items resting today, a digest none."""
     reads = run.reads
+    items = reads.gathered.pool
+    if not run.spec.recaps_week:
+        items = {i: c for i, c in items.items() if not rests_today(c, run.clock)}
     return await build_fact_pool(
         run.user.id,
         reads.window,
         PoolReads(
-            items=reads.gathered.pool,
+            items=items,
             signals=[r.signal for r in reads.scouts.remembered],
             calendar=reads.calendar.raw,
             goals=run.standing.goals,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import call
 
 import pytest
@@ -17,10 +17,12 @@ from tests.briefing_run_world import (
     composed,
     failed_run,
     held,
+    own,
     remembered,
     scouted,
     skipped,
     tracked,
+    weekly_reply,
     wrote,
 )
 
@@ -35,6 +37,7 @@ from app.models.hil_models import ApprovalLedgerDocument
 from app.models.scout_models import (
     ScoutSkipReason,
     Sighting,
+    SignalMemoryDocument,
 )
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.work import TrackedWork
@@ -259,3 +262,61 @@ class TestSourcesReachTheBrief:
 
         world.post.assert_awaited_once()
         assert world.capture.call_args.args[1].signal_count == 1
+
+
+#: Noon, Kolkata, on a day before the run's Wednesday 14 October.
+_NOON_MON_12 = datetime(2026, 10, 12, 6, 30, tzinfo=UTC)
+_NOON_TUE_13 = datetime(2026, 10, 13, 6, 30, tzinfo=UTC)
+
+
+class TestAnOverdueItemRests:
+    """An overdue item is shown the day it goes overdue, then at most every 3 days; a digest always may."""
+
+    @pytest.mark.parametrize(
+        ("kind", "due", "last_shown", "offered"),
+        [
+            (BriefingKind.DAILY, _NOON_MON_12, NOW - timedelta(days=1), False),
+            (BriefingKind.DAILY, _NOON_MON_12, NOW - timedelta(days=2), False),
+            (BriefingKind.DAILY, _NOON_MON_12, NOW - timedelta(days=3), True),
+            (BriefingKind.DAILY, _NOON_MON_12, None, True),
+            (BriefingKind.DAILY, _NOON_TUE_13, NOW - timedelta(days=1), True),
+            (BriefingKind.DAILY, NOW + timedelta(hours=2), NOW - timedelta(days=1), True),
+            (BriefingKind.WEEKLY, _NOON_MON_12, NOW - timedelta(days=1), True),
+        ],
+        ids=[
+            "shown-yesterday",
+            "shown-2-days-ago",
+            "shown-3-days-ago",
+            "never-shown",
+            "first-day-overdue",
+            "due-today",
+            "weekly",
+        ],
+    )
+    async def test_the_composer_is_offered_it_only_on_its_days(
+        self,
+        world: World,
+        kind: BriefingKind,
+        due: datetime,
+        last_shown: datetime | None,
+        offered: bool,
+    ) -> None:
+        world.replies = [weekly_reply() if kind is BriefingKind.WEEKLY else wrote("A morning.")]
+        world.todos.add(own("grant", "Grant application", due_date=due))
+        world.memory = [
+            SignalMemoryDocument(
+                user_id=USER,
+                integration_id="gaia",
+                external_id="todo:grant",
+                first_seen=NOW - timedelta(days=5),
+                times_shown=0 if last_shown is None else 1,
+                last_shown=last_shown,
+                last_state="you",
+            )
+        ]
+
+        await run_brief(USER, kind)
+
+        assert world.pool is not None
+        titles = [c.title for c in world.pool.items.values()]
+        assert ("Grant application" in titles) is offered

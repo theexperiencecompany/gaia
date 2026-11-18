@@ -60,6 +60,8 @@ PENDING_BRIEF_ITEM_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
 
 #: The most candidates one source puts in a brief's pool, so the composition prompt stays bounded.
 BRIEF_POOL_PER_SOURCE: Final[int] = 40
+#: Past its first day overdue, a daily brief shows an overdue item at most once in this many days.
+OVERDUE_RESHOW_DAYS: Final[int] = 3
 
 
 # Masthead labels, set by code on each kind's payload (never by the model).
