@@ -1,15 +1,15 @@
-"""Idempotent migration: bring every stored brief to the edition and delivery shape briefs now use.
+"""Expand migration: bring every stored brief to the edition and delivery shape briefs now use.
 
-1. Editions: a brief stored before editions moved kept a public Cloudinary delivery URL in
+1. Editions: a brief stored before editions moved keeps a public Cloudinary delivery URL in
    edition_image_url, beside edition_fold and edition_paper. Its image is downloaded, stored as the
-   brief's edition variants under its edition key, recorded as edition {key, fold, paper}, and the
-   Cloudinary original is destroyed; a brief with no image (a quiet note) only loses the old fields.
+   brief's edition variants under its edition key and recorded as edition {key, fold, paper}. The
+   old fields and the Cloudinary original stay: the previous release serves while the release step
+   runs and still reads them. contract() drops both a release later.
 2. Deliveries: a brief that reached a channel before deliveries were planned is recorded as
    delivered (every step done, completed when it was created), so a run today neither resends it
    nor drops its stamp.
 
-Re-running skips every brief already moved. Run it in the post-deploy step, before the first
-brief runs on the new code.
+Re-running skips every brief already copied.
 
     cd apps/api && uv run python -m scripts.migrate_brief_storage [--apply]
 """
@@ -43,22 +43,15 @@ def _public_id(delivery_url: str) -> str:
     return path.split("/v1/", 1)[1]
 
 
-async def _move_editions(apply: bool, mode: str) -> None:
-    """Move each legacy edition image into the private store and record its key."""
-    print(f"[{mode}] Moving brief edition images off Cloudinary\n")
-    query = {"edition_image_url": {"$exists": True}}
-    moved = cleared = 0
+async def _copy_editions(apply: bool, mode: str) -> None:
+    """Copy each legacy edition image into the private store and record its key."""
+    print(f"[{mode}] Copying brief edition images off Cloudinary\n")
+    query = {"edition_image_url": {"$type": "string"}, "edition": {"$exists": False}}
+    copied = 0
     async with httpx.AsyncClient(timeout=BLOB_DOWNLOAD_TIMEOUT_SECONDS) as client:
         async for doc in briefings_collection.find(query):
-            url = doc.get("edition_image_url")
-            if url is None:
-                cleared += 1
-                if apply:
-                    await briefings_collection.update_one(
-                        {"_id": doc["_id"]}, {"$unset": _LEGACY_FIELDS}
-                    )
-                continue
-            moved += 1
+            url = doc["edition_image_url"]
+            copied += 1
             print(f"  {doc['_id']}: {url}")
             if not apply:
                 continue
@@ -69,12 +62,10 @@ async def _move_editions(apply: bool, mode: str) -> None:
                 key=key, fold=doc.get("edition_fold"), paper=doc.get("edition_paper")
             )
             await briefings_collection.update_one(
-                {"_id": doc["_id"]},
-                {"$set": {"edition": edition.model_dump()}, "$unset": _LEGACY_FIELDS},
+                {"_id": doc["_id"]}, {"$set": {"edition": edition.model_dump()}}
             )
-            await CloudinaryBlobStore().delete(doc["user_id"], _public_id(url))
 
-    print(f"\n[{mode}] Editions done. moved={moved} notes_cleared={cleared}")
+    print(f"\n[{mode}] Editions done. copied={copied}")
 
 
 async def _complete_deliveries(apply: bool, mode: str) -> None:
@@ -102,12 +93,30 @@ async def _complete_deliveries(apply: bool, mode: str) -> None:
 
 
 async def migrate(apply: bool) -> None:
-    """Run both moves; each skips what an earlier run already moved."""
+    """Run both copies; each skips what an earlier run already copied."""
     mode = "APPLY" if apply else "DRY RUN"
-    await _move_editions(apply, mode)
+    await _copy_editions(apply, mode)
     await _complete_deliveries(apply, mode)
     if not apply:
         print("Re-run with --apply to write these changes.")
+
+
+async def contract(apply: bool) -> int:
+    """Copy what the previous release stored since, then destroy the Cloudinary originals and drop the old fields."""
+    await migrate(apply)
+    mode = "APPLY" if apply else "DRY RUN"
+    legacy = {"edition_image_url": {"$exists": True}}
+    dropped = 0
+    async for doc in briefings_collection.find(legacy, {"user_id": 1, "edition_image_url": 1}):
+        dropped += 1
+        if not apply:
+            continue
+        url = doc["edition_image_url"]
+        if url is not None:
+            await CloudinaryBlobStore().delete(doc["user_id"], _public_id(url))
+        await briefings_collection.update_one({"_id": doc["_id"]}, {"$unset": _LEGACY_FIELDS})
+    print(f"[{mode}] Dropped the legacy edition fields from briefs={dropped}")
+    return dropped
 
 
 if __name__ == "__main__":

@@ -1,12 +1,12 @@
-"""Idempotent migration: move each user's briefing state off the user document into briefing_state.
+"""Expand migration: copy each user's briefing state off the user document into briefing_state.
 
 briefing_schedule, briefing_editions, briefing_bootstrap, briefing_dormancy, day_zero_hello and
-briefing_shuffle_bags become the user's briefing_state row (schedule, editions, bootstrap,
-dormancy, day_zero_hello, shuffle_bags) and leave the user document. The post-deploy step runs
-beside a worker already on the new code, so a value the row holds wins over the moved one, and
-dormancy and the shuffle bags merge key by key, as the new code writes them. Every moved value
-is validated first, so a malformed one stops the run before anything is written. Re-running
-moves nothing.
+briefing_shuffle_bags are copied into the user's briefing_state row (schedule, editions,
+bootstrap, dormancy, day_zero_hello, shuffle_bags). The user document keeps them: the previous
+release serves while the release step runs and still reads them there. contract() drops them a
+release later. A value the row already holds wins, and dormancy and the shuffle bags merge key
+by key, as the new code writes them. Every value is validated first, so a malformed one stops
+the run before anything is written. Re-running copies nothing.
 
     cd apps/api && uv run python -m scripts.migrate_briefing_state [--apply]
 """
@@ -29,6 +29,7 @@ _MOVED: dict[str, str] = {
 }
 #: The fields the new code writes key by key, so they move key by key.
 _MERGED_BY_KEY = frozenset({"dormancy", "shuffle_bags"})
+_HAS_OLD_FIELD = {"$or": [{old: {"$exists": True}} for old in _MOVED]}
 
 users_collection = get_async_collection("users")
 briefing_state_collection = get_async_collection("briefing_state")
@@ -47,20 +48,32 @@ def _moved_paths(user_id: str, doc: Mapping[str, object]) -> dict[str, object]:
     return paths
 
 
+def _missing(paths: Mapping[str, object], row: Mapping[str, object] | None) -> dict[str, object]:
+    """Return the paths the user's row does not hold yet."""
+
+    def held(path: str) -> bool:
+        value: object = row
+        for part in path.split("."):
+            value = value.get(part) if isinstance(value, Mapping) else None
+        return value is not None
+
+    return {path: value for path, value in paths.items() if not held(path)}
+
+
 async def migrate(apply: bool) -> int:
-    """Move every user's briefing fields into their briefing_state row; return how many users moved."""
+    """Copy every user's briefing fields into their briefing_state row; return how many users it copied."""
     mode = "APPLY" if apply else "DRY RUN"
-    print(f"[{mode}] Moving briefing state off the user documents\n")
-    query = {"$or": [{old: {"$exists": True}} for old in _MOVED]}
-    moved = 0
-    async for doc in users_collection.find(query, dict.fromkeys(_MOVED, 1)):
+    print(f"[{mode}] Copying briefing state off the user documents\n")
+    copied = 0
+    async for doc in users_collection.find(_HAS_OLD_FIELD, dict.fromkeys(_MOVED, 1)):
         user_id = str(doc["_id"])
-        paths = _moved_paths(user_id, doc)
-        moved += 1
-        print(f"  {user_id}: {sorted(paths)}")
-        if not apply:
+        row = await briefing_state_collection.find_one({"user_id": user_id})
+        paths = _missing(_moved_paths(user_id, doc), row)
+        if not paths:
             continue
-        if paths:
+        copied += 1
+        print(f"  {user_id}: {sorted(paths)}")
+        if apply:
             fills = {
                 path: {"$ifNull": [f"${path}", {"$literal": value}]}
                 for path, value in paths.items()
@@ -68,14 +81,22 @@ async def migrate(apply: bool) -> int:
             await briefing_state_collection.update_one(
                 {"user_id": user_id}, [{"$set": fills}], upsert=True
             )
-        await users_collection.update_one(
-            {"_id": doc["_id"]}, {"$unset": dict.fromkeys(_MOVED, "")}
-        )
 
-    print(f"\n[{mode}] Done. users={moved}")
+    print(f"\n[{mode}] Done. users={copied}")
     if not apply:
         print("Re-run with --apply to write these changes.")
-    return moved
+    return copied
+
+
+async def contract(apply: bool) -> int:
+    """Copy what the previous release wrote since, then drop the old user fields; return how many users lose them."""
+    await migrate(apply)
+    mode = "APPLY" if apply else "DRY RUN"
+    dropped = await users_collection.count_documents(_HAS_OLD_FIELD)
+    if apply:
+        await users_collection.update_many(_HAS_OLD_FIELD, {"$unset": dict.fromkeys(_MOVED, "")})
+    print(f"[{mode}] Dropped the old briefing fields from users={dropped}")
+    return dropped
 
 
 if __name__ == "__main__":

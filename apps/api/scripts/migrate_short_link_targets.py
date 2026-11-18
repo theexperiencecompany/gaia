@@ -1,11 +1,12 @@
-"""One-time migration: give every short link written before typed targets its target reference.
+"""Expand migration: give every short link written before typed targets its target reference.
 
 Links minted before it carry target_type and a target_id string, a workspace file's
 being "<conversation_id>/<path>" under the type "session_artifact". This writes each
-one's target (a record's {type, id}, a workspace file's {type, conversation_id,
-path}), drops the two old fields, and drops the indexes keyed on them so the API's
-index build makes the new ones. Short links never reached production; this is for
-the databases that ran the branch (local dev and brief-eval copies).
+one's target (a record's {type, id}, a workspace file's {type, conversation_id, path})
+and drops the indexes keyed on the old fields: their unique live-target key would refuse
+every second new-shape link, and their names block the API's build of the new ones. The
+old fields stay until contract() drops them a release later. Short links never reached
+production; this is for the databases that ran the branch (local dev and brief-eval copies).
 
     cd apps/api && uv run python -m scripts.migrate_short_link_targets [--apply]
 
@@ -57,18 +58,27 @@ async def old_shape_index_names() -> list[str]:
 async def migrate(*, apply: bool) -> tuple[int, list[str]]:
     """Give each old-shape link its target and drop the old indexes; return what was (or would be) changed."""
     collection = get_async_collection(COLLECTION)
-    old = {OLD_TYPE_FIELD: {"$exists": True}}
-    planned = [(doc["_id"], target_of(doc)) async for doc in collection.find(old)]
+    untargeted = {OLD_TYPE_FIELD: {"$exists": True}, "target": {"$exists": False}}
+    planned = [(doc["_id"], target_of(doc)) async for doc in collection.find(untargeted)]
     indexes = await old_shape_index_names()
     if apply:
         for index in indexes:
             await collection.drop_index(index)
         for doc_id, target in planned:
-            await collection.update_one(
-                {"_id": doc_id, **old},
-                {"$set": {"target": target}, "$unset": {OLD_TYPE_FIELD: "", OLD_ID_FIELD: ""}},
-            )
+            await collection.update_one({"_id": doc_id, **untargeted}, {"$set": {"target": target}})
     return len(planned), indexes
+
+
+async def contract(*, apply: bool) -> int:
+    """Target what the previous release minted since, then drop the old fields; return how many links lose them."""
+    await migrate(apply=apply)
+    collection = get_async_collection(COLLECTION)
+    old = {OLD_TYPE_FIELD: {"$exists": True}}
+    dropped = await collection.count_documents(old)
+    if apply:
+        await collection.update_many(old, {"$unset": {OLD_TYPE_FIELD: "", OLD_ID_FIELD: ""}})
+    print(f"{'APPLIED' if apply else 'DRY RUN'}: old target fields dropped from links={dropped}")
+    return dropped
 
 
 async def main(apply: bool) -> None:

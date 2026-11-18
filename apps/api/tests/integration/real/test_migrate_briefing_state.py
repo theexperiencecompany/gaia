@@ -1,4 +1,4 @@
-"""The briefing state migration over real Mongo: user-document briefing fields read back from briefing_state."""
+"""The briefing state expand and contract migrations over real Mongo: user-document fields read back from briefing_state."""
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -75,7 +75,7 @@ async def test_a_dry_run_counts_the_users_and_writes_nothing(store: _Store) -> N
     assert await store.users.count_documents({"briefing_schedule": {"$exists": True}}) == 1
 
 
-async def test_every_field_moves_to_the_users_row_and_leaves_the_user_document(
+async def test_every_field_is_copied_to_the_users_row_and_stays_on_the_user_document(
     store: _Store,
 ) -> None:
     user = _old_user(**_EVERY_FIELD)
@@ -95,12 +95,10 @@ async def test_every_field_moves_to_the_users_row_and_leaves_the_user_document(
             BriefingBag.STAMP_CITY: ShuffleBag.model_validate(_CITY_BAG),
         },
     )
-    left = await store.users.find_one({"_id": user["_id"]})
-    assert left is not None
-    assert set(left) == {"_id", "email", "timezone"}
+    assert await store.users.find_one({"_id": user["_id"]}) == user
 
 
-async def test_a_second_apply_moves_nothing(store: _Store) -> None:
+async def test_a_second_apply_copies_nothing(store: _Store) -> None:
     user = _old_user(**_EVERY_FIELD)
     await store.users.insert_one(user)
     await migration.migrate(apply=True)
@@ -142,3 +140,27 @@ async def test_a_malformed_value_stops_the_run_before_it_writes(store: _Store) -
 
     assert await store.states.count_documents({}) == 0
     assert await store.users.count_documents({"briefing_shuffle_bags": {"$exists": True}}) == 1
+
+
+async def test_contract_copies_what_the_previous_release_wrote_since_then_drops_the_old_fields(
+    store: _Store,
+) -> None:
+    user = _old_user(briefing_schedule={"frequency": "weekdays", "hour": 7})
+    user_id = str(user["_id"])
+    await store.users.insert_one(user)
+    await migration.migrate(apply=True)
+    hello = {"sent_at": _SINCE, "platform": "telegram"}
+    await store.users.update_one({"_id": user["_id"]}, {"$set": {"day_zero_hello": hello}})
+
+    assert await migration.contract(apply=False) == 1
+    assert await store.users.count_documents({"day_zero_hello": {"$exists": True}}) == 1
+
+    assert await migration.contract(apply=True) == 1
+
+    state = await briefing_state_repository.state_for(user_id)
+    assert state.schedule == BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
+    assert state.day_zero_hello == DayZeroHello(sent_at=_SINCE, platform="telegram")
+    left = await store.users.find_one({"_id": user["_id"]})
+    assert left is not None
+    assert set(left) == {"_id", "email", "timezone"}
+    assert await migration.contract(apply=True) == 0

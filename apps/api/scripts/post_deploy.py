@@ -31,7 +31,7 @@ from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delive
 from scripts.provision_daily_briefings import rollout as provision_daily_briefings
 from scripts.resync_brief_schedules import resync as resync_brief_schedules
 
-#: Order matters: shapes move before anything reads them (links, editions, briefing state),
+#: Order matters: shapes are copied before anything reads them (links, editions, briefing state),
 #: activity is backfilled before dormancy reads it, briefs exist before the desk follows them,
 #: and every brief workflow is provisioned before the resync moves it to its slot minute.
 POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (

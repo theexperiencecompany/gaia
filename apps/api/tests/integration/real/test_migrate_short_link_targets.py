@@ -1,4 +1,4 @@
-"""The short-link target migration over real Mongo: old-shape links read as typed targets afterwards."""
+"""The short-link target expand and contract migrations over real Mongo: old-shape links read as typed targets."""
 
 from collections.abc import AsyncIterator
 import uuid
@@ -66,7 +66,7 @@ async def test_old_links_get_typed_targets_and_the_new_indexes_build(
     file = await short_link_repository.get_live_for_target(OWNER, FILE)
     assert (todo and todo.slug, file and file.slug) == ("todo1", "file1")
     assert await short_link_repository.live_workspace_files_in(OWNER, "conv-1") == [FILE]
-    assert await links.count_documents({"target_type": {"$exists": True}}) == 0
+    assert await links.count_documents({"target_type": {"$exists": True}}) == 2
     assert await migration.migrate(apply=True) == (0, [])
 
 
@@ -90,3 +90,23 @@ async def test_a_link_with_no_old_target_fails_loud(links: AsyncIOMotorCollectio
 def test_an_old_target_that_names_nothing_is_refused(old: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         migration.target_of(old)
+
+
+async def test_contract_targets_what_the_previous_release_minted_since_then_drops_the_old_fields(
+    links: AsyncIOMotorCollection,
+) -> None:
+    await links.insert_one(_old("todo1", "todo_deliverable", "t1"))
+    await migration.migrate(apply=True)
+    await indexes.create_short_link_indexes()
+    await links.insert_one(_old("file1", "session_artifact", "conv-1/reports/q3.html"))
+
+    assert await migration.contract(apply=False) == 2
+    assert await links.count_documents({"target": {"$exists": True}}) == 1
+
+    assert await migration.contract(apply=True) == 2
+
+    file = await short_link_repository.get_live_for_target(OWNER, FILE)
+    assert file is not None and file.slug == "file1"
+    assert await links.count_documents({"target_type": {"$exists": True}}) == 0
+    assert await links.count_documents({"target_id": {"$exists": True}}) == 0
+    assert await migration.contract(apply=True) == 0

@@ -1,4 +1,4 @@
-"""The todo delivery migration over real Mongo: each notify_on_run flag becomes its delivery."""
+"""The todo delivery expand and contract migrations over real Mongo: each notify_on_run flag becomes its delivery."""
 
 from collections.abc import AsyncIterator
 import uuid
@@ -51,17 +51,17 @@ async def test_a_dry_run_counts_and_writes_nothing(todos: AsyncIOMotorCollection
     await _seed(todos)
     before = [doc async for doc in todos.find({})]
 
-    assert await migration.migrate(apply=False) == 6
+    assert await migration.migrate(apply=False) == 5
 
     assert [doc async for doc in todos.find({})] == before
 
 
-async def test_apply_maps_each_flag_to_its_delivery_and_drops_the_flag(
+async def test_apply_maps_each_flag_to_its_delivery_and_keeps_the_flag(
     todos: AsyncIOMotorCollection,
 ) -> None:
     ids = await _seed(todos)
 
-    assert await migration.migrate(apply=True) == 6
+    assert await migration.migrate(apply=True) == 5
 
     assert await _delivery_by_title(todos) == {
         "told": "now",
@@ -72,7 +72,7 @@ async def test_apply_maps_each_flag_to_its_delivery_and_drops_the_flag(
         "migrated": "now",
         "untouched": "silent",
     }
-    assert await todos.count_documents({"notify_on_run": {"$exists": True}}) == 0
+    assert await todos.count_documents({"notify_on_run": {"$exists": True}}) == 6
     desk = await todo_repository.get(str(ids["desk"]), user_id=USER)
     assert desk is not None and desk.delivery is WorkflowDelivery.BRIEF
 
@@ -85,3 +85,24 @@ async def test_a_second_apply_finds_nothing_to_move(todos: AsyncIOMotorCollectio
     assert await migration.migrate(apply=True) == 0
 
     assert [doc async for doc in todos.find({})] == after_first
+
+
+async def test_contract_maps_what_the_previous_release_wrote_since_then_drops_the_flag(
+    todos: AsyncIOMotorCollection,
+) -> None:
+    await _seed(todos)
+    await migration.migrate(apply=True)
+    late = await todos.insert_one(
+        {"user_id": USER, "title": "late", "notify_on_run": True, "external_ref": DESK_REF}
+    )
+
+    assert await migration.contract(apply=False) == 7
+    assert await todos.count_documents({"notify_on_run": {"$exists": True}}) == 7
+
+    assert await migration.contract(apply=True) == 7
+
+    assert await todos.count_documents({"notify_on_run": {"$exists": True}}) == 0
+    assert (await _delivery_by_title(todos))["late"] == "brief"
+    stored = await todo_repository.get(str(late.inserted_id), user_id=USER)
+    assert stored is not None and stored.delivery is WorkflowDelivery.BRIEF
+    assert await migration.contract(apply=True) == 0
