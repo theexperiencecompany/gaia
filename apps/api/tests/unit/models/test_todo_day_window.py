@@ -1,6 +1,7 @@
 """TodoDayWindow: the one place a user's todo today, upcoming and overdue bounds are decided."""
 
 from datetime import UTC, datetime, timedelta
+import time
 
 import pytest
 
@@ -18,6 +19,18 @@ def test_ist_user_at_one_am_gets_their_local_day_not_utcs() -> None:
 
     assert window.today_start == datetime(2026, 11, 17, 18, 30, tzinfo=UTC)
     assert window.tomorrow_start == datetime(2026, 11, 18, 18, 30, tzinfo=UTC)
+
+
+def test_bounds_are_expressed_in_utc_not_the_host_zone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        window = TodoDayWindow.for_timezone(IST, datetime(2026, 11, 17, 19, 30, tzinfo=UTC))
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+    assert {b.utcoffset() for b in (window.today_start, window.upcoming_end)} == {timedelta(0)}
 
 
 def test_upcoming_is_the_seven_local_days_after_today() -> None:
@@ -52,5 +65,5 @@ def test_upcoming_days_widens_the_upcoming_window() -> None:
 
 
 def test_a_naive_now_is_refused() -> None:
-    with pytest.raises(ValueError, match="timezone-aware"):
+    with pytest.raises(ValueError, match="^TodoDayWindow needs a timezone-aware now$"):
         TodoDayWindow.for_timezone(IST, datetime(2026, 11, 17, 19, 30))

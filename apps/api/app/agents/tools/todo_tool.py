@@ -23,6 +23,7 @@ from app.models.todo_models import (
     SearchMode,
     SubTask,
     TodoDayWindow,
+    TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
@@ -1238,14 +1239,18 @@ async def delete_checklist_item(
         return {"error": error_msg, "todo": None}
 
 
-async def _summary_bucket(user_id: str, **filters: object) -> _TodoBucket:
-    """A preview of the user's todos matching filters, with the count over all of them."""
-    page = await TodoService.list_todos(
-        user_id,
-        TodoSearchParams.model_validate(
-            {"mode": SearchMode.TEXT, "per_page": TODO_SUMMARY_PREVIEW_LIMIT, **filters}
-        ),
+def _preview(window: TodoDayWindow, *, completed: bool) -> TodoSearchParams:
+    """A summary preview page of the user's open or completed todos, before its bucket filter."""
+    return TodoSearchParams(
+        mode=SearchMode.TEXT,
+        per_page=TODO_SUMMARY_PREVIEW_LIMIT,
+        completed=completed,
+        day_window=window,
     )
+
+
+def _bucket(page: TodoListResponse) -> _TodoBucket:
+    """A preview of one bucket, with the count over all of its todos."""
     return {
         "count": page.meta.total,
         "todos": [t.model_dump(mode="json") for t in page.data],
@@ -1277,23 +1282,33 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         log.info(f"{LogTag.TOOL} Todo Tool: Getting comprehensive todos summary")
 
         window = _day_window(config)
-        open_todos: dict[str, object] = {"completed": False, "day_window": window}
+        open_todos = _preview(window, completed=False)
         today, overdue, upcoming, high_priority, completed_today = await asyncio.gather(
-            _summary_bucket(
+            TodoService.list_todos(
                 user_id,
-                due_date_start=window.today.start,
-                due_date_end=window.today.end,
-                **open_todos,
+                open_todos.model_copy(
+                    update={"due_date_start": window.today.start, "due_date_end": window.today.end}
+                ),
             ),
-            _summary_bucket(user_id, overdue=True, **open_todos),
-            _summary_bucket(
+            TodoService.list_todos(user_id, open_todos.model_copy(update={"overdue": True})),
+            TodoService.list_todos(
                 user_id,
-                due_date_start=window.upcoming.start,
-                due_date_end=window.upcoming.end,
-                **open_todos,
+                open_todos.model_copy(
+                    update={
+                        "due_date_start": window.upcoming.start,
+                        "due_date_end": window.upcoming.end,
+                    }
+                ),
             ),
-            _summary_bucket(user_id, priority=Priority.HIGH, **open_todos),
-            _summary_bucket(user_id, completed=True, completed_after=window.today_start),
+            TodoService.list_todos(
+                user_id, open_todos.model_copy(update={"priority": Priority.HIGH})
+            ),
+            TodoService.list_todos(
+                user_id,
+                _preview(window, completed=True).model_copy(
+                    update={"completed_after": window.today_start}
+                ),
+            ),
         )
         stats, projects, next_due = await asyncio.gather(
             todo_repository.compute_stats(user_id=user_id, window=window),
@@ -1303,19 +1318,20 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         next_deadline = (await todo_responses(user_id, [next_due]))[0] if next_due else None
 
         summary: TodosSummary = {
-            "today": today,
-            "overdue": overdue,
-            "upcoming_week": upcoming,
-            "high_priority": high_priority,
+            "today": _bucket(today),
+            "overdue": _bucket(overdue),
+            "upcoming_week": _bucket(upcoming),
+            "high_priority": _bucket(high_priority),
             "recently_completed": _RecentlyCompletedBucket(
-                count=completed_today["count"], todos=completed_today["todos"]
+                count=completed_today.meta.total,
+                todos=[t.model_dump(mode="json") for t in completed_today.data],
             ),
             "next_deadline": next_deadline.model_dump(mode="json") if next_deadline else None,
             "stats": {
                 "total": stats.total,
                 "completed": stats.completed,
                 "pending": stats.pending,
-                "completed_today": completed_today["count"],
+                "completed_today": completed_today.meta.total,
                 "overdue": stats.overdue,
                 "completion_rate": stats.completion_rate,
             },
@@ -1329,7 +1345,7 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
                 "todo_data": {
                     "summary": summary,
                     "action": "summary",
-                    "message": f"Here's your productivity snapshot: {today['count']} tasks today, {stats.overdue} overdue, {stats.completion_rate}% completion rate",
+                    "message": f"Here's your productivity snapshot: {today.meta.total} tasks today, {stats.overdue} overdue, {stats.completion_rate}% completion rate",
                 }
             }
         )

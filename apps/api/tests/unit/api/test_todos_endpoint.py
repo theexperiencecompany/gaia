@@ -6,8 +6,9 @@ happy path with the service faked, and analytics captures on mutations.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 import pytest
@@ -23,6 +24,7 @@ from app.models.todo_models import (
     ProjectResponse,
     SearchMode,
     SubTask,
+    TodoCounts,
     TodoDayWindow,
     TodoDocument,
     TodoListParams,
@@ -45,6 +47,14 @@ from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
+_TZ_BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"
+_IST_HEADER = {"x-timezone": "Asia/Kolkata"}
+
+
+def _is_ist_midnight(instant: datetime) -> bool:
+    return instant.astimezone(ZoneInfo("Asia/Kolkata")).time() == time.min
+
+
 # 01:00 IST on 2026-11-18.
 _IST_WINDOW = TodoDayWindow.for_timezone(
     Timezone.parse("Asia/Kolkata"), datetime(2026, 11, 17, 19, 30, tzinfo=UTC)
@@ -135,6 +145,43 @@ class TestListTodos:
         # The explicit range must survive resolution into the search params.
         assert params.due_date_start == datetime(2026, 1, 1, tzinfo=UTC)
         assert params.due_date_end == datetime(2026, 2, 1, tzinfo=UTC)
+
+    async def test_list_buckets_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.list_todos",
+                new_callable=AsyncMock,
+                return_value=_empty_list_response(),
+            ) as list_todos,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos?due_today=true", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        params = list_todos.await_args.args[1]
+        assert params.day_window is not None
+        assert _is_ist_midnight(params.day_window.today_start)
+        assert params.due_date_start == params.day_window.today_start
+
+    async def test_counts_bucket_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.compute_counts",
+                new_callable=AsyncMock,
+                return_value=TodoCounts(today=2),
+            ) as compute_counts,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos/counts", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        assert resp.json()["today"] == 2
+        assert _is_ist_midnight(compute_counts.await_args.kwargs["window"].today_start)
 
     async def test_list_logs_the_search_context(self, client: AsyncClient) -> None:
         with (
