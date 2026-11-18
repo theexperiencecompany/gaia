@@ -67,8 +67,17 @@ class TestClock:
         [
             (datetime(2026, 10, 14, 17, 0, tzinfo=UTC), "today"),
             (datetime(2026, 10, 14, 19, 0, tzinfo=UTC), "Thu Oct 15"),
+            (datetime(2026, 10, 12, 6, 0, tzinfo=UTC), "Mon Oct 12"),
+            (datetime(2026, 10, 9, 6, 0, tzinfo=UTC), "Oct 9"),
+            (datetime(2025, 10, 9, 6, 0, tzinfo=UTC), "Oct 9, 2025"),
         ],
-        ids=["late-on-the-users-day", "past-the-users-midnight"],
+        ids=[
+            "late-on-the-users-day",
+            "past-the-users-midnight",
+            "earlier-this-week",
+            "last-week-has-no-weekday-to-misread",
+            "another-year-says-its-year",
+        ],
     )
     def test_a_due_date_is_said_on_the_users_own_day(self, due_at: datetime, said: str) -> None:
         assert due_on(due_at, CLOCK) == said

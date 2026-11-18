@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from app.models.brief_document_models import BriefingModel
-from app.services.briefing.formats import day, long_day
+from app.services.briefing.formats import day, long_day, month_day
 from app.utils.timezone import Timezone, as_utc
 
 _DAYS_IN_WEEK = 7
@@ -98,9 +98,14 @@ def resolve_clock(user_timezone: str | None) -> UserClock:
 
 
 def due_on(due_at: datetime, clock: UserClock) -> str:
-    """Say a due date the way the brief does, on the user's own day: today, or its weekday and date."""
+    """Say a due date on the user's own day: today, its weekday and date, or before this week its date alone.
+
+    A weekday before this week is shortened to one that reads as this week's ("its Friday due date").
+    """
     on = clock.day_of(due_at)
-    return "today" if on.isoformat() == clock.date_str else day(on)
+    if on.isoformat() == clock.date_str:
+        return "today"
+    return month_day(on, clock.today) if on < clock.this_week().first_day else day(on)
 
 
 def when_sent(last: BriefingModel, clock: UserClock) -> str:

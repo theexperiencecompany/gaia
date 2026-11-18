@@ -531,7 +531,7 @@ class TestWhatSlotsRender:
 
         facts = pool_values(pool).facts
 
-        assert (facts[1].time, facts[1].count) == ("Tue Nov 3", 3)
+        assert (facts[1].time, facts[1].count) == ("Nov 3", 3)
         assert facts[2].time == "11:00 AM"
         assert facts[3].time is None
 

@@ -17,6 +17,12 @@ def dated(on: date) -> str:
     return f"{day(on)}, {on.year}"
 
 
+def month_day(on: date, today: date) -> str:
+    """Say a day by its date alone, its year when not this one: "Nov 20", "Nov 20, 2025"."""
+    said = on.strftime("%b %-d")
+    return said if on.year == today.year else f"{said}, {on.year}"
+
+
 def long_day(on: date) -> str:
     """Say a day with its weekday whole, as the quiet note does: "Saturday Nov 14"."""
     return on.strftime("%A %b %-d")
