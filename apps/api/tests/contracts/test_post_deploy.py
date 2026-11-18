@@ -1,5 +1,6 @@
 """The post-deploy step against real Mongo: each migration once, in order, a failure retried."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -52,16 +53,34 @@ async def test_a_failed_step_stops_the_run_and_is_retried_next_time(
     assert await post_deploy.run_post_deploy(apply=True) == ["first", "second"]
 
 
-async def test_a_claim_a_live_runner_holds_is_left_to_it_and_a_stale_one_taken_over(
-    steps: dict[str, AsyncMock], raw_collection
+async def test_a_step_a_live_runner_holds_is_waited_for_before_the_next_runs(
+    steps: dict[str, AsyncMock], raw_collection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    now = datetime.now(UTC)
-    await raw_collection.insert_many(
-        [
-            {"_id": "first", "claimed_at": now, "applied_at": None},
-            {"_id": "second", "claimed_at": now - timedelta(days=1), "applied_at": None},
-        ]
+    monkeypatch.setattr(post_deploy, "_CLAIM_POLL", timedelta(milliseconds=10))
+    await raw_collection.insert_one(
+        {"_id": "first", "claimed_at": datetime.now(UTC), "applied_at": None}
+    )
+    second_saw_first_applied: list[bool] = []
+
+    async def second(apply: bool) -> None:
+        marker = await raw_collection.find_one({"_id": "first"})
+        second_saw_first_applied.append(marker["applied_at"] is not None)
+
+    steps["second"].side_effect = second
+    run = asyncio.create_task(post_deploy.run_post_deploy(apply=True))
+    await asyncio.sleep(0.05)
+    assert not run.done()
+
+    await raw_collection.update_one({"_id": "first"}, {"$set": {"applied_at": datetime.now(UTC)}})
+
+    assert await asyncio.wait_for(run, timeout=5) == ["second"]
+    steps["first"].assert_not_awaited()
+    assert second_saw_first_applied == [True]
+
+
+async def test_a_stale_claim_is_taken_over(steps: dict[str, AsyncMock], raw_collection) -> None:
+    await raw_collection.insert_one(
+        {"_id": "first", "claimed_at": datetime.now(UTC) - timedelta(days=1), "applied_at": None}
     )
 
-    assert await post_deploy.run_post_deploy(apply=True) == ["second"]
-    steps["first"].assert_not_awaited()
+    assert await post_deploy.run_post_deploy(apply=True) == ["first", "second"]

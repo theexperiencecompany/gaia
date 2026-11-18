@@ -1,12 +1,13 @@
-"""The one post-deploy step: every data migration a release needs, in order, each exactly once.
+"""The release step: every data migration a release needs, in order, each exactly once.
 
-Dry run unless --apply: lists the steps still to run and runs each as its own dry run.
-With --apply each pending step runs for real, after claiming its marker in the
-deploy_steps collection, so a step that finished is never re-run and two runners never
-run one step at once; a step that fails releases its claim and stops the sequence loudly,
-and the next run retries it. The ARQ worker runs this with --apply on every start
-(workers.lifecycle.post_deploy), which covers a production deploy and `gaia update` on
-self-host alike. Deploy the worker before the API whenever a release adds a job name.
+A one-off process of the new image that finishes before that image serves: GAIA Cloud runs
+it as a Swarm job before the stack rolls (scripts/ci/deploy.sh migrate); the self-host
+compose runs it as the migrate service the API and worker wait on.
+
+Dry run unless --apply. With --apply each pending step runs after claiming its marker in
+deploy_steps, so a finished step never re-runs; a step another live runner holds is waited
+for, never skipped, so steps still apply in order. A failed step releases its claim and
+stops the sequence loudly; the next run retries it.
 
     cd apps/api && uv run python -m scripts.post_deploy [--apply]
 """
@@ -30,12 +31,9 @@ from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delive
 from scripts.provision_daily_briefings import rollout as provision_daily_briefings
 from scripts.resync_brief_schedules import resync as resync_brief_schedules
 
-#: Each step's marker name and its migration, run with apply=. Order matters: links and edition
-#: images take their new shape before any brief or link is read, briefing state leaves the user
-#: document before anything reads a schedule, hold or ladder, activity is backfilled before
-#: anything reads dormancy, the briefs exist before the desk follows them, todos take their
-#: delivery beside the workflows', and every brief workflow is provisioned before the resync
-#: moves it to its slot minute.
+#: Order matters: shapes move before anything reads them (links, editions, briefing state),
+#: activity is backfilled before dormancy reads it, briefs exist before the desk follows them,
+#: and every brief workflow is provisioned before the resync moves it to its slot minute.
 POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_short_link_targets", migrate_short_link_targets),
     ("migrate_brief_storage", migrate_brief_storage),
@@ -51,8 +49,31 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
 
 #: A claim older than this belongs to a runner that died mid-step; the next run takes it over.
 _STALE_CLAIM = timedelta(hours=2)
+#: How often a run waiting on another runner's step checks whether it has finished.
+_CLAIM_POLL = timedelta(seconds=5)
 
 deploy_steps = get_async_collection("deploy_steps")
+
+
+async def _claim(name: str) -> bool:
+    """Claim a step for this run; False once another runner has applied it, waiting while it runs."""
+    while True:
+        now = datetime.now(UTC)
+        try:
+            # Upserts a fresh claim, or takes over one a killed runner left behind.
+            await deploy_steps.update_one(
+                {"_id": name, "applied_at": None, "claimed_at": {"$lt": now - _STALE_CLAIM}},
+                {"$set": {"claimed_at": now, "applied_at": None}},
+                upsert=True,
+            )
+        except DuplicateKeyError:
+            marker = await deploy_steps.find_one({"_id": name})
+            if marker is not None and marker["applied_at"] is not None:
+                return False
+            print(f"  {name}: another runner is applying it, waiting")
+            await asyncio.sleep(_CLAIM_POLL.total_seconds())
+            continue
+        return True
 
 
 async def run_post_deploy(apply: bool) -> list[str]:
@@ -65,16 +86,8 @@ async def run_post_deploy(apply: bool) -> list[str]:
         if not apply:
             await step(apply=False)
             continue
-        now = datetime.now(UTC)
-        try:
-            # Upserts a fresh claim, or takes over one a killed runner left behind.
-            await deploy_steps.update_one(
-                {"_id": name, "applied_at": None, "claimed_at": {"$lt": now - _STALE_CLAIM}},
-                {"$set": {"claimed_at": now, "applied_at": None}},
-                upsert=True,
-            )
-        except DuplicateKeyError:
-            print(f"  {name}: claimed by another runner, skipped")
+        if not await _claim(name):
+            print(f"  {name}: applied by another runner")
             continue
         try:
             await step(apply=True)

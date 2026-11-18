@@ -45,9 +45,9 @@ from app.models.workflow_tool_models import (
     WorkflowToolSuccess,
 )
 from app.services.analytics_service import capture
-from app.services.briefing.errors import BriefsOffError
+from app.services.briefing.errors import BriefsOffError, refuse_a_missing_brief
 from app.services.wait_service import wait_for_user
-from app.services.workflow.service import WorkflowService, refuse_a_missing_brief
+from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 from app.utils.timezone import home_timezone_from_config

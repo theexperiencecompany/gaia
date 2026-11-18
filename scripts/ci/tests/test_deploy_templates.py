@@ -130,6 +130,23 @@ def test_a_compose_change_reaches_both_templates(
     assert {"key": "MONGO_NEW_FLAG", "value": "1"} in render_mongo["envVars"]
 
 
+def test_both_templates_run_the_migrations_before_the_api_and_worker(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    coolify = _coolify(compose, secrets)["services"]
+    render = {s["name"]: s for s in _render(compose, secrets)["services"]}
+    migrate = " ".join(compose["services"]["migrate"]["command"])
+
+    for app in ("gaia-backend", "arq-worker"):
+        assert coolify[app]["depends_on"]["migrate"] == {
+            "condition": "service_completed_successfully"
+        }
+    assert coolify["migrate"]["exclude_from_hc"] is True
+    assert coolify["migrate"]["restart"] == "no"
+    assert render["gaia-backend"]["preDeployCommand"] == migrate
+    assert render["gaia-worker"]["preDeployCommand"] == migrate
+
+
 def test_the_inline_caddyfile_holds_no_compose_interpolation(
     compose: dict[str, Any], secrets: list[str]
 ) -> None:

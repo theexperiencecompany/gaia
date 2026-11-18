@@ -4,13 +4,10 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.briefing import BRIEF_RUN_DAYS, DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.constants.waits import WaitCondition
-from app.constants.workflows import WorkflowDelivery
 from app.db.chroma.chromadb import ChromaClient
-from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
@@ -32,7 +29,7 @@ from app.models.workflow_models import (
     WorkflowWithIntegrations,
     public_workflow_steps,
 )
-from app.services.briefing.errors import BriefsOffError
+from app.services.briefing.errors import refuse_a_missing_brief
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
@@ -67,15 +64,6 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
-
-
-async def refuse_a_missing_brief(user_id: str, delivery: WorkflowDelivery | None) -> None:
-    """Raise BriefsOffError when delivery is the brief and the user gets no daily brief to carry it."""
-    if delivery is not WorkflowDelivery.BRIEF:
-        return
-    schedule = (await briefing_state_repository.state_for(user_id)).schedule
-    if DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[schedule.frequency]:
-        raise BriefsOffError()
 
 
 def _slug_suffix() -> str:

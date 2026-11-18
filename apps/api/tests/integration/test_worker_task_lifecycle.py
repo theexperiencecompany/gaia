@@ -538,12 +538,8 @@ class TestWorkerStartupHooks:
 
     @pytest.fixture(autouse=True)
     def _no_queue_workers(self) -> Iterator[None]:
-        # Real ones would start consuming their queues on whatever Redis is up, and a
-        # real post-deploy step would run every migration against whatever Mongo is up.
-        with (
-            patch("app.workers.lifecycle.startup.start_queue_workers"),
-            patch("app.workers.lifecycle.startup.start_post_deploy"),
-        ):
+        # Real ones would start consuming their queues on whatever Redis is up.
+        with patch("app.workers.lifecycle.startup.start_queue_workers"):
             yield
 
     async def test_startup_calls_unified_startup(self):

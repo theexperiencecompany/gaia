@@ -227,6 +227,18 @@ const unhealthy: Matcher = (text) => {
   };
 };
 
+const incomplete: Matcher = (text) => {
+  const service = /service "?([\w-]+)"? didn't complete successfully/.exec(
+    text,
+  )?.[1];
+  if (!service) return null;
+  return {
+    cause: `GAIA's ${serviceName(service)} didn't finish, so GAIA did not start on it.`,
+    next: "Run the same command again: it picks up where the update stopped.",
+    service,
+  };
+};
+
 /** The last line that reads like an error, for failures nothing above names. */
 function lastErrorLine(lines: readonly string[]): string {
   const errorLine = [...lines]
@@ -247,6 +259,7 @@ export function explainComposeFailure(
     imageMissing,
     portTaken,
     unhealthy,
+    incomplete,
     networkFailure,
   ]) {
     const failure = matcher(text, ctx);

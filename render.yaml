@@ -95,6 +95,7 @@ services:
       url: ghcr.io/theexperiencecompany/gaia:latest
     # The local embedding model loads ~1.8 GB on first memory use.
     plan: 2c-4g
+    preDeployCommand: python -m scripts.post_deploy --apply
     envVars:
       - fromGroup: gaia-app
       - fromGroup: gaia-web-server
@@ -134,6 +135,7 @@ services:
       url: ghcr.io/theexperiencecompany/gaia:latest
     plan: 2c-4g
     dockerCommand: python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
+    preDeployCommand: python -m scripts.post_deploy --apply
     envVars:
       - fromGroup: gaia-app
       - fromGroup: gaia-web-server

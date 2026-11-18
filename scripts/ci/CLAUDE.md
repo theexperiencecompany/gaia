@@ -25,7 +25,7 @@ lane without grepping the workflow first.
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
-| Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
+| Shipping to production | `deploy.sh` | `plan`, `migrate`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 | What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
@@ -40,6 +40,18 @@ count, who holds CPU slots, and how many mutmut/pytest processes are running.
 
 Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 (image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
+
+A backend deploy runs in this order, and each step must succeed before the next:
+`deploy.sh migrate` runs the release's data migrations (`apps/api/scripts/post_deploy.py`)
+as a one-off Swarm job of the image about to roll, with the worker's environment,
+secrets, external networks and mounts read from the rendered stack; then
+`deploy.sh stack` rolls the services; then convergence and `verify-commit`. No API or
+worker of a release ever serves before its migrations finished. The previous release
+keeps serving while the job runs, so a migration that moves a field leaves it reading
+that field's default for those minutes; one that must not, copies first and drops the
+old field a release later. Self-host gets the same order from the
+`migrate` service in `packages/cli/selfhost/docker-compose.selfhost.yml`, which the API
+and worker wait on; Render runs it as their `preDeployCommand`.
 
 `baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,

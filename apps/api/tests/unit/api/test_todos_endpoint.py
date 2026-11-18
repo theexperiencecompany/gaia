@@ -13,10 +13,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GateAuthor
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -43,6 +47,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.conftest import FAKE_USER
+from tests.helpers import briefs_on
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
@@ -586,6 +591,68 @@ class TestGenerateTodoWorkflow:
             title="Test todo",
             description="",
         )
+
+
+class TestBriefDeliveryWithoutADailyBrief:
+    """A todo may deliver to the brief only while the user gets a daily brief, as a workflow may."""
+
+    @pytest.mark.parametrize(
+        ("frequency", "status"),
+        [
+            (BriefingFrequency.OFF, 409),
+            (BriefingFrequency.WEEKLY_ONLY, 409),
+            (BriefingFrequency.DAILY, 201),
+        ],
+    )
+    async def test_creating_a_brief_todo(
+        self, client: AsyncClient, frequency: BriefingFrequency, status: int
+    ) -> None:
+        with (
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo",
+                new=AsyncMock(return_value=_todo_response()),
+            ) as create,
+        ):
+            resp = await client.post(
+                "/api/v1/todos", json={"title": "Watch prices", "delivery": "brief"}
+            )
+
+        assert resp.status_code == status
+        if status == 409:
+            assert resp.json()["code"] == BRIEFS_OFF
+            create.assert_not_called()
+
+    async def test_moving_a_todo_onto_the_brief_writes_nothing(self, client: AsyncClient) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "update", new=AsyncMock()) as update,
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"delivery": "brief"})
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        update.assert_not_called()
+
+    async def test_moving_todos_onto_the_brief_in_bulk_writes_nothing(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
+            patch.object(todo_repository, "bulk_update", new=AsyncMock()) as bulk_update,
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["todo-1", "todo-2"], "updates": {"delivery": "brief"}},
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["code"] == BRIEFS_OFF
+        bulk_update.assert_not_called()
 
 
 class TestUpdateTodoWorkflowLink:

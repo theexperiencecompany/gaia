@@ -26,12 +26,11 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
-from app.services.briefing.errors import BriefsOffError
+from app.services.briefing.errors import BriefsOffError, refuse_a_missing_brief
 from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
 )
-from app.services.workflow.service import refuse_a_missing_brief
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
@@ -409,7 +408,7 @@ class TestCreateWorkflow:
         body = response.json()
         assert {key: body[key] for key in ("code", "message", "why", "fix")} == {
             "code": BRIEFS_OFF,
-            "message": "You get no daily brief, so a workflow cannot add its results to one",
+            "message": "You get no daily brief, so results cannot be added to one",
             "why": "Results wait only for a daily brief, so they would go nowhere",
             "fix": "Choose Tell me now or Don't notify me, or turn on daily briefs in Settings",
         }

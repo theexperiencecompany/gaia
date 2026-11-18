@@ -134,6 +134,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -158,11 +160,37 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "grep", "-aq", "arq", "/proc/1/cmdline"]
       interval: 30s
       timeout: 10s
       retries: 5
+
+  migrate:
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_VERSION:-latest}
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    environment:
+      <<: *backend_environment
+      WORKER_TYPE: main_app
+      GAIA_SERVICE_NAME: migrate
+    volumes:
+      - workspace:/mnt/jfs
+      - files:/var/lib/gaia/files
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    exclude_from_hc: true
 
   chromadb:
     image: chromadb/chroma:1.5.1

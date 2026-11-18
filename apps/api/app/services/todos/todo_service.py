@@ -49,6 +49,7 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.briefing.errors import refuse_a_missing_brief
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_activity import record_todo_activity
@@ -352,7 +353,8 @@ async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
 
 
 async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> None:
-    """Refuse, before any write, a bulk update that may only be made one todo at a time."""
+    """Refuse, before any write, a bulk update that may only be made one todo at a time, or no brief carries."""
+    await refuse_a_missing_brief(user_id, request.updates.delivery)
     # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
     if request.updates.workflow_id is not None:
         raise AppError(
@@ -628,6 +630,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
+        await refuse_a_missing_brief(user_id, updates.delivery)
         await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:

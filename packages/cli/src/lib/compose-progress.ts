@@ -198,7 +198,10 @@ function applyContainerEvent(
   if (e.text === "Starting") state.starting.add(service);
   if (up) state.starting.delete(service);
   if (e.text === "Waiting") state.awaitingHealth.add(service);
-  if (e.text === "Healthy") state.awaitingHealth.delete(service);
+  // "Exited": a one-shot dependency (the data update) finished, so what waits on it may start.
+  if (e.text === "Healthy" || e.text === "Exited") {
+    state.awaitingHealth.delete(service);
+  }
   if (e.text === "Started" && !state.started.has(service)) {
     state.started.add(service);
     state.finished.push(`Started ${serviceName(service)}`);

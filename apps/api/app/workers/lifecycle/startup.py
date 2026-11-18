@@ -27,7 +27,6 @@ from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.brief_workers import build_brief_worker, build_scout_worker
 from app.workers.browser_worker import build_browser_worker
-from app.workers.lifecycle.post_deploy import start_post_deploy
 from app.workers.metrics import start_metrics_server
 from app.workers.queue_workers import start_queue_workers
 from shared.py.wide_events import log, log_context
@@ -77,9 +76,6 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
 
         # Alerts on outbound messages the broker dead-lettered with no bot involved.
         start_dead_letter_tap(ctx)
-
-        # The release's data migrations, each once, beside the jobs (scripts/post_deploy.py).
-        start_post_deploy()
 
         # Last: the queues' jobs run on the services everything above just started.
         start_queue_workers(ctx, (build_browser_worker, build_brief_worker, build_scout_worker))

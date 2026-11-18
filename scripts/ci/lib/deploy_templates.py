@@ -160,13 +160,14 @@ COOLIFY_SERVICES = {
     "gaia-web": "gaia-web",
     "gaia-backend": "gaia-backend",
     "arq_worker": "arq-worker",
+    "migrate": "migrate",
     "chromadb": "chromadb",
     "postgres": "postgres",
     "redis": "redis",
     "mongo": "mongo",
     "rabbitmq": "rabbitmq",
 }
-COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker"}
+COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker", "migrate"}
 COOLIFY_VOLUMES = {
     "models_cache": "models-cache",
     "workspace": "workspace",
@@ -258,7 +259,15 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
         out["depends_on"] = {
             COOLIFY_SERVICES[dep]: cond for dep, cond in service["depends_on"].items()
         }
-    out["healthcheck"] = {**service["healthcheck"], "test": Flow(service["healthcheck"]["test"])}
+    if "healthcheck" in service:
+        out["healthcheck"] = {
+            **service["healthcheck"],
+            "test": Flow(service["healthcheck"]["test"]),
+        }
+    else:
+        # A one-shot service (the migrations) exits by design; Coolify must not read that as down.
+        out["restart"] = service["restart"]
+        out["exclude_from_hc"] = True
     unhandled = set(service) - LOCAL_ONLY_KEYS - set(out) - {"environment"}
     if unhandled:
         raise SystemExit(
@@ -401,6 +410,8 @@ RENDER_SERVICES = {
     *RENDER_DATASTORES,
     "redis",
     "postgres",
+    # Render runs it as the backend's and the worker's pre-deploy command.
+    "migrate",
 }
 
 #: Values only known once the private services exist: Render cannot compose a
@@ -520,6 +531,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
     services = compose["services"]
     _require_all("Render", "service", services, RENDER_SERVICES)
     worker = services["arq_worker"]
+    migrate = " ".join(services["migrate"]["command"])
     render_services = SpacedList(
         [
             Note(
@@ -570,6 +582,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                     "The local embedding model loads ~1.8 GB on first memory use.",
                     RENDER_PLANS["gaia-backend"],
                 ),
+                "preDeployCommand": migrate,
                 "envVars": _render_app_env(services, "gaia-backend"),
             },
             {
@@ -579,6 +592,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(worker),
                 "plan": RENDER_PLANS["arq_worker"],
                 "dockerCommand": " ".join(worker["command"]),
+                "preDeployCommand": migrate,
                 "envVars": _render_app_env(services, "arq_worker"),
             },
             *(_render_datastore(services, name) for name in RENDER_DATASTORES),

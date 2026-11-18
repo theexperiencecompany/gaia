@@ -174,16 +174,19 @@ services:
     tty: true
     stdin_open: true
     depends_on:
-      chromadb:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      <<: &datastores
+        chromadb:
+          condition: service_healthy
+        postgres:
+          condition: service_healthy
+        redis:
+          condition: service_healthy
+        mongo:
+          condition: service_healthy
+        rabbitmq:
+          condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
     healthcheck:
@@ -195,6 +198,25 @@ services:
       # outlasts 5 x 30s and compose fails the services waiting on a healthy API.
       start_period: 10m
       start_interval: 5s
+
+  # The release's data migrations (apps/api/scripts/post_deploy.py), run to the end before
+  # this image's API and worker start; a failed step fails the start and the next one retries.
+  migrate:
+    logging: *default_logging
+    image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
+    env_file: *backend_env_files
+    environment:
+      <<: *backend_environment
+      GAIA_SERVICE_NAME: migrate
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    restart: "no"
+    # A migration may move stored files (the blob store) or workspaces.
+    volumes:
+      - workspace:/mnt/jfs
+      - files:/var/lib/gaia/files
+    depends_on: *datastores
+    networks:
+      - gaia_network
 
   arq_worker:
     logging: *default_logging
@@ -223,6 +245,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
     healthcheck:
