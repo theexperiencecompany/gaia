@@ -688,10 +688,11 @@ def _desk_request(trigger_type: TriggerType) -> TodoRunRequest:
     )
 
 
+# One finding per line, as the desk's run guidance writes them; a stray blank line holds nothing.
 _DESK_FINDINGS = (
-    '- Arjun call Tue 4pm · say "add Arjun call" to add it\n'
+    'Arjun call Tue 4pm · say "add Arjun call" to add it\n'
     "\n"
-    "- 3 product updates · Linear, Vercel pricing, Notion AI\n"
+    "3 product updates · Linear, Vercel pricing, Notion AI\n"
 )
 
 

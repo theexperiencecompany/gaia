@@ -239,7 +239,10 @@ class _Harness:
                 f"{COMPLETION}.send_workflow_completion_notification",
                 self.completion_notification,
             ),
-            patch(f"{COMPLETION}.pending_brief_items_repository.create", self.brief_create),
+            patch(
+                "app.services.briefing.held.pending_brief_items_repository.create",
+                self.brief_create,
+            ),
             patch(
                 f"{MODULE}.workflow_repository.find_system_workflow",
                 AsyncMock(return_value=MagicMock(activated=True)),

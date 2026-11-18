@@ -15,10 +15,8 @@ from app.constants.briefing import BriefItemSource
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
-from app.db.repositories.pending_brief_items import pending_brief_items_repository
-from app.models.brief_models import PendingBriefItemDocument
 from app.models.user_models import AuthenticatedUser
-from app.services.briefing.held import brief_will_carry
+from app.services.briefing.held import HeldSource, brief_will_carry, hold_for_brief
 from app.services.workflow.notifications import send_workflow_completion_notification
 from shared.py.wide_events import log
 
@@ -72,15 +70,12 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
             ),
         )
     elif delivery is WorkflowDelivery.BRIEF:
-        await pending_brief_items_repository.create(
-            PendingBriefItemDocument(
-                user_id=user.user_id,
-                source=BriefItemSource.WORKFLOW,
-                source_id=run.workflow_id,
-                source_title=run.workflow_title,
-                conversation_id=run.conversation_id,
-                text=run.text,
-            )
+        await hold_for_brief(
+            user.user_id,
+            HeldSource(
+                BriefItemSource.WORKFLOW, run.workflow_id, run.workflow_title, run.conversation_id
+            ),
+            [run.text],
         )
         log.info(
             f"{LogTag.WORKFLOW} Workflow result held for the next brief",

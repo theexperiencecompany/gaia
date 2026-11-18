@@ -7,10 +7,14 @@ sent each result now, and whatever was held when the loop stops is released at o
 the app.
 """
 
+from collections.abc import Iterable
+from dataclasses import dataclass
+
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
     HELD_RELEASE_TITLE,
     BriefingRunOutcome,
+    BriefItemSource,
 )
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
@@ -48,6 +52,36 @@ async def release_after_daily_run(user_id: str, outcome: BriefingRunOutcome) -> 
     """Release what is held once a daily run leaves it behind: gone silent, or no brief will carry it."""
     if outcome is BriefingRunOutcome.SILENT or not await brief_will_carry(user_id):
         await release_held_items(user_id)
+
+
+@dataclass(frozen=True, slots=True)
+class HeldSource:
+    """What a held result came from: the workflow or todo that ran, and the conversation of the run."""
+
+    kind: BriefItemSource
+    id: str
+    title: str
+    conversation_id: str
+
+
+async def hold_for_brief(user_id: str, source: HeldSource, texts: Iterable[str]) -> None:
+    """Hold each non-blank text as one item of the user's next daily brief.
+
+    The caller has checked brief_will_carry. A retry that holds a text twice is harmless:
+    the brief carries one item per text.
+    """
+    for text in texts:
+        if stripped := text.strip():
+            await pending_brief_items_repository.create(
+                PendingBriefItemDocument(
+                    user_id=user_id,
+                    source=source.kind,
+                    source_id=source.id,
+                    source_title=source.title,
+                    conversation_id=source.conversation_id,
+                    text=stripped,
+                )
+            )
 
 
 async def held_items(user_id: str) -> list[PendingBriefItemDocument]:
