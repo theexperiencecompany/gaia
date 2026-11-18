@@ -2,10 +2,15 @@
 
 import asyncio
 
+from playwright._impl._errors import TargetClosedError
 from playwright.async_api import ViewportSize
 import pytest
 
-from app.constants.render import CHROMIUM_LAUNCH_ARGS, CHROMIUM_MAX_CONCURRENT_RENDERS
+from app.constants.render import (
+    CHROMIUM_DEAD_DRIVER_MESSAGE,
+    CHROMIUM_LAUNCH_ARGS,
+    CHROMIUM_MAX_CONCURRENT_RENDERS,
+)
 from app.services.render import chromium as chromium_module
 from app.services.render.chromium import chromium_page, close_chromium, renders_waiting
 from tests.unit.services.render.conftest import FakeChromium
@@ -56,9 +61,7 @@ async def test_a_connected_browser_that_cannot_open_a_context_is_replaced_for_th
 ) -> None:
     async with chromium_page(_VIEWPORT):
         pass
-    chromium.browsers[0].context_error = Exception(
-        "Connection closed while reading from the driver"
-    )
+    chromium.browsers[0].context_error = Exception(CHROMIUM_DEAD_DRIVER_MESSAGE)
 
     async with chromium_page(_VIEWPORT):
         pass
@@ -71,14 +74,44 @@ async def test_a_connected_browser_that_cannot_open_a_context_is_replaced_for_th
 async def test_a_render_fails_loud_when_the_fresh_browser_cannot_open_a_context_either(
     chromium: FakeChromium,
 ) -> None:
-    chromium.context_error = Exception("Connection closed while reading from the driver")
+    chromium.context_error = TargetClosedError("Connection closed while reading from the driver")
 
-    with pytest.raises(Exception, match="Connection closed"):
+    with pytest.raises(TargetClosedError, match="Connection closed"):
         async with chromium_page(_VIEWPORT):
             pass
 
     first, retried = chromium.browsers
-    assert first.closed and not retried.closed
+    assert first.closed and retried.closed
+
+
+async def test_a_live_browser_that_refuses_a_context_is_kept_and_the_error_raised(
+    chromium: FakeChromium,
+) -> None:
+    async with chromium_page(_VIEWPORT):
+        pass
+    chromium.browsers[0].context_error = ValueError("bad viewport")
+
+    with pytest.raises(ValueError, match="bad viewport"):
+        async with chromium_page(_VIEWPORT):
+            pass
+
+    [browser] = chromium.browsers
+    assert not browser.closed
+    assert chromium_module._chromium._current is not None
+    assert chromium_module._chromium._current.renders == 0
+
+
+async def test_a_render_cancelled_while_opening_its_context_gives_the_browser_back(
+    chromium: FakeChromium,
+) -> None:
+    chromium.context_error = asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        async with chromium_page(_VIEWPORT):
+            pass
+
+    assert chromium_module._chromium._current is not None
+    assert chromium_module._chromium._current.renders == 0
 
 
 async def test_a_browser_past_its_age_is_replaced_and_closes_once_its_last_render_ends(

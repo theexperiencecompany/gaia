@@ -12,3 +12,6 @@ CHROMIUM_MAX_CONCURRENT_RENDERS = 2
 # a busy browser is replaced at half that age and an idle one closes well inside it.
 CHROMIUM_RECYCLE_AGE_SECONDS = BROWSER_REAPER_MAX_AGE_SECONDS / 2
 CHROMIUM_IDLE_CLOSE_SECONDS = 300.0
+
+#: What Playwright raises with once its driver process is gone (playwright/_impl/_transport.py).
+CHROMIUM_DEAD_DRIVER_MESSAGE = "Connection closed while reading from the driver"

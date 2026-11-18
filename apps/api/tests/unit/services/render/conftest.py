@@ -34,7 +34,7 @@ class FakeBrowser:
         self.closed = False
         self.contexts: list[FakeContext] = []
         #: Raised by new_context: a browser whose driver died still reports itself connected.
-        self.context_error: Exception | None = chromium.context_error
+        self.context_error: BaseException | None = chromium.context_error
 
     def is_connected(self) -> bool:
         return self.connected
@@ -88,7 +88,7 @@ class FakeChromium:
         self.launches: list[dict[str, Any]] = []
         self.launch_error: Exception | None = None
         #: What each browser launched from now on raises when asked for a context.
-        self.context_error: Exception | None = None
+        self.context_error: BaseException | None = None
 
     async def start(self) -> FakePlaywright:
         playwright = FakePlaywright(self)

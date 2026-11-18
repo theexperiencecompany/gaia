@@ -13,6 +13,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import time
 
+# A dead driver raises TargetClosedError, which playwright.async_api does not export.
+from playwright._impl._errors import TargetClosedError
 from playwright.async_api import (
     Browser,
     BrowserContext,
@@ -24,6 +26,7 @@ from playwright.async_api import (
 
 from app.constants.log_tags import LogTag
 from app.constants.render import (
+    CHROMIUM_DEAD_DRIVER_MESSAGE,
     CHROMIUM_IDLE_CLOSE_SECONDS,
     CHROMIUM_LAUNCH_ARGS,
     CHROMIUM_MAX_CONCURRENT_RENDERS,
@@ -183,25 +186,37 @@ async def chromium_page(
             await _chromium.release(launch)
 
 
+def _driver_died(error: BaseException) -> bool:
+    """Whether an error says the browser's driver is gone, so the browser can never render again."""
+    return isinstance(error, TargetClosedError) or CHROMIUM_DEAD_DRIVER_MESSAGE in str(error)
+
+
 async def _open_context(
     viewport: ViewportSize, device_scale_factor: float | None
 ) -> tuple[_Launch, BrowserContext]:
-    """Open a context in the process's browser, replacing it once if it cannot open one."""
+    """Open a context in the process's browser, replacing it once if its driver died."""
     launch = await _chromium.acquire()
     try:
-        return launch, await launch.browser.new_context(
-            viewport=viewport, device_scale_factor=device_scale_factor
-        )
+        return launch, await _context_on(launch, viewport, device_scale_factor)
     except Exception as exc:
+        if not _driver_died(exc):
+            raise
         log.warning(f"{LogTag.BROWSER} Render browser is dead; relaunching", error=str(exc))
-        _chromium.retire(launch)
-        await _chromium.release(launch)
     launch = await _chromium.acquire()
+    return launch, await _context_on(launch, viewport, device_scale_factor)
+
+
+async def _context_on(
+    launch: _Launch, viewport: ViewportSize, device_scale_factor: float | None
+) -> BrowserContext:
+    """Open a context on launch; a failure gives the launch back, retired first when its driver died."""
     try:
-        return launch, await launch.browser.new_context(
+        return await launch.browser.new_context(
             viewport=viewport, device_scale_factor=device_scale_factor
         )
-    except BaseException:
+    except BaseException as exc:
+        if _driver_died(exc):
+            _chromium.retire(launch)
         await _chromium.release(launch)
         raise
 
