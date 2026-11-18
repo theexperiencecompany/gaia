@@ -18683,6 +18683,13 @@
             "title": "Pending",
             "type": "integer"
           },
+          "pending_by_project": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Pending By Project",
+            "type": "object"
+          },
           "total": {
             "default": 0,
             "title": "Total",
@@ -38586,6 +38593,18 @@
               "title": "Include Stats",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Browser timezone fallback",
+            "in": "header",
+            "name": "x-timezone",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Browser timezone fallback",
+              "title": "X-Timezone",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -38978,6 +38997,20 @@
       "get": {
         "description": "Get all todo counts for dashboard/sidebar in a single efficient call.\nReturns inbox count, today count, upcoming count, and completed count.",
         "operationId": "todos_get_todo_counts",
+        "parameters": [
+          {
+            "description": "Browser timezone fallback",
+            "in": "header",
+            "name": "x-timezone",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Browser timezone fallback",
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

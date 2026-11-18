@@ -27,6 +27,7 @@ from app.models.todo_models import (
     Priority,
     SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoDocument,
     TodoLabelCount,
     TodoSearchParams,
@@ -42,6 +43,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
     TriggerSubscriptionStatus,
 )
+from app.utils.timezone import Timezone
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 _DESK_GATE = SystemGate(preset=SystemGatePreset.INBOX_DESK)
@@ -83,6 +85,10 @@ def _condition(field_name: str, value: str) -> SubscriptionCondition:
     return SubscriptionCondition(
         field_name=field_name, operator=ConditionOperator.EQUALS, value=value
     )
+
+
+def _utc_window() -> TodoDayWindow:
+    return TodoDayWindow.for_timezone(Timezone.utc(), datetime.now(UTC))
 
 
 def _all_params(**overrides: object) -> TodoSearchParams:
@@ -312,7 +318,9 @@ class TestTodosRepository(UserScopedRepositoryContract):
         )
 
         page = await repo.list_page(
-            user_id="u", params=_all_params(overdue=True), inbox_project_id=None
+            user_id="u",
+            params=_all_params(overdue=True, day_window=_utc_window()),
+            inbox_project_id=None,
         )
 
         assert page.total == 1
@@ -349,7 +357,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(
             make_doc(user_id="u", completed=False, priority=Priority.LOW, labels=["x"])
         )
-        stats = await repo.compute_stats(user_id="u")
+        stats = await repo.compute_stats(user_id="u", window=_utc_window())
         assert stats.total == 3
         assert stats.completed == 1
         assert stats.pending == 2
@@ -361,7 +369,9 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(make_doc(user_id="u", project_id="inbox-1", completed=False))
         await repo.create(make_doc(user_id="u", completed=True))
         await repo.create(make_doc(user_id="u", due_date=now - timedelta(days=1), completed=False))
-        counts = await repo.compute_counts(user_id="u", inbox_project_id="inbox-1")
+        counts = await repo.compute_counts(
+            user_id="u", inbox_project_id="inbox-1", window=_utc_window()
+        )
         assert counts.inbox == 1
         assert counts.completed == 1
         assert counts.overdue == 1

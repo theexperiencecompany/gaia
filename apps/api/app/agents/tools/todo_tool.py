@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 import uuid
 
@@ -7,16 +7,26 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
-from app.constants.todos import MAX_MISCOPIED_ID_CHARS
+from app.constants.todos import (
+    MAX_MISCOPIED_ID_CHARS,
+    TODO_STATS_LABEL_LIMIT,
+    TODO_SUMMARY_PREVIEW_LIMIT,
+    TODO_UPCOMING_DAYS,
+)
+from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_user_id
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
     ProjectResponse,
+    SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoModel,
     TodoResponse,
+    TodoSearchParams,
+    TodoStats,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -31,15 +41,14 @@ from app.services.todos.todo_service import (
     create_project as create_project_service,
     delete_project as delete_project_service,
     delete_todo as delete_todo_service,
-    get_all_labels as get_all_labels_service,
     get_all_projects as get_all_projects_service,
     get_all_todos as get_all_todos_service,
     get_todo as get_todo_service,
-    get_todo_stats as get_todo_stats_service,
     get_todos_by_date_range,
     get_todos_by_label as get_todos_by_label_service,
     search_todos as search_todos_service,
     semantic_search_todos as semantic_search_todos_service,
+    todo_responses,
     update_project as update_project_service,
     update_todo as update_todo_service,
 )
@@ -68,6 +77,7 @@ from app.templates.docstrings.todo_tool_docs import (
     UPDATE_TODO,
 )
 from app.utils.log_identifiers import user_text_shape
+from app.utils.timezone import home_timezone_from_config
 from shared.py.wide_events import log
 
 # A TodoResponse / ProjectResponse / TodoStats serialized with
@@ -193,6 +203,13 @@ class TodosSummaryResult(TypedDict):
     error: str | None
 
 
+def _day_window(config: RunnableConfig, upcoming_days: int = TODO_UPCOMING_DAYS) -> TodoDayWindow:
+    """The run user's todo day, on their home timezone."""
+    return TodoDayWindow.for_timezone(
+        home_timezone_from_config(config), datetime.now(UTC), upcoming_days
+    )
+
+
 @tool
 @with_rate_limiting("todo_operations")
 @with_doc(CREATE_TODO)
@@ -281,6 +298,7 @@ async def list_todos(
             priority=priority,
             has_due_date=has_due_date,
             overdue=overdue,
+            day_window=_day_window(config),
             skip=skip,
             limit=limit,
         )
@@ -558,7 +576,9 @@ async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
         log.set(tool={"name": "get_todo_statistics", "action": "stats"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todo statistics")
 
-        stats = (await get_todo_stats_service(user_id)).model_dump(mode="json")
+        stats = (
+            await todo_repository.compute_stats(user_id=user_id, window=_day_window(config))
+        ).model_dump(mode="json")
 
         # Stream the stats to frontend
         writer = current_stream_writer()
@@ -593,11 +613,7 @@ async def get_today_todos(config: RunnableConfig) -> TodoListResult:
         log.set(tool={"name": "get_today_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting today's todos")
 
-        now = datetime.now(UTC)
-        today_start = datetime.combine(now, time.min)
-        today_end = datetime.combine(now, time.max)
-
-        results = await get_todos_by_date_range(user_id, today_start, today_end)
+        results = await get_todos_by_date_range(user_id, *_day_window(config).today)
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream today's todos to frontend
@@ -640,10 +656,7 @@ async def get_upcoming_todos(
         log.set(tool={"name": "get_upcoming_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos", days=days)
 
-        start_date = datetime.now(UTC)
-        end_date = start_date + timedelta(days=days)
-
-        results = await get_todos_by_date_range(user_id, start_date, end_date)
+        results = await get_todos_by_date_range(user_id, *_day_window(config, days).upcoming)
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream upcoming todos to frontend
@@ -898,7 +911,7 @@ async def get_all_labels(config: RunnableConfig) -> LabelListResult:
         log.set(tool={"name": "get_all_labels", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting all labels")
 
-        results = await get_all_labels_service(user_id)
+        results = await todo_repository.top_labels(user_id=user_id, limit=TODO_STATS_LABEL_LIMIT)
         return {"labels": [label.model_dump() for label in results], "error": None}
 
     except Exception as e:
@@ -1225,6 +1238,33 @@ async def delete_checklist_item(
         return {"error": error_msg, "todo": None}
 
 
+async def _summary_bucket(user_id: str, **filters: object) -> _TodoBucket:
+    """A preview of the user's todos matching filters, with the count over all of them."""
+    page = await TodoService.list_todos(
+        user_id,
+        TodoSearchParams.model_validate(
+            {"mode": SearchMode.TEXT, "per_page": TODO_SUMMARY_PREVIEW_LIMIT, **filters}
+        ),
+    )
+    return {
+        "count": page.meta.total,
+        "todos": [t.model_dump(mode="json") for t in page.data],
+        "has_more": page.meta.total > len(page.data),
+    }
+
+
+def _project_breakdown(
+    stats: TodoStats, projects: list[ProjectResponse]
+) -> dict[str, _ProjectCounts]:
+    """Per-project totals from the stats over every todo, keyed by project name."""
+    breakdown: dict[str, _ProjectCounts] = {}
+    for project in projects:
+        total = stats.by_project.get(project.id, 0)
+        pending = stats.pending_by_project.get(project.id, 0)
+        breakdown[project.name] = {"total": total, "completed": total - pending, "pending": pending}
+    return breakdown
+
+
 @tool
 @with_doc(GET_TODOS_SUMMARY)
 async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
@@ -1236,104 +1276,50 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
         log.set(tool={"name": "get_todos_summary", "action": "summary"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting comprehensive todos summary")
 
-        def get_date_ranges() -> tuple[datetime, datetime, datetime, datetime, datetime]:
-            """Calculate all needed date ranges."""
-            now = datetime.now(UTC)
-            today_start = datetime.combine(now, time.min)
-            today_end = datetime.combine(now, time.max)
-            week_end = now + timedelta(days=7)
-            yesterday = now - timedelta(days=1)
-            return now, today_start, today_end, week_end, yesterday
-
-        def filter_todos(
-            all_todos: list[TodoResponse], now: datetime, yesterday: datetime
-        ) -> tuple[list[TodoResponse], list[TodoResponse], list[TodoResponse], TodoResponse | None]:
-            """Filter todos into categories."""
-            overdue = [t for t in all_todos if t.due_date and not t.completed and t.due_date < now]
-            high_priority = [
-                t for t in all_todos if t.priority == Priority.HIGH and not t.completed
-            ]
-            recently_completed = [
-                t
-                for t in all_todos
-                if t.completed and t.completed_at and t.completed_at > yesterday
-            ]
-
-            future_deadlines = [
-                t for t in all_todos if t.due_date and not t.completed and t.due_date > now
-            ]
-            future_deadlines.sort(key=lambda x: x.due_date)
-            next_deadline = future_deadlines[0] if future_deadlines else None
-
-            return overdue, high_priority, recently_completed, next_deadline
-
-        def calculate_stats(
-            all_todos: list[TodoResponse],
-            recently_completed: list[TodoResponse],
-            overdue: list[TodoResponse],
-        ) -> _SummaryStats:
-            """Calculate productivity statistics."""
-            total = len(all_todos)
-            completed = len([t for t in all_todos if t.completed])
-            rate = round((completed / total * 100), 1) if total > 0 else 0
-            return {
-                "total": total,
-                "completed": completed,
-                "pending": total - completed,
-                "completed_today": len(recently_completed),
-                "overdue": len(overdue),
-                "completion_rate": rate,
-            }
-
-        def build_project_breakdown(
-            all_todos: list[TodoResponse], projects: list[ProjectResponse]
-        ) -> dict[str, _ProjectCounts]:
-            """Build per-project task counts."""
-            breakdown: dict[str, _ProjectCounts] = {}
-            for project in projects:
-                project_todos = [t for t in all_todos if t.project_id == project.id]
-                breakdown[project.name] = {
-                    "total": len(project_todos),
-                    "completed": len([t for t in project_todos if t.completed]),
-                    "pending": len([t for t in project_todos if not t.completed]),
-                }
-            return breakdown
-
-        def serialize_todos(todos: list[TodoResponse], limit: int = 5) -> _TodoBucket:
-            """Serialize todos with optional limit."""
-            return {
-                "count": len(todos),
-                "todos": [t.model_dump(mode="json") for t in todos[:limit]],
-                "has_more": len(todos) > limit,
-            }
-
-        now, today_start, today_end, week_end, yesterday = get_date_ranges()
-
-        today_todos, upcoming_todos, all_todos, all_projects = await asyncio.gather(
-            get_todos_by_date_range(user_id, today_start, today_end),
-            get_todos_by_date_range(user_id, now, week_end),
-            get_all_todos_service(user_id, limit=100),
+        window = _day_window(config)
+        open_todos: dict[str, object] = {"completed": False, "day_window": window}
+        today, overdue, upcoming, high_priority, completed_today = await asyncio.gather(
+            _summary_bucket(
+                user_id,
+                due_date_start=window.today.start,
+                due_date_end=window.today.end,
+                **open_todos,
+            ),
+            _summary_bucket(user_id, overdue=True, **open_todos),
+            _summary_bucket(
+                user_id,
+                due_date_start=window.upcoming.start,
+                due_date_end=window.upcoming.end,
+                **open_todos,
+            ),
+            _summary_bucket(user_id, priority=Priority.HIGH, **open_todos),
+            _summary_bucket(user_id, completed=True, completed_after=window.today_start),
+        )
+        stats, projects, next_due = await asyncio.gather(
+            todo_repository.compute_stats(user_id=user_id, window=window),
             get_all_projects_service(user_id),
+            todo_repository.next_due(user_id, after=datetime.now(UTC)),
         )
-
-        overdue, high_priority, recently_completed, next_deadline = filter_todos(
-            all_todos, now, yesterday
-        )
-        stats: _SummaryStats = calculate_stats(all_todos, recently_completed, overdue)
-        project_breakdown = build_project_breakdown(all_todos, all_projects)
+        next_deadline = (await todo_responses(user_id, [next_due]))[0] if next_due else None
 
         summary: TodosSummary = {
-            "today": serialize_todos(today_todos),
-            "overdue": serialize_todos(overdue),
-            "upcoming_week": serialize_todos(upcoming_todos),
-            "high_priority": serialize_todos(high_priority),
+            "today": today,
+            "overdue": overdue,
+            "upcoming_week": upcoming,
+            "high_priority": high_priority,
             "recently_completed": _RecentlyCompletedBucket(
-                count=len(recently_completed),
-                todos=[t.model_dump(mode="json") for t in recently_completed[:3]],
+                count=completed_today["count"], todos=completed_today["todos"]
             ),
             "next_deadline": next_deadline.model_dump(mode="json") if next_deadline else None,
-            "stats": stats,
-            "by_project": project_breakdown,
+            "stats": {
+                "total": stats.total,
+                "completed": stats.completed,
+                "pending": stats.pending,
+                "completed_today": completed_today["count"],
+                "overdue": stats.overdue,
+                "completion_rate": stats.completion_rate,
+            },
+            "by_project": _project_breakdown(stats, projects),
         }
 
         # Stream to frontend
@@ -1343,7 +1329,7 @@ async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
                 "todo_data": {
                     "summary": summary,
                     "action": "summary",
-                    "message": f"Here's your productivity snapshot: {len(today_todos)} tasks today, {len(overdue)} overdue, {stats['completion_rate']}% completion rate",
+                    "message": f"Here's your productivity snapshot: {today['count']} tasks today, {stats.overdue} overdue, {stats.completion_rate}% completion rate",
                 }
             }
         )
