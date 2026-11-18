@@ -92,6 +92,18 @@ class _StreamEntryFields(TypedDict, total=False):
     error: str
 
 
+def sse_payload(frame: str) -> str:
+    """Return a subscribe_stream frame without its leading id line.
+
+    Replayable frames are id-tagged for Last-Event-ID resume, so a reader that
+    looks for "data:" on the raw frame silently matches nothing. Untagged frames
+    (keepalives) pass through unchanged.
+    """
+    if frame.startswith("id: "):
+        return frame.partition("\n")[2]
+    return frame
+
+
 class StreamManager:
     """
     Redis-backed stream manager for background execution.

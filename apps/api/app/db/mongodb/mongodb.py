@@ -11,6 +11,7 @@ from pymongo.server_api import ServerApi
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.db.store_timing import MongoTurnListener
 from shared.py.wide_events import log
 
 # The app always uses this database name regardless of what `MONGO_DB`'s URL names.
@@ -43,6 +44,7 @@ class MongoDB:
                 tzinfo=UTC,
                 maxPoolSize=20,
                 minPoolSize=0,
+                event_listeners=[MongoTurnListener()],
             )
             self.database = self.client.get_database(db_name)
             log.set(db={"connection_status": "connected", "backend": "mongodb"})
