@@ -349,7 +349,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       onAuthError,
       onGenericError,
       this.emulation.streaming,
-      await this.analyticsFor(userId),
+      this.analyticsFor(userId),
       (emoji: string) =>
         this.reactToMessage(channelId, inboundMessageId, emoji),
     );

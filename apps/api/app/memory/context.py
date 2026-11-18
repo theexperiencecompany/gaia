@@ -20,7 +20,7 @@ from app.constants.memory import (
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
-from app.memory import pg_store
+from app.memory import pg_store, vector_index
 from app.memory.retrieval import invalidate_recall_cache
 from app.memory.user_time import local_today
 from app.models.memory_db_models import MemoryEpisode
@@ -128,6 +128,7 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
     """
     await invalidate_recall_cache(user_id)
     await invalidate_core_context(user_id)
+    await vector_index.bump_version(user_id)
 
 
 class _JournalLine(BaseModel):

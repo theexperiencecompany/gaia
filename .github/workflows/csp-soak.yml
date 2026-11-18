@@ -1,12 +1,12 @@
-# Daily CSP soak report to Slack while the nonce CSP is report-only: violations
-# PostHog received in the last 24h and whether it is safe to enforce (#1765).
+# Weekly CSP soak report to Slack while the nonce CSP is report-only: violations
+# PostHog received in the last 7 days and whether it is safe to enforce (#1765).
 # Once the site serves an enforced script-src policy the run posts "soak over"
 # and disables this workflow, which is what makes that message post once.
 name: CSP soak report
 
 on:
   schedule:
-    - cron: "30 4 * * *"
+    - cron: "30 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: csp-soak - post the day's CSP violations and verdict to Slack
+      - name: csp-soak - post the week's CSP violations and verdict to Slack
         id: csp-soak
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:

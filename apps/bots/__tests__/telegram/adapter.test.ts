@@ -14,7 +14,7 @@
  * 2. group @mention path strips @botUsername and streams the cleaned content
  * 3. createCtxTarget.send — sends HTML text to the correct chat_id
  * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
- * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
+ * 5. handleTelegramStreaming — sends "Thinking..." alongside handleStreamingChat, not ahead of it
  * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
  * 7. registerCommands — a slash command dispatches with the parsed subcommand args
  * 8. dispatchCommand — unknown command sends ephemeral error
@@ -33,8 +33,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockBotOn = vi.fn();
 const mockBotCommand = vi.fn();
 const mockBotCatch = vi.fn();
+const mockBotUse = vi.fn();
 const mockBotStart = vi.fn();
 const mockBotStop = vi.fn().mockResolvedValue(undefined);
+const mockDeleteWebhook = vi.fn().mockResolvedValue(true);
 const mockSetMyCommands = vi.fn().mockResolvedValue(undefined);
 const mockGetMe = vi.fn().mockResolvedValue({ username: "gaiabot" });
 const mockGetFile = vi
@@ -47,9 +49,11 @@ const mockBotInstance = {
   on: mockBotOn,
   command: mockBotCommand,
   catch: mockBotCatch,
+  use: mockBotUse,
   start: mockBotStart,
   stop: mockBotStop,
   api: {
+    deleteWebhook: mockDeleteWebhook,
     getMe: mockGetMe,
     getFile: mockGetFile,
     setMyCommands: mockSetMyCommands,
@@ -63,7 +67,10 @@ const mockBotInstance = {
 };
 
 vi.mock("grammy", () => ({
-  Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  // A function, not an arrow: initialize() constructs it with `new`.
+  Bot: vi.fn(function Bot() {
+    return mockBotInstance;
+  }),
   InputFile: class InputFile {
     constructor(
       public data: Buffer,
@@ -83,6 +90,27 @@ vi.mock("grammy", () => ({
 }));
 
 vi.mock("@grammyjs/types", () => ({}));
+
+// The update runner: `run` hands back a handle whose task settles when polling
+// ends, and `sequentialize` builds the per-chat ordering middleware.
+const { mockRunnerStop, mockRun, sequentialMiddleware, mockSequentialize } =
+  vi.hoisted(() => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const middleware = vi.fn();
+    return {
+      mockRunnerStop: stop,
+      mockRun: vi.fn(() => ({
+        stop,
+        task: () => new Promise<void>(() => undefined),
+      })),
+      sequentialMiddleware: middleware,
+      mockSequentialize: vi.fn(() => middleware),
+    };
+  });
+vi.mock("@grammyjs/runner", () => ({
+  run: mockRun,
+  sequentialize: mockSequentialize,
+}));
 
 // Mocks @gaia/shared via the shared factory (BaseBotAdapter stub + common
 // helpers), layering Telegram-specific exports (HTML converter, htmlToPlainText,
@@ -158,6 +186,7 @@ import type { Message } from "@grammyjs/types";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // link-code path branches on, and the mock does not re-export it.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
+import { isMessageGoneError } from "../../../../libs/shared/ts/src/bots/utils/delivery-errors";
 import {
   extractTelegramMedia,
   TelegramAdapter,
@@ -167,6 +196,7 @@ import { pngHeader } from "../shared/helpers/png";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
+const RECEIVED_AT = 1_700_000_000_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -301,9 +331,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -360,9 +388,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -540,7 +566,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
     adapter = makeAdapter();
   });
 
-  it("sends 'Thinking...' via ctx.reply before invoking handleStreamingChat", async () => {
+  it("sends 'Thinking...' via ctx.reply and streams the turn", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({ replyFn });
 
@@ -550,12 +576,86 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "tell me a joke");
+    ).handleTelegramStreaming(ctx, "999", "tell me a joke", RECEIVED_AT);
 
     expect(replyFn).toHaveBeenCalledWith("Thinking...");
     expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("starts the chat request without waiting for the Thinking... placeholder", async () => {
+    // The placeholder is a Telegram round-trip; the API request used to queue
+    // behind it, adding that round-trip to every reply's latency.
+    let placePlaceholder: (sent: { message_id: number }) => void = () => {
+      throw new Error("ctx.reply was never called");
+    };
+    const replyFn = vi.fn(
+      () =>
+        new Promise<{ message_id: number }>((resolve) => {
+          placePlaceholder = resolve;
+        }),
+    );
+    const ctx = makeCtx({ chatId: 77777, replyFn });
+
+    const turn = (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: ReturnType<typeof makeCtx>,
+          userId: string,
+          message: string,
+          receivedAt: number,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "what is 2+2?", RECEIVED_AT);
+
+    await vi.waitFor(() => expect(handleStreamingChat).toHaveBeenCalled());
+    // The first edit lands on the placeholder, so it waits for it to exist.
+    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
+    const edit = editMessage("partial reply");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctx.api.editMessageText).not.toHaveBeenCalled();
+
+    placePlaceholder({ message_id: 42 });
+    await edit;
+    await turn;
+
+    expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+      77777,
+      42,
+      "partial reply",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the turn going when the placeholder cannot be posted, so the reply opens its own message", async () => {
+    // The chat request is already running when the placeholder fails; failing the turn
+    // here used to strand its reply while the agent still did the user's work.
+    const replyFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Too Many Requests: retry after 1"));
+    const ctx = makeCtx({ replyFn });
+
+    await (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: ReturnType<typeof makeCtx>,
+          userId: string,
+          message: string,
+          receivedAt: number,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "hi", RECEIVED_AT);
+
+    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
+    const editError = await editMessage("the reply").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    // The streamer answers a gone message by sending the reply as a new one.
+    expect(isMessageGoneError(editError)).toBe(true);
+    expect(ctx.api.editMessageText).not.toHaveBeenCalled();
   });
 
   it("calls handleStreamingChat with the correct request shape", async () => {
@@ -568,9 +668,10 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "555", "what is 2+2?");
+    ).handleTelegramStreaming(ctx, "555", "what is 2+2?", RECEIVED_AT);
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(), // gaia client
@@ -579,15 +680,14 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
         platform: "telegram",
         platformUserId: "555",
         channelId: "77777",
+        receivedAt: RECEIVED_AT,
       }),
       expect.any(Function), // editMessage callback
       expect.any(Function), // sendNewMessage callback
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -621,12 +721,14 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
     ).handleTelegramStreaming(
       ctx as unknown as ReturnType<typeof makeCtx>,
       "999",
       "hello",
+      RECEIVED_AT,
     );
 
     expect(replyFn).not.toHaveBeenCalled();
@@ -670,9 +772,10 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
           ctx: ReturnType<typeof makeCtx>,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", message);
+    ).handleTelegramStreaming(ctx, "999", message, RECEIVED_AT);
 
     if (!capturedEditCallback) {
       throw new Error("edit callback was not captured");
@@ -767,9 +870,10 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "new content");
+    ).handleTelegramStreaming(ctx, "999", "new content", RECEIVED_AT);
 
     expect(capturedSendNewMessage).toBeDefined();
 
@@ -1127,9 +1231,7 @@ describe("TelegramAdapter - /gaia command", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -1202,9 +1304,10 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+    ).handleTelegramStreaming(ctx, "999", "do something", RECEIVED_AT);
 
     expect(capturedAuthError).toBeDefined();
 
@@ -1248,9 +1351,10 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+    ).handleTelegramStreaming(ctx, "999", "do something", RECEIVED_AT);
 
     expect(capturedGenericError).toBeDefined();
 
@@ -1523,9 +1627,7 @@ describe("TelegramAdapter - media message routing", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -1784,9 +1886,10 @@ describe("TelegramAdapter - live turn reaction", () => {
           c: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "thanks!");
+    ).handleTelegramStreaming(ctx, "999", "thanks!", RECEIVED_AT);
     const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
     return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
   }
@@ -1881,5 +1984,84 @@ describe("TelegramAdapter - sendOutboundFile", () => {
       expect.objectContaining({ filename: "brief.png" }),
       { caption: "Morning" },
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Update runner — concurrent across chats, ordered within one
+// ---------------------------------------------------------------------------
+
+describe("TelegramAdapter - update runner", () => {
+  type Lifecycle = {
+    initialize: () => Promise<void>;
+    start: () => Promise<void>;
+    stop: () => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  });
+
+  it("consumes updates through the grammY runner, not one-at-a-time bot.start()", async () => {
+    // bot.start() handles one update at a time across ALL users, so one user's
+    // slow turn held every other user's message in the queue.
+    const adapter = makeAdapter() as unknown as Lifecycle;
+
+    await adapter.start();
+
+    expect(mockDeleteWebhook).toHaveBeenCalledWith({
+      drop_pending_updates: true,
+    });
+    await vi.waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith(mockBotInstance, expect.anything()),
+    );
+    expect(mockBotStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps each chat's updates in order by sequentializing on the chat id", async () => {
+    const adapter = new TelegramAdapter() as unknown as Lifecycle;
+
+    await adapter.initialize();
+
+    // initialize() runs before boot() registers any handler, so every handler
+    // sits behind the ordering middleware.
+    expect(mockBotUse).toHaveBeenCalledWith(sequentialMiddleware);
+    const [constraint] = mockSequentialize.mock.calls[0] as unknown as [
+      (ctx: { chat?: { id: number } }) => string | undefined,
+    ];
+    expect(constraint({ chat: { id: 42 } })).toBe("42");
+    expect(constraint({ chat: { id: -100123 } })).toBe("-100123");
+    expect(constraint({})).toBeUndefined();
+  });
+
+  it("restarts polling after a 409 Conflict from a lingering getUpdates session", async () => {
+    vi.useFakeTimers();
+    try {
+      mockRun.mockReturnValueOnce({
+        stop: mockRunnerStop,
+        task: () => Promise.reject({ error_code: 409 }),
+      });
+      const adapter = makeAdapter() as unknown as Lifecycle;
+
+      await adapter.start();
+      await vi.advanceTimersByTimeAsync(34_000);
+      expect(mockRun).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mockRun).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the runner on shutdown", async () => {
+    const adapter = makeAdapter() as unknown as Lifecycle;
+    await adapter.start();
+    await vi.waitFor(() => expect(mockRun).toHaveBeenCalled());
+
+    await adapter.stop();
+
+    expect(mockRunnerStop).toHaveBeenCalledOnce();
   });
 });
