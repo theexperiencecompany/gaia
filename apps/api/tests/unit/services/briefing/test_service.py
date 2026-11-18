@@ -55,6 +55,7 @@ from app.constants.briefing import (
     BriefItemSource,
     BriefOutcome,
     EditionChoice,
+    EditionFamily,
 )
 from app.constants.desk_buckets import DeskBucket
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -947,7 +948,7 @@ class TestDailyBrief:
                     mood=BriefingMood.PACKED,
                     caption="c",
                     message="Priya replied overnight.",
-                    template_family="swiss",
+                    template_family=EditionFamily.SWISS,
                 ),
             )
         ]
@@ -1436,7 +1437,7 @@ class TestDailyBrief:
                 lede="l",
                 mood=BriefingMood.CLEAR,
                 caption="c",
-                template_family="postal",
+                template_family=EditionFamily.POSTAL,
                 stamp_city="tokyo",
             ),
         )
@@ -2091,7 +2092,7 @@ class TestTheWeeklyAnswersTheWeek:
             lede="l",
             mood=BriefingMood.PACKED,
             caption="c",
-            template_family="swiss",
+            template_family=EditionFamily.SWISS,
         )
         world.recent.return_value = [
             BriefingModel(id="d", user_id=_USER, date="2026-10-13", payload=daily_brief)
@@ -2217,7 +2218,7 @@ class TestTheWeeklyReadsThisUsersWeek:
                     mood=BriefingMood.PACKED,
                     caption="c",
                     message="Priya replied overnight.",
-                    template_family="swiss",
+                    template_family=EditionFamily.SWISS,
                 ),
             )
         ]
@@ -2842,7 +2843,7 @@ class TestWhatTheWriterIsShown:
                 mood=BriefingMood.PACKED,
                 caption="c",
                 message=message,
-                template_family="swiss",
+                template_family=EditionFamily.SWISS,
             )
             return BriefingModel(id="b", user_id=_USER, date="2026-10-13", payload=payload)
 
@@ -3046,7 +3047,7 @@ class TestTheDailyRunWiring:
                 lede="L",
                 mood=BriefingMood.CLEAR,
                 caption="C",
-                template_family="swiss",
+                template_family=EditionFamily.SWISS,
             ),
             created_at=sent,
         )

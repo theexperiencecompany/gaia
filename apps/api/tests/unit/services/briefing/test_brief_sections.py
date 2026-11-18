@@ -17,6 +17,7 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefPoolItem
 from app.models.brief_pool_models import (
     DataSeries,
@@ -62,7 +63,7 @@ POOL = FactPool(
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Re: term sheet",
             todo_id="t1",
             people=["Maya"],
@@ -71,7 +72,7 @@ POOL = FactPool(
             origin=CandidateOrigin.HELD,
             source="gaia",
             app="GAIA",
-            state="failed",
+            state=ItemState.FAILED,
             title="CRM sync failed",
             action=BriefAction.RETRY,
             held_id="h2",
@@ -80,7 +81,7 @@ POOL = FactPool(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Investor update",
             outcome=BriefOutcome.SENT,
         ),
@@ -88,7 +89,7 @@ POOL = FactPool(
             origin=CandidateOrigin.APP_SIGNAL,
             source="linear",
             app="Linear",
-            state="you",
+            state=ItemState.YOU,
             title=_SIGNAL.title,
             detail="issue assigned to you | why: due tomorrow | new today",
             url="https://linear.app/ENG-12",
@@ -98,14 +99,14 @@ POOL = FactPool(
             origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board call",
         ),
         6: BriefCandidate(
             origin=CandidateOrigin.HELD,
             source="gaia",
             app="GAIA",
-            state="note",
+            state=ItemState.NOTE,
             title="Digest: three papers",
             held_id="h6",
         ),
@@ -242,7 +243,7 @@ class TestLayOut:
                     origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
-                    state="you",
+                    state=ItemState.YOU,
                     title="Three asks",
                     count=3,
                     url="https://mail.example/t7",
@@ -306,7 +307,7 @@ class TestLayOut:
                     origin=CandidateOrigin.TRACKED,
                     source="gaia",
                     app="GAIA",
-                    state="note",
+                    state=ItemState.NOTE,
                     title="Left",
                     todo_id="t7",
                 )
@@ -332,11 +333,11 @@ class TestLayOut:
             BriefPoolItem(
                 title="Fix the login redirect",
                 detail="due tomorrow",
-                kind="you",
+                kind=ItemState.YOU,
                 app="Linear",
                 url="https://linear.app/ENG-12",
             ),
-            BriefPoolItem(title="Digest: three papers", kind="note", app="GAIA"),
+            BriefPoolItem(title="Digest: three papers", kind=ItemState.NOTE, app="GAIA"),
         ]
 
     def test_every_held_result_in_the_pool_is_carried_composed_or_not(self) -> None:

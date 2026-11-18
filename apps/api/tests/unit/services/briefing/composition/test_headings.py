@@ -12,6 +12,7 @@ from tests.helpers import unfenced, user_clock
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
+from app.models.brief_item_models import ItemState
 from app.services.briefing.composition import headings
 from app.services.briefing.composition.headings import (
     HeadingVerdict,
@@ -28,14 +29,14 @@ POOL = FactPool(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Priya's offsite venues",
         ),
         2: BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Investor update",
         ),
     },

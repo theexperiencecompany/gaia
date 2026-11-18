@@ -12,9 +12,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config.settings import settings
-from app.constants.briefing import BriefOutcome
+from app.constants.briefing import BriefOutcome, EditionFamily
 from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
 from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
@@ -111,7 +112,7 @@ class TestBriefing:
             edition=EditionRender(key="edition-key"),
             payload=BriefingPayload(
                 kicker="Tuesday",
-                template_family="swiss",
+                template_family=EditionFamily.SWISS,
                 date="Oct 14",
                 headline="A clear day",
                 lede="Two things moved.",
@@ -171,7 +172,7 @@ class TestBriefing:
                         items=[
                             PublicBriefingItem(
                                 text="Sent the Acme reply",
-                                kind="note",
+                                kind=ItemState.NOTE,
                                 link="https://heygaia.link/xyz",
                             )
                         ],

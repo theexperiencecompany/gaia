@@ -15,6 +15,7 @@ from app.config.settings import settings
 from app.constants.briefing import (
     FOLD_MARKER_SELECTOR,
     PAPER_MARKER_SELECTOR,
+    EditionFamily,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -147,12 +148,12 @@ class TestEditionRendering:
     async def test_the_payloads_family_renders_with_the_edition_number_and_no_generation_time(
         self, harness: Harness
     ) -> None:
-        await host(make_payload(date="2026-01-10", template_family="receipt"))
+        await host(make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT))
 
         assert harness.render_calls == [
             {
                 "renderer": "receipt",
-                "payload": make_payload(date="2026-01-10", template_family="receipt"),
+                "payload": make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT),
                 "edition_no": 10,
                 "generated_local": "",
             }
@@ -194,7 +195,7 @@ class TestEditionRendering:
 @pytest.mark.unit
 class TestImage:
     async def test_a_paper_on_a_desk_is_trimmed_to_an_even_margin(self, harness: Harness) -> None:
-        await host(make_payload(template_family="memo"))
+        await host(make_payload(template_family=EditionFamily.MEMO))
 
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (636, 3)
@@ -218,7 +219,7 @@ class TestImage:
         assert hosted.paper == (0.02, 0.03, 0.97, 0.9)
 
     async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
-        await host(make_payload(template_family="swiss"))
+        await host(make_payload(template_family=EditionFamily.SWISS))
 
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (540, 3)
@@ -309,7 +310,7 @@ class TestTextStrip:
         )
 
     def test_a_weekly_digest_says_weekly_digests_are_on(self, harness: Harness) -> None:
-        html = render(make_payload(template_family="weekly"))
+        html = render(make_payload(template_family=EditionFamily.WEEKLY))
 
         assert "You get this because weekly digests are on in GAIA. <a" in html
         assert "Open this week&#39;s digest in GAIA</a>" in html

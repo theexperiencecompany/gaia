@@ -12,6 +12,7 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
@@ -90,13 +91,13 @@ def _sources(
 class TestTheFactLines:
     def test_an_item_line_says_its_app_when_it_is_due_its_detail_and_how_many_asked(self) -> None:
         item = BriefingItem(
-            text="Reply to Maya", kind="you", app="Gmail", count=3, action=BriefAction.REPLY
+            text="Reply to Maya", kind=ItemState.YOU, app="Gmail", count=3, action=BriefAction.REPLY
         )
         candidate = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Re: term sheet",
             detail="needs sign-off",
             due_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
@@ -110,7 +111,7 @@ class TestTheFactLines:
             title="Reply to Maya",
             time="Fri Nov 13",
             count=3,
-            kind="you",
+            kind=ItemState.YOU,
             words="Re: term sheet needs sign-off",
         )
         assert facts.block.splitlines()[:3] == [
@@ -123,13 +124,13 @@ class TestTheFactLines:
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
         """Replay of 2026-11-14: placing an own todo raised KeyError on its todo id."""
         item = BriefingItem(
-            text="Sort the garage", kind="you", action=BriefAction.ATTEND, todo_id="own-1"
+            text="Sort the garage", kind=ItemState.YOU, action=BriefAction.ATTEND, todo_id="own-1"
         )
         candidate = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Sort the garage",
             todo_id="own-1",
         )
@@ -140,12 +141,14 @@ class TestTheFactLines:
         assert facts.deliverables == {}
 
     def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
-        item = BriefingItem(text="Venue", kind="you", todo_id="t1", action=BriefAction.REPLY)
+        item = BriefingItem(
+            text="Venue", kind=ItemState.YOU, todo_id="t1", action=BriefAction.REPLY
+        )
         candidate = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Venue",
             detail="Lisbon or Porto?",
         )
@@ -161,12 +164,12 @@ class TestTheFactLines:
 
 class TestWhatProseMayQuote:
     def test_the_date_an_items_standing_says_may_be_quoted(self) -> None:
-        item = BriefingItem(text="Pitch prep", kind="gaia", outcome=BriefOutcome.STARTED)
+        item = BriefingItem(text="Pitch prep", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED)
         candidate = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Pitch prep",
             standing="GAIA looks at it again Tue Nov 17",
         )
@@ -180,23 +183,25 @@ class TestWhatProseMayQuote:
 
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
         first = (
-            BriefingItem(text="Q3 plan", kind="you", todo_id="t1", action=BriefAction.REPLY),
+            BriefingItem(
+                text="Q3 plan", kind=ItemState.YOU, todo_id="t1", action=BriefAction.REPLY
+            ),
             BriefCandidate(
                 origin=CandidateOrigin.TRACKED,
                 source="gaia",
                 app="GAIA",
-                state="you",
+                state=ItemState.YOU,
                 title="Q3 plan",
                 detail="due by 5pm",
             ),
         )
         second = (
-            BriefingItem(text="Q4 plan", kind="you", action=BriefAction.REPLY),
+            BriefingItem(text="Q4 plan", kind=ItemState.YOU, action=BriefAction.REPLY),
             BriefCandidate(
                 origin=CandidateOrigin.TRACKED,
                 source="gaia",
                 app="GAIA",
-                state="you",
+                state=ItemState.YOU,
                 title="Q4 plan",
             ),
         )
@@ -217,12 +222,12 @@ class TestWhatProseMayQuote:
             state="P1 open",
             text="repro on build 88",
         )
-        item = BriefingItem(text="Fix login", kind="you", action=BriefAction.REPLY)
+        item = BriefingItem(text="Fix login", kind=ItemState.YOU, action=BriefAction.REPLY)
         candidate = BriefCandidate(
             origin=CandidateOrigin.APP_SIGNAL,
             source="linear",
             app="Linear",
-            state="you",
+            state=ItemState.YOU,
             title="Fix login 4",
             signal=signal,
         )
@@ -340,7 +345,7 @@ class TestEachCountClaimsOnlyItsOwn:
             origin=CandidateOrigin.HELD,
             source="gaia",
             app="GAIA",
-            state="note",
+            state=ItemState.NOTE,
             title="Digest: 3 papers",
             held_id="h1",
         )
@@ -348,36 +353,39 @@ class TestEachCountClaimsOnlyItsOwn:
             origin=CandidateOrigin.TRACKED,
             source="linear",
             app="Linear",
-            state="you",
+            state=ItemState.YOU,
             title="ENG-12 merged",
         )
         event = BriefCandidate(
             origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board",
         )
         backlog = BriefCandidate(
             origin=CandidateOrigin.BACKLOG,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Plan Q1",
         )
         waiting = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Reply to Maya",
         )
         placed = [
-            (BriefingItem(text="Board", kind="you", action=BriefAction.ATTEND), event),
-            (BriefingItem(text="Digest", kind="note", outcome=BriefOutcome.FINISHED), held),
-            (BriefingItem(text="ENG-12", kind="note", outcome=BriefOutcome.CHANGED), signal),
-            (BriefingItem(text="Plan Q1", kind="you", action=BriefAction.ATTEND), backlog),
-            (BriefingItem(text="Maya", kind="you", action=BriefAction.REPLY), waiting),
+            (BriefingItem(text="Board", kind=ItemState.YOU, action=BriefAction.ATTEND), event),
+            (BriefingItem(text="Digest", kind=ItemState.NOTE, outcome=BriefOutcome.FINISHED), held),
+            (
+                BriefingItem(text="ENG-12", kind=ItemState.NOTE, outcome=BriefOutcome.CHANGED),
+                signal,
+            ),
+            (BriefingItem(text="Plan Q1", kind=ItemState.YOU, action=BriefAction.ATTEND), backlog),
+            (BriefingItem(text="Maya", kind=ItemState.YOU, action=BriefAction.REPLY), waiting),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
@@ -390,23 +398,31 @@ class TestEachCountClaimsOnlyItsOwn:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Filed taxes",
         )
         running = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Venue search",
         )
         placed = [
             (
-                BriefingItem(text="Filed taxes", kind="lookback", outcome=BriefOutcome.FINISHED),
+                BriefingItem(
+                    text="Filed taxes", kind=ItemState.LOOKBACK, outcome=BriefOutcome.FINISHED
+                ),
                 done,
             ),
-            (BriefingItem(text="Venue", kind="gaia", outcome=BriefOutcome.STARTED), running),
-            (BriefingItem(text="Venue 2", kind="gaia", outcome=BriefOutcome.STARTED), running),
+            (
+                BriefingItem(text="Venue", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+                running,
+            ),
+            (
+                BriefingItem(text="Venue 2", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+                running,
+            ),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
@@ -447,7 +463,7 @@ class TestARepeatIsSaidAsStillOpen:
             origin=CandidateOrigin.APP_SIGNAL,
             source="linear",
             app="Linear",
-            state="you",
+            state=ItemState.YOU,
             title="E-1",
             signal=signal,
         )
@@ -455,13 +471,18 @@ class TestARepeatIsSaidAsStillOpen:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Approve the MSA",
             memory=self._SHOWN,
         )
         placed = [
-            (BriefingItem(text="E-1", kind="you", action=BriefAction.REVIEW), app_item),
-            (BriefingItem(text="Approve the MSA", kind="you", action=BriefAction.APPROVE), shown),
+            (BriefingItem(text="E-1", kind=ItemState.YOU, action=BriefAction.REVIEW), app_item),
+            (
+                BriefingItem(
+                    text="Approve the MSA", kind=ItemState.YOU, action=BriefAction.APPROVE
+                ),
+                shown,
+            ),
         ]
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
@@ -477,13 +498,13 @@ class TestARepeatIsSaidAsStillOpen:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Investor list",
             todo_id="t1",
             memory=self._SHOWN.model_copy(update={"last_state": "gaia"}),
         )
         item = BriefingItem(
-            text="Investor list", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+            text="Investor list", kind=ItemState.GAIA, todo_id="t1", outcome=BriefOutcome.STARTED
         )
 
         facts = build_facts(
@@ -526,12 +547,12 @@ class TestTheEmptyBriefAndTheLead:
     def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
         def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
             return (
-                BriefingItem(text=text, kind="you", action=BriefAction.REPLY),
+                BriefingItem(text=text, kind=ItemState.YOU, action=BriefAction.REPLY),
                 BriefCandidate(
                     origin=CandidateOrigin.TRACKED,
                     source="gaia",
                     app="GAIA",
-                    state="you",
+                    state=ItemState.YOU,
                     title=text,
                 ),
             )
@@ -569,12 +590,12 @@ class TestTheWeekRecap:
     _UNITLESS = _FINISHED.model_copy(update={"id": "runs", "label": "Runs", "unit": None})
 
     def test_totals_and_goals_read_as_slotted_lines_and_quotable_titles(self) -> None:
-        item = BriefingItem(text="Q3 board pack", kind="you", action=BriefAction.REVIEW)
+        item = BriefingItem(text="Q3 board pack", kind=ItemState.YOU, action=BriefAction.REVIEW)
         candidate = BriefCandidate(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Q3 board pack",
         )
         goals = [

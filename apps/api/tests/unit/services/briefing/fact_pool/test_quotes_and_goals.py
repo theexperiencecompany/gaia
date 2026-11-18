@@ -8,6 +8,7 @@ from tests.factories import make_user_id
 from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
 from app.models.todo_models import TodoDocument
@@ -42,7 +43,7 @@ def _message(
         origin=CandidateOrigin.APP_SIGNAL,
         source="gmail",
         app="Gmail",
-        state="you",
+        state=ItemState.YOU,
         title=title,
         people=people,
         signal=signal,
@@ -121,7 +122,7 @@ class TestQuoteSpans:
                 origin=CandidateOrigin.TRACKED,
                 source="gaia",
                 app="GAIA",
-                state="lookback",
+                state=ItemState.LOOKBACK,
                 title="Deck",
             ),
         }
@@ -148,7 +149,7 @@ class TestQuoteSpans:
                 origin=CandidateOrigin.TRACKED,
                 source="gaia",
                 app="GAIA",
-                state="lookback",
+                state=ItemState.LOOKBACK,
                 title="Deck",
             ),
             2: _message("ok thanks", ["Priya Raman"]),

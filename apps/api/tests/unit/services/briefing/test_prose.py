@@ -12,6 +12,7 @@ from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
 from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
@@ -266,7 +267,10 @@ class TestAFigureTheFactsShow:
         )
         [candidate] = gaia_work_candidates(TrackedWork(running=[doc]), _CLOCK)
         item = BriefingItem(
-            text="Pitch prep research", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+            text="Pitch prep research",
+            kind=ItemState.GAIA,
+            todo_id="t1",
+            outcome=BriefOutcome.STARTED,
         )
         chosen = Chosen(
             sections=[BriefingSection(numeral="I", title="Open", items=[item])],

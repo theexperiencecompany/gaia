@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.constants.briefing import BriefingKind
+from app.constants.briefing import BriefingKind, EditionFamily
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
@@ -29,7 +29,7 @@ def _payload() -> BriefingPayload:
         lede="l",
         mood=BriefingMood.CLEAR,
         caption="c",
-        template_family="memo",
+        template_family=EditionFamily.MEMO,
     )
 
 

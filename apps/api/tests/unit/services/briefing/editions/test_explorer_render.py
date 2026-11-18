@@ -229,7 +229,7 @@ class TestDocumentShell:
             "days": [{"you": 0, "gaia": 0}] * 7,
             "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
         }
-        payload = _payload(template_family="weekly", calendar=[], week=week)
+        payload = _payload(template_family=EditionFamily.WEEKLY, calendar=[], week=week)
 
         html = _render(payload, family="weekly")
 

@@ -21,6 +21,7 @@ from app.models.brief_composition_models import (
     ComposedItem,
     ComposedItems,
 )
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing import checked_call
 from app.services.briefing.composition import compose
@@ -58,7 +59,7 @@ POOL = FactPool(
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Re: Series A term sheet",
             people=["Maya Chen"],
             gaia_acts=True,
@@ -67,7 +68,7 @@ POOL = FactPool(
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Board deck numbers",
             gaia_acts=True,
         ),
@@ -221,7 +222,7 @@ class TestOneCall:
                     origin=CandidateOrigin.EVENT,
                     source="googlecalendar",
                     app="Google Calendar",
-                    state="note",
+                    state=ItemState.NOTE,
                     title="Board call",
                 )
             },
@@ -485,7 +486,7 @@ class TestWhatSlotsRender:
                     origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
-                    state="you",
+                    state=ItemState.YOU,
                     title="Due",
                     due_at=datetime(2026, 11, 3, 9, tzinfo=UTC),
                     count=3,
@@ -494,7 +495,7 @@ class TestWhatSlotsRender:
                     origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
-                    state="you",
+                    state=ItemState.YOU,
                     title="Timed",
                     time="11:00 AM",
                     due_at=datetime(2026, 11, 3, 9, tzinfo=UTC),
@@ -503,7 +504,7 @@ class TestWhatSlotsRender:
                     origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
-                    state="you",
+                    state=ItemState.YOU,
                     title="Open",
                 ),
             },
@@ -601,7 +602,7 @@ class TestTheCallItself:
                     origin=CandidateOrigin.EVENT,
                     source="googlecalendar",
                     app="Google Calendar",
-                    state="note",
+                    state=ItemState.NOTE,
                     title="Board call",
                     time="9:00 AM",
                 )

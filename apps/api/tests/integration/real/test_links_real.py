@@ -21,7 +21,7 @@ import pytest
 from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
-from app.constants.briefing import BriefingKind
+from app.constants.briefing import BriefingKind, EditionFamily
 from app.constants.notifications import NOTIFICATION_KIND_BRIEFING_DAILY
 from app.constants.short_links import MAX_RESOLVE_MISSES
 from app.db.repositories.conversations import conversation_repository
@@ -941,7 +941,7 @@ class TestTheBriefsLink:
             lede="One upload.",
             mood=BriefingMood.CLEAR,
             caption="c",
-            template_family="memo",
+            template_family=EditionFamily.MEMO,
         )
         rendered = RenderedImage(image=b"png", fold=0.4)
 

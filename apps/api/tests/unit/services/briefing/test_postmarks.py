@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
+from app.constants.briefing import EditionFamily
 from app.models.brief_document_models import BriefingModel, EditionImage, EditionRender
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.brief_view_models import Postmark
@@ -42,7 +43,7 @@ def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
             lede="From afar.",
             mood=BriefingMood.CLEAR,
             caption="Onward.",
-            template_family="postal",
+            template_family=EditionFamily.POSTAL,
             stamp_city=stamp_city,
         ),
     )

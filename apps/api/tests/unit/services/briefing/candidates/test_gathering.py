@@ -26,6 +26,7 @@ from app.models.brief_candidate_models import (
     GaiaRefKind,
     OutsideRef,
 )
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
@@ -136,7 +137,7 @@ def _found(
         origin=CandidateOrigin.APP_SIGNAL,
         source="gmail",
         app="Gmail",
-        state="you",
+        state=ItemState.YOU,
         title=title,
         ref=OutsideRef(integration_id="gmail", external_id="t1"),
         detail=detail,
@@ -193,7 +194,7 @@ class TestFoldingTwoFindsOfOneThing:
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Offsite",
         )
 
@@ -271,7 +272,7 @@ class TestHowMemoryKeysACandidate:
             origin=CandidateOrigin.APPROVAL,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Approve the refund",
             seen_as=GaiaRef(kind=GaiaRefKind.APPROVAL, id="ap_1"),
         )
@@ -280,7 +281,11 @@ class TestHowMemoryKeysACandidate:
 
     def test_a_held_result_or_an_event_is_new_each_time(self) -> None:
         held = BriefCandidate(
-            origin=CandidateOrigin.HELD, source="gaia", app="GAIA", state="note", title="Digest"
+            origin=CandidateOrigin.HELD,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.NOTE,
+            title="Digest",
         )
 
         assert sighting(held) is None

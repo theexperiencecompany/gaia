@@ -4,8 +4,9 @@ The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
 from app.config.settings import settings
-from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.briefing import BriefAction, BriefOutcome, EditionFamily
 from app.models.brief_document_models import BriefingModel, EditionRender
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
@@ -41,7 +42,7 @@ def _brief(
 
 
 async def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
-    view = await briefing_view(_brief(template_family="postal", stamp_city="bogota"))
+    view = await briefing_view(_brief(template_family=EditionFamily.POSTAL, stamp_city="bogota"))
 
     assert (view.edition_name, view.stamp_city_name) == ("Air Mail", "Bogotá")
     assert view.id == "brief_1"
@@ -52,45 +53,45 @@ async def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section(
     lead = BriefingSection(
         numeral="I",
         title="First up",
-        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind="you")],
+        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind=ItemState.YOU)],
     )
     needs_you = BriefingSection(
         numeral="II",
         title="Needs you",
         items=[
-            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind="you"),
-            BriefingItem(text="The export", action=BriefAction.RETRY, kind="failed"),
+            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind=ItemState.YOU),
+            BriefingItem(text="The export", action=BriefAction.RETRY, kind=ItemState.FAILED),
         ],
     )
     gaias_work = BriefingSection(
         numeral="III",
         title="GAIA's work",
         items=[
-            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind="lookback"),
+            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind=ItemState.LOOKBACK),
             BriefingItem(text="FYI", outcome=BriefOutcome.CHANGED),
         ],
     )
 
     view = await briefing_view(
-        _brief(template_family="flightplan", sections=[lead, needs_you, gaias_work])
+        _brief(template_family=EditionFamily.FLIGHTPLAN, sections=[lead, needs_you, gaias_work])
     )
 
     assert view.needs_you_count == 3
 
 
 async def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
-    view = await briefing_view(_brief(template_family="flightplan"))
+    view = await briefing_view(_brief(template_family=EditionFamily.FLIGHTPLAN))
 
     assert (view.edition_name, view.stamp_city_name) == ("The Blueprint", None)
 
 
 async def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
-    assert (await briefing_view(_brief(template_family="weekly"))).edition_name is None
+    assert (await briefing_view(_brief(template_family=EditionFamily.WEEKLY))).edition_name is None
     assert (await briefing_view(_brief(template_family=None))).edition_name is None
 
 
 async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() -> None:
-    stored = _brief(template_family="memo").model_copy(
+    stored = _brief(template_family=EditionFamily.MEMO).model_copy(
         update={"edition": EditionRender(key="k1", fold=0.3, paper=None)}
     )
 
@@ -104,12 +105,16 @@ async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() 
 
 async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar() -> None:
     owned = _brief(
-        template_family="memo",
+        template_family=EditionFamily.MEMO,
         sections=[
             BriefingSection(
                 numeral="I",
                 title="Waiting on you",
-                items=[BriefingItem(text="Reply to Priya", action=BriefAction.REPLY, kind="you")],
+                items=[
+                    BriefingItem(
+                        text="Reply to Priya", action=BriefAction.REPLY, kind=ItemState.YOU
+                    )
+                ],
             )
         ],
     )

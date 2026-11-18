@@ -9,7 +9,7 @@ from httpx import AsyncClient
 
 from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
 from app.config.settings import settings
-from app.constants.briefing import BriefingKind
+from app.constants.briefing import BriefingKind, EditionFamily
 from app.models.brief_document_models import BriefingModel, EditionImage, EditionRender
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.brief_view_models import Postmark, PostmarksResponse
@@ -31,7 +31,7 @@ def _brief(*, opened: bool) -> BriefingModel:
         kind=BriefingKind.DAILY,
         payload=BriefingPayload(
             kicker="THE MORNING BRIEF",
-            template_family="swiss",
+            template_family=EditionFamily.SWISS,
             date="2026-10-14",
             headline="Two replies need you",
             lede="Priya and Dhruv.",

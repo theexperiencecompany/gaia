@@ -26,6 +26,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import UnreadSource
 from app.models.brief_pool_models import (
     DataSeries,
@@ -164,7 +165,7 @@ async def _reads() -> PoolReads:
             origin=CandidateOrigin.APP_SIGNAL,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title=_MAYA.title,
             people=["Maya Chen"],
             signal=_MAYA,
@@ -173,14 +174,14 @@ async def _reads() -> PoolReads:
             origin=CandidateOrigin.TRACKED,
             source="stripe",
             app="Stripe",
-            state="you",
+            state=ItemState.YOU,
             title=_INVOICE.title,
         ),
         3: BriefCandidate(
             origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board call",
         ),
     }
@@ -413,7 +414,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Rent",
             due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
             gaia_acts=True,
@@ -429,7 +430,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.BACKLOG,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Plan Q1",
             gaia_acts=True,
         )
@@ -452,7 +453,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Approve the MSA",
             memory=shown,
             gaia_acts=True,
@@ -471,7 +472,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="github",
             app="GitHub",
-            state="failed",
+            state=ItemState.FAILED,
             title="Deploy broke",
             detail="CI red on main",
             time="4:00 PM",
@@ -506,7 +507,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.APP_SIGNAL,
             source="github",
             app="GitHub",
-            state="you",
+            state=ItemState.YOU,
             title="PR 7",
             people=["Aryan", "Sam"],
             signal=signal,
@@ -532,7 +533,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="Investor update",
             todo_id="t1",
             finished_by=finished_by,
@@ -548,7 +549,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="github",
             app="GitHub",
-            state="lookback",
+            state=ItemState.LOOKBACK,
             title="PR merged",
         )
 
@@ -561,7 +562,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="gaia",
+            state=ItemState.GAIA,
             title="Draft the deck",
             standing="paused: waiting on your notes",
             todo_id="t2",
@@ -589,7 +590,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.APP_SIGNAL,
             source="github",
             app="GitHub",
-            state="you",
+            state=ItemState.YOU,
             title="Fix login",
             people=["Ravi Rao"],
             signal=review,
@@ -610,7 +611,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="stripe",
             app="Stripe",
-            state="note",
+            state=ItemState.NOTE,
             title="Payout sent",
         )
 
@@ -624,7 +625,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="stripe",
             app="Stripe",
-            state="note",
+            state=ItemState.NOTE,
             title="Payout",
             count=1,
         )
@@ -643,7 +644,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
-            state="you",
+            state=ItemState.YOU,
             title="Reply",
             url=url,
             todo_id=todo_id,
@@ -658,7 +659,7 @@ class TestAnItemLine:
             origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
-            state="note",
+            state=ItemState.NOTE,
             title="Board call",
         )
 
@@ -674,7 +675,7 @@ class TestAnEmptyPool:
             origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
-            state="you",
+            state=ItemState.YOU,
             title="Rent",
             due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
             gaia_acts=True,

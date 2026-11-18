@@ -22,6 +22,7 @@ from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
     EDITION_URL_TTL_DAYS,
     BriefingKind,
+    EditionFamily,
     EditionVariant,
 )
 from app.db.repositories.briefings import briefing_repository
@@ -56,7 +57,7 @@ def _payload() -> BriefingPayload:
         lede="l",
         mood=BriefingMood.CLEAR,
         caption="c",
-        template_family="postal",
+        template_family=EditionFamily.POSTAL,
     )
 
 

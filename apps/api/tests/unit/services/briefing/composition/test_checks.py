@@ -24,6 +24,7 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition, ComposedItems
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -100,10 +101,10 @@ _TITLES = [
 POOL = FactPool(
     items={
         **{n: _item(title) for n, title in enumerate(_TITLES, start=1)},
-        13: _item("Board call", state="note", origin=CandidateOrigin.EVENT, time="4:00 PM"),
+        13: _item("Board call", state=ItemState.NOTE, origin=CandidateOrigin.EVENT, time="4:00 PM"),
         14: _item("Re: Re: Fwd: the revised Series A term sheet, with all redlines"),
-        15: _item("Board deck numbers", state="gaia", outcome=BriefOutcome.STARTED),
-        16: _item("CRM sync", state="failed", action=BriefAction.RETRY),
+        15: _item("Board deck numbers", state=ItemState.GAIA, outcome=BriefOutcome.STARTED),
+        16: _item("CRM sync", state=ItemState.FAILED, action=BriefAction.RETRY),
         17: _item("Growth experiments", action=BriefAction.ATTEND, origin=CandidateOrigin.BACKLOG),
         18: _item("Fix the flaky deploy", source="github", app="GitHub", gaia_acts=False),
     },
