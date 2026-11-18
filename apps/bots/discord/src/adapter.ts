@@ -986,21 +986,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         STREAMING_DEFAULTS.discord,
         this.analyticsFor(message.author.id),
         (emoji: string, replaces: string | null) =>
-          message.guild
-            ? this.reactToMessage(
-                message.channelId,
-                message.id,
-                emoji,
-                true,
-                replaces,
-              )
-            : this.reactToMessage(
-                message.author.id,
-                message.id,
-                emoji,
-                false,
-                replaces,
-              ),
+          this.reactToMessage(
+            message.guild ? message.channelId : message.author.id,
+            message.id,
+            emoji,
+            message.guild !== null,
+            replaces,
+          ),
       );
 
       stopTyping();
