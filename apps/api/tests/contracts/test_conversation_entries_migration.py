@@ -18,7 +18,7 @@ from scripts.migrate_conversation_entries.migration import (
     MigrationAction,
     expected_messages,
 )
-from scripts.migrate_conversation_entries.oracle import legacy_messages
+from scripts.migrate_conversation_entries.oracle import imported_messages
 
 from app.constants.chat import ConversationSource
 from app.db.mongodb.indexes import (
@@ -315,15 +315,8 @@ async def test_a_log_the_new_build_wrote_merges_the_old_builds_later_messages_an
         "m4",
         "m4:settled",
     ]
-    assert [m for _, m, _ in await _history(ref)] == [
-        "m1",
-        "m2",
-        "live-u",
-        "r1",
-        "live-n",
-        "m3",
-        "m4",
-    ]
+    # The live build's own entries stay as the ids above show; the read-back verify checks is the array's.
+    assert [m for _, m, _ in await _history(ref)] == ["m1", "m2", "m3", "m4"]
     assert (await migration.verify(ref)).mismatches == []
 
     entry_of = {"user_id": USER, "conversation_id": ref.conversation_id}
@@ -620,8 +613,8 @@ async def test_scans_walk_every_head_in_id_order_one_batch_at_a_time(
 
 
 def shown_messages(page: LogPage) -> list[ConversationEntry]:
-    """Read a migrated page back in the old array's message shape, as verify does."""
-    return legacy_messages([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in page.entries])
+    """Read a migrated page's imported messages back in the old array's shape, as verify does."""
+    return imported_messages([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in page.entries])
 
 
 @pytest.mark.parametrize("field", ["summary", "decision", "heard_text", "run.reservation"])
