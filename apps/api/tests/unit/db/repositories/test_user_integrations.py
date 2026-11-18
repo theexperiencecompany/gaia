@@ -78,6 +78,27 @@ class TestSaveAccounts:
             "$setOnInsert": {"created_at": now},
         }
 
+    async def test_a_record_with_no_accounts_left_stamps_no_expiry(
+        self, collection: MagicMock
+    ) -> None:
+        await UserIntegrationsRepository().save_accounts(
+            USER_ID,
+            INTEGRATION_ID,
+            accounts=[],
+            primary_account_id=None,
+            status=IntegrationStatus.CREATED,
+            expired_reason="refresh_token_revoked",
+        )
+
+        (_, update), _ = collection.find_one_and_update.await_args
+        assert update["$set"] == {
+            "user_id": USER_ID,
+            "integration_id": INTEGRATION_ID,
+            "accounts": [],
+            "primary_account_id": None,
+            "status": "created",
+        }
+
     async def test_a_save_invalidates_only_that_users_cache_scope(
         self, collection: MagicMock
     ) -> None:

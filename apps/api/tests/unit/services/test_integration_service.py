@@ -1458,7 +1458,9 @@ class TestCreateCustomIntegration:
         # The repository persists THIS object — a create(None) mutant would
         # silently drop the write while returning a phantom.
         assert mock_repo.create.await_args.args[0] is result
-        mock_add_user.assert_awaited_once()
+        mock_add_user.assert_awaited_once_with(
+            USER_ID, result.integration_id, initial_status=IntegrationStatus.CREATED
+        )
 
     @patch(
         "app.services.integrations.custom_crud.add_user_integration",
@@ -2243,7 +2245,8 @@ class TestCreateAndConnectCustomIntegration:
         "app.services.integrations.custom_crud.fetch_favicon_from_url",
         new_callable=AsyncMock,
     )
-    async def test_bearer_token_flow(self, mock_favicon, mock_create):
+    @pytest.mark.parametrize(("tools", "tools_count"), [(["tool1", "tool2"], 2), ([], 0)])
+    async def test_bearer_token_flow(self, mock_favicon, mock_create, tools, tools_count):
         mock_favicon.return_value = None
         integration = Integration(
             integration_id="new-id",
@@ -2257,7 +2260,7 @@ class TestCreateAndConnectCustomIntegration:
         mock_create.return_value = integration
 
         mock_mcp_client = AsyncMock()
-        mock_mcp_client.connect.return_value = ["tool1", "tool2"]
+        mock_mcp_client.connect.return_value = tools
 
         # Mock MCPTokenStore
         with (
@@ -2265,7 +2268,7 @@ class TestCreateAndConnectCustomIntegration:
             patch(
                 "app.services.integrations.custom_crud.update_user_integration_status",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_update,
             patch("app.services.integrations.custom_crud.integration_repository") as mock_repo,
         ):
             mock_store_instance = AsyncMock()
@@ -2285,7 +2288,10 @@ class TestCreateAndConnectCustomIntegration:
             )
 
             assert result_status.status == IntegrationStatus.CONNECTED
-            assert result_status.tools_count == 2
+            assert result_status.tools_count == tools_count
+            assert result_int is integration
+            mock_repo.get.assert_awaited_once_with("new-id")
+            mock_update.assert_awaited_once_with(USER_ID, "new-id", IntegrationStatus.CONNECTED)
             mock_store_instance.store_bearer_token.assert_awaited_once()
 
     @patch(
@@ -2382,7 +2388,10 @@ class TestCreateAndConnectCustomIntegration:
         "app.services.integrations.custom_crud.fetch_favicon_from_url",
         new_callable=AsyncMock,
     )
-    async def test_connect_without_auth_success(self, mock_favicon, mock_create):
+    @pytest.mark.parametrize(("tools", "tools_count"), [(["t1", "t2", "t3"], 3), ([], 0)])
+    async def test_connect_without_auth_success(
+        self, mock_favicon, mock_create, tools, tools_count
+    ):
         mock_favicon.return_value = "https://example.com/fav.ico"
         integration = Integration(
             integration_id="new-id",
@@ -2397,7 +2406,7 @@ class TestCreateAndConnectCustomIntegration:
 
         mock_mcp_client = AsyncMock()
         mock_mcp_client.probe_connection.return_value = {}
-        mock_mcp_client.connect.return_value = ["t1", "t2", "t3"]
+        mock_mcp_client.connect.return_value = tools
 
         request = CreateCustomIntegrationRequest(
             name="No Auth",
@@ -2409,7 +2418,7 @@ class TestCreateAndConnectCustomIntegration:
         )
 
         assert result_status.status == IntegrationStatus.CONNECTED
-        assert result_status.tools_count == 3
+        assert result_status.tools_count == tools_count
 
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
