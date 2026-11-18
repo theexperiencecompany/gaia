@@ -619,7 +619,7 @@ run = "nx affected -t format --parallel=3"
 # These run CI's exact command, from the root, at CI's exact pin, so a clean
 # local run means a clean lane. Keep the ruff version in lockstep with
 # .github/workflows/ci.yml, .pre-commit-config.yaml and uv.lock —
-# `python3 tools/lints/check_tool_pins.py` enforces that.
+# `mise ci:local --only tool-pins` enforces that.
 [tasks."lint:py"]
 description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
 run = "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
@@ -818,7 +818,7 @@ description = "Why a PR is red: each failing lane's verdict artifact or error-an
 run = "uv run python scripts/dev/ci_remote.py"
 
 [tasks."ci:watch"]
-description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+description = "Wait on CI: `mise ci:watch <PR|branch>` (a branch with no PR, such as master, at its head commit) polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
 run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
 
 [tasks."ci:status"]

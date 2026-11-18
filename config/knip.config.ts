@@ -428,10 +428,12 @@ const config: KnipConfig = {
         "@gaia/bot-slack",
         "@gaia/bot-telegram",
         "@gaia/bot-whatsapp",
-        // Test-only: `vi.mock("amqplib")` in __tests__ must resolve the same module id the
-        // shared OutboundConsumer imports, which the isolated linker requires apps/bots to
-        // declare; tests are excluded from the reference graph above, so knip can't see that use.
+        // Test-only: `vi.mock(...)` in __tests__ must resolve the same module id the bot
+        // source imports, which the isolated linker requires apps/bots to declare; tests are
+        // excluded from the reference graph above, so knip can't see that use.
         "amqplib",
+        "grammy",
+        "@grammyjs/runner",
       ],
     },
 

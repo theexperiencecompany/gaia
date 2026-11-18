@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +17,7 @@ from app.agents.core.nodes.memory_node import (
     _format_messages_for_user_memory,
     _mark_ingested,
     _messages_to_ingest,
+    _precompute_next_turn_background,
     _store_user_memory_background,
     memory_node,
 )
@@ -502,6 +504,34 @@ class TestSystemGeneratedConversations:
             await memory_node(state, config, MagicMock())
 
         assert background.call_args.kwargs["conversation_id"] == "c1"
+
+
+@pytest.mark.unit
+class TestNextTurnPrecompute:
+    async def _run(self, configurable: dict[str, str]) -> AsyncMock:
+        state = State(messages=[HumanMessage(content="hi")])
+        with (
+            patch(f"{NODE}.precompute_next_turn", new_callable=AsyncMock) as precompute,
+            patch(f"{NODE}._store_user_memory_background", new_callable=AsyncMock),
+        ):
+            await memory_node(state, {"configurable": configurable}, MagicMock())
+            await asyncio.sleep(0)
+        return precompute
+
+    async def test_even_a_turn_too_trivial_to_learn_from_pins_the_next_turns_memories(
+        self,
+    ) -> None:
+        precompute = await self._run({"user_id": "u1", "conversation_id": "c1"})
+
+        precompute.assert_awaited_once_with("u1", "c1", [HumanMessage(content="hi")])
+
+    @pytest.mark.parametrize("configurable", [{"user_id": "u1"}, {"conversation_id": "c1"}])
+    async def test_nothing_is_pinned_without_a_user_and_a_conversation(
+        self, configurable: dict[str, str]
+    ) -> None:
+        precompute = await self._run(configurable)
+
+        precompute.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -1075,3 +1105,20 @@ class TestConversationSummaryIsNotUserSpeech:
             [self._summary, HumanMessage("hi there", id="h")]
         )
         assert [entry["role"] for entry in formatted] == ["gaia", "user"]
+
+
+class TestPrecomputeNextTurnBackground:
+    """The fire-and-forget precompute: its failure is recorded, never raised."""
+
+    async def test_a_failed_precompute_is_recorded_on_its_own_event_and_not_raised(self) -> None:
+        recorder = WideEventRecorder()
+        with (
+            patch(f"{NODE}.precompute_next_turn", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            await _precompute_next_turn_background("u1", "c1", [])
+
+        event = recorder.event("memory_precompute")
+        assert event["user"] == {"id": "u1"}
+        assert event["outcome"] == "failed"
+        assert event["errors"][0]["error_type"] == "RuntimeError"

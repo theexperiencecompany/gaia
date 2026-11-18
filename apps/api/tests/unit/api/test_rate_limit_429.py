@@ -11,7 +11,7 @@ real detail shape.
 
 from datetime import UTC, datetime, timedelta
 from types import MethodType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 
@@ -21,7 +21,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
-from tests.conftest import PRO_USER_SUBSCRIPTION
 
 NOTES_BASE = "/api/v1/notes"
 
@@ -82,14 +81,10 @@ async def test_rate_limit_exceeded_returns_429(
 async def test_pro_user_reaches_limiter_on_pro_plan(
     client: AsyncClient,
     pro_user: AuthenticatedUser,
+    pro_plan: MagicMock,
 ) -> None:
     """Opting into a paying context routes the PRO tier into the limiter."""
     with (
-        patch(
-            "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-            new_callable=AsyncMock,
-            return_value=PRO_USER_SUBSCRIPTION,
-        ),
         patch(
             "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
             new_callable=AsyncMock,

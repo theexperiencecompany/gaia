@@ -33,7 +33,7 @@ from app.config.rate_limits import (
     get_time_window_key,
 )
 from app.models.payment_models import PlanType
-from tests.helpers import effective_limit
+from tests.helpers import effective_limit, rate_limit_detail
 
 #: The limiter records each refusal against a GAIA user id, which is a Mongo ObjectId.
 USER_1 = "6812f0b3c9a14e2b7d5a9101"
@@ -67,12 +67,6 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
         patch("app.api.v1.middleware.tiered_rate_limiter.datetime", _FrozenDatetime),
     ):
         yield frozen
-
-
-def _detail(exc: RateLimitExceededException) -> dict[str, str]:
-    """Return the 429's detail, which RateLimitExceededException always builds as a dict."""
-    assert isinstance(exc.detail, dict)
-    return exc.detail
 
 
 @contextmanager
@@ -267,8 +261,8 @@ class TestTieredRateLimiterCheckAndIncrement:
                 )
 
         assert exc_info.value.status_code == 429
-        assert _detail(exc_info.value)["feature"] == "generate_image"
-        assert _detail(exc_info.value)["code"] == "rate_limit_exceeded"
+        assert rate_limit_detail(exc_info.value)["feature"] == "generate_image"
+        assert rate_limit_detail(exc_info.value)["code"] == "rate_limit_exceeded"
 
     async def test_premium_user_gets_higher_limits(self) -> None:
         """Pro user should be able to make more requests than free."""
@@ -476,18 +470,18 @@ class TestRateLimitExceptionDetail:
     def test_basic_exception_detail(self) -> None:
         exc = RateLimitExceededException(feature="generate_image")
         assert exc.status_code == 429
-        assert _detail(exc)["feature"] == "generate_image"
-        assert _detail(exc)["code"] == "rate_limit_exceeded"
+        assert rate_limit_detail(exc)["feature"] == "generate_image"
+        assert rate_limit_detail(exc)["code"] == "rate_limit_exceeded"
 
     def test_exception_with_plan_required(self) -> None:
         exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
-        assert _detail(exc)["plan_required"] == "pro"
-        assert "Upgrade to Pro" in _detail(exc)["message"]
+        assert rate_limit_detail(exc)["plan_required"] == "pro"
+        assert "Upgrade to Pro" in rate_limit_detail(exc)["message"]
 
     def test_exception_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 2, 0, 0, 0, tzinfo=UTC)
         exc = RateLimitExceededException(feature="generate_image", reset_time=reset)
-        assert _detail(exc)["reset_time"] == reset.isoformat()
+        assert rate_limit_detail(exc)["reset_time"] == reset.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -630,4 +624,4 @@ class TestPlanGatedFeatures:
 
         # Free daily limit for generate_image is 1 (not 0), so plan_required
         # should be None (it is only set when the free limit for that period is 0).
-        assert _detail(exc_info.value).get("plan_required") is None
+        assert rate_limit_detail(exc_info.value).get("plan_required") is None

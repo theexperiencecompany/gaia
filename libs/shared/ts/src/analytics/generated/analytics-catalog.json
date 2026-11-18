@@ -4,13 +4,22 @@
       "$defs": {
         "Actor": {
           "description": "Who performed the action: a human request in this turn, or the agent acting on its own.",
-          "enum": ["user", "agent"],
+          "enum": [
+            "user",
+            "agent"
+          ],
           "title": "Actor",
           "type": "string"
         },
         "EntrySurface": {
           "description": "Where the run entered GAIA; WORKER is work no client started.",
-          "enum": ["web", "desktop", "bot", "voice", "worker"],
+          "enum": [
+            "web",
+            "desktop",
+            "bot",
+            "voice",
+            "worker"
+          ],
           "title": "EntrySurface",
           "type": "string"
         },
@@ -40,7 +49,11 @@
           "$ref": "#/$defs/EntrySurface"
         }
       },
-      "required": ["actor", "trigger", "surface"],
+      "required": [
+        "actor",
+        "trigger",
+        "surface"
+      ],
       "title": "Attribution",
       "type": "object"
     }
@@ -71,7 +84,9 @@
             "type": "string"
           }
         },
-        "required": ["area"],
+        "required": [
+          "area"
+        ],
         "title": "AccountSettingChanged",
         "type": "object"
       }
@@ -91,12 +106,18 @@
         "description": "An agent run finished successfully.",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -193,7 +214,11 @@
             "title": "Executor Active Ms"
           }
         },
-        "required": ["agent", "mode", "conversation_id"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id"
+        ],
         "title": "AgentRunCompleted",
         "type": "object"
       }
@@ -213,12 +238,18 @@
         "description": "An agent run ended in an error; reason is the exception type, error type or \"cancelled\".",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -320,7 +351,12 @@
             "type": "string"
           }
         },
-        "required": ["agent", "mode", "conversation_id", "reason"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id",
+          "reason"
+        ],
         "title": "AgentRunFailed",
         "type": "object"
       }
@@ -340,12 +376,18 @@
         "description": "A comms or executor run (or a resumed executor segment) started.",
         "properties": {
           "agent": {
-            "enum": ["comms", "executor"],
+            "enum": [
+              "comms",
+              "executor"
+            ],
             "title": "Agent",
             "type": "string"
           },
           "mode": {
-            "enum": ["interactive", "background"],
+            "enum": [
+              "interactive",
+              "background"
+            ],
             "title": "Mode",
             "type": "string"
           },
@@ -394,7 +436,11 @@
             "title": "Source"
           }
         },
-        "required": ["agent", "mode", "conversation_id"],
+        "required": [
+          "agent",
+          "mode",
+          "conversation_id"
+        ],
         "title": "AgentRunStarted",
         "type": "object"
       }
@@ -428,7 +474,11 @@
             "type": "integer"
           }
         },
-        "required": ["condition", "waiter", "waited_minutes"],
+        "required": [
+          "condition",
+          "waiter",
+          "waited_minutes"
+        ],
         "title": "WaitResumed",
         "type": "object"
       }
@@ -521,12 +571,18 @@
             "type": "number"
           },
           "cost_source": {
-            "enum": ["provider", "table"],
+            "enum": [
+              "provider",
+              "table"
+            ],
             "title": "Cost Source",
             "type": "string"
           },
           "status": {
-            "enum": ["ok", "error"],
+            "enum": [
+              "ok",
+              "error"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -671,7 +727,10 @@
             "type": "string"
           }
         },
-        "required": ["error_type", "recovery_action"],
+        "required": [
+          "error_type",
+          "recovery_action"
+        ],
         "title": "ApiChunkRecovered",
         "type": "object"
       }
@@ -691,7 +750,13 @@
         "description": "An API request from the browser failed.",
         "properties": {
           "method": {
-            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
             "title": "Method",
             "type": "string"
           },
@@ -718,7 +783,11 @@
             "title": "Error Code"
           }
         },
-        "required": ["method", "status", "url"],
+        "required": [
+          "method",
+          "status",
+          "url"
+        ],
         "title": "ApiRequestFailed",
         "type": "object"
       }
@@ -740,7 +809,10 @@
           "decision": {
             "anyOf": [
               {
-                "enum": ["approve", "deny"],
+                "enum": [
+                  "approve",
+                  "deny"
+                ],
                 "type": "string"
               },
               {
@@ -811,7 +883,9 @@
             "type": "string"
           }
         },
-        "required": ["slug"],
+        "required": [
+          "slug"
+        ],
         "title": "BlogArticleViewed",
         "type": "object"
       }
@@ -839,7 +913,10 @@
             "type": "integer"
           }
         },
-        "required": ["audio_bytes", "transcript_length"],
+        "required": [
+          "audio_bytes",
+          "transcript_length"
+        ],
         "title": "BotAudioTranscribed",
         "type": "object"
       }
@@ -882,7 +959,9 @@
             "type": "string"
           }
         },
-        "required": ["platform"],
+        "required": [
+          "platform"
+        ],
         "title": "BotChatOpened",
         "type": "object"
       }
@@ -928,7 +1007,11 @@
             "title": "Error Type"
           }
         },
-        "required": ["command", "duration_ms", "success"],
+        "required": [
+          "command",
+          "duration_ms",
+          "success"
+        ],
         "title": "BotCommandExecuted",
         "type": "object"
       }
@@ -978,7 +1061,9 @@
             "title": "Duration Ms"
           }
         },
-        "required": ["context"],
+        "required": [
+          "context"
+        ],
         "title": "BotError",
         "type": "object"
       }
@@ -1033,7 +1118,10 @@
           "delivery_kind": {
             "anyOf": [
               {
-                "enum": ["image", "document"],
+                "enum": [
+                  "image",
+                  "document"
+                ],
                 "type": "string"
               },
               {
@@ -1044,7 +1132,10 @@
             "title": "Delivery Kind"
           }
         },
-        "required": ["success", "bytes"],
+        "required": [
+          "success",
+          "bytes"
+        ],
         "title": "BotFileDelivered",
         "type": "object"
       }
@@ -1073,12 +1164,19 @@
             "type": "boolean"
           },
           "outcome": {
-            "enum": ["ingested", "rejected"],
+            "enum": [
+              "ingested",
+              "rejected"
+            ],
             "title": "Outcome",
             "type": "string"
           }
         },
-        "required": ["media_kind", "is_voice_note", "outcome"],
+        "required": [
+          "media_kind",
+          "is_voice_note",
+          "outcome"
+        ],
         "title": "BotFileUploaded",
         "type": "object"
       }
@@ -1098,7 +1196,10 @@
         "description": "A bot received a slash command or a chat message from a platform user.",
         "properties": {
           "interaction_type": {
-            "enum": ["command", "chat"],
+            "enum": [
+              "command",
+              "chat"
+            ],
             "title": "Interaction Type",
             "type": "string"
           },
@@ -1152,7 +1253,9 @@
             "title": "Message Length"
           }
         },
-        "required": ["interaction_type"],
+        "required": [
+          "interaction_type"
+        ],
         "title": "BotMessageReceived",
         "type": "object"
       }
@@ -1176,12 +1279,18 @@
             "type": "boolean"
           },
           "surface": {
-            "enum": ["live", "outbound"],
+            "enum": [
+              "live",
+              "outbound"
+            ],
             "title": "Surface",
             "type": "string"
           },
           "delivery": {
-            "enum": ["native", "fallback_text"],
+            "enum": [
+              "native",
+              "fallback_text"
+            ],
             "title": "Delivery",
             "type": "string"
           },
@@ -1199,7 +1308,11 @@
             "title": "Reason"
           }
         },
-        "required": ["success", "surface", "delivery"],
+        "required": [
+          "success",
+          "surface",
+          "delivery"
+        ],
         "title": "BotReactionDelivered",
         "type": "object"
       }
@@ -1224,7 +1337,9 @@
             "type": "string"
           }
         },
-        "required": ["platform"],
+        "required": [
+          "platform"
+        ],
         "title": "BotSessionReset",
         "type": "object"
       }
@@ -1253,7 +1368,10 @@
             "type": "boolean"
           }
         },
-        "required": ["platform", "has_goal"],
+        "required": [
+          "platform",
+          "has_goal"
+        ],
         "title": "BriefingDayZeroHelloSent",
         "type": "object"
       }
@@ -1273,12 +1391,17 @@
         "description": "A user opened one of their briefs on its own page for the first time.",
         "properties": {
           "kind": {
-            "enum": ["daily", "weekly"],
+            "enum": [
+              "daily",
+              "weekly"
+            ],
             "title": "Kind",
             "type": "string"
           }
         },
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "title": "BriefingOpened",
         "type": "object"
       }
@@ -1306,7 +1429,10 @@
             "type": "integer"
           }
         },
-        "required": ["collected", "total"],
+        "required": [
+          "collected",
+          "total"
+        ],
         "title": "BriefingPostmarksViewed",
         "type": "object"
       }
@@ -1330,7 +1456,9 @@
             "type": "boolean"
           }
         },
-        "required": ["held_for_goal"],
+        "required": [
+          "held_for_goal"
+        ],
         "title": "BriefingProvisioned",
         "type": "object"
       }
@@ -1350,12 +1478,18 @@
         "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
         "properties": {
           "kind": {
-            "enum": ["daily", "weekly"],
+            "enum": [
+              "daily",
+              "weekly"
+            ],
             "title": "Kind",
             "type": "string"
           },
           "form": {
-            "enum": ["edition", "quiet_note"],
+            "enum": [
+              "edition",
+              "quiet_note"
+            ],
             "title": "Form",
             "type": "string"
           },
@@ -1387,7 +1521,14 @@
           },
           "block_kinds": {
             "items": {
-              "enum": ["lead", "items", "chart", "quote", "progress", "note"],
+              "enum": [
+                "lead",
+                "items",
+                "chart",
+                "quote",
+                "progress",
+                "note"
+              ],
               "type": "string"
             },
             "title": "Block Kinds",
@@ -1467,7 +1608,10 @@
             "title": "Host"
           }
         },
-        "required": ["reason", "engine"],
+        "required": [
+          "reason",
+          "engine"
+        ],
         "title": "BrowserEngineSwitched",
         "type": "object"
       }
@@ -1496,7 +1640,10 @@
             "type": "boolean"
           }
         },
-        "required": ["decision", "with_note"],
+        "required": [
+          "decision",
+          "with_note"
+        ],
         "title": "BrowserHandoffResolved",
         "type": "object"
       }
@@ -1555,7 +1702,10 @@
             "title": "Source Browser"
           }
         },
-        "required": ["host_count", "cookie_count"],
+        "required": [
+          "host_count",
+          "cookie_count"
+        ],
         "title": "BrowserLoginsImported",
         "type": "object"
       }
@@ -1885,7 +2035,12 @@
           "delivery": {
             "anyOf": [
               {
-                "enum": ["message", "reaction", "badge", "fallback_text"],
+                "enum": [
+                  "message",
+                  "reaction",
+                  "badge",
+                  "fallback_text"
+                ],
                 "type": "string"
               },
               {
@@ -1896,7 +2051,9 @@
             "title": "Delivery"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "ChatBackgroundUpdateResolved",
         "type": "object"
       }
@@ -1925,7 +2082,10 @@
             "type": "boolean"
           }
         },
-        "required": ["item_id", "is_mode"],
+        "required": [
+          "item_id",
+          "is_mode"
+        ],
         "title": "ChatComposerPlusMenuClicked",
         "type": "object"
       }
@@ -1974,7 +2134,9 @@
             "title": "System Purpose"
           }
         },
-        "required": ["is_system_generated"],
+        "required": [
+          "is_system_generated"
+        ],
         "title": "ChatConversationCreated",
         "type": "object"
       }
@@ -2043,7 +2205,9 @@
             "type": "string"
           }
         },
-        "required": ["conversation_id"],
+        "required": [
+          "conversation_id"
+        ],
         "title": "ChatConversationRenamed",
         "type": "object"
       }
@@ -2072,7 +2236,10 @@
             "type": "string"
           }
         },
-        "required": ["starred", "conversation_id"],
+        "required": [
+          "starred",
+          "conversation_id"
+        ],
         "title": "ChatConversationStarred",
         "type": "object"
       }
@@ -2142,7 +2309,11 @@
             "type": "string"
           }
         },
-        "required": ["size_bytes", "resource_type", "content_type"],
+        "required": [
+          "size_bytes",
+          "resource_type",
+          "content_type"
+        ],
         "title": "ChatFileUploaded",
         "type": "object"
       }
@@ -2172,7 +2343,10 @@
             "type": "string"
           }
         },
-        "required": ["integration_id", "source"],
+        "required": [
+          "integration_id",
+          "source"
+        ],
         "title": "ChatGridIntegrationConnectClicked",
         "type": "object"
       }
@@ -2419,12 +2593,18 @@
             "type": "string"
           },
           "reason": {
-            "enum": ["plan_required", "subscription_required"],
+            "enum": [
+              "plan_required",
+              "subscription_required"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["platform", "reason"],
+        "required": [
+          "platform",
+          "reason"
+        ],
         "title": "ChatMessageRefused",
         "type": "object"
       }
@@ -2435,7 +2615,9 @@
       "owner": "server",
       "domain": "chat",
       "description": "A chat turn passed every gate and was accepted, from any surface.",
-      "previous_names": ["chat:message_sent"],
+      "previous_names": [
+        "chat:message_sent"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -2585,7 +2767,12 @@
             "title": "Is Reply"
           }
         },
-        "required": ["source", "has_files", "stream_id", "is_retry"],
+        "required": [
+          "source",
+          "has_files",
+          "stream_id",
+          "is_retry"
+        ],
         "title": "ChatMessageSubmitted",
         "type": "object"
       }
@@ -2633,7 +2820,10 @@
             "type": "string"
           }
         },
-        "required": ["category", "previous_category"],
+        "required": [
+          "category",
+          "previous_category"
+        ],
         "title": "ChatSlashCommandCategoryChanged",
         "type": "object"
       }
@@ -2675,7 +2865,10 @@
             "title": "Opened Via Button"
           }
         },
-        "required": ["tool_name", "tool_category"],
+        "required": [
+          "tool_name",
+          "tool_category"
+        ],
         "title": "ChatSlashCommandSelected",
         "type": "object"
       }
@@ -2699,7 +2892,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_open"],
+        "required": [
+          "is_open"
+        ],
         "title": "ChatToolsButtonClicked",
         "type": "object"
       }
@@ -2724,7 +2919,9 @@
             "type": "string"
           }
         },
-        "required": ["emoji"],
+        "required": [
+          "emoji"
+        ],
         "title": "ChatTurnReacted",
         "type": "object"
       }
@@ -2774,7 +2971,9 @@
             "title": "Blocked Reason"
           }
         },
-        "required": ["voice_mode_enabled"],
+        "required": [
+          "voice_mode_enabled"
+        ],
         "title": "ChatVoiceModeToggled",
         "type": "object"
       }
@@ -2860,7 +3059,9 @@
             "type": "boolean"
           }
         },
-        "required": ["triggered_by_wake_word"],
+        "required": [
+          "triggered_by_wake_word"
+        ],
         "title": "DesktopPopupOpened",
         "type": "object"
       }
@@ -2926,7 +3127,10 @@
             "type": "string"
           }
         },
-        "required": ["client", "platform"],
+        "required": [
+          "client",
+          "platform"
+        ],
         "title": "DeviceSelfPaired",
         "type": "object"
       }
@@ -2954,7 +3158,10 @@
             "type": "integer"
           }
         },
-        "required": ["has_attachments", "attachment_count"],
+        "required": [
+          "has_attachments",
+          "attachment_count"
+        ],
         "title": "EmailReplied",
         "type": "object"
       }
@@ -3017,7 +3224,11 @@
         "description": "A client error reached a boundary, or a chunk reload failed to recover.",
         "properties": {
           "error_type": {
-            "enum": ["global_error", "react_error_boundary", "chunk_load"],
+            "enum": [
+              "global_error",
+              "react_error_boundary",
+              "chunk_load"
+            ],
             "title": "Error Type",
             "type": "string"
           },
@@ -3048,7 +3259,9 @@
             "title": "Recovery Action"
           }
         },
-        "required": ["error_type"],
+        "required": [
+          "error_type"
+        ],
         "title": "ErrorOccurred",
         "type": "object"
       }
@@ -3111,7 +3324,9 @@
             "title": "Is Chunk Error"
           }
         },
-        "required": ["error_type"],
+        "required": [
+          "error_type"
+        ],
         "title": "ErrorRouteErrorShown",
         "type": "object"
       }
@@ -3131,12 +3346,17 @@
         "description": "A user used a feature for the first time.",
         "properties": {
           "feature": {
-            "enum": ["voice_agent", "workflows"],
+            "enum": [
+              "voice_agent",
+              "workflows"
+            ],
             "title": "Feature",
             "type": "string"
           }
         },
-        "required": ["feature"],
+        "required": [
+          "feature"
+        ],
         "title": "FeatureDiscovered",
         "type": "object"
       }
@@ -3165,7 +3385,10 @@
             "type": "boolean"
           }
         },
-        "required": ["flag", "enabled"],
+        "required": [
+          "flag",
+          "enabled"
+        ],
         "title": "FeatureToggled",
         "type": "object"
       }
@@ -3205,7 +3428,11 @@
             "type": "string"
           }
         },
-        "required": ["flag", "enabled", "fallback_reason"],
+        "required": [
+          "flag",
+          "enabled",
+          "fallback_reason"
+        ],
         "title": "FeatureFlagEvaluated",
         "type": "object"
       }
@@ -3229,7 +3456,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_positive"],
+        "required": [
+          "is_positive"
+        ],
         "title": "FeedbackMessageSubmitted",
         "type": "object"
       }
@@ -3261,7 +3490,11 @@
             "type": "integer"
           }
         },
-        "required": ["collapsed", "steps_done", "steps_total"],
+        "required": [
+          "collapsed",
+          "steps_done",
+          "steps_total"
+        ],
         "title": "FirstStepsCollapsed",
         "type": "object"
       }
@@ -3290,12 +3523,19 @@
             "type": "boolean"
           },
           "surface": {
-            "enum": ["dashboard", "widget"],
+            "enum": [
+              "dashboard",
+              "widget"
+            ],
             "title": "Surface",
             "type": "string"
           }
         },
-        "required": ["step", "done", "surface"],
+        "required": [
+          "step",
+          "done",
+          "surface"
+        ],
         "title": "FirstStepsStepClicked",
         "type": "object"
       }
@@ -3356,7 +3596,10 @@
             "type": "integer"
           }
         },
-        "required": ["discount_code", "discount_percent"],
+        "required": [
+          "discount_code",
+          "discount_percent"
+        ],
         "title": "FounderLetterDiscountCtaClicked",
         "type": "object"
       }
@@ -3447,7 +3690,10 @@
             "type": "integer"
           }
         },
-        "required": ["first_open", "discount_percent"],
+        "required": [
+          "first_open",
+          "discount_percent"
+        ],
         "title": "FounderLetterOpened",
         "type": "object"
       }
@@ -3542,7 +3788,10 @@
         "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
         "properties": {
           "decision": {
-            "enum": ["approved", "denied"],
+            "enum": [
+              "approved",
+              "denied"
+            ],
             "title": "Decision",
             "type": "string"
           },
@@ -3552,7 +3801,12 @@
             "type": "string"
           },
           "via": {
-            "enum": ["card", "batch", "chat", "auto"],
+            "enum": [
+              "card",
+              "batch",
+              "chat",
+              "auto"
+            ],
             "title": "Via",
             "type": "string"
           },
@@ -3594,7 +3848,11 @@
             "title": "Card Age Seconds"
           }
         },
-        "required": ["decision", "tool_name", "via"],
+        "required": [
+          "decision",
+          "tool_name",
+          "via"
+        ],
         "title": "HilDecisionSubmitted",
         "type": "object"
       }
@@ -3619,12 +3877,18 @@
             "type": "string"
           },
           "owner_run_type": {
-            "enum": ["todo", "workflow"],
+            "enum": [
+              "todo",
+              "workflow"
+            ],
             "title": "Owner Run Type",
             "type": "string"
           }
         },
-        "required": ["approval_id", "owner_run_type"],
+        "required": [
+          "approval_id",
+          "owner_run_type"
+        ],
         "title": "HilResumed",
         "type": "object"
       }
@@ -3658,7 +3922,11 @@
             "type": "string"
           }
         },
-        "required": ["approval_id", "ledger_version", "revoker"],
+        "required": [
+          "approval_id",
+          "ledger_version",
+          "revoker"
+        ],
         "title": "HilRevoked",
         "type": "object"
       }
@@ -3732,12 +4000,17 @@
         "description": "A member account was created on a self-host instance, emitted for the new member.",
         "properties": {
           "via": {
-            "enum": ["invite", "open"],
+            "enum": [
+              "invite",
+              "open"
+            ],
             "title": "Via",
             "type": "string"
           }
         },
-        "required": ["via"],
+        "required": [
+          "via"
+        ],
         "title": "InstanceMemberJoined",
         "type": "object"
       }
@@ -3757,12 +4030,17 @@
         "description": "A standing-instructions save was refused because another write landed first.",
         "properties": {
           "scope_kind": {
-            "enum": ["global", "integration"],
+            "enum": [
+              "global",
+              "integration"
+            ],
             "title": "Scope Kind",
             "type": "string"
           }
         },
-        "required": ["scope_kind"],
+        "required": [
+          "scope_kind"
+        ],
         "title": "InstructionsConflict",
         "type": "object"
       }
@@ -3773,7 +4051,9 @@
       "owner": "server",
       "domain": "instructions",
       "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
-      "previous_names": ["integration:instructions_updated"],
+      "previous_names": [
+        "integration:instructions_updated"
+      ],
       "budget_per_user_day": 30,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -3782,7 +4062,10 @@
         "description": "A set of standing instructions (global or one integration's) was saved or cleared.",
         "properties": {
           "scope_kind": {
-            "enum": ["global", "integration"],
+            "enum": [
+              "global",
+              "integration"
+            ],
             "title": "Scope Kind",
             "type": "string"
           },
@@ -3796,7 +4079,11 @@
             "type": "boolean"
           }
         },
-        "required": ["scope_kind", "updated_by", "cleared"],
+        "required": [
+          "scope_kind",
+          "updated_by",
+          "cleared"
+        ],
         "title": "InstructionsUpdated",
         "type": "object"
       }
@@ -3867,7 +4154,10 @@
             "type": "integer"
           }
         },
-        "required": ["integration_id", "account_count"],
+        "required": [
+          "integration_id",
+          "account_count"
+        ],
         "title": "IntegrationAccountRemoved",
         "type": "object"
       }
@@ -3896,7 +4186,10 @@
             "type": "boolean"
           }
         },
-        "required": ["integration_id", "cleared"],
+        "required": [
+          "integration_id",
+          "cleared"
+        ],
         "title": "IntegrationAccountRenamed",
         "type": "object"
       }
@@ -3960,7 +4253,9 @@
             "title": "Source"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationConnectInitiated",
         "type": "object"
       }
@@ -3987,7 +4282,10 @@
           "auth_type": {
             "anyOf": [
               {
-                "enum": ["bearer", "none"],
+                "enum": [
+                  "bearer",
+                  "none"
+                ],
                 "type": "string"
               },
               {
@@ -4000,7 +4298,10 @@
           "source": {
             "anyOf": [
               {
-                "enum": ["marketplace", "workspace"],
+                "enum": [
+                  "marketplace",
+                  "workspace"
+                ],
                 "type": "string"
               },
               {
@@ -4074,7 +4375,9 @@
             "title": "Is Reconnect"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationConnected",
         "type": "object"
       }
@@ -4099,7 +4402,9 @@
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomDeleted",
         "type": "object"
       }
@@ -4124,7 +4429,9 @@
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomPublished",
         "type": "object"
       }
@@ -4149,7 +4456,9 @@
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomUnpublished",
         "type": "object"
       }
@@ -4174,7 +4483,9 @@
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationCustomUpdated",
         "type": "object"
       }
@@ -4199,7 +4510,9 @@
             "type": "string"
           }
         },
-        "required": ["integration_id"],
+        "required": [
+          "integration_id"
+        ],
         "title": "IntegrationDisconnected",
         "type": "object"
       }
@@ -4249,7 +4562,9 @@
             "title": "Error Code"
           }
         },
-        "required": ["integration"],
+        "required": [
+          "integration"
+        ],
         "title": "IntegrationError",
         "type": "object"
       }
@@ -4281,7 +4596,11 @@
             "type": "integer"
           }
         },
-        "required": ["stored_count", "set_up_count", "total_count"],
+        "required": [
+          "stored_count",
+          "set_up_count",
+          "total_count"
+        ],
         "title": "IntegrationInstanceSetupSaved",
         "type": "object"
       }
@@ -4310,7 +4629,10 @@
             "type": "integer"
           }
         },
-        "required": ["integration_id", "account_count"],
+        "required": [
+          "integration_id",
+          "account_count"
+        ],
         "title": "IntegrationPrimaryChanged",
         "type": "object"
       }
@@ -4335,7 +4657,9 @@
             "type": "string"
           }
         },
-        "required": ["toolkit"],
+        "required": [
+          "toolkit"
+        ],
         "title": "IntegrationToolkitDisabled",
         "type": "object"
       }
@@ -4360,7 +4684,10 @@
             "type": "string"
           },
           "origin": {
-            "enum": ["code", "instance"],
+            "enum": [
+              "code",
+              "instance"
+            ],
             "title": "Origin",
             "type": "string"
           },
@@ -4369,7 +4696,11 @@
             "type": "boolean"
           }
         },
-        "required": ["toolkit", "origin", "composio_managed"],
+        "required": [
+          "toolkit",
+          "origin",
+          "composio_managed"
+        ],
         "title": "IntegrationToolkitEnabled",
         "type": "object"
       }
@@ -4389,7 +4720,11 @@
         "description": "An MCP server connection probe finished.",
         "properties": {
           "status": {
-            "enum": ["connected", "failed", "requires_oauth"],
+            "enum": [
+              "connected",
+              "failed",
+              "requires_oauth"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -4406,7 +4741,9 @@
             "title": "Tools Count"
           }
         },
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "title": "McpConnectionTested",
         "type": "object"
       }
@@ -4430,7 +4767,9 @@
             "type": "integer"
           }
         },
-        "required": ["deleted_count"],
+        "required": [
+          "deleted_count"
+        ],
         "title": "MemoryCleared",
         "type": "object"
       }
@@ -4491,7 +4830,9 @@
             "type": "string"
           }
         },
-        "required": ["memory_id"],
+        "required": [
+          "memory_id"
+        ],
         "title": "MemoryItemDeleted",
         "type": "object"
       }
@@ -4543,7 +4884,10 @@
           "location": {
             "anyOf": [
               {
-                "enum": ["desktop_login_page", "login_modal"],
+                "enum": [
+                  "desktop_login_page",
+                  "login_modal"
+                ],
                 "type": "string"
               },
               {
@@ -4568,7 +4912,11 @@
           "os": {
             "anyOf": [
               {
-                "enum": ["mac", "windows", "linux"],
+                "enum": [
+                  "mac",
+                  "windows",
+                  "linux"
+                ],
                 "type": "string"
               },
               {
@@ -4579,7 +4927,9 @@
             "title": "Os"
           }
         },
-        "required": ["destination"],
+        "required": [
+          "destination"
+        ],
         "title": "NavigationCtaClicked",
         "type": "object"
       }
@@ -4604,7 +4954,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "NavigationGithubClicked",
         "type": "object"
       }
@@ -4624,12 +4976,17 @@
         "description": "The user hovered a marketing navbar dropdown open.",
         "properties": {
           "menu": {
-            "enum": ["product", "resources"],
+            "enum": [
+              "product",
+              "resources"
+            ],
             "title": "Menu",
             "type": "string"
           }
         },
-        "required": ["menu"],
+        "required": [
+          "menu"
+        ],
         "title": "NavigationNavbarDropdownOpened",
         "type": "object"
       }
@@ -4649,17 +5006,26 @@
         "description": "The user clicked a plain link in the marketing navbar.",
         "properties": {
           "label": {
-            "enum": ["Pricing", "Docs"],
+            "enum": [
+              "Pricing",
+              "Docs"
+            ],
             "title": "Label",
             "type": "string"
           },
           "href": {
-            "enum": ["/pricing", "https://docs.heygaia.io"],
+            "enum": [
+              "/pricing",
+              "https://docs.heygaia.io"
+            ],
             "title": "Href",
             "type": "string"
           }
         },
-        "required": ["label", "href"],
+        "required": [
+          "label",
+          "href"
+        ],
         "title": "NavigationNavbarLinkClicked",
         "type": "object"
       }
@@ -4703,7 +5069,10 @@
             "type": "string"
           }
         },
-        "required": ["destination", "label"],
+        "required": [
+          "destination",
+          "label"
+        ],
         "title": "NavigationSidebarClicked",
         "type": "object"
       }
@@ -4795,14 +5164,20 @@
         "description": "The agent's send_notification sent one, or folded it into the reply already reaching the user.\n\ndestination is set only when the agent named no channel and GAIA chose where it goes.",
         "properties": {
           "outcome": {
-            "enum": ["sent", "folded_into_reply"],
+            "enum": [
+              "sent",
+              "folded_into_reply"
+            ],
             "title": "Outcome",
             "type": "string"
           },
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -4831,7 +5206,9 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "NotificationAgentSent",
         "type": "object"
       }
@@ -4864,7 +5241,11 @@
             "type": "integer"
           }
         },
-        "required": ["action", "successful", "total"],
+        "required": [
+          "action",
+          "successful",
+          "total"
+        ],
         "title": "NotificationBulkAction",
         "type": "object"
       }
@@ -4875,7 +5256,9 @@
       "owner": "server",
       "domain": "notification",
       "description": "A user marked a notification read.",
-      "previous_names": ["notification:dismissed"],
+      "previous_names": [
+        "notification:dismissed"
+      ],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -4888,7 +5271,9 @@
             "type": "integer"
           }
         },
-        "required": ["count"],
+        "required": [
+          "count"
+        ],
         "title": "NotificationRead",
         "type": "object"
       }
@@ -4936,7 +5321,10 @@
             "type": "string"
           }
         },
-        "required": ["notification_id", "source"],
+        "required": [
+          "notification_id",
+          "source"
+        ],
         "title": "NotificationViewed",
         "type": "object"
       }
@@ -4965,7 +5353,10 @@
             "type": "integer"
           }
         },
-        "required": ["step", "day_offset"],
+        "required": [
+          "step",
+          "day_offset"
+        ],
         "title": "NurtureEmailSent",
         "type": "object"
       }
@@ -4985,12 +5376,17 @@
         "description": "A user came back from a failed or stalled checkout and asked for the plans again.",
         "properties": {
           "reason": {
-            "enum": ["declined", "confirmation_timeout"],
+            "enum": [
+              "declined",
+              "confirmation_timeout"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["reason"],
+        "required": [
+          "reason"
+        ],
         "title": "OnboardingCheckoutRetried",
         "type": "object"
       }
@@ -5035,7 +5431,10 @@
             "title": "Linked Platform"
           }
         },
-        "required": ["needs", "has_other_need"],
+        "required": [
+          "needs",
+          "has_other_need"
+        ],
         "title": "OnboardingCompleted",
         "type": "object"
       }
@@ -5100,7 +5499,9 @@
             "title": "Has Other Need"
           }
         },
-        "required": ["phase"],
+        "required": [
+          "phase"
+        ],
         "title": "OnboardingPhaseCompleted",
         "type": "object"
       }
@@ -5143,7 +5544,9 @@
             "type": "string"
           }
         },
-        "required": ["from_stage"],
+        "required": [
+          "from_stage"
+        ],
         "title": "OnboardingRestarted",
         "type": "object"
       }
@@ -5168,7 +5571,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "OnboardingSkipped",
         "type": "object"
       }
@@ -5200,7 +5605,10 @@
             "type": "array"
           }
         },
-        "required": ["profile_count", "platforms"],
+        "required": [
+          "profile_count",
+          "platforms"
+        ],
         "title": "OnboardingSocialProfilesConfirmed",
         "type": "object"
       }
@@ -5260,7 +5668,9 @@
             "type": "integer"
           }
         },
-        "required": ["summary_length"],
+        "required": [
+          "summary_length"
+        ],
         "title": "OnboardingWritingStyleSaved",
         "type": "object"
       }
@@ -5291,7 +5701,10 @@
             "type": "string"
           },
           "billing_cycle": {
-            "enum": ["monthly", "yearly"],
+            "enum": [
+              "monthly",
+              "yearly"
+            ],
             "title": "Billing Cycle",
             "type": "string"
           },
@@ -5307,7 +5720,11 @@
             "type": "string"
           }
         },
-        "required": ["source", "billing_cycle", "furthest_step"],
+        "required": [
+          "source",
+          "billing_cycle",
+          "furthest_step"
+        ],
         "title": "PaymentCheckoutAbandoned",
         "type": "object"
       }
@@ -5327,7 +5744,10 @@
         "description": "A user started a Dodo checkout, by redirect or the embedded overlay.",
         "properties": {
           "checkout_flow": {
-            "enum": ["redirect", "overlay"],
+            "enum": [
+              "redirect",
+              "overlay"
+            ],
             "title": "Checkout Flow",
             "type": "string"
           },
@@ -5383,7 +5803,9 @@
             "title": "Plan Id"
           }
         },
-        "required": ["checkout_flow"],
+        "required": [
+          "checkout_flow"
+        ],
         "title": "PaymentCheckoutStarted",
         "type": "object"
       }
@@ -5462,7 +5884,10 @@
             "title": "Amount Usd Pre Tax"
           }
         },
-        "required": ["payment_id", "currency"],
+        "required": [
+          "payment_id",
+          "currency"
+        ],
         "title": "PaymentFailed",
         "type": "object"
       }
@@ -5541,7 +5966,10 @@
             "title": "Amount Usd Pre Tax"
           }
         },
-        "required": ["payment_id", "currency"],
+        "required": [
+          "payment_id",
+          "currency"
+        ],
         "title": "PaymentSucceeded",
         "type": "object"
       }
@@ -5574,7 +6002,9 @@
             "title": "Feature"
           }
         },
-        "required": ["feature"],
+        "required": [
+          "feature"
+        ],
         "title": "PaywallBlocked",
         "type": "object"
       }
@@ -5633,7 +6063,10 @@
             "title": "Source"
           }
         },
-        "required": ["dismissible", "has_discount_code"],
+        "required": [
+          "dismissible",
+          "has_discount_code"
+        ],
         "title": "PaywallModalViewed",
         "type": "object"
       }
@@ -5671,7 +6104,9 @@
             "title": "Message Id"
           }
         },
-        "required": ["conversation_id"],
+        "required": [
+          "conversation_id"
+        ],
         "title": "PinViewed",
         "type": "object"
       }
@@ -5696,7 +6131,9 @@
             "type": "string"
           }
         },
-        "required": ["holo_card_id"],
+        "required": [
+          "holo_card_id"
+        ],
         "title": "ProfileLinkCopied",
         "type": "object"
       }
@@ -5732,7 +6169,9 @@
             "title": "Has Picture Upload"
           }
         },
-        "required": ["changed_field_count"],
+        "required": [
+          "changed_field_count"
+        ],
         "title": "ProfileUpdated",
         "type": "object"
       }
@@ -5797,7 +6236,9 @@
       "owner": "server",
       "domain": "rate_limit",
       "description": "A request was refused by a usage limit: a feature count, a cost budget or a burst limit.",
-      "previous_names": ["rate_limit_hit"],
+      "previous_names": [
+        "rate_limit_hit"
+      ],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -5838,7 +6279,12 @@
           "window": {
             "anyOf": [
               {
-                "enum": ["day", "month", "request", "burst"],
+                "enum": [
+                  "day",
+                  "month",
+                  "request",
+                  "burst"
+                ],
                 "type": "string"
               },
               {
@@ -5849,7 +6295,10 @@
             "title": "Window"
           }
         },
-        "required": ["feature", "plan"],
+        "required": [
+          "feature",
+          "plan"
+        ],
         "title": "RateLimitHit",
         "type": "object"
       }
@@ -5928,7 +6377,10 @@
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -5957,7 +6409,10 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["reminder_id", "agent"],
+        "required": [
+          "reminder_id",
+          "agent"
+        ],
         "title": "ReminderCompleted",
         "type": "object"
       }
@@ -5981,7 +6436,9 @@
             "type": "boolean"
           }
         },
-        "required": ["is_recurring"],
+        "required": [
+          "is_recurring"
+        ],
         "title": "ReminderCreated",
         "type": "object"
       }
@@ -6104,7 +6561,11 @@
             "type": "integer"
           }
         },
-        "required": ["mode", "query_length", "result_count"],
+        "required": [
+          "mode",
+          "query_length",
+          "result_count"
+        ],
         "title": "SearchPerformed",
         "type": "object"
       }
@@ -6124,7 +6585,10 @@
         "description": "A user picked a conversation or message result in the command menu.",
         "properties": {
           "result_type": {
-            "enum": ["conversation", "message"],
+            "enum": [
+              "conversation",
+              "message"
+            ],
             "title": "Result Type",
             "type": "string"
           },
@@ -6147,7 +6611,10 @@
             "title": "Message Id"
           }
         },
-        "required": ["result_type", "conversation_id"],
+        "required": [
+          "result_type",
+          "conversation_id"
+        ],
         "title": "SearchResultClicked",
         "type": "object"
       }
@@ -6194,12 +6661,19 @@
             "type": "integer"
           },
           "via": {
-            "enum": ["settings", "agent"],
+            "enum": [
+              "settings",
+              "agent"
+            ],
             "title": "Via",
             "type": "string"
           }
         },
-        "required": ["frequency", "hour", "via"],
+        "required": [
+          "frequency",
+          "hour",
+          "via"
+        ],
         "title": "SettingsBriefingScheduleUpdated",
         "type": "object"
       }
@@ -6223,12 +6697,18 @@
             "type": "integer"
           },
           "via": {
-            "enum": ["settings", "agent"],
+            "enum": [
+              "settings",
+              "agent"
+            ],
             "title": "Via",
             "type": "string"
           }
         },
-        "required": ["workflow_count", "via"],
+        "required": [
+          "workflow_count",
+          "via"
+        ],
         "title": "SettingsBriefsOffBlocked",
         "type": "object"
       }
@@ -6256,12 +6736,19 @@
             "type": "integer"
           },
           "via": {
-            "enum": ["settings", "agent"],
+            "enum": [
+              "settings",
+              "agent"
+            ],
             "title": "Via",
             "type": "string"
           }
         },
-        "required": ["moved_to_now", "moved_to_silent", "via"],
+        "required": [
+          "moved_to_now",
+          "moved_to_silent",
+          "via"
+        ],
         "title": "SettingsBriefsOffResolved",
         "type": "object"
       }
@@ -6290,7 +6777,10 @@
             "type": "integer"
           }
         },
-        "required": ["first", "count"],
+        "required": [
+          "first",
+          "count"
+        ],
         "title": "SettingsChatChannelPriorityUpdated",
         "type": "object"
       }
@@ -6310,7 +6800,10 @@
         "description": "A desktop-only preference changed over Electron IPC, which never reaches the API.",
         "properties": {
           "setting": {
-            "enum": ["popup_shortcut", "app_icon"],
+            "enum": [
+              "popup_shortcut",
+              "app_icon"
+            ],
             "title": "Setting",
             "type": "string"
           },
@@ -6328,7 +6821,9 @@
             "title": "App Icon Id"
           }
         },
-        "required": ["setting"],
+        "required": [
+          "setting"
+        ],
         "title": "SettingsDesktopPreferenceChanged",
         "type": "object"
       }
@@ -6482,7 +6977,9 @@
             "title": "Require Approval"
           }
         },
-        "required": ["setting"],
+        "required": [
+          "setting"
+        ],
         "title": "SettingsPreferencesChanged",
         "type": "object"
       }
@@ -6514,7 +7011,11 @@
             "type": "integer"
           }
         },
-        "required": ["enabled", "start_hour", "end_hour"],
+        "required": [
+          "enabled",
+          "start_hour",
+          "end_hour"
+        ],
         "title": "SettingsQuietHoursUpdated",
         "type": "object"
       }
@@ -6544,7 +7045,9 @@
             "type": "string"
           }
         },
-        "required": ["target_type"],
+        "required": [
+          "target_type"
+        ],
         "title": "ShortLinkCreated",
         "type": "object"
       }
@@ -6578,7 +7081,10 @@
             "type": "boolean"
           }
         },
-        "required": ["target_type", "viewer_signed_in"],
+        "required": [
+          "target_type",
+          "viewer_signed_in"
+        ],
         "title": "ShortLinkOpened",
         "type": "object"
       }
@@ -6657,7 +7163,11 @@
             "type": "string"
           },
           "source": {
-            "enum": ["github", "inline", "learned"],
+            "enum": [
+              "github",
+              "inline",
+              "learned"
+            ],
             "title": "Source",
             "type": "string"
           },
@@ -6680,7 +7190,11 @@
             "title": "Skill Id"
           }
         },
-        "required": ["target", "source", "author"],
+        "required": [
+          "target",
+          "source",
+          "author"
+        ],
         "title": "SkillInstalled",
         "type": "object"
       }
@@ -6728,7 +7242,10 @@
             "type": "string"
           }
         },
-        "required": ["skill_id", "target"],
+        "required": [
+          "skill_id",
+          "target"
+        ],
         "title": "SkillUninstalled",
         "type": "object"
       }
@@ -6758,7 +7275,10 @@
             "type": "string"
           }
         },
-        "required": ["target", "author"],
+        "required": [
+          "target",
+          "author"
+        ],
         "title": "SkillUpdated",
         "type": "object"
       }
@@ -6868,7 +7388,11 @@
             "title": "Backfilled"
           }
         },
-        "required": ["subscription_id", "plan_name", "currency"],
+        "required": [
+          "subscription_id",
+          "plan_name",
+          "currency"
+        ],
         "title": "SubscriptionActivated",
         "type": "object"
       }
@@ -6921,7 +7445,11 @@
             "type": "string"
           }
         },
-        "required": ["subscription_id", "product_id", "billing_interval"],
+        "required": [
+          "subscription_id",
+          "product_id",
+          "billing_interval"
+        ],
         "title": "SubscriptionCancelled",
         "type": "object"
       }
@@ -6956,7 +7484,11 @@
             "type": "string"
           }
         },
-        "required": ["subscription_id", "product_id", "billing_interval"],
+        "required": [
+          "subscription_id",
+          "product_id",
+          "billing_interval"
+        ],
         "title": "SubscriptionExpired",
         "type": "object"
       }
@@ -6976,17 +7508,27 @@
         "description": "A checkout returned without a subscription; a declined charge or lost webhook reaches no server.",
         "properties": {
           "source": {
-            "enum": ["onboarding", "payment_success_page"],
+            "enum": [
+              "onboarding",
+              "payment_success_page"
+            ],
             "title": "Source",
             "type": "string"
           },
           "reason": {
-            "enum": ["declined", "confirmation_timeout", "verification_error"],
+            "enum": [
+              "declined",
+              "confirmation_timeout",
+              "verification_error"
+            ],
             "title": "Reason",
             "type": "string"
           }
         },
-        "required": ["source", "reason"],
+        "required": [
+          "source",
+          "reason"
+        ],
         "title": "SubscriptionFailed",
         "type": "object"
       }
@@ -7011,7 +7553,10 @@
             "type": "string"
           },
           "status": {
-            "enum": ["failed", "on_hold"],
+            "enum": [
+              "failed",
+              "on_hold"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -7056,7 +7601,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "SubscriptionPageViewed",
         "type": "object"
       }
@@ -7110,7 +7657,10 @@
             "title": "Source"
           }
         },
-        "required": ["price", "is_monthly"],
+        "required": [
+          "price",
+          "is_monthly"
+        ],
         "title": "SubscriptionPlanViewed",
         "type": "object"
       }
@@ -7265,7 +7815,9 @@
             "type": "string"
           }
         },
-        "required": ["todo_id"],
+        "required": [
+          "todo_id"
+        ],
         "title": "TodosChatOpened",
         "type": "object"
       }
@@ -7422,7 +7974,9 @@
             "title": "Waiting On"
           }
         },
-        "required": ["todo_id"],
+        "required": [
+          "todo_id"
+        ],
         "title": "TodosOpenStateRepaired",
         "type": "object"
       }
@@ -7452,7 +8006,10 @@
             "type": "string"
           }
         },
-        "required": ["todo_id", "ref_source"],
+        "required": [
+          "todo_id",
+          "ref_source"
+        ],
         "title": "TodosRefReopened",
         "type": "object"
       }
@@ -7505,7 +8062,10 @@
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -7534,7 +8094,12 @@
             "title": "Destination Basis"
           }
         },
-        "required": ["outcome", "delivered", "trigger_type", "recurring"],
+        "required": [
+          "outcome",
+          "delivered",
+          "trigger_type",
+          "recurring"
+        ],
         "title": "TodosRunResultDelivered",
         "type": "object"
       }
@@ -7572,7 +8137,10 @@
             "type": "string"
           }
         },
-        "required": ["trigger_name", "reason"],
+        "required": [
+          "trigger_name",
+          "reason"
+        ],
         "title": "TodosSubscriptionFailed",
         "type": "object"
       }
@@ -7936,7 +8504,9 @@
             "type": "string"
           }
         },
-        "required": ["view_kind"],
+        "required": [
+          "view_kind"
+        ],
         "title": "TodosViewChanged",
         "type": "object"
       }
@@ -7966,7 +8536,10 @@
             "type": "string"
           }
         },
-        "required": ["tool_name", "reason"],
+        "required": [
+          "tool_name",
+          "reason"
+        ],
         "title": "ToolExecuteFailed",
         "type": "object"
       }
@@ -7993,7 +8566,10 @@
           "via": {
             "anyOf": [
               {
-                "enum": ["bound", "execute"],
+                "enum": [
+                  "bound",
+                  "execute"
+                ],
                 "type": "string"
               },
               {
@@ -8041,7 +8617,9 @@
             "title": "Account Is Primary"
           }
         },
-        "required": ["tool_name"],
+        "required": [
+          "tool_name"
+        ],
         "title": "ToolUsed",
         "type": "object"
       }
@@ -8061,7 +8639,10 @@
         "description": "A trigger gate decided what a fired event does to its workflow or tracked todo.\n\noutcome is what the run did and reason is why, so a shadow gate (enforced\nfalse) reports reason jev_skip with outcome run. Inside the user's quiet hours\nan event is held for the morning or let through now; urgent_choice names why\na let-through one could not wait.",
         "properties": {
           "owner_type": {
-            "enum": ["workflow", "todo"],
+            "enum": [
+              "workflow",
+              "todo"
+            ],
             "title": "Owner Type",
             "type": "string"
           },
@@ -8071,14 +8652,20 @@
             "type": "string"
           },
           "gate_kind": {
-            "enum": ["authored", "system"],
+            "enum": [
+              "authored",
+              "system"
+            ],
             "title": "Gate Kind",
             "type": "string"
           },
           "author": {
             "anyOf": [
               {
-                "enum": ["gaia", "user"],
+                "enum": [
+                  "gaia",
+                  "user"
+                ],
                 "type": "string"
               },
               {
@@ -8089,7 +8676,12 @@
             "title": "Author"
           },
           "outcome": {
-            "enum": ["run", "skip", "hold", "bypass"],
+            "enum": [
+              "run",
+              "skip",
+              "hold",
+              "bypass"
+            ],
             "title": "Outcome",
             "type": "string"
           },
@@ -8111,7 +8703,11 @@
           "urgent_choice": {
             "anyOf": [
               {
-                "enum": ["incident", "service_down", "meeting"],
+                "enum": [
+                  "incident",
+                  "service_down",
+                  "meeting"
+                ],
                 "type": "string"
               },
               {
@@ -8165,22 +8761,38 @@
         "description": "A user added, rewrote, turned on or off, or removed the gate on a workflow or tracked todo.",
         "properties": {
           "owner_type": {
-            "enum": ["workflow", "todo"],
+            "enum": [
+              "workflow",
+              "todo"
+            ],
             "title": "Owner Type",
             "type": "string"
           },
           "action": {
-            "enum": ["added", "edited", "disabled", "enabled", "removed"],
+            "enum": [
+              "added",
+              "edited",
+              "disabled",
+              "enabled",
+              "removed"
+            ],
             "title": "Action",
             "type": "string"
           },
           "gate_kind": {
-            "enum": ["authored", "system"],
+            "enum": [
+              "authored",
+              "system"
+            ],
             "title": "Gate Kind",
             "type": "string"
           }
         },
-        "required": ["owner_type", "action", "gate_kind"],
+        "required": [
+          "owner_type",
+          "action",
+          "gate_kind"
+        ],
         "title": "TriggerGateEdited",
         "type": "object"
       }
@@ -8241,7 +8853,9 @@
             "type": "string"
           }
         },
-        "required": ["plan_type"],
+        "required": [
+          "plan_type"
+        ],
         "title": "UsageQueried",
         "type": "object"
       }
@@ -8266,7 +8880,9 @@
             "type": "string"
           }
         },
-        "required": ["use_case_id"],
+        "required": [
+          "use_case_id"
+        ],
         "title": "UseCasesClicked",
         "type": "object"
       }
@@ -8381,7 +8997,10 @@
             "type": "boolean"
           }
         },
-        "required": ["method", "has_completed_onboarding"],
+        "required": [
+          "method",
+          "has_completed_onboarding"
+        ],
         "title": "UserSessionResumed",
         "type": "object"
       }
@@ -8560,7 +9179,9 @@
             "type": "string"
           }
         },
-        "required": ["room"],
+        "required": [
+          "room"
+        ],
         "title": "VoiceSessionStarted",
         "type": "object"
       }
@@ -8630,7 +9251,11 @@
         "description": "The user opened the what's-new modal from the sidebar card or the settings menu.",
         "properties": {
           "source": {
-            "enum": ["sidebar_card", "settings_menu", "settings_menu_view_all"],
+            "enum": [
+              "sidebar_card",
+              "settings_menu",
+              "settings_menu_view_all"
+            ],
             "title": "Source",
             "type": "string"
           },
@@ -8660,7 +9285,9 @@
             "title": "Index"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "WhatsNewCardClicked",
         "type": "object"
       }
@@ -8685,7 +9312,9 @@
             "type": "string"
           }
         },
-        "required": ["releaseId"],
+        "required": [
+          "releaseId"
+        ],
         "title": "WhatsNewCardDismissed",
         "type": "object"
       }
@@ -8709,7 +9338,9 @@
             "type": "integer"
           }
         },
-        "required": ["unseenCount"],
+        "required": [
+          "unseenCount"
+        ],
         "title": "WhatsNewCardShown",
         "type": "object"
       }
@@ -8734,7 +9365,9 @@
             "type": "string"
           }
         },
-        "required": ["releaseId"],
+        "required": [
+          "releaseId"
+        ],
         "title": "WhatsNewDocsClicked",
         "type": "object"
       }
@@ -8759,7 +9392,9 @@
             "type": "string"
           }
         },
-        "required": ["source"],
+        "required": [
+          "source"
+        ],
         "title": "WhatsNewModalOpened",
         "type": "object"
       }
@@ -8788,7 +9423,10 @@
             "type": "integer"
           }
         },
-        "required": ["releaseId", "index"],
+        "required": [
+          "releaseId",
+          "index"
+        ],
         "title": "WhatsNewSlideViewed",
         "type": "object"
       }
@@ -8817,7 +9455,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow was created, by the user or generated for a todo; origin says which.",
-      "previous_names": ["workflows:created"],
+      "previous_names": [
+        "workflows:created"
+      ],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8900,7 +9540,11 @@
           "delivery": {
             "anyOf": [
               {
-                "enum": ["now", "brief", "silent"],
+                "enum": [
+                  "now",
+                  "brief",
+                  "silent"
+                ],
                 "type": "string"
               },
               {
@@ -8911,7 +9555,9 @@
             "title": "Delivery"
           }
         },
-        "required": ["origin"],
+        "required": [
+          "origin"
+        ],
         "title": "WorkflowCreated",
         "type": "object"
       }
@@ -8940,7 +9586,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user deleted a workflow.",
-      "previous_names": ["workflows:deleted"],
+      "previous_names": [
+        "workflows:deleted"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -8958,7 +9606,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A workflow run was queued manually, or a background-triggered run completed.",
-      "previous_names": ["workflows:executed"],
+      "previous_names": [
+        "workflows:executed"
+      ],
       "budget_per_user_day": 200,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -9003,7 +9653,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user published a workflow to the community.",
-      "previous_names": ["workflows:published"],
+      "previous_names": [
+        "workflows:published"
+      ],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -9043,14 +9695,21 @@
             "title": "Workflow Id"
           },
           "outcome": {
-            "enum": ["delivered", "undelivered", "lookup_failed"],
+            "enum": [
+              "delivered",
+              "undelivered",
+              "lookup_failed"
+            ],
             "title": "Outcome",
             "type": "string"
           },
           "destination": {
             "anyOf": [
               {
-                "enum": ["chat_app", "in_app"],
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
                 "type": "string"
               },
               {
@@ -9092,7 +9751,9 @@
             "title": "Platform"
           }
         },
-        "required": ["outcome"],
+        "required": [
+          "outcome"
+        ],
         "title": "WorkflowResultDelivered",
         "type": "object"
       }
@@ -9103,7 +9764,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user asked for a workflow's steps to be regenerated.",
-      "previous_names": ["workflows:steps_regenerated"],
+      "previous_names": [
+        "workflows:steps_regenerated"
+      ],
       "budget_per_user_day": 25,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -9120,7 +9783,10 @@
             "type": "integer"
           }
         },
-        "required": ["force_different_tools", "steps_count"],
+        "required": [
+          "force_different_tools",
+          "steps_count"
+        ],
         "title": "WorkflowStepsRegenerated",
         "type": "object"
       }
@@ -9131,7 +9797,9 @@
       "owner": "server",
       "domain": "workflow",
       "description": "A user unpublished a workflow.",
-      "previous_names": ["workflows:unpublished"],
+      "previous_names": [
+        "workflows:unpublished"
+      ],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
@@ -9160,7 +9828,11 @@
           "delivery": {
             "anyOf": [
               {
-                "enum": ["now", "brief", "silent"],
+                "enum": [
+                  "now",
+                  "brief",
+                  "silent"
+                ],
                 "type": "string"
               },
               {
@@ -9200,7 +9872,10 @@
             "type": "string"
           }
         },
-        "required": ["slug", "variant"],
+        "required": [
+          "slug",
+          "variant"
+        ],
         "title": "WorkflowCardNavigate",
         "type": "object"
       }

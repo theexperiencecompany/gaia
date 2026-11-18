@@ -22,6 +22,7 @@ from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.turn_clock import TurnClock
 from shared.py.analytics import Dedupe
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -60,6 +61,8 @@ class StreamSession:
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
+    #: The live chat turn's stage stamps; ``None`` for runs no HTTP request started.
+    clock: TurnClock | None = None
     # ``perf_counter`` of this stream's first executor frame, set once by the
     # writer. A redirect's second run must not inherit the cancelled run's.
     executor_first_frame_perf: float | None = None
