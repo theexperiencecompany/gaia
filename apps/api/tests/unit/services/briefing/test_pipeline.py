@@ -172,6 +172,7 @@ from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.services.render.image import RenderedImage
 from app.utils.message_breaks import split_message_bubbles
+from app.workers.brief_slots import slot_minute
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 
@@ -179,6 +180,7 @@ from shared.py.analytics.catalog.briefings import BriefingSent
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 _USER = make_user_id()
+_SLOT_MINUTE = f"{slot_minute(_USER):02d}"
 _TZ = "Asia/Kolkata"
 # 07:05 on 14 Oct in Kolkata; the brief's day starts at local midnight.
 _NOW = datetime(2026, 10, 14, 1, 35, tzinfo=UTC)
@@ -2727,7 +2729,9 @@ class TestTheLighterCadenceOffer:
 
         assert _situation(world).offer_lighter_cadence is True
         [cadence] = _setup(world).splitlines()
-        assert cadence.startswith("Their briefs now: a daily brief Monday to Friday at 09:00")
+        assert cadence.startswith(
+            f"Their briefs now: a daily brief Monday to Friday at 9:{_SLOT_MINUTE} AM"
+        )
 
     async def test_a_first_week_idle_user_sees_their_cadence_and_apps_on_separate_lines(
         self, world: World
@@ -2739,8 +2743,8 @@ class TestTheLighterCadenceOffer:
         await run_brief(_USER, BriefingKind.DAILY)
 
         assert _setup(world).splitlines() == [
-            "Their briefs now: a daily brief every day at 08:00, plus the weekly digest on "
-            "Sunday at 17:00.",
+            f"Their briefs now: a daily brief every day at 8:{_SLOT_MINUTE} AM, plus the weekly "
+            f"digest on Sunday at 5:{_SLOT_MINUTE} PM.",
             "Apps they've connected: Gmail.",
         ]
 
