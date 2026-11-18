@@ -148,7 +148,6 @@ from app.services.briefing.kinds import KIND_SPECS
 from app.services.briefing.lookback import Lookback, WinbackState
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.prose import reader_block
-from app.services.briefing.render import RenderedImage
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL
 from app.services.briefing.work import BriefReads, OpenSubjects, OwnTodos, TrackedWork
@@ -156,6 +155,7 @@ from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
+from app.services.render.image import RenderedImage
 from app.utils.general_utils import ELLIPSIS
 from app.utils.markdown_utils import model_from_reply
 from app.utils.message_breaks import split_message_bubbles
