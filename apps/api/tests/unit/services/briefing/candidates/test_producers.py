@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.factories import make_todo, make_user_id
 
+from app.config.settings import settings
 from app.constants.briefing import (
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
     DUE_TODO_CANDIDATES_LIMIT,
@@ -658,6 +659,34 @@ class TestApprovals:
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)
         assert gate.await_args.args == (USER_ID, NOW)
+
+    async def test_an_approval_opens_the_conversation_its_card_waits_in(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dhruv replay 11-12: "review the update" went out as text, the approval had no address."""
+        record = HILApprovalRecord(
+            approval_id="appr-1",
+            user_id=USER_ID,
+            conversation_id="conv-2",
+            stream_id="s-1",
+            tool_name="delete_file",
+            expires_at=NOW + timedelta(minutes=15),
+        )
+        monkeypatch.setattr(
+            approval_ledger_repository,
+            "list_pending_for_user",
+            AsyncMock(return_value=[_ledger("ap_1")]),
+        )
+        monkeypatch.setattr(
+            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[record])
+        )
+
+        found = await approval_candidates(USER_ID, NOW, set())
+
+        assert [c.url for c in found] == [
+            f"{settings.FRONTEND_URL}/c/conv-1",
+            f"{settings.FRONTEND_URL}/c/conv-2",
+        ]
 
     async def test_a_ledger_row_names_the_app_its_mcp_tool_key_points_at(
         self, monkeypatch: pytest.MonkeyPatch

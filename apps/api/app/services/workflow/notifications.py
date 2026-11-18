@@ -10,6 +10,7 @@ imports the agent stack).
 
 from datetime import UTC, datetime
 
+from app.constants.chat import CONVERSATION_PATH
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     NotificationChannel,
@@ -71,7 +72,7 @@ async def send_workflow_completion_notification(
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=f"/c/{conversation_id}",
+                                    url=CONVERSATION_PATH.format(conversation_id=conversation_id),
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )

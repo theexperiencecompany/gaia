@@ -12,6 +12,10 @@ import re
 SUBAGENT_GROUP_TOOL_NAME = "subagent_group"
 
 
+#: The web app's path to one conversation.
+CONVERSATION_PATH = "/c/{conversation_id}"
+
+
 class ConversationSource(str, Enum):
     """Client or channel a conversation originated from."""
 
