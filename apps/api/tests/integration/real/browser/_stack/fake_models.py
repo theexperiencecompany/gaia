@@ -29,9 +29,10 @@ from starlette.routing import Route
 from tests.helpers import load_llm_stub_module, pick_free_port
 from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
-# wire imports directives by its bare name, so directives is registered first.
+# wire and background import directives by its bare name, so directives is registered first.
 _directives = load_llm_stub_module("directives")
 _wire = load_llm_stub_module("wire")
+_background = load_llm_stub_module("background")
 
 #: The Browser-Use structured-output name both of its callers use.
 _AGENT_OUTPUT = "agent_output"
@@ -299,7 +300,7 @@ class FakeModels:
         self.calls.append(ModelCall(f"structured:{function.get('name')}", None))
         response = _directives.ToolCallResponse(
             name=str(function.get("name")),
-            args=_emptiest(parameters, parameters.get("$defs") or {}),
+            args=_background.emptiest(parameters, parameters.get("$defs") or {}),
         )
         return JSONResponse(
             content=_wire.build_chat_completion(
@@ -531,26 +532,6 @@ class FakeModels:
                 "fake", _directives.SayResponse(text), _wire.prompt_tokens(messages)
             )
         )
-
-
-def _emptiest(schema: dict[str, Any], defs: dict[str, Any]) -> Any:
-    """Return the emptiest value schema accepts: null where allowed, else empty, zero, false or its first choice."""
-    if "$ref" in schema:
-        return _emptiest(defs[schema["$ref"].rsplit("/", 1)[-1]], defs)
-    if "enum" in schema:
-        return schema["enum"][0]
-    if "default" in schema:
-        return schema["default"]
-    variants = schema.get("anyOf") or schema.get("oneOf")
-    if variants:
-        nullable = next((v for v in variants if v.get("type") == "null"), None)
-        return None if nullable is not None else _emptiest(variants[0], defs)
-    kind = schema.get("type")
-    if kind == "object":
-        properties = schema.get("properties") or {}
-        return {key: _emptiest(properties[key], defs) for key in schema.get("required") or []}
-    empty: dict[str, Any] = {"array": [], "string": "", "integer": 0, "number": 0, "boolean": False}
-    return empty.get(str(kind))
 
 
 def _content_text(content: dict[str, Any]) -> str:

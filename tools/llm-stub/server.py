@@ -8,11 +8,13 @@
 """Scripted, deterministic LLM stub — an OpenAI/OpenRouter-compatible server.
 
 Point GAIA's OpenRouter client at this process to drive the full stack with a
-scripted model instead of a real provider. Every chat-completions request is
-answered by parsing inline directives from the latest user message (see
-``directives.py``): ``[[tool:<name> <json-args>]]`` for scripted tool calls and
+scripted model instead of a real provider. An agent's own turn is answered by
+parsing inline directives from the latest user message (see ``directives.py``):
+``[[tool:<name> <json-args>]]`` for scripted tool calls and
 ``[[say:<text>]]`` for the final reply, ``[[fail:<message>]]`` to break the
 final call (after streaming any say text) — deterministic fault injection.
+Every other call (memory extraction, follow-ups, titles) gets a neutral,
+schema-valid answer instead (see ``background.py``).
 
 Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env):
 
@@ -43,6 +45,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from background import answer_request
 from directives import (
     ChatRequest,
     DirectiveError,
@@ -53,7 +56,6 @@ from directives import (
     message_text,
     parse_directives,
     parse_request,
-    resolve_response,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -121,7 +123,7 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     if delay_ms:
         await asyncio.sleep(delay_ms / 1000)
     try:
-        response = resolve_response(parsed.messages, parsed.available_tools)
+        response = answer_request(body)
     except DirectiveError as exc:
         # Fail loud: a malformed directive is an authoring bug, never a silent default.
         return JSONResponse(
