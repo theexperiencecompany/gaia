@@ -492,6 +492,11 @@ class TestCreateWorkflow:
         return_value=True,
     )
     @patch(
+        "app.services.workflow.integration_requirements.get_all_integrations_status",
+        new_callable=AsyncMock,
+        return_value={"googlecalendar": True},
+    )
+    @patch(
         "app.services.workflow.service.TriggerService.register_triggers",
         new_callable=AsyncMock,
         return_value=["trigger_1"],
@@ -507,6 +512,7 @@ class TestCreateWorkflow:
         mock_chroma,
         mock_scheduler,
         mock_register,
+        _mock_status,
         _mock_check_status,
     ):
         trigger = _make_trigger_config(
@@ -909,7 +915,7 @@ class TestUpdateWorkflow:
     @patch(
         "app.services.workflow.service.WorkflowService._register_integration_triggers",
         new_callable=AsyncMock,
-        return_value=(["new_trigger_id"], True),
+        return_value=["new_trigger_id"],
     )
     @patch("app.services.workflow.service.workflow_scheduler")
     @patch(
@@ -1134,6 +1140,10 @@ class TestCreateWorkflowGate:
             patch(
                 "app.services.oauth.oauth_service.check_integration_status",
                 AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.services.workflow.integration_requirements.get_all_integrations_status",
+                AsyncMock(return_value={"gmail": True}),
             ),
             patch(
                 "app.services.workflow.service.TriggerService.register_triggers",
@@ -1843,8 +1853,7 @@ class TestRegisterIntegrationTriggers:
     async def test_non_integration_trigger_returns_empty(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.MANUAL)
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        # Non-INTEGRATION triggers return ([], True): empty ids, integration_connected=True
-        assert result == ([], True)
+        assert result == []
 
     async def test_integration_trigger_without_name_raises(self):
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=None)
@@ -1861,8 +1870,7 @@ class TestRegisterIntegrationTriggers:
             trigger_type=TriggerType.INTEGRATION, trigger_name="calendar_event"
         )
         result = await WorkflowService._register_integration_triggers(WORKFLOW_ID, USER_ID, trigger)
-        # Returns (trigger_ids, integration_connected)
-        assert result == (["tid_1"], True)
+        assert result == ["tid_1"]
         mock_register.assert_awaited_once()
 
 
