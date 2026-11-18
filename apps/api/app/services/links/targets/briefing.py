@@ -22,21 +22,6 @@ from app.services.links.access import at_most
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 from app.services.links.urls import build_url
 
-_CLOUDINARY_UPLOAD = "/image/upload/"
-# The edition's top (masthead and headline) as a 1200x630 JPEG, the size chat previews show.
-_OG_TRANSFORM = "c_fill,g_north,w_1200,h_630,f_jpg,q_auto/"
-
-
-def preview_image_url(edition_image_url: str | None) -> str | None:
-    """Return the edition image cropped for a chat preview; None when it is not on Cloudinary.
-
-    Elsewhere (a self-host blob) the image needs a session, so the preview card is generated.
-    """
-    if edition_image_url is None or _CLOUDINARY_UPLOAD not in edition_image_url:
-        return None
-    head, _, tail = edition_image_url.partition(_CLOUDINARY_UPLOAD)
-    return f"{head}{_CLOUDINARY_UPLOAD}{_OG_TRANSFORM}{tail}"
-
 
 async def _item_link(owner_id: str, item: BriefingItem, cap: LinkAccess | None) -> str | None:
     """Return the link an item shows: a deliverable's live link, read now, and none wider than cap.
@@ -118,12 +103,7 @@ async def _preview(
     briefing = await briefing_repository.get(target.id, user_id=owner_id)
     if briefing is None:
         return None
-    return PreviewFacts(
-        title=briefing.payload.headline,
-        image_url=preview_image_url(
-            image.image_url if (image := await edition_image(briefing)) else None
-        ),
-    )
+    return PreviewFacts(title=briefing.payload.headline, image_url=None)
 
 
 SPEC = LinkTargetSpec(
