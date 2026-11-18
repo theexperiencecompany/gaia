@@ -886,6 +886,11 @@ class TestTheOwnTodosNote:
             " list them."
         )
 
+    def test_one_overdue_todo_is_exemplified_in_the_singular(self) -> None:
+        assert '"[[count:overdue_gaia_todos]] of your GAIA todos is overdue"' in user_todos_note(
+            80, 1
+        )
+
     def test_with_none_past_due_the_note_says_nothing_of_it(self) -> None:
         assert user_todos_note(80) == (
             "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"

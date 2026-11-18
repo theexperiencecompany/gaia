@@ -407,5 +407,5 @@ def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) ->
     """Say what the user's todo list holds: their own todos, and beside them GAIA's open tracked ones."""
     if not open_count:
         return ONLY_TRACKED_TODOS if tracked_open else OWN_TODOS_EMPTY
-    overdue_note = OWN_TODOS_OVERDUE if overdue else ""
+    overdue_note = OWN_TODOS_OVERDUE.format(verb="is" if overdue == 1 else "are") if overdue else ""
     return OWN_TODOS_COUNTED + overdue_note + (TRACKED_BESIDE_OWN if tracked_open else "")

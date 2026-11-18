@@ -243,6 +243,28 @@ _MAIL = DataSeries(
 )
 
 
+class TestACountOfOneIsSaidInTheSingular:
+    def test_a_plural_verb_after_a_count_that_renders_one_is_named(self) -> None:
+        """Sim 11-25: "1 of your GAIA todos are overdue" went out."""
+        written = "[[count:events]] of your meetings are moved."
+
+        assert slot_problems("message", written, _VALUES) == [
+            "the message says [[count:events]] (1) with 'are'; a count of one takes the "
+            "singular: 'is'"
+        ]
+
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "[[count:needs_you]] of your asks are waiting.",
+            "[[count:events]] meeting is moved.",
+            "[[count:events]] meeting moved; the others are fine.",
+        ],
+    )
+    def test_a_count_and_its_verb_that_agree_are_left_alone(self, written: str) -> None:
+        assert slot_problems("message", written, _VALUES) == []
+
+
 class TestSeriesSlots:
     def test_a_time_series_renders_its_total_latest_peak_its_day_and_low(self) -> None:
         assert series_figures(_MEETINGS) == {

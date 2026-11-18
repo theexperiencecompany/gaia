@@ -91,6 +91,9 @@ TYPED_LOOSE_FIGURE = (
 ECHOED_FIGURE = (
     "the {field} writes {echoed!r} after {slot}, which already renders {value!r}; drop it"
 )
+COUNT_OF_ONE_PLURAL = (
+    "the {field} says {slot} (1) with {verb!r}; a count of one takes the singular: {singular!r}"
+)
 ECHOED_TITLE = "the {field} names {title!r} in words and again with {slot}; keep one"
 MALFORMED_SLOT = "the {field} has a malformed slot {written!r}; write {forms} exactly"
 TYPED_ADDRESS = "the {field} writes the address {address!r}; link a phrase with ({fact}:N)"

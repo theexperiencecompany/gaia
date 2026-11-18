@@ -121,6 +121,11 @@ _SLOT_LIST_RE = re.compile(
     rf"{_ANY_SLOT_RE.pattern}(?:(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or|/|&)\s+){_ANY_SLOT_RE.pattern})*"
     r"(?:,\s*respectively)?"
 )
+# A count slot, then the plural verb it governs a few plain words on ("[[count:x]] of your todos are").
+_COUNT_VERB_RE = re.compile(
+    rf"\[\[{re.escape(SlotKind.COUNT.value)}:(\w+)\]\](?:\s+[\w']+){{0,4}}?\s+(are|were|have)\b"
+)
+_SINGULAR = {"are": "is", "were": "was", "have": "has"}
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
@@ -319,6 +324,20 @@ def _echo_problems(field_name: str, text: str, values: SlotValues) -> tuple[list
     return problems, text
 
 
+def _agreement_problems(field_name: str, text: str, values: SlotValues) -> list[str]:
+    """Name each count slot that renders 1 yet governs a plural verb."""
+    return [
+        says.COUNT_OF_ONE_PLURAL.format(
+            field=field_name,
+            slot=value_slot_text(SlotKind.COUNT, match.group(1)),
+            verb=match.group(2),
+            singular=_SINGULAR[match.group(2)],
+        )
+        for match in _COUNT_VERB_RE.finditer(text)
+        if match.group(1) in {name.value for name, n in values.counts.items() if n == 1}
+    ]
+
+
 def sentences(text: str) -> list[str]:
     """Split prose into its sentences and lines."""
     return [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
@@ -372,6 +391,7 @@ def slot_problems(
         except SlotError as exc:
             problems.append(says.SLOT_PROBLEM.format(field=field_name, problem=exc))
     problems += _title_echo_problems(field_name, text, values)
+    problems += _agreement_problems(field_name, text, values)
     echoes, text = _echo_problems(field_name, text, values)
     problems += echoes
     bare = unslotted(text)

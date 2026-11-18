@@ -161,10 +161,11 @@ OWN_TODOS_COUNTED = (
     "empty."
 )
 _OVERDUE_TODOS = CountSlot(CountName.OVERDUE_TODOS)
+#: Takes the verb that agrees with the count: is for one, are for more.
 OWN_TODOS_OVERDUE = (
     f" {_OVERDUE_TODOS} of them are past due: say that count in one plain line that names them "
-    f'as the user\'s GAIA todos ("{_OVERDUE_TODOS} of your GAIA todos are overdue"), never beside '
-    "another app's items, and never list them."
+    f'as the user\'s GAIA todos ("{_OVERDUE_TODOS} of your GAIA todos {{verb}} overdue"), never '
+    "beside another app's items, and never list them."
 )
 
 #: What a weekly digest that places nothing is sent back with: it recaps the week.
