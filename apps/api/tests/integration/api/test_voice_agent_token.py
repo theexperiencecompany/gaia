@@ -51,7 +51,6 @@ def voice_user(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         user_repository, "get", AsyncMock(side_effect=lambda i: user if i == USER_ID else None)
     )
-    monkeypatch.setattr(user_repository, "touch_last_active", AsyncMock())
 
 
 @pytest.fixture
