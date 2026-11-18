@@ -6,6 +6,8 @@ retry is dropped, a misfit heading gives way to one code derives from the group'
 composition with nothing left is built from the pool. The user always gets a correct brief.
 """
 
+from collections.abc import Callable
+
 from app.constants.briefing import (
     BRIEF_ITEM_TITLE_MAX_CHARS,
     MAX_BRIEF_CHARTS,
@@ -83,6 +85,32 @@ def _with_owed(blocks: list[ComposedBlock], owed: list[ComposedItem]) -> list[Co
     return blocks[:at] + groups + blocks[at:]
 
 
+def _kept(
+    items: list[ComposedItem],
+    pool: FactPool,
+    said: tuple[set[int], set[str]],
+    fits: Callable[[int], bool],
+) -> list[ComposedItem]:
+    """Keep a group's items not yet said by id or title that fit the page; said grows with them.
+
+    An item dropped for its title counts as said, so an owed approval among them is not owed again.
+    """
+    seen, titles = said
+    kept: list[ComposedItem] = []
+    for item in items:
+        candidate = pool.items.get(item.id)
+        title = same_text_key(item.title)
+        if title in titles:
+            seen.add(item.id)
+            continue
+        if candidate is None or item.id in seen or not fits(item.id):
+            continue
+        seen.add(item.id)
+        titles.add(title)
+        kept.append(_sided(item, candidate))
+    return kept
+
+
 def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
     """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget.
 
@@ -113,15 +141,7 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
             titles.add(same_text_key(block.item.title))
             blocks.append(block.model_copy(update={"item": _sided(block.item, candidate)}))
         elif isinstance(block, ComposedItems):
-            items: list[ComposedItem] = []
-            for item in block.items:
-                candidate = pool.items.get(item.id)
-                title = same_text_key(item.title)
-                if candidate is None or item.id in seen or title in titles or not fits(item.id):
-                    continue
-                seen.add(item.id)
-                titles.add(title)
-                items.append(_sided(item, candidate))
+            items = _kept(block.items, pool, (seen, titles), fits)
             if not items:
                 continue
             state = _shared_state(items) or block.state

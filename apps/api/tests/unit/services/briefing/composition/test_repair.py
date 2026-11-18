@@ -223,6 +223,15 @@ class TestAnApprovalNoBriefHasShown:
             _group(_item(1))
         )
 
+    def test_one_titled_as_an_earlier_item_is_said_once_not_placed_again(self) -> None:
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+        composition = _of(
+            _group(_item(1, title="Connect integration")),
+            _group(_item(2, action=BriefAction.APPROVE, title="Connect integration")),
+        )
+
+        assert repaired(composition, pool) == _of(_group(_item(1, title="Connect integration")))
+
     def test_it_takes_its_place_inside_the_brief_cap(self) -> None:
         pool = _pool(*(_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS + 1)), APPROVAL)
         full = _of(
