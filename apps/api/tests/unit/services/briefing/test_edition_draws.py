@@ -1,6 +1,7 @@
 """The painting drawn for a framed edition is one its frame can hang."""
 
 import pytest
+from tests.factories import make_user_id
 
 from app.constants.briefing import ArtFamily, BriefingBag, EditionFamily
 from app.models.brief_composition_models import ChartBlock, ChartKind
@@ -15,7 +16,7 @@ from app.services.briefing.editions.artworks import (
 )
 from app.services.briefing.editions.capabilities import edition_capabilities
 
-_USER = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 def _family_with_a_work_it_cannot_hang() -> tuple[ArtFamily, str]:
@@ -30,7 +31,7 @@ def _user_whose_bag_opens_on(slug: str) -> UserDocument:
     rest = sorted(set(artwork_catalogue()) - {slug})
     bag = ShuffleBag(order=[slug, *rest], index=0)
     return UserDocument(
-        id=_USER,
+        id=USER_ID,
         email="ada@example.com",
         name="Ada",
         briefing_shuffle_bags={BriefingBag.ARTWORK: bag},
@@ -60,7 +61,7 @@ class TestDrawEdition:
         pool.remove(EditionFamily.MENU.value)
         bag = ShuffleBag(order=[EditionFamily.MENU.value, *pool], index=0)
         user = UserDocument(
-            id=_USER,
+            id=USER_ID,
             email="ada@example.com",
             name="Ada",
             briefing_shuffle_bags={BriefingBag.EDITION_FAMILY: bag},
@@ -87,7 +88,7 @@ class TestDrawEdition:
         assert edition_capabilities(edition.family).draws(chart)
 
     def test_a_daily_edition_is_the_family_its_bag_drew_first(self) -> None:
-        user = UserDocument(id=_USER, email="ada@example.com", name="Ada")
+        user = UserDocument(id=USER_ID, email="ada@example.com", name="Ada")
 
         edition = draw_edition(user, [], None)
 

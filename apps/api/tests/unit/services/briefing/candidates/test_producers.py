@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_todo, make_user_id
 
 from app.constants.briefing import (
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
@@ -49,7 +49,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -76,12 +76,6 @@ CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_
 DESK_ID = "desk-1"
 
 
-def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument:
-    return TodoDocument(
-        id=todo_id, user_id=USER_ID, title=title, labels=[GAIA_TRACKED_LABEL, *labels], **fields
-    )
-
-
 class TestTrackedTodos:
     def test_a_todos_due_date_travels_with_its_candidate_and_its_description_never_does(
         self,
@@ -90,8 +84,8 @@ class TestTrackedTodos:
         due = NOW + timedelta(days=2)
         rule = "Do not make a payment without explicit approval."
         work = TrackedWork(
-            blocked=[_todo("d1", "Pay the invoice", description=rule, due_date=due)],
-            running=[_todo("d2", "Draft the memo", description=rule)],
+            blocked=[make_todo("Pay the invoice", description=rule, due_date=due)],
+            running=[make_todo("Draft the memo", description=rule)],
         )
 
         [waiting] = waiting_candidates(work)
@@ -102,8 +96,8 @@ class TestTrackedTodos:
 
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
         work = TrackedWork(
-            blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
-            failed=[_todo("f1", "Book the Lisbon flights", FAILED_LABEL)],
+            blocked=[make_todo("Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL, id="b1")],
+            failed=[make_todo("Book the Lisbon flights", FAILED_LABEL, id="f1")],
         )
 
         found = waiting_candidates(work)
@@ -136,7 +130,7 @@ class TestTrackedTodos:
     )
     def test_a_waiting_todo_asks_what_its_label_says(self, label: str, action: BriefAction) -> None:
         """Live brief: an approval read as "review", so "To approve" over it was refused."""
-        [found] = waiting_candidates(TrackedWork(blocked=[_todo("b1", "Priya's venues", label)]))
+        [found] = waiting_candidates(TrackedWork(blocked=[make_todo("Priya's venues", label)]))
 
         assert found.action is action
 
@@ -144,8 +138,10 @@ class TestTrackedTodos:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
         work = TrackedWork(
             blocked=[
-                _todo("t1", "Reply to Dan about the lease", NEEDS_REPLY_LABEL, external_ref=thread),
-                _todo("t2", "Reply to Dan again", NEEDS_REPLY_LABEL, external_ref=thread),
+                make_todo(
+                    "Reply to Dan about the lease", NEEDS_REPLY_LABEL, external_ref=thread, id="t1"
+                ),
+                make_todo("Reply to Dan again", NEEDS_REPLY_LABEL, external_ref=thread),
             ]
         )
 
@@ -158,9 +154,9 @@ class TestTrackedTodos:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-9")
         work = TrackedWork(
             blocked=[
-                _todo("t1", "Reply to Dan", external_ref=thread),
-                _todo("t2", "Triage the mailbox", external_ref=desk),
-                _todo("t3", "Plain todo"),
+                make_todo("Reply to Dan", external_ref=thread, id="t1"),
+                make_todo("Triage the mailbox", external_ref=desk, id="t2"),
+                make_todo("Plain todo", id="t3"),
             ]
         )
 
@@ -175,12 +171,14 @@ class TestTrackedTodos:
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
             completed=[
-                _todo("c1", "Investor update", completed=True, completed_by=TodoCompleter.GAIA),
-                _todo(
-                    "c2", "Wait for Sam's yes", completed=True, completed_by=TodoCompleter.TRIGGER
+                make_todo("Investor update", completed=True, completed_by=TodoCompleter.GAIA),
+                make_todo(
+                    "Wait for Sam's yes",
+                    completed=True,
+                    completed_by=TodoCompleter.TRIGGER,
                 ),
             ],
-            running=[_todo("r1", "Vet the Q4 leads")],
+            running=[make_todo("Vet the Q4 leads")],
         )
 
         found = gaia_work_candidates(work, CLOCK)
@@ -241,20 +239,14 @@ class TestTrackedTodos:
         self, fields: dict[str, Any], stands: str, outcome: BriefOutcome | None
     ) -> None:
         """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
-        doc = TodoDocument(
-            id="r1",
-            user_id=USER_ID,
-            title="Chase the venue",
-            **{"labels": [GAIA_TRACKED_LABEL], **fields},
-        )
+        doc = make_todo("Chase the venue", GAIA_TRACKED_LABEL, **fields)
 
         [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
 
         assert (found.standing, found.outcome) == (stands, outcome)
 
     def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
-        asked = _todo(
-            "q1",
+        asked = make_todo(
             "Pick the venue",
             waiting_on=WaitingOn.USER,
             question="Lisbon or Porto?",
@@ -271,9 +263,9 @@ class TestTrackedTodos:
 
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
-            _own_todo("u1", "Send the deck to Priya", completed=True),
-            _own_todo("u2", "send the  deck to priya", completed=True),
-            _own_todo("u3", "File the VAT return", completed=True),
+            make_todo("Send the deck to Priya", completed=True, id="u1"),
+            make_todo("send the deck to priya", completed=True, id="u2"),
+            make_todo("File the VAT return", completed=True, id="u3"),
         ]
 
         found = user_done_candidates(done)
@@ -288,19 +280,15 @@ class TestTrackedTodos:
         assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
 
 
-def _own_todo(todo_id: str, title: str, **fields: Any) -> TodoDocument:
-    return TodoDocument(id=todo_id, user_id=USER_ID, title=title, **fields)
-
-
 class TestOwnTodos:
     def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to_most_overdue_first(
         self,
     ) -> None:
         overdue = NOW - timedelta(days=3)
         open_own = [
-            _own_todo("o2", "Renew the passport", due_date=NOW),
-            _own_todo("o1", "File the VAT return", description="Q3", due_date=overdue),
-            _own_todo("late", "Book the dentist", due_date=NOW + timedelta(days=2)),
+            make_todo("Renew the passport", due_date=NOW, id="o2"),
+            make_todo("File the VAT return", description="Q3", due_date=overdue, id="o1"),
+            make_todo("Book the dentist", due_date=NOW + timedelta(days=2), id="late"),
         ]
 
         found = own_todo_candidates(open_own, NOW + timedelta(hours=20), TrackedWork())
@@ -312,19 +300,19 @@ class TestOwnTodos:
         assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
 
     def test_a_todo_due_exactly_at_the_cutoff_is_not_the_briefs(self) -> None:
-        open_own = [_own_todo("o1", "File the VAT return", due_date=NOW)]
+        open_own = [make_todo("File the VAT return", due_date=NOW, id="o1")]
 
         assert own_todo_candidates(open_own, NOW, TrackedWork()) == []
 
     def test_a_naive_due_date_is_read_as_utc(self) -> None:
         naive = (NOW - timedelta(minutes=1)).replace(tzinfo=None)
-        open_own = [_own_todo("o1", "File the VAT return", due_date=naive)]
+        open_own = [make_todo("File the VAT return", due_date=naive, id="o1")]
 
         assert [c.todo_id for c in own_todo_candidates(open_own, NOW, TrackedWork())] == ["o1"]
 
     def test_only_the_most_overdue_are_offered_and_ties_keep_creation_order(self) -> None:
         open_own = [
-            _own_todo(f"o{n:02d}", f"Errand {n}", due_date=NOW - timedelta(days=n % 3))
+            make_todo(f"Errand {n}", due_date=NOW - timedelta(days=n % 3), id=f"o{n:02d}")
             for n in reversed(range(DUE_TODO_CANDIDATES_LIMIT + 5))
         ]
 
@@ -335,9 +323,9 @@ class TestOwnTodos:
 
     def test_the_oldest_undated_todos_follow_the_due_ones_as_backlog(self) -> None:
         open_own = [
-            _own_todo(f"n{n}", f"Someday {n}", created_at=NOW - timedelta(days=n))
+            make_todo(f"Someday {n}", created_at=NOW - timedelta(days=n), id=f"n{n}")
             for n in range(UNDATED_TODO_CANDIDATES_LIMIT + 2)
-        ] + [_own_todo("o1", "File the VAT return", due_date=NOW)]
+        ] + [make_todo("File the VAT return", due_date=NOW, id="o1")]
 
         found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
 
@@ -352,15 +340,15 @@ class TestOwnTodos:
         self,
     ) -> None:
         open_own = [
-            _own_todo("b1", "Approve the Priya reply", due_date=NOW),
-            _own_todo("u9", "draft the  MEMO", due_date=NOW),
-            _own_todo("u1", "Call the bank", due_date=NOW),
-            _own_todo("n9", "Draft the memo"),
-            _own_todo("n1", "Sort the garage"),
+            make_todo("Approve the Priya reply", due_date=NOW, id="b1"),
+            make_todo("draft the MEMO", due_date=NOW, id="u9"),
+            make_todo("Call the bank", due_date=NOW, id="u1"),
+            make_todo("Draft the memo", id="n9"),
+            make_todo("Sort the garage", id="n1"),
         ]
         work = TrackedWork(
-            blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
-            running=[_todo("r1", "Draft the memo")],
+            blocked=[make_todo("Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL, id="b1")],
+            running=[make_todo("Draft the memo")],
         )
 
         found = own_todo_candidates(open_own, NOW + timedelta(hours=1), work)
@@ -369,8 +357,8 @@ class TestOwnTodos:
 
     def test_an_undated_todo_on_a_due_ones_subject_is_counted_into_it(self) -> None:
         open_own = [
-            _own_todo("n1", "call the  BANK"),
-            _own_todo("o1", "Call the bank", due_date=NOW),
+            make_todo("call the BANK", id="n1"),
+            make_todo("Call the bank", due_date=NOW, id="o1"),
         ]
 
         found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
@@ -396,7 +384,7 @@ class TestHeldResults:
     async def test_the_desks_findings_are_gmail_updates_and_the_rest_gaias_work(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        desk = _todo(DESK_ID, "Inbox desk")
+        desk = make_todo("Inbox desk", id=DESK_ID)
         find_desk = AsyncMock(return_value=desk)
         monkeypatch.setattr(todo_repository, "find_latest_by_external_ref", find_desk)
         held = [
@@ -446,7 +434,7 @@ class TestHeldResults:
         monkeypatch.setattr(
             todo_repository,
             "find_latest_by_external_ref",
-            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+            AsyncMock(return_value=make_todo("Inbox desk", id=DESK_ID)),
         )
         held = [
             _held("h1", BriefItemSource.TODO, "other-todo", "Weekly review", "Wrote the summary"),
@@ -466,7 +454,7 @@ class TestHeldResults:
         monkeypatch.setattr(
             todo_repository,
             "find_latest_by_external_ref",
-            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+            AsyncMock(return_value=make_todo("Inbox desk", id=DESK_ID)),
         )
         held = [
             _held(

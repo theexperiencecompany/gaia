@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.factories import make_user_id
 
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.scout_models import (
@@ -20,7 +21,7 @@ from app.services.briefing.fact_pool.render import item_line
 from app.services.briefing.scouts.facts import memory_note
 from app.services.briefing.scouts.memory import remember
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-10-22", day_of_year=295)
 

@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_todo, make_user_id
 
 from app.constants.desk_buckets import DeskBucket
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
@@ -37,12 +37,6 @@ def _local(day: int, hour: int, minute: int = 0) -> datetime:
     return datetime(2026, 11, day, hour, minute, tzinfo=KOLKATA).astimezone(UTC)
 
 
-def _todo(title: str, *labels: str, **fields: object) -> TodoDocument:
-    return TodoDocument.model_validate(
-        {"id": title, "user_id": USER_ID, "title": title, "labels": list(labels), **fields}
-    )
-
-
 def _ys(values: Sequence[float]) -> list[SeriesPoint]:
     return [SeriesPoint(x=x, y=y) for x, y in zip(DAYS, values, strict=True)]
 
@@ -63,7 +57,7 @@ class TestWindow:
 
 def _done(title: str, by: TodoCompleter, at: datetime) -> TodoDocument:
     """Return one of GAIA's tracked todos, closed at at by by."""
-    return _todo(title, GAIA_TRACKED_LABEL, completed=True, completed_at=at, completed_by=by)
+    return make_todo(title, GAIA_TRACKED_LABEL, completed=True, completed_at=at, completed_by=by)
 
 
 class TestWorkSeries:
@@ -72,11 +66,13 @@ class TestWorkSeries:
             _done("Investor update", TodoCompleter.GAIA, _local(5, 9)),
             _done("Lisbon flights", TodoCompleter.GAIA, _local(9, 23)),
             _done("Deck research", TodoCompleter.GAIA, _local(9, 7)),
-            _todo("Call the bank", completed=True, completed_at=_local(11, 8)),
+            make_todo("Call the bank", completed=True, completed_at=_local(11, 8)),
             # GAIA's tracked todos the user closed are the user's; an event's closure is no one's.
             _done("Pay the invoice", TodoCompleter.USER, _local(11, 9)),
             _done("Wait for Sam", TodoCompleter.TRIGGER, _local(10, 9)),
-            _todo("Before records", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(8, 9)),
+            make_todo(
+                "Before records", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(8, 9)
+            ),
         ]
 
         gaia, user = work_series(CompletedWork.of(completed), WINDOW)
@@ -89,7 +85,7 @@ class TestWorkSeries:
         assert (user.id, user.unit, user.points) == ("you_finished", "todos", _ys([0] * 6 + [2]))
 
     def test_mail_threads_are_the_mail_series_and_an_owner_with_none_is_left_out(self) -> None:
-        thread = _todo(
+        thread = make_todo(
             "Re: offsite",
             GAIA_TRACKED_LABEL,
             completed=True,
@@ -97,7 +93,7 @@ class TestWorkSeries:
             completed_by=TodoCompleter.GAIA,
             external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"),
         )
-        triaged = _todo(
+        triaged = make_todo(
             "Invoice from Acme",
             GAIA_TRACKED_LABEL,
             completed=True,
@@ -213,7 +209,7 @@ class TestCalendarSeries:
 
 
 def _thread(created: datetime, completed: datetime | None) -> TodoDocument:
-    return _todo(
+    return make_todo(
         f"thread-{created.isoformat()}",
         GAIA_TRACKED_LABEL,
         created_at=created,
@@ -401,6 +397,6 @@ def test_a_series_must_have_one_value_per_window_day() -> None:
 
 
 def test_a_window_moment_outside_every_day_counts_nowhere() -> None:
-    later = [_todo("Late", completed=True, completed_at=WINDOW.end + timedelta(minutes=1))]
+    later = [make_todo("Late", completed=True, completed_at=WINDOW.end + timedelta(minutes=1))]
 
     assert work_series(CompletedWork.of(later), WINDOW) == []

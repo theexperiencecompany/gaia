@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 from pydantic import BaseModel, ValidationError
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -15,7 +16,7 @@ from app.services.briefing.checked_call import (
     unreadable_problems,
 )
 
-_USER_ID = "u1"
+USER_ID = make_user_id()
 
 
 class _Answer(BaseModel):
@@ -68,7 +69,7 @@ class TestTheCheckedCall:
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            result = await checked_structured_call(_USER_ID, "PROMPT", _call())
+            result = await checked_structured_call(USER_ID, "PROMPT", _call())
 
         assert result == "held 3"
         assert asked.await_args.args[1] == "PROMPT"
@@ -81,7 +82,7 @@ class TestTheCheckedCall:
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            result = await checked_structured_call(_USER_ID, "PROMPT", _call())
+            result = await checked_structured_call(USER_ID, "PROMPT", _call())
 
         assert result == "held 2"
         assert asked.await_args_list[1].args[1] == "PROMPT\n\nNOTE bad"
@@ -97,7 +98,7 @@ class TestTheCheckedCall:
         asked = AsyncMock(side_effect=[_malformed_by_fields(), _Answer(word="good", count=2)])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        assert await checked_structured_call(_USER_ID, "PROMPT", _call()) == "held 2"
+        assert await checked_structured_call(USER_ID, "PROMPT", _call()) == "held 2"
         assert asked.await_args_list[1].args[1] == (
             "PROMPT\n\nUNREADABLE count: Field required | half"
         )
@@ -111,7 +112,7 @@ class TestTheCheckedCall:
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            result = await checked_structured_call(_USER_ID, "PROMPT", _call())
+            result = await checked_structured_call(USER_ID, "PROMPT", _call())
 
         assert result == "salvaged from worse"
         assert asked.await_count == 2
@@ -126,7 +127,7 @@ class TestTheCheckedCall:
         asked = AsyncMock(side_effect=[_Answer(word="bad", count=1), _malformed_by_fields()])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        assert await checked_structured_call(_USER_ID, "PROMPT", _call()) == "salvaged from None"
+        assert await checked_structured_call(USER_ID, "PROMPT", _call()) == "salvaged from None"
 
     async def test_an_unreadable_reply_is_a_warning_naming_its_call_and_fields(
         self, monkeypatch: pytest.MonkeyPatch
@@ -135,7 +136,7 @@ class TestTheCheckedCall:
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            await checked_structured_call(_USER_ID, "PROMPT", _call())
+            await checked_structured_call(USER_ID, "PROMPT", _call())
 
         assert {
             "msg": "briefing.checked_call_unreadable",
@@ -150,7 +151,7 @@ class TestTheCheckedCall:
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=answers))
 
         async with captured_wide_event() as event:
-            result = await checked_structured_call(_USER_ID, "PROMPT", _call(attempts=3))
+            result = await checked_structured_call(USER_ID, "PROMPT", _call(attempts=3))
 
         assert result == "salvaged from worst"
         (salvaged,) = [e for e in event["errors"] if e["msg"] == "briefing.checked_call_salvaged"]
@@ -167,4 +168,4 @@ class TestTheCheckedCall:
         answers = [_Answer(word="bad", count=1), _Answer(word="hopeless", count=1)]
         monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=answers))
 
-        assert await checked_structured_call(_USER_ID, "PROMPT", _call()) == "salvaged from None"
+        assert await checked_structured_call(USER_ID, "PROMPT", _call()) == "salvaged from None"

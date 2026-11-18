@@ -477,7 +477,7 @@ class TestEachSourceIsCappedByRank:
     async def test_every_calendar_event_stays_for_the_calendar_is_listed_whole(self) -> None:
         events = [
             BriefingEvent(
-                date="2026-11-11", start=f"{9 + n // 2:02d}:{30 * (n % 2):02d}", title=f"Call {n}"
+                date="2026-11-11", start=f"{8 + n // 4:02d}:{15 * (n % 4):02d}", title=f"Call {n}"
             )
             for n in range(BRIEF_POOL_PER_SOURCE + 3)
         ]

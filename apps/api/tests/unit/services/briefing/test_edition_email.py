@@ -31,7 +31,6 @@ from app.services.briefing.edition_email import (
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.render.image import RenderedImage
 
-USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
 BRIEFING_ID = "brief-1"
 BRIEF_URL = "https://heygaia.link/brief1short"

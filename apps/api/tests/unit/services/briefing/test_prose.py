@@ -6,12 +6,13 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
 from app.config.settings import settings
-from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
+from app.constants.briefing import MAX_BRIEF_HEADLINE_CHARS, MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
@@ -32,7 +33,7 @@ from app.services.briefing.work import TrackedWork
 
 pytestmark = pytest.mark.unit
 
-_USER_ID = "64f1c0ffee0000000000abcd"
+_USER_ID = make_user_id()
 _VALUES = SlotValues(facts={1: BriefFact(title="Reply to Dan")}, counts={})
 _TZ = ZoneInfo("Asia/Kolkata")
 _NOW = datetime(2026, 11, 9, 2, 30, tzinfo=UTC)
@@ -360,6 +361,31 @@ class TestTheBriefsWideEvent:
             "words; the message's opening repeats a recent brief's line "
             "('Reply to Dan before lunch.'); write today's in fresh words"
         ]
+
+
+class TestAVoiceTooLongOnceFilled:
+    async def test_a_headline_past_its_limit_once_its_slots_fill_is_sent_back_naming_the_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        values = SlotValues(
+            facts={1: BriefFact(title="Sign " + "the long agreement " * 6)}, counts={}
+        )
+        asked = AsyncMock(
+            side_effect=[
+                _voice(headline="Today: [[fact:1]]", message="[It](fact:1) first."),
+                _voice(headline="One long signing today", message="[It](fact:1) first."),
+            ]
+        )
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        retry = asked.await_args_list[1].args[1]
+        assert (
+            "the headline once its slots are filled: String should have at most "
+            f"{MAX_BRIEF_HEADLINE_CHARS} characters"
+        ) in retry
+        assert draft.headline == "One long signing today"
 
 
 class TestThePlainVoice:

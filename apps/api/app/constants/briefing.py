@@ -59,7 +59,7 @@ PENDING_BRIEF_ITEM_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
 
 
 #: The most candidates one source puts in a brief's pool, so the composition prompt stays bounded.
-BRIEF_POOL_PER_SOURCE: Final[int] = 12
+BRIEF_POOL_PER_SOURCE: Final[int] = 40
 
 
 # Masthead labels, set by code on each kind's payload (never by the model).
