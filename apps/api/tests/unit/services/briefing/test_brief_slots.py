@@ -83,6 +83,46 @@ class TestRendering:
 
 
 class TestProblems:
+    @pytest.mark.parametrize(
+        ("written", "problem"),
+        [
+            ("[[count:needs_you.total]]", "[[count:needs_you.total]]: a count slot has no field"),
+            (
+                "[[count:done]]",
+                "[[count:done]] is not a count the facts list (offered: needs_you, events)",
+            ),
+            ("[[fact:7.time]]", "[[fact:7.time]]: fact 7 has no time"),
+            ("[[fact:7.count]]", "[[fact:7.count]]: fact 7 has no count"),
+            (
+                "[[fact:7.when]]",
+                "[[fact:7.when]]: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]",
+            ),
+        ],
+        ids=["count-with-field", "count-not-offered", "no-time", "no-count", "unknown-field"],
+    )
+    def test_a_slot_the_facts_cannot_fill_is_named_exactly(
+        self, written: str, problem: str
+    ) -> None:
+        assert slot_problems("lede", f"Then {written}.", _VALUES) == [f"the lede: {problem}"]
+
+    def test_a_figure_typed_from_a_series_value_names_the_series_slot_that_writes_it(
+        self,
+    ) -> None:
+        values = SlotValues(
+            facts={},
+            counts={},
+            series={"hours": {SeriesField.PEAK_AT: "9:00", SeriesField.PEAK: "4"}},
+        )
+
+        assert slot_problems("lede", "Busiest at 9 sharp.", values) == [
+            "the lede types '9' itself; write [[series:hours.peak_at]] where it says 9"
+        ]
+
+    def test_a_title_said_in_words_beside_its_slot_is_named_by_its_field(self) -> None:
+        assert slot_problems("lede", "The Q4 board deck is ready: [[fact:7]].", _VALUES) == [
+            "the lede names 'Q4 board deck' in words and again with [[fact:7]]; keep one"
+        ]
+
     def test_well_formed_prose_has_none(self) -> None:
         written = "[[count:events]] meeting today: [[fact:9]] at [[fact:9.time]]."
 

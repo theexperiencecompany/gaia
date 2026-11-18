@@ -19,7 +19,13 @@ from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
+from app.models.brief_candidate_models import (
+    BriefCandidate,
+    CandidateOrigin,
+    GaiaRef,
+    GaiaRefKind,
+    OutsideRef,
+)
 from app.models.brief_payload_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
@@ -32,6 +38,7 @@ from app.models.scout_models import (
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.services.briefing.candidates import pool as candidates_pool
+from app.services.briefing.candidates.memory import sighting
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
@@ -256,6 +263,27 @@ def _shown(external_id: str, state: str, times: int) -> SignalMemoryDocument:
         last_shown=datetime(2026, 11, 10, 2, 30, tzinfo=UTC),
         last_state=state,
     )
+
+
+class TestHowMemoryKeysACandidate:
+    def test_gaias_own_thing_is_kept_under_its_gaia_ref_and_state(self) -> None:
+        approval = BriefCandidate(
+            origin=CandidateOrigin.APPROVAL,
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Approve the refund",
+            seen_as=GaiaRef(kind=GaiaRefKind.APPROVAL, id="ap_1"),
+        )
+
+        assert sighting(approval) == Sighting("gaia", "approval:ap_1", "you")
+
+    def test_a_held_result_or_an_event_is_new_each_time(self) -> None:
+        held = BriefCandidate(
+            origin=CandidateOrigin.HELD, source="gaia", app="GAIA", state="note", title="Digest"
+        )
+
+        assert sighting(held) is None
 
 
 class TestWhatEarlierBriefsShowedIsNotNews:
