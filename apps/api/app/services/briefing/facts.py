@@ -238,7 +238,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     events: list[tuple[BriefingEvent, str]] = []
     for (fact_id, candidate), event in zip(sources.event_items.items(), calendar, strict=True):
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
-        said = Voiced(facts[fact_id], linkable=False)
+        said = Voiced(facts[fact_id])
         line = item_line(
             fact_id, candidate, clock, said
         )  # pragma: no mutate — never due, never a repeat: reads no clock

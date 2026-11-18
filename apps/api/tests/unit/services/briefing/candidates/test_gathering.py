@@ -496,6 +496,23 @@ class TestEachSourceIsCappedByRank:
         assert [c.title for c in gathered.pool.values() if c.is_event] == ["Board call"]
         assert event["briefing"]["pool_capped"] == 2
 
+    async def test_what_waits_on_the_user_outranks_what_gaia_finished(self) -> None:
+        done = [
+            _tracked(f"d{n}", f"Done {n}", NEEDS_REPLY_LABEL) for n in range(BRIEF_POOL_PER_SOURCE)
+        ]
+        work = TrackedWork(
+            blocked=[_tracked("w1", "Approve the MSA", NEEDS_REPLY_LABEL)], completed=done
+        )
+
+        gathered = await _gathered(work, _scouts())
+
+        titles = _titles(gathered, "gaia")
+        assert (len(titles), titles[0], titles[-1]) == (
+            BRIEF_POOL_PER_SOURCE,
+            "Approve the MSA",
+            f"Done {BRIEF_POOL_PER_SOURCE - 2}",
+        )
+
     async def test_news_outranks_what_an_earlier_brief_already_showed(self) -> None:
         shown = [_app_signal(n, shown=True) for n in range(BRIEF_POOL_PER_SOURCE)]
         news = [_app_signal(n) for n in range(100, 102)]

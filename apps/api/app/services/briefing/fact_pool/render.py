@@ -90,7 +90,7 @@ class Voiced:
     """
 
     fact: BriefFact
-    linkable: bool
+    linkable: bool = False
     artifact: ArtifactFact | None = None
 
 

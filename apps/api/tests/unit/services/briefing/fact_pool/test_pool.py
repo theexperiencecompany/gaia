@@ -46,10 +46,12 @@ from app.models.scout_models import (
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.workflow_execution_models import RunMoment
+from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.clock import DayWindow
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.render import (
+    Voiced,
     context_block,
     goal_line,
     item_line,
@@ -57,6 +59,7 @@ from app.services.briefing.fact_pool.render import (
     series_line,
 )
 from app.services.briefing.goals import StatedGoal
+from app.services.briefing.slots import BriefFact
 from app.services.briefing.work import read_work
 
 USER_ID = make_user_id()
@@ -399,6 +402,76 @@ class TestTheContextBlock:
             " out: GitHub, Linear. Their sign-in expired, so they stay unread until the user"
             " reconnects them in Settings, Integrations: say so in one short line."
         )
+
+
+class TestTheVoicesLine:
+    """The voice reads the composition's line, with the slots that write its time and count."""
+
+    @staticmethod
+    def _item(**fields: object) -> BriefCandidate:
+        return BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state=ItemState.YOU,
+            title="Reply to Maya",
+            gaia_acts=True,
+            **fields,
+        )
+
+    def test_a_timed_item_says_its_time_and_count_by_their_slots_and_the_brief_title(
+        self,
+    ) -> None:
+        item = self._item(time="3:00 PM", count=3, url="https://mail.google.com/t/1")
+        fact = BriefFact(title="Maya's term sheet", time="3:00 PM", count=3)
+
+        assert item_line(7, item, CONTEXT.clock, Voiced(fact, linkable=True)) == (
+            "7. [GAIA] waiting on you: Maya's term sheet | at [[fact:7.time]] (3:00 PM)"
+            " | [[fact:7.count]] (3) todos on this one subject | linkable | GAIA can act on it"
+        )
+
+    def test_a_due_item_says_its_due_day_by_its_slot(self) -> None:
+        item = self._item(due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC))
+
+        line = item_line(2, item, CONTEXT.clock, Voiced(BriefFact(title="Rent", time="Thu Nov 12")))
+
+        assert "| due [[fact:2.time]] (Thu Nov 12) |" in line
+
+    def test_with_no_time_to_write_no_time_is_said(self) -> None:
+        item = self._item(due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC))
+
+        line = item_line(2, item, CONTEXT.clock, Voiced(BriefFact(title="Rent")))
+
+        assert line == "2. [GAIA] waiting on you: Rent | GAIA can act on it"
+
+    def test_only_what_the_brief_can_link_is_linkable_to_the_voice(self) -> None:
+        item = self._item(url="https://mail.google.com/t/1", todo_id="t1")
+
+        line = item_line(1, item, CONTEXT.clock, Voiced(BriefFact(title="Reply to Maya")))
+
+        assert "linkable" not in line
+        assert "| linkable |" in item_line(1, item, CONTEXT.clock)
+
+    def test_gaias_work_says_its_result_size_and_that_it_waits_on_the_user(self) -> None:
+        art = ArtifactFact(snippet="Twelve investors vetted", chars=900, action=True)
+
+        line = item_line(
+            1, self._item(), CONTEXT.clock, Voiced(BriefFact(title="Investors"), True, art)
+        )
+
+        assert line.endswith(
+            "| linkable | GAIA can act on it | summary: Twelve investors vetted"
+            " | artifact holds ~900 chars | waiting on you"
+        )
+
+    def test_work_with_no_result_yet_says_only_its_size(self) -> None:
+        art = ArtifactFact(snippet="", chars=0, action=False)
+
+        line = item_line(
+            1, self._item(), CONTEXT.clock, Voiced(BriefFact(title="Venue"), False, art)
+        )
+
+        assert line.endswith("| GAIA can act on it | artifact holds ~0 chars")
 
 
 class TestAnItemLine:

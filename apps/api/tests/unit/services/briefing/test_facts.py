@@ -177,6 +177,44 @@ class TestTheFactLines:
         ) in facts.block
 
 
+class TestWhatTheVoiceMayLink:
+    @staticmethod
+    def _work(todo_id: str | None, url: str | None) -> tuple[BriefingItem, BriefCandidate]:
+        return (
+            BriefingItem(
+                text="Deck", kind=ItemState.GAIA, todo_id=todo_id, outcome=BriefOutcome.STARTED
+            ),
+            BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.GAIA,
+                title="Deck",
+                url=url,
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        ("todo_id", "url", "chars", "linked"),
+        [
+            ("t1", None, 900, True),
+            (None, "https://docs.example/deck", 0, True),
+            ("t1", None, 0, False),
+        ],
+        ids=["a-deliverable", "an-address", "an-empty-deliverable"],
+    )
+    def test_a_fact_is_linkable_when_it_opens_a_deliverable_or_an_address(
+        self, todo_id: str | None, url: str | None, chars: int, linked: bool
+    ) -> None:
+        art = ArtifactFact(snippet="", chars=chars, action=False)
+
+        facts = build_facts(
+            _chosen(self._work(todo_id, url)), _sources(artifacts={"t1": art}), _CLOCK
+        )
+
+        assert ("| linkable |" in facts.block) is linked
+
+
 class TestWhatProseMayQuote:
     def test_the_date_an_items_standing_says_may_be_quoted(self) -> None:
         item = BriefingItem(text="Pitch prep", kind=ItemState.GAIA, outcome=BriefOutcome.STARTED)
