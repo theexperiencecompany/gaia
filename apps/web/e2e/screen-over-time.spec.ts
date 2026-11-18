@@ -182,15 +182,16 @@ test.describe("screen over time — chat", () => {
     await finish(page, "Next one.");
   });
 
-  // The first reply holds, so the second and third arrive before it commits: the step
-  // answers all three with one reply, under the last. A message the step drops leaves no reply.
+  // Each message joining an uncommitted attempt restarts it, and every reply but the last
+  // holds, so the third arrives before anything commits: one reply answers all three, under
+  // the last. A message the step drops leaves no reply.
   test("three messages sent in a burst are answered by one reply under the last", async ({
     page,
   }) => {
     await openNewChat(page);
     const words = ["first", "second", "third"];
     await sendAndOpen(page, `${words[0]} [[wait:3000]] [[say:Reply one.]]`);
-    await sendMessage(page, `${words[1]} [[say:Reply two.]]`);
+    await sendMessage(page, `${words[1]} [[wait:3000]] [[say:Reply two.]]`);
     await sendMessage(page, `${words[2]} [[say:Reply three.]]`);
     const live = await finish(page, "Reply three.");
     expectUserOrder(live, words);
