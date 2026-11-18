@@ -112,6 +112,10 @@ class BriefPoolItem(BaseModel):
     todo_id: str | None = None
 
 
+#: How a BriefingEvent stores a time on the user's clock: "14:30".
+EVENT_TIME_FORMAT = "%H:%M"
+
+
 class BriefingEvent(BaseModel):
     """One calendar event on the user's own clock, read from their calendar."""
 

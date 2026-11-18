@@ -73,7 +73,7 @@ def test_each_kind_of_block_is_told_to_the_voice_under_one_header() -> None:
         "- a chart, This week (series meetings, focus): Thursday was heaviest.",
         '- Maya\'s words, from Gmail: "Can you confirm by Friday?"',
         # Who finished what, over which days: GAIA's and the user's work never blur together.
-        '- progress on "Ship v3": linked todos 2 finished since Mon 9 Nov'
+        '- progress on "Ship v3": linked todos 2 finished since Mon Nov 9'
         " (1 by GAIA, 1 by the user), 7 open",
         "- a note: A light day.",
     ]

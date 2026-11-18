@@ -288,10 +288,10 @@ class TestTheCalendarAndTheCharts:
 
         assert facts.block.splitlines()[-6:] == [
             "The days ahead, 3 event(s):",
-            "Thursday Nov 12, 2 event(s), the week's busiest:",
+            "Thu Nov 12, 2 event(s), the week's busiest:",
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
             "- fact 8 | all day: Offsite",
-            "Friday Nov 13, 1 event(s):",
+            "Fri Nov 13, 1 event(s):",
             "- fact 9 | [[fact:9.time]] (9:30 AM): Dentist",
         ]
 
@@ -309,9 +309,9 @@ class TestTheCalendarAndTheCharts:
 
         assert facts.block.splitlines()[-5:] == [
             "The week ahead, 2 event(s):",
-            "Thursday Nov 12, 1 event(s):",
+            "Thu Nov 12, 1 event(s):",
             "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
-            "Friday Nov 13, 1 event(s):",
+            "Fri Nov 13, 1 event(s):",
             "- fact 8 | all day: Offsite",
         ]
 

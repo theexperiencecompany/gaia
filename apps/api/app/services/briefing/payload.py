@@ -18,6 +18,7 @@ from app.models.brief_payload_models import (
 from app.services.briefing.clock import UserClock
 from app.services.briefing.edition_draws import EditionDraw
 from app.services.briefing.facts import Facts
+from app.services.briefing.formats import clock_time
 from app.services.briefing.prose import Prose
 from app.services.briefing.slots import render_slots
 
@@ -84,7 +85,7 @@ def edition_payload(parts: PayloadParts) -> BriefingPayload:
         artwork_id=edition.artwork_id,
         new_stamp=parts.new_stamp,
         recipient_name=parts.recipient_name,
-        generated_at=clock.now_local.strftime("%-I:%M %p"),
+        generated_at=clock_time(clock.now_local),
         calendar=parts.calendar,
         tallies=parts.tallies,
         week=parts.week,

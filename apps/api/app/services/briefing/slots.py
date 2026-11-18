@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date
 import re
 
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.models.brief_slot_models import (
@@ -27,6 +28,8 @@ from app.models.brief_slot_models import (
     ValueSlot,
     value_slot_text,
 )
+from app.services.briefing.clock import UserClock, due_on
+from app.services.briefing.formats import weekday
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,25 @@ class BriefFact:
     words: str | None = None
 
 
+def candidate_fact(
+    candidate: BriefCandidate,
+    clock: UserClock,
+    *,
+    title: str | None = None,
+    kind: ItemState | None = None,
+    words: str | None = None,
+) -> BriefFact:
+    """Return what a pool item's slots render: its title or the brief's words for it, its time or due day, its count."""
+    due = due_on(candidate.due_at, clock) if candidate.due_at is not None else None
+    return BriefFact(
+        title=candidate.title if title is None else title,
+        time=candidate.time or due,
+        count=candidate.count,
+        kind=kind,
+        words=words,
+    )
+
+
 def figure(value: float) -> str:
     """Say a computed value as the brief writes it: 2 for 2.0, 2.5 for 2.5."""
     return f"{value:g}"
@@ -57,7 +79,7 @@ def series_figures(series: DataSeries) -> dict[SeriesField, str]:
     figures = {
         SeriesField.TOTAL: figure(sum(ys)),
         SeriesField.PEAK: figure(peak.y),
-        SeriesField.PEAK_AT: date.fromisoformat(peak.x).strftime("%A") if timed else peak.x,
+        SeriesField.PEAK_AT: weekday(date.fromisoformat(peak.x)) if timed else peak.x,
         SeriesField.LOW: figure(min(ys)),
     }
     if timed:

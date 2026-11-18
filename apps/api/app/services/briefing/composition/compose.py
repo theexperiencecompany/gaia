@@ -22,7 +22,6 @@ from app.models.brief_composition_models import (
     ComposedLead,
 )
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
-from app.services.briefing.clock import due_on
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
@@ -30,7 +29,12 @@ from app.services.briefing.composition.repair import repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.kinds import BriefKindSpec
-from app.services.briefing.slots import BriefFact, SlotValues, render_slots, series_figures
+from app.services.briefing.slots import (
+    SlotValues,
+    candidate_fact,
+    render_slots,
+    series_figures,
+)
 
 
 @dataclass(frozen=True)
@@ -46,14 +50,7 @@ def pool_values(pool: FactPool) -> SlotValues:
     """Return what a composition's slots render: each item's title and due date, each series' figures."""
     clock = pool.context.clock
     return SlotValues(
-        facts={
-            i: BriefFact(
-                title=c.title,
-                time=c.time or (due_on(c.due_at, clock) if c.due_at is not None else None),
-                count=c.count,
-            )
-            for i, c in pool.items.items()
-        },
+        facts={i: candidate_fact(c, clock) for i, c in pool.items.items()},
         counts={},
         series={s.id: series_figures(s) for s in pool.series},
     )

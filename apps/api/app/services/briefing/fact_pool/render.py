@@ -24,25 +24,25 @@ from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import UnreadSource
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
+from app.models.brief_slot_models import FactSlot
 from app.models.scout_models import ScoutSkipReason, SignalImportance
 from app.services.briefing.calendar_read import CalendarGap
-from app.services.briefing.clock import UserClock
+from app.services.briefing.clock import UserClock, due_on
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
+from app.services.briefing.formats import dated, day, moment
 from app.services.briefing.scouts.facts import people_note, seen_note
 from app.services.briefing.slots import figure, series_figures
 from app.utils.timezone import Timezone
 
 
-def since_note(moment: datetime, clock: UserClock) -> str:
-    """Say when the brief's done window opens, on the user's clock: "Sat 14 Nov, 8:00 AM"."""
-    local = moment.astimezone(clock.tz)
-    return local.strftime("%a %-d %b, %-I:%M %p")
+def since_note(opens: datetime, clock: UserClock) -> str:
+    """Say when the brief's done window opens, on the user's clock: "Sat Nov 14, 8:00 AM"."""
+    return moment(opens.astimezone(clock.tz))
 
 
 def _day(iso: str, today: date) -> str:
-    day = date.fromisoformat(iso)
-    label = day.strftime("%a %-d %b")
-    return f"{label} (today)" if day == today else label
+    on = date.fromisoformat(iso)
+    return f"{day(on)} (today)" if on == today else day(on)
 
 
 def item_state(item: BriefCandidate) -> str:
@@ -65,6 +65,18 @@ def repeat_note(item: BriefCandidate, clock: UserClock) -> str | None:
     return f"{REPEAT_MARK} ({seen_note(item.memory, clock)})"
 
 
+def stands_part(item: BriefCandidate) -> str | None:
+    """Say where open tracked work stands, on any line that names the item; None when GAIA is simply on it."""
+    return None if item.standing is None else f"stands: {item.standing}"
+
+
+def count_part(count: int, slot: FactSlot | None = None) -> str | None:
+    """Say how many tracked todos one item stands for, by the slot that writes it when there is one."""
+    if count <= 1:
+        return None
+    return f"{count if slot is None else f'{slot} ({count})'} {ON_ONE_SUBJECT}"
+
+
 def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
     """Say one item with every fact its producer knows: its app, state, title and the rest."""
     state = item_state(item)
@@ -72,14 +84,14 @@ def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
     if item.importance is SignalImportance.HIGH:
         head += ", important"
     parts = [f"{head}: {item.title}"]
-    if item.standing is not None:
-        parts.append(f"stands: {item.standing}")
+    if (stands := stands_part(item)) is not None:
+        parts.append(stands)
     if item.detail:
         parts.append(item.detail)
     if item.time is not None:
         parts.append(f"at {item.time}")
     if item.due_at is not None:
-        parts.append(f"due {clock.day_of(item.due_at).isoformat()}")
+        parts.append(f"due {due_on(item.due_at, clock)}")
     if item.people:
         signal = item.signal
         role = signal.people_role if signal is not None and item.people == signal.people else None
@@ -94,9 +106,7 @@ def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
 
 def _what_it_asks(item: BriefCandidate) -> list[str]:
     """Say how many asked, what the producer says it asks or reached, and whether it opens."""
-    parts: list[str] = []
-    if item.count > 1:
-        parts.append(f"{item.count} {ON_ONE_SUBJECT}")
+    parts = [counted] if (counted := count_part(item.count)) is not None else []
     if item.action is not None:
         parts.append(f"action {item.action.value}")
     if item.outcome is not None:
@@ -130,7 +140,7 @@ def quote_line(quote: QuoteSpan) -> str:
 
 def goal_progress(goal: GoalState) -> str:
     """Say what moved on a goal and over which days: who finished its work, and how much is open."""
-    since = f" since {date.fromisoformat(goal.since).strftime('%a %-d %b')}" if goal.since else ""
+    since = f" since {day(date.fromisoformat(goal.since))}" if goal.since else ""
     others = goal.done - goal.done_by_gaia - goal.done_by_you
     owners = [
         f"{n} by {who}"
@@ -196,7 +206,7 @@ def unread_note(unread: list[UnreadSource]) -> str | None:
 def context_block(context: PoolContext) -> str:
     """Say the day the pool sits in: the date, the calendar's load and how recent briefs opened."""
     lines = [
-        f"{context.clock.now_local.strftime('%A %-d %B %Y')}, {Timezone.parse(context.clock.tz)}.",
+        f"{dated(context.clock.today)}, {Timezone.parse(context.clock.tz)}.",
         _calendar_line(context),
     ]
     if (unread := unread_note(context.unread)) is not None:

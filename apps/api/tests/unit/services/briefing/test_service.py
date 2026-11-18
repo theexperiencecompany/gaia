@@ -956,7 +956,7 @@ class TestDailyBrief:
 
         composed = world.composer.await_args.args[1]
         assert "You're writing to Ada" not in composed
-        assert "Wednesday 14 October 2026, Asia/Kolkata." in composed
+        assert "Wed Oct 14, 2026, Asia/Kolkata." in composed
         assert "Calendar today: 1 event(s), every one listed below." in composed
         assert 'Recent briefs opened on: "Priya replied overnight."' in composed
 
@@ -969,7 +969,7 @@ class TestDailyBrief:
 
         composed = world.composer.await_args.args[1]
         assert "composing the user's morning brief for 2026-10-14" in composed
-        assert "Wednesday 14 October 2026, UTC." in composed
+        assert "Wed Oct 14, 2026, UTC." in composed
 
     async def test_a_winback_message_need_not_refer_to_the_lead(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1907,7 +1907,7 @@ class TestWeeklyRecap:
         # Timed as the daily times them: the day is the heading's, the slot says the time.
         assert _stored_payload(world).lede == "Then Pitch to Accel on Friday at 3:00 PM."
         facts = _facts_shown(_prompt(world))
-        assert "The week ahead, 1 event(s):\nFriday Oct 16, 1 event(s):\n- fact " in facts
+        assert "The week ahead, 1 event(s):\nFri Oct 16, 1 event(s):\n- fact " in facts
         assert "(3:00 PM): Pitch to Accel" in facts
         assert "summary: Final numbers in" in facts
         assert "weekly digest for the week ending 2026-10-14" in world.composer.await_args.args[1]
@@ -1927,10 +1927,10 @@ class TestWeeklyRecap:
 
         facts = _facts_shown(_prompt(world))
         assert "The week ahead, 7 event(s):" in facts
-        assert "Friday Oct 16, 1 event(s):" in facts
-        assert "Monday Oct 19, 6 event(s), the week's busiest:" in facts
+        assert "Fri Oct 16, 1 event(s):" in facts
+        assert "Mon Oct 19, 6 event(s), the week's busiest:" in facts
         assert all(f": Meeting {hour}" in facts for hour in range(9, 15))
-        assert "Friday Oct 16, 1 event(s):" in facts
+        assert "Fri Oct 16, 1 event(s):" in facts
 
     async def test_a_week_of_equally_full_days_names_no_busiest_day(self, world: World) -> None:
         """Replay: six events on every day marked all seven the week's busiest."""
@@ -1943,7 +1943,7 @@ class TestWeeklyRecap:
 
         facts = _facts_shown(_prompt(world))
         assert "The week ahead, 7 event(s):" in facts
-        assert "Thursday Oct 15, 1 event(s):" in facts
+        assert "Thu Oct 15, 1 event(s):" in facts
         assert "busiest" not in facts
 
 
@@ -2076,7 +2076,7 @@ class TestTheWeeklyAnswersTheWeek:
 
         assert _stored_payload(world).form is BriefForm.EDITION
         assert (
-            '- "Launch Atlas": nothing linked to it finished, 0 finished since Mon 12 Oct, 1 open'
+            '- "Launch Atlas": nothing linked to it finished, 0 finished since Mon Oct 12, 1 open'
             " | stuck a week or more: Atlas pricing"
         ) in _facts_shown(_prompt(world))
 
@@ -2178,7 +2178,7 @@ class TestTheWeeklyAnswersTheWeek:
 
         facts = _facts_shown(_prompt(world))
         assert (
-            '- "Launch Atlas": moved forward, 1 finished since Mon 12 Oct (1 by the user), 2 open:'
+            '- "Launch Atlas": moved forward, 1 finished since Mon Oct 12 (1 by the user), 2 open:'
             " Atlas landing page | stuck a week or more: Atlas pricing"
         ) in facts
 
@@ -4164,7 +4164,7 @@ class TestTheWeeklyRunWiring:
         assert world.reads["list_since"].await_args.args == (_USER, _WEEK_START)
         assert world.composer.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
         composed = world.composer.await_args.args[1]
-        assert f"Wednesday 14 October 2026, {_TZ}." in composed
+        assert f"Wed Oct 14, 2026, {_TZ}." in composed
         assert "Calendar in the week ahead: 1 event(s), every one listed below." in composed
         assert "Recent briefs opened on" not in composed
         blocks = world.weekly_prompt.call_args.kwargs["blocks"]
@@ -4185,7 +4185,7 @@ class TestTheWeeklyRunWiring:
 
         composed = world.composer.await_args.args[1]
         assert "composing the user's weekly digest" in composed
-        assert "Wednesday 14 October 2026, UTC." in composed
+        assert "Wed Oct 14, 2026, UTC." in composed
 
     async def test_the_voice_is_found_past_other_blocks(self, world: World) -> None:
         world.agent.return_value = SimpleNamespace(message=_NOISE_BLOCKS + _fenced(_WEEKLY_VOICE))

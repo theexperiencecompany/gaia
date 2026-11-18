@@ -18,10 +18,16 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
-from app.models.brief_payload_models import BriefingEvent, BriefingItem, BriefingSection
+from app.models.brief_payload_models import (
+    EVENT_TIME_FORMAT,
+    BriefingEvent,
+    BriefingItem,
+    BriefingSection,
+)
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.services.briefing.candidates.app_names import integration_id_named
 from app.services.briefing.editions.edition_logos import logo_key
+from app.services.briefing.formats import clock_time, short_weekday
 
 # A week or less of days is named by weekday; a longer run by its date.
 _WEEKDAY_SPAN = 7
@@ -149,11 +155,11 @@ def _item(item: BriefingItem) -> ExplorerItem:
 
 
 def _event(event: BriefingEvent, today: str) -> ExplorerEvent:
-    start = datetime.strptime(event.start, "%H:%M") if event.start else None
+    start = datetime.strptime(event.start, EVENT_TIME_FORMAT) if event.start else None
     return {
-        "t12": start.strftime("%-I:%M %p") if start else None,
+        "t12": clock_time(start) if start else None,
         "t24": event.start or None,
-        "day": None if event.date == today else date.fromisoformat(event.date).strftime("%a"),
+        "day": None if event.date == today else short_weekday(date.fromisoformat(event.date)),
         "title": event.title,
         "detail": event.location or None,
         "logo": GOOGLE_CALENDAR_INTEGRATION_ID,
@@ -173,7 +179,7 @@ def _x_labels(series: DataSeries) -> list[str]:
         return [p.x for p in series.points]
     days = _days(series)
     if len(days) <= _WEEKDAY_SPAN:
-        return [d.strftime("%a") for d in days]
+        return [short_weekday(d) for d in days]
     return [f"{d.day} {d:%b}" for d in days]
 
 

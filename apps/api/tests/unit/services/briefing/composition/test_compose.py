@@ -195,8 +195,7 @@ class TestOneCall:
         assert "calendar_meeting_hours | Meeting hours, in hours" in prompt
         assert "- Gmail: a person waiting on a reply" in prompt
         assert (
-            "Wednesday 11 November 2026, Asia/Kolkata.\n"
-            "Calendar today: 1 event(s), every one listed below."
+            "Wed Nov 11, 2026, Asia/Kolkata.\nCalendar today: 1 event(s), every one listed below."
         ) in prompt
         assert '"Maya is waiting on the term sheet."' in prompt
         assert "{" not in prompt.split("## The pool", 1)[1].split("## Three compositions", 1)[0]

@@ -286,7 +286,7 @@ class TestThePoolAsTheComposerReadsIt:
         # Every reader of the pool, the composer and its checkers, reads the states alike.
         # Done means done in this brief's own window, never "overnight" whatever the window.
         assert block.startswith(
-            "ITEMS (done by GAIA / done by the user / closed: finished since Tue 10 Nov, 5:30 AM,"
+            "ITEMS (done by GAIA / done by the user / closed: finished since Tue Nov 10, 5:30 AM,"
         )
         assert "overnight" not in block
 
@@ -297,8 +297,8 @@ class TestThePoolAsTheComposerReadsIt:
         assert "3. [Google Calendar] calendar event: Board call" in block
         assert (
             "calendar_meeting_hours | Meeting hours, in hours (Google Calendar), time_series of 7 "
-            "points | per day: Thu 5 Nov 0 · Fri 6 Nov 0 · Sat 7 Nov 0 · Sun 8 Nov 0 · Mon 9 Nov 0 "
-            "· Tue 10 Nov 0 · Wed 11 Nov (today) 1.5 | figures: total 1.5, peak 1.5, "
+            "points | per day: Thu Nov 5 0 · Fri Nov 6 0 · Sat Nov 7 0 · Sun Nov 8 0 · Mon Nov 9 0 "
+            "· Tue Nov 10 0 · Wed Nov 11 (today) 1.5 | figures: total 1.5, peak 1.5, "
             "peak_at Wednesday, low 0, latest 1.5"
         ) in block
         assert (
@@ -308,7 +308,7 @@ class TestThePoolAsTheComposerReadsIt:
         assert 'q1 | Maya Chen, in Gmail, on item 1: "Can you confirm the preference' in block
         assert (
             'g1 | "Launch the GAIA mobile app" (from memory) | linked todos: 1 finished since '
-            "Thu 5 Nov (1 by GAIA), 1 open: GAIA privacy labels; GAIA beta invite email"
+            "Thu Nov 5 (1 by GAIA), 1 open: GAIA privacy labels; GAIA beta invite email"
         ) in block
 
 
@@ -342,7 +342,7 @@ class TestTheContextBlock:
         )
 
         assert context_block(context).splitlines() == [
-            "Thursday 5 November 2026, Asia/Kolkata.",
+            "Thu Nov 5, 2026, Asia/Kolkata.",
             "Calendar today: 2 event(s), every one listed below.",
             'Recent briefs opened on: "Priya replied overnight."; "Big day for the raise.". '
             "Lead somewhere new unless the same thing still matters most.",
@@ -350,7 +350,7 @@ class TestTheContextBlock:
 
     def test_an_empty_calendar_and_no_openings_say_just_that(self) -> None:
         assert context_block(replace(CONTEXT, calendar=0)).splitlines() == [
-            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Wed Nov 11, 2026, Asia/Kolkata.",
             "Nothing on the calendar today.",
         ]
 
@@ -358,7 +358,7 @@ class TestTheContextBlock:
         unconnected = replace(CONTEXT, calendar=CalendarGap.NOT_CONNECTED)
 
         assert context_block(unconnected).splitlines() == [
-            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Wed Nov 11, 2026, Asia/Kolkata.",
             NO_CALENDAR_CONNECTED,
         ]
 
@@ -366,7 +366,7 @@ class TestTheContextBlock:
         unread = replace(CONTEXT, calendar=CalendarGap.UNAVAILABLE)
 
         assert context_block(unread).splitlines() == [
-            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Wed Nov 11, 2026, Asia/Kolkata.",
             CALENDAR_UNAVAILABLE,
         ]
 
@@ -381,7 +381,7 @@ class TestTheContextBlock:
         )
 
         assert context_block(unread).splitlines() == [
-            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Wed Nov 11, 2026, Asia/Kolkata.",
             "Calendar today: 2 event(s), every one listed below.",
             "Not read this time: Slack, Notion. Nothing is known about what they hold today:"
             " never say they hold nothing, or that nothing there needs the user.",
@@ -421,7 +421,7 @@ class TestAnItemLine:
 
         assert (
             item_line(1, item, CONTEXT.clock)
-            == "1. [GAIA] waiting on you: Rent | due 2026-11-12 | GAIA can act on it"
+            == "1. [GAIA] waiting on you: Rent | due Thu Nov 12 | GAIA can act on it"
         )
 
     def test_an_undated_own_todo_reads_as_on_their_list_not_waiting(self) -> None:
@@ -487,7 +487,7 @@ class TestAnItemLine:
 
         assert item_line(7, item, CONTEXT.clock) == (
             "7. [GitHub] failed, important: Deploy broke | CI red on main | at 4:00 PM"
-            " | due 2026-11-12 | names Maya Chen, Ravi Rao (the app does not say their part in it)"
+            " | due Thu Nov 12 | names Maya Chen, Ravi Rao (the app does not say their part in it)"
             " | 3 todos on this one subject | action retry | outcome drafted | linkable"
             " | GAIA can only read GitHub: no offer on it | also found by Slack, Linear"
         )
@@ -685,7 +685,7 @@ class TestAnEmptyPool:
 
         assert (
             pool_block(pool).split("\n")[1]
-            == "1. [GAIA] waiting on you: Rent | due 2026-11-12 | GAIA can act on it"
+            == "1. [GAIA] waiting on you: Rent | due Thu Nov 12 | GAIA can act on it"
         )
 
     def test_each_part_with_nothing_in_it_says_none(self) -> None:
@@ -705,7 +705,7 @@ class TestAnEmptyPool:
         pool = FactPool(items={}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={})
 
         assert pool_block(pool).split("\n")[0] == (
-            "ITEMS (done by GAIA / done by the user / closed: finished since Tue 10 Nov, 5:30 AM,"
+            "ITEMS (done by GAIA / done by the user / closed: finished since Tue Nov 10, 5:30 AM,"
             " by whoever its state names; in progress: GAIA is working on it; open: GAIA's work"
             " that is not being worked on now, its line says where it stands; waiting on you:"
             " needs the user; failed: broke and needs the user; note: news that needs nothing;"
@@ -776,7 +776,7 @@ class TestSeriesAndGoalLines:
         )
 
         assert series_line(series, date(2026, 11, 11)).split(" | ")[2] == (
-            "per day: Tue 10 Nov 1 · Wed 11 Nov (today) 2"
+            "per day: Tue Nov 10 1 · Wed Nov 11 (today) 2"
         )
 
     def test_a_goal_with_no_linked_todo_says_so(self) -> None:
@@ -816,6 +816,6 @@ class TestSeriesAndGoalLines:
         )
 
         assert goal_line(goal) == (
-            'g1 | "Ship" (from memory) | linked todos: 0 finished since Thu 5 Nov, 1 open:'
+            'g1 | "Ship" (from memory) | linked todos: 0 finished since Thu Nov 5, 1 open:'
             " Ship the beta"
         )

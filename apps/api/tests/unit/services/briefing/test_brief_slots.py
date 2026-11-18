@@ -1,13 +1,19 @@
 """The brief's slots are filled from the facts, and a slot the facts cannot fill is named."""
 
-import pytest
+from datetime import UTC, date, datetime
 
+import pytest
+from tests.helpers import user_clock
+
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.brief_slot_models import CountName, SeriesField
 from app.services.briefing.slots import (
     BriefFact,
     SlotError,
     SlotValues,
+    candidate_fact,
     figures_in,
     referenced_facts,
     render_slots,
@@ -361,3 +367,40 @@ class TestUnslotted:
 class TestFiguresIn:
     def test_each_word_with_a_digit_is_kept_without_the_punctuation_around_it(self) -> None:
         assert figures_in(["up by (8).", "the Q3 plan,", "no figures here"]) == {"8", "Q3"}
+
+
+_CLOCK = user_clock("Asia/Kolkata", date(2026, 11, 11))
+
+
+def _candidate(**fields: object) -> BriefCandidate:
+    return BriefCandidate.model_validate(
+        {"origin": CandidateOrigin.TRACKED, "source": "gaia", "app": "GAIA", "state": "you"}
+        | {"title": "Approve the Acme MSA renewal"}
+        | fields
+    )
+
+
+class TestAPoolItemsFact:
+    def test_it_is_its_title_its_due_day_on_the_users_clock_and_its_count(self) -> None:
+        due = datetime(2026, 11, 12, 20, 0, tzinfo=UTC)  # Friday 01:30 in Kolkata
+
+        fact = candidate_fact(_candidate(due_at=due, count=3), _CLOCK)
+
+        assert fact == BriefFact(title="Approve the Acme MSA renewal", time="Fri Nov 13", count=3)
+
+    def test_a_time_of_its_own_beats_its_due_day(self) -> None:
+        candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
+
+        assert candidate_fact(candidate, _CLOCK).time == "4:00 PM"
+
+    def test_the_briefs_own_wording_its_state_and_its_words_ride_along(self) -> None:
+        fact = candidate_fact(
+            _candidate(), _CLOCK, title="Acme renewal", kind=ItemState.YOU, words="by Friday"
+        )
+
+        assert (fact.title, fact.time, fact.kind, fact.words) == (
+            "Acme renewal",
+            None,
+            ItemState.YOU,
+            "by Friday",
+        )

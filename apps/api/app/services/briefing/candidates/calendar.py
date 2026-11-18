@@ -14,17 +14,18 @@ from app.constants.briefing import BriefAction
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
-from app.models.brief_payload_models import BriefingEvent
+from app.models.brief_payload_models import EVENT_TIME_FORMAT, BriefingEvent
 from app.services.briefing.candidates.app_names import integration_name
+from app.services.briefing.formats import clock_time, short_weekday
 
 
 def start_time(event: BriefingEvent) -> str | None:
     """Say the time an event starts on the user's clock, as every brief does; None all day."""
-    return datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p") if event.start else None
+    return _clock(event.start) if event.start else None
 
 
 def _clock(hhmm: str) -> str:
-    return datetime.strptime(hhmm, "%H:%M").strftime("%-I:%M %p")
+    return clock_time(datetime.strptime(hhmm, EVENT_TIME_FORMAT))
 
 
 def event_detail(event: BriefingEvent) -> str | None:
@@ -42,8 +43,8 @@ def event_detail(event: BriefingEvent) -> str | None:
 
 def event_time(event: BriefingEvent, today: str) -> str | None:
     """Say when an event starts; one on another day than today names its weekday too."""
-    day = "" if event.date == today else date.fromisoformat(event.date).strftime("%a")
-    return " ".join(part for part in (day, start_time(event)) if part) or None
+    on = "" if event.date == today else short_weekday(date.fromisoformat(event.date))
+    return " ".join(part for part in (on, start_time(event)) if part) or None
 
 
 def calendar_candidates(events: list[BriefingEvent], today: str) -> list[BriefCandidate]:

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from app.models.brief_document_models import BriefingModel
+from app.services.briefing.formats import day, long_day
 from app.utils.timezone import Timezone, as_utc
 
 
@@ -96,13 +97,13 @@ def resolve_clock(user_timezone: str | None) -> UserClock:
 
 def due_on(due_at: datetime, clock: UserClock) -> str:
     """Say a due date the way the brief does, on the user's own day: today, or its weekday and date."""
-    day = clock.day_of(due_at)
-    return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
+    on = clock.day_of(due_at)
+    return "today" if on.isoformat() == clock.date_str else day(on)
 
 
 def when_sent(last: BriefingModel, clock: UserClock) -> str:
     """Name the last brief's day as the user would: yesterday, or its weekday and date."""
-    day = date.fromisoformat(last.date)
-    if day == clock.today - timedelta(days=1):
+    sent = date.fromisoformat(last.date)
+    if sent == clock.today - timedelta(days=1):
         return "yesterday"
-    return day.strftime("on %A %b %-d")
+    return f"on {long_day(sent)}"

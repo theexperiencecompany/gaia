@@ -7,7 +7,7 @@ from enum import StrEnum
 from fastapi import HTTPException
 
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
-from app.models.brief_payload_models import BriefingEvent, UnreadSource
+from app.models.brief_payload_models import EVENT_TIME_FORMAT, BriefingEvent, UnreadSource
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import ScoutSkipReason
 from app.services.briefing.candidates.app_names import integration_name
@@ -109,8 +109,8 @@ def _to_event(event: GoogleCalendarEventResource, tz: tzinfo) -> BriefingEvent |
         end = datetime.fromisoformat(ends).astimezone(tz) if ends else None
         timed = end is not None and end > local and end.date() == local.date()
         day = local.date().isoformat()
-        at = local.strftime("%H:%M")
-        until = end.strftime("%H:%M") if end is not None and timed else None
+        at = local.strftime(EVENT_TIME_FORMAT)
+        until = end.strftime(EVENT_TIME_FORMAT) if end is not None and timed else None
     elif start.date:
         day, at, until = start.date, None, None
     else:

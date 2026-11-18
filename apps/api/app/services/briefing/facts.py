@@ -10,7 +10,6 @@ from app.agents.prompts.brief_fact_prompts import (
     COUNTS_HEADER,
     GOALS_THIS_WEEK_HEADER,
     NO_CALENDAR_CONNECTED,
-    ON_ONE_SUBJECT,
     ONLY_TRACKED_TODOS,
     OWN_TODOS_COUNTED,
     OWN_TODOS_EMPTY,
@@ -50,20 +49,29 @@ from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import event_detail, start_time
 from app.services.briefing.candidates.subjects import subject_key
-from app.services.briefing.clock import DayWindow, UserClock, due_on
+from app.services.briefing.clock import DayWindow, UserClock
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
     charted_figures,
     voiced_block_lines,
 )
 from app.services.briefing.fact_pool.render import (
+    count_part,
     goal_progress,
     item_state,
     repeat_note,
+    stands_part,
     unread_note,
 )
+from app.services.briefing.formats import day
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact, SlotValues, figures_in, series_figures
+from app.services.briefing.slots import (
+    BriefFact,
+    SlotValues,
+    candidate_fact,
+    figures_in,
+    series_figures,
+)
 from app.services.briefing.work import TrackedWork
 
 
@@ -75,14 +83,14 @@ def _fact_line(
     line = f"- fact {fact_id} | {state}: {item.text}"
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
-    if candidate.standing is not None:
-        line += f" | stands: {candidate.standing}"
+    if (stands := stands_part(candidate)) is not None:
+        line += f" | {stands}"
     if fact.time:
         line += f" | time: {FactSlot(fact_id, FactField.TIME)} ({fact.time})"
     if candidate.detail:
         line += f" | detail: {candidate.detail}"
-    if fact.count > 1:
-        line += f" | {FactSlot(fact_id, FactField.COUNT)} ({fact.count}) {ON_ONE_SUBJECT}"
+    if (counted := count_part(fact.count, FactSlot(fact_id, FactField.COUNT))) is not None:
+        line += f" | {counted}"
     if (repeat := repeat_note(candidate, clock)) is not None:
         line += f" | {repeat}"
     return line
@@ -248,12 +256,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             elif candidate.url:
                 addresses[fact_id] = candidate.url
             words = _own_words(candidate, it, art)
-            facts[fact_id] = BriefFact(
-                title=it.text,
-                time=due_on(candidate.due_at, clock) if candidate.due_at else None,
-                count=it.count,
-                kind=it.kind,
-                words=" ".join(words),
+            facts[fact_id] = candidate_fact(
+                candidate, clock, title=it.text, kind=it.kind, words=" ".join(words)
             )
             linkable = fact_id in deliverables or fact_id in addresses
             own_words += words
@@ -353,14 +357,16 @@ def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
 
     A day is the busiest only beside a lighter day that has events: equal days have none.
     """
-    days = {day: list(group) for day, group in groupby(events, key=lambda pair: pair[1].date)}
+    days = {on: list(group) for on, group in groupby(events, key=lambda pair: pair[1].date)}
     counts = [len(group) for group in days.values()]
     busiest = max(counts) if max(counts) > min(counts) else None
     lines: list[str] = []
-    for day, group in days.items():
+    for on, group in days.items():
         busy = ", the week's busiest" if len(group) == busiest else ""
-        label = date.fromisoformat(day).strftime("%A %b %-d")
-        lines += [f"{label}, {len(group)} event(s){busy}:", *_event_lines(group)]
+        lines += [
+            f"{day(date.fromisoformat(on))}, {len(group)} event(s){busy}:",
+            *_event_lines(group),
+        ]
     return lines
 
 
