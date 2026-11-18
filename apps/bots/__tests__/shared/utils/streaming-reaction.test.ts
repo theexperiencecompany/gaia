@@ -55,7 +55,7 @@ async function runTurn(
   platform: PlatformName,
   sseBody: string,
   react?: (emoji: string) => Promise<ReactionOutcome>,
-  analytics?: AnalyticsContext,
+  analytics?: Promise<AnalyticsContext>,
   noReply?: () => Promise<void>,
 ): Promise<Screen> {
   const screen: Screen = { messages: [PLACEHOLDER], errors: [], reactions: [] };
@@ -211,12 +211,26 @@ function reactionCaptures(capture: ReturnType<typeof vi.fn>): unknown[] {
 
 function analyticsCapturingTo(
   capture: ReturnType<typeof vi.fn>,
-): AnalyticsContext {
-  return {
+): Promise<AnalyticsContext> {
+  return Promise.resolve({
     client: { capture },
     distinctId: USER_ID,
-  } as unknown as AnalyticsContext;
+  } as unknown as AnalyticsContext);
 }
+
+describe("a live turn whose analytics identity is still resolving", () => {
+  it("streams the reply without waiting on the identity lookup", async () => {
+    const screen = await runTurn(
+      "telegram",
+      frames({ text: "here you go" }, { done: true, conversation_id: "c1" }),
+      undefined,
+      new Promise<AnalyticsContext>(() => undefined),
+    );
+
+    expect(screen.errors).toStrictEqual([]);
+    expect(screen.messages).toStrictEqual(["here you go"]);
+  });
+});
 
 describe("a live turn that hands work off and says nothing", () => {
   const SILENT_TURN = frames({ done: true, conversation_id: "c1" });

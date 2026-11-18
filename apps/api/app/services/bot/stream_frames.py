@@ -61,6 +61,15 @@ def message_boundary_frame(boundary: object) -> str:
     return sse_frame({"message_boundary": boundary})
 
 
+def reply_complete_frame() -> str:
+    """Signal that the reply text is final, ahead of the turn's end-of-turn work.
+
+    A platform that sends whole messages delivers on this instead of waiting for
+    done, which comes only after follow-up suggestions and any delegated work.
+    """
+    return sse_frame({"reply_complete": True})
+
+
 def emoji_ack_frame(emoji: str, reacts_to_message_id: str) -> str:
     """Forward a comms emoji ack, the whole outcome of a turn that streamed no text."""
     return sse_frame({"emoji_ack": {"emoji": emoji, "reacts_to_message_id": reacts_to_message_id}})

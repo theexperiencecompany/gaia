@@ -86,3 +86,15 @@ INVITE_TTL_DAYS = 7
 
 # instance_settings key holding the self-host registration policy.
 REGISTRATION_SETTINGS_KEY = "registration"
+
+# WorkOS JWT signing keys, cached per process. A key WorkOS removes keeps
+# verifying for up to the cache lifespan; forging with it still needs our cookie
+# password, since a token is checked only after its cookie unseals.
+WORKOS_JWKS_CACHE_SECONDS = 120
+# Minimum gap between refetches forced by a token naming a key outside the set:
+# a rotated key is picked up within it, and a stale cookie cannot force a fetch
+# per request.
+WORKOS_JWKS_REFRESH_COOLDOWN_SECONDS = 5
+# A key fetch holds the shared client's lock and a worker thread; bound it so a
+# WorkOS outage fails auth fast instead of queueing every request behind it.
+WORKOS_JWKS_FETCH_TIMEOUT_SECONDS = 5
