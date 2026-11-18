@@ -2,7 +2,8 @@
 
 The browser launches on first use, is replaced once it dies or reaches CHROMIUM_RECYCLE_AGE_SECONDS,
 closes after CHROMIUM_IDLE_CLOSE_SECONDS with no render, and is closed by close_chromium on API
-and worker shutdown. Every render gets its own browser context, so nothing a page stores outlives
+and worker shutdown. A browser that cannot open a context is dead, even while it reports itself
+connected (its driver was killed), so it is replaced and the render asks the new one once. Every render gets its own browser context, so nothing a page stores outlives
 it, and at most CHROMIUM_MAX_CONCURRENT_RENDERS run at once.
 """
 
@@ -12,14 +13,23 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import time
 
-from playwright.async_api import Browser, Page, Playwright, ViewportSize, async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Playwright,
+    ViewportSize,
+    async_playwright,
+)
 
+from app.constants.log_tags import LogTag
 from app.constants.render import (
     CHROMIUM_IDLE_CLOSE_SECONDS,
     CHROMIUM_LAUNCH_ARGS,
     CHROMIUM_MAX_CONCURRENT_RENDERS,
     CHROMIUM_RECYCLE_AGE_SECONDS,
 )
+from shared.py.wide_events import log
 
 
 @dataclass(eq=False)
@@ -36,7 +46,7 @@ class _Launch:
         return self.browser.is_connected() and age < CHROMIUM_RECYCLE_AGE_SECONDS
 
     async def close(self) -> None:
-        await self.browser.close()
+        # Stopping the driver closes its browser; Browser.close raises once the driver is dead.
         await self.playwright.stop()
 
 
@@ -63,6 +73,11 @@ class _ProcessChromium:
                 current = self._current = _Launch(playwright, browser)
             current.renders += 1
             return current
+
+    def retire(self, launch: _Launch) -> None:
+        """Stop handing out a launch that cannot render; it closes when its last render releases it."""
+        if launch is self._current:
+            self._current = None
 
     async def release(self, launch: _Launch) -> None:
         launch.renders -= 1
@@ -155,11 +170,8 @@ async def chromium_page(
 ) -> AsyncIterator[RenderPage]:
     """Wait for a render turn, then open a page in a fresh context of the process's browser."""
     async with _slots.turn():
-        launch = await _chromium.acquire()
+        launch, context = await _open_context(viewport, device_scale_factor)
         try:
-            context = await launch.browser.new_context(
-                viewport=viewport, device_scale_factor=device_scale_factor
-            )
             try:
                 page = await context.new_page()
                 script_errors: list[str] = []
@@ -169,6 +181,29 @@ async def chromium_page(
                 await context.close()
         finally:
             await _chromium.release(launch)
+
+
+async def _open_context(
+    viewport: ViewportSize, device_scale_factor: float | None
+) -> tuple[_Launch, BrowserContext]:
+    """Open a context in the process's browser, replacing it once if it cannot open one."""
+    launch = await _chromium.acquire()
+    try:
+        return launch, await launch.browser.new_context(
+            viewport=viewport, device_scale_factor=device_scale_factor
+        )
+    except Exception as exc:
+        log.warning(f"{LogTag.BROWSER} Render browser is dead; relaunching", error=str(exc))
+        _chromium.retire(launch)
+        await _chromium.release(launch)
+    launch = await _chromium.acquire()
+    try:
+        return launch, await launch.browser.new_context(
+            viewport=viewport, device_scale_factor=device_scale_factor
+        )
+    except BaseException:
+        await _chromium.release(launch)
+        raise
 
 
 async def close_chromium() -> None:

@@ -51,6 +51,36 @@ async def test_a_browser_that_died_is_replaced_on_the_next_render(chromium: Fake
     assert len(fresh.contexts) == 1 and not fresh.closed
 
 
+async def test_a_connected_browser_that_cannot_open_a_context_is_replaced_for_the_render(
+    chromium: FakeChromium,
+) -> None:
+    async with chromium_page(_VIEWPORT):
+        pass
+    chromium.browsers[0].context_error = Exception(
+        "Connection closed while reading from the driver"
+    )
+
+    async with chromium_page(_VIEWPORT):
+        pass
+
+    dead, fresh = chromium.browsers
+    assert dead.closed and chromium.playwrights[0].stopped
+    assert len(fresh.contexts) == 1 and not fresh.closed
+
+
+async def test_a_render_fails_loud_when_the_fresh_browser_cannot_open_a_context_either(
+    chromium: FakeChromium,
+) -> None:
+    chromium.context_error = Exception("Connection closed while reading from the driver")
+
+    with pytest.raises(Exception, match="Connection closed"):
+        async with chromium_page(_VIEWPORT):
+            pass
+
+    first, retried = chromium.browsers
+    assert first.closed and not retried.closed
+
+
 async def test_a_browser_past_its_age_is_replaced_and_closes_once_its_last_render_ends(
     chromium: FakeChromium, monkeypatch: pytest.MonkeyPatch
 ) -> None:

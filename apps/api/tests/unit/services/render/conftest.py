@@ -33,11 +33,15 @@ class FakeBrowser:
         self.connected = True
         self.closed = False
         self.contexts: list[FakeContext] = []
+        #: Raised by new_context: a browser whose driver died still reports itself connected.
+        self.context_error: Exception | None = chromium.context_error
 
     def is_connected(self) -> bool:
         return self.connected
 
     async def new_context(self, **options: Any) -> FakeContext:
+        if self.context_error is not None:
+            raise self.context_error
         context = FakeContext(self, options)
         self.contexts.append(context)
         return context
@@ -48,12 +52,16 @@ class FakeBrowser:
 
 
 class FakePlaywright:
-    """One started driver; it is its own browser type, so playwright.chromium.launch() works."""
+    """One started driver; it is its own browser type, so playwright.chromium.launch() works.
+
+    Stopping it closes every browser it launched, as the real driver does when it exits.
+    """
 
     def __init__(self, fake: FakeChromium) -> None:
         self.fake = fake
         self.chromium = self
         self.stopped = False
+        self.browsers: list[FakeBrowser] = []
 
     async def launch(self, **options: Any) -> FakeBrowser:
         self.fake.launches.append(options)
@@ -61,10 +69,13 @@ class FakePlaywright:
             raise self.fake.launch_error
         browser = FakeBrowser(self.fake)
         self.fake.browsers.append(browser)
+        self.browsers.append(browser)
         return browser
 
     async def stop(self) -> None:
         self.stopped = True
+        for browser in self.browsers:
+            await browser.close()
 
 
 class FakeChromium:
@@ -76,6 +87,8 @@ class FakeChromium:
         self.playwrights: list[FakePlaywright] = []
         self.launches: list[dict[str, Any]] = []
         self.launch_error: Exception | None = None
+        #: What each browser launched from now on raises when asked for a context.
+        self.context_error: Exception | None = None
 
     async def start(self) -> FakePlaywright:
         playwright = FakePlaywright(self)
