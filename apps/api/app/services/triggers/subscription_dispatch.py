@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from redis.exceptions import RedisError
 
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
+from app.constants.notifications import NotificationKind
 from app.constants.todos import (
     BLOCKING_LABELS,
     EXECUTE_TRACKED_TODO_TASK,
@@ -26,6 +27,7 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
+from app.models.notification.details_models import TodoTriggerFiredNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -374,7 +376,11 @@ async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None
                 body=f"An event you were watching ({subscription.trigger_name}) just fired.",
                 actions=[todo_redirect_action("View todo", todo.id)],
             ),
-            metadata={"todo_id": todo.id, "subscription_id": subscription.id},
+            details=TodoTriggerFiredNotification(
+                kind=NotificationKind.TODO_TRIGGER_FIRED,
+                todo_id=todo.id,
+                subscription_id=subscription.id,
+            ),
         )
     )
     log.info("todo_subscription.notified", todo_id=todo.id)

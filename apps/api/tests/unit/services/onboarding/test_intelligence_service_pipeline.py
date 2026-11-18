@@ -20,8 +20,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import GMAIL_PERSONALIZATION_MARKER
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -687,7 +688,9 @@ class TestAnnouncePersonalization:
         request = notifications.create_notification.await_args.args[0]
         assert request.type is NotificationType.SUCCESS
         assert request.priority == 2
-        assert request.metadata == {"source": "gmail_personalization"}
+        assert request.details == GmailPersonalizedNotification(
+            kind=NotificationKind.GMAIL_PERSONALIZED
+        )
         memories, card = request.content.actions
         assert memories.label == "View memories"
         assert memories.style is ActionStyle.PRIMARY

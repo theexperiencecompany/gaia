@@ -14,9 +14,11 @@ from collections.abc import Callable
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
+from app.models.notification.details_models import SystemWorkflowsProvisionedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -211,7 +213,10 @@ async def _notify_workflows_provisioned(
                         )
                     ],
                 ),
-                metadata={"integration_display_name": integration_display_name},
+                details=SystemWorkflowsProvisionedNotification(
+                    kind=NotificationKind.SYSTEM_WORKFLOWS_PROVISIONED,
+                    integration_display_name=integration_display_name,
+                ),
             )
         )
         log.info(

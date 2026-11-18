@@ -5,7 +5,7 @@ RESEND_API_KEY / EMAIL_UNSUBSCRIBE_SECRET is an ops precondition: the adapter sk
 with a structured log. A failed send raises and the orchestrator records the channel
 as failed.
 
-A notification whose metadata.kind has a renderer in the registry the adapter is built
+A notification whose details' kind has a renderer in the registry the adapter is built
 with is rendered by it, and one that renderer cannot render fails at transform. Anything
 else renders the plain-notification template.
 """
@@ -15,8 +15,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
-
-from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -53,12 +51,6 @@ EmailRenderer = Callable[[NotificationRequest], Awaitable[RenderableEmail]]
 EmailRenderers = Mapping[NotificationKind, EmailRenderer]
 
 
-class _EmailMetadata(BaseModel):
-    """The notification-metadata field every email reads: its kind."""
-
-    kind: NotificationKind | None = None
-
-
 @dataclass(frozen=True)
 class PlainEmail:
     """A notification's title and body in the plain-notification template."""
@@ -89,8 +81,8 @@ class EmailChannelAdapter(ChannelAdapter[RenderableEmail]):
         return True
 
     async def transform(self, notification: NotificationRequest) -> RenderableEmail:
-        kind = _EmailMetadata.model_validate(notification.metadata).kind
-        renderer = self._renderers.get(kind) if kind is not None else None
+        details = notification.details
+        renderer = self._renderers.get(details.kind) if details is not None else None
         if renderer is None:
             return PlainEmail(title=notification.content.title, body=notification.content.body)
         return await renderer(notification)

@@ -101,6 +101,7 @@ from app.models.brief_payload_models import (
 from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_slot_models import CountName
+from app.models.brief_view_models import BriefNoteNotification
 from app.models.briefing_state_models import (
     BriefingBootstrap,
     BriefingDormancy,
@@ -1026,20 +1027,20 @@ class TestADailyBrief:
         )
         world.store_edition.assert_awaited_once_with(_USER, _BRIEF_ID, _RENDERED.image)
         request = world.notify.await_args.args[0]
-        assert request.metadata["card"]["edition"]["image_url"].startswith(_EDITION_URL)
+        assert request.details.card.edition.image_url.startswith(_EDITION_URL)
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
         assert world.render.await_args.args[0].link == _BRIEF_LINK
-        assert request.metadata["brief_url"] == _BRIEF_LINK
+        assert request.details.brief_url == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
-        assert request.metadata["kind"] == NotificationKind.BRIEFING_DAILY
+        assert request.details.kind == NotificationKind.BRIEFING_DAILY
         # GAIA's Briefings-conversation message carries the same folded card the notification does.
         user_id, text, card = world.brief_message.await_args.args
         assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
         assert card.needs_you_count == 1
         assert card.edition is not None and card.edition.image_url.startswith(_EDITION_URL)
-        assert request.metadata["card"] == card.model_dump()
+        assert request.details.card == card
         assert request.content.body == message
         assert request.content.rich_content is None
         world.render.assert_awaited_once()
@@ -1171,8 +1172,8 @@ class TestADailyBrief:
         assert (action.label, action.style) == ("Open briefing", "primary")
         redirect = action.config.redirect
         assert (redirect.open_in_new_tab, redirect.close_notification) == (False, True)
-        card = request.metadata["card"]
-        assert (card["briefing_id"], card["date"]) == (_BRIEF_ID, _DATE)
+        card = request.details.card
+        assert (card.briefing_id, card.date) == (_BRIEF_ID, _DATE)
         post = world.post.await_args.kwargs
         assert post["user"].user_id == _USER
         assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.jpg")
@@ -1854,7 +1855,7 @@ class TestAQuietDay:
         assert payload.message == _expected_note(BriefingKind.DAILY, QuietFacts(calendar=None))
         assert world.upsert.await_args.args[0].edition is None
         request = world.notify.await_args.args[0]
-        assert request.metadata == {"kind": NotificationKind.BRIEFING_NOTE}
+        assert request.details == BriefNoteNotification(kind=NotificationKind.BRIEFING_NOTE)
         assert request.content.rich_content is None
         assert [c.channel_type for c in request.channels] == ["inapp", "email"]
         posted = world.post.await_args.kwargs
@@ -1999,7 +2000,7 @@ class TestAWeeklyDigest:
         assert payload.tallies == BriefingTallies(done_by_you=1, done_by_gaia=0)
         assert payload.headline == "A good week"
         request = world.notify.await_args.args[0]
-        assert request.metadata["kind"] == NotificationKind.BRIEFING_WEEKLY
+        assert request.details.kind == NotificationKind.BRIEFING_WEEKLY
         assert request.content.body == payload.message == "Gym"
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
         assert world.post.await_args.kwargs["origin"] == "weekly brief"

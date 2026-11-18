@@ -13,7 +13,6 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import type {
   NotificationAction,
-  NotificationUpdate,
   NotificationView,
 } from "@/types/features/notificationTypes";
 import {
@@ -32,7 +31,6 @@ interface WebSocketMessage {
     | "error";
   notification?: NotificationView;
   notification_id?: string;
-  updates?: NotificationUpdate;
   channel_type?: string | null;
   message?: string;
 }
@@ -97,16 +95,15 @@ function handleDeliveredNotification(
   router: AppRouter,
   isOnboarding: boolean,
 ) {
-  const isTestNotification = notification.metadata?.test === true;
-  if (!isTestNotification && !isOnboarding) {
+  if (!isOnboarding) {
     showDeliveredToast(notification, router);
   }
 
   // Sync chats when a workflow completion notification arrives
-  if (notification.metadata?.conversation_id) {
+  if (notification.details?.kind === "workflow_completed") {
     console.debug(
       "[NotificationWS] Notification has conversation_id, triggering sync",
-      notification.metadata.conversation_id,
+      notification.details.conversation_id,
     );
     batchSyncConversations({ background: true });
   }

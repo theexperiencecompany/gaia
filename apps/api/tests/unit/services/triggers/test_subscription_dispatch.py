@@ -18,8 +18,10 @@ from redis.exceptions import RedisError
 import respx
 import time_machine
 
+from app.constants.notifications import NotificationKind
 from app.constants.todos import TodoActivityEvent, TodoCompleter
 from app.constants.trigger_gates import GateAuthor
+from app.models.notification.details_models import TodoTriggerFiredNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -583,7 +585,9 @@ class TestActions:
         assert request.content.body == f"An event you were watching ({GMAIL}) just fired."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == f"/todos?todoId={TODO_ID}"
-        assert request.metadata == {"todo_id": TODO_ID, "subscription_id": sub.id}
+        assert request.details == TodoTriggerFiredNotification(
+            kind=NotificationKind.TODO_TRIGGER_FIRED, todo_id=TODO_ID, subscription_id=sub.id
+        )
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 

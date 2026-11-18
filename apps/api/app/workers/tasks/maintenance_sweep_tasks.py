@@ -12,10 +12,12 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
+from app.constants.notifications import NotificationKind
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -544,7 +546,9 @@ async def _send_user_dormant_digest(
                     body=body,
                     actions=[action],
                 ),
-                metadata={"todo_count": count},
+                details=DormantTodosNotification(
+                    kind=NotificationKind.DORMANT_TODOS, todo_count=count
+                ),
             )
         )
         log.info(
@@ -616,7 +620,7 @@ async def _send_individual_notification(
                     body=body,
                     actions=[todo_redirect_action("View todo", todo_id)],
                 ),
-                metadata={"todo_id": todo_id},
+                details=TodoNotification(kind=NotificationKind.TODO, todo_id=todo_id),
             )
         )
     except Exception as exc:

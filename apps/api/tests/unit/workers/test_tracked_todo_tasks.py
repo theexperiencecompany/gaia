@@ -63,7 +63,7 @@ from app.constants import todos as todo_constants
 from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
 from app.constants.hil import HIL_JEV_URL
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
@@ -96,6 +96,7 @@ from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.message_models import TodoRunWake
+from app.models.notification.details_models import TodoFailedNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -1826,7 +1827,9 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
             f"This run of 'Inbox desk' failed after {MAX_RETRY_ATTEMPTS} attempts. "
             "It runs again at its next scheduled time."
         )
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        assert request.details == TodoFailedNotification(
+            kind=NotificationKind.TODO_FAILED, todo_id="todo-1", retry_count=MAX_RETRY_ATTEMPTS
+        )
 
     async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self) -> None:
         pending = datetime.now(UTC) + timedelta(hours=5)
@@ -3870,7 +3873,9 @@ class TestMarkTodoFailed:
         assert request.type == NotificationType.ERROR
         assert request.content.title == "Scheduled Task Failed: Nightly backup"
         assert f"after {MAX_RETRY_ATTEMPTS} attempts" in request.content.body
-        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+        assert request.details == TodoFailedNotification(
+            kind=NotificationKind.TODO_FAILED, todo_id="todo-1", retry_count=MAX_RETRY_ATTEMPTS
+        )
 
     async def test_stopping_is_on_the_todos_timeline(self, activity):
         with (

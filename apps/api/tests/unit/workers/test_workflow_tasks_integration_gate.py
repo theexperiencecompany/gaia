@@ -13,6 +13,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.notifications import NotificationKind
+from app.models.notification.details_models import WorkflowPausedNotification
 from app.models.notification.notification_models import (
     ActionStyle,
     ActionType,
@@ -213,10 +215,11 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert request.user_id == "6812f0b3c9a14e2b7d5a91cc"
         assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
         assert request.type == NotificationType.WARNING
-        assert request.metadata == {
-            "workflow_id": "wf-1",
-            "missing_integrations": "gmail,notion",
-        }
+        assert request.details == WorkflowPausedNotification(
+            kind=NotificationKind.WORKFLOW_PAUSED,
+            workflow_id="wf-1",
+            missing_integrations=["gmail", "notion"],
+        )
 
     async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
         """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""

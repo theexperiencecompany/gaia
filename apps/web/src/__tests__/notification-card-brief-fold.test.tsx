@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError } from "@shared/api";
+import type { BriefEditionNotification } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion/react";
@@ -66,11 +67,11 @@ function briefCard(
   };
 }
 
-/** A briefing notification's metadata: its kind, its link and the brief's card. */
-function briefMetadata(
+/** A briefing notification's details: its kind, its link and the brief's card. */
+function briefDetails(
   briefingId: string,
   card: Partial<BriefCard> = {},
-): Record<string, unknown> {
+): BriefEditionNotification {
   return {
     kind: "briefing_daily",
     brief_url: "https://heygaia.link/b",
@@ -102,7 +103,7 @@ function storedBrief(
 }
 
 function notification(
-  metadata: Record<string, unknown>,
+  details: NotificationView["details"],
   actions: unknown[] = [],
 ): NotificationView {
   return {
@@ -113,7 +114,7 @@ function notification(
     status: NotificationStatus.DELIVERED,
     channels: [],
     content: { title: HEADLINE, body: MESSAGE, actions },
-    metadata,
+    details,
     created_at: new Date().toISOString(),
   } as unknown as NotificationView;
 }
@@ -150,7 +151,7 @@ describe("briefing notification", () => {
         ],
       }),
     );
-    renderCard(notification(briefMetadata("brief_1")));
+    renderCard(notification(briefDetails("brief_1")));
 
     expect(screen.queryByText(MESSAGE)).toBeNull();
     fireEvent.click(
@@ -206,7 +207,7 @@ describe("briefing notification", () => {
     );
     renderCard(
       notification(
-        briefMetadata("brief_2", {
+        briefDetails("brief_2", {
           edition: {
             image_url: "https://cdn.example/edition.png",
             fold: null,
@@ -228,7 +229,7 @@ describe("briefing notification", () => {
   });
 
   it("opens the brief from the card alone, without a second button to the same brief", () => {
-    renderCard(notification(briefMetadata("brief_1"), [OPEN_BRIEFING]));
+    renderCard(notification(briefDetails("brief_1"), [OPEN_BRIEFING]));
 
     expect(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -238,7 +239,7 @@ describe("briefing notification", () => {
 
   it("closes the opened brief from its close button", async () => {
     fetchBriefing.mockResolvedValue(storedBrief("brief_1", {}));
-    renderCard(notification(briefMetadata("brief_1")));
+    renderCard(notification(briefDetails("brief_1")));
 
     fireEvent.click(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -252,7 +253,7 @@ describe("briefing notification", () => {
   it("tells a screen reader the brief's day, what waits and its edition, not only its headline", () => {
     renderCard(
       notification(
-        briefMetadata("brief_1", {
+        briefDetails("brief_1", {
           needs_you_count: 4,
           edition_name: "Air Mail",
           stamp_city_name: "Bogotá",
@@ -274,7 +275,7 @@ describe("briefing notification", () => {
 
   it("says a deleted brief isn't available anymore", async () => {
     fetchBriefing.mockRejectedValue(new ApiError("Not found", 404));
-    renderCard(notification(briefMetadata("brief_gone")));
+    renderCard(notification(briefDetails("brief_gone")));
 
     fireEvent.click(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -289,7 +290,7 @@ describe("briefing notification", () => {
     fetchBriefing
       .mockRejectedValueOnce(new ApiError("Service unavailable", 503))
       .mockResolvedValue(storedBrief("brief_1", {}));
-    renderCard(notification(briefMetadata("brief_1")));
+    renderCard(notification(briefDetails("brief_1")));
 
     fireEvent.click(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -303,13 +304,13 @@ describe("briefing notification", () => {
   });
 
   it("keeps an action that goes somewhere other than the brief", () => {
-    renderCard(notification({}, [OPEN_BRIEFING]));
+    renderCard(notification(null, [OPEN_BRIEFING]));
 
     expect(screen.getByRole("button", { name: "Open briefing" })).toBeTruthy();
   });
 
   it("leaves any other notification's body as it was", () => {
-    renderCard(notification({}));
+    renderCard(notification(null));
 
     expect(screen.getByText(MESSAGE)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Open brief:/ })).toBeNull();

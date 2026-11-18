@@ -20,8 +20,10 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
+from app.constants.notifications import NotificationKind
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
+from app.models.notification.details_models import MemoryReadyNotification
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -340,7 +342,7 @@ class TestNotifyMemoryReady:
 
         (request,) = create.await_args.args
         assert request.user_id == USER_ID
-        assert request.metadata == {"source": "memory_backfill"}
+        assert request.details == MemoryReadyNotification(kind=NotificationKind.MEMORY_READY)
         (action,) = request.content.actions
         redirect = action.config.redirect
         assert redirect.url == "/settings/memory"

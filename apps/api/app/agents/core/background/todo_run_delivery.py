@@ -26,7 +26,7 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.briefing import BriefItemSource
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
-from app.constants.notifications import QUIET_HOURS_EXEMPT, ProactiveMessageClass
+from app.constants.notifications import QUIET_HOURS_EXEMPT, NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -44,6 +44,7 @@ from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -290,7 +291,7 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
                 content=NotificationContent(
                     title=todo.title, body="\n\n".join(split_message_bubbles(text))
                 ),
-                metadata={"todo_id": todo.id},
+                details=TodoNotification(kind=NotificationKind.TODO, todo_id=todo.id),
             )
         )
     except Exception as e:

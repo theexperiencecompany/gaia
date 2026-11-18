@@ -4,7 +4,6 @@
  * card shows it as the summary below.
  */
 import type { BriefCard } from "@shared/api/generated";
-import { z } from "zod";
 
 import type { NotificationView } from "@/types/features/notificationTypes";
 
@@ -46,28 +45,13 @@ export function foldedBrief(card: BriefCard): FoldedBriefSummary {
   };
 }
 
-/** The card a briefing notification's metadata carries; any other notification carries none. */
-const NotificationCardSchema = z.object({
-  briefing_id: z.string(),
-  date: z.string(),
-  kind: z.enum(["daily", "weekly"]),
-  headline: z.string(),
-  edition: z
-    .object({
-      image_url: z.string(),
-      fold: z.number().nullable(),
-      paper: z.array(z.number()).nullable(),
-    })
-    .nullable(),
-  edition_name: z.string().nullable(),
-  stamp_city_name: z.string().nullable(),
-  needs_you_count: z.number().int().nonnegative(),
-}) satisfies z.ZodType<BriefCard>;
-
 /** The brief card a briefing notification carries, or null for any other notification. */
 export function notificationBrief(
   notification: NotificationView,
 ): BriefCard | null {
-  const parsed = NotificationCardSchema.safeParse(notification.metadata?.card);
-  return parsed.success ? parsed.data : null;
+  const details = notification.details;
+  return details?.kind === "briefing_daily" ||
+    details?.kind === "briefing_weekly"
+    ? details.card
+    : null;
 }

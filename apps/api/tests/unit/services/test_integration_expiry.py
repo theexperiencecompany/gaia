@@ -12,11 +12,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from app.constants.integrations import IntegrationStatus
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
 )
+from app.models.notification.details_models import IntegrationExpiredNotification
 from app.models.notification.notification_models import ActionStyle, NotificationType
 from app.services.integrations.integration_expiry import (
     AccountExpired,
@@ -301,7 +302,11 @@ class TestTheAnnouncement:
         assert action.label == "Reconnect"
         assert action.style == ActionStyle.PRIMARY
         assert action.config.redirect.url == f"/integrations?connect={INTEGRATION_ID}&account=ca_1"
-        assert request.metadata == {"integration_id": INTEGRATION_ID, "paused_workflows": 1}
+        assert request.details == IntegrationExpiredNotification(
+            kind=NotificationKind.INTEGRATION_EXPIRED,
+            integration_id=INTEGRATION_ID,
+            paused_workflows=1,
+        )
         assert request.content.body == (
             f"{GENERIC_LEAD} Your “Digest” workflow is paused until you reconnect."
         )

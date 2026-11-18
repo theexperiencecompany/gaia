@@ -33,7 +33,7 @@ from app.agents.core.background.todo_run_delivery import (
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
@@ -60,6 +60,7 @@ from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.message_models import TodoRunWake
+from app.models.notification.details_models import TodoFailedNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -1065,7 +1066,11 @@ async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,
                 content=NotificationContent(title=f"Scheduled Task Failed: {doc.title}", body=body),
-                metadata={"todo_id": doc.id, "retry_count": MAX_RETRY_ATTEMPTS},
+                details=TodoFailedNotification(
+                    kind=NotificationKind.TODO_FAILED,
+                    todo_id=doc.id,
+                    retry_count=MAX_RETRY_ATTEMPTS,
+                ),
             )
         )
     except Exception as notify_exc:

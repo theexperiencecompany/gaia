@@ -21,7 +21,11 @@ from app.constants.briefing import (
     EditionFamily,
     hue_for_day,
 )
-from app.constants.notifications import NotificationChannel, NotificationKind
+from app.constants.notifications import (
+    BriefNotificationKind,
+    NotificationChannel,
+    NotificationKind,
+)
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_document_models import BriefDelivery, DeliveryStep
@@ -44,7 +48,7 @@ from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
-_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, NotificationKind] = {
+_SEEDED_NOTIFICATION_KINDS: dict[BriefingKind, BriefNotificationKind] = {
     BriefingKind.DAILY: NotificationKind.BRIEFING_DAILY,
     BriefingKind.WEEKLY: NotificationKind.BRIEFING_WEEKLY,
 }

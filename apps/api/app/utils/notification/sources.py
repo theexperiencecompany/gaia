@@ -1,6 +1,5 @@
-from datetime import UTC, datetime
-
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, NotificationKind
+from app.models.notification.details_models import ReminderNotification
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationAction,
@@ -40,8 +39,5 @@ class AIProactiveNotificationSource:
                 body=body,
                 actions=actions,
             ),
-            metadata={
-                "reminder_id": reminder_id,
-                "created_at": datetime.now(UTC).isoformat(),
-            },
+            details=ReminderNotification(kind=NotificationKind.REMINDER, reminder_id=reminder_id),
         )

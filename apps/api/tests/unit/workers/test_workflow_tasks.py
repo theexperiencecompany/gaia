@@ -16,10 +16,11 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import SilentRunResult
+from app.models.notification.details_models import WorkflowCompletedNotification
 from app.models.notification.notification_models import (
     ActionType,
     NotificationSourceEnum,
@@ -1378,10 +1379,9 @@ class TestWorkflowNotificationSenders:
         assert len(actions) == 1
         assert actions[0].type == ActionType.REDIRECT
         assert actions[0].config.redirect.url == "/c/conv_xyz"
-        assert notif_req.metadata == {
-            "workflow_id": "wf_1",
-            "conversation_id": "conv_xyz",
-        }
+        assert notif_req.details == WorkflowCompletedNotification(
+            kind=NotificationKind.WORKFLOW_COMPLETED, workflow_id="wf_1", conversation_id="conv_xyz"
+        )
 
     async def test_failure_notification_sent_with_workflow_failed_source(self):
         """send_workflow_failure_notification sends a WORKFLOW_FAILED notification."""

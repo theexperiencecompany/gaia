@@ -40,6 +40,8 @@ class BriefCard(BaseModel):
 class BriefEditionNotification(BaseModel):
     """What a daily brief's or weekly recap's notification carries, for the in-app card and the email."""
 
+    model_config = ConfigDict(extra="forbid")
+
     kind: Literal[NotificationKind.BRIEFING_DAILY, NotificationKind.BRIEFING_WEEKLY]
     brief_url: str = Field(description="The brief's heygaia.link.")
     card: BriefCard
@@ -47,6 +49,8 @@ class BriefEditionNotification(BaseModel):
 
 class BriefNoteNotification(BaseModel):
     """What a quiet note's notification carries: its kind alone, as it has no edition and no link."""
+
+    model_config = ConfigDict(extra="forbid")
 
     kind: Literal[NotificationKind.BRIEFING_NOTE]
 
