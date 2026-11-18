@@ -119,10 +119,12 @@ def export_catalog() -> dict[str, object]:
 
 
 def main() -> None:
-    """Write both generated artifacts."""
+    """Write both generated artifacts, rendering each first so a failure leaves neither rewritten."""
+    catalog = json.dumps(export_catalog(), indent=2) + "\n"
+    typescript = render_typescript()
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    CATALOG_JSON.write_text(json.dumps(export_catalog(), indent=2) + "\n", encoding="utf-8")
-    EVENTS_TS.write_text(render_typescript(), encoding="utf-8")
+    CATALOG_JSON.write_text(catalog, encoding="utf-8")
+    EVENTS_TS.write_text(typescript, encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from app.decorators.entitlements import (
     require_active_subscription,
 )
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.services.turn_timings import TurnStep, turn_step
 from shared.py.wide_events import log
 
 #: Body of the 503 an unanswerable plan read returns. Deliberately says nothing
@@ -99,7 +100,8 @@ class EntitlementMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         try:
-            await require_active_subscription(user_id, feature=gated_route(request))
+            with turn_step(TurnStep.ENTITLEMENT):
+                await require_active_subscription(user_id, feature=gated_route(request))
         except SubscriptionRequiredException as exc:
             return self._payment_required(exc)
         except Exception as e:

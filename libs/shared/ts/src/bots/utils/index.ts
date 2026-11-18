@@ -84,6 +84,7 @@ export {
   unfetchableMediaMessage,
   unsupportedMediaMessage,
 } from "./media";
+export { ReplyPlaceholder } from "./placeholder";
 export type { ReactionOutcome } from "./reaction-outcome";
 export { REACTION_OUTCOME } from "./reaction-outcome";
 export {

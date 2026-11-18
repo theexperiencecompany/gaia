@@ -9,7 +9,6 @@ from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
-import redis.asyncio as redis
 from redis.asyncio.client import Pipeline, PubSub
 from redis.asyncio.lock import Lock
 
@@ -19,6 +18,7 @@ from app.constants.cache import (
     ONE_YEAR_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.db.store_timing import TimedRedis
 from shared.py.wide_events import log
 
 # Re-export for backwards compatibility
@@ -251,7 +251,7 @@ def _new_client(redis_url: str) -> AsyncRedisCommands:
     traded for the async-accurate ones in AsyncRedisCommands; see that
     protocol for why they differ. from_url is lazy — this does not connect.
     """
-    return cast(AsyncRedisCommands, redis.from_url(redis_url, decode_responses=True))
+    return cast(AsyncRedisCommands, TimedRedis.from_url(redis_url, decode_responses=True))
 
 
 class RedisCache:

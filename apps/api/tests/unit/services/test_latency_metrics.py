@@ -1,8 +1,15 @@
 """Unit tests for turn latency histograms."""
 
 from prometheus_client import REGISTRY
+import pytest
 
-from app.services.latency_metrics import observe_trigger_gate_decision
+from app.services.latency_metrics import (
+    observe_context_section_budget_exceeded,
+    observe_fast_recall_semantic_missed,
+    observe_trigger_gate_decision,
+    observe_turn_overhead,
+)
+from app.services.turn_clock import TurnOverhead, TurnPath
 
 
 def test_histograms_registered_and_observe():
@@ -100,3 +107,41 @@ def test_a_trigger_gate_decision_is_counted_under_its_labels() -> None:
     observe_trigger_gate_decision(owner="workflow", outcome="run", reason="jev_timeout")
 
     assert REGISTRY.get_sample_value("trigger_gate_decision_total", labels) == before + 1
+
+
+def test_a_turns_overhead_is_observed_per_stage_with_total_the_sum_of_ours() -> None:
+    overhead = TurnOverhead(
+        ingress=0.01, prep=0.03, provider_ttft=1.5, egress=0.02, path=TurnPath.TOOL_LOOP
+    )
+
+    def sample(stage: str, suffix: str) -> float:
+        labels = {"source": "metrics-test", "stage": stage, "path": "tool_loop"}
+        return REGISTRY.get_sample_value(f"turn_overhead_seconds_{suffix}", labels) or 0.0
+
+    stages = ("ingress", "prep", "egress", "total")
+    before = {stage: (sample(stage, "count"), sample(stage, "sum")) for stage in stages}
+
+    observe_turn_overhead(overhead, source="metrics-test")
+
+    expected = {"ingress": 0.01, "prep": 0.03, "egress": 0.02, "total": 0.06}
+    for stage in stages:
+        count, total = before[stage]
+        assert sample(stage, "count") == count + 1
+        assert sample(stage, "sum") == pytest.approx(total + expected[stage])
+
+
+def test_a_section_past_its_budget_is_counted_under_its_section() -> None:
+    labels = {"section": "metrics_test_section"}
+    before = REGISTRY.get_sample_value("context_section_budget_exceeded_total", labels) or 0.0
+
+    observe_context_section_budget_exceeded(section="metrics_test_section")
+
+    assert REGISTRY.get_sample_value("context_section_budget_exceeded_total", labels) == before + 1
+
+
+def test_a_late_fast_lane_embedding_is_counted() -> None:
+    before = REGISTRY.get_sample_value("memory_fast_recall_semantic_missed_total") or 0.0
+
+    observe_fast_recall_semantic_missed()
+
+    assert REGISTRY.get_sample_value("memory_fast_recall_semantic_missed_total") == before + 1
