@@ -17,6 +17,7 @@ root="$(git rev-parse --show-toplevel)"
 state_dir="$root/.sim-stack"
 processes=(stub api worker web)
 boot_timeout_s=600
+probe_timeout_s=5
 
 ports_of() {
   case "$1" in
@@ -32,10 +33,16 @@ pid_of() {
   [ -f "$file" ] && cat "$file"
 }
 
+# A recorded pid is ours only while the process still began when we recorded it; after a
+# crash the OS may hand the same pid to an unrelated process, which `down` must not signal.
+started_at() {
+  ps -o lstart= -p "$1" 2>/dev/null
+}
+
 alive() {
   local pid
   pid="$(pid_of "$1")" || return 1
-  kill -0 "$pid" 2>/dev/null
+  kill -0 "$pid" 2>/dev/null && [ "$(started_at "$pid")" = "$(cat "$state_dir/$1.started")" ]
 }
 
 kill_tree() {
@@ -51,6 +58,7 @@ start() {
   shift
   ( cd "$root" && exec "$@" ) >"$state_dir/$name.log" 2>&1 &
   echo "$!" >"$state_dir/$name.pid"
+  started_at "$!" >"$state_dir/$name.started"
   # Recorded, so status reports the port this stack bound even from a shell without its env.
   ports_of "$name" >"$state_dir/$name.port"
 }
@@ -58,7 +66,6 @@ start() {
 fail_boot() {
   echo "ERROR: $1" >&2
   [ -n "${2:-}" ] && { echo "--- last 40 lines of $state_dir/$2.log ---" >&2; tail -n 40 "$state_dir/$2.log" >&2; }
-  stop_processes
   exit 1
 }
 
@@ -84,17 +91,22 @@ worker_registered() {
 }
 
 stop_processes() {
-  local name pid
+  local name
   for name in "${processes[@]}"; do
-    pid="$(pid_of "$name")" || continue
-    kill_tree "$pid" TERM
+    alive "$name" && kill_tree "$(pid_of "$name")" TERM
   done
   sleep 3
   for name in "${processes[@]}"; do
-    pid="$(pid_of "$name")" || continue
-    kill_tree "$pid" KILL
-    rm -f "$state_dir/$name.pid" "$state_dir/$name.port"
+    alive "$name" && kill_tree "$(pid_of "$name")" KILL
+    rm -f "$state_dir/$name.pid" "$state_dir/$name.port" "$state_dir/$name.started"
   done
+}
+
+# Armed for the whole of `up`: a failed boot, a failed seed or Ctrl-C leaves no orphans
+# that would make the next `up` refuse to start.
+stop_unless_booted() {
+  local status=$?
+  [ "$status" -eq 0 ] || stop_processes
 }
 
 cmd_up() {
@@ -135,6 +147,8 @@ cmd_up() {
   local api="http://localhost:$(ports_of api)"
 
   started=()
+  trap stop_unless_booted EXIT
+  trap 'exit 130' INT TERM
   start stub uv run tools/llm-stub/server.py && started+=(stub)
   start api nx run api:dev --output-style=stream && started+=(api)
   start worker nx run api:worker --output-style=stream && started+=(worker)
@@ -147,19 +161,20 @@ cmd_up() {
   } >"$state_dir/state"
 
   echo "sim stack starting (logs in $state_dir/):"
-  wait_for stub "curl -sf -o /dev/null http://localhost:$LLM_STUB_PORT/health"
+  wait_for stub "curl -sf --max-time $probe_timeout_s -o /dev/null http://localhost:$LLM_STUB_PORT/health"
   # /health/ready, not /health: it answers only once Mongo, Postgres, Redis, RabbitMQ and Chroma do.
-  wait_for api "curl -sf -o /dev/null $api/health/ready"
+  wait_for api "curl -sf --max-time $probe_timeout_s -o /dev/null $api/health/ready"
   if [ "${GAIA_WT_SLOT:-0}" -ne 0 ]; then
     wait_for worker worker_registered
   else
     echo "  worker started (main checkout: Redis is shared, so its health key cannot be told from another worker's)"
   fi
-  [ -n "$web" ] && wait_for web "curl -s -o /dev/null http://localhost:$(ports_of web)/"
+  [ -n "$web" ] && wait_for web "curl -sf --max-time $probe_timeout_s -o /dev/null http://localhost:$(ports_of web)/"
   if [ -n "$seed" ]; then
     SEED_TODOS=0 SEED_CONVERSATIONS=0 DEV_USER="$DEV_AUTH_BYPASS_EMAIL" mise run seed >/dev/null
     echo "  $DEV_AUTH_BYPASS_EMAIL minted with Pro"
   fi
+  trap - EXIT INT TERM
   cmd_status
 }
 

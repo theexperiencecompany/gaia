@@ -84,10 +84,10 @@ The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and
 ```bash
 mise seed                                   # dev@gaia.local with Pro, 5 todos + 2 conversations
 DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
-SEED_PRO=false mise seed                    # a free user, to see the paywall
+DEV_USER=free@gaia.local SEED_PRO=false mise seed   # a new free user, to see the paywall
 ```
 
-To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
+To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below) — that is how to act as the free user above. `SEED_PRO=false` never removes a subscription, so it must name a user that was never minted with Pro (not the default `dev@gaia.local`, which `mise dev --sim` already made Pro).
 
 ### The endpoints directly (`X-Dev-User` for multi-user)
 

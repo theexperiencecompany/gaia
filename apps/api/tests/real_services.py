@@ -28,20 +28,34 @@ def mark_real_services(items: Iterable[pytest.Item]) -> None:
         item.add_marker(REAL_SERVICES_MARK)
 
 
+def _seed_addresses(url: str, default_port: int) -> list[tuple[str, int]]:
+    """Return every host:port in the URL, a Mongo seed list (host-a:1,host-b:2) included."""
+    hosts = urlsplit(url).netloc.rpartition("@")[2].split(",")
+    addresses = []
+    for host in hosts:
+        parts = urlsplit(f"//{host}")
+        addresses.append((parts.hostname or "localhost", parts.port or default_port))
+    return addresses
+
+
 def unreachable_services(env: Mapping[str, str]) -> str | None:
-    """Return each service that refuses a TCP connect, as host:port (never credentials); None when all answer."""
+    """Return each service no seed host of which accepts a TCP connect, as host:port (never credentials); None when all answer."""
     problems: list[str] = []
     for service, var, default_port in _SERVICES:
         url = env.get(var, "")
         if not url:
             problems.append(f"{service} has no URL ({var} is unset)")
             continue
-        parts = urlsplit(url)
-        address = (parts.hostname or "localhost", parts.port or default_port)
-        try:
-            socket.create_connection(address, timeout=_PROBE_TIMEOUT_SECONDS).close()
-        except OSError as exc:
-            problems.append(f"{service} at {address[0]}:{address[1]} ({var}) is unreachable: {exc}")
+        tried: list[str] = []
+        for host, port in _seed_addresses(url, default_port):
+            try:
+                socket.create_connection((host, port), timeout=_PROBE_TIMEOUT_SECONDS).close()
+                break
+            except OSError as exc:
+                tried.append(f"{host}:{port}")
+                last_error = exc
+        else:
+            problems.append(f"{service} at {', '.join(tried)} ({var}) is unreachable: {last_error}")
     return "; ".join(problems) or None
 
 

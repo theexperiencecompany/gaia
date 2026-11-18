@@ -686,6 +686,19 @@ def test_a_brief_with_an_intent_section_runs_its_script_once() -> None:
     assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
 
 
+def test_a_request_containing_an_intent_header_is_still_stripped_when_restated() -> None:
+    script = (
+        '[[tool:create_reminder {"title": "stretch"}]]\n\nOutcome the user actually wants: stretch'
+    )
+    brief = _user(_executor_brief(script, script))
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+
+    assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "stretch"}
+    )
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text=DEFAULT_REPLY)
+
+
 def test_a_multi_paragraph_request_quote_is_skipped_whole() -> None:
     script = '[[tool:web_search {"q": "x"}]]\n\n[[tool:create_reminder {"title": "y"}]] [[say:ok]]'
     brief = _user(_executor_brief(script, script))

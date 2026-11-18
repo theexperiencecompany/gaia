@@ -106,6 +106,32 @@ def test_a_json_schema_response_format_gets_minimal_valid_json() -> None:
     assert json.loads(response.text) == NESTED_VALUE
 
 
+def test_a_const_field_gets_its_only_allowed_value() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"kind": {"type": "string", "const": "safe"}},
+        "required": ["kind"],
+    }
+    body = _body(tools=[_tool("Moderation", schema)], tool_choice="required", stream=False)
+
+    assert answer_request(body) == ToolCallResponse(name="Moderation", args={"kind": "safe"})
+
+
+def test_a_string_gets_enough_characters_for_its_min_length() -> None:
+    body = _body(
+        response_format={
+            "type": "json_schema",
+            "json_schema": {"name": "X", "schema": {"type": "string", "minLength": 3}},
+        },
+        stream=False,
+    )
+
+    response = answer_request(body)
+
+    assert isinstance(response, SayResponse)
+    assert len(json.loads(response.text)) == 3
+
+
 def test_a_call_with_no_tools_gets_neutral_text() -> None:
     """A title, summary or compaction call carries the user's message but binds no tools."""
     assert answer_request(_body(stream=True)) == SayResponse(DEFAULT_REPLY)

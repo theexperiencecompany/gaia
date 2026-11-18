@@ -208,7 +208,7 @@ description = "Give this worktree its own ports, Mongo database, Redis and Rabbi
 run = "uv run --no-project python scripts/dev/wt_env.py"
 
 [tasks.seed]
-description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS; SEED_PRO=false for a free user)"
+description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS; SEED_PRO=false with a new DEV_USER for a free user; it never removes Pro from an existing one)"
 run = '''
 set -eu
 : "${DEV_USER:=dev@gaia.local}"

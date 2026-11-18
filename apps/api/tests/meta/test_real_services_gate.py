@@ -38,9 +38,11 @@ def listening_port() -> Iterator[int]:
 
 
 @pytest.fixture
-def closed_port() -> int:
-    with socket.create_server(("127.0.0.1", 0)) as server:
-        return int(server.getsockname()[1])
+def closed_port() -> Iterator[int]:
+    # Bound but never listening: connects are refused, and nothing else can take the port meanwhile.
+    with socket.socket() as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        yield int(reserved.getsockname()[1])
 
 
 def _run(pytester: pytest.Pytester) -> pytest.RunResult:
@@ -66,6 +68,42 @@ def test_opted_in_with_mongo_unreachable_fails_naming_the_service(
     assert f"Mongo at 127.0.0.1:{closed_port} (MONGO_DB) is unreachable" in output
     assert "Redis at" not in output
     assert "secret" not in output
+
+
+def test_a_mongo_seed_list_is_reachable_when_any_host_answers(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    listening_port: int,
+    closed_port: int,
+) -> None:
+    monkeypatch.setenv("USE_REAL_SERVICES", "1")
+    monkeypatch.setenv(
+        "MONGO_DB",
+        f"mongodb://user:secret@127.0.0.1:{closed_port},127.0.0.1:{listening_port}/gaia_test?replicaSet=rs0",
+    )
+    monkeypatch.setenv("REDIS_URL", f"redis://127.0.0.1:{listening_port}/0")
+
+    _run(pytester).assert_outcomes(passed=3)
+
+
+def test_a_mongo_seed_list_with_no_answering_host_names_every_host(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    listening_port: int,
+    closed_port: int,
+) -> None:
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("USE_REAL_SERVICES", "1")
+    monkeypatch.setenv("MONGO_DB", f"mongodb://127.0.0.1:{closed_port},127.0.0.1:1/gaia_test")
+    monkeypatch.setenv("REDIS_URL", f"redis://127.0.0.1:{listening_port}/0")
+
+    result = _run(pytester)
+
+    result.assert_outcomes(passed=1, errors=2)
+    assert (
+        f"Mongo at 127.0.0.1:{closed_port}, 127.0.0.1:1 (MONGO_DB) is unreachable"
+        in result.stdout.str()
+    )
 
 
 def test_opted_in_with_both_services_up_runs_the_tier(

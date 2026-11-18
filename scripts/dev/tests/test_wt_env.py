@@ -15,6 +15,24 @@ from wt_env import ENV_FILE, RESERVED_PORTS, SLOT_COUNT, Allocation, allocate, p
 SCRIPT = Path(__file__).resolve().parents[1] / "wt_env.py"
 
 
+GIT_LOCATION_VARIABLES = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+
+
+@pytest.fixture(autouse=True)
+def _git_targets_the_temporary_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A hook or an agent runs these with GIT_DIR pointing at the invoking repo, which would
+    # make every `git` call here (and wt_env's own) act on that repo instead of tmp_path.
+    for variable in GIT_LOCATION_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+
+
 def _env(path: Path) -> dict[str, str]:
     lines = (path / ENV_FILE).read_text().splitlines()
     return dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))

@@ -73,6 +73,8 @@ def emptiest(schema: dict[str, Any], defs: dict[str, Any]) -> JsonValue:
     """Return the emptiest value schema accepts: null where allowed, else empty, zero, false or its first choice."""
     if "$ref" in schema:
         return emptiest(defs[schema["$ref"].rsplit("/", 1)[-1]], defs)
+    if "const" in schema:
+        return schema["const"]
     if "enum" in schema:
         return schema["enum"][0]
     if "default" in schema:
@@ -87,7 +89,7 @@ def emptiest(schema: dict[str, Any], defs: dict[str, Any]) -> JsonValue:
         return {key: emptiest(properties[key], defs) for key in schema.get("required") or []}
     empty: dict[str, JsonValue] = {
         "array": [],
-        "string": "",
+        "string": "x" * schema.get("minLength", 0),
         "integer": 0,
         "number": 0,
         "boolean": False,

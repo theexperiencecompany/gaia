@@ -116,28 +116,43 @@ def _strip_echoed_payloads(text: str) -> str:
 def _strip_restated_request(text: str) -> str:
     """Drop the brief's request quote when the task section is that same request.
 
-    Quote and task fill the span from the header to the first section the brief
-    appends after the task (the intent, else the definition of done; last_run and
-    playbook are tag blocks, gone before this runs), so the quote is restated only
-    when that span is one text twice.
+    Quote and task fill the span from the header to a section the brief appends after
+    the task (the intent, else the definition of done; last_run and playbook are tag
+    blocks, gone before this runs). The request may itself contain those section
+    heads, so each head after the header is tried as the span's end, nearest first.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
         return text
     span_at = header_at + len(VERBATIM_REQUEST_HEADER)
-    section_starts = [
-        found
-        for head in (INTENT_SECTION_HEAD, DONE_SECTION_HEAD)
-        if (found := text.find(_SECTION_BREAK + head, span_at)) >= 0
-    ]
-    span = text[span_at : min(section_starts, default=len(text))]
+    ends = sorted(
+        {
+            found
+            for head in (INTENT_SECTION_HEAD, DONE_SECTION_HEAD)
+            for found in _find_all(text, _SECTION_BREAK + head, span_at)
+        }
+    )
+    for end in [*ends, len(text)]:
+        cut = _restated_cut(text[span_at:end])
+        if cut is not None:
+            return text[:header_at] + text[span_at + cut :].lstrip()
+    return text
+
+
+def _find_all(text: str, needle: str, start: int) -> list[int]:
+    found = text.find(needle, start)
+    return [] if found < 0 else [found, *_find_all(text, needle, found + 1)]
+
+
+def _restated_cut(span: str) -> int | None:
+    """Return where the task starts when the span is one text twice, else None."""
     cut = span.find(_SECTION_BREAK)
     while cut >= 0:
         quote, task = span[:cut].strip(), span[cut:].strip()
         if quote and quote == task:
-            return text[:header_at] + text[span_at + cut :].lstrip()
+            return cut
         cut = span.find(_SECTION_BREAK, cut + len(_SECTION_BREAK))
-    return text
+    return None
 
 
 def _is_interjection(text: str) -> bool:

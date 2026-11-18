@@ -29,16 +29,17 @@ docker compose -p "gaia-wt$((slot * 10))" -f docker-compose.worktree.yml up -d -
 credentials="${RABBITMQ_URL#amqp://}"
 credentials="${credentials%%@*}"
 management="http://localhost:${RABBITMQ_MGMT_PORT:-15672}/api"
+request_timeout_s=10
 deadline=$(( $(date +%s) + 90 ))
-until curl -sf -o /dev/null -u "$credentials" "$management/overview"; do
+until curl -sf --max-time "$request_timeout_s" -o /dev/null -u "$credentials" "$management/overview"; do
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "ERROR: RabbitMQ's management API at $management did not answer within 90s." >&2
     exit 1
   fi
   sleep 2
 done
-curl -sfS -o /dev/null -u "$credentials" -X PUT "$management/vhosts/$RABBITMQ_VHOST"
+curl -sfS --max-time "$request_timeout_s" -o /dev/null -u "$credentials" -X PUT "$management/vhosts/$RABBITMQ_VHOST"
 user="${credentials%%:*}"
-curl -sfS -o /dev/null -u "$credentials" -X PUT -H 'content-type: application/json' \
+curl -sfS --max-time "$request_timeout_s" -o /dev/null -u "$credentials" -X PUT -H 'content-type: application/json' \
   -d '{"configure":".*","write":".*","read":".*"}' "$management/permissions/$RABBITMQ_VHOST/$user"
 echo "worktree infra: Redis on :$WT_REDIS_PORT, RabbitMQ vhost $RABBITMQ_VHOST, Mongo database ${MONGO_DB_NAME:-GAIA}"
