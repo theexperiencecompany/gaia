@@ -368,10 +368,16 @@ const extractTodoProgress = (payload: JsonObject): ChatStreamEvent[] =>
       ]
     : [];
 
-const extractArtifactDelta = (payload: JsonObject): ChatStreamEvent[] => {
-  const parsed = ArtifactDeltaSchema.safeParse(payload.artifact_delta);
-  return parsed.success ? [{ type: "artifact_delta", frame: parsed.data }] : [];
-};
+// A frame this client cannot read (an unknown kind) throws, as its artifact_done entry does.
+const extractArtifactDelta = (payload: JsonObject): ChatStreamEvent[] =>
+  payload.artifact_delta === undefined
+    ? []
+    : [
+        {
+          type: "artifact_delta",
+          frame: ArtifactDeltaSchema.parse(payload.artifact_delta),
+        },
+      ];
 
 const extractConversation = (payload: JsonObject): ChatStreamEvent[] => {
   const hasConversationInitData =
