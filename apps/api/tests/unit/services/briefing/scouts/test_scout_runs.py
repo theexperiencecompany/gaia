@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 from langchain_core.tools import BaseTool, tool
@@ -350,6 +350,21 @@ class TestRefreshedAheadOfTheBrief:
         assert scouts.watch.await_count == 1
         assert [r.outcome for r in again.results] == [ScoutOutcome.REPLAYED]
 
+    async def test_the_refreshed_signals_meet_their_memory_when_the_brief_takes_them(
+        self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        scouts.stored["linear"] = _scout(LINEAR)
+        remembered = [MagicMock(name="remembered")]
+        remember = AsyncMock(return_value=remembered)
+        monkeypatch.setattr(service, "remember", remember)
+        await service.refresh_scouts(USER)
+
+        signals = await service.scout_signals(USER, _NOW)
+
+        [(user_id, sent, now)] = [call.args for call in remember.await_args_list]
+        assert (user_id, [s.external_id for s in sent], now) == (USER_ID, ["replayed-1"], _NOW)
+        assert signals.remembered is remembered
+
     async def test_with_nothing_refreshed_the_brief_runs_its_scouts_itself(
         self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -371,7 +386,12 @@ class TestRefreshedAheadOfTheBrief:
         with pytest.raises(AppError) as raised:
             await service.refresh_scouts(USER)
 
-        assert raised.value.message == "refreshed scout results cannot be kept or taken"
+        error = raised.value
+        assert (error.message, error.why, error.fix) == (
+            "refreshed scout results cannot be kept or taken",
+            "Redis is unavailable, so a brief cannot take the results refreshed ahead of it",
+            "restore Redis; the brief runs its scouts itself meanwhile",
+        )
 
     async def test_refreshed_results_expire_when_no_brief_takes_them(
         self, scouts: Scouts, fake_redis: fakeredis.aioredis.FakeRedis
@@ -818,9 +838,18 @@ class TestScoutsRunTogether:
 
         scouts.watch.side_effect = watch
 
-        first, slow, waiting = await service.run_scouts(USER)
+        async with captured_wide_event() as event:
+            first, slow, waiting = await service.run_scouts(USER)
 
         assert first.outcome is ScoutOutcome.REPLAYED
+        assert event["warnings"] == [
+            {
+                "msg": "briefing.scout_out_of_time",
+                "integration_id": "app-1",
+                "error_type": "TimeoutError",
+                "error": "",
+            }
+        ]
         assert (slow.skip_reason, waiting.skip_reason) == (
             ScoutSkipReason.OUT_OF_TIME,
             ScoutSkipReason.OUT_OF_TIME,
@@ -911,6 +940,18 @@ class TestOneScoutFailing:
         )
         assert github.error == "TimeoutError: "
         assert (linear.outcome, _ids(linear)) == (ScoutOutcome.REPLAYED, ["replayed-1"])
+
+    async def test_a_watching_scout_without_its_calls_is_a_failed_turn_not_a_failed_brief(
+        self, scouts: Scouts
+    ) -> None:
+        scouts.stored["linear"] = _scout(LINEAR).model_copy(update={"playbook": None})
+
+        [linear] = await service.run_scouts(USER)
+
+        assert (linear.skip_reason, linear.error) == (
+            ScoutSkipReason.FAILED,
+            "ValueError: only a watching scout replays, and it always holds its playbook",
+        )
 
 
 class TestWhatEachScoutIsHanded:

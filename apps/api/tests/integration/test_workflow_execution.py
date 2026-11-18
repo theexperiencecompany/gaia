@@ -861,8 +861,9 @@ class TestQueueService:
         assert result is True
         args, kwargs = mock_pool.enqueue_job.call_args
         assert args == ("execute_workflow_by_id", FAKE_WORKFLOW_ID, {"source": "api"})
-        # A deterministic _job_id dedupes accidental duplicate enqueues.
-        assert kwargs["_job_id"].startswith("execute_workflow_by_id:")
+        # A deterministic _job_id dedupes accidental duplicate enqueues: the task and 32 hex digits.
+        prefix, digest = kwargs["_job_id"].split(":")
+        assert (prefix, len(digest)) == ("execute_workflow_by_id", 32)
 
     async def test_queue_workflow_execution_deduped_enqueue_returns_true(self):
         """A None from enqueue_job means the same _job_id is already queued — deduped, which is success, not failure."""

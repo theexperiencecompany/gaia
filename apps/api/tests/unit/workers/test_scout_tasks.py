@@ -78,13 +78,19 @@ def refresh(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 async def test_a_brief_still_armed_for_its_fire_has_its_scouts_refreshed(
     monkeypatch: pytest.MonkeyPatch, refresh: AsyncMock
 ) -> None:
-    monkeypatch.setattr(workflow_repository, "get", AsyncMock(return_value=_brief()))
+    workflow = AsyncMock(return_value=_brief())
+    user = AsyncMock(return_value=USER)
+    monkeypatch.setattr(workflow_repository, "get", workflow)
+    monkeypatch.setattr(user_repository, "get", user)
 
     async with captured_wide_event() as event:
         said = await refresh_scouts_task({}, "wf_1", occurrence_stamp(_FIRE))
 
     assert said == "refresh_scouts wf_1: kept"
+    workflow.assert_awaited_once_with("wf_1")
+    user.assert_awaited_once_with(USER_ID)
     refresh.assert_awaited_once_with(USER)
+    assert (event["workflow_id"], event["user_id"]) == ("wf_1", USER_ID)
     assert event["scouts"] == {"refresh": "kept"}
 
 

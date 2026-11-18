@@ -10,6 +10,7 @@ import signal
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+from arq.connections import RedisSettings
 from arq.worker import Worker
 import pytest
 
@@ -55,6 +56,30 @@ async def test_each_brief_queue_is_served_by_its_own_worker_at_its_own_concurren
     assert worker.health_check_key == queue_workers.queue_worker_health_key(queue)
     assert worker.keep_result_s == 0
     assert worker.allow_abort_jobs is True
+
+
+async def test_a_queue_worker_shares_the_main_workers_redis_and_health_cadence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured away from arq's defaults, so a worker that fell back to them would show it."""
+    monkeypatch.setattr(
+        WorkerSettings, "redis_settings", RedisSettings(host="redis.worker", port=6390)
+    )
+    monkeypatch.setattr(WorkerSettings, "health_check_interval", 7)
+
+    worker = build_brief_worker()
+
+    assert worker.redis_settings == RedisSettings(host="redis.worker", port=6390)
+    assert worker.health_check_interval == 7
+
+
+async def test_building_a_queue_worker_leaves_the_processs_signals_to_the_main_worker() -> None:
+    """Two workers both handling SIGTERM would each run their own shutdown; only the main one may."""
+    before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
+
+    build_scout_worker()
+
+    assert (signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)) == before
 
 
 async def test_the_main_worker_still_runs_a_workflow_fire_armed_before_its_queue_moved() -> None:

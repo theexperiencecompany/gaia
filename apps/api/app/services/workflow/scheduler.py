@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from arq import ArqRedis
 from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
@@ -70,16 +71,16 @@ class WorkflowScheduler(BaseSchedulerService):
         behaviour = behaviour_of(workflow.system_workflow_key if workflow else None)
         if not await self._enqueue_on(task_id, scheduled_at, behaviour.queue):
             return False
-        if behaviour.run_ahead is not None:
-            await self._enqueue_run_ahead(task_id, scheduled_at, behaviour.run_ahead)
+        # The fire just went out on this pool, so it is set whenever there is work ahead.
+        if behaviour.run_ahead is not None and self.arq_pool is not None:
+            await self._enqueue_run_ahead(self.arq_pool, task_id, scheduled_at, behaviour.run_ahead)
         return True
 
+    @staticmethod
     async def _enqueue_run_ahead(
-        self, task_id: str, scheduled_at: datetime, ahead: RunAhead
+        pool: ArqRedis, task_id: str, scheduled_at: datetime, ahead: RunAhead
     ) -> None:
         """Enqueue ahead.task to run ahead.lead before the fire; a fire closer than that starts none."""
-        if self.arq_pool is None:
-            raise RuntimeError("the workflow scheduler's ARQ pool is not initialized")
         # A naive armed time is UTC, as the fire's own enqueue reads it.
         armed_for = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=UTC)
         start = armed_for - ahead.lead
@@ -88,7 +89,7 @@ class WorkflowScheduler(BaseSchedulerService):
             return
         stamp = occurrence_stamp(armed_for)
         job = await enqueue_worker_job(
-            self.arq_pool,
+            pool,
             ahead.task,
             task_id,
             stamp,

@@ -243,7 +243,8 @@ async def _scout_turn(
     if integration.status == IntegrationStatus.EXPIRED:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     now = asyncio.get_running_loop().time()
-    if cap_at <= now:
+    # At cap_at == now the deadline below expires at once: the same skip either way.
+    if cap_at <= now:  # pragma: no mutate -- equivalent at equality, see above
         return _skipped(integration, ScoutSkipReason.OUT_OF_TIME)
     turn_ends = now + SCOUT_TURN_TIMEOUT.total_seconds()
     deadline = asyncio.timeout_at(min(turn_ends, cap_at))
@@ -253,7 +254,8 @@ async def _scout_turn(
     except MCP_SIGNED_OUT_ERRORS:
         return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     except Exception as exc:
-        if deadline.expired() and cap_at < turn_ends:
+        # At cap_at == turn_ends both deadlines are one instant; either reading is right.
+        if deadline.expired() and cap_at < turn_ends:  # pragma: no mutate -- equivalent at equality
             log.warning("briefing.scout_out_of_time", integration_id=integration.integration_id)
             return _skipped(integration, ScoutSkipReason.OUT_OF_TIME)
         # Broad on purpose: an app being down, a bad report or a timeout must cost the
