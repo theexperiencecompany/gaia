@@ -6,6 +6,7 @@ would hand the agent.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -51,7 +52,6 @@ class TestStatedGoals:
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         recall = AsyncMock(return_value=_recalled())
         monkeypatch.setattr(goals_module, "memory_engine", SimpleNamespace(recall=recall))
-        monkeypatch.setattr(goals_module, "entry_to_note", lambda entry: entry.content)
         return recall
 
     @pytest.mark.parametrize("focus", ["", "  ", "nothing", "N/A", "idk"])
@@ -124,6 +124,20 @@ class TestStatedGoals:
         goals = await stated_goals(USER_ID, UserDocument())
 
         assert format_goal_block(goals) == "- Hiring a designer"
+
+    async def test_a_goal_carries_the_day_it_was_mentioned_as_the_brief_writes_a_day(
+        self, recall: AsyncMock
+    ) -> None:
+        """Regression: an ISO mention date let the voice write "June 17", which no fact held."""
+        recall.return_value = _recalled(
+            _memory("300 users for GAIA").model_copy(
+                update={"mentioned_at": datetime(2026, 6, 17, 9, tzinfo=UTC)}
+            )
+        )
+
+        goals = await stated_goals(USER_ID, UserDocument())
+
+        assert format_goal_block(goals) == "- 300 users for GAIA [mentioned Wed Jun 17, 2026]"
 
     async def test_a_recall_failure_fails_the_run(self, recall: AsyncMock) -> None:
         """Goal knowledge gates the brief; a broken memory store must not read as no goal."""

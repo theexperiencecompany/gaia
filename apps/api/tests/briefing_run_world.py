@@ -563,10 +563,11 @@ YESTERDAY = stored_brief(
 )
 
 
-def _memory_fact(goal: StatedGoal) -> MemoryEntry:
+def _memory_fact(goal: StatedGoal, mentioned_at: datetime | None) -> MemoryEntry:
     return MemoryEntry(
         content=goal.statement,
         kind=MemoryKind.FACT,
+        mentioned_at=mentioned_at,
         entities=[
             MemoryEntityRef(id=f"entity-{t}", name=t, entity_type=MemoryEntityType.PROJECT)
             for t in goal.terms
@@ -617,6 +618,8 @@ class World:
     )
     #: What memory recalls of the user's goals: their facts, each one a goal.
     memory_goals: list[StatedGoal] = field(default_factory=list)
+    #: When the user mentioned the goals memory recalls; None when memory kept no date.
+    goals_mentioned_at: datetime | None = None
     chat: ChatChannel | None = CHAT
     scouts: list[ScoutResult] = field(default_factory=list)
     #: The composition model, answering from the pool; by default it groups every item by state.
@@ -936,7 +939,11 @@ def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Fake what the run reaches beyond the process: the model, memory, apps, delivery and analytics."""
 
     async def recall(user_id: str, _query: str, *, limit: int) -> MemorySearchResult:
-        facts = [_memory_fact(g) for g in w.memory_goals][:limit] if user_id == USER else []
+        facts = (
+            [_memory_fact(g, w.goals_mentioned_at) for g in w.memory_goals][:limit]
+            if user_id == USER
+            else []
+        )
         return MemorySearchResult(memories=facts, has_confident_match=bool(facts))
 
     async def chat_target(user_id: str) -> ChatChannel | InApp:

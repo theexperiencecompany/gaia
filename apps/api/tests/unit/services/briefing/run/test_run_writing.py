@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
@@ -271,6 +272,21 @@ class TestTheVoice:
         await run_brief(USER, kind)
 
         assert world.stored().lede == "Still aiming for 300 users?"
+        assert world.voice.await_count == 1
+
+    @pytest.mark.parametrize("kind", [BriefingKind.DAILY, BriefingKind.WEEKLY])
+    async def test_the_day_a_goal_was_mentioned_may_be_quoted(
+        self, world: World, kind: BriefingKind
+    ) -> None:
+        """Replay of Nov 8: "you mentioned on June 17" was refused, the 17 in no fact's words."""
+        world.goals = [StatedGoal("Their growth goal for GAIA is 300 users.", GoalOrigin.MEMORY)]
+        world.goals_mentioned_at = datetime(2026, 6, 17, 9, tzinfo=UTC)
+        reply = weekly_reply() if kind is BriefingKind.WEEKLY else VOICE
+        world.replies = [{**reply, "lede": "You mentioned 300 users on Jun 17; still the plan?"}]
+
+        await run_brief(USER, kind)
+
+        assert world.stored().lede == "You mentioned 300 users on Jun 17; still the plan?"
         assert world.voice.await_count == 1
 
 
