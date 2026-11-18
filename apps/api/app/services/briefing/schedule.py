@@ -18,8 +18,8 @@ from app.constants.briefing import (
 )
 from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
-from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
 from app.models.brief_settings_models import (
@@ -28,13 +28,19 @@ from app.models.brief_settings_models import (
     BriefingSchedule,
     BriefingScheduleState,
 )
+from app.models.briefing_state_models import BriefingStateUpdate
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.held import brief_will_carry, release_held_items
-from app.services.briefing.run_times import briefing_cron, inbox_desk_recurrence, user_brief_slots
+from app.services.briefing.run_times import (
+    BriefSlot,
+    brief_slots,
+    briefing_cron,
+    inbox_desk_recurrence,
+)
 from app.services.todos.inbox_desk import follow_the_brief
 from app.services.user_service import require_user
 from app.services.workflow.service import WorkflowService
@@ -71,32 +77,32 @@ class BriefDeliveryWorkflowsError(AppError):
         )
 
 
-async def briefs_paused_for_plan(user: UserDocument) -> bool:
+async def briefs_paused_for_plan(user_id: str, schedule: BriefingSchedule) -> bool:
     """Whether the user's schedule has briefs that do not run because they are not on Pro."""
-    return user.briefing_schedule.frequency is not BriefingFrequency.OFF and not await is_paid(
-        user.id
-    )
+    return schedule.frequency is not BriefingFrequency.OFF and not await is_paid(user_id)
 
 
-async def briefing_schedule_state(user: UserDocument) -> BriefingScheduleState:
+async def briefing_schedule_state(user_id: str) -> BriefingScheduleState:
     """Return the user's schedule as it runs: paused while they are not on Pro, and the next daily."""
-    paused = await briefs_paused_for_plan(user)
-    daily = user_brief_slots(user).get(DAILY_BRIEFING_WORKFLOW_KEY)
+    user = await require_user(user_id)
+    schedule = (await briefing_state_repository.state_for(user_id)).schedule
+    paused = await briefs_paused_for_plan(user_id, schedule)
+    daily = brief_slots(schedule, user.effective_quiet_hours).get(DAILY_BRIEFING_WORKFLOW_KEY)
     return BriefingScheduleState(
-        **user.briefing_schedule.model_dump(),
+        **schedule.model_dump(),
         paused_for_plan=paused,
-        next_daily_brief_at=None if paused else await _next_daily_brief_at(user),
+        next_daily_brief_at=None if paused else await _next_daily_brief_at(user_id, daily),
         has_daily_brief=daily is not None,
         daily_brief_hour=daily.hour if daily is not None else None,
     )
 
 
-async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
-    """Return when the daily brief's workflow next runs, or None when this schedule runs none."""
-    if DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[user.briefing_schedule.frequency]:
+async def _next_daily_brief_at(user_id: str, slot: BriefSlot | None) -> datetime | None:
+    """Return when the daily brief's workflow next runs, or None when the schedule runs none."""
+    if slot is None:
         return None
     workflows = await workflow_repository.find_system_workflows(
-        user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
+        user_id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
     daily = next(
         (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
@@ -143,9 +149,10 @@ async def _apply_frequency(workflow: Workflow, user: UserDocument, enabled: bool
 
 
 async def resync_briefing_schedules(user: UserDocument) -> None:
-    """Fit the user's briefing workflows to the frequency, hour and timezone their profile gives."""
+    """Fit the user's briefing workflows to their stored schedule, quiet hours and timezone."""
     timezone = Timezone.parse(user.timezone).value
-    enabled_keys = BRIEF_RUN_DAYS[user.briefing_schedule.frequency]
+    schedule = (await briefing_state_repository.state_for(user.id)).schedule
+    enabled_keys = BRIEF_RUN_DAYS[schedule.frequency]
     workflows = await workflow_repository.find_system_workflows(
         user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
@@ -154,14 +161,13 @@ async def resync_briefing_schedules(user: UserDocument) -> None:
         workflow = by_key.get(key)
         if workflow is None:
             continue
-        await _move(workflow, user, key, kind, timezone)
+        await _move(workflow, user, briefing_cron(key, user, schedule), kind, timezone)
         await _apply_frequency(workflow, user, key in enabled_keys)
 
 
 async def _move(
-    workflow: Workflow, user: UserDocument, key: str, kind: BriefingKind, timezone: str
+    workflow: Workflow, user: UserDocument, cron: str, kind: BriefingKind, timezone: str
 ) -> None:
-    cron = briefing_cron(key, user)
     current = workflow.trigger_config
     if current.cron_expression == cron and current.timezone == timezone:
         return
@@ -174,7 +180,13 @@ async def _move(
     )
     if updated is None:
         raise LookupError(f"Briefing workflow {workflow.id} vanished while it was moved")
-    log.info("briefing.schedule_moved", user_id=user.id, key=key, cron=cron, timezone=timezone)
+    log.info(
+        "briefing.schedule_moved",
+        user_id=user.id,
+        key=workflow.system_workflow_key,
+        cron=cron,
+        timezone=timezone,
+    )
 
 
 #: Where a brief-delivery workflow goes, per schedule with no daily brief, when none was chosen:
@@ -233,26 +245,27 @@ async def set_briefing_schedule(
     hour: int | None = None,
     workflow_deliveries: Mapping[str, BriefFreeDelivery] | None = None,
     brief_workflows_to: BriefFreeDelivery | None = None,
-) -> UserDocument:
+) -> BriefingSchedule:
     """Store the user's briefing frequency, and hour unless None keeps theirs, and move the briefs onto it.
 
     A schedule with no daily brief first moves each brief-delivery workflow off the brief:
     to its delivery in workflow_deliveries, else brief_workflows_to, else (weekly-only) Tell
     me now, raising BriefDeliveryWorkflowsError while any has none. It releases what was held.
     """
-    before = await require_user(user_id)
-    schedule = BriefingSchedule(
-        frequency=frequency, hour=before.briefing_schedule.hour if hour is None else hour
-    )
+    user = await require_user(user_id)
+    before = (await briefing_state_repository.state_for(user_id)).schedule
+    schedule = BriefingSchedule(frequency=frequency, hour=before.hour if hour is None else hour)
     if schedule.frequency in _UNCHOSEN_DELIVERY:
         moves = _BriefWorkflowMoves(chosen=workflow_deliveries or {}, rest=brief_workflows_to)
         await _move_off_the_brief(user_id, schedule.frequency, moves, via)
-    await user_repository.set_briefing_schedule(user_id, schedule)
-    user = await user_repository.get(user_id)
-    if user is None:
-        raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
+    await briefing_state_repository.upsert(user_id, BriefingStateUpdate(schedule=schedule))
     await resync_briefing_schedules(user)
-    await follow_the_brief(user_id, inbox_desk_recurrence(before), inbox_desk_recurrence(user))
+    quiet_hours = user.effective_quiet_hours
+    await follow_the_brief(
+        user_id,
+        inbox_desk_recurrence(before, quiet_hours),
+        inbox_desk_recurrence(schedule, quiet_hours),
+    )
     if not await brief_will_carry(user_id):
         await release_held_items(user_id)
     log.audit(
@@ -266,4 +279,4 @@ async def set_briefing_schedule(
         UserId(user_id),
         SettingsBriefingScheduleUpdated(frequency=schedule.frequency, hour=schedule.hour, via=via),
     )
-    return user
+    return schedule

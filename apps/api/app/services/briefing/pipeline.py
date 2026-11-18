@@ -17,11 +17,13 @@ from app.constants.briefing import (
     BriefingRunOutcome,
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_document_models import BriefingModel
 from app.models.brief_payload_models import BriefingTallies
 from app.models.brief_pool_models import DataSeries, SeriesShape
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead, read_calendar
@@ -93,6 +95,7 @@ class Run:
     """One run's settled inputs: who, on whose clock, which kind, where the reader stands, what it read."""
 
     user: UserDocument
+    state: BriefingStateDocument
     clock: UserClock
     spec: BriefKindSpec
     standing: Standing
@@ -115,13 +118,14 @@ async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
         return BriefingRunOutcome.ALREADY_DELIVERED
     if await finish_started_delivery(user, clock, spec.kind):
         return BriefingRunOutcome.SENT
-    stood = await spec.stand(user, clock)
+    state = await briefing_state_repository.state_for(user_id)
+    stood = await spec.stand(user, state, clock)
     if isinstance(stood, BriefingRunOutcome):
         return stood
     reads = await _read(user, clock, spec, stood)
     # The pool reads only the standing's goals and look-back, which climbing never changes.
-    pool = await _pool(Run(user, clock, spec, stood, reads))
-    run = Run(user, clock, spec, await stood.climbed(reads.gathered, pool), reads)
+    pool = await _pool(Run(user, state, clock, spec, stood, reads))
+    run = Run(user, state, clock, spec, await stood.climbed(reads.gathered, pool), reads)
     if run.standing.quiet_before_composing(pool):
         return await _quiet(run, pool)
     composed = await compose_brief(user_id, pool, spec)
@@ -283,7 +287,7 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
     async with asyncio.timeout(spec.voice_timeout_seconds):
         voice, draft = await written_brief(user.id, voicing.prompt, voicing.writing)
     links = await links_in(user.id, voice.message, facts)
-    edition = draw_edition(user, laid.blocks, spec.fixed_family)
+    edition = draw_edition(run.state, laid.blocks, spec.fixed_family)
     completed = reads.reads.completed.since(standing.since)
     payload = edition_payload(
         PayloadParts(

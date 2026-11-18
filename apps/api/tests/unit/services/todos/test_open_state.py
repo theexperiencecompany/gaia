@@ -13,6 +13,7 @@ from app.constants.todos import (
     WaitingOn,
     WakeReason,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.todos.errors import OpenStateError
@@ -227,7 +228,7 @@ class TestChangingWhatATodoWaitsFor:
         assert with_waiting_normalized(existing, update).model_fields_set == {"question"}
 
     def test_an_update_touching_neither_is_returned_untouched(self):
-        update = TodoUpdate(priority=None, notify_on_run=False)
+        update = TodoUpdate(priority=None, delivery=WorkflowDelivery.SILENT)
 
         assert with_waiting_normalized(_todo(), update) is update
 
@@ -245,7 +246,7 @@ class TestChangingWhatATodoWaitsFor:
             (TodoUpdate(recurrence=None), True),
             (TodoUpdate(waiting_on=WaitingOn.TIME), True),
             (TodoUpdate(question="q"), True),
-            (TodoUpdate(notify_on_run=False), False),
+            (TodoUpdate(delivery=WorkflowDelivery.SILENT), False),
             (TodoUpdate(labels=["gaia-tracked"]), False),
             (TodoUpdate(expires_at=NOW), False),
         ],

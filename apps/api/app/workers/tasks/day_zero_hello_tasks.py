@@ -16,12 +16,13 @@ from app.constants.briefing import SilentTurnSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.platform_links import DAY_ZERO_HELLO_TASK
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.goals import format_goal_block, stated_goals
-from app.services.briefing.run_times import next_brief_lands
+from app.services.briefing.run_times import brief_slots, next_brief_lands
 from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import channel_for
 from app.services.outbound_delivery import OutboundResult
@@ -74,7 +75,8 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="unknown_user")
             return f"skip {user_id}: unknown user"
 
-        if user.day_zero_hello is not None:
+        state = await briefing_state_repository.state_for(user_id)
+        if state.day_zero_hello is not None:
             log.set(skipped="already_sent")
             return f"skip {user_id}: day-zero hello already sent"
 
@@ -98,7 +100,10 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             first_name=display_first_name(user) or "there",
             goal_block=format_goal_block(goals),
             has_goal=has_goal,
-            first_brief=next_brief_lands(user, resolve_clock(user.timezone).now_local),
+            first_brief=next_brief_lands(
+                brief_slots(state.schedule, user.effective_quiet_hours),
+                resolve_clock(user.timezone).now_local,
+            ),
         )
         auth_user = build_user_context(user, auth_provider=None)
         reply = await run_silent_turn(
@@ -126,7 +131,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="publish_skipped")
             return f"skip {user_id}: publish skipped ({platform})"
 
-        await user_repository.mark_day_zero_hello_sent(user_id, platform)
+        await briefing_state_repository.mark_day_zero_hello_sent(user_id, platform)
         capture(UserId(user_id), BriefingDayZeroHelloSent(platform=platform, has_goal=has_goal))
         log.set(bubbles=len(bubbles), has_goal=has_goal)
         return f"sent day-zero hello to {user_id} on {platform}"

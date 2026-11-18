@@ -3,8 +3,9 @@
 from collections.abc import Mapping
 
 from app.constants.briefing import EditionChoice
-from app.db.repositories.users import user_repository
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.brief_settings_models import BriefingEdition, BriefingEditions
+from app.models.briefing_state_models import BriefingStateUpdate
 from app.services.analytics_service import capture
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names
@@ -47,7 +48,9 @@ async def set_edition_choices(
             fix="Choose from the editions GET /briefings/editions lists",
             status_code=422,
         )
-    stored = {family: choice for family, choice in choices.items() if choice != EditionChoice.ON}
+    stored: dict[str, EditionChoice] = {
+        family: choice for family, choice in choices.items() if choice != EditionChoice.ON
+    }
     if all(stored.get(family) == EditionChoice.OFF for family in DAILY_FAMILY_WEIGHTS):
         raise create_error(
             message="Keep at least one edition on",
@@ -55,7 +58,7 @@ async def set_edition_choices(
             fix="Turn one edition back on",
             status_code=422,
         )
-    await user_repository.set_briefing_editions(user_id, stored)
+    await briefing_state_repository.upsert(user_id, BriefingStateUpdate(editions=stored))
     off = sum(1 for choice in stored.values() if choice == EditionChoice.OFF)
     favourites = len(stored) - off
     log.audit("briefing editions updated", actor=user_id, off=off, favourites=favourites)

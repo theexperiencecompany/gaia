@@ -749,6 +749,7 @@ module = [
   "app.models.brief_item_models",
   "app.models.brief_payload_models",
   "app.models.brief_settings_models",
+  "app.models.briefing_state_models",
   "app.models.brief_view_models",
   "app.models.platform_models",
   "app.models.short_link_models",

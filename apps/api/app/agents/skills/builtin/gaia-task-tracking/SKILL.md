@@ -255,7 +255,7 @@ ALWAYS evaluated in the user's stored timezone. Pass cron in user-local wall-clo
 - So end with a factual report (what you did, what changed, what needs them),
   and do NOT call `send_notification` to announce it — that sends it twice.
 - Every run's outcome, sent or not, is recorded in activity.md for you.
-- `notify_on_run` (default `True`, `False` for a sub-todo, settable on create/update) turns delivery off
+- `delivery` (default `now`, `silent` for a sub-todo, settable on create/update) set to `silent` turns delivery off
   entirely. It is the user's setting: change it only when they ask. A silent
   todo reaches the user only via a deliberate `send_notification`.
 
@@ -270,7 +270,7 @@ list_tracked_todos(parent_todo_id="desk_todo_id")                    # its open 
 ```
 
 - A sub-todo obeys its parent's Standing rules on top of its own, so a rule the user gives the parent reaches every piece.
-- It reports to its parent, not to the user: its runs do not message the user (unless created with `notify_on_run=True`), and each parent run sees every open sub-todo's Current State. Keep that section true after each sub-todo run; it is the sub-todo's report.
+- It reports to its parent, not to the user: its runs do not message the user (unless created with `delivery="now"`), and each parent run sees every open sub-todo's Current State. Keep that section true after each sub-todo run; it is the sub-todo's report.
 - Completing or deleting the parent completes or deletes its open sub-todos.
 - One level deep: a sub-todo cannot have sub-todos, and the parent must be an open tracked todo.
 - The ACTIVE TRACKED TODOS block shows a parent once with its open sub-todo count; the sub-todos themselves are listed by `list_tracked_todos(parent_todo_id=...)`.

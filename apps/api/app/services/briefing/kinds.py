@@ -23,6 +23,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.clock import DayWindow, UserClock
 from app.services.briefing.daily import stand_daily
@@ -54,7 +55,9 @@ class BriefKindSpec:
     series_window: Callable[[UserClock], DayWindow]
     #: The days the brief's calendar and what falls due cover: today, or the week ahead.
     span: BriefSpan
-    stand: Callable[[UserDocument, UserClock], Awaitable[Standing | BriefingRunOutcome]]
+    stand: Callable[
+        [UserDocument, BriefingStateDocument, UserClock], Awaitable[Standing | BriefingRunOutcome]
+    ]
     quiet: QuietWords
     #: A quiet note after a quiet note says the quiet goes on; otherwise the brief stays silent.
     repeats_quiet_note: bool

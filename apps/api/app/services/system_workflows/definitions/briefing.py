@@ -12,8 +12,10 @@ from uuid import uuid4
 
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
+from app.models.user_models import UserDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -96,6 +98,12 @@ BRIEFING_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]]
 ]
 
 
+async def _cron_on_their_schedule(key: str, user: UserDocument) -> str:
+    """Return the cron the user's stored briefing schedule gives their brief under key."""
+    state = await briefing_state_repository.state_for(user.id)
+    return briefing_cron(key, user, state.schedule)
+
+
 # A brief is no workflow to the user: never listed, a failure is the logged error and the
 # next one runs, and it winds itself down (briefing.wind_down) instead of being paused.
 BRIEFING_BEHAVIOURS: dict[str, SystemWorkflowBehaviour] = {
@@ -103,7 +111,7 @@ BRIEFING_BEHAVIOURS: dict[str, SystemWorkflowBehaviour] = {
         listed=False,
         notify_on_failure=False,
         pausable=False,
-        cron_for=partial(briefing_cron, key),
+        cron_for=partial(_cron_on_their_schedule, key),
     )
     for key in (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
 }

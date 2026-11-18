@@ -33,6 +33,7 @@ from app.models.brief_settings_models import (
     BriefingScheduleUpdate,
 )
 from app.models.brief_view_models import BriefCard, Postmark, PostmarksResponse
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.view import briefing_card
 from shared.py.analytics import UserId
@@ -261,7 +262,12 @@ async def test_postmarks_tags_the_wide_event_with_the_collected_count() -> None:
 
 
 PAID = "app.services.briefing.schedule.is_paid"
+STATE_FOR = "app.db.repositories.briefing_state.briefing_state_repository.state_for"
 SYSTEM_WORKFLOWS = "app.services.briefing.schedule.workflow_repository.find_system_workflows"
+
+
+def _state(**fields: object) -> BriefingStateDocument:
+    return BriefingStateDocument.model_validate({"user_id": FAKE_USER_ID, **fields})
 
 
 class TestBriefingScheduleEndpoints:
@@ -276,6 +282,7 @@ class TestBriefingScheduleEndpoints:
                 new_callable=AsyncMock,
                 return_value=UserDocument(id=FAKE_USER_ID),
             ) as get,
+            patch(STATE_FOR, new_callable=AsyncMock, return_value=_state()),
             patch(f"{MODULE}.log") as log,
         ):
             response = await client.get(f"{BASE}/schedule")
@@ -302,6 +309,7 @@ class TestBriefingScheduleEndpoints:
                 new_callable=AsyncMock,
                 return_value=UserDocument(id=FAKE_USER_ID),
             ),
+            patch(STATE_FOR, new_callable=AsyncMock, return_value=_state()),
         ):
             response = await client.get(f"{BASE}/schedule")
 
@@ -331,11 +339,13 @@ class TestBriefingScheduleEndpoints:
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
         with (
             patch(PAID, new_callable=AsyncMock, return_value=False),
+            patch(f"{MODULE}.set_briefing_schedule", new_callable=AsyncMock) as setter,
             patch(
-                f"{MODULE}.set_briefing_schedule",
+                "app.services.user_service.user_repository.get",
                 new_callable=AsyncMock,
-                return_value=UserDocument(id=FAKE_USER_ID, briefing_schedule=wanted),
-            ) as setter,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ),
+            patch(STATE_FOR, new_callable=AsyncMock, return_value=_state(schedule=wanted)),
             patch(f"{MODULE}.log") as log,
         ):
             response = await client.put(
@@ -405,33 +415,20 @@ class TestBriefingEditionsEndpoints:
     ) -> None:
         with (
             patch(
-                "app.services.user_service.user_repository.get",
+                STATE_FOR,
                 new_callable=AsyncMock,
-                return_value=UserDocument(
-                    id=FAKE_USER_ID, briefing_editions={"menu": EditionChoice.OFF}
-                ),
-            ) as get,
+                return_value=_state(editions={"menu": EditionChoice.OFF}),
+            ) as state_for,
             patch(f"{MODULE}.log") as log,
         ):
             response = await client.get(f"{BASE}/editions")
 
-        get.assert_awaited_once_with(FAKE_USER_ID)
+        state_for.assert_awaited_once_with(FAKE_USER_ID)
         log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_editions")
         assert response.status_code == 200
         choices = {e["family"]: e["choice"] for e in response.json()["editions"]}
         assert choices["menu"] == "off"
         assert choices["postal"] == "on"
-
-    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
-        with patch(
-            "app.services.user_service.user_repository.get",
-            new_callable=AsyncMock,
-            return_value=None,
-        ):
-            response = await client.get(f"{BASE}/editions")
-
-        assert response.status_code == 404
-        assert response.json()["message"] == "User not found"
 
     async def test_an_update_goes_through_the_one_setter_and_echoes_it(
         self, client: AsyncClient

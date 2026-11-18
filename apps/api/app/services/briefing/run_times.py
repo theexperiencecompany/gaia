@@ -7,6 +7,7 @@ next landing and the Inbox desk's sweep hour derive from that one spec.
 """
 
 import calendar
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -80,20 +81,14 @@ def brief_slots(schedule: BriefingSchedule, quiet_hours: QuietHours) -> dict[str
     }
 
 
-def user_brief_slots(user: UserDocument) -> dict[str, BriefSlot]:
-    """Return the briefs the user's profile runs, by workflow key."""
-    return brief_slots(user.briefing_schedule, user.effective_quiet_hours)
-
-
 _BRIEF_NAMES: dict[str, str] = {
     DAILY_BRIEFING_WORKFLOW_KEY: "a daily brief",
     WEEKLY_DIGEST_WORKFLOW_KEY: "the weekly digest",
 }
 
 
-def describe_briefing_schedule(user: UserDocument) -> str:
-    """Say in plain words which briefs the user gets and when each lands."""
-    slots = user_brief_slots(user)
+def describe_briefing_schedule(slots: Mapping[str, BriefSlot]) -> str:
+    """Say in plain words which briefs the slots run and when each lands."""
     runs = [
         f"{_BRIEF_NAMES[key]} {_days_phrase(slot.days)} at {slot.hour:02d}:00"
         for key, slot in slots.items()
@@ -105,14 +100,13 @@ def describe_briefing_schedule(user: UserDocument) -> str:
     return ", plus ".join(runs)
 
 
-def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
-    """Say when the user's next brief of any kind lands on their clock ("tomorrow at 7 AM"); None when briefs are off."""
-    slots = user_brief_slots(user).values()
+def next_brief_lands(slots: Mapping[str, BriefSlot], now_local: datetime) -> str | None:
+    """Say when the next brief of any kind lands on the user's clock ("tomorrow at 7 AM"); None when briefs are off."""
     if not slots:
         return None
     ahead, hour = min(
         (days, slot.hour)
-        for slot in slots
+        for slot in slots.values()
         for days in range(8)
         if (now_local + timedelta(days=days)).weekday() in slot.days
         and (days or now_local.hour < slot.hour)
@@ -121,27 +115,25 @@ def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
     return f"{day} at {now_local.replace(hour=hour).strftime('%-I %p')}"
 
 
-def briefing_cron(key: str, user: UserDocument) -> str:
-    """Return the cron the profile gives the briefing workflow under key, at the user's slot minute.
+def briefing_cron(key: str, user: UserDocument, schedule: BriefingSchedule) -> str:
+    """Return the cron the schedule gives the user's briefing workflow under key, at their slot minute.
 
     A workflow the frequency does not run keeps the every-day cron at the user's hour.
     """
-    return spread_cron(_slots_running(key, user)[key].cron, user.id)
+    slots = _slots_running(key, schedule, user.effective_quiet_hours)
+    return spread_cron(slots[key].cron, user.id)
 
 
-def _slots_running(key: str, user: UserDocument) -> dict[str, BriefSlot]:
-    """Return the user's slots, as on an every-day schedule when theirs does not run key."""
-    schedule = user.briefing_schedule
+def _slots_running(
+    key: str, schedule: BriefingSchedule, quiet_hours: QuietHours
+) -> dict[str, BriefSlot]:
+    """Return the schedule's slots, as on an every-day schedule when it does not run key."""
     if key not in BRIEF_RUN_DAYS[schedule.frequency]:
         schedule = schedule.model_copy(update={"frequency": BriefingFrequency.DAILY})
-    return brief_slots(schedule, user.effective_quiet_hours)
+    return brief_slots(schedule, quiet_hours)
 
 
-def _daily_slot(user: UserDocument) -> BriefSlot:
-    return _slots_running(DAILY_BRIEFING_WORKFLOW_KEY, user)[DAILY_BRIEFING_WORKFLOW_KEY]
-
-
-def inbox_desk_recurrence(user: UserDocument) -> str:
-    """Return the Inbox desk's daily cron: INBOX_DESK_LEAD_HOURS before the user's daily brief."""
-    hour = (_daily_slot(user).hour - INBOX_DESK_LEAD_HOURS) % 24
+def inbox_desk_recurrence(schedule: BriefingSchedule, quiet_hours: QuietHours) -> str:
+    """Return the Inbox desk's daily cron: INBOX_DESK_LEAD_HOURS before the daily brief."""
+    hour = (_past_quiet_hours(schedule.hour, quiet_hours) - INBOX_DESK_LEAD_HOURS) % 24
     return f"0 {hour} * * *"

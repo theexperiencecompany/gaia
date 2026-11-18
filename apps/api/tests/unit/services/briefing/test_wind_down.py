@@ -14,39 +14,44 @@ from app.constants.briefing import (
     BriefingFrequency,
     WindDown,
 )
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
 from app.models.user_activity_models import UserActivityDates
-from app.models.user_models import BriefingDormancy, UserDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import wind_down
-from app.services.briefing.wind_down import state_from_user
+from app.services.briefing.wind_down import ladder_state
 
 
-class TestStateFromUser:
+class TestLadderState:
     def test_a_user_without_a_marker_is_awake_with_no_idle_days(self) -> None:
-        assert state_from_user(UserDocument()) == BriefingDormancy(
+        assert ladder_state(BriefingStateDocument(user_id="u1")) == BriefingDormancy(
             idle_days=0, date=None, dormant_since=None
         )
 
     def test_the_marker_is_read_whole_and_mongos_naive_time_is_utc(self) -> None:
-        user = UserDocument(
-            briefing_dormancy=BriefingDormancy(
+        state = BriefingStateDocument(
+            user_id="u1",
+            dormancy=BriefingDormancy(
                 idle_days=5, date="2026-10-13", dormant_since=datetime(2026, 10, 13, 8)
-            )
+            ),
         )
 
-        assert state_from_user(user) == BriefingDormancy(
+        assert ladder_state(state) == BriefingDormancy(
             idle_days=5, date="2026-10-13", dormant_since=datetime(2026, 10, 13, 8, tzinfo=UTC)
         )
 
     def test_an_aware_dormant_since_keeps_its_offset(self) -> None:
         since = datetime.fromisoformat("2026-10-13T08:00:00+05:30")
-        user = UserDocument(briefing_dormancy=BriefingDormancy(idle_days=5, dormant_since=since))
+        stored = BriefingStateDocument(
+            user_id="u1", dormancy=BriefingDormancy(idle_days=5, dormant_since=since)
+        )
 
-        state = state_from_user(user)
+        marker = ladder_state(stored)
 
-        assert state.dormant_since is not None
-        assert state.dormant_since.utcoffset() == since.utcoffset()
+        assert marker.dormant_since is not None
+        assert marker.dormant_since.utcoffset() == since.utcoffset()
 
 
 _SINCE = datetime(2026, 10, 13, 8, tzinfo=UTC)
@@ -102,7 +107,7 @@ class TestClimbIdleLadder:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         set_day = AsyncMock()
-        monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
+        monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
         user = UserDocument(id="u1", created_at=datetime.now(UTC) - timedelta(days=90))
         prior = BriefingDormancy(idle_days=1, date="2026-10-13", dormant_since=None)
 
@@ -135,7 +140,7 @@ class TestTheGoalQuestion:
     @pytest.fixture(autouse=True)
     def _frozen(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[AsyncMock]:
         set_day = AsyncMock()
-        monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
+        monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
         with time_machine.travel(_NOW, tick=False):
             yield set_day
 
@@ -205,11 +210,25 @@ class TestTheGoalQuestion:
 
         assert (ladder.idle_days, ladder.wind_down) == (0, None)
 
+    async def test_the_goodbye_puts_the_loop_to_sleep(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        enter = AsyncMock()
+        monkeypatch.setattr(briefing_state_repository, "record_goal_question", AsyncMock())
+        monkeypatch.setattr(briefing_state_repository, "enter_dormancy", enter)
+        goodbye = wind_down.IdleLadder(
+            first_week=False, idle_days=IDLE_DORMANT_DAYS, wind_down=WindDown.FINAL
+        )
+
+        await wind_down.leave_idle_ladder("u1", goodbye)
+
+        enter.assert_awaited_once_with("u1")
+
     async def test_the_goal_question_is_recorded_only_when_it_goes_out(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         record = AsyncMock()
-        monkeypatch.setattr(user_repository, "record_goal_question", record)
+        monkeypatch.setattr(briefing_state_repository, "record_goal_question", record)
         asked = wind_down.IdleLadder(
             first_week=False, idle_days=0, wind_down=None, goal_question=wind_down.GoalQuestion.ASK
         )
@@ -222,16 +241,14 @@ class TestTheGoalQuestion:
         record.assert_awaited_once_with("u1")
 
     def test_the_marker_carries_when_the_goal_was_last_asked_about(self) -> None:
-        user = UserDocument(
-            briefing_dormancy=BriefingDormancy(goal_asked_at=datetime(2026, 11, 8, 2, 30))
+        state = BriefingStateDocument(
+            user_id="u1", dormancy=BriefingDormancy(goal_asked_at=datetime(2026, 11, 8, 2, 30))
         )
 
-        assert state_from_user(user).goal_asked_at == datetime(2026, 11, 8, 2, 30, tzinfo=UTC)
+        assert ladder_state(state).goal_asked_at == datetime(2026, 11, 8, 2, 30, tzinfo=UTC)
 
 
-_WEEKLY_ONLY = _VETERAN.model_copy(
-    update={"briefing_schedule": BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY)}
-)
+_WEEKLY_ONLY = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY)
 _ONE_DIGEST_FROM_DORMANT = BriefingDormancy(
     idle_days=IDLE_DORMANT_DAYS - 1, date="2026-11-01", dormant_since=None
 )
@@ -243,8 +260,8 @@ class TestTheWeeklyLadder:
     @staticmethod
     def _seams(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
         set_day, enter = AsyncMock(), AsyncMock()
-        monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
-        monkeypatch.setattr(user_repository, "enter_briefing_dormancy", enter)
+        monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
+        monkeypatch.setattr(briefing_state_repository, "enter_dormancy", enter)
         return set_day, enter
 
     @pytest.mark.regression
@@ -254,7 +271,12 @@ class TestTheWeeklyLadder:
         set_day, enter = self._seams(monkeypatch)
 
         await wind_down.climb_weekly_ladder(
-            _WEEKLY_ONLY, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=False, has_goal=False
+            _VETERAN,
+            _WEEKLY_ONLY,
+            _ONE_DIGEST_FROM_DORMANT,
+            "2026-11-08",
+            has_news=False,
+            has_goal=False,
         )
 
         set_day.assert_awaited_once_with("u1", idle_days=IDLE_DORMANT_DAYS, date_str="2026-11-08")
@@ -266,7 +288,12 @@ class TestTheWeeklyLadder:
         set_day, enter = self._seams(monkeypatch)
 
         await wind_down.climb_weekly_ladder(
-            _WEEKLY_ONLY, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=True, has_goal=False
+            _VETERAN,
+            _WEEKLY_ONLY,
+            _ONE_DIGEST_FROM_DORMANT,
+            "2026-11-08",
+            has_news=True,
+            has_goal=False,
         )
 
         set_day.assert_awaited_once_with("u1", idle_days=0, date_str="2026-11-08")
@@ -278,7 +305,12 @@ class TestTheWeeklyLadder:
         set_day, enter = self._seams(monkeypatch)
 
         await wind_down.climb_weekly_ladder(
-            _VETERAN, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=False, has_goal=False
+            _VETERAN,
+            BriefingSchedule(),
+            _ONE_DIGEST_FROM_DORMANT,
+            "2026-11-08",
+            has_news=False,
+            has_goal=False,
         )
 
         set_day.assert_not_awaited()

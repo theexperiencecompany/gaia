@@ -10,11 +10,11 @@ from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.db.chroma.chromadb import ChromaClient
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_gate_models import AuthoredGate
-from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowCard,
@@ -69,12 +69,12 @@ _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
 
 
-def refuse_a_missing_brief(owner: AuthenticatedUser, delivery: WorkflowDelivery | None) -> None:
-    """Raise BriefsOffError when delivery is the brief and the owner gets no daily brief to carry it."""
-    if (
-        delivery is WorkflowDelivery.BRIEF
-        and DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[owner.briefing_schedule.frequency]
-    ):
+async def refuse_a_missing_brief(user_id: str, delivery: WorkflowDelivery | None) -> None:
+    """Raise BriefsOffError when delivery is the brief and the user gets no daily brief to carry it."""
+    if delivery is not WorkflowDelivery.BRIEF:
+        return
+    schedule = (await briefing_state_repository.state_for(user_id)).schedule
+    if DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[schedule.frequency]:
         raise BriefsOffError()
 
 
@@ -210,8 +210,8 @@ class WorkflowService:
         trigger_ids: list[str] = []
 
         # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
-        owner = await require_owner(user_id)
-        refuse_a_missing_brief(owner, request.delivery)
+        await require_owner(user_id)
+        await refuse_a_missing_brief(user_id, request.delivery)
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -633,8 +633,7 @@ class WorkflowService:
             current_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not current_workflow:
                 return None
-            if request.delivery is WorkflowDelivery.BRIEF:
-                refuse_a_missing_brief(await require_owner(user_id), request.delivery)
+            await refuse_a_missing_brief(user_id, request.delivery)
 
             # `model_fields_set` is what the client actually sent — the same
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the

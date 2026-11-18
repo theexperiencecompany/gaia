@@ -244,7 +244,7 @@ async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id:
         user = await user_repository.get(user_id)
         if user is None:
             raise LookupError(f"Cannot schedule {key} for unknown user {user_id}")
-        trigger_config.cron_expression = cron_for(user)
+        trigger_config.cron_expression = await cron_for(user)
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 

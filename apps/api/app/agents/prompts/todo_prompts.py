@@ -324,7 +324,7 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
     "session ids, or tokens."
 )
 
-# Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
+# Appended to a scheduled/triggered run whose todo's delivery is not silent. GAIA
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_RULES = (

@@ -15,6 +15,7 @@ import pytest
 from app.api.v1.endpoints.user import get_me
 from app.config.settings import settings
 from app.constants.auth import SESSION_HINT_COOKIE
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
@@ -99,6 +100,10 @@ class TestQuietHours:
                 AsyncMock(return_value=stored),
             ) as update,
             patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch(
+                "app.services.user_quiet_hours.briefing_state_repository.state_for",
+                AsyncMock(return_value=BriefingStateDocument(user_id=FAKE_USER_ID)),
+            ) as state_for,
             patch("app.services.user_quiet_hours.follow_the_brief") as desk,
             patch("app.services.user_quiet_hours.capture") as capture,
         ):
@@ -116,6 +121,7 @@ class TestQuietHours:
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
         resync.assert_awaited_once_with(stored)
+        state_for.assert_awaited_once_with(FAKE_USER_ID)
         desk.assert_awaited_once_with(FAKE_USER_ID, "0 7 * * *", "0 7 * * *")
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),

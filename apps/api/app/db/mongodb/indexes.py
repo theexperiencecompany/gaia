@@ -51,8 +51,10 @@ IndexKeys = str | list[tuple[str, int | str]]
 _INDEX_NOT_FOUND = 27
 
 # Unique keys that enforce correctness, not speed: without them short_links mints duplicates
-# and a brief, scout or signal memory rerun adds a second row instead of replacing the first.
-INTEGRITY_CRITICAL_COLLECTIONS = frozenset({"short_links", "briefings", "scouts", "signal_memory"})
+# and a brief, scout, signal memory or briefing state write adds a second row instead of replacing the first.
+INTEGRITY_CRITICAL_COLLECTIONS = frozenset(
+    {"short_links", "briefings", "scouts", "signal_memory", "briefing_state"}
+)
 # The index helpers never read a document, so they take a collection of any document type.
 DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
 
@@ -155,6 +157,7 @@ async def create_all_indexes() -> None:
             create_tool_read_only_verdict_indexes(),
             create_email_verdict_indexes(),
             create_wait_indexes(),
+            create_briefing_state_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -205,6 +208,7 @@ async def create_all_indexes() -> None:
             "tool_read_only_verdicts",
             "email_verdicts",
             "waits",
+            "briefing_state",
         ]
 
         index_results = {}
@@ -1912,6 +1916,19 @@ async def create_llm_call_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Failed to create llm_calls indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_briefing_state_indexes() -> None:
+    """Index briefing_state on user_id, unique: every write upserts the user's one row."""
+    try:
+        await get_async_collection("briefing_state").create_index("user_id", unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating briefing state indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

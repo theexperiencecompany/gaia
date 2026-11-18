@@ -16264,6 +16264,11 @@ export interface components {
              */
             created_at?: string;
             /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery?: components["schemas"]["WorkflowDelivery"];
+            /**
              * Description
              * @description Description of the todo item
              */
@@ -16294,12 +16299,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels?: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run?: boolean;
             /**
              * @description Priority level
              * @default none
@@ -16374,6 +16373,11 @@ export interface components {
              */
             created_at: string;
             /**
+             * @description Where a tracked todo's scheduled or triggered run result goes: now to the user's chat platform (comms may hold one that can wait for the brief), into the next brief, or nowhere. Unrelated to the todo being marked completed.
+             * @default now
+             */
+            delivery: components["schemas"]["WorkflowDelivery"];
+            /**
              * Description
              * @description Description of the todo item
              */
@@ -16409,12 +16413,6 @@ export interface components {
              * @description Labels for categorization
              */
             labels: string[];
-            /**
-             * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
-             * @default true
-             */
-            notify_on_run: boolean;
             /**
              * Parent Todo Id
              * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
@@ -16551,6 +16549,7 @@ export interface components {
         TodoUpdateRequest: {
             /** Completed */
             completed?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -16561,8 +16560,6 @@ export interface components {
             expires_at?: string | null;
             /** Labels */
             labels?: string[] | null;
-            /** Notify On Run */
-            notify_on_run?: boolean | null;
             priority?: components["schemas"]["Priority"] | null;
             /** Project Id */
             project_id?: string | null;

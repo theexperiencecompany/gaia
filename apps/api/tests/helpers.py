@@ -63,8 +63,11 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.briefing.clock import UserClock
@@ -87,26 +90,27 @@ async def users_get(user_id: str) -> UserDocument | None:
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
-def users_get_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[UserDocument]]:
-    """Stand in for user_repository.get with a user whose briefs run at frequency."""
+def briefs_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[BriefingStateDocument]]:
+    """Stand in for briefing_state_repository.state_for with briefs that run at frequency."""
 
-    async def get(user_id: str) -> UserDocument:
-        return UserDocument.model_validate(
-            {
-                "id": user_id,
-                "onboarding": {"completed": True},
-                "briefing_schedule": {"frequency": frequency},
-            }
+    async def state_for(user_id: str) -> BriefingStateDocument:
+        return BriefingStateDocument(
+            user_id=user_id, schedule=BriefingSchedule(frequency=frequency)
         )
 
-    return get
+    return state_for
 
 
 @contextmanager
 def brief_loop_awake() -> Iterator[None]:
     """Serve brief_will_carry's reads past the workflow: a user with no goal hold, dormancy or winback."""
     with (
-        patch.object(user_repository, "get", new=users_get_on(BriefingFrequency.DAILY)),
+        patch.object(
+            user_repository, "get", new=AsyncMock(side_effect=lambda uid: UserDocument(id=uid))
+        ),
+        patch.object(
+            briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.DAILY)
+        ),
         patch.object(briefing_repository, "list_recent", new=AsyncMock(return_value=[])),
     ):
         yield

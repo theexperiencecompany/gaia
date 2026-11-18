@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.todo_models import ExternalRefSource
 from app.services.briefing.run_times import inbox_desk_recurrence
@@ -42,7 +43,8 @@ async def migrate(apply: bool) -> int:
         if user is None:
             print(f"  {doc['_id']}: no user {doc['user_id']}, left alone")
             continue
-        target = inbox_desk_recurrence(user)
+        schedule = (await briefing_state_repository.state_for(user.id)).schedule
+        target = inbox_desk_recurrence(schedule, user.effective_quiet_hours)
         if target == doc["recurrence"]:
             continue
         moved += 1

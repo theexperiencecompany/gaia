@@ -50,7 +50,6 @@ from app.services.wait_service import wait_for_user
 from app.services.workflow.service import WorkflowService, refuse_a_missing_brief
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
-from app.utils.auth_utils import require_owner
 from app.utils.timezone import home_timezone_from_config
 from app.utils.workflow_utils import (
     apply_workflow_edit,
@@ -128,15 +127,14 @@ async def create_workflow(
     try:
         user_id = get_user_id(config)
         # The service's own rule, asked before the workflow assistant runs for nothing.
-        if delivery is WorkflowDelivery.BRIEF:
-            try:
-                refuse_a_missing_brief(await require_owner(user_id), delivery)
-            except BriefsOffError as refused:
-                return error_response(
-                    refused.code,
-                    "The user gets no daily brief, so this workflow's results cannot go to a "
-                    f"brief. Ask them to pick instead: {refused.fix}.",
-                )
+        try:
+            await refuse_a_missing_brief(user_id, delivery)
+        except BriefsOffError as refused:
+            return error_response(
+                refused.code,
+                "The user gets no daily brief, so this workflow's results cannot go to a "
+                f"brief. Ask them to pick instead: {refused.fix}.",
+            )
         thread_id = get_thread_id(config) or ""
         user_name = read_agent_configurable(config).user_name
         # Home timezone (IANA, e.g. Asia/Kolkata) for the new workflow's schedule

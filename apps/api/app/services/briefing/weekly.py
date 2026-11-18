@@ -8,7 +8,8 @@ from typing_extensions import override
 from app.agents.prompts.briefing_prompts import VoicePromptBlocks, build_weekly_voice_prompt
 from app.constants.briefing import BriefingRunOutcome
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.user_models import BriefingDormancy, UserDocument
+from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
+from app.models.user_models import UserDocument
 from app.services.briefing import wind_down
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
@@ -28,6 +29,7 @@ class WeeklyStanding(Standing):
     """The digest's standing: it looks back over this week, from Monday."""
 
     user: UserDocument
+    state: BriefingStateDocument
     clock: UserClock
     goals: list[StatedGoal]
     #: Where the idle ladder stood before this digest.
@@ -43,6 +45,7 @@ class WeeklyStanding(Standing):
         """Count an empty digest on the ladder of a user the digest is the only brief of."""
         await wind_down.climb_weekly_ladder(
             self.user,
+            self.state.schedule,
             self.prior,
             self.clock.date_str,
             has_news=not self.quiet_before_composing(pool),
@@ -104,14 +107,20 @@ class WeeklyStanding(Standing):
         return None
 
 
-async def stand_weekly(user: UserDocument, clock: UserClock) -> WeeklyStanding | BriefingRunOutcome:
+async def stand_weekly(
+    user: UserDocument, state: BriefingStateDocument, clock: UserClock
+) -> WeeklyStanding | BriefingRunOutcome:
     """Read the digest's standing; a dormant loop has nothing to zoom out on.
 
     Activity since dormancy began wakes the loop here as on the daily.
     """
-    dstate = await wake_or_skip(user)
+    dstate = await wake_or_skip(state)
     if dstate is None:
         return BriefingRunOutcome.DORMANT
     return WeeklyStanding(
-        user=user, clock=clock, goals=await stated_goals(user.id, user), prior=dstate
+        user=user,
+        state=state,
+        clock=clock,
+        goals=await stated_goals(user.id, user),
+        prior=dstate,
     )

@@ -14,6 +14,7 @@ from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -61,7 +62,7 @@ from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
-from tests.helpers import UNKNOWN_USER_ID, users_get, users_get_on
+from tests.helpers import UNKNOWN_USER_ID, briefs_on, users_get
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
@@ -645,8 +646,11 @@ class TestBriefDeliveryWhileBriefsOff:
 
     @pytest.fixture(autouse=True)
     def _briefs_are_off(self):
-        with patch(
-            "app.utils.auth_utils.user_repository.get", new=users_get_on(BriefingFrequency.OFF)
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
         ):
             yield
 

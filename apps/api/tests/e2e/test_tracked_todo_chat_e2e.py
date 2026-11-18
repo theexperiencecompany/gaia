@@ -55,6 +55,7 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.constants.workflows import WorkflowDelivery
 from app.core.stream_manager import stream_manager
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
@@ -710,21 +711,27 @@ class TestAThreadTodoThatResolvesItself:
 
 @pytest.mark.usefixtures("mongo_db")
 class TestAFollowUpKnowsTheRunsAboveIt:
-    @pytest.mark.parametrize("notify_on_run", [True, False], ids=["told", "not-told"])
+    @pytest.mark.parametrize(
+        "delivery", [WorkflowDelivery.NOW, WorkflowDelivery.SILENT], ids=["told", "not-told"]
+    )
     async def test_a_follow_up_is_shown_the_report_the_chat_shows(
         self,
         open_stack: OpenStack,
         owner: AuthenticatedUser,
         mongo_db: AsyncIOMotorDatabase,
-        notify_on_run: bool,
+        delivery: WorkflowDelivery,
     ) -> None:
         """Regression: a run the user was not told of left its report only in the chat's history, so asking about it got an answer that never saw it."""
         todo_id = (
             await TrackedTodoService.create_tracked_todo(
-                owner.user_id, TITLE, notify_on_run=notify_on_run, schedule=_daily_watch()
+                owner.user_id, TITLE, delivery=delivery, schedule=_daily_watch()
             )
         ).todo.id
-        comms = [NARRATED, FOLLOW_UP_REPLY] if notify_on_run else [FOLLOW_UP_REPLY]
+        comms = (
+            [FOLLOW_UP_REPLY]
+            if delivery is WorkflowDelivery.SILENT
+            else [NARRATED, FOLLOW_UP_REPLY]
+        )
 
         async with open_stack(executor=executor_run(REPORT), comms=comms) as stack:
             await _run(todo_id, owner)
@@ -1233,7 +1240,7 @@ class TestTheChatFollowsItsTodo:
         self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
     ) -> None:
         created = await TrackedTodoService.create_tracked_todo(
-            owner.user_id, TITLE, notify_on_run=False, schedule=_daily_watch()
+            owner.user_id, TITLE, delivery=WorkflowDelivery.SILENT, schedule=_daily_watch()
         )
 
         async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):

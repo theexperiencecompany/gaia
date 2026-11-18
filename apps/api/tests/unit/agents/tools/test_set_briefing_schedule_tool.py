@@ -19,23 +19,29 @@ USER_ID = make_user_id()
 CONFIG = RunnableConfig(metadata={"user_id": USER_ID})
 
 
-def _user(schedule: BriefingSchedule) -> UserDocument:
-    return UserDocument(id=USER_ID, briefing_schedule=schedule)
-
-
 @pytest.fixture(autouse=True)
 def paid():
     with patch("app.services.briefing.schedule.is_paid", new=AsyncMock(return_value=True)) as mock:
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def user():
+    with patch(
+        f"{MODULE}.require_user", new=AsyncMock(return_value=UserDocument(id=USER_ID))
+    ) as mock:
+        yield mock
+
+
 def _setter(stored: BriefingSchedule) -> AsyncMock:
-    return AsyncMock(return_value=_user(stored))
+    return AsyncMock(return_value=stored)
 
 
 @pytest.mark.unit
 class TestSetBriefingSchedule:
-    async def test_it_sets_the_frequency_and_hour_and_confirms_what_changed(self) -> None:
+    async def test_it_sets_the_frequency_and_hour_and_confirms_what_changed(
+        self, user: AsyncMock
+    ) -> None:
         setter = _setter(BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9))
         with patch(f"{MODULE}.briefing_schedule.set_briefing_schedule", new=setter):
             async with captured_wide_event() as event:
@@ -46,6 +52,7 @@ class TestSetBriefingSchedule:
         setter.assert_awaited_once_with(
             USER_ID, BriefingFrequency.WEEKDAYS, "agent", hour=9, brief_workflows_to=None
         )
+        user.assert_awaited_once_with(USER_ID)
         assert result == (
             "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
             "plus the weekly digest on Sunday at 17:00."
@@ -70,6 +77,7 @@ class TestSetBriefingSchedule:
             "digest on Sunday at 17:00. None of these run yet: briefs on a schedule need Pro, "
             "and the user is on the free plan."
         )
+        paid.assert_awaited_once_with(USER_ID)
 
     async def test_omitting_the_hour_leaves_it_to_the_service_to_keep(self) -> None:
         setter = _setter(BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY, hour=10))

@@ -1,5 +1,6 @@
 """The one way to change a user's quiet hours: store them, then move the briefs and the Inbox desk out of them."""
 
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.quiet_hours_models import QuietHours
 from app.services.analytics_service import capture
@@ -21,7 +22,12 @@ async def set_quiet_hours(user_id: str, hours: QuietHours) -> QuietHours:
     if user is None:
         raise user_not_found(user_id)
     await resync_briefing_schedules(user)
-    await follow_the_brief(user_id, inbox_desk_recurrence(before), inbox_desk_recurrence(user))
+    schedule = (await briefing_state_repository.state_for(user_id)).schedule
+    await follow_the_brief(
+        user_id,
+        inbox_desk_recurrence(schedule, before.effective_quiet_hours),
+        inbox_desk_recurrence(schedule, user.effective_quiet_hours),
+    )
     capture(
         UserId(user_id),
         SettingsQuietHoursUpdated(

@@ -39,6 +39,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import SilentRunResult
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -247,7 +248,12 @@ class _Harness:
                 f"{MODULE}.workflow_repository.find_system_workflow",
                 AsyncMock(return_value=MagicMock(activated=True)),
             ),
-            # brief_will_carry's winback read: no brief has gone unanswered.
+            # brief_will_carry's state and winback reads: no goal hold or dormancy, and no
+            # brief has gone unanswered.
+            patch(
+                "app.services.briefing.held.briefing_state_repository.state_for",
+                AsyncMock(side_effect=lambda user_id: BriefingStateDocument(user_id=user_id)),
+            ),
             patch(
                 "app.services.briefing.lookback.briefing_repository.list_recent",
                 AsyncMock(return_value=[]),

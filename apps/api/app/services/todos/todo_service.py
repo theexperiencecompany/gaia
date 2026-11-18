@@ -538,7 +538,7 @@ class TodoService:
             gaia_retry_count=todo.gaia_retry_count,
             expires_at=todo.expires_at,
             references=todo.references,
-            notify_on_run=todo.notify_on_run,
+            delivery=todo.delivery,
             external_ref=external_ref,
             parent_todo_id=parent_todo_id,
         )
