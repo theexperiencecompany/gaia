@@ -174,6 +174,9 @@ from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 
+# The run reads and writes Redis (scout refresh claims, spend); give it a per-test one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 _USER = make_user_id()
 _TZ = "Asia/Kolkata"
 # 07:05 on 14 Oct in Kolkata; the brief's day starts at local midnight.
