@@ -19,7 +19,7 @@ from app.services.system_workflows.registry import (
     UNPAUSABLE_KEYS,
     behaviour_of,
 )
-from app.workers.brief_slots import spread_cron
+from app.workers.brief_slots import slot_minute
 
 pytestmark = pytest.mark.unit
 
@@ -44,7 +44,7 @@ def test_a_brief_is_unlisted_unpausable_and_silent_on_failure(key: str) -> None:
 
 @pytest.mark.parametrize(
     ("key", "cron"),
-    [(DAILY_BRIEFING_WORKFLOW_KEY, "0 8 * * 1-5"), (WEEKLY_DIGEST_WORKFLOW_KEY, "0 17 * * 0")],
+    [(DAILY_BRIEFING_WORKFLOW_KEY, "8 * * 1-5"), (WEEKLY_DIGEST_WORKFLOW_KEY, "17 * * 0")],
 )
 async def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cron: str) -> None:
     cron_for = behaviour_of(key).cron_for
@@ -56,7 +56,7 @@ async def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cr
     with patch.object(
         briefing_state_repository, "state_for", AsyncMock(return_value=stored)
     ) as state_for:
-        assert await cron_for(UserDocument(id="u1")) == spread_cron(cron, "u1")
+        assert await cron_for(UserDocument(id="u1")) == f"{slot_minute('u1')} {cron}"
     state_for.assert_awaited_once_with("u1")
 
 

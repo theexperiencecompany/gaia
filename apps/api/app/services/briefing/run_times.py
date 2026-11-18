@@ -2,14 +2,14 @@
 
 BRIEF_RUN_DAYS names the briefs each frequency runs and the weekdays they land on: the
 daily brief at the user's hour, the weekly digest on Sunday at WEEKLY_DIGEST_HOUR. A
-brief whose hour falls inside quiet hours runs when they end. Every cron, description,
-next landing and the Inbox desk's sweep hour derive from that one spec.
+brief whose hour falls inside quiet hours runs when they end, at the user's slot minute.
+Every cron, description, next landing and the Inbox desk's sweep hour derive from that one spec.
 """
 
 import calendar
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from app.constants.briefing import (
     BRIEF_RUN_DAYS,
@@ -23,19 +23,20 @@ from app.constants.todos import INBOX_DESK_LEAD_HOURS
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import UserDocument
-from app.workers.brief_slots import spread_cron
+from app.services.briefing.formats import clock_time, weekday
+from app.workers.brief_slots import slot_minute
 
 
 @dataclass(frozen=True)
 class BriefSlot:
-    """One brief a schedule runs: the weekdays (Monday 0) it lands on, and its local hour."""
+    """One brief a schedule runs: the weekdays (Monday 0) it lands on, and its local time."""
 
     days: frozenset[int]
-    hour: int
+    at: time
 
     @property
     def cron(self) -> str:
-        return f"0 {self.hour} * * {_cron_days(self.days)}"
+        return f"{self.at.minute} {self.at.hour} * * {_cron_days(self.days)}"
 
 
 def _cron_days(days: frozenset[int]) -> str:
@@ -69,16 +70,23 @@ def _past_quiet_hours(hour: int, quiet_hours: QuietHours) -> int:
     return quiet_hours.end_after(slot).hour
 
 
-def brief_slots(schedule: BriefingSchedule, quiet_hours: QuietHours) -> dict[str, BriefSlot]:
-    """Return the briefs the schedule runs, by workflow key, each at its hour past quiet hours."""
+def brief_slots(
+    schedule: BriefingSchedule, quiet_hours: QuietHours, minute: int
+) -> dict[str, BriefSlot]:
+    """Return the briefs the schedule runs, by workflow key, each at minute past its hour past quiet hours."""
     hours = {
         DAILY_BRIEFING_WORKFLOW_KEY: schedule.hour,
         WEEKLY_DIGEST_WORKFLOW_KEY: WEEKLY_DIGEST_HOUR,
     }
     return {
-        key: BriefSlot(days, _past_quiet_hours(hours[key], quiet_hours))
+        key: BriefSlot(days, time(_past_quiet_hours(hours[key], quiet_hours), minute))
         for key, days in BRIEF_RUN_DAYS[schedule.frequency].items()
     }
+
+
+def user_brief_slots(user: UserDocument, schedule: BriefingSchedule) -> dict[str, BriefSlot]:
+    """Return the briefs the schedule runs for the user: past their quiet hours, at their slot minute."""
+    return brief_slots(schedule, user.effective_quiet_hours, slot_minute(user.id))
 
 
 _BRIEF_NAMES: dict[str, str] = {
@@ -90,7 +98,7 @@ _BRIEF_NAMES: dict[str, str] = {
 def describe_briefing_schedule(slots: Mapping[str, BriefSlot]) -> str:
     """Say in plain words which briefs the slots run and when each lands."""
     runs = [
-        f"{_BRIEF_NAMES[key]} {_days_phrase(slot.days)} at {slot.hour:02d}:00"
+        f"{_BRIEF_NAMES[key]} {_days_phrase(slot.days)} at {clock_time(slot.at)}"
         for key, slot in slots.items()
     ]
     if not runs:
@@ -101,18 +109,18 @@ def describe_briefing_schedule(slots: Mapping[str, BriefSlot]) -> str:
 
 
 def next_brief_lands(slots: Mapping[str, BriefSlot], now_local: datetime) -> str | None:
-    """Say when the next brief of any kind lands on the user's clock ("tomorrow at 7 AM"); None when briefs are off."""
+    """Say when the next brief of any kind lands on the user's clock ("tomorrow at 7:12 AM"); None when briefs are off."""
     if not slots:
         return None
-    ahead, hour = min(
-        (days, slot.hour)
+    ahead, at = min(
+        (days, slot.at)
         for slot in slots.values()
         for days in range(8)
         if (now_local + timedelta(days=days)).weekday() in slot.days
-        and (days or now_local.hour < slot.hour)
+        and (days or now_local.time() < slot.at)
     )
-    day = {0: "today", 1: "tomorrow"}.get(ahead, (now_local + timedelta(days=ahead)).strftime("%A"))
-    return f"{day} at {now_local.replace(hour=hour).strftime('%-I %p')}"
+    day = {0: "today", 1: "tomorrow"}.get(ahead, weekday(now_local + timedelta(days=ahead)))
+    return f"{day} at {clock_time(at)}"
 
 
 def briefing_cron(key: str, user: UserDocument, schedule: BriefingSchedule) -> str:
@@ -120,17 +128,9 @@ def briefing_cron(key: str, user: UserDocument, schedule: BriefingSchedule) -> s
 
     A workflow the frequency does not run keeps the every-day cron at the user's hour.
     """
-    slots = _slots_running(key, schedule, user.effective_quiet_hours)
-    return spread_cron(slots[key].cron, user.id)
-
-
-def _slots_running(
-    key: str, schedule: BriefingSchedule, quiet_hours: QuietHours
-) -> dict[str, BriefSlot]:
-    """Return the schedule's slots, as on an every-day schedule when it does not run key."""
     if key not in BRIEF_RUN_DAYS[schedule.frequency]:
         schedule = schedule.model_copy(update={"frequency": BriefingFrequency.DAILY})
-    return brief_slots(schedule, quiet_hours)
+    return user_brief_slots(user, schedule)[key].cron
 
 
 def inbox_desk_recurrence(schedule: BriefingSchedule, quiet_hours: QuietHours) -> str:

@@ -33,7 +33,7 @@ from app.services.briefing.lookback import (
     lookback_since,
 )
 from app.services.briefing.prose import Writing, reader_block
-from app.services.briefing.run_times import brief_slots, describe_briefing_schedule
+from app.services.briefing.run_times import describe_briefing_schedule, user_brief_slots
 from app.services.briefing.sections import Laid
 from app.services.briefing.slots import figures_in
 from app.services.briefing.standing import Standing, VoiceInputs, VoiceRequest
@@ -218,7 +218,7 @@ async def _setup_block(
     """Return the account facts a first-week tip or a lighter-cadence offer may cite."""
     lines: list[str] = []
     if offer_lighter:
-        slots = brief_slots(state.schedule, user.effective_quiet_hours)
+        slots = user_brief_slots(user, state.schedule)
         lines.append(f"Their briefs now: {describe_briefing_schedule(slots)}.")
     if first_week:
         connected: list[ConnectedIntegration] = await get_connected_integrations_named(user.id)

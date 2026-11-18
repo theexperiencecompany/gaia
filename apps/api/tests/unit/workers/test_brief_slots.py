@@ -1,7 +1,7 @@
 """Brief runs spread across their hour: one stable minute per user, never the same second for all."""
 
 from app.constants.brief_slots import BRIEF_SLOT_SPREAD_MINUTES
-from app.workers.brief_slots import slot_minute, spread_cron
+from app.workers.brief_slots import slot_minute
 
 
 def test_a_users_minute_is_stable_and_inside_the_spread() -> None:
@@ -13,7 +13,3 @@ def test_many_users_land_on_many_minutes() -> None:
     minutes = {slot_minute(f"user-{n}") for n in range(500)}
 
     assert minutes == set(range(BRIEF_SLOT_SPREAD_MINUTES))
-
-
-def test_only_the_minute_of_the_cron_moves() -> None:
-    assert spread_cron("0 8 * * 1-5", "user-1") == f"{slot_minute('user-1')} 8 * * 1-5"

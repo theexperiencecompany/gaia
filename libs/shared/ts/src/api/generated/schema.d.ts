@@ -7418,10 +7418,10 @@ export interface components {
          */
         BriefingScheduleState: {
             /**
-             * Daily Brief Hour
-             * @description The local hour the daily brief lands, past quiet hours; None without one.
+             * Daily Brief Lands At
+             * @description The local time the daily brief lands, past quiet hours; None without one.
              */
-            daily_brief_hour: number | null;
+            daily_brief_lands_at: string | null;
             /** @default daily */
             frequency?: components["schemas"]["BriefingFrequency"];
             /**

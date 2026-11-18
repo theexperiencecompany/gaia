@@ -11,12 +11,14 @@ from app.constants.workflows import WorkflowDelivery
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.user_models import UserDocument
 from app.services.briefing.schedule import BriefDeliveryWorkflowsError
+from app.workers.brief_slots import slot_minute
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.account_tools"
 USER_ID = make_user_id()
 CONFIG = RunnableConfig(metadata={"user_id": USER_ID})
+MINUTE = f"{slot_minute(USER_ID):02d}"
 
 
 @pytest.fixture(autouse=True)
@@ -54,8 +56,8 @@ class TestSetBriefingSchedule:
         )
         user.assert_awaited_once_with(USER_ID)
         assert result == (
-            "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
-            "plus the weekly digest on Sunday at 17:00."
+            f"Briefing schedule updated: a daily brief Monday to Friday at 9:{MINUTE} AM, "
+            f"plus the weekly digest on Sunday at 5:{MINUTE} PM."
         )
         assert (event["tool"], event["surface"]) == (
             {"name": "set_briefing_schedule", "action": "mutate"},
@@ -73,8 +75,8 @@ class TestSetBriefingSchedule:
             )
 
         assert result == (
-            "Briefing schedule updated: a daily brief every day at 09:00, plus the weekly "
-            "digest on Sunday at 17:00. None of these run yet: briefs on a schedule need Pro, "
+            f"Briefing schedule updated: a daily brief every day at 9:{MINUTE} AM, plus the "
+            f"weekly digest on Sunday at 5:{MINUTE} PM. None of these run yet: briefs on a schedule need Pro, "
             "and the user is on the free plan."
         )
         paid.assert_awaited_once_with(USER_ID)
@@ -87,7 +89,9 @@ class TestSetBriefingSchedule:
             )
 
         assert setter.await_args.kwargs["hour"] is None
-        assert result.endswith("only the weekly digest on Sunday at 17:00, no daily brief.")
+        assert result.endswith(
+            f"only the weekly digest on Sunday at 5:{MINUTE} PM, no daily brief."
+        )
 
     @pytest.mark.regression
     async def test_turning_briefs_off_says_where_the_brief_workflows_go(self) -> None:

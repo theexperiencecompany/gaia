@@ -2954,17 +2954,18 @@
       "BriefingScheduleState": {
         "description": "The stored schedule and whether it runs: briefs on a schedule are a Pro feature.",
         "properties": {
-          "daily_brief_hour": {
+          "daily_brief_lands_at": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "time",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The local hour the daily brief lands, past quiet hours; None without one.",
-            "title": "Daily Brief Hour"
+            "description": "The local time the daily brief lands, past quiet hours; None without one.",
+            "title": "Daily Brief Lands At"
           },
           "frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
@@ -3005,7 +3006,7 @@
           "paused_for_plan",
           "next_daily_brief_at",
           "has_daily_brief",
-          "daily_brief_hour"
+          "daily_brief_lands_at"
         ],
         "title": "BriefingScheduleState",
         "type": "object"

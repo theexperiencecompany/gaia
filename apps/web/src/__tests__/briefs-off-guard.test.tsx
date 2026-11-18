@@ -49,7 +49,9 @@ function scheduleState(frequency: string, hour: number) {
     paused_for_plan: false,
     next_daily_brief_at: null,
     has_daily_brief: daily,
-    daily_brief_hour: daily ? hour : null,
+    daily_brief_lands_at: daily
+      ? `${String(hour).padStart(2, "0")}:17:00`
+      : null,
   };
 }
 

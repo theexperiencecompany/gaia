@@ -1,6 +1,6 @@
 """The user's briefing settings: when briefs run, which edition families draw, and the off-switch's conflicts."""
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -32,8 +32,8 @@ class BriefingScheduleState(BriefingSchedule):
         description="When the next daily brief runs (UTC); None while no daily brief runs."
     )
     has_daily_brief: bool = Field(description="The schedule's frequency runs a daily brief.")
-    daily_brief_hour: int | None = Field(
-        description="The local hour the daily brief lands, past quiet hours; None without one."
+    daily_brief_lands_at: time | None = Field(
+        description="The local time the daily brief lands, past quiet hours; None without one."
     )
 
 

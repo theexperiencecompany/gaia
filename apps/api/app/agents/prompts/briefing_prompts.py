@@ -632,7 +632,7 @@ def build_day_zero_hello_prompt(
 ) -> str:
     """Build the first text GAIA sends a user right after they link a chat platform.
 
-    first_brief is when their first brief lands ("tomorrow at 7 AM"); None when briefs are off.
+    first_brief is when their first brief lands ("tomorrow at 7:12 AM"); None when briefs are off.
     """
 
     if has_goal:

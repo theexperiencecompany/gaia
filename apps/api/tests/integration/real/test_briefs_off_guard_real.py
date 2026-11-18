@@ -144,7 +144,7 @@ class TestBriefsOffGuard:
             "paused_for_plan": False,
             "next_daily_brief_at": None,
             "has_daily_brief": False,
-            "daily_brief_hour": None,
+            "daily_brief_lands_at": None,
         }
         assert await _stored_schedule(mongo_db) == {"frequency": "off", "hour": 9}
         assert not any(
