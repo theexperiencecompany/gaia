@@ -47,7 +47,8 @@ class _ProcessChromium:
         self._launching = asyncio.Lock()
         self._current: _Launch | None = None
         self._idle_timer: asyncio.TimerHandle | None = None
-        self._idle_close: asyncio.Task[None] | None = None
+        # Holds each idle close so the loop cannot drop it mid-run; nothing reads it.
+        self._idle_closes: set[asyncio.Task[None]] = set()  # pragma: no mutate — GC guard only
 
     async def acquire(self) -> _Launch:
         self._cancel_idle_timer()
@@ -76,7 +77,9 @@ class _ProcessChromium:
 
     def _start_idle_close(self, launch: _Launch) -> None:
         self._idle_timer = None
-        self._idle_close = asyncio.create_task(self._close_if_idle(launch))
+        task = asyncio.create_task(self._close_if_idle(launch))
+        self._idle_closes.add(task)  # pragma: no mutate — GC guard only
+        task.add_done_callback(self._idle_closes.discard)  # pragma: no mutate — GC guard only
 
     async def _close_if_idle(self, launch: _Launch) -> None:
         async with self._launching:

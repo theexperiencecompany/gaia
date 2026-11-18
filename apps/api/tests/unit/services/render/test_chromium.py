@@ -5,7 +5,7 @@ import asyncio
 from playwright.async_api import ViewportSize
 import pytest
 
-from app.constants.render import CHROMIUM_MAX_CONCURRENT_RENDERS
+from app.constants.render import CHROMIUM_LAUNCH_ARGS, CHROMIUM_MAX_CONCURRENT_RENDERS
 from app.services.render import chromium as chromium_module
 from app.services.render.chromium import chromium_page, close_chromium, renders_waiting
 from tests.unit.services.render.conftest import FakeChromium
@@ -140,3 +140,69 @@ async def test_a_render_inside_the_idle_window_keeps_the_browser(
 
         assert not chromium.browsers[0].closed
     assert len(chromium.browsers) == 1
+
+
+async def test_chromium_launches_headless_with_the_shared_launch_args(
+    chromium: FakeChromium,
+) -> None:
+    async with chromium_page(_VIEWPORT):
+        pass
+
+    assert chromium.launches == [{"headless": True, "args": CHROMIUM_LAUNCH_ARGS}]
+
+
+async def test_a_failed_relaunch_leaves_the_next_render_to_launch_again(
+    chromium: FakeChromium,
+) -> None:
+    async with chromium_page(_VIEWPORT):
+        pass
+    chromium.browsers[0].connected = False
+    chromium.launch_error = RuntimeError("chromium would not start")
+
+    with pytest.raises(RuntimeError, match="would not start"):
+        async with chromium_page(_VIEWPORT):
+            pass
+    chromium.launch_error = None
+    async with chromium_page(_VIEWPORT):
+        pass
+
+    assert len(chromium.browsers) == 2
+
+
+async def test_a_browser_is_not_idle_while_an_overlapping_render_still_runs(
+    chromium: FakeChromium, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(chromium_module, "CHROMIUM_IDLE_CLOSE_SECONDS", 0)
+    second_started = asyncio.Event()
+    first_done = asyncio.Event()
+
+    async def second() -> None:
+        async with chromium_page(_VIEWPORT):
+            second_started.set()
+            await first_done.wait()
+            for _ in range(3):
+                await asyncio.sleep(0)
+            assert not chromium.browsers[0].closed
+
+    task = asyncio.create_task(second())
+    async with chromium_page(_VIEWPORT):
+        await second_started.wait()
+    first_done.set()
+    await task
+
+
+async def test_a_render_starting_as_the_idle_close_fires_keeps_the_browser(
+    chromium: FakeChromium, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(chromium_module, "CHROMIUM_IDLE_CLOSE_SECONDS", 0)
+    async with chromium_page(_VIEWPORT):
+        pass
+    # Two loop turns: the zero-delay timer fires and queues the close, which has not run yet.
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    async with chromium_page(_VIEWPORT):
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        assert not chromium.browsers[0].closed

@@ -94,6 +94,29 @@ class TestRenderHtmlToImage:
 
         assert result == IMAGE_BYTES
 
+    async def test_the_page_is_laid_out_at_the_options_width_and_scale(
+        self, page: FakePage, chromium: FakeChromium
+    ) -> None:
+        await render_html_to_image(
+            "<html>hi</html>", ImageRenderOptions(width=800, device_scale_factor=3)
+        )
+
+        [context] = chromium.browsers[0].contexts
+        assert context.options == {
+            "viewport": {"width": 800, "height": 1},
+            "device_scale_factor": 3,
+        }
+
+    async def test_the_html_is_loaded_to_network_idle_and_fonts_settle_before_capture(
+        self, page: FakePage
+    ) -> None:
+        await render_html_to_image("<html>body</html>")
+
+        assert page.set_content_calls == [
+            {"html": "<html>body</html>", "wait_until": "networkidle", "timeout": 15_000}
+        ]
+        assert page.wait_for_timeout_calls == [render_module._FONT_SETTLE_MS]
+
     async def test_a_failed_navigation_propagates_and_nothing_is_captured(
         self, page: FakePage
     ) -> None:

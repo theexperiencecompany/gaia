@@ -253,5 +253,5 @@ def trim_to_content(
     if box is None:
         return image_bytes, None
     out = io.BytesIO()
-    image.crop(box).save(out, format="PNG")
+    image.crop(box).save(out, format="PNG")  # pragma: no mutate — case-blind in Pillow
     return out.getvalue(), box
