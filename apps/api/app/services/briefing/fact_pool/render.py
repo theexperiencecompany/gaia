@@ -83,10 +83,11 @@ def count_part(count: int, slot: FactSlot | None = None) -> str | None:
 
 @dataclass(frozen=True)
 class Voiced:
-    """What an item's line says to the voice beyond what the composition reads.
+    """What an item's line says to the voice instead of what the composition reads.
 
     The brief's own title for it, the slots that write its time and count, whether it has
-    something to link, and the deliverable GAIA's finished or open work holds.
+    something to link, and the deliverable GAIA's finished or open work holds. Whether GAIA
+    can act on it is the composition's alone: code writes the lead's offer.
     """
 
     fact: BriefFact
@@ -100,7 +101,7 @@ def item_line(
     """Say one item with every fact its producer knows: its app, state, title and the rest.
 
     The composition and the voice read the same line; the voice's names its slots beside
-    the time and count they write, and what its deliverable holds.
+    the time and count they write, and what its deliverable holds, but not whether GAIA acts.
     """
     head = f"{item_id}. [{item.app}] {item_state(item)}"
     if item.importance is SignalImportance.HIGH:
@@ -141,14 +142,16 @@ def _when(item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced |
 
 
 def _what_it_asks(item_id: int, item: BriefCandidate, voiced: Voiced | None) -> list[str]:
-    """Say how many asked, what the producer says it asks or reached, and whether it opens."""
+    """Say its count, ask or result, whether it opens, and to the composition whether GAIA acts."""
     slot = FactSlot(item_id, FactField.COUNT) if voiced is not None else None
     parts = [counted] if (counted := count_part(item.count, slot)) is not None else []
     if item.action is not None:
         parts.append(f"action {item.action.value}")
     if item.outcome is not None:
         parts.append(f"outcome {item.outcome.value}")
-    if voiced.linkable if voiced is not None else bool(item.url or item.todo_id):
+    if voiced is not None:
+        return [*parts, LINKABLE] if voiced.linkable else parts
+    if item.url or item.todo_id:
         parts.append(LINKABLE)
     parts.append(
         "GAIA can act on it" if item.gaia_acts else f"GAIA can only read {item.app}: no offer on it"

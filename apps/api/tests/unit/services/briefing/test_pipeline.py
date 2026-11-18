@@ -1513,6 +1513,21 @@ class TestTheVoice:
         assert world.stored().lede == "The Q3 board memo went out."
         assert world.voice.await_count == 1
 
+    @pytest.mark.parametrize("kind", [BriefingKind.DAILY, BriefingKind.WEEKLY])
+    async def test_a_figure_from_the_goal_they_stated_may_be_typed(
+        self, world: World, monkeypatch: pytest.MonkeyPatch, kind: BriefingKind
+    ) -> None:
+        """Replay of Nov 8: "a goal of 300 users" was refused, and the retry dropped the goal."""
+        goal = StatedGoal("Their growth goal for GAIA is 300 users.", GoalOrigin.MEMORY)
+        _goals_seam(monkeypatch, world, AsyncMock(return_value=[goal]))
+        reply = _weekly() if kind is BriefingKind.WEEKLY else _VOICE
+        world.replies = [{**reply, "lede": "Still aiming for 300 users?"}]
+
+        await run_brief(_USER, kind)
+
+        assert world.stored().lede == "Still aiming for 300 users?"
+        assert world.voice.await_count == 1
+
 
 class TestLinks:
     """A forwarded brief exposes exactly the deliverables its message links, nothing more."""

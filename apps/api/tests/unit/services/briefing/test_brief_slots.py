@@ -363,6 +363,16 @@ class TestTypedFigures:
             "facts, or leave it out"
         ]
 
+    def test_a_held_figure_hyphened_to_a_word_is_the_same_figure(self) -> None:
+        """Replay of the weekly: "the 300-user goal" was refused, and the retry dropped the goal."""
+        values = SlotValues(facts={}, counts={}, quoted=frozenset({"300"}))
+
+        assert slot_problems("message", "The 300-user goal stalled.", values) == []
+        assert slot_problems("message", "A 3-day sprint, 300-user goal.", values) == [
+            "the message types '3-day', a figure no fact carries; say it in words, from the "
+            "facts, or leave it out"
+        ]
+
     def test_a_typed_figure_is_named_without_the_punctuation_around_it(self) -> None:
         assert slot_problems("message", "up by (8).", _VALUES) == [
             "the message types '8', a figure no fact carries; say it in words, from the "

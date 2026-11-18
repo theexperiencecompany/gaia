@@ -119,10 +119,11 @@ class DailyStanding(Standing):
         # A user who stopped coming back is offered fewer briefs, never silently dropped.
         offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
         facts = inputs.facts
+        goal = format_goal_block(self.goals)
         blocks = VoicePromptBlocks(
             reader=reader_block(self.user),
             facts=facts.block,
-            goal=format_goal_block(self.goals),
+            goal=goal,
             lookback=lookback,
             replies=await chat_sync.format_replies_block(user_id, self.since),
             setup=await _setup_block(
@@ -148,8 +149,11 @@ class DailyStanding(Standing):
         return VoiceRequest(
             prompt=prompt,
             writing=Writing(
-                # What was done since the last brief is the user's own record, quotable as it stands.
-                values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback])),
+                # What was done since the last brief, and the goals they stated, are the user's own
+                # record, quotable as they stand.
+                values=replace(
+                    facts.values, quoted=facts.values.quoted | figures_in([lookback, goal])
+                ),
                 lead=None if quiet_lead else facts.lead,
                 recent=inputs.recent,
                 grounds=f"{facts.block}\n{inputs.signals}",

@@ -250,14 +250,16 @@ def _typed_figures(text: str, values: SlotValues) -> list[str]:
         | _counted(values)
     )
     words = [word.strip(_WORD_EDGES) for word in text.split()]
-    # A held figure in the plural ("1:1s" of a "1:1") is the same figure.
-    return [
-        word
-        for word in words
-        if any(ch.isdigit() for ch in word)
-        and word not in held
-        and word.removesuffix("s") not in held
-    ]
+    return [word for word in words if any(ch.isdigit() for ch in word) and not _held(word, held)]
+
+
+def _held(word: str, held: set[str]) -> bool:
+    """Say whether a typed word is held figures: as it stands, plural ("1:1s"), or hyphened ("300-user")."""
+    if word in held or word.removesuffix("s") in held:
+        return True
+    parts = word.split("-")
+    figures = [part for part in parts if any(ch.isdigit() for ch in part)]
+    return len(parts) > 1 and all(_held(part, held) for part in figures)
 
 
 def _typed_figure_problem(field_name: str, word: str, values: SlotValues) -> str:

@@ -129,8 +129,7 @@ class TestTheFactLines:
             "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
             "[Waiting]",
             "1. [Gmail] waiting on you: Reply to Maya | needs sign-off | due [[fact:1.time]] "
-            "(Fri Nov 13) | [[fact:1.count]] (3) todos on this one subject"
-            " | GAIA can only read Gmail: no offer on it",
+            "(Fri Nov 13) | [[fact:1.count]] (3) todos on this one subject",
         ]
 
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
@@ -149,10 +148,7 @@ class TestTheFactLines:
 
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
 
-        assert (
-            "1. [GAIA] waiting on you: Sort the garage | GAIA can only read GAIA: no offer on it\n"
-            in f"{facts.block}\n"
-        )
+        assert "1. [GAIA] waiting on you: Sort the garage\n" in f"{facts.block}\n"
         assert facts.deliverables == {}
 
     def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
@@ -173,7 +169,7 @@ class TestTheFactLines:
 
         assert (
             "1. [GAIA] waiting on you: Venue | Lisbon or Porto?"
-            " | GAIA can only read GAIA: no offer on it | artifact holds ~0 chars | waiting on you"
+            " | artifact holds ~0 chars | waiting on you"
         ) in facts.block
 
 
@@ -212,7 +208,7 @@ class TestWhatTheVoiceMayLink:
             _chosen(self._work(todo_id, url)), _sources(artifacts={"t1": art}), _CLOCK
         )
 
-        assert ("| linkable |" in facts.block) is linked
+        assert ("| linkable" in facts.block) is linked
 
 
 class TestWhatProseMayQuote:
@@ -232,7 +228,6 @@ class TestWhatProseMayQuote:
         assert facts.values.quoted == {"17"}
         assert facts.block.splitlines()[2] == (
             "1. [GAIA] open: Pitch prep | stands: GAIA looks at it again Tue Nov 17"
-            " | GAIA can only read GAIA: no offer on it"
         )
 
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
@@ -325,8 +320,8 @@ class TestTheCalendarAndTheCharts:
         assert facts.block.splitlines()[-3:] == [
             "This week:",
             "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
-            " | action attend | GAIA can only read Google Calendar: no offer on it",
-            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
+            " | action attend",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend",
         ]
 
     @pytest.mark.parametrize("days", [2, 7], ids=["two-days", "a-week"])
@@ -350,11 +345,11 @@ class TestTheCalendarAndTheCharts:
             "The days ahead, 3 event(s):",
             "Thu Nov 12, 2 event(s), the week's busiest:",
             "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
-            " | action attend | GAIA can only read Google Calendar: no offer on it",
-            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
+            " | action attend",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend",
             "Fri Nov 13, 1 event(s):",
             "9. [Google Calendar] calendar event: Dentist | at [[fact:9.time]] (9:30 AM)"
-            " | action attend | GAIA can only read Google Calendar: no offer on it",
+            " | action attend",
         ]
 
     def test_days_with_as_many_events_as_each_other_have_no_busiest(self) -> None:
@@ -373,9 +368,9 @@ class TestTheCalendarAndTheCharts:
             "The week ahead, 2 event(s):",
             "Thu Nov 12, 1 event(s):",
             "7. [Google Calendar] calendar event: Board call | at [[fact:7.time]] (3:00 PM)"
-            " | action attend | GAIA can only read Google Calendar: no offer on it",
+            " | action attend",
             "Fri Nov 13, 1 event(s):",
-            "8. [Google Calendar] calendar event: Offsite | all day | action attend | GAIA can only read Google Calendar: no offer on it",
+            "8. [Google Calendar] calendar event: Offsite | all day | action attend",
         ]
 
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
@@ -449,7 +444,7 @@ class TestEachCountClaimsOnlyItsOwn:
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
         assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.WHILE_AWAY: 1}
-        assert "4. [GAIA] on their list, undated: Plan Q1 |" in facts.block
+        assert "4. [GAIA] on their list, undated: Plan Q1\n" in f"{facts.block}\n"
 
     def test_done_and_in_progress_count_one_each_of_their_own_kind(self) -> None:
         done = BriefCandidate(
@@ -542,13 +537,10 @@ class TestTheAppsBlock:
         assert facts.signals.splitlines() == [
             f"{SIGNALS_HEADER} 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
             "[Jira] 1 item(s) shown",
-            "2. [Jira] waiting on you: Issue 2 | due [[fact:2.time]] (Fri Nov 13)"
-            " | GAIA can only read Jira: no offer on it",
+            "2. [Jira] waiting on you: Issue 2 | due [[fact:2.time]] (Fri Nov 13)",
             "[Linear] 2 item(s) shown",
-            "3. [Linear] waiting on you, important: Issue 3 | due [[fact:3.time]] (Fri Nov 13)"
-            " | GAIA can only read Linear: no offer on it",
-            "1. [Linear] waiting on you: Issue 1 | due [[fact:1.time]] (Fri Nov 13)"
-            " | linkable | GAIA can only read Linear: no offer on it",
+            "3. [Linear] waiting on you, important: Issue 3 | due [[fact:3.time]] (Fri Nov 13)",
+            "1. [Linear] waiting on you: Issue 1 | due [[fact:1.time]] (Fri Nov 13) | linkable",
         ]
 
     def test_no_signal_placed_is_no_block(self) -> None:
@@ -612,10 +604,10 @@ class TestARepeatIsSaidAsStillOpen:
         assert "1. [Linear]" not in facts.block
         assert facts.signals.splitlines()[1:] == [
             "[Linear] 1 item(s) shown",
-            "1. [Linear] waiting on you: E-1 | GAIA can only read Linear: no offer on it",
+            "1. [Linear] waiting on you: E-1",
         ]
         assert (
-            "2. [GAIA] waiting on you: Approve the MSA | GAIA can only read GAIA: no offer on it"
+            "2. [GAIA] waiting on you: Approve the MSA"
             " | already shown, still open (first seen 3 days ago, mentioned 3 time(s), last yesterday)"
         ) in facts.block
 

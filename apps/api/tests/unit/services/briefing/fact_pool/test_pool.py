@@ -426,7 +426,7 @@ class TestTheVoicesLine:
 
         assert item_line(7, item, CONTEXT.clock, Voiced(fact, linkable=True)) == (
             "7. [GAIA] waiting on you: Maya's term sheet | at [[fact:7.time]] (3:00 PM)"
-            " | [[fact:7.count]] (3) todos on this one subject | linkable | GAIA can act on it"
+            " | [[fact:7.count]] (3) todos on this one subject | linkable"
         )
 
     def test_a_due_item_says_its_due_day_by_its_slot(self) -> None:
@@ -434,14 +434,28 @@ class TestTheVoicesLine:
 
         line = item_line(2, item, CONTEXT.clock, Voiced(BriefFact(title="Rent", time="Thu Nov 12")))
 
-        assert "| due [[fact:2.time]] (Thu Nov 12) |" in line
+        assert line.endswith("| due [[fact:2.time]] (Thu Nov 12)")
 
     def test_with_no_time_to_write_no_time_is_said(self) -> None:
         item = self._item(due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC))
 
         line = item_line(2, item, CONTEXT.clock, Voiced(BriefFact(title="Rent")))
 
-        assert line == "2. [GAIA] waiting on you: Rent | GAIA can act on it"
+        assert line == "2. [GAIA] waiting on you: Rent"
+
+    @pytest.mark.parametrize("acts", [True, False], ids=["acts", "reads-only"])
+    def test_whether_gaia_can_act_is_told_to_the_composition_never_the_voice(
+        self, acts: bool
+    ) -> None:
+        """Replay of Nov 8: told "GAIA can act on it", the voice ended the brief on an offer."""
+        item = self._item(app="Gmail", gaia_acts=acts)
+
+        voiced = item_line(1, item, CONTEXT.clock, Voiced(BriefFact(title="Reply to Maya")))
+
+        assert voiced == "1. [Gmail] waiting on you: Reply to Maya"
+        assert item_line(1, item, CONTEXT.clock).endswith(
+            "| GAIA can act on it" if acts else "| GAIA can only read Gmail: no offer on it"
+        )
 
     def test_only_what_the_brief_can_link_is_linkable_to_the_voice(self) -> None:
         item = self._item(url="https://mail.google.com/t/1", todo_id="t1")
@@ -459,7 +473,7 @@ class TestTheVoicesLine:
         )
 
         assert line.endswith(
-            "| linkable | GAIA can act on it | summary: Twelve investors vetted"
+            "| linkable | summary: Twelve investors vetted"
             " | artifact holds ~900 chars | waiting on you"
         )
 
@@ -470,7 +484,7 @@ class TestTheVoicesLine:
             1, self._item(), CONTEXT.clock, Voiced(BriefFact(title="Venue"), False, art)
         )
 
-        assert line.endswith("| GAIA can act on it | artifact holds ~0 chars")
+        assert line == "1. [GAIA] waiting on you: Venue | artifact holds ~0 chars"
 
 
 class TestAnItemLine:

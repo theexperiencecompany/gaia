@@ -357,13 +357,16 @@ def _recent_lines_block(recent: RecentLines) -> str:
 _GOAL_QUESTION = """
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start on one deliverable you name ("You mentioned launching the
-mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
+it, the goal's own figures and date included. Weigh the bracketed dates first: a goal
+[mentioned] months ago with no activity since is probably stale, so the question only
+asks whether it is still live ("You mentioned launching the mobile app by December; is
+that still the plan?") and offers nothing. A recent goal's question instead offers to
+start on one deliverable you name ("You mentioned launching the mobile app by December,
+want me to start with a launch checklist tonight?"). Either way it is one question,
+never a question and an offer beside it. EXCEPTION,
 absolute: if the user's replies above ALREADY answered this with a yes, never ask
 it again in any wording. Acknowledge their yes plainly instead ("you said go
-ahead on the investor list, that's in motion") and say nothing more about it. Weigh
-the bracketed dates: a goal [mentioned] months ago with no activity since is
-probably stale; ask whether it is still live rather than acting on it. Only when
+ahead on the investor list, that's in motion") and say nothing more about it. Only when
 the knowledge above is truly empty, ask ONE short question for what they are working
 toward, grounded in what you DO know (profession, onboarding focus, recent activity).
 Offer no options: choices you make up are guesses dressed as their goals.

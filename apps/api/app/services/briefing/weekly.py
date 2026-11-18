@@ -1,6 +1,6 @@
 """The weekly digest's standing: the week since Monday, said the same to every reader."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from typing_extensions import override
@@ -18,6 +18,7 @@ from app.services.briefing.goals import StatedGoal, format_goal_block, stated_go
 from app.services.briefing.lifecycle import wake_or_skip
 from app.services.briefing.prose import Writing, reader_block
 from app.services.briefing.sections import Laid
+from app.services.briefing.slots import figures_in
 from app.services.briefing.standing import Standing, VoiceInputs, VoiceRequest
 from app.services.hil.utils import untrusted_fence
 
@@ -67,10 +68,11 @@ class WeeklyStanding(Standing):
     @override
     async def voice(self, inputs: VoiceInputs) -> VoiceRequest:
         facts = inputs.facts
+        goal = format_goal_block(self.goals)
         blocks = VoicePromptBlocks(
             reader=reader_block(self.user),
             facts=facts.block,
-            goal=format_goal_block(self.goals),
+            goal=goal,
             signals=inputs.signals,
         )
         return VoiceRequest(
@@ -81,7 +83,8 @@ class WeeklyStanding(Standing):
                 fence=untrusted_fence(),
             ),
             writing=Writing(
-                values=facts.values,
+                # The goals they stated are their own words, quotable as they stand.
+                values=replace(facts.values, quoted=facts.values.quoted | figures_in([goal])),
                 lead=facts.lead,
                 recent=inputs.recent,
                 grounds=f"{facts.block}\n{inputs.signals}",
