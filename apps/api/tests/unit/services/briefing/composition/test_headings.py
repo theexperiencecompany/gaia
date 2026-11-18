@@ -3,6 +3,7 @@
 Faked seam: the structured model call the heading check makes.
 """
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
@@ -14,6 +15,7 @@ from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
 from app.models.brief_item_models import ItemState
+from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.composition import headings
 from app.services.briefing.composition.headings import (
     HeadingVerdict,
@@ -221,3 +223,23 @@ def test_the_verdict_follows_its_reasoning_in_the_schema_the_model_fills() -> No
 
     assert fields.index("why") < fields.index("fits")
     assert fields[-1] == "fits"
+
+
+async def test_an_item_an_earlier_brief_saw_unchanged_is_shown_as_not_new(model: AsyncMock) -> None:
+    """Sim 12-05: issues the 12-04 brief saw, never mentioned, went out under "New GitHub issues"."""
+    seen = SignalMemoryDocument(
+        user_id=USER_ID,
+        integration_id="github",
+        external_id="1369",
+        first_seen=datetime(2026, 11, 10, tzinfo=UTC),
+        last_state="open",
+    )
+    known = replace(
+        POOL, items={**POOL.items, 1: POOL.items[1].model_copy(update={"memory": seen})}
+    )
+
+    await heading_problems(USER_ID, COMPOSITION, known)
+
+    prompt = model.await_args.args[1]
+    assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
+    assert "- item 2: Investor update | done | outcome sent\n" in prompt + "\n"

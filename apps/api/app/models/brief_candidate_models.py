@@ -130,9 +130,14 @@ class BriefCandidate(BaseModel):
         return self.origin is CandidateOrigin.BACKLOG
 
     @property
+    def is_known(self) -> bool:
+        """Whether an earlier brief saw it as it stands, mentioned or not: never new."""
+        return self.memory is not None and not self.moved
+
+    @property
     def is_repeat(self) -> bool:
         """Whether an earlier brief already showed it, unchanged: still open, not news."""
-        return self.memory is not None and self.memory.times_shown > 0 and not self.moved
+        return self.is_known and self.memory is not None and self.memory.times_shown > 0
 
     @property
     def is_news(self) -> bool:

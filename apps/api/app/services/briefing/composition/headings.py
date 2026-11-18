@@ -8,7 +8,7 @@ composition named, like any other broken part of it.
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
-from app.agents.prompts.brief_heading_prompts import BRIEF_HEADING_PROMPT
+from app.agents.prompts.brief_heading_prompts import BRIEF_HEADING_PROMPT, NOT_NEW
 from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL, BRIEF_HEADING_CHECK_TEMPERATURE
 from app.models.brief_composition_models import BriefComposition, ComposedItems
@@ -46,10 +46,13 @@ def _groups(composition: BriefComposition) -> dict[int, ComposedItems]:
 def _group_lines(number: int, group: ComposedItems, pool: FactPool) -> str:
     lines = [f'block {number}, heading "{group.heading}", state {group.state.value}:']
     for item in group.items:
-        state = pool.items[item.id].state.label.lower()
+        candidate = pool.items[item.id]
         said = item.action or item.outcome
         side = f"{'action' if item.action else 'outcome'} {said.value}" if said else "neither"
-        lines.append(f"- item {item.id}: {item.title} | {state} | {side}")
+        known = f" | {NOT_NEW}" if candidate.is_known else ""
+        lines.append(
+            f"- item {item.id}: {item.title} | {candidate.state.label.lower()} | {side}{known}"
+        )
     return "\n".join(lines)
 
 
@@ -69,6 +72,7 @@ async def heading_problems(
         BRIEF_HEADING_PROMPT.format(
             untrusted=UNTRUSTED_DATA_NOTE.format(fence=fence),
             fence=fence,
+            not_new=NOT_NEW,
             groups="\n\n".join(_group_lines(n, g, pool) for n, g in groups.items()),
         ),
         label=BRIEF_HEADING_CHECK_LABEL,
