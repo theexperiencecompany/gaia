@@ -35,7 +35,7 @@ const brief = {
   date: "2026-10-14",
   kind: "daily",
   delivered_channels: ["inapp"],
-  edition_image_url: null,
+  edition: null,
   opened_at: null,
   created_at: "2026-10-14T02:30:00Z",
   updated_at: null,

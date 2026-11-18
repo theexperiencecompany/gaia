@@ -13,7 +13,7 @@ import {
 } from "./BriefingEdition";
 
 export interface StandaloneBriefingProps {
-  briefing: Pick<BriefingView, "edition_image_url"> & {
+  briefing: Pick<BriefingView, "edition"> & {
     payload: BriefingEditionPayload;
   };
   /** Set on the owner's own page, which can share the brief or stop sharing it. */
@@ -43,7 +43,7 @@ export function StandaloneBriefing({
     >
       <BriefingEdition
         payload={briefing.payload}
-        imageUrl={briefing.edition_image_url}
+        imageUrl={briefing.edition?.image_url}
       />
     </StandalonePage>
   );

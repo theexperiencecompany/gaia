@@ -23,11 +23,14 @@ vi.mock("@/lib/api/typed", () => ({
 function schedule(
   frequency: BriefingScheduleState["frequency"],
 ): BriefingScheduleState {
+  const daily = frequency === "daily" || frequency === "weekdays";
   return {
     frequency,
     hour: 8,
     paused_for_plan: false,
     next_daily_brief_at: null,
+    has_daily_brief: daily,
+    daily_brief_hour: daily ? 8 : null,
   };
 }
 

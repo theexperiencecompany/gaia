@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { BriefingScheduleState } from "@gaia/shared/types";
-import type { BriefingScheduleUpdate, QuietHours } from "@shared/api/generated";
+import type { BriefingScheduleUpdate } from "@shared/api/generated";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   act,
@@ -33,25 +33,25 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
-const { getSchedule, putSchedule, getQuietHours } = vi.hoisted(() => ({
+const { getSchedule, putSchedule } = vi.hoisted(() => ({
   getSchedule: vi.fn(),
   putSchedule: vi.fn(),
-  getQuietHours: vi.fn(),
 }));
 vi.mock("@/lib/api/typed", () => ({
   api: {
-    get: (path: string) =>
-      path.endsWith("/quiet-hours") ? getQuietHours() : getSchedule(),
+    get: () => getSchedule(),
     put: (_path: string, init: { body: BriefingScheduleUpdate }) =>
       putSchedule(init.body),
   },
 }));
 
-const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
-
+/** What the server derives from the stored schedule: whether it runs, and when. */
 type RunState = Pick<
   BriefingScheduleState,
-  "paused_for_plan" | "next_daily_brief_at"
+  | "paused_for_plan"
+  | "next_daily_brief_at"
+  | "has_daily_brief"
+  | "daily_brief_hour"
 >;
 
 function stored(
@@ -62,58 +62,58 @@ function stored(
     ...schedule,
     paused_for_plan: false,
     next_daily_brief_at: null,
+    has_daily_brief: true,
+    daily_brief_hour: schedule.hour ?? null,
     ...runs,
   };
 }
 
 function renderSchedule(
   schedule: Omit<BriefingScheduleState, keyof RunState>,
-  quietHours: QuietHours,
   runs: Partial<RunState> = {},
 ) {
   getSchedule.mockResolvedValue(stored(schedule, runs));
-  getQuietHours.mockResolvedValue(quietHours);
   return renderWithQueryClient(<BriefingScheduleSettings />);
 }
 
 const QUIET_NOTE = "Lands at 8 AM, when your quiet hours end.";
 
-describe("the daily brief hour against quiet hours", () => {
+describe("the daily brief hour quiet hours hold it to", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("says the brief lands when quiet hours end for an hour inside them", async () => {
-    renderSchedule({ frequency: "daily", hour: 6 }, NIGHT);
+    renderSchedule({ frequency: "daily", hour: 6 }, { daily_brief_hour: 8 });
 
     expect(await screen.findByText(QUIET_NOTE)).toBeTruthy();
   });
 
   it("counts the hour quiet hours start as inside them", async () => {
-    renderSchedule({ frequency: "daily", hour: 22 }, NIGHT);
+    renderSchedule({ frequency: "daily", hour: 22 }, { daily_brief_hour: 8 });
 
     expect(await screen.findByText(QUIET_NOTE)).toBeTruthy();
   });
 
   it("stays quiet for the hour quiet hours end", async () => {
-    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT);
+    renderSchedule({ frequency: "daily", hour: 8 });
 
     await screen.findAllByText("8 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
   });
 
   it("stays quiet when quiet hours are off", async () => {
-    renderSchedule(
-      { frequency: "daily", hour: 6 },
-      { ...NIGHT, enabled: false },
-    );
+    renderSchedule({ frequency: "daily", hour: 6 }, { daily_brief_hour: 6 });
 
     await screen.findAllByText("6 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
   });
 
   it("stays quiet when there is no daily brief", async () => {
-    renderSchedule({ frequency: "weekly_only", hour: 6 }, NIGHT);
+    renderSchedule(
+      { frequency: "weekly_only", hour: 6 },
+      { has_daily_brief: false, daily_brief_hour: null },
+    );
 
     await screen.findAllByText("6 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
@@ -127,9 +127,12 @@ describe("a schedule that does not run without Pro", () => {
   });
 
   it("says the briefs are paused and offers the upgrade", async () => {
-    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT, {
-      paused_for_plan: true,
-    });
+    renderSchedule(
+      { frequency: "daily", hour: 8 },
+      {
+        paused_for_plan: true,
+      },
+    );
 
     expect(await screen.findByText("Your briefs are paused")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
@@ -143,7 +146,7 @@ describe("a schedule that does not run without Pro", () => {
   });
 
   it("says nothing of the plan when the briefs run", async () => {
-    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT);
+    renderSchedule({ frequency: "daily", hour: 8 });
 
     await screen.findAllByText("8 AM");
     expect(screen.queryByText("Your briefs are paused")).toBeNull();
@@ -157,9 +160,12 @@ describe("when the next daily brief lands", () => {
 
   it("names the day and hour of the next one, on the reader's clock", async () => {
     const next = new Date(2026, 10, 16, 9, 0).toISOString();
-    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT, {
-      next_daily_brief_at: next,
-    });
+    renderSchedule(
+      { frequency: "daily", hour: 9 },
+      {
+        next_daily_brief_at: next,
+      },
+    );
 
     expect(
       await screen.findByText("Next one Mon, Nov 16, 9:00 AM."),
@@ -167,7 +173,7 @@ describe("when the next daily brief lands", () => {
   });
 
   it("names none while no daily brief runs", async () => {
-    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT);
+    renderSchedule({ frequency: "daily", hour: 9 });
 
     await screen.findAllByText("9 AM");
     expect(screen.queryByText(/^Next one/)).toBeNull();
@@ -234,7 +240,6 @@ describe("saving the schedule", () => {
     getSchedule
       .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValue(DAILY_AT_8);
-    getQuietHours.mockResolvedValue(NIGHT);
     renderWithQueryClient(<BriefingScheduleSettings />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));

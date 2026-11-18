@@ -59,9 +59,7 @@ function briefMetadata(
     headline: HEADLINE,
     date: "2026-10-22",
     kind: "daily",
-    edition_image_url: null,
-    edition_fold: null,
-    edition_paper: null,
+    edition: null,
     edition_name: null,
     stamp_city_name: null,
     needs_you_count: 0,
@@ -111,7 +109,7 @@ describe("briefing notification", () => {
     fetchBriefing.mockResolvedValue({
       id: "brief_1",
       date: "2026-10-22",
-      edition_image_url: null,
+      edition: null,
       payload: {
         kicker: "THE MORNING BRIEF",
         date: "2026-10-22",
@@ -173,7 +171,11 @@ describe("briefing notification", () => {
     fetchBriefing.mockResolvedValue({
       id: "brief_2",
       date: "2026-10-22",
-      edition_image_url: "https://cdn.example/edition.png",
+      edition: {
+        image_url: "https://cdn.example/edition.png",
+        fold: null,
+        paper: null,
+      },
       payload: {
         kicker: "THE MORNING BRIEF",
         date: "2026-10-22",
@@ -188,7 +190,11 @@ describe("briefing notification", () => {
     renderCard(
       notification(
         briefMetadata("brief_2", {
-          edition_image_url: "https://cdn.example/edition.png",
+          edition: {
+            image_url: "https://cdn.example/edition.png",
+            fold: null,
+            paper: null,
+          },
         }),
       ),
     );
@@ -217,7 +223,7 @@ describe("briefing notification", () => {
     fetchBriefing.mockResolvedValue({
       id: "brief_1",
       date: "2026-10-22",
-      edition_image_url: null,
+      edition: null,
       payload: {
         kicker: "THE MORNING BRIEF",
         date: "2026-10-22",
@@ -282,7 +288,7 @@ describe("briefing notification", () => {
       .mockResolvedValue({
         id: "brief_1",
         date: "2026-10-22",
-        edition_image_url: null,
+        edition: null,
         payload: {
           kicker: "THE MORNING BRIEF",
           date: "2026-10-22",

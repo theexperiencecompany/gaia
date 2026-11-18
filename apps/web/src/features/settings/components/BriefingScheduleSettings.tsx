@@ -8,14 +8,13 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { LoadError } from "@/components/shared/LoadError";
-import { hasDailyBrief, quietHoursLanding } from "@/features/briefing";
+import { quietHoursLanding } from "@/features/briefing";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
-import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -42,12 +41,10 @@ export function BriefingScheduleSettings() {
     turnOff,
     keepBriefs,
   } = useBriefingScheduleSettings();
-  const { hours: quietHours } = useQuietHours();
   const { hasEverSubscribed } = useIsPaid();
   const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
-  const sendsDailyBrief = !!schedule && hasDailyBrief(schedule);
-  const landsAt =
-    schedule && quietHours ? quietHoursLanding(schedule, quietHours) : null;
+  const sendsDailyBrief = !!schedule?.has_daily_brief;
+  const landsAt = schedule ? quietHoursLanding(schedule) : null;
 
   return (
     <SettingsSection

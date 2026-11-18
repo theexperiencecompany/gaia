@@ -36,9 +36,7 @@ const TOKYO: Postmark = {
   stamp_url: "https://cdn.example/tokyo.webp",
   date: "2026-09-01",
   briefing_id: "brief_tokyo",
-  edition_image_url: null,
-  edition_fold: null,
-  edition_paper: null,
+  edition: null,
 };
 
 describe("PostmarksGlobe", () => {

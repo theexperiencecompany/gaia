@@ -9,6 +9,7 @@
 import type {
   BriefingPayload,
   BriefingView,
+  EditionImage,
   Postmark,
 } from "@shared/api/generated";
 import { z } from "zod";
@@ -37,9 +38,7 @@ export type BriefCard = Pick<
   BriefingView,
   | "date"
   | "kind"
-  | "edition_image_url"
-  | "edition_fold"
-  | "edition_paper"
+  | "edition"
   | "edition_name"
   | "stamp_city_name"
   | "needs_you_count"
@@ -53,15 +52,24 @@ export function briefPath(briefingId: string): string {
   return `/brief/${briefingId}`;
 }
 
+/** The edition's image and where it folds, as the folded card reads them; all null for a note. */
+function editionLayout(
+  edition: EditionImage | null,
+): Pick<FoldedBriefSummary, "imageUrl" | "editionFold" | "editionPaper"> {
+  return {
+    imageUrl: edition?.image_url ?? null,
+    editionFold: edition?.fold ?? null,
+    editionPaper: edition?.paper ?? null,
+  };
+}
+
 /** What the folded card shows, read off the brief's card. */
 export function foldedBrief(card: BriefCard): FoldedBriefSummary {
   return {
     headline: card.headline,
     date: card.date,
     kind: card.kind,
-    imageUrl: card.edition_image_url,
-    editionFold: card.edition_fold,
-    editionPaper: card.edition_paper,
+    ...editionLayout(card.edition),
     editionName: card.edition_name,
     stampCityName: card.stamp_city_name,
     needsYouCount: card.needs_you_count,
@@ -77,9 +85,7 @@ export function viewCard(view: BriefingView): BriefCard {
 export function postmarkBrief(postmark: Postmark): FoldedBriefSummary {
   return {
     headline: `Your brief from ${postmark.city}`,
-    imageUrl: postmark.edition_image_url,
-    editionFold: postmark.edition_fold,
-    editionPaper: postmark.edition_paper,
+    ...editionLayout(postmark.edition),
   };
 }
 
@@ -98,9 +104,13 @@ const NotificationBriefSchema = z.object({
   briefing_id: z.string(),
   date: z.string(),
   kind: z.string(),
-  edition_image_url: z.string().nullable(),
-  edition_fold: z.number().nullable(),
-  edition_paper: z.array(z.number()).nullable(),
+  edition: z
+    .object({
+      image_url: z.string(),
+      fold: z.number().nullable(),
+      paper: z.array(z.number()).nullable(),
+    })
+    .nullable(),
   edition_name: z.string().nullable(),
   stamp_city_name: z.string().nullable(),
   needs_you_count: z.number().int().nonnegative(),

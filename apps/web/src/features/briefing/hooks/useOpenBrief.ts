@@ -110,10 +110,10 @@ export function useOpenBrief(brief: FoldedBriefSummary, source: BriefSource) {
         return { kind: isNotFound(read.error) ? "missing" : "failed" };
       const { briefing } = read;
       payload = briefing.payload;
-      src = briefing.edition_image_url;
+      src = briefing.edition?.image_url ?? null;
       editionLayout = {
-        fold: briefing.edition_fold,
-        paper: briefing.edition_paper,
+        fold: briefing.edition?.fold ?? null,
+        paper: briefing.edition?.paper ?? null,
       };
     }
     if (!payload) return { kind: "missing" };

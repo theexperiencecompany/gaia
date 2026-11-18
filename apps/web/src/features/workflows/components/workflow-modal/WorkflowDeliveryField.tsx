@@ -10,7 +10,7 @@ import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
-import { briefingScheduleQuery, hasDailyBrief } from "@/features/briefing";
+import { briefingScheduleQuery } from "@/features/briefing";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";
@@ -34,7 +34,7 @@ export default function WorkflowDeliveryField({
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
   const { data: schedule } = useQuery(briefingScheduleQuery());
-  const noDailyBrief = !!schedule && !hasDailyBrief(schedule);
+  const noDailyBrief = !!schedule && !schedule.has_daily_brief;
   // Without a daily brief, the reason line below the control speaks for "brief".
   const helperFor = (value: WorkflowDelivery | null) => {
     if (!value) return UNCHOSEN_HINT;

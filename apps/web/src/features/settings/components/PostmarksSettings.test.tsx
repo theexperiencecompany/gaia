@@ -41,9 +41,7 @@ const TOKYO = {
   stamp_url: "https://cdn.example/tokyo.webp",
   date: "2026-09-01",
   briefing_id: "brief_tokyo",
-  edition_image_url: null,
-  edition_fold: null,
-  edition_paper: null,
+  edition: null,
 } satisfies PostmarksResponse["postmarks"][number];
 
 const LISBON = {
@@ -61,9 +59,7 @@ const TOKYO_BRIEF = {
   date: "2026-09-01",
   kind: "daily",
   delivered_channels: ["inapp"],
-  edition_image_url: null,
-  edition_fold: null,
-  edition_paper: null,
+  edition: null,
   opened_at: null,
   created_at: "2026-09-01T02:30:00Z",
   updated_at: null,
@@ -181,7 +177,9 @@ describe("PostmarksSettings", () => {
     const edition = "https://cdn.example/tokyo-edition.png";
     renderPostmarks({
       total: 85,
-      postmarks: [{ ...TOKYO, edition_image_url: edition, edition_fold: 0.3 }],
+      postmarks: [
+        { ...TOKYO, edition: { image_url: edition, fold: 0.3, paper: null } },
+      ],
     });
     const stamp = await screen.findByRole("button", { name: "Tokyo, Japan" });
     expect(prepareEdition).not.toHaveBeenCalled();
