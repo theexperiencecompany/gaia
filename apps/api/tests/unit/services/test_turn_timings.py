@@ -145,7 +145,7 @@ def test_outside_a_request_nothing_is_recorded() -> None:
 def test_the_accept_closes_ingress_and_renders_it_for_the_wide_event(
     clock: list[float],
 ) -> None:
-    timings = begin_turn_timings(started=0.0)
+    timings = begin_turn_timings(started=0.01)
     clock.extend([0.01, 0.03, 0.03, 0.05, 0.08])
     with turn_step(TurnStep.SESSION):
         record_store_call(Store.MONGO, 0.007)
@@ -160,7 +160,7 @@ def test_the_accept_closes_ingress_and_renders_it_for_the_wide_event(
         "ingress": {
             "session": {"ms": 20.0, "mongo_calls": 1, "mongo_ms": 7.0},
             "accept": {"ms": 20.0, "mongo_calls": 2, "mongo_ms": 10.0},
-            "other": {"ms": 40.0},
+            "other": {"ms": 30.0},
         },
     }
     assert timings.phase is TurnPhase.CLOSED
