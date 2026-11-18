@@ -40,12 +40,12 @@ async def migrate(apply: bool) -> int:
     }
     moved = 0
     async for doc in todos_collection.find(query, {"_id": 1, "user_id": 1, "recurrence": 1}):
-        user = await user_repository.get(doc["user_id"])
-        if user is None:
+        hours = await user_repository.get_hours(doc["user_id"])
+        if hours is None:
             print(f"  {doc['_id']}: no user {doc['user_id']}, left alone")
             continue
-        schedule = (await briefing_state_repository.state_for(user.id)).schedule
-        target = inbox_desk_recurrence(schedule, user.effective_quiet_hours)
+        schedule = (await briefing_state_repository.state_for(doc["user_id"])).schedule
+        target = inbox_desk_recurrence(schedule, hours.effective_quiet_hours)
         if target == doc["recurrence"]:
             continue
         moved += 1

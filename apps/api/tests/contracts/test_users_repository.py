@@ -29,6 +29,7 @@ from app.models.user_models import (
     PersonalizationBundle,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
 
@@ -486,6 +487,28 @@ class TestUserCounts:
         a = await repo.create(make_user(email="a1@b.com"))
         b = await repo.create(make_user(email="a2@b.com"))
         assert set(await repo.list_all_ids()) == {a.id, b.id}
+
+    @pytest.mark.regression
+    async def test_a_release_step_reads_a_user_no_longer_valid_whole(self, repo, raw_collection):
+        """A release step loading whole users failed on one shape an older release left behind."""
+        hours = QuietHours(enabled=True, start_hour=23, end_hour=6)
+        old = await raw_collection.insert_one(
+            {
+                "email": "old@b.com",
+                "timezone": "Asia/Kolkata",
+                "quiet_hours": hours.model_dump(),
+                "first_steps": "an old release's string",
+            }
+        )
+        user_id = str(old.inserted_id)
+        with pytest.raises(ValueError, match="first_steps"):
+            await repo.get(user_id)
+
+        assert await repo.list_all_ids() == [user_id]
+        assert await repo.get_hours(user_id) == UserHours(
+            timezone="Asia/Kolkata", quiet_hours=hours
+        )
+        assert await repo.get_hours("0" * 24) is None
 
     async def test_count_created_before(self, repo, make_user):
         from datetime import datetime

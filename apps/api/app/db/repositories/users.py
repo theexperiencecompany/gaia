@@ -58,6 +58,7 @@ from app.models.user_models import (
     PlatformLinkRecord,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
 from shared.py.analytics.catalog.onboarding import OnboardingStep
@@ -100,8 +101,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
     async def list_all_ids(self) -> list[str]:
-        """Return every user id — the bulk workspace-provisioning scan."""
-        return [doc.id for doc in await self._find({})]
+        """Return every user id — the bulk workspace-provisioning scan, reading no document whole."""
+        return await self._distinct("_id")
+
+    async def get_hours(self, user_id: str) -> UserHours | None:
+        """Read only the user's timezone and quiet hours, as a migration may: never the whole user."""
+        return await self._find_one_projected(
+            self._identity_filter(user_id), {"timezone": 1, "quiet_hours": 1}, UserHours
+        )
 
     async def find_named_with_email(self) -> list[NamedEmailRow]:
         """Return every user holding both a name and an email — the derived-name cleanup scan."""

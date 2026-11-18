@@ -31,7 +31,7 @@ from app.models.todo_models import (
     TodoUpdate,
     TrackedTodoCreation,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import UserDocument, UserHours
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.todos import inbox_desk
 from app.services.todos.errors import ExternalRefTakenError
@@ -119,6 +119,17 @@ def seams() -> Iterator[SimpleNamespace]:
             user_repository,
             "get",
             AsyncMock(side_effect=lambda user_id: users.get(user_id)),
+        ),
+        patch.object(
+            user_repository,
+            "get_hours",
+            AsyncMock(
+                side_effect=lambda user_id: (
+                    UserHours.model_validate(users[user_id].model_dump())
+                    if user_id in users
+                    else None
+                )
+            ),
         ),
         patch.object(
             briefing_state_repository,

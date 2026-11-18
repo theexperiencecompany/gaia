@@ -605,6 +605,18 @@ class UserDocument(MongoDocument):
         return self.quiet_hours or DEFAULT_QUIET_HOURS
 
 
+class UserHours(BaseModel):
+    """Projection of a user's timezone and quiet hours: all placing a daily schedule reads."""
+
+    timezone: str | None = None
+    quiet_hours: QuietHours | None = None
+
+    @property
+    def effective_quiet_hours(self) -> QuietHours:
+        """The user's own quiet hours, or the default when they never set any."""
+        return self.quiet_hours or DEFAULT_QUIET_HOURS
+
+
 class NamedEmailRow(BaseModel):
     """Projection of a user's id, name and email: all the derived-name cleanup reads."""
 

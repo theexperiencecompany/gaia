@@ -29,7 +29,6 @@ from app.models.todo_models import (
     TodoDocument,
     TodoUpdate,
 )
-from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.canvas_markdown import remove_section
@@ -124,10 +123,10 @@ async def follow_the_brief(user_id: str, before: str, after: str) -> None:
     desk = await todo_repository.find_latest_by_external_ref(user_id, INBOX_DESK_REF)
     if desk is None or desk.completed or desk.recurrence != before:
         return
-    user = await user_repository.get(user_id)
-    if user is None:
+    hours = await user_repository.get_hours(user_id)
+    if hours is None:
         raise LookupError(f"Inbox desk {desk.id} belongs to no user {user_id}")
-    schedule = _schedule_on(after, user)
+    schedule = _schedule_on(after, hours.timezone)
     moved = await todo_repository.update(desk.id, user_id=user_id, update=schedule)
     if moved is None or moved.scheduled_at is None:
         raise LookupError(f"Inbox desk {desk.id} vanished while it followed the brief")
@@ -142,11 +141,11 @@ async def _desk_schedule(user_id: str) -> TodoUpdate:
     if user is None:
         raise LookupError(f"Cannot schedule an Inbox desk for unknown user {user_id}")
     schedule = (await briefing_state_repository.state_for(user_id)).schedule
-    return _schedule_on(inbox_desk_recurrence(schedule, user.effective_quiet_hours), user)
+    return _schedule_on(inbox_desk_recurrence(schedule, user.effective_quiet_hours), user.timezone)
 
 
-def _schedule_on(recurrence: str, user: UserDocument) -> TodoUpdate:
-    next_run = get_next_run_time(recurrence, tz=Timezone.parse(user.timezone))
+def _schedule_on(recurrence: str, timezone: str | None) -> TodoUpdate:
+    next_run = get_next_run_time(recurrence, tz=Timezone.parse(timezone))
     return TodoUpdate(recurrence=recurrence, scheduled_at=next_run)
 
 
