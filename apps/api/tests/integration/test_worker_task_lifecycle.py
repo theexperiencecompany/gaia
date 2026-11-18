@@ -537,11 +537,11 @@ class TestWorkerStartupHooks:
     """Verify the ARQ startup function initializes required services."""
 
     @pytest.fixture(autouse=True)
-    def _no_browser_worker(self) -> Iterator[None]:
-        # A real one would start consuming the browser queue on whatever Redis is up, and a
+    def _no_queue_workers(self) -> Iterator[None]:
+        # Real ones would start consuming their queues on whatever Redis is up, and a
         # real post-deploy step would run every migration against whatever Mongo is up.
         with (
-            patch("app.workers.lifecycle.startup.start_browser_worker"),
+            patch("app.workers.lifecycle.startup.start_queue_workers"),
             patch("app.workers.lifecycle.startup.start_post_deploy"),
         ):
             yield

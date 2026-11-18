@@ -11,6 +11,7 @@ armed for (scheduled_for) and rejects a fire whose stamp no longer matches
 the workflow's current trigger_config.next_run.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 import time
 from typing import Any
@@ -55,14 +56,21 @@ def _onboarded_user():
 
 
 @pytest.fixture
-def scheduler() -> WorkflowScheduler:
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
+def scheduler() -> Iterator[WorkflowScheduler]:
+    with (
+        patch(
+            "app.services.scheduler_service.settings",
+            MagicMock(REDIS_URL="redis://localhost:6379/0"),
+        ),
+        # A user workflow: its fires take the shared queue and start nothing ahead.
+        patch(
+            "app.services.workflow.scheduler.workflow_repository.get",
+            AsyncMock(return_value=None),
+        ),
     ):
         svc = WorkflowScheduler(redis_settings=MagicMock())
         svc.arq_pool = AsyncMock()
-        return svc
+        yield svc
 
 
 @pytest.mark.unit

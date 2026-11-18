@@ -196,8 +196,8 @@ _refresh_delivery_incident = func(
 # The arq entry point (arq app.worker.WorkerSettings) and the task list it registers.
 __all__ = ["TASK_FUNCTIONS", "WorkerSettings"]
 
-# Every job on the default queue. Browser jobs have their own worker
-# (app.workers.browser_worker), started from the worker lifecycle.
+# Every job on the default queue. Browser jobs, brief fires and scout refreshes have their
+# own queue workers (app.workers.queue_workers), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
     _process_reminder,

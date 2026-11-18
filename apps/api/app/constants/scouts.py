@@ -15,6 +15,18 @@ SCOUT_LEARN_TIMEOUT: Final = timedelta(seconds=120)
 SCOUT_TURN_TIMEOUT: Final = timedelta(minutes=5)
 #: Scouts one brief runs at once; each holds an app connection, so the rest wait their turn.
 SCOUT_CONCURRENCY: Final[int] = 4
+#: Wall clock all of one brief's scouts get together; a scout still waiting or running at
+#: the cap is skipped, so a user with many slow apps never holds their brief past it.
+SCOUT_TIME_CAP: Final = timedelta(minutes=10)
+#: How long before a brief's slot its scouts are refreshed on the scout queue: past the cap,
+#: so the refreshed results are waiting when the brief starts.
+SCOUT_REFRESH_LEAD: Final = timedelta(minutes=15)
+#: The ARQ task that refreshes one brief's scouts ahead of its slot.
+REFRESH_SCOUTS_TASK: Final[str] = "refresh_scouts"
+#: Redis key holding a user's refreshed scout results until their brief takes them.
+SCOUTS_REFRESHED_KEY: Final[str] = "scouts:refreshed:{user_id}"
+#: How long refreshed results wait for their brief; a brief that never came leaves them to expire.
+SCOUTS_REFRESHED_TTL: Final = timedelta(hours=1)
 #: Safety ceiling on read-only tools bound onto one learn run (provider caps sit near 128);
 #: past it the tools most relevant to SCOUT_TOOL_QUERY are bound.
 SCOUT_MAX_BOUND_TOOLS: Final[int] = 100

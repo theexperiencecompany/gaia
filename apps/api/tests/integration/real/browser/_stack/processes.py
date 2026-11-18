@@ -27,8 +27,8 @@ import time
 import httpx
 from redis.asyncio import Redis
 
-from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
-from app.workers.browser_worker import browser_worker_health_key
+from app.constants.browser import BROWSER_HOST_KEY_HEADER, BROWSER_JOB_QUEUE, BrowserEngine
+from app.workers.queue_workers import queue_worker_health_key
 from tests.helpers import pick_free_port
 
 API_ROOT = Path(__file__).resolve().parents[5]
@@ -223,7 +223,7 @@ class BrowserWorker:
         self._log_dir = log_dir
         #: The stack's own database, where both of the process's ARQ workers record their health.
         self._redis = redis
-        self._health_keys = (browser_worker_health_key(), REAPER_HEALTH_KEY)
+        self._health_keys = (queue_worker_health_key(BROWSER_JOB_QUEUE), REAPER_HEALTH_KEY)
         self._generation = 0
         self.process = self._next()
 

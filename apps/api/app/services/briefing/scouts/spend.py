@@ -20,8 +20,7 @@ from app.constants.scouts import (
     SCOUT_SPEND_MICROS_PER_USD,
     SCOUT_SPEND_TTL_SECONDS,
 )
-from app.db.redis import AsyncRedisCommands, redis_cache
-from app.utils.errors import AppError
+from app.services.briefing.scouts.redis_client import scouts_redis
 
 
 def _micros(usd: float) -> int:
@@ -36,19 +35,12 @@ def _key(user_id: str) -> str:
     return SCOUT_SPEND_KEY.format(user_id=user_id, day=datetime.now(UTC).date().isoformat())
 
 
-def _client() -> AsyncRedisCommands:
-    client = redis_cache.redis
-    if client is None:
-        raise AppError(
-            message="scout spend cannot be read",
-            why="Redis is unavailable, so the daily scout ceiling cannot be enforced",
-            fix="restore Redis; scouts learn again on the next brief",
-        )
-    return client
-
-
 async def _add(key: str, micros: int) -> int:
-    pipe = _client().pipeline()
+    pipe = scouts_redis(
+        message="scout spend cannot be read",
+        why="Redis is unavailable, so the daily scout ceiling cannot be enforced",
+        fix="restore Redis; scouts learn again on the next brief",
+    ).pipeline()
     pipe.incrby(key, micros)
     pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
     total, _ttl_set = await pipe.execute()

@@ -10,7 +10,9 @@ from collections.abc import Callable
 from functools import partial
 from uuid import uuid4
 
+from app.constants.brief_slots import BRIEF_QUEUE, SCOUT_QUEUE
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
+from app.constants.scouts import REFRESH_SCOUTS_TASK, SCOUT_REFRESH_LEAD
 from app.constants.workflows import WorkflowDelivery
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
@@ -21,7 +23,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.briefing.run_times import brief_slots, briefing_cron
-from app.services.system_workflows.behaviour import SystemWorkflowBehaviour
+from app.services.system_workflows.behaviour import RunAhead, SystemWorkflowBehaviour
 
 _DEFAULT_SLOTS = brief_slots(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
@@ -97,13 +99,16 @@ BRIEFING_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]]
 
 
 # A brief is no workflow to the user: never listed, a failure is the logged error and the
-# next one runs, and it winds itself down (briefing.wind_down) instead of being paused.
+# next one runs, and it winds itself down (briefing.wind_down) instead of being paused. It
+# runs on its own queue, its scouts refreshed on theirs ahead of its slot.
 BRIEFING_BEHAVIOURS: dict[str, SystemWorkflowBehaviour] = {
     key: SystemWorkflowBehaviour(
         listed=False,
         notify_on_failure=False,
         pausable=False,
         cron_for=partial(briefing_cron, key),
+        queue=BRIEF_QUEUE,
+        run_ahead=RunAhead(task=REFRESH_SCOUTS_TASK, queue=SCOUT_QUEUE, lead=SCOUT_REFRESH_LEAD),
     )
     for key in (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
 }
