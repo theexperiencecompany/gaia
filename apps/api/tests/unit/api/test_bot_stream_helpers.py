@@ -262,6 +262,16 @@ class TestBotStreamPayloadFrame:
         assert payload == {"reaction": reaction}
         assert stop is False
 
+    async def test_main_response_complete_becomes_reply_complete(self):
+        """Whole-message platforms send on this, not on done, which waits on end-of-turn work."""
+        data = {"main_response_complete": True, "usage": {"input_tokens": 3}}
+        frame, stop = await _bot_stream_payload_frame(
+            BotWebStreamPayload.model_validate(data), "user-1"
+        )
+        payload = json.loads(frame[len("data: ") : -2])
+        assert payload == {"reply_complete": True}
+        assert stop is False
+
     async def test_an_explicit_null_reaction_still_delivers_the_response_text(self):
         frame, stop = await _bot_stream_payload_frame(
             BotWebStreamPayload.model_validate({"reaction": None, "response": "hi"}), "user-1"

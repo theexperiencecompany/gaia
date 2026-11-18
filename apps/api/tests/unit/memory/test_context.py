@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.db.repositories.users import user_repository
-from app.memory import context, pg_store, user_time
+from app.memory import context, pg_store, user_time, vector_index
 from app.models.memory_db_models import MemoryEpisode
 
 USER = "user-1"
@@ -134,3 +134,18 @@ class TestAboutTheUser:
     )
     def test_a_core_without_the_user_section_returns_nothing(self, core: str) -> None:
         assert context.about_the_user(core) == ""
+
+
+@pytest.mark.unit
+async def test_invalidating_a_users_memory_caches_also_marks_their_vectors_changed() -> None:
+    """Every memory mutation goes through here; a missed bump serves stale held vectors."""
+    with (
+        patch("app.memory.context.invalidate_recall_cache", new=AsyncMock()) as recall,
+        patch.object(context, "invalidate_core_context", new=AsyncMock()) as core,
+        patch.object(vector_index, "bump_version", new=AsyncMock()) as bump,
+    ):
+        await context.invalidate_user_memory_caches("u1")
+
+    recall.assert_awaited_once_with("u1")
+    core.assert_awaited_once_with("u1")
+    bump.assert_awaited_once_with("u1")

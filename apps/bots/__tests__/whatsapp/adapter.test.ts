@@ -147,6 +147,8 @@ import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 // Helpers
 // ---------------------------------------------------------------------------
 
+const RECEIVED_AT = 1_700_000_000_000;
+
 const MOCK_CONFIG = {
   kapsoApiKey: "test-api-key", // pragma: allowlist secret
   kapsoPhoneNumberId: "test-phone-id",
@@ -189,14 +191,15 @@ type PrivateAdapter = {
     waId: string,
     text: string,
     messageId: string,
+    receivedAt: number,
   ) => Promise<void>;
   handleStreamingMessage: (
     waId: string,
     text: string,
-    messageId?: string,
+    messageId: string,
+    receivedAt: number,
   ) => Promise<void>;
   sendWelcome: (waId: string) => Promise<void>;
-  welcomeSent: Set<string>;
   dispatchCommand: (
     name: string,
     target: {
@@ -390,7 +393,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("shows typing indicator via markRead for every incoming message", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockMarkRead).toHaveBeenCalledWith({
       phoneNumberId: "test-phone-id",
@@ -415,6 +423,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `${LINK_FIRST_MESSAGE} #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(redeemLinkCode).toHaveBeenCalledWith(
@@ -450,6 +459,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `${LINK_FIRST_MESSAGE} #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     // The only thing a refused code may produce is the explanation of why.
@@ -473,6 +483,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `remind me tomorrow #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(redeemLinkCode).not.toHaveBeenCalled();
@@ -489,6 +500,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "post this #launch",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(vi.mocked(handleStreamingChat).mock.calls[0][1]).toMatchObject({
@@ -503,6 +515,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "/gaia hello world",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
@@ -518,9 +531,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -528,7 +539,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("/gaia with no text sends usage hint and does NOT call handleStreamingChat", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "/gaia", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/gaia",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Usage: /gaia <your message>" }),
@@ -541,7 +557,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     const todoExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("todo", { execute: todoExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/todo list", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/todo list",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(todoExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -556,7 +577,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     const helpExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("help", { execute: helpExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/help", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/help",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(helpExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -572,6 +598,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "what is the weather?",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
@@ -587,9 +614,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -597,7 +622,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("/GAIA hello (uppercase command) still routes to streaming (command name is lowercased)", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "/GAIA hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/GAIA hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -610,9 +640,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -638,7 +666,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
   });
 
   it("empty string sends help text and does NOT call handleStreamingChat", async () => {
-    await priv.handleStreamingMessage("15551234567", "");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -649,7 +682,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
   });
 
   it("whitespace-only string sends help text and does NOT call handleStreamingChat", async () => {
-    await priv.handleStreamingMessage("15551234567", "   ");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "   ",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -660,7 +698,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
   });
 
   it("normal text calls handleStreamingChat without sending a placeholder message first", async () => {
-    await priv.handleStreamingMessage("15551234567", "plan my week");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "plan my week",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     // No "Thinking..." or any placeholder sent before handleStreamingChat
     expect(mockSendText).not.toHaveBeenCalled();
@@ -668,7 +711,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
   });
 
   it("calls handleStreamingChat with the correct context shape", async () => {
-    await priv.handleStreamingMessage("15551234567", "remind me to exercise");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "remind me to exercise",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -677,15 +725,14 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
         platform: "whatsapp",
         platformUserId: "15551234567",
         channelId: "15551234567",
+        receivedAt: RECEIVED_AT,
       }),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -697,7 +744,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       },
     );
 
-    await priv.handleStreamingMessage("15551234567", "hello");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     const allCalls = mockSendText.mock.calls.map((c) => c[0].body as string);
     const authMessage = allCalls.find((b) =>
@@ -716,7 +768,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       },
     );
 
-    await priv.handleStreamingMessage("15551234567", "hello");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     const allCalls = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allCalls).toContain("Something went wrong on the backend");
@@ -735,7 +792,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       },
     );
 
-    await priv.handleStreamingMessage("15551234567", "hello");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(capturedSendNew).toBeDefined();
 
@@ -755,7 +817,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       new Error("Streaming failure"),
     );
 
-    await priv.handleStreamingMessage("15551234567", "hello");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     const allCalls = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allCalls).toContain("An error occurred. Please try again.");
@@ -770,7 +837,12 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       },
     );
 
-    await priv.handleStreamingMessage("15551234567", "hello");
+    await priv.handleStreamingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(capturedEditMsg).toBeDefined();
 
@@ -855,7 +927,12 @@ describe("WhatsAppAdapter - welcome message", () => {
   });
 
   it("sends welcome on first message from a user", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     // First call should be the welcome message
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
@@ -863,24 +940,44 @@ describe("WhatsAppAdapter - welcome message", () => {
   });
 
   it("does NOT send welcome on second message from the same user", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-456" }] });
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "again", "wamid.002");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "again",
+      "wamid.002",
+      RECEIVED_AT,
+    );
 
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(false);
   });
 
   it("sends welcome to different users independently", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-789" }] });
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("14441234567", "hi", "wamid.003");
+    await priv.handleIncomingMessage(
+      "14441234567",
+      "hi",
+      "wamid.003",
+      RECEIVED_AT,
+    );
 
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(true);
@@ -977,6 +1074,7 @@ describe("WhatsAppAdapter - live turn reaction", () => {
       "15551234567",
       "thanks!",
       "wamid.in",
+      RECEIVED_AT,
     );
     const hook = vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
       emoji: string,

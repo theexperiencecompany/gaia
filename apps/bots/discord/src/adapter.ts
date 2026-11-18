@@ -152,16 +152,18 @@ export class DiscordAdapter extends BaseBotAdapter {
     });
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
+      const receivedAt = Date.now();
       if (interaction.isChatInputCommand()) {
-        await this.handleInteraction(interaction);
+        await this.handleInteraction(interaction, receivedAt);
         return;
       }
       if (interaction.isMessageContextMenuCommand()) {
-        await this.handleContextMenuInteraction(interaction);
+        await this.handleContextMenuInteraction(interaction, receivedAt);
       }
     });
 
     this.client.on(Events.MessageCreate, async (message) => {
+      const receivedAt = Date.now();
       if (message.partial) {
         try {
           await message.fetch();
@@ -182,9 +184,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       if (!isDM && !message.mentions.has(this.client.user)) return;
 
       if (isDM) {
-        await this.handleDMMessage(message);
+        await this.handleDMMessage(message, receivedAt);
       } else {
-        await this.handleMentionMessage(message, this.client.user.id);
+        await this.handleMentionMessage(
+          message,
+          this.client.user.id,
+          receivedAt,
+        );
       }
     });
   }
@@ -352,10 +358,11 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   private async handleInteraction(
     interaction: ChatInputCommandInteraction,
+    receivedAt: number,
   ): Promise<void> {
     const name = interaction.commandName;
     if (name === "gaia") {
-      await this.handleGaiaInteraction(interaction);
+      await this.handleGaiaInteraction(interaction, receivedAt);
       return;
     }
 
@@ -373,6 +380,7 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   private async handleGaiaInteraction(
     interaction: ChatInputCommandInteraction,
+    receivedAt: number,
   ): Promise<void> {
     const message = interaction.options.getString("message", true);
     const userId = interaction.user.id;
@@ -386,7 +394,14 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "discord", platformUserId: userId, channelId, isDm },
+      {
+        message,
+        platform: "discord",
+        platformUserId: userId,
+        channelId,
+        isDm,
+        receivedAt,
+      },
       async (content: string) => {
         if (isFirstMessage) {
           await interaction.editReply({ content });
@@ -439,7 +454,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         }
       },
       STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
+      this.analyticsFor(userId),
     );
   }
 
@@ -449,6 +464,7 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   private async handleContextMenuInteraction(
     interaction: MessageContextMenuCommandInteraction,
+    receivedAt: number,
   ): Promise<void> {
     const name = interaction.commandName;
     // Which context-menu action ran is the one thing the downstream `chat`
@@ -478,6 +494,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         channelId,
         `Summarize the following message in 2-3 concise sentences:\n\n"${content.slice(0, 1000)}"`,
         "Summary",
+        receivedAt,
       );
       return;
     }
@@ -490,6 +507,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         channelId,
         `Add this as a todo item: "${title}"`,
         "Todo Added",
+        receivedAt,
       );
     }
   }
@@ -505,6 +523,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     channelId: string,
     message: string,
     header: string,
+    receivedAt: number,
   ): Promise<void> {
     let replied = false;
     // Header owns the deferred reply; each bubble is its own follow-up (editing
@@ -520,6 +539,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         platformUserId: userId,
         channelId,
         isDm: !interaction.guild,
+        receivedAt,
       },
       async (text: string) => {
         replied = true;
@@ -563,7 +583,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         if (!replied) await interaction.editReply({ content: err });
       },
       STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
+      this.analyticsFor(userId),
     );
   }
 
@@ -617,7 +637,10 @@ export class DiscordAdapter extends BaseBotAdapter {
     }
   }
 
-  private async handleDMMessage(message: Message): Promise<void> {
+  private async handleDMMessage(
+    message: Message,
+    receivedAt: number,
+  ): Promise<void> {
     const userId = message.author.id;
 
     if (await this.shouldSendWelcome(userId)) {
@@ -666,6 +689,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
           isDm: true,
           platformMessageId: message.id,
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -709,7 +733,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(userId),
+        this.analyticsFor(userId),
         (emoji: string, replaces: string | null) =>
           this.reactToMessage(userId, message.id, emoji, false, replaces),
       );
@@ -809,6 +833,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private async handleMentionMessage(
     message: Message,
     botId: string,
+    receivedAt: number,
   ): Promise<void> {
     const caption = message.content
       .replace(new RegExp(`<@!?${botId}>`, "g"), "")
@@ -834,7 +859,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       return;
     }
 
-    await this.streamMentionReply(message, send, content, attachments);
+    await this.streamMentionReply(
+      message,
+      send,
+      content,
+      attachments,
+      receivedAt,
+    );
   }
 
   /**
@@ -904,6 +935,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     send: (text: string) => Promise<Message>,
     content: string,
     attachments: BotFileData[],
+    receivedAt: number,
   ): Promise<void> {
     try {
       const stopTyping = this.startMentionTyping(message);
@@ -927,6 +959,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           channelId: message.channelId,
           isDm: !message.guild,
           platformMessageId: message.id,
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -951,7 +984,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(message.author.id),
+        this.analyticsFor(message.author.id),
         (emoji: string, replaces: string | null) =>
           message.guild
             ? this.reactToMessage(

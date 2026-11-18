@@ -68,6 +68,15 @@ def reaction_frame(reaction: ReactionPayload) -> str:
     return sse_frame({"reaction": reaction.model_dump()})
 
 
+def reply_complete_frame() -> str:
+    """Signal that the reply text is final, ahead of the turn's end-of-turn work.
+
+    A platform that sends whole messages delivers on this instead of waiting for
+    done, which comes only after follow-up suggestions and any delegated work.
+    """
+    return sse_frame({"reply_complete": True})
+
+
 def error_frame(error_code: str) -> str:
     """Return a terminal error frame; the code is the contract the bot adapters switch on."""
     return sse_frame({"error": error_code})

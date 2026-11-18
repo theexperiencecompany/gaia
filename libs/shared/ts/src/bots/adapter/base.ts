@@ -54,6 +54,7 @@ import {
   isLostReply,
   type ReportDeliveryFailure,
 } from "../delivery-failures";
+import type { LinkState } from "../link-codes.types";
 import type {
   AuthStatus,
   BotCommand,
@@ -83,8 +84,15 @@ import {
   type ReactionOutcome,
   reactionDeliveredProperties,
 } from "../utils/reaction-outcome";
+import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
+
+/**
+ * Ceiling on the link-status check that runs ahead of a user's message (welcome gate, one-tap
+ * code). Past it the message goes on as if the check failed, rather than waiting on the API.
+ */
+const LINK_STATE_CHECK_TIMEOUT_MS = 2_000;
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
@@ -648,6 +656,13 @@ export abstract class BaseBotAdapter {
 
   /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
+  /**
+   * Users last seen linked this process, so the welcome gate on every message costs a known-linked
+   * user no round-trip. Only the welcome gate reads it: {@link linkState} always asks, and keeps
+   * this in step with the answer, so a user who unlinked and comes back with a one-tap code is
+   * seen as unlinked and their code redeemed.
+   */
+  private readonly linkedUsers = new Set<string>();
 
   /**
    * The PostHog distinct_id for a platform user: their stable GAIA user id once linked,
@@ -665,7 +680,7 @@ export abstract class BaseBotAdapter {
     const platformDistinctId = platformIdentity(this.platform, platformUserId);
     let status: AuthStatus;
     try {
-      status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
+      status = await this.checkAuthStatusBounded(platformUserId);
     } catch (error) {
       this.logger.error(
         "analytics_identity_resolve_failed",
@@ -674,14 +689,36 @@ export abstract class BaseBotAdapter {
       );
       return platformDistinctId;
     }
+    return (
+      this.recordLinkedIdentity(platformUserId, status) ?? platformDistinctId
+    );
+  }
 
-    if (!status.user_id) return platformDistinctId;
+  /** The user's auth status, bounded: every caller sits on a user's message path. */
+  private checkAuthStatusBounded(platformUserId: string): Promise<AuthStatus> {
+    return withTimeout(
+      this.gaia.checkAuthStatus(this.platform, platformUserId),
+      LINK_STATE_CHECK_TIMEOUT_MS,
+      "auth_check_timeout",
+    );
+  }
 
-    // First resolution for this user in this process: stitch whatever they did
-    // before linking onto the GAIA profile. Cached below, so it fires once per
-    // process rather than per message.
+  /**
+   * Caches a linked user's GAIA id from any auth-status answer, aliasing the pre-link platform
+   * id onto it the first time this process sees them linked. Null while unlinked.
+   */
+  private recordLinkedIdentity(
+    platformUserId: string,
+    status: AuthStatus,
+  ): AnalyticsId | null {
+    if (!status.user_id) return null;
+    const cached = this.distinctIdCache.get(platformUserId);
+    if (cached) return cached;
     const userId = parseUserId(status.user_id);
-    this.analytics.alias(platformDistinctId, userId);
+    this.analytics.alias(
+      platformIdentity(this.platform, platformUserId),
+      userId,
+    );
     this.distinctIdCache.set(platformUserId, userId);
     return userId;
   }
@@ -700,33 +737,48 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Welcome gate shared by adapters that greet a user on first contact (Discord DM embed,
-   * WhatsApp text). Greets ONLY while the GAIA account is unlinked — driven by the persistent
-   * auth status (MongoDB), not process memory, which fixes a bug where a restart re-greeted
-   * already-linked users. For an unlinked user it still fires at most once per process.
+   * Whether a platform user is linked to a GAIA account, asked fresh each time. The check sits
+   * ahead of the user's message, so it is bounded: a failed or slow check is `unknown`, not
+   * `unlinked`, and callers pick their own safe default from that.
    */
-  protected async shouldSendWelcome(userId: string): Promise<boolean> {
-    if (this.welcomedUsers.has(userId)) return false;
-    // Mark in-flight before the await so two concurrent first messages can't
-    // both pass the check and send duplicate welcomes. Cleared again whenever
-    // the user turns out to be authenticated or the check fails.
-    this.welcomedUsers.add(userId);
+  protected async linkState(userId: string): Promise<LinkState> {
     try {
-      const status = await this.gaia.checkAuthStatus(this.platform, userId);
-      if (status.authenticated) {
-        this.welcomedUsers.delete(userId);
-        return false;
+      const status = await this.checkAuthStatusBounded(userId);
+      this.recordLinkedIdentity(userId, status);
+      if (!status.authenticated) {
+        this.linkedUsers.delete(userId);
+        return "unlinked";
       }
+      this.linkedUsers.add(userId);
+      return "linked";
     } catch (error) {
-      this.welcomedUsers.delete(userId);
       this.logger.error(
         "welcome_auth_check_failed",
         { user_hash: hashLogIdentifier(userId) },
         error,
       );
+      return "unknown";
+    }
+  }
+
+  /**
+   * Welcome gate shared by adapters that greet a user on first contact (Discord DM embed,
+   * WhatsApp and iMessage text). Greets ONLY while the GAIA account is unlinked — driven by the
+   * persistent auth status (MongoDB), not process memory, which fixes a bug where a restart
+   * re-greeted already-linked users. For an unlinked user it still fires at most once per
+   * process; a failed check greets no one.
+   */
+  protected async shouldSendWelcome(userId: string): Promise<boolean> {
+    if (this.welcomedUsers.has(userId) || this.linkedUsers.has(userId)) {
       return false;
     }
-    return true;
+    // Mark in-flight before the await so two concurrent first messages can't
+    // both pass the check and send duplicate welcomes. Cleared again whenever
+    // the user turns out to be linked or the check fails.
+    this.welcomedUsers.add(userId);
+    if ((await this.linkState(userId)) === "unlinked") return true;
+    this.welcomedUsers.delete(userId);
+    return false;
   }
 
   /**

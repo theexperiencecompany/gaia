@@ -12,7 +12,7 @@ import type { Readable } from "node:stream";
 import type { ReactionBy } from "../../api/generated";
 import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
-import type { ChatRequest } from "../types";
+import type { ChatRequest, ReplyCompleteHandler } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import {
   REACTION_OUTCOME,
@@ -27,6 +27,7 @@ import type {
   NoticeHandler,
 } from "./chat-stream.types";
 
+export type { ReplyCompleteHandler } from "../types";
 export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
@@ -65,6 +66,7 @@ export async function streamChat(
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
+  onReplyComplete?: ReplyCompleteHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -84,6 +86,7 @@ export async function streamChat(
         onMessageBoundary,
         onNotice,
         onReaction,
+        onReplyComplete,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -136,6 +139,7 @@ interface SseFrame {
   text?: string;
   message_boundary?: MessageBoundary;
   reaction?: { message_id: string; emoji: string; by: ReactionBy };
+  reply_complete?: boolean;
   done?: boolean;
   conversation_id?: string;
 }
@@ -167,6 +171,7 @@ async function streamChatOnce(
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
+  onReplyComplete?: ReplyCompleteHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary; joins `fullText` only once the backend
@@ -314,6 +319,9 @@ async function streamChatOnce(
         if (frame.message_boundary) {
           await applyMessageBoundary(frame.message_boundary.discarded);
         }
+        // Only KEPT text: anything still pending has no boundary yet, so it could
+        // still be retracted, and the reply it would join is not final.
+        if (frame.reply_complete) await onReplyComplete?.(fullText);
       };
 
       // Applies one parsed SSE frame's side effects. Returns true once the
@@ -501,6 +509,7 @@ async function streamChatOnce(
         // attempt every rate-limit notice it produced.
         onNotice,
         onReaction,
+        onReplyComplete,
       );
     }
 

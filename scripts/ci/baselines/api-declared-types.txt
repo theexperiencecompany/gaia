@@ -70,7 +70,6 @@ apps/web/src/features/integrations/api/integrationsApi.ts:AddIntegrationOutcome
 apps/web/src/features/memory/api/memoryApi.ts:ListMemoriesParams
 apps/web/src/features/notification/api/notificationCache.ts:Page
 apps/web/src/features/skills/api/types.ts:DiscoveredSkill
-apps/web/src/features/team/api/teamApi.ts:TeamMember
 apps/web/src/features/workflows/api/workflowApi.ts:TriggerOptionsQuery
 apps/web/src/types/api/aboutApiTypes.ts:AboutData
 apps/web/src/types/api/aboutApiTypes.ts:Author

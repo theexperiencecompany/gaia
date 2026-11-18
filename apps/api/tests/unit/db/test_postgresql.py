@@ -7,6 +7,7 @@ Covers:
 - close_postgresql_db: disposal when initialized, error handling
 """
 
+from collections.abc import Iterator
 from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -175,11 +176,12 @@ class TestClosePostgresqlDb:
         mock_engine = AsyncMock()
         keys: list[str] = []
 
+        def initialized(key: str) -> bool:
+            keys.append(key)
+            return True
+
         with (
-            patch(
-                "app.db.postgresql.providers.is_initialized",
-                side_effect=lambda key: (keys.append(key), True)[1],
-            ),
+            patch("app.db.postgresql.providers.is_initialized", side_effect=initialized),
             patch(
                 "app.db.postgresql.get_postgresql_engine",
                 new_callable=AsyncMock,
@@ -260,6 +262,31 @@ class TestClosePostgresqlDb:
 
 class TestInitPostgresqlEngine:
     """Tests for the init_postgresql_engine() lazy provider function."""
+
+    @pytest.fixture(autouse=True)
+    def instrument(self) -> Iterator[MagicMock]:
+        """Stub the store-timing hook: these engines are mocks SQLAlchemy cannot attach events to."""
+        with patch("app.db.postgresql.instrument_postgres") as instrument:
+            yield instrument
+
+    async def test_the_engine_it_builds_is_instrumented_for_turn_timings(
+        self, instrument: MagicMock
+    ) -> None:
+        mock_engine = MagicMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_engine.begin.return_value = mock_ctx
+
+        with (
+            patch("app.db.postgresql.settings") as mock_settings,
+            patch("app.db.postgresql.create_async_engine", return_value=mock_engine),
+            patch("app.db.postgresql.log"),
+        ):
+            mock_settings.POSTGRES_URL = "postgresql://user:pass@host:5432/db"
+            await _get_original_init_fn()()
+
+        instrument.assert_called_once_with(mock_engine)
 
     async def test_url_rewriting_postgresql_to_asyncpg(self) -> None:
         """Should rewrite 'postgresql://' to 'postgresql+asyncpg://' in the URL."""
