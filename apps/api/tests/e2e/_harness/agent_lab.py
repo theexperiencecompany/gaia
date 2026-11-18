@@ -45,12 +45,12 @@ def lab_world(todos: InMemoryTodos) -> Iterator[AsyncMock]:
             stack.enter_context(patch(f"{module}.todo_repository", todos))
         stack.enter_context(
             patch(
-                "app.services.triggers.subscription_service.record_activity",
+                "app.services.triggers.subscription_service.record_todo_activity",
                 AsyncMock(return_value=True),
             )
         )
         dispatch = "app.services.triggers.subscription_dispatch"
-        stack.enter_context(patch(f"{dispatch}.record_activity", AsyncMock(return_value=True)))
+        stack.enter_context(patch(f"{dispatch}.record_todo_activity", AsyncMock(return_value=True)))
         stack.enter_context(patch(f"{dispatch}.capture", MagicMock()))
         stack.enter_context(patch(f"{dispatch}.enqueue_worker_job", enqueue))
         stack.enter_context(

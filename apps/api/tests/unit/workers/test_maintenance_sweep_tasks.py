@@ -113,7 +113,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
         patch(f"{MODULE}.tracked_todo_service.schedule_execution", mocks["schedule"]),
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
-        patch(f"{MODULE}.record_activity", mocks["activity"]),
+        patch(f"{MODULE}.record_todo_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
         patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
         patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
@@ -296,7 +296,7 @@ class TestHealthCheckExpired:
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
 
@@ -365,7 +365,7 @@ class TestHealthCheckDormant:
             patch(f"{MODULE}._health_check_verdict", verdict),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}.todo_repository.update", store) as store,
-            patch(f"{MODULE}.record_activity", syslog),
+            patch(f"{MODULE}.record_todo_activity", syslog),
         ):
             before = datetime.now(UTC)
             outcome = await _health_check_dormant(_doc(), pool)
@@ -437,7 +437,7 @@ class TestNotifyOverdue:
         with (
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             # due_date is relative to real now — _notify_overdue computes
             # "days overdue" from its own clock, not the test's frozen NOW.
@@ -1118,7 +1118,7 @@ class TestDormantTierDetails:
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", AsyncMock()) as schedule,
             patch(f"{MODULE}.todo_repository.update", AsyncMock()),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
             patch(f"{MODULE}.random.randint", return_value=42) as randint,
         ):
             outcome = await _health_check_dormant(_doc(), pool)

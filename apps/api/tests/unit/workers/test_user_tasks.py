@@ -324,7 +324,7 @@ class TestReactivateUserTask:
 
     @pytest.mark.parametrize(("ctx", "tries_before"), [({}, 0), ({"job_try": 3}, 2)])
     async def test_an_incomplete_resume_is_retried_with_growing_delay(self, ctx, tries_before):
-        """record_activity already marked the user active, so this task is the only retry there is."""
+        """mark_user_seen already marked the user active, so this task is the only retry there is."""
         defer = REACTIVATE_USER_RETRY_DELAY * RETRY_BACKOFF_BASE**tries_before
         with (
             patch(_REACTIVATE, new_callable=AsyncMock, side_effect=RuntimeError("composio down")),

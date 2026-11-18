@@ -946,7 +946,7 @@ class TestBotRequestAnalyticsAttribution:
             return {"ok": True}
 
         with patch(
-            "app.api.v1.middleware.activity.record_activity", new_callable=AsyncMock
+            "app.api.v1.middleware.activity.mark_user_seen", new_callable=AsyncMock
         ) as record:
             response = TestClient(app).post(
                 "/api/v1/bot/probe",

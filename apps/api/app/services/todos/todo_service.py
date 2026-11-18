@@ -51,7 +51,7 @@ from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -319,7 +319,7 @@ async def reopening_todos(
         raise
     reopened_tracked = [todo.id for todo in todos if todo.completed and todo.vfs_path]
     for todo_id in reopened_tracked:
-        await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
         await set_canvas_completed(todo_id, completed=False)
     if reopened_tracked:
         schedule_gaia_tasks_sync(user_id)

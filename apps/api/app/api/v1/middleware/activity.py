@@ -6,7 +6,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.middleware.auth import get_current_user
-from app.services.user_activity.recording import record_activity
+from app.services.user_activity.recording import mark_user_seen
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import current_analytics_context
 
@@ -23,5 +23,5 @@ class ActivityRecordingMiddleware(BaseHTTPMiddleware):
         user = get_current_user(request)
         attribution = current_analytics_context().attribution
         if user and user.user_id and attribution.actor is Actor.USER:
-            await record_activity(user.user_id, attribution.surface)
+            await mark_user_seen(user.user_id, attribution.surface)
         return await call_next(request)

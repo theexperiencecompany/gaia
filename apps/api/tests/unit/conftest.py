@@ -38,7 +38,7 @@ def origin(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def recorded_activity() -> Iterator[AsyncMock]:
     """Stand in for the middleware's activity write, which needs Mongo; yields it for assertions."""
-    with patch("app.api.v1.middleware.activity.record_activity", new_callable=AsyncMock) as record:
+    with patch("app.api.v1.middleware.activity.mark_user_seen", new_callable=AsyncMock) as record:
         yield record
 
 

@@ -1915,7 +1915,7 @@ class TestBotChatStreamMetering:
     so it can never be metered by @tiered_rate_limit. Before it called
     enforce_tiered_limit explicitly it went entirely unmetered: a free user had
     no message limit through Telegram/Discord/Slack/WhatsApp, and because
-    record_activity fires from the limiter, bot turns never reached
+    count_daily_actions fires from the limiter, bot turns never reached
     usage_daily either — leaving those users off the heatmap, streak and badge.
     """
 

@@ -500,7 +500,7 @@ class TestReportSandboxEvent:
                 f"{EVENTS_MODULE}.todo_repository.find_active_by_user_and_trigger",
                 AsyncMock(return_value=todos),
             ) as find,
-            patch(f"{EVENTS_MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{EVENTS_MODULE}.record_todo_activity", AsyncMock()) as activity,
             patch(f"{EVENTS_MODULE}.fire_subscription", AsyncMock()) as fire,
         ):
             yield activity, fire, find

@@ -97,7 +97,7 @@ def deps():
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture") as capture,
-        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
+        patch(f"{_MOD}.record_todo_activity", new_callable=AsyncMock) as activity,
         patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
         patch(f"{_MOD}.buffer_todo_trigger_event_until", new_callable=AsyncMock) as hold_until,
     ):

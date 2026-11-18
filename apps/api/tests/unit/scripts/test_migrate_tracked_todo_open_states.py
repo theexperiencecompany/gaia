@@ -108,7 +108,7 @@ class TestApplyingThePlan:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.tracked_todo_service", service),
-            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.record_todo_activity", record),
         ):
             await apply_plan([row])
 
@@ -130,7 +130,7 @@ class TestApplyingThePlan:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.tracked_todo_service", service),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
         ):
             await apply_plan([row])
 
@@ -146,7 +146,7 @@ class TestApplyingThePlan:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.tracked_todo_service", service),
-            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.record_todo_activity", record),
         ):
             await apply_plan([row])
 

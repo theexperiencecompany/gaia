@@ -263,7 +263,7 @@ def quiet_hours() -> Iterator[AsyncMock]:
 @pytest.fixture(autouse=True)
 def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
-    with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
+    with patch(f"{MODULE}.record_todo_activity", AsyncMock(return_value=True)) as recorded:
         yield recorded
 
 
@@ -494,7 +494,7 @@ class TestTriggeredExecutionLock:
             patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.record_activity", recorded),
+            patch(f"{MODULE}.record_todo_activity", recorded),
             patch(f"{MODULE}.log") as log_mock,
         ):
             await execute_tracked_todo({}, "todo-1", self._origin())
@@ -2308,7 +2308,7 @@ async def _run_task(
         patch.object(todo_repository, "get", AsyncMock(side_effect=lambda i, user_id: docs.get(i))),
         patch.object(todo_repository, "list_active_tracked", AsyncMock(side_effect=sub_todos)),
         patch(f"{MODULE}.run_todo_on_executor", run),
-        patch(f"{MODULE}.record_activity", AsyncMock()),
+        patch(f"{MODULE}.record_todo_activity", AsyncMock()),
     ):
         await _execute_on_executor(
             doc, user_tz=user_tz, user_data=AuthenticatedUser(user_id=OWNER_ID)
@@ -2369,7 +2369,7 @@ class TestStandingRulesReachTheRun:
             patch.object(todo_repository, "get", get),
             patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
         ):
             await _execute_on_executor(
                 _doc(parent_todo_id=_DESK_ID),
@@ -2433,7 +2433,7 @@ class TestTheDeskRunReadsItsObservations:
             patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
             patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
         ):
             await _execute_on_executor(
                 stored[_DESK_ID],
@@ -2809,7 +2809,7 @@ class TestOneRunPerOccurrence:
             ),
             patch(f"{_GATE}.capture"),
             patch(f"{_DISPATCH}.todo_repository", row),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
             time_machine.travel(datetime(2026, 10, 2, 2, 30, tzinfo=kolkata.tzinfo), tick=False),
         ):
@@ -3170,7 +3170,7 @@ class TestTriggerEventsCoalesce:
             patch(f"{MODULE}.run_todo_on_executor", run),
             patch(f"{MODULE}.enforce_cost_budget", self.budget),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
             yield run
@@ -3452,7 +3452,7 @@ class TestQuietHoursHoldAGatedTodosWindow:
             patch(f"{MODULE}.run_todo_on_executor", AsyncMock(side_effect=run)),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="Asia/Kolkata"))),
-            patch(f"{_DISPATCH}.record_activity", AsyncMock()),
+            patch(f"{_DISPATCH}.record_todo_activity", AsyncMock()),
             patch(f"{_DISPATCH}.capture"),
         ):
             # Kolkata is the owner's clock alone: a hold read for anyone else would read UTC.
@@ -3544,7 +3544,7 @@ class TestExecuteOnExecutor:
         self.context = AsyncMock(return_value=TodoRunContext())
         return (
             patch(f"{MODULE}.run_todo_on_executor", self.run),
-            patch(f"{MODULE}.record_activity", self.timeline),
+            patch(f"{MODULE}.record_todo_activity", self.timeline),
             patch(f"{MODULE}.collect_run_context", self.context),
         )
 
@@ -3702,7 +3702,7 @@ class TestExecuteOnExecutor:
         run = AsyncMock()
         with (
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock(return_value=True)),
             patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
             patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
             time_machine.travel(frozen, tick=False),
@@ -4139,7 +4139,7 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
             patch(f"{MODULE}.enforce_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
-            patch(f"{MODULE}.record_activity", run.timeline),
+            patch(f"{MODULE}.record_todo_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
             patch(f"{MODULE}.log", run.log),
         ):
@@ -4450,7 +4450,7 @@ class TestAnUnpaidOwnersTodoPausesUntilTheyPay:
         record = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.record_todo_activity", record),
             patch(f"{MODULE}.capture_paywall_block") as capture,
             patch(f"{MODULE}.log") as log,
             _serving(_pool()),
@@ -4588,7 +4588,7 @@ class TestADormantOwnersTodoPausesUntilTheyReturn:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", execute),
-            patch(f"{MODULE}.record_activity", record),
+            patch(f"{MODULE}.record_todo_activity", record),
             _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")

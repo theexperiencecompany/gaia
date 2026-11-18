@@ -135,7 +135,7 @@ def mock_deps():
         patch(f"{_MOD}.append_activity", new_callable=AsyncMock, create=True) as m_append_activity,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
         patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
-        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as m_record,
+        patch(f"{_MOD}.record_todo_activity", new_callable=AsyncMock) as m_record,
         # Most tests pin what a create writes, not the next-step rule; the class that
         # pins the rule points this at the real check.
         patch(f"{_MOD}.require_open_state") as m_open_state,

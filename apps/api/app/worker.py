@@ -104,7 +104,7 @@ _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
 _check_inactive_users = arq_task(check_inactive_users)
-# Named from the constant record_activity enqueues by, so the two cannot drift.
+# Named from the constant mark_user_seen enqueues by, so the two cannot drift.
 _reactivate_user = func(
     arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK, max_tries=REACTIVATE_USER_MAX_TRIES
 )

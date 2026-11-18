@@ -113,7 +113,7 @@ def _lab_stack(
         stack.enter_context(patch(f"{MODULE}.todo_repository", new=todos))
         stack.enter_context(patch(f"{LAB_RUNS}.todo_repository", new=todos))
         stack.enter_context(patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos))
-        stack.enter_context(patch(f"{SUBSCRIPTIONS}.record_activity", new=activity))
+        stack.enter_context(patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=activity))
         stack.enter_context(patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"))
         stack.enter_context(patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL))
         todos.get = AsyncMock(return_value=todo)
@@ -299,7 +299,7 @@ class TestLabHappyPath:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"),
             patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL),
         ):
@@ -342,7 +342,7 @@ class TestLabSeedExecutes:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=AsyncMock(return_value=True)),
         ):
             lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str)
@@ -401,7 +401,7 @@ class TestFailedLaunchUnsubscribes:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", AsyncMock()),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", AsyncMock()),
         ):
             out = await bash.ainvoke(
                 {"command": "claude -p hi", "run_todo_id": "t1", "background": True},

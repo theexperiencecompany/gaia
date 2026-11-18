@@ -97,7 +97,7 @@ async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- co
 async def reactivate_user_task(ctx: ArqJobContext, user_id: str) -> str:
     """Resume what was paused while user_id was dormant, retrying until it all resumes.
 
-    Queued by record_activity on a dormant user's first activity, which has
+    Queued by mark_user_seen on a dormant user's first activity, which has
     already marked them active, so this task is the only thing coming back for
     the paused work.
     """
