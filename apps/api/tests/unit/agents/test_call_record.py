@@ -314,7 +314,7 @@ class TestTheRecordBlockIsExact:
 @pytest.mark.unit
 async def test_an_empty_result_is_still_marked_empty_when_a_middleware_appended_a_note() -> None:
     """The loop guard appends its warning in-band; the result is the JSON document the content starts with."""
-    messages = [
+    messages: list[AnyMessage] = [
         AIMessage(content="", tool_calls=[{"name": "list_todos", "args": {}, "id": "c1"}]),
         ToolMessage(
             content='{"todos": [], "count": 0}'
