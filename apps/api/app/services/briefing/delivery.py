@@ -16,6 +16,7 @@ from app.constants.briefing import (
     EditionVariant,
 )
 from app.constants.notifications import (
+    BriefNotificationKind,
     NotificationChannel,
     NotificationKind,
     ProactiveMessageClass,
@@ -67,7 +68,7 @@ def _wants_email(user: UserDocument) -> bool:
 
 
 def _notification_metadata(
-    brief: BriefingModel, kind: NotificationKind, card: BriefCard | None
+    brief: BriefingModel, kind: BriefNotificationKind, card: BriefCard | None
 ) -> BriefNotificationMetadata:
     """Return what the brief's notification carries: a note its kind, an edition its link and card."""
     if kind is NotificationKind.BRIEFING_NOTE:
@@ -109,7 +110,7 @@ async def _notify(
                     )
                 ],
             ),
-            metadata=_notification_metadata(brief, plan.notification_kind, card).model_dump(),
+            details=_notification_metadata(brief, plan.notification_kind, card),
         )
     )
     reached = [c.channel_type for c in record.channels if c.reached_user]

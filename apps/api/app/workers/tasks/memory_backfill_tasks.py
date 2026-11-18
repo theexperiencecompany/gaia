@@ -23,12 +23,13 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.conversation_models import ConversationDocument
+from app.models.notification.details_models import MemoryReadyNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -190,7 +191,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                         )
                     ],
                 ),
-                metadata={"source": "memory_backfill"},
+                details=MemoryReadyNotification(kind=NotificationKind.MEMORY_READY),
             )
         )
     except Exception as e:

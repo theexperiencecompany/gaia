@@ -2223,6 +2223,35 @@
         "title": "BriefDeliveryWorkflowsConflict",
         "type": "object"
       },
+      "BriefEditionNotification": {
+        "additionalProperties": false,
+        "description": "What a daily brief's or weekly recap's notification carries, for the in-app card and the email.",
+        "properties": {
+          "brief_url": {
+            "description": "The brief's heygaia.link.",
+            "title": "Brief Url",
+            "type": "string"
+          },
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
+          },
+          "kind": {
+            "enum": [
+              "briefing_daily",
+              "briefing_weekly"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "brief_url",
+          "card"
+        ],
+        "title": "BriefEditionNotification",
+        "type": "object"
+      },
       "BriefForm": {
         "description": "What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.",
         "enum": [
@@ -2231,6 +2260,22 @@
         ],
         "title": "BriefForm",
         "type": "string"
+      },
+      "BriefNoteNotification": {
+        "additionalProperties": false,
+        "description": "What a quiet note's notification carries: its kind alone, as it has no edition and no link.",
+        "properties": {
+          "kind": {
+            "const": "briefing_note",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "BriefNoteNotification",
+        "type": "object"
       },
       "BriefOutcome": {
         "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
@@ -7434,6 +7479,28 @@
         "title": "DodoWebhookAckResponse",
         "type": "object"
       },
+      "DormantTodosNotification": {
+        "additionalProperties": false,
+        "description": "The digest of the user's todos left idle.",
+        "properties": {
+          "kind": {
+            "const": "dormant_todos",
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_count": {
+            "minimum": 1.0,
+            "title": "Todo Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_count"
+        ],
+        "title": "DormantTodosNotification",
+        "type": "object"
+      },
       "EditionChoice": {
         "description": "Where the user put a daily edition family: in the rotation, out of it, or a favourite.",
         "enum": [
@@ -8901,6 +8968,22 @@
         "title": "GmailNewMessageConfig",
         "type": "object"
       },
+      "GmailPersonalizedNotification": {
+        "additionalProperties": false,
+        "description": "GAIA personalised itself from the user's Gmail.",
+        "properties": {
+          "kind": {
+            "const": "gmail_personalized",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "GmailPersonalizedNotification",
+        "type": "object"
+      },
       "GmailPollInboxConfig": {
         "description": "Config for interval-based Gmail polling.\n\nUses GMAIL_NEW_GMAIL_MESSAGE with an interval so Composio polls Gmail\non a schedule rather than firing on every single incoming email.\nDesigned for system workflows that batch-process emails periodically.",
         "properties": {
@@ -10206,6 +10289,33 @@
           }
         },
         "title": "IntegrationContent",
+        "type": "object"
+      },
+      "IntegrationExpiredNotification": {
+        "additionalProperties": false,
+        "description": "An integration whose connection expired, and how many workflows it paused.",
+        "properties": {
+          "integration_id": {
+            "title": "Integration Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "integration_expired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "paused_workflows": {
+            "minimum": 0.0,
+            "title": "Paused Workflows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "integration_id",
+          "paused_workflows"
+        ],
+        "title": "IntegrationExpiredNotification",
         "type": "object"
       },
       "IntegrationFAQ": {
@@ -12586,6 +12696,22 @@
         "title": "MemoryOverviewResponse",
         "type": "object"
       },
+      "MemoryReadyNotification": {
+        "additionalProperties": false,
+        "description": "The user's memory was seeded from their past conversations.",
+        "properties": {
+          "kind": {
+            "const": "memory_ready",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "MemoryReadyNotification",
+        "type": "object"
+      },
       "MemoryRelationType": {
         "description": "How a memory version relates to its parent in the supersession chain.",
         "enum": [
@@ -14472,6 +14598,80 @@
             "title": "Created At",
             "type": "string"
           },
+          "details": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "briefing_daily": "#/components/schemas/BriefEditionNotification",
+                    "briefing_note": "#/components/schemas/BriefNoteNotification",
+                    "briefing_weekly": "#/components/schemas/BriefEditionNotification",
+                    "dormant_todos": "#/components/schemas/DormantTodosNotification",
+                    "gmail_personalized": "#/components/schemas/GmailPersonalizedNotification",
+                    "integration_expired": "#/components/schemas/IntegrationExpiredNotification",
+                    "memory_ready": "#/components/schemas/MemoryReadyNotification",
+                    "reminder": "#/components/schemas/ReminderNotification",
+                    "system_workflows_provisioned": "#/components/schemas/SystemWorkflowsProvisionedNotification",
+                    "todo": "#/components/schemas/TodoNotification",
+                    "todo_failed": "#/components/schemas/TodoFailedNotification",
+                    "todo_trigger_fired": "#/components/schemas/TodoTriggerFiredNotification",
+                    "workflow_completed": "#/components/schemas/WorkflowCompletedNotification",
+                    "workflow_failed": "#/components/schemas/WorkflowFailedNotification",
+                    "workflow_paused": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BriefEditionNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BriefNoteNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoTriggerFiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DormantTodosNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReminderNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowCompletedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntegrationExpiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemWorkflowsProvisionedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MemoryReadyNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailPersonalizedNotification"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -14479,11 +14679,6 @@
           "message_class": {
             "$ref": "#/components/schemas/ProactiveMessageClass",
             "default": "routine"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
           },
           "priority": {
             "default": 3,
@@ -14681,7 +14876,7 @@
         "type": "string"
       },
       "NotificationView": {
-        "description": "A notification flattened for API/tool consumers.\n\nDistinct from ``NotificationRecord``: the record is the stored document (it\nnests the whole ``original_request``), while this is the flat shape the web\nand mobile clients actually read \u2014 ``content``/``source``/``type``/\n``metadata`` are lifted out of the request, and the channel entries are\nprojected. It mirrors ``NotificationRecord`` in the frontend's\n``notificationTypes.ts``.\n\nTimestamps are ``str`` because the producer emits ISO strings and that is\nthe published contract; parsing them into ``datetime`` here would re-emit\nthem in Pydantic's own format.\n\nBuilt by ``NotificationOrchestrator._serialize_notification``, which is\nstill the producer \u2014 this model is the named shape of what it returns.",
+        "description": "A notification flattened for API/tool consumers.\n\nDistinct from ``NotificationRecord``: the record is the stored document (it\nnests the whole ``original_request``), while this is the flat shape the web\nand mobile clients actually read \u2014 ``content``/``source``/``type``/\n``details`` are lifted out of the request, and the channel entries are\nprojected. It mirrors ``NotificationRecord`` in the frontend's\n``notificationTypes.ts``.\n\nTimestamps are ``str`` because the producer emits ISO strings and that is\nthe published contract; parsing them into ``datetime`` here would re-emit\nthem in Pydantic's own format.\n\nBuilt by ``NotificationOrchestrator._serialize_notification``, which is\nstill the producer \u2014 this model is the named shape of what it returns.",
         "properties": {
           "channels": {
             "items": {
@@ -14708,14 +14903,83 @@
             ],
             "title": "Delivered At"
           },
+          "details": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "briefing_daily": "#/components/schemas/BriefEditionNotification",
+                    "briefing_note": "#/components/schemas/BriefNoteNotification",
+                    "briefing_weekly": "#/components/schemas/BriefEditionNotification",
+                    "dormant_todos": "#/components/schemas/DormantTodosNotification",
+                    "gmail_personalized": "#/components/schemas/GmailPersonalizedNotification",
+                    "integration_expired": "#/components/schemas/IntegrationExpiredNotification",
+                    "memory_ready": "#/components/schemas/MemoryReadyNotification",
+                    "reminder": "#/components/schemas/ReminderNotification",
+                    "system_workflows_provisioned": "#/components/schemas/SystemWorkflowsProvisionedNotification",
+                    "todo": "#/components/schemas/TodoNotification",
+                    "todo_failed": "#/components/schemas/TodoFailedNotification",
+                    "todo_trigger_fired": "#/components/schemas/TodoTriggerFiredNotification",
+                    "workflow_completed": "#/components/schemas/WorkflowCompletedNotification",
+                    "workflow_failed": "#/components/schemas/WorkflowFailedNotification",
+                    "workflow_paused": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BriefEditionNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BriefNoteNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TodoTriggerFiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DormantTodosNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReminderNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowCompletedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowFailedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WorkflowPausedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntegrationExpiredNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SystemWorkflowsProvisionedNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MemoryReadyNotification"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GmailPersonalizedNotification"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
           "id": {
             "title": "Id",
             "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
           },
           "read_at": {
             "anyOf": [
@@ -18384,6 +18648,27 @@
         "title": "RegistrationPolicyResponse",
         "type": "object"
       },
+      "ReminderNotification": {
+        "additionalProperties": false,
+        "description": "A reminder that came due.",
+        "properties": {
+          "kind": {
+            "const": "reminder",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reminder_id": {
+            "title": "Reminder Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reminder_id"
+        ],
+        "title": "ReminderNotification",
+        "type": "object"
+      },
       "ReminderResponse": {
         "description": "Response model for reminder operations.\n\n``from_attributes`` so the endpoints can project a ``ReminderModel`` onto\nthis without a dict round-trip. Declared here rather than passed at each\ncall site: it is a property of this model, not of one conversion.",
         "properties": {
@@ -21216,6 +21501,27 @@
         "title": "SystemPurpose",
         "type": "string"
       },
+      "SystemWorkflowsProvisionedNotification": {
+        "additionalProperties": false,
+        "description": "Connecting an integration set up its system workflows.",
+        "properties": {
+          "integration_display_name": {
+            "title": "Integration Display Name",
+            "type": "string"
+          },
+          "kind": {
+            "const": "system_workflows_provisioned",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "integration_display_name"
+        ],
+        "title": "SystemWorkflowsProvisionedNotification",
+        "type": "object"
+      },
       "TodoCanvasResponse": {
         "description": "A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.",
         "properties": {
@@ -21286,6 +21592,33 @@
           "overdue"
         ],
         "title": "TodoCounts",
+        "type": "object"
+      },
+      "TodoFailedNotification": {
+        "additionalProperties": false,
+        "description": "A scheduled todo that stopped after using up its attempts.",
+        "properties": {
+          "kind": {
+            "const": "todo_failed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "retry_count": {
+            "minimum": 1.0,
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id",
+          "retry_count"
+        ],
+        "title": "TodoFailedNotification",
         "type": "object"
       },
       "TodoLabelCount": {
@@ -21523,6 +21856,27 @@
           "title"
         ],
         "title": "TodoModel",
+        "type": "object"
+      },
+      "TodoNotification": {
+        "additionalProperties": false,
+        "description": "A notification about one todo: its run's result, or what its health check found.",
+        "properties": {
+          "kind": {
+            "const": "todo",
+            "title": "Kind",
+            "type": "string"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id"
+        ],
+        "title": "TodoNotification",
         "type": "object"
       },
       "TodoResponse": {
@@ -21898,6 +22252,32 @@
           }
         },
         "title": "TodoStats",
+        "type": "object"
+      },
+      "TodoTriggerFiredNotification": {
+        "additionalProperties": false,
+        "description": "An event a todo's trigger subscription watches fired.",
+        "properties": {
+          "kind": {
+            "const": "todo_trigger_fired",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "string"
+          },
+          "todo_id": {
+            "title": "Todo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "todo_id",
+          "subscription_id"
+        ],
+        "title": "TodoTriggerFiredNotification",
         "type": "object"
       },
       "TodoUpdateRequest": {
@@ -24541,6 +24921,32 @@
         "title": "WebSearchResult",
         "type": "object"
       },
+      "WorkflowCompletedNotification": {
+        "additionalProperties": false,
+        "description": "A finished workflow run; its result is in the conversation.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workflow_completed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "conversation_id"
+        ],
+        "title": "WorkflowCompletedNotification",
+        "type": "object"
+      },
       "WorkflowCreator": {
         "description": "The public-facing creator card built by ``format_creator``.\n\nA ``TypedDict``, not a model: it rides inside the untyped card dicts of\n``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it\nhas to stay a plain dict on the wire for both.",
         "properties": {
@@ -24789,6 +25195,40 @@
         "title": "WorkflowExecutionsResponse",
         "type": "object"
       },
+      "WorkflowFailedNotification": {
+        "additionalProperties": false,
+        "description": "A workflow run that errored or that a limit stopped.",
+        "properties": {
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The exception's class name, when the worker saw it.",
+            "title": "Error Type"
+          },
+          "kind": {
+            "const": "workflow_failed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "error_type"
+        ],
+        "title": "WorkflowFailedNotification",
+        "type": "object"
+      },
       "WorkflowListResponse": {
         "description": "Response model for listing workflows.",
         "properties": {
@@ -24819,6 +25259,36 @@
           "message"
         ],
         "title": "WorkflowMessageResponse",
+        "type": "object"
+      },
+      "WorkflowPausedNotification": {
+        "additionalProperties": false,
+        "description": "A workflow paused until the integrations it needs are connected.",
+        "properties": {
+          "kind": {
+            "const": "workflow_paused",
+            "title": "Kind",
+            "type": "string"
+          },
+          "missing_integrations": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Missing Integrations",
+            "type": "array"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workflow_id",
+          "missing_integrations"
+        ],
+        "title": "WorkflowPausedNotification",
         "type": "object"
       },
       "WorkflowResponse": {

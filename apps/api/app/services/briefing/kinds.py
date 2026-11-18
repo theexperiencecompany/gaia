@@ -19,7 +19,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     EditionFamily,
 )
-from app.constants.notifications import NotificationKind
+from app.constants.notifications import BriefNotificationKind, NotificationKind
 from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.clock import DayWindow, UserClock
@@ -47,7 +47,7 @@ class BriefKindSpec:
 
     kind: BriefingKind
     kicker: str
-    notification_kind: NotificationKind
+    notification_kind: BriefNotificationKind
     #: The local days the brief's series and goals cover.
     series_window: Callable[[UserClock], DayWindow]
     #: The days the brief's calendar and what falls due cover: today, or the week ahead.

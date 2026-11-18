@@ -18,8 +18,10 @@ import pytest
 
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.notifications import NotificationKind
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.constants.user_activity import ActivityStatus
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -312,7 +314,7 @@ class TestHealthCheckExpired:
         assert request.content.body == "Your todo expired and needs a decision."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
 
     async def test_muted_todo_after_backoff_is_exhausted_sends_nothing(self):
         pool = _pool()
@@ -534,7 +536,9 @@ class TestSendUserDormantDigest:
         assert request.type == NotificationType.INFO
         assert request.content.title == "1 dormant todo needs attention"
         assert request.content.body == "- Unfinished thing (idle 7d)"
-        assert request.metadata == {"todo_count": 1}
+        assert request.details == DormantTodosNotification(
+            kind=NotificationKind.DORMANT_TODOS, todo_count=1
+        )
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
 
     async def test_multi_todo_digest_counts_and_links_to_the_list(self):

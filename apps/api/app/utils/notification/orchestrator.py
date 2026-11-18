@@ -475,7 +475,7 @@ class NotificationOrchestrator:
             ),
             source=request.source,
             type=request.type,
-            metadata=request.metadata,
+            details=request.details,
             channels=[
                 NotificationChannelView(
                     channel_type=ch.channel_type,

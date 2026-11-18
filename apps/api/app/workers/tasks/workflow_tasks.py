@@ -45,7 +45,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
 )
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.user_activity import ActivityStatus
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.constants.workflows import WorkflowDelivery
@@ -59,6 +59,10 @@ from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
+from app.models.notification.details_models import (
+    WorkflowFailedNotification,
+    WorkflowPausedNotification,
+)
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -560,10 +564,11 @@ async def _notify_workflow_paused_for_integrations(
                         )
                     ],
                 ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "missing_integrations": ",".join(ref.id for ref in missing),
-                },
+                details=WorkflowPausedNotification(
+                    kind=NotificationKind.WORKFLOW_PAUSED,
+                    workflow_id=workflow.id,
+                    missing_integrations=[ref.id for ref in missing],
+                ),
             )
         )
     except Exception as notify_err:
@@ -607,10 +612,11 @@ async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
                     body=body,
                     actions=[upgrade_action] if upgrade_action else None,
                 ),
-                metadata={
-                    "workflow_id": workflow.id,
-                    "error_type": type(error).__name__,
-                },
+                details=WorkflowFailedNotification(
+                    kind=NotificationKind.WORKFLOW_FAILED,
+                    workflow_id=workflow.id,
+                    error_type=type(error).__name__,
+                ),
             )
         )
     except Exception as notify_err:

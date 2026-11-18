@@ -19,10 +19,11 @@ from app.config.settings import settings
 from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import NotificationType
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import TodoDocument
@@ -157,7 +158,7 @@ class TestResultsThatReachNobody:
         assert request.type is NotificationType.INFO
         assert request.content.title == "Watch the deploy"
         assert request.content.body == "Deploy failed."
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
         assert seams.entry() == "result sent as an in-app notification (summary='report')"
         assert seams.event().outcome == "delivered"
         assert seams.event().platform is None

@@ -106,7 +106,7 @@ _CARD: dict[str, Any] = {
     "stamp_city_name": None,
     "needs_you_count": 1,
 }
-_BRIEFING_METADATA: dict[str, object] = {"brief_url": _BRIEF_URL, "card": _CARD}
+_BRIEFING_DETAILS: dict[str, object] = {"brief_url": _BRIEF_URL, "card": _CARD}
 _NO_EDITION = f"^a {NotificationKind.BRIEFING_DAILY} notification's card carries no edition$"
 
 
@@ -212,7 +212,7 @@ class TestEmailChannelAdapterContract:
     async def test_transform_reads_a_briefing_kinds_stored_brief_by_its_card(
         self, kind: NotificationKind, stored_brief: AsyncMock
     ) -> None:
-        notification = _make_request(kind=kind, metadata=_BRIEFING_METADATA)
+        notification = _make_request(kind=kind, details=_BRIEFING_DETAILS)
 
         assert await _adapter().transform(notification) == _EDITION_EMAIL
         stored_brief.assert_awaited_once_with(_BRIEF_ID, user_id=_USER_ID)
@@ -235,17 +235,14 @@ class TestEmailChannelAdapterContract:
         self,
     ) -> None:
         notification = _make_request(
-            kind=NotificationKind.BRIEFING_DAILY, metadata=_BRIEFING_METADATA
+            kind=NotificationKind.BRIEFING_DAILY, details=_BRIEFING_DETAILS
         )
 
         assert await EmailChannelAdapter({}).transform(notification) == _content()
 
-    @pytest.mark.asyncio
-    async def test_transform_fails_loud_on_a_kind_no_producer_declares(self) -> None:
-        notification = _make_request(kind="todo_due", rich_content={"todo_id": "t-1"})
-
-        with pytest.raises(ValidationError, match="kind\n  Input should be"):
-            await _adapter().transform(notification)
+    def test_a_kind_no_producer_declares_is_rejected_at_the_boundary(self) -> None:
+        with pytest.raises(ValidationError, match="Input tag 'todo_due' found using 'kind'"):
+            _make_request(kind="todo_due", details={"todo_id": "t-1"})
 
     @pytest.mark.asyncio
     async def test_transform_fails_loud_when_the_briefs_no_longer_stored(
@@ -253,23 +250,19 @@ class TestEmailChannelAdapterContract:
     ) -> None:
         stored_brief.return_value = None
         notification = _make_request(
-            kind=NotificationKind.BRIEFING_DAILY, metadata=_BRIEFING_METADATA
+            kind=NotificationKind.BRIEFING_DAILY, details=_BRIEFING_DETAILS
         )
 
         with pytest.raises(LookupError, match=_BRIEF_ID):
             await _adapter().transform(notification)
 
-    @pytest.mark.asyncio
-    async def test_transform_fails_loud_on_a_malformed_card(self) -> None:
-        notification = _make_request(
-            kind=NotificationKind.BRIEFING_DAILY,
-            metadata={"brief_url": _BRIEF_URL, "card": {"headline": "only this"}},
-        )
+    def test_a_malformed_card_is_rejected_at_the_boundary(self) -> None:
+        with pytest.raises(ValidationError, match="card.briefing_id\n  Field required"):
+            _make_request(
+                kind=NotificationKind.BRIEFING_DAILY,
+                details={"brief_url": _BRIEF_URL, "card": {"headline": "only this"}},
+            )
 
-        with pytest.raises(ValidationError):
-            await _adapter().transform(notification)
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("missing", "message"),
         [
@@ -280,13 +273,11 @@ class TestEmailChannelAdapterContract:
         ],
         ids=["no-card", "no-brief-url", "null-card", "null-brief-url"],
     )
-    async def test_transform_fails_loud_on_a_briefing_without_its_card_or_link(
+    def test_a_briefing_without_its_card_or_link_is_rejected_at_the_boundary(
         self, missing: dict[str, object], message: str
     ) -> None:
-        notification = _make_request(kind=NotificationKind.BRIEFING_DAILY, metadata=missing)
-
         with pytest.raises(ValidationError, match=message):
-            await _adapter().transform(notification)
+            _make_request(kind=NotificationKind.BRIEFING_DAILY, details=missing)
 
     @pytest.mark.asyncio
     async def test_transform_fails_loud_on_a_card_without_its_hosted_edition(
@@ -294,7 +285,7 @@ class TestEmailChannelAdapterContract:
     ) -> None:
         notification = _make_request(
             kind=NotificationKind.BRIEFING_DAILY,
-            metadata={"brief_url": _BRIEF_URL, "card": {**_CARD, "edition": None}},
+            details={"brief_url": _BRIEF_URL, "card": {**_CARD, "edition": None}},
         )
 
         with pytest.raises(ValueError, match=_NO_EDITION):
@@ -305,21 +296,24 @@ class TestEmailChannelAdapterContract:
 def _make_request(
     kind: str | None = None,
     rich_content: dict[str, Any] | None = None,
-    metadata: dict[str, object] | None = None,
+    details: dict[str, object] | None = None,
 ) -> NotificationRequest:
-    return NotificationRequest(
-        id="notif-1",
-        user_id=_USER_ID,
-        source=NotificationSourceEnum.AI_TODO_ADDED,
-        type=NotificationType.INFO,
-        priority=2,
-        channels=[ChannelConfig(channel_type=NotificationChannel.EMAIL, enabled=True)],
-        content=NotificationContent(
-            title="Reminder",
-            body="Stand-up in 10 minutes",
-            rich_content=rich_content,
-        ),
-        metadata={**({"kind": kind} if kind else {}), **(metadata or {})},
+    """Build the request from raw fields, as a stored or sent one arrives, so its details are validated."""
+    return NotificationRequest.model_validate(
+        {
+            "id": "notif-1",
+            "user_id": _USER_ID,
+            "source": NotificationSourceEnum.AI_TODO_ADDED,
+            "type": NotificationType.INFO,
+            "priority": 2,
+            "channels": [ChannelConfig(channel_type=NotificationChannel.EMAIL, enabled=True)],
+            "content": NotificationContent(
+                title="Reminder",
+                body="Stand-up in 10 minutes",
+                rich_content=rich_content,
+            ),
+            "details": {"kind": kind, **(details or {})} if kind else None,
+        }
     )
 
 
@@ -554,7 +548,7 @@ class TestDeliverBriefings:
         route = _mock_send()
         adapter = _adapter()
         notification = _make_request(
-            kind=NotificationKind.BRIEFING_WEEKLY, metadata=_BRIEFING_METADATA
+            kind=NotificationKind.BRIEFING_WEEKLY, details=_BRIEFING_DETAILS
         )
 
         await adapter.deliver(await adapter.transform(notification), _USER_ID)

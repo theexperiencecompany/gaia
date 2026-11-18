@@ -21,9 +21,10 @@ from typing import Literal
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, IntegrationStatus
 from app.constants.log_tags import LogTag
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.core.websocket_manager import websocket_manager
 from app.models.integration_models import IntegrationAccount
+from app.models.notification.details_models import IntegrationExpiredNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -232,9 +233,10 @@ async def announce_account_expiry(
                     )
                 ],
             ),
-            metadata={
-                "integration_id": integration_id,
-                "paused_workflows": len(paused_workflows),
-            },
+            details=IntegrationExpiredNotification(
+                kind=NotificationKind.INTEGRATION_EXPIRED,
+                integration_id=integration_id,
+                paused_workflows=len(paused_workflows),
+            ),
         )
     )

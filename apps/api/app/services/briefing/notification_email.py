@@ -40,18 +40,20 @@ class EditionEmail:
 
 async def edition_email(notification: NotificationRequest) -> EditionEmail:
     """Read the stored brief the notification's card names, with the card's edition and link."""
-    metadata = BriefEditionNotification.model_validate(notification.metadata)
-    card = metadata.card
+    details = notification.details
+    if not isinstance(details, BriefEditionNotification):
+        raise TypeError(f"an edition email needs a brief edition's details, not {details!r}")
+    card = details.card
     if card.edition is None:
-        raise ValueError(f"a {metadata.kind} notification's card carries no edition")
+        raise ValueError(f"a {details.kind} notification's card carries no edition")
     brief = await briefing_repository.get(card.briefing_id, user_id=notification.user_id)
     if brief is None:
         raise LookupError(
-            f"brief {card.briefing_id} of a {metadata.kind} notification is not stored"
+            f"brief {card.briefing_id} of a {details.kind} notification is not stored"
         )
     return EditionEmail(
         payload=brief.payload,
-        brief_url=metadata.brief_url,
+        brief_url=details.brief_url,
         edition_image_url=card.edition.image_url,
         title=notification.content.title,
     )

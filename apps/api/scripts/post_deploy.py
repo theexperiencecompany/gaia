@@ -25,6 +25,7 @@ from scripts.clear_email_derived_names import clear_email_derived_names
 from scripts.migrate_brief_storage import migrate as migrate_brief_storage
 from scripts.migrate_briefing_state import migrate as migrate_briefing_state
 from scripts.migrate_inbox_desk_recurrence import migrate as migrate_inbox_desk_recurrence
+from scripts.migrate_notification_details import migrate as migrate_notification_details
 from scripts.migrate_short_link_targets import migrate as migrate_short_link_targets
 from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
@@ -49,6 +50,7 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_todo_delivery", migrate_todo_delivery),
     ("resync_brief_schedules", resync_brief_schedules),
     ("clear_email_derived_names", clear_email_derived_names),
+    ("migrate_notification_details", migrate_notification_details),
 )
 
 #: A claim older than this belongs to a runner that died mid-step; the next run takes it over.

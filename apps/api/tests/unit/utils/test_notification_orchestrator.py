@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.notifications import NotificationKind
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -60,7 +62,7 @@ def _make_request(
             body="This is a test body",
             actions=actions,
         ),
-        metadata={"key": "value"},
+        details=TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1"),
     )
 
 
@@ -990,7 +992,7 @@ class TestSerializeNotification:
         assert data["content"]["actions"][0]["id"] == "a-1"
         assert data["source"] == NotificationSourceEnum.AI_TODO_ADDED.value
         assert data["type"] == NotificationType.INFO.value
-        assert data["metadata"] == {"key": "value"}
+        assert data["details"] == {"kind": "todo", "todo_id": "todo-1"}
         assert len(data["channels"]) == 1
         assert data["channels"][0]["channel_type"] == "inapp"
 

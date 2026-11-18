@@ -30,10 +30,11 @@ from app.config.settings import settings
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
-from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.users import user_repository
+from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -697,7 +698,7 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
                     body=body,
                     actions=actions,
                 ),
-                metadata={"source": "gmail_personalization"},
+                details=GmailPersonalizedNotification(kind=NotificationKind.GMAIL_PERSONALIZED),
             )
         )
     except Exception as e:

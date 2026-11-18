@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationChannel
 from app.core.websocket_manager import websocket_manager
+from app.models.notification.details_models import NotificationDetails
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -40,8 +41,7 @@ class InAppPayload(BaseModel):
     type: NotificationType
     priority: int
     actions: list[InAppActionPayload]
-    # The request's own free-form metadata, forwarded verbatim.
-    metadata: dict[str, object]
+    details: NotificationDetails | None
     created_at: str
 
 
@@ -89,7 +89,7 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
                 )
                 for action in (notification.content.actions or [])
             ],
-            metadata=notification.metadata,
+            details=notification.details,
             created_at=notification.created_at.isoformat(),
         )
 

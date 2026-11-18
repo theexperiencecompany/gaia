@@ -7194,6 +7194,23 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * BriefEditionNotification
+         * @description What a daily brief's or weekly recap's notification carries, for the in-app card and the email.
+         */
+        BriefEditionNotification: {
+            /**
+             * Brief Url
+             * @description The brief's heygaia.link.
+             */
+            brief_url: string;
+            card: components["schemas"]["BriefCard"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_daily" | "briefing_weekly";
+        };
+        /**
          * BriefForm
          * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
          * @enum {string}
@@ -7538,6 +7555,17 @@ export interface components {
             gaia: number;
             /** You */
             you: number;
+        };
+        /**
+         * BriefNoteNotification
+         * @description What a quiet note's notification carries: its kind alone, as it has no edition and no link.
+         */
+        BriefNoteNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "briefing_note";
         };
         /**
          * BriefOutcome
@@ -9572,6 +9600,19 @@ export interface components {
             status?: "success";
         };
         /**
+         * DormantTodosNotification
+         * @description The digest of the user's todos left idle.
+         */
+        DormantTodosNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "dormant_todos";
+            /** Todo Count */
+            todo_count: number;
+        };
+        /**
          * EditionChoice
          * @description Where the user put a daily edition family: in the rotation, out of it, or a favourite.
          * @enum {string}
@@ -10287,6 +10328,17 @@ export interface components {
             trigger_name: "gmail_new_message";
         };
         /**
+         * GmailPersonalizedNotification
+         * @description GAIA personalised itself from the user's Gmail.
+         */
+        GmailPersonalizedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "gmail_personalized";
+        };
+        /**
          * GmailPollInboxConfig
          * @description Config for interval-based Gmail polling.
          *
@@ -10914,6 +10966,21 @@ export interface components {
              * @default []
              */
             useCases?: string[];
+        };
+        /**
+         * IntegrationExpiredNotification
+         * @description An integration whose connection expired, and how many workflows it paused.
+         */
+        IntegrationExpiredNotification: {
+            /** Integration Id */
+            integration_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "integration_expired";
+            /** Paused Workflows */
+            paused_workflows: number;
         };
         /**
          * IntegrationFAQ
@@ -12080,6 +12147,17 @@ export interface components {
             total_memories: number;
         };
         /**
+         * MemoryReadyNotification
+         * @description The user's memory was seeded from their past conversations.
+         */
+        MemoryReadyNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "memory_ready";
+        };
+        /**
          * MemoryRelationType
          * @description How a memory version relates to its parent in the supersession chain.
          * @enum {string}
@@ -12793,14 +12871,12 @@ export interface components {
              * Format: date-time
              */
             created_at?: string;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"]) | null;
             /** Id */
             id?: string;
             /** @default routine */
             message_class?: components["schemas"]["ProactiveMessageClass"];
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
             /**
              * Priority
              * @default 3
@@ -12871,7 +12947,7 @@ export interface components {
          *     Distinct from ``NotificationRecord``: the record is the stored document (it
          *     nests the whole ``original_request``), while this is the flat shape the web
          *     and mobile clients actually read — ``content``/``source``/``type``/
-         *     ``metadata`` are lifted out of the request, and the channel entries are
+         *     ``details`` are lifted out of the request, and the channel entries are
          *     projected. It mirrors ``NotificationRecord`` in the frontend's
          *     ``notificationTypes.ts``.
          *
@@ -12890,12 +12966,10 @@ export interface components {
             created_at: string;
             /** Delivered At */
             delivered_at?: string | null;
+            /** Details */
+            details?: (components["schemas"]["BriefEditionNotification"] | components["schemas"]["BriefNoteNotification"] | components["schemas"]["TodoNotification"] | components["schemas"]["TodoFailedNotification"] | components["schemas"]["TodoTriggerFiredNotification"] | components["schemas"]["DormantTodosNotification"] | components["schemas"]["ReminderNotification"] | components["schemas"]["WorkflowCompletedNotification"] | components["schemas"]["WorkflowFailedNotification"] | components["schemas"]["WorkflowPausedNotification"] | components["schemas"]["IntegrationExpiredNotification"] | components["schemas"]["SystemWorkflowsProvisionedNotification"] | components["schemas"]["MemoryReadyNotification"] | components["schemas"]["GmailPersonalizedNotification"]) | null;
             /** Id */
             id: string;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
             /** Read At */
             read_at?: string | null;
             source: components["schemas"]["NotificationSourceEnum"];
@@ -14686,6 +14760,19 @@ export interface components {
             policy: components["schemas"]["RegistrationPolicy"];
         };
         /**
+         * ReminderNotification
+         * @description A reminder that came due.
+         */
+        ReminderNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reminder";
+            /** Reminder Id */
+            reminder_id: string;
+        };
+        /**
          * ReminderResponse
          * @description Response model for reminder operations.
          *
@@ -16167,6 +16254,19 @@ export interface components {
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "briefing" | "other";
         /**
+         * SystemWorkflowsProvisionedNotification
+         * @description Connecting an integration set up its system workflows.
+         */
+        SystemWorkflowsProvisionedNotification: {
+            /** Integration Display Name */
+            integration_display_name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "system_workflows_provisioned";
+        };
+        /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
          */
@@ -16214,6 +16314,21 @@ export interface components {
              * @default 0
              */
             upcoming: number;
+        };
+        /**
+         * TodoFailedNotification
+         * @description A scheduled todo that stopped after using up its attempts.
+         */
+        TodoFailedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_failed";
+            /** Retry Count */
+            retry_count: number;
+            /** Todo Id */
+            todo_id: string;
         };
         /**
          * TodoistNewTaskCreatedConfig
@@ -16345,6 +16460,19 @@ export interface components {
              * @description ID of the associated workflow
              */
             workflow_id?: string | null;
+        };
+        /**
+         * TodoNotification
+         * @description A notification about one todo: its run's result, or what its health check found.
+         */
+        TodoNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo";
+            /** Todo Id */
+            todo_id: string;
         };
         /**
          * TodoResponse
@@ -16537,6 +16665,21 @@ export interface components {
              * @default 0
              */
             total?: number;
+        };
+        /**
+         * TodoTriggerFiredNotification
+         * @description An event a todo's trigger subscription watches fired.
+         */
+        TodoTriggerFiredNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_trigger_fired";
+            /** Subscription Id */
+            subscription_id: string;
+            /** Todo Id */
+            todo_id: string;
         };
         /**
          * TodoUpdateRequest
@@ -17640,6 +17783,21 @@ export interface components {
             web?: components["schemas"]["SearchResultItem"][];
         };
         /**
+         * WorkflowCompletedNotification
+         * @description A finished workflow run; its result is in the conversation.
+         */
+        WorkflowCompletedNotification: {
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_completed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -17782,6 +17940,24 @@ export interface components {
             total: number;
         };
         /**
+         * WorkflowFailedNotification
+         * @description A workflow run that errored or that a limit stopped.
+         */
+        WorkflowFailedNotification: {
+            /**
+             * Error Type
+             * @description The exception's class name, when the worker saw it.
+             */
+            error_type: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_failed";
+            /** Workflow Id */
+            workflow_id: string;
+        };
+        /**
          * WorkflowListResponse
          * @description Response model for listing workflows.
          */
@@ -17799,6 +17975,21 @@ export interface components {
              * @description Human-readable outcome
              */
             message: string;
+        };
+        /**
+         * WorkflowPausedNotification
+         * @description A workflow paused until the integrations it needs are connected.
+         */
+        WorkflowPausedNotification: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_paused";
+            /** Missing Integrations */
+            missing_integrations: string[];
+            /** Workflow Id */
+            workflow_id: string;
         };
         /**
          * WorkflowResponse
@@ -18252,6 +18443,7 @@ export type BriefAction = components['schemas']['BriefAction'];
 export type BriefCard = components['schemas']['BriefCard'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefEditionNotification = components['schemas']['BriefEditionNotification'];
 export type BriefForm = components['schemas']['BriefForm'];
 export type BriefingEdition = components['schemas']['BriefingEdition'];
 export type BriefingEditions = components['schemas']['BriefingEditions'];
@@ -18271,6 +18463,7 @@ export type BriefingTallies = components['schemas']['BriefingTallies'];
 export type BriefingView = components['schemas']['BriefingView'];
 export type BriefingWeek = components['schemas']['BriefingWeek'];
 export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
+export type BriefNoteNotification = components['schemas']['BriefNoteNotification'];
 export type BriefOutcome = components['schemas']['BriefOutcome'];
 export type BriefPoolItem = components['schemas']['BriefPoolItem'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
@@ -18385,6 +18578,7 @@ export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsRespon
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
+export type DormantTodosNotification = components['schemas']['DormantTodosNotification'];
 export type EditionChoice = components['schemas']['EditionChoice'];
 export type EditionFamily = components['schemas']['EditionFamily'];
 export type EditionImage = components['schemas']['EditionImage'];
@@ -18427,6 +18621,7 @@ export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig']
 export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse'];
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
+export type GmailPersonalizedNotification = components['schemas']['GmailPersonalizedNotification'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
 export type GoalOrigin = components['schemas']['GoalOrigin'];
 export type GoalState = components['schemas']['GoalState'];
@@ -18463,6 +18658,7 @@ export type IntegrationAccountResponse = components['schemas']['IntegrationAccou
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
+export type IntegrationExpiredNotification = components['schemas']['IntegrationExpiredNotification'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
@@ -18532,6 +18728,7 @@ export type MemoryGraphResponse = components['schemas']['MemoryGraphResponse'];
 export type MemoryKind = components['schemas']['MemoryKind'];
 export type MemoryListResponse = components['schemas']['MemoryListResponse'];
 export type MemoryOverviewResponse = components['schemas']['MemoryOverviewResponse'];
+export type MemoryReadyNotification = components['schemas']['MemoryReadyNotification'];
 export type MemoryRelationType = components['schemas']['MemoryRelationType'];
 export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
@@ -18665,6 +18862,7 @@ export type RegisterServerResponse = components['schemas']['RegisterServerRespon
 export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
+export type ReminderNotification = components['schemas']['ReminderNotification'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
 export type RenderMode = components['schemas']['RenderMode'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
@@ -18753,16 +18951,20 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type SystemWorkflowsProvisionedNotification = components['schemas']['SystemWorkflowsProvisionedNotification'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
+export type TodoFailedNotification = components['schemas']['TodoFailedNotification'];
 export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskCreatedConfig'];
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
+export type TodoNotification = components['schemas']['TodoNotification'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
+export type TodoTriggerFiredNotification = components['schemas']['TodoTriggerFiredNotification'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
@@ -18823,14 +19025,17 @@ export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
+export type WorkflowCompletedNotification = components['schemas']['WorkflowCompletedNotification'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
+export type WorkflowFailedNotification = components['schemas']['WorkflowFailedNotification'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
+export type WorkflowPausedNotification = components['schemas']['WorkflowPausedNotification'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
 export type WorkflowStatusResponse = components['schemas']['WorkflowStatusResponse'];
 export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
