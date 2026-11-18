@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_item_models import ItemState
 from app.models.scout_models import RememberedSignal
 from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.facts import memory_note
@@ -27,7 +28,7 @@ def app_signal_candidates(
         BriefCandidate(
             source=item.signal.integration_id,
             app=item.signal.app,
-            state="you",
+            state=ItemState.YOU,
             title=item.signal.title,
             detail=_detail(item, clock),
             people=list(item.signal.people),

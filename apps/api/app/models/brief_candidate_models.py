@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.constants.todos import TodoCompleter
-from app.models.briefing_models import BriefingItemKind
+from app.models.brief_item_models import ItemState
 from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
 
 
@@ -24,7 +24,7 @@ class BriefCandidate(BaseModel):
     #: A calendar event: the edition draws the day's calendar itself, so it can only lead.
     is_event: bool = False
     #: How the item reads in an edition when it is kept (waiting on you, failed, done...).
-    state: BriefingItemKind
+    state: ItemState
     #: The source's own words; the composition writes the brief's short title from them.
     title: str = Field(min_length=1)
     detail: str | None = None

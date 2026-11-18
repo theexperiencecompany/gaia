@@ -19,16 +19,16 @@ from datetime import date
 from enum import StrEnum
 import re
 
+from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingItemKind
 
 
 class CountSlot(StrEnum):
     """The counts a [[count:...]] slot can voice."""
 
-    NEEDS_YOU = "needs_you"
-    DONE = "done"
-    IN_PROGRESS = "in_progress"
+    NEEDS_YOU = GroupState.NEEDS_YOU.value
+    DONE = GroupState.DONE.value
+    IN_PROGRESS = GroupState.IN_PROGRESS.value
     WHILE_AWAY = "while_away"
     OPEN_TODOS = "open_todos"
     OVERDUE_TODOS = "overdue_todos"
@@ -55,7 +55,7 @@ class BriefFact:
     title: str
     time: str | None = None
     count: int = 1
-    kind: BriefingItemKind | None = None
+    kind: ItemState | None = None
     words: str | None = None
 
 

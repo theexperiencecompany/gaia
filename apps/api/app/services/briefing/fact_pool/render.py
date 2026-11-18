@@ -10,8 +10,9 @@ from app.constants.briefing import (
 )
 from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
-from app.models.briefing_models import BRIEFING_ITEM_STATES, UnreadSource
+from app.models.briefing_models import UnreadSource
 from app.models.scout_models import ScoutSkipReason, SignalImportance
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.clock import UserClock
@@ -70,11 +71,11 @@ def item_state(item: BriefCandidate) -> str:
         return "calendar event"
     if item.backlog:
         return BACKLOG_STATE
-    if item.state == "lookback" and item.todo_id is not None:
+    if item.state is ItemState.LOOKBACK and item.todo_id is not None:
         return _DONE_BY[item.finished_by]
     if item.standing is not None:
         return OPEN_STATE
-    return BRIEFING_ITEM_STATES[item.state].lower()
+    return item.state.label.lower()
 
 
 def repeat_note(item: BriefCandidate, clock: UserClock) -> str | None:

@@ -7181,12 +7181,8 @@ export interface components {
             count: number;
             /** Detail */
             detail: string | null;
-            /**
-             * Kind
-             * @default note
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** @default note */
+            kind: components["schemas"]["ItemState"];
             /** Link */
             link: string | null;
             /** Offer */
@@ -7477,11 +7473,7 @@ export interface components {
             app: string;
             /** Detail */
             detail: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            kind: components["schemas"]["ItemState"];
             /** Title */
             title: string;
             /** Todo Id */
@@ -11025,6 +11017,14 @@ export interface components {
             id: string;
         };
         /**
+         * ItemState
+         * @description How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.
+         *
+         *     An item's text is only its title, so no renderer repeats its state.
+         * @enum {string}
+         */
+        ItemState: "gaia" | "you" | "lookback" | "failed" | "note";
+        /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
          */
@@ -13879,11 +13879,7 @@ export interface components {
          *     heygaia.link; the todo id it is bound to stays private.
          */
         PublicBriefingItem: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            kind: components["schemas"]["ItemState"];
             /** Link */
             link: string | null;
             /** Text */
@@ -18332,6 +18328,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type ItemState = components['schemas']['ItemState'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];

@@ -20,7 +20,7 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.briefing_models import BriefingItemKind
+from app.models.brief_item_models import ItemState
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -62,7 +62,7 @@ def _attended(_doc: TodoDocument) -> BriefAction:
 
 def _grouped(
     docs: list[TodoDocument],
-    state: BriefingItemKind,
+    state: ItemState,
     *,
     action: Callable[[TodoDocument], BriefAction] | None = None,
     outcome: Callable[[TodoDocument], BriefOutcome | None] | None = None,
@@ -98,8 +98,8 @@ def _grouped(
 
 def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return the tracked todos waiting on the user, then the ones that failed."""
-    return _grouped(work.blocked, "you", action=_asked) + _grouped(
-        work.failed, "failed", action=_retried
+    return _grouped(work.blocked, ItemState.YOU, action=_asked) + _grouped(
+        work.failed, ItemState.FAILED, action=_retried
     )
 
 
@@ -126,7 +126,7 @@ async def own_todo_candidates(
     own = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
     return [
         c.model_copy(update={"backlog": c.due_at is None})
-        for c in _grouped(own, "you", action=_attended)
+        for c in _grouped(own, ItemState.YOU, action=_attended)
     ]
 
 
@@ -169,11 +169,11 @@ def _finished(_doc: TodoDocument) -> BriefOutcome:
 
 def gaia_work_candidates(work: TrackedWork, clock: UserClock) -> list[BriefCandidate]:
     """Return what was done of GAIA's tracked work since the last brief, then what is still open."""
-    return _grouped(work.completed, "lookback", outcome=_finished) + _grouped(
-        work.running, "gaia", outcome=_started, standing=lambda doc: standing(doc, clock)
+    return _grouped(work.completed, ItemState.LOOKBACK, outcome=_finished) + _grouped(
+        work.running, ItemState.GAIA, outcome=_started, standing=lambda doc: standing(doc, clock)
     )
 
 
 def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
     """Return what the user finished themselves, one candidate per subject."""
-    return _grouped(docs, "lookback", outcome=_finished)
+    return _grouped(docs, ItemState.LOOKBACK, outcome=_finished)

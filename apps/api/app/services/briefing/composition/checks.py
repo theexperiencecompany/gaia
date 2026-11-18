@@ -32,9 +32,9 @@ from app.models.brief_composition_models import (
     ComposedLead,
     ComposedProgress,
     ComposedQuote,
-    GroupState,
     placed_items,
 )
+from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, SeriesShape
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotError, SlotValues, render_slots, slot_problems

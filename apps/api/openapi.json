@@ -2054,15 +2054,7 @@
             "title": "Detail"
           },
           "kind": {
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState"
           },
           "title": {
             "minLength": 1,
@@ -2298,16 +2290,8 @@
             "title": "Detail"
           },
           "kind": {
-            "default": "note",
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState",
+            "default": "note"
           },
           "link": {
             "anyOf": [
@@ -10438,6 +10422,18 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "ItemState": {
+        "description": "How an item stands: a GAIA action, a user ask, a look-back, work that failed, a plain note.\n\nAn item's text is only its title, so no renderer repeats its state.",
+        "enum": [
+          "gaia",
+          "you",
+          "lookback",
+          "failed",
+          "note"
+        ],
+        "title": "ItemState",
+        "type": "string"
+      },
       "LabEventResponse": {
         "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
@@ -16611,15 +16607,7 @@
         "description": "An item as the brief page lists it. ``link`` is the item's own public\nheygaia.link; the todo id it is bound to stays private.",
         "properties": {
           "kind": {
-            "enum": [
-              "gaia",
-              "you",
-              "lookback",
-              "failed",
-              "note"
-            ],
-            "title": "Kind",
-            "type": "string"
+            "$ref": "#/components/schemas/ItemState"
           },
           "link": {
             "anyOf": [

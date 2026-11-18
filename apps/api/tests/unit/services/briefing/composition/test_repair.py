@@ -16,8 +16,8 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
     ComposedNote,
-    GroupState,
 )
+from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition.compose import pool_values
 from app.services.briefing.composition.repair import pool_composition, repaired, salvaged

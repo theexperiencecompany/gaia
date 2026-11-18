@@ -20,8 +20,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, fiel
 
 from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
+from app.models.brief_item_models import ItemState
 from app.models.briefing_models import (
-    BriefingItemKind,
     BriefingMood,
     BriefingStat,
 )
@@ -218,7 +218,7 @@ class PublicBriefingItem(_PublicView):
     heygaia.link; the todo id it is bound to stays private."""
 
     text: str
-    kind: BriefingItemKind
+    kind: ItemState
     link: str | None
 
 

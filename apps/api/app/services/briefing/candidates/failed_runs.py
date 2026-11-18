@@ -16,6 +16,7 @@ from app.constants.briefing import (
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_item_models import ItemState
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 
 # Runs the brief reads, newest first, enough for a workflow running hourly all day.
@@ -35,7 +36,7 @@ def _candidate(title: str, runs: list[WorkflowExecutionDocument]) -> BriefCandid
             source=GAIA_SOURCE,
             app=GAIA_APP_NAME,
             seen_as=f"workflow:{latest.workflow_id}",
-            state="note",
+            state=ItemState.NOTE,
             title=f"{title} recovered",
             detail=f"{times}, then its latest run succeeded",
         )
@@ -43,7 +44,7 @@ def _candidate(title: str, runs: list[WorkflowExecutionDocument]) -> BriefCandid
         source=GAIA_SOURCE,
         app=GAIA_APP_NAME,
         seen_as=f"workflow:{latest.workflow_id}",
-        state="failed",
+        state=ItemState.FAILED,
         title=f"{title} failed",
         detail=" | ".join(part for part in (failures[0].error_message, times) if part),
         action=BriefAction.RETRY,

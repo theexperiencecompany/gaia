@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
+from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
 
 BriefBlockKind = Literal["lead", "items", "chart", "quote", "progress", "note"]
@@ -49,14 +50,6 @@ class ComposedLead(BaseModel):
 
     kind: Literal["lead"]
     item: ComposedItem
-
-
-class GroupState(StrEnum):
-    """What every item of a group is: waiting on the user, done, or still running."""
-
-    NEEDS_YOU = "needs_you"
-    DONE = "done"
-    IN_PROGRESS = "in_progress"
 
 
 class ComposedItems(BaseModel):

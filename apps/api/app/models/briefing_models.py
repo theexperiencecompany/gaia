@@ -32,6 +32,7 @@ from app.constants.briefing import (
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
 from app.models.brief_composition_models import BriefBlock
+from app.models.brief_item_models import ItemState
 from app.models.calendar_models import CalendarResponse
 from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
@@ -48,23 +49,6 @@ class BriefingMood(StrEnum):
     IDLE = "idle"
     WINBACK = "winback"
     WEEKLY = "weekly"
-
-
-# ``kind`` on a section item tags how the renderer treats it (a GAIA action, a
-# user ask, a look-back note, work that failed, a plain highlight). The kind is
-# the item's state; ``text`` is only its title, so no renderer repeats the state.
-BriefingItemKind = Literal["gaia", "you", "lookback", "failed", "note"]
-
-# The state each kind reads as where plain text is all there is (the voice facts).
-BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
-    "you": "Waiting on you",
-    "gaia": "In progress",
-    "lookback": "Done",
-    "failed": "Failed",
-    "note": "Note",
-}
-# The kinds that wait on the reader: their own asks and work that failed.
-NEEDS_YOU_ITEM_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 
 
 class BriefingSchedule(BaseModel):
@@ -167,7 +151,7 @@ class BriefingItem(BaseModel):
     outcome: BriefOutcome | None = None
     detail: str | None = Field(default=None, min_length=1, max_length=BRIEF_ITEM_DETAIL_MAX_CHARS)
     todo_id: str | None = None
-    kind: BriefingItemKind = "note"
+    kind: ItemState = ItemState.NOTE
     # heygaia.link to the item's artifact (canvas), a capability anyone holding it opens. The
     # chat message links to this instead of dumping the content; the dashboard
     # card renders it as a tappable item.
@@ -209,7 +193,7 @@ class BriefPoolItem(BaseModel):
 
     title: str = Field(min_length=1)
     detail: str | None = None
-    kind: BriefingItemKind
+    kind: ItemState
     app: str
     url: str | None = None
     todo_id: str | None = None

@@ -13,9 +13,9 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
+from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, GoalState
 from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
     BriefingItem,
     BriefingSection,
@@ -198,12 +198,12 @@ def _counts(
     """
     counts = {
         CountSlot.NEEDS_YOU: sum(
-            1
-            for it, c in placed
-            if it.kind in NEEDS_YOU_ITEM_KINDS and not (c.is_event or c.backlog)
+            1 for it, c in placed if it.kind.needs_you and not (c.is_event or c.backlog)
         ),
-        CountSlot.DONE: sum(1 for it, _ in placed if it.kind == "lookback"),
-        CountSlot.IN_PROGRESS: sum(1 for it, _ in placed if it.kind == "gaia"),
+        CountSlot.DONE: sum(1 for it, _ in placed if it.kind.group is GroupState.DONE),
+        CountSlot.IN_PROGRESS: sum(
+            1 for it, _ in placed if it.kind.group is GroupState.IN_PROGRESS
+        ),
         CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
         CountSlot.OPEN_TODOS: sources.open_todos,
         CountSlot.OVERDUE_TODOS: sources.overdue_todos,

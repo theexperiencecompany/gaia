@@ -21,7 +21,7 @@ from app.services.briefing.clock import due_on
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
-from app.services.briefing.composition.repair import FALLBACK_HEADINGS, repaired, salvaged
+from app.services.briefing.composition.repair import repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.kinds import BriefKindSpec
@@ -111,7 +111,7 @@ def _salvaged(
     kept = salvaged(answer or BriefComposition(blocks=[]), pool, values)
     return BriefComposition(
         blocks=[
-            b.model_copy(update={"heading": FALLBACK_HEADINGS[b.state]})
+            b.model_copy(update={"heading": b.state.fallback_heading})
             if isinstance(b, ComposedItems)
             else b
             for b in kept.blocks

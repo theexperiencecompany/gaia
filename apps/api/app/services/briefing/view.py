@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 from app.constants.briefing import EditionVariant
 from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
     BriefingCardData,
     BriefingModel,
     BriefingPublicView,
@@ -47,10 +46,7 @@ async def briefing_view(briefing: BriefingModel) -> BriefingView:
         else None,
         stamp_city_name=city.name if city else None,
         needs_you_count=sum(
-            1
-            for section in payload.sections
-            for item in section.items
-            if item.kind in NEEDS_YOU_ITEM_KINDS
+            1 for section in payload.sections for item in section.items if item.kind.needs_you
         ),
     )
 

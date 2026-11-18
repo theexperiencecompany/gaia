@@ -7,7 +7,7 @@ from app.constants.briefing import LOOKBACK_MAX_DAYS, WINBACK_THRESHOLD, Briefin
 from app.constants.todos import TodoCompleter
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
-from app.models.briefing_models import BRIEFING_ITEM_STATES, BriefingModel, BriefingMood
+from app.models.briefing_models import BriefingModel, BriefingMood
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
@@ -84,7 +84,7 @@ async def format_lookback_block(
         )
     else:
         told = [
-            f"- {BRIEFING_ITEM_STATES[item.kind].lower()}: {item.text}"
+            f"- {item.kind.label.lower()}: {item.text}"
             for section in last.payload.sections
             for item in section.items
             if item.text
