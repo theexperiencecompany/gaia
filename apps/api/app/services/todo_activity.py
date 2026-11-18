@@ -26,7 +26,7 @@ def activity_line(event: TodoActivityEvent, detail: str, at: datetime | None = N
     return f"- {stamp} [{event.value}] {detail}".rstrip()
 
 
-async def record_activity(
+async def record_todo_activity(
     todo_id: str, user_id: str, event: TodoActivityEvent, detail: str
 ) -> bool:
     """Append one timestamped lifecycle entry to activity.md; never raises.
@@ -146,7 +146,7 @@ async def record_field_changes(
 ) -> None:
     """Record every scheduling or delivery field an update set, and who set it."""
     for event, detail in _schedule_field_entries(update, by=by):
-        await record_activity(todo_id, user_id, event, detail)
+        await record_todo_activity(todo_id, user_id, event, detail)
 
 
 def field_change_lines(update: ScheduleFieldChanges, *, by: str, at: datetime) -> list[str]:
@@ -169,7 +169,7 @@ async def record_waiting_change(
 ) -> None:
     """Record what an update changed about what the todo waits on, and who changed it."""
     if (detail := _waiting_entry(update)) is not None:
-        await record_activity(
+        await record_todo_activity(
             todo_id, user_id, TodoActivityEvent.WAITING_CHANGED, f"{detail}, by {by}"
         )
 

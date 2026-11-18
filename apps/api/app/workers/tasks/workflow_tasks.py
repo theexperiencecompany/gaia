@@ -41,16 +41,12 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
-from app.constants.briefing import (
-    BRIEFING_KIND_BY_WORKFLOW_KEY,
-    BRIEFING_RHYTHM_WORKFLOW_KEYS,
-    BRIEFING_RUN_SUMMARIES,
-)
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
+from app.constants.user_activity import ActivityStatus
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.constants.workflows import WorkflowDelivery
 from app.core.websocket_manager import get_websocket_manager
@@ -93,6 +89,9 @@ from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
+from app.services.quiet_hours import message_class
+from app.services.system_workflows.registry import behaviour_of
+from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -100,6 +99,7 @@ from app.services.triggers.batching import (
     reschedule_if_refilled,
 )
 from app.services.triggers.trigger_gate import quiet_hours_hold
+from app.services.user_activity.status import activity_status_of
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_playbook_run_messages,
@@ -668,11 +668,10 @@ async def _record_execution_failure(
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
     # An executor that died was already announced by the delivery path, as the
-    # workflow's failure notification; a second one here would say it twice. A brief
-    # is no workflow to the user: its failure is the logged error, and the next one runs.
+    # workflow's failure notification; a second one here would say it twice.
     if (
         not isinstance(error, WorkflowExecutorFailed)
-        and workflow.system_workflow_key not in BRIEFING_RHYTHM_WORKFLOW_KEYS
+        and behaviour_of(workflow.system_workflow_key).notify_on_failure
     ):
         await _notify_workflow_failed(error, workflow)
 
@@ -987,11 +986,10 @@ async def _deliver_replay(
             reason=result.narration_failed,
         )
     text = result.text
-    message_class = ProactiveMessageClass.ROUTINE
+    broke_through = isinstance(fire.quiet_hours, QuietHoursBypass)
     if isinstance(fire.quiet_hours, QuietHoursBypass):
         opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
         text = f"{opening}\n\n{text}"
-        message_class = ProactiveMessageClass.URGENT
     await add_playbook_run_messages(
         conversation_id=conversation_id,
         user_id=workflow.user_id,
@@ -1000,7 +998,9 @@ async def _deliver_replay(
         trace=result.trace,
         playbook=playbook,
     )
-    await _notify_replay_finished(workflow, user, conversation_id, text, message_class)
+    await _notify_replay_finished(
+        workflow, user, conversation_id, text, message_class(broke_through)
+    )
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 
@@ -1285,23 +1285,6 @@ async def _drain_trigger_events(
     return merged, None
 
 
-async def _run_briefing_workflow(workflow: Workflow) -> str:
-    """Run the briefing pipeline instead of the generic chat turn.
-
-    Briefing workflows own their delivery (notification orchestrator and the
-    platform chat), so there is no workflow conversation to thread through.
-    Imported inline to avoid the agent import cycle (same reason as
-    execute_workflow_as_chat).
-    """
-    from app.services.briefing.pipeline import run_brief  # noqa: PLC0415 -- agent cycle
-
-    outcome = await run_brief(
-        workflow.user_id, BRIEFING_KIND_BY_WORKFLOW_KEY[workflow.system_workflow_key]
-    )
-    log.set_ns("workflow", briefing_outcome=outcome.value)
-    return BRIEFING_RUN_SUMMARIES[outcome]
-
-
 async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: str) -> str:
     # Stamps the execution id onto the wide event before any model call: the
     # llm_calls ledger reads it to attribute cost (it exists only here, never
@@ -1314,8 +1297,10 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # path delivers from the background path; a replay via _finish_after_replay.
     conversation_id: str | None
     trace: list[RecordedCall]
-    if workflow.system_workflow_key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
-        conversation_id, trace, summary = None, [], await _run_briefing_workflow(workflow)
+    # A system workflow with its own pipeline delivers itself: no workflow conversation.
+    key = workflow.system_workflow_key
+    if run := SYSTEM_RUNS.get(key) if key else None:
+        conversation_id, trace, summary = None, [], await run(workflow)
     else:
         conversation_id, trace, summary = await _run_workflow(fire)
 
@@ -1515,6 +1500,30 @@ async def _skip_unpaid_fire(
     return f"Workflow {workflow_id} skipped — subscription required"
 
 
+async def _skip_dormant_owner_fire(
+    scheduler: WorkflowScheduler,
+    workflow: Workflow,
+    workflow_id: str,
+) -> str | None:
+    """Skip a fire whose owner is dormant and pause the workflow until they are back, or None.
+
+    The same rule as a tracked todo's: paused when it would next act, with the reason
+    reactivate_user resumes. A workflow declared unpausable (the briefs) winds itself down.
+    """
+    if not behaviour_of(workflow.system_workflow_key).pausable:
+        return None
+    if await activity_status_of(workflow.user_id) is not ActivityStatus.DORMANT:
+        return None
+    log.info(
+        f"{LogTag.WORKER} Workflow skipped — owner dormant",
+        workflow_id=workflow_id,
+        user_id=workflow.user_id,
+    )
+    if workflow.activated:
+        await scheduler.pause_for_reason(workflow, DeactivationReason.USER_DORMANT)
+    return f"Workflow {workflow_id} skipped — owner dormant"
+
+
 async def execute_workflow_by_id(
     ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     workflow_id: str,
@@ -1611,10 +1620,14 @@ async def _execute_workflow_fire(workflow_id: str, context: dict[str, object] | 
             )
         )
 
-        # The paid gate runs first and short-circuits admission, so an unpaid
-        # fire never claims its scheduled occurrence.
-        skipped = await _skip_unpaid_fire(scheduler, workflow, workflow_id) or await _admit_fire(
-            workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+        # The paid and dormant-owner gates run first and short-circuit admission, so a
+        # withheld fire never claims its scheduled occurrence.
+        skipped = (
+            await _skip_unpaid_fire(scheduler, workflow, workflow_id)
+            or await _skip_dormant_owner_fire(scheduler, workflow, workflow_id)
+            or await _admit_fire(
+                workflow, workflow_id, trigger_type, stamp.scheduled_for, actual_fire_utc
+            )
         )
         if skipped:
             return skipped

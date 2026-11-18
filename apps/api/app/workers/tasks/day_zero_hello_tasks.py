@@ -20,7 +20,7 @@ from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.goals import format_goal_block, stated_goals
-from app.services.briefing.schedule import next_brief_lands
+from app.services.briefing.run_times import next_brief_lands
 from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult

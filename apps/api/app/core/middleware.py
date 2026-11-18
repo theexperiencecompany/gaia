@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
+from app.api.v1.middleware.activity import ActivityRecordingMiddleware
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware, WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.api.v1.middleware.logging import LoggingMiddleware
@@ -131,6 +132,9 @@ def configure_middleware(app: FastAPI) -> None:
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Inside PostHog's: reads the attribution it binds to tell the user's own requests apart.
+    app.add_middleware(ActivityRecordingMiddleware)
 
     # PostHog's context must run after BOTH auth layers have populated
     # request.state.user, while still wrapping every downstream handler.

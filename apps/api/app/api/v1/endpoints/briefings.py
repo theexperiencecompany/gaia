@@ -1,4 +1,4 @@
-"""Briefing read endpoints: the archive, the Postmarks stamp collection, and one brief."""
+"""Briefing endpoints: the archive, the Postmarks stamp collection, one brief, and the brief settings."""
 
 from datetime import UTC, datetime
 from typing import Annotated
@@ -9,12 +9,22 @@ from fastapi.responses import Response
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import EDITION_IMAGE_MAX_AGE_SECONDS, EditionVariant
 from app.db.repositories.briefings import briefing_repository
+from app.models.brief_settings_models import (
+    BriefDeliveryWorkflowsConflict,
+    BriefingEditions,
+    BriefingEditionsUpdate,
+    BriefingScheduleState,
+    BriefingScheduleUpdate,
+)
 from app.models.brief_view_models import BriefingListResponse, BriefingView, PostmarksResponse
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition
 from app.services.briefing.postmarks import collected_postmarks
+from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
 from app.services.briefing.view import briefing_view
+from app.services.user_service import require_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from shared.py.wide_events import log
@@ -62,6 +72,61 @@ async def get_postmarks(
     log.set_ns("briefing", postmarks_collected=collected)
     capture(UserId(user_id), BriefingPostmarksViewed(collected=collected, total=postmarks.total))
     return postmarks
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/schedule")
+async def read_briefing_schedule(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> BriefingScheduleState:
+    """How often the user's briefs come, the daily brief's hour on their clock, and whether they run."""
+    log.set(user={"id": user.user_id}, operation="read_briefing_schedule")
+    return await briefing_schedule_state(await require_user(user.user_id))
+
+
+@router.put(
+    "/schedule",
+    responses={
+        409: {
+            "model": BriefDeliveryWorkflowsConflict,
+            "description": "Briefs cannot turn off while workflows deliver to the brief",
+        }
+    },
+)
+async def update_briefing_schedule(
+    body: BriefingScheduleUpdate,
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> BriefingScheduleState:
+    """Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs."""
+    log.set(user={"id": user.user_id}, operation="update_briefing_schedule")
+    updated = await set_briefing_schedule(
+        user.user_id,
+        body.frequency,
+        "settings",
+        hour=body.hour,
+        workflow_deliveries=body.workflow_deliveries,
+    )
+    return await briefing_schedule_state(updated)
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/editions")
+async def read_briefing_editions(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> BriefingEditions:
+    """Every daily edition family a brief can draw, and whether the user keeps it on or favours it."""
+    log.set(user={"id": user.user_id}, operation="read_briefing_editions")
+    return briefing_editions((await require_user(user.user_id)).briefing_editions)
+
+
+@router.put("/editions")
+async def update_briefing_editions(
+    body: BriefingEditionsUpdate,
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> BriefingEditions:
+    """Replace which daily edition families are off or favourited; at least one must stay on."""
+    log.set(user={"id": user.user_id}, operation="update_briefing_editions")
+    return await set_edition_choices(user.user_id, body.choices)
 
 
 @router.get("/{briefing_id}")

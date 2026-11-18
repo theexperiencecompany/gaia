@@ -75,7 +75,7 @@ from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
-from tests.helpers import WideEventRecorder, captured_wide_event
+from tests.helpers import WideEventRecorder, brief_loop_awake, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
@@ -165,6 +165,7 @@ def _seams(
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", seams.repo),
         patch.object(workflow_repository, "find_system_workflow", seams.find_system_workflow),
+        brief_loop_awake(),
         patch.object(pending_brief_items_repository, "create", seams.hold),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),
@@ -687,10 +688,11 @@ def _desk_request(trigger_type: TriggerType) -> TodoRunRequest:
     )
 
 
+# One finding per line, as the desk's run guidance writes them; a stray blank line holds nothing.
 _DESK_FINDINGS = (
-    '- Arjun call Tue 4pm · say "add Arjun call" to add it\n'
+    'Arjun call Tue 4pm · say "add Arjun call" to add it\n'
     "\n"
-    "- 3 product updates · Linear, Vercel pricing, Notion AI\n"
+    "3 product updates · Linear, Vercel pricing, Notion AI\n"
 )
 
 

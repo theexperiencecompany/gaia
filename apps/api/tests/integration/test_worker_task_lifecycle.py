@@ -20,6 +20,7 @@ from freezegun import freeze_time as _freeze_time
 import pytest
 
 from app.models.todo_models import TodoDocument
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import OnboardingPhase, UserDocument
 from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
@@ -351,8 +352,15 @@ class TestWorkflowTaskExecution:
 
     @pytest.fixture(autouse=True)
     def _owners_are_users(self):
-        """Answer the owner check the way the real users collection does."""
-        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+        """Answer the owner check the way the real users collection does: a user seen just now."""
+        seen = UserActivityDates(last_active_at=datetime.now(UTC))
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch(
+                "app.services.user_activity.status.user_repository.get_activity_dates",
+                AsyncMock(return_value=seen),
+            ),
+        ):
             yield
 
     async def test_execute_workflow_not_found(self):
@@ -530,8 +538,12 @@ class TestWorkerStartupHooks:
 
     @pytest.fixture(autouse=True)
     def _no_browser_worker(self) -> Iterator[None]:
-        # A real one would start consuming the browser queue on whatever Redis is up.
-        with patch("app.workers.lifecycle.startup.start_browser_worker"):
+        # A real one would start consuming the browser queue on whatever Redis is up, and a
+        # real post-deploy step would run every migration against whatever Mongo is up.
+        with (
+            patch("app.workers.lifecycle.startup.start_browser_worker"),
+            patch("app.workers.lifecycle.startup.start_post_deploy"),
+        ):
             yield
 
     async def test_startup_calls_unified_startup(self):

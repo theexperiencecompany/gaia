@@ -20,7 +20,7 @@ from shared.py.analytics.catalog.attribution import EntrySurface
 from shared.py.wide_events import log
 
 
-async def record_activity(user_id: str, surface: EntrySurface) -> None:
+async def mark_user_seen(user_id: str, surface: EntrySurface) -> None:
     """Mark user_id as seen now, queueing their reactivation when they were dormant.
 
     One write per user per debounce window. A Redis failure is logged, never

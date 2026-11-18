@@ -8,18 +8,18 @@ from typing_extensions import override
 from app.agents.prompts.briefing_prompts import VoicePromptBlocks, build_weekly_voice_prompt
 from app.constants.briefing import BriefingRunOutcome
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.user_models import UserDocument
-from app.services.briefing import dormancy
+from app.models.user_models import BriefingDormancy, UserDocument
+from app.services.briefing import wind_down
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
 from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.goals import StatedGoal, format_goal_block, stated_goals
+from app.services.briefing.lifecycle import wake_or_skip
 from app.services.briefing.prose import Writing, reader_block
 from app.services.briefing.sections import Laid
 from app.services.briefing.standing import Standing, VoiceInputs, VoiceRequest
 from app.services.hil.utils import untrusted_fence
-from shared.py.wide_events import log
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,8 @@ class WeeklyStanding(Standing):
     user: UserDocument
     clock: UserClock
     goals: list[StatedGoal]
+    #: Where the idle ladder stood before this digest.
+    prior: BriefingDormancy
 
     @override
     @property
@@ -36,7 +38,15 @@ class WeeklyStanding(Standing):
         return self.clock.this_week().start
 
     @override
-    async def climbed(self, gathered: GatheredCandidates) -> "WeeklyStanding":
+    async def climbed(self, gathered: GatheredCandidates, pool: FactPool) -> "WeeklyStanding":
+        """Count an empty digest on the ladder of a user the digest is the only brief of."""
+        await wind_down.climb_weekly_ladder(
+            self.user,
+            self.prior,
+            self.clock.date_str,
+            has_news=not self.quiet_before_composing(pool),
+            has_goal=bool(self.goals),
+        )
         return self
 
     @override
@@ -94,13 +104,11 @@ class WeeklyStanding(Standing):
 async def stand_weekly(user: UserDocument, clock: UserClock) -> WeeklyStanding | BriefingRunOutcome:
     """Read the digest's standing; a dormant loop has nothing to zoom out on.
 
-    The daily run owns reactivation, so this only reads whether the user came back.
+    Activity since dormancy began wakes the loop here as on the daily.
     """
-    dstate = dormancy.state_from_user(user)
-    if (
-        dstate.dormant_since
-        and await dormancy.latest_activity_since(user.id, dstate.dormant_since) is None
-    ):
-        log.info("briefing.weekly_dormant_skip", user_id=user.id)
+    dstate = await wake_or_skip(user)
+    if dstate is None:
         return BriefingRunOutcome.DORMANT
-    return WeeklyStanding(user=user, clock=clock, goals=await stated_goals(user.id, user))
+    return WeeklyStanding(
+        user=user, clock=clock, goals=await stated_goals(user.id, user), prior=dstate
+    )

@@ -412,6 +412,16 @@ async def revoke_deleted_targets(
     return revoked
 
 
+async def revoke_all_links_for_user(user_id: str) -> int:
+    """Kill every live link a user owns and delete the snapshots they pinned; return how many died."""
+    revoked = 0
+    for link in await short_link_repository.live_for_user(user_id):
+        if await short_link_repository.revoke(user_id, link.slug, RevokeReason.OWNER):
+            await _release_snapshot(user_id, link.snapshot)
+            revoked += 1
+    return revoked
+
+
 async def revoke_conversation_links(user_id: str, conversation_id: str) -> None:
     """Kill the links to everything a conversation held, before the conversation's things are deleted."""
     for spec in REGISTRY.values():

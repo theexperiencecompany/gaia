@@ -9,7 +9,6 @@ finished by a durable job, keyed by the run, never by running the todo again.
 """
 
 import asyncio
-from collections.abc import Iterable
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
@@ -41,10 +40,9 @@ from app.constants.todos import (
     TodoRunDeliveryOutcome,
     TodoRunFinishFailure,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
-from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
-from app.models.brief_models import PendingBriefItemDocument
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -55,7 +53,7 @@ from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
-from app.services.briefing.held import daily_brief_is_live
+from app.services.briefing.held import HeldSource, brief_will_carry, hold_for_brief
 from app.services.canvas_markdown import section_body
 from app.services.delivery.chat_channel import (
     ProactiveTarget,
@@ -320,28 +318,6 @@ async def _lookup_target(todo: TodoDocument) -> ProactiveTarget | None:
         return None
 
 
-async def _hold_for_brief(
-    finished: FinishedTodoRun, todo: TodoDocument, lines: Iterable[str]
-) -> _Resolution:
-    """Hold each line as one item of the user's next brief.
-
-    A retry that writes a line twice is harmless: the brief carries one item per text.
-    """
-    for line in lines:
-        if text := line.strip().removeprefix("- ").strip():
-            await pending_brief_items_repository.create(
-                PendingBriefItemDocument(
-                    user_id=todo.user_id,
-                    source=BriefItemSource.TODO,
-                    source_id=todo.id,
-                    source_title=todo.title,
-                    conversation_id=finished.conversation_id,
-                    text=text,
-                )
-            )
-    return _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
-
-
 async def _narrate_and_deliver(
     finished: FinishedTodoRun, user: AuthenticatedUser, todo: TodoDocument
 ) -> _Resolution:
@@ -351,7 +327,7 @@ async def _narrate_and_deliver(
     only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
     desk_sweep = _is_desk_sweep(todo, finished)
-    may_wait = (desk_sweep or _can_wait(todo, finished)) and await daily_brief_is_live(todo.user_id)
+    may_wait = (desk_sweep or _can_wait(todo, finished)) and await brief_will_carry(todo.user_id)
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(
@@ -390,11 +366,21 @@ async def _narrate_and_deliver(
     # comms' retelling dropped the headings a report-form owner's guidance requires.
     owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
     message = finished.result_text if owns_form else directive.payload
-    if desk_sweep and may_wait:
-        return await _hold_for_brief(finished, todo, message.splitlines())
+    # What may wait goes into the next brief: the desk's findings, one per line by its run
+    # guidance, or the one result comms chose to hold.
+    delivery = (
+        WorkflowDelivery.BRIEF
+        if desk_sweep or directive.kind is CommsDirectiveKind.BRIEF
+        else WorkflowDelivery.NOW
+    )
+    if delivery is WorkflowDelivery.BRIEF and may_wait:
+        await hold_for_brief(
+            todo.user_id,
+            HeldSource(BriefItemSource.TODO, todo.id, todo.title, finished.conversation_id),
+            message.splitlines() if desk_sweep else [directive.payload],
+        )
+        return _not_sent(TodoRunDeliveryOutcome.HELD_FOR_BRIEF)
     if directive.kind is CommsDirectiveKind.BRIEF:
-        if may_wait:
-            return await _hold_for_brief(finished, todo, [directive.payload])
         log.warning(
             f"{LogTag.AGENT} comms held a result that must go now; it is sent",
             todo_id=todo.id,

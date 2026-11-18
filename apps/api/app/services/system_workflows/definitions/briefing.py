@@ -1,19 +1,16 @@
-"""Briefing system workflow definitions.
+"""Briefing system workflow definitions, and how the workflow engine treats them.
 
 Provisioned at onboarding completion and via the existing-user backfill, not on
-integration connect. Both are SCHEDULE workflows in the user's timezone; the workflow
-ARQ path routes their system_workflow_key into the briefing service, so the
-prompt/steps here are display metadata only.
+integration connect. Both are SCHEDULE workflows in the user's timezone that run the
+briefing pipeline instead of the agent (briefing_runs), so the prompt/steps here are
+display metadata only.
 """
 
 from collections.abc import Callable
+from functools import partial
 from uuid import uuid4
 
-from app.constants.briefing import (
-    DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_CRON,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
-)
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
 from app.constants.workflows import WorkflowDelivery
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
@@ -23,7 +20,10 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
-from app.services.briefing.schedule import daily_briefing_cron
+from app.services.briefing.run_times import brief_slots, briefing_cron
+from app.services.system_workflows.behaviour import SystemWorkflowBehaviour
+
+_DEFAULT_SLOTS = brief_slots(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 
 def _daily_briefing() -> CreateWorkflowRequest:
@@ -43,7 +43,7 @@ def _daily_briefing() -> CreateWorkflowRequest:
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
             # The default schedule's slot; provisioning stamps the user's own.
-            cron_expression=daily_briefing_cron(BriefingSchedule(), DEFAULT_QUIET_HOURS),
+            cron_expression=_DEFAULT_SLOTS[DAILY_BRIEFING_WORKFLOW_KEY].cron,
         ),
         steps=[
             WorkflowStep(
@@ -74,7 +74,7 @@ def _weekly_digest() -> CreateWorkflowRequest:
         system_workflow_key=WEEKLY_DIGEST_WORKFLOW_KEY,
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
-            cron_expression=WEEKLY_DIGEST_CRON,
+            cron_expression=_DEFAULT_SLOTS[WEEKLY_DIGEST_WORKFLOW_KEY].cron,
         ),
         steps=[
             WorkflowStep(
@@ -94,3 +94,16 @@ BRIEFING_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]]
     (DAILY_BRIEFING_WORKFLOW_KEY, _daily_briefing),
     (WEEKLY_DIGEST_WORKFLOW_KEY, _weekly_digest),
 ]
+
+
+# A brief is no workflow to the user: never listed, a failure is the logged error and the
+# next one runs, and it winds itself down (briefing.wind_down) instead of being paused.
+BRIEFING_BEHAVIOURS: dict[str, SystemWorkflowBehaviour] = {
+    key: SystemWorkflowBehaviour(
+        listed=False,
+        notify_on_failure=False,
+        pausable=False,
+        cron_for=partial(briefing_cron, key),
+    )
+    for key in (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
+}

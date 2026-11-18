@@ -266,7 +266,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         phase: OnboardingPhase,
         bio_status: BioStatus,
         preferences: OnboardingPreferences,
-        timezone: str | None = None,
         completed_at: datetime | None = None,
     ) -> UserDocument | None:
         """Atomically mark onboarding complete (gated on it not being complete yet).
@@ -285,8 +284,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         }
         for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
-        if timezone is not None:
-            set_fields["timezone"] = timezone
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},

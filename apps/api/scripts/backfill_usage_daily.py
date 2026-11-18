@@ -11,7 +11,7 @@ This script reconstructs history from the durable data we already have: the
 `messages` arrays embedded in `conversations`. Each *user-role* message counts
 as one action on its UTC day, and each `tool_data` entry on a bot message (one
 persisted tool execution) counts as one more — matching what the live
-`record_activity()` path meters from deploy day onward.
+`count_daily_actions()` path meters from deploy day onward.
 
 Idempotency: for each (user, day) the backfilled value is written with `$max`,
 so re-runs never inflate counts, and days already ahead of the backfill value
@@ -110,7 +110,7 @@ async def backfill(days: int, dry_run: bool) -> None:
         UpdateOne(
             {"user_id": uid, "date": day},
             # $max keeps whichever is larger: the backfilled estimate or a count
-            # the live record_activity() path has already accumulated.
+            # the live count_daily_actions() path has already accumulated.
             {"$max": {"count": n}},
             upsert=True,
         )

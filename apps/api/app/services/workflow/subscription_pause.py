@@ -23,6 +23,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
 from app.services.reminder_service import reminder_scheduler
+from app.services.system_workflows.registry import UNPAUSABLE_KEYS
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
@@ -51,7 +52,11 @@ async def lapsable_workflows(user_id: str) -> list[WorkflowDocument]:
     stay live for everyone who copied them.
     """
     return [
-        w for w in await workflow_repository.find_activated_for_user(user_id) if not w.is_public
+        w
+        for w in await workflow_repository.find_activated_for_user(
+            user_id, excluding_keys=UNPAUSABLE_KEYS
+        )
+        if not w.is_public
     ]
 
 

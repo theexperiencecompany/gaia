@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from scripts.provision_daily_briefings import rollout
 
+from app.services.briefing.rollout import RolloutPath
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import current_analytics_context
 
@@ -20,9 +21,9 @@ def _analytics_context() -> None:
     """Leave the context unbound: the script is an entry point and must bind its own."""
 
 
-async def _path_needing_a_context(user_id: str) -> str:
+async def _path_needing_a_context(user_id: str) -> RolloutPath:
     assert current_analytics_context().attribution.trigger is Trigger.SYSTEM
-    return "normal"
+    return RolloutPath.NORMAL
 
 
 async def test_every_user_is_rolled_out_under_a_bound_analytics_context(
@@ -33,9 +34,19 @@ async def test_every_user_is_rolled_out_under_a_bound_analytics_context(
         patch(f"{MODULE}.user_repository.list_all_ids", AsyncMock(return_value=["u1", "u2"])),
         patch(f"{MODULE}.provision_existing_user", side_effect=_path_needing_a_context),
     ):
-        await rollout(dry_run=False)
+        await rollout(apply=True)
 
     # A script has no app lifespan: it registers the providers capture() and the
     # workflow provisioning read, or every user fails on "Provider not found".
     register.assert_called_once_with("main_app")
-    assert "done: 2/2 rolled out; breakdown={'normal': 2}" in capsys.readouterr().out
+    assert "[APPLY] done: 2/2; breakdown={'normal': 2}" in capsys.readouterr().out
+
+
+async def test_a_dry_run_counts_the_users_and_provisions_nobody() -> None:
+    with (
+        patch(f"{MODULE}.user_repository.list_all_ids", AsyncMock(return_value=["u1", "u2"])),
+        patch(f"{MODULE}.provision_existing_user", AsyncMock()) as provision,
+    ):
+        assert await rollout(apply=False) == {}
+
+    provision.assert_not_awaited()

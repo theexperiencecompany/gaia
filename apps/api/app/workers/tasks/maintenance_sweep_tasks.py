@@ -25,7 +25,7 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.redis_utils import RedisPoolManager
@@ -383,7 +383,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
     )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
@@ -429,7 +429,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.MAINTENANCE,
@@ -479,7 +479,7 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
 
     # Add needs-follow-up label
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
-    await record_activity(
+    await record_todo_activity(
         todo_id,
         user_id,
         TodoActivityEvent.MAINTENANCE,

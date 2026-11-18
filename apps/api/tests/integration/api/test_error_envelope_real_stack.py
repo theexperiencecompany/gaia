@@ -145,7 +145,7 @@ async def authed_stack(restore_timeout_default):
             "app.api.v1.middleware.auth.authenticate_workos_session",
             new=AsyncMock(return_value=(make_authenticated_user(user_id=PROBE_USER_ID), None)),
         ),
-        patch("app.api.v1.middleware.auth.record_activity", new=AsyncMock()),
+        patch("app.api.v1.middleware.activity.mark_user_seen", new=AsyncMock()),
     ):
         async with _client(_build_app()) as client:
             client.cookies.set("wos_session", "probe-session")

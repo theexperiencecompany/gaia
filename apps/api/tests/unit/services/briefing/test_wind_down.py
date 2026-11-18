@@ -8,17 +8,23 @@ from unittest.mock import AsyncMock
 import pytest
 import time_machine
 
-from app.constants.briefing import GOAL_QUESTION_REASK
+from app.constants.briefing import (
+    GOAL_QUESTION_REASK,
+    IDLE_DORMANT_DAYS,
+    BriefingFrequency,
+    WindDown,
+)
 from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import BriefingDormancy, UserDocument
-from app.services.briefing import dormancy
-from app.services.briefing.dormancy import DormancyState, state_from_user
+from app.services.briefing import wind_down
+from app.services.briefing.wind_down import state_from_user
 
 
 class TestStateFromUser:
     def test_a_user_without_a_marker_is_awake_with_no_idle_days(self) -> None:
-        assert state_from_user(UserDocument()) == DormancyState(
+        assert state_from_user(UserDocument()) == BriefingDormancy(
             idle_days=0, date=None, dormant_since=None
         )
 
@@ -29,7 +35,7 @@ class TestStateFromUser:
             )
         )
 
-        assert state_from_user(user) == DormancyState(
+        assert state_from_user(user) == BriefingDormancy(
             idle_days=5, date="2026-10-13", dormant_since=datetime(2026, 10, 13, 8, tzinfo=UTC)
         )
 
@@ -60,7 +66,7 @@ class TestLatestActivitySince:
     ) -> None:
         read = self._dates(monkeypatch, _SINCE + timedelta(hours=3))
 
-        assert await dormancy.latest_activity_since("u1", _SINCE) == _SINCE + timedelta(hours=3)
+        assert await wind_down.latest_activity_since("u1", _SINCE) == _SINCE + timedelta(hours=3)
         read.assert_awaited_once_with("u1")
 
     async def test_activity_before_the_cutoff_is_none(
@@ -68,17 +74,17 @@ class TestLatestActivitySince:
     ) -> None:
         self._dates(monkeypatch, _SINCE - timedelta(seconds=1))
 
-        assert await dormancy.latest_activity_since("u1", _SINCE) is None
+        assert await wind_down.latest_activity_since("u1", _SINCE) is None
 
     async def test_activity_at_the_cutoff_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._dates(monkeypatch, _SINCE)
 
-        assert await dormancy.latest_activity_since("u1", _SINCE) == _SINCE
+        assert await wind_down.latest_activity_since("u1", _SINCE) == _SINCE
 
     async def test_a_naive_mongo_stamp_reads_as_utc(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._dates(monkeypatch, datetime(2026, 10, 13, 11))
 
-        assert await dormancy.latest_activity_since("u1", _SINCE) == datetime(
+        assert await wind_down.latest_activity_since("u1", _SINCE) == datetime(
             2026, 10, 13, 11, tzinfo=UTC
         )
 
@@ -88,7 +94,7 @@ class TestLatestActivitySince:
         """Regression: workflow runs write type=user messages, which used to count as the user."""
         self._dates(monkeypatch, None)
 
-        assert await dormancy.latest_activity_since("u1", _SINCE) is None
+        assert await wind_down.latest_activity_since("u1", _SINCE) is None
 
 
 class TestClimbIdleLadder:
@@ -98,13 +104,15 @@ class TestClimbIdleLadder:
         set_day = AsyncMock()
         monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
         user = UserDocument(id="u1", created_at=datetime.now(UTC) - timedelta(days=90))
-        prior = DormancyState(idle_days=1, date="2026-10-13", dormant_since=None)
+        prior = BriefingDormancy(idle_days=1, date="2026-10-13", dormant_since=None)
 
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             user, prior, "2026-10-14", has_news=False, has_goal=False
         )
 
-        assert ladder == dormancy.IdleLadder(first_week=False, idle_days=2, wind_down="warn")
+        assert ladder == wind_down.IdleLadder(
+            first_week=False, idle_days=2, wind_down=WindDown.WARN
+        )
         set_day.assert_awaited_once_with("u1", idle_days=2, date_str="2026-10-14")
 
 
@@ -112,8 +120,8 @@ _NOW = datetime(2026, 11, 12, 2, 30, tzinfo=UTC)
 _VETERAN = UserDocument(id="u1", created_at=_NOW - timedelta(days=300))
 
 
-def _asked(days_ago: float, *, idle_days: int = 0) -> DormancyState:
-    return DormancyState(
+def _asked(days_ago: float, *, idle_days: int = 0) -> BriefingDormancy:
+    return BriefingDormancy(
         idle_days=idle_days,
         date="2026-11-11",
         dormant_since=None,
@@ -138,20 +146,20 @@ class TestTheGoalQuestion:
         return read
 
     async def test_a_goal_never_asked_about_is_asked_and_the_day_is_not_idle(self) -> None:
-        prior = DormancyState(idle_days=0, date=None, dormant_since=None)
+        prior = BriefingDormancy(idle_days=0, date=None, dormant_since=None)
 
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             _VETERAN, prior, "2026-11-12", has_news=False, has_goal=True
         )
 
-        assert (ladder.goal_question, ladder.idle_days) == (dormancy.GoalQuestion.ASK, 0)
+        assert (ladder.goal_question, ladder.idle_days) == (wind_down.GoalQuestion.ASK, 0)
 
     async def test_a_goal_asked_inside_the_window_is_not_asked_again(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._active_at(monkeypatch, _NOW - timedelta(hours=1))
 
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             _VETERAN,
             _asked(GOAL_QUESTION_REASK.days - 1),
             "2026-11-12",
@@ -159,29 +167,29 @@ class TestTheGoalQuestion:
             has_goal=True,
         )
 
-        assert (ladder.goal_question, ladder.idle_days) == (dormancy.GoalQuestion.ASKED, 0)
+        assert (ladder.goal_question, ladder.idle_days) == (wind_down.GoalQuestion.ASKED, 0)
 
     async def test_a_goal_asked_a_full_window_ago_is_asked_again(self) -> None:
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             _VETERAN, _asked(GOAL_QUESTION_REASK.days), "2026-11-12", has_news=False, has_goal=True
         )
 
-        assert ladder.goal_question is dormancy.GoalQuestion.ASK
+        assert ladder.goal_question is wind_down.GoalQuestion.ASK
 
     async def test_an_ignored_goal_question_lets_the_ladder_climb(
         self, monkeypatch: pytest.MonkeyPatch, _frozen: AsyncMock
     ) -> None:
         read = self._active_at(monkeypatch, _NOW - timedelta(days=3))
 
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             _VETERAN, _asked(2, idle_days=1), "2026-11-12", has_news=False, has_goal=True
         )
 
-        assert ladder == dormancy.IdleLadder(
+        assert ladder == wind_down.IdleLadder(
             first_week=False,
             idle_days=2,
-            wind_down="warn",
-            goal_question=dormancy.GoalQuestion.ASKED,
+            wind_down=WindDown.WARN,
+            goal_question=wind_down.GoalQuestion.ASKED,
         )
         _frozen.assert_awaited_once_with("u1", idle_days=2, date_str="2026-11-12")
         read.assert_awaited_once_with("u1")
@@ -191,7 +199,7 @@ class TestTheGoalQuestion:
     ) -> None:
         self._active_at(monkeypatch, None)
 
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             _VETERAN, _asked(2, idle_days=1), "2026-11-12", has_news=True, has_goal=True
         )
 
@@ -202,14 +210,14 @@ class TestTheGoalQuestion:
     ) -> None:
         record = AsyncMock()
         monkeypatch.setattr(user_repository, "record_goal_question", record)
-        asked = dormancy.IdleLadder(
-            first_week=False, idle_days=0, wind_down=None, goal_question=dormancy.GoalQuestion.ASK
+        asked = wind_down.IdleLadder(
+            first_week=False, idle_days=0, wind_down=None, goal_question=wind_down.GoalQuestion.ASK
         )
 
-        await dormancy.leave_idle_ladder(
-            "u0", replace(asked, goal_question=dormancy.GoalQuestion.ASKED)
+        await wind_down.leave_idle_ladder(
+            "u0", replace(asked, goal_question=wind_down.GoalQuestion.ASKED)
         )
-        await dormancy.leave_idle_ladder("u1", asked)
+        await wind_down.leave_idle_ladder("u1", asked)
 
         record.assert_awaited_once_with("u1")
 
@@ -219,3 +227,59 @@ class TestTheGoalQuestion:
         )
 
         assert state_from_user(user).goal_asked_at == datetime(2026, 11, 8, 2, 30, tzinfo=UTC)
+
+
+_WEEKLY_ONLY = _VETERAN.model_copy(
+    update={"briefing_schedule": BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY)}
+)
+_ONE_DIGEST_FROM_DORMANT = BriefingDormancy(
+    idle_days=IDLE_DORMANT_DAYS - 1, date="2026-11-01", dormant_since=None
+)
+
+
+class TestTheWeeklyLadder:
+    """A user whose only brief is the weekly digest winds down on it."""
+
+    @staticmethod
+    def _seams(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
+        set_day, enter = AsyncMock(), AsyncMock()
+        monkeypatch.setattr(user_repository, "set_dormancy_day", set_day)
+        monkeypatch.setattr(user_repository, "enter_briefing_dormancy", enter)
+        return set_day, enter
+
+    @pytest.mark.regression
+    async def test_the_last_empty_digest_puts_a_weekly_only_loop_to_sleep(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_day, enter = self._seams(monkeypatch)
+
+        await wind_down.climb_weekly_ladder(
+            _WEEKLY_ONLY, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=False, has_goal=False
+        )
+
+        set_day.assert_awaited_once_with("u1", idle_days=IDLE_DORMANT_DAYS, date_str="2026-11-08")
+        enter.assert_awaited_once_with("u1")
+
+    async def test_a_digest_with_news_resets_the_count(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_day, enter = self._seams(monkeypatch)
+
+        await wind_down.climb_weekly_ladder(
+            _WEEKLY_ONLY, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=True, has_goal=False
+        )
+
+        set_day.assert_awaited_once_with("u1", idle_days=0, date_str="2026-11-08")
+        enter.assert_not_awaited()
+
+    async def test_a_user_with_a_daily_brief_climbs_on_the_daily_instead(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_day, enter = self._seams(monkeypatch)
+
+        await wind_down.climb_weekly_ladder(
+            _VETERAN, _ONE_DIGEST_FROM_DORMANT, "2026-11-08", has_news=False, has_goal=False
+        )
+
+        set_day.assert_not_awaited()
+        enter.assert_not_awaited()

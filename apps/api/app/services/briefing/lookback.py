@@ -11,7 +11,7 @@ from app.models.brief_document_models import BriefingModel
 from app.models.brief_payload_models import BriefingMood
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
-from app.services.briefing import dormancy
+from app.services.briefing import wind_down
 from app.services.briefing.clock import UserClock, when_sent
 from app.services.briefing.work import BriefReads, finished_by
 from app.utils.timezone import as_utc
@@ -144,7 +144,7 @@ async def compute_winback_state(user: UserDocument) -> WinbackState:
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
-    last_active = await dormancy.latest_activity_since(user.id, _created(briefings[-1]))
+    last_active = await wind_down.latest_activity_since(user.id, _created(briefings[-1]))
     unacknowledged = 0
     for briefing in briefings:
         if last_active is not None and last_active >= _created(briefing):

@@ -12,7 +12,6 @@ import pytest
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.workflows import WorkflowDelivery
@@ -95,7 +94,7 @@ class TestBriefingSystemWorkflows:
         trigger = _built(WEEKLY_DIGEST_WORKFLOW_KEY).trigger_config
 
         assert trigger is not None
-        assert trigger.cron_expression == WEEKLY_DIGEST_CRON
+        assert trigger.cron_expression == "0 17 * * 0"
 
     @pytest.mark.parametrize("key", [DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY])
     def test_a_fresh_build_mints_new_step_ids_so_two_users_never_share_one(self, key: str) -> None:

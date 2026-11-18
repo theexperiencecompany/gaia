@@ -121,8 +121,9 @@ async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
     if isinstance(stood, BriefingRunOutcome):
         return stood
     reads = await _read(user, clock, spec, stood)
-    run = Run(user, clock, spec, await stood.climbed(reads.gathered), reads)
-    pool = await _pool(run)
+    # The pool reads only the standing's goals and look-back, which climbing never changes.
+    pool = await _pool(Run(user, clock, spec, stood, reads))
+    run = Run(user, clock, spec, await stood.climbed(reads.gathered, pool), reads)
     if run.standing.quiet_before_composing(pool):
         return await _quiet(run, pool)
     composed = await compose_brief(user_id, pool, spec)

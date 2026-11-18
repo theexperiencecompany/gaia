@@ -1,23 +1,18 @@
-"""When the briefs run: the daily at the user's hour on their clock, the weekly on Sunday.
+"""Keep the briefing workflows on the user's schedule: their crons, timezone and on/off state.
 
-The user's briefing frequency decides which briefs run at all (weekdays keeps the
-daily to Monday-Friday) and their hour when the daily lands; a daily brief that
-would land inside quiet hours runs at the hour they end instead. Provisioning
-stamps this onto the briefing workflows' crons, and a change to the schedule,
-quiet hours or timezone moves the workflows with it.
+When each brief lands is run_times'; this moves the workflows onto it. Provisioning
+stamps the crons, and a change to the schedule, quiet hours or timezone moves them.
+A schedule without a daily brief first moves every brief-delivery workflow off it.
 """
 
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 
 from app.constants.briefing import (
+    BRIEF_RUN_DAYS,
     BRIEFING_KIND_BY_WORKFLOW_KEY,
     DAILY_BRIEFING_WORKFLOW_KEY,
-    ENABLED_BRIEFING_KEYS,
-    EVERY_DAY_CRON_DAYS,
-    WEEKDAYS_CRON_DAYS,
-    WEEKLY_DIGEST_CRON,
-    WEEKLY_DIGEST_HOUR,
     BriefingFrequency,
     BriefingKind,
 )
@@ -33,12 +28,15 @@ from app.models.brief_settings_models import (
     BriefingSchedule,
     BriefingScheduleState,
 )
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
-from app.services.briefing.held import daily_brief_is_live, release_held_items
+from app.services.briefing.held import brief_will_carry, release_held_items
+from app.services.briefing.run_times import briefing_cron, inbox_desk_recurrence, user_brief_slots
+from app.services.todos.inbox_desk import follow_the_brief
+from app.services.user_service import require_user
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone
@@ -50,15 +48,6 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffResolved,
 )
 from shared.py.wide_events import log
-
-_FREQUENCY_DESCRIPTIONS: dict[BriefingFrequency, str] = {
-    BriefingFrequency.DAILY: "a daily brief every day at {time}, plus the Sunday evening weekly digest",
-    BriefingFrequency.WEEKDAYS: (
-        "a daily brief Monday to Friday at {time}, plus the Sunday evening weekly digest"
-    ),
-    BriefingFrequency.WEEKLY_ONLY: "only the Sunday evening weekly digest, no daily brief",
-    BriefingFrequency.OFF: "no briefs at all",
-}
 
 
 class BriefDeliveryWorkflowsError(AppError):
@@ -82,29 +71,6 @@ class BriefDeliveryWorkflowsError(AppError):
         )
 
 
-def daily_briefing_hour(schedule: BriefingSchedule, quiet_hours: QuietHours) -> int:
-    """Return the daily brief's local hour: the user's, or the end of quiet hours covering it."""
-    # Quiet hours read only the hour on the clock; any day stands in for the brief's.
-    slot = datetime.min.replace(hour=schedule.hour, tzinfo=UTC)
-    return quiet_hours.end_after(slot).hour
-
-
-def daily_briefing_cron(schedule: BriefingSchedule, quiet_hours: QuietHours) -> str:
-    """Return the daily brief's cron: its hour, every day or Monday to Friday."""
-    days = (
-        WEEKDAYS_CRON_DAYS
-        if schedule.frequency == BriefingFrequency.WEEKDAYS
-        else EVERY_DAY_CRON_DAYS
-    )
-    return f"0 {daily_briefing_hour(schedule, quiet_hours)} * * {days}"
-
-
-def describe_briefing_schedule(user: UserDocument) -> str:
-    """Say in plain words which briefs the user gets and when the daily one lands."""
-    hour = daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
-    return _FREQUENCY_DESCRIPTIONS[user.briefing_schedule.frequency].format(time=f"{hour:02d}:00")
-
-
 async def briefs_paused_for_plan(user: UserDocument) -> bool:
     """Whether the user's schedule has briefs that do not run because they are not on Pro."""
     return user.briefing_schedule.frequency is not BriefingFrequency.OFF and not await is_paid(
@@ -115,16 +81,19 @@ async def briefs_paused_for_plan(user: UserDocument) -> bool:
 async def briefing_schedule_state(user: UserDocument) -> BriefingScheduleState:
     """Return the user's schedule as it runs: paused while they are not on Pro, and the next daily."""
     paused = await briefs_paused_for_plan(user)
+    daily = user_brief_slots(user).get(DAILY_BRIEFING_WORKFLOW_KEY)
     return BriefingScheduleState(
         **user.briefing_schedule.model_dump(),
         paused_for_plan=paused,
         next_daily_brief_at=None if paused else await _next_daily_brief_at(user),
+        has_daily_brief=daily is not None,
+        daily_brief_hour=daily.hour if daily is not None else None,
     )
 
 
 async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
     """Return when the daily brief's workflow next runs, or None when this schedule runs none."""
-    if DAILY_BRIEFING_WORKFLOW_KEY not in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
+    if DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[user.briefing_schedule.frequency]:
         return None
     workflows = await workflow_repository.find_system_workflows(
         user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
@@ -133,43 +102,6 @@ async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
         (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
     )
     return daily.trigger_config.next_run if daily and daily.activated else None
-
-
-#: The weekdays (Monday 0) each frequency's briefs land on.
-_BRIEF_DAYS: dict[BriefingFrequency, frozenset[int]] = {
-    BriefingFrequency.DAILY: frozenset(range(7)),
-    BriefingFrequency.WEEKDAYS: frozenset(range(5)),
-    BriefingFrequency.WEEKLY_ONLY: frozenset({6}),
-}
-
-
-def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
-    """Say when the user's next brief lands on their clock ("tomorrow at 7 AM"); None when briefs are off."""
-    frequency = user.briefing_schedule.frequency
-    if frequency is BriefingFrequency.OFF:
-        return None
-    hour = (
-        WEEKLY_DIGEST_HOUR
-        if frequency is BriefingFrequency.WEEKLY_ONLY
-        else daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
-    )
-    ahead = next(
-        days
-        for days in range(8)
-        if (now_local + timedelta(days=days)).weekday() in _BRIEF_DAYS[frequency]
-        and (days or now_local.hour < hour)
-    )
-    day = {0: "today", 1: "tomorrow"}.get(ahead, (now_local + timedelta(days=ahead)).strftime("%A"))
-    return f"{day} at {now_local.replace(hour=hour).strftime('%-I %p')}"
-
-
-def briefing_cron(key: str, user: UserDocument) -> str:
-    """Return the cron the user's profile gives the briefing workflow under key."""
-    return (
-        daily_briefing_cron(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
-        if key == DAILY_BRIEFING_WORKFLOW_KEY
-        else WEEKLY_DIGEST_CRON
-    )
 
 
 async def _next_run_base(user: UserDocument, kind: BriefingKind) -> datetime:
@@ -185,24 +117,35 @@ async def _next_run_base(user: UserDocument, kind: BriefingKind) -> datetime:
 
 
 async def _apply_frequency(workflow: Workflow, user: UserDocument, enabled: bool) -> None:
-    """Switch the workflow off when the frequency drops it, back on when it returns.
+    """Switch the workflow on when the frequency runs it and off when it drops it.
 
-    Switching back on stays a paid-plan privilege: a free user's briefs remain off.
+    On a free plan one the frequency runs waits for Pro, paused as SUBSCRIPTION_LAPSED so the
+    restore on upgrade switches it on; one it drops carries no reason, so nothing revives it.
     """
-    if enabled == workflow.activated:
+    on = enabled and await is_paid(user.id)
+    reason = DeactivationReason.SUBSCRIPTION_LAPSED if enabled and not on else None
+    if workflow.activated == on and (on or workflow.deactivated_reason == reason):
         return
-    if enabled and not await is_paid(user.id):
-        return
-    switch = WorkflowService.activate_workflow if enabled else WorkflowService.deactivate_workflow
-    if await switch(workflow.id, user.id) is None:
+    switched = (
+        await WorkflowService.activate_workflow(workflow.id, user.id)
+        if on
+        else await WorkflowService.deactivate_workflow(workflow.id, user.id, reason=reason)
+    )
+    if switched is None:
         raise LookupError(f"Briefing workflow {workflow.id} vanished while it was switched")
-    log.info("briefing.schedule_switched", user_id=user.id, workflow_id=workflow.id, on=enabled)
+    log.info(
+        "briefing.schedule_switched",
+        user_id=user.id,
+        workflow_id=workflow.id,
+        on=on,
+        reason=reason.value if reason else None,
+    )
 
 
 async def resync_briefing_schedules(user: UserDocument) -> None:
     """Fit the user's briefing workflows to the frequency, hour and timezone their profile gives."""
     timezone = Timezone.parse(user.timezone).value
-    enabled_keys = ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]
+    enabled_keys = BRIEF_RUN_DAYS[user.briefing_schedule.frequency]
     workflows = await workflow_repository.find_system_workflows(
         user.id, tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
     )
@@ -242,16 +185,24 @@ _UNCHOSEN_DELIVERY: dict[BriefingFrequency, BriefFreeDelivery | None] = {
 }
 
 
+@dataclass(frozen=True)
+class _BriefWorkflowMoves:
+    """Where brief-delivery workflows go when the daily brief stops: chosen per id, the rest to rest."""
+
+    chosen: Mapping[str, BriefFreeDelivery]
+    rest: BriefFreeDelivery | None
+
+
 async def _move_off_the_brief(
     user_id: str,
     frequency: BriefingFrequency,
-    chosen: Mapping[str, BriefFreeDelivery],
+    moves: _BriefWorkflowMoves,
     via: BriefingScheduleChangedVia,
 ) -> None:
     """Give every brief-delivery workflow its new delivery; refuse, changing nothing, if one has none."""
     on_brief = await workflow_repository.find_brief_delivery_for_user(user_id)
-    fallback = _UNCHOSEN_DELIVERY[frequency]
-    deliveries = {workflow.id: chosen.get(workflow.id, fallback) for workflow in on_brief}
+    fallback = moves.rest or _UNCHOSEN_DELIVERY[frequency]
+    deliveries = {workflow.id: moves.chosen.get(workflow.id, fallback) for workflow in on_brief}
     unresolved = [workflow for workflow in on_brief if deliveries[workflow.id] is None]
     if unresolved:
         capture(UserId(user_id), SettingsBriefsOffBlocked(workflow_count=len(unresolved), via=via))
@@ -276,24 +227,33 @@ async def _move_off_the_brief(
 
 async def set_briefing_schedule(
     user_id: str,
-    schedule: BriefingSchedule,
+    frequency: BriefingFrequency,
     via: BriefingScheduleChangedVia,
+    *,
+    hour: int | None = None,
     workflow_deliveries: Mapping[str, BriefFreeDelivery] | None = None,
+    brief_workflows_to: BriefFreeDelivery | None = None,
 ) -> UserDocument:
-    """Store the user's briefing schedule and move their briefing workflows onto it.
+    """Store the user's briefing frequency, and hour unless None keeps theirs, and move the briefs onto it.
 
     A schedule with no daily brief first moves each brief-delivery workflow off the brief:
-    weekly-only to Tell me now, off to its delivery in workflow_deliveries, raising
-    BriefDeliveryWorkflowsError while any has none. It also releases what was held.
+    to its delivery in workflow_deliveries, else brief_workflows_to, else (weekly-only) Tell
+    me now, raising BriefDeliveryWorkflowsError while any has none. It releases what was held.
     """
+    before = await require_user(user_id)
+    schedule = BriefingSchedule(
+        frequency=frequency, hour=before.briefing_schedule.hour if hour is None else hour
+    )
     if schedule.frequency in _UNCHOSEN_DELIVERY:
-        await _move_off_the_brief(user_id, schedule.frequency, workflow_deliveries or {}, via)
+        moves = _BriefWorkflowMoves(chosen=workflow_deliveries or {}, rest=brief_workflows_to)
+        await _move_off_the_brief(user_id, schedule.frequency, moves, via)
     await user_repository.set_briefing_schedule(user_id, schedule)
     user = await user_repository.get(user_id)
     if user is None:
         raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
     await resync_briefing_schedules(user)
-    if not await daily_brief_is_live(user_id):
+    await follow_the_brief(user_id, inbox_desk_recurrence(before), inbox_desk_recurrence(user))
+    if not await brief_will_carry(user_id):
         await release_held_items(user_id)
     log.audit(
         "briefing schedule updated",

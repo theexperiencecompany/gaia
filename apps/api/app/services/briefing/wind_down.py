@@ -8,10 +8,10 @@ call, so a goalless account costs a few Mongo reads a day.
 
 Reactivation is pull-based, checked at run start: any activity the user made on
 any surface since dormancy began (users.last_active_at, the one activity record)
-wakes the loop on its next run. Only the daily run mutates dormancy state; the
-weekly digest reads it. This ladder is about having nothing to report; a user who
+wakes the loop on its next run, daily or weekly. The daily run climbs the ladder; for
+a weekly-only user the digest does. This ladder is about having nothing to report; a user who
 stops acknowledging briefs is the winback's to back off (briefing.lookback), never
-the workflow-dormancy sweep's, which leaves the briefs alone. A new account's first
+the dormant-owner pause's, which leaves the briefs alone. A new account's first
 week never climbs the ladder: its briefs help the user get started instead.
 """
 
@@ -20,18 +20,18 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from app.constants.briefing import (
+    BRIEF_RUN_DAYS,
+    DAILY_BRIEFING_WORKFLOW_KEY,
     FIRST_WEEK_DAYS,
     GOAL_QUESTION_REASK,
     IDLE_DORMANT_DAYS,
     IDLE_WARN_DAYS,
+    WindDown,
 )
 from app.db.repositories.users import user_repository
 from app.models.user_models import BriefingDormancy, UserDocument
 from app.utils.timezone import as_utc
 from shared.py.wide_events import log
-
-WIND_DOWN_WARN = "warn"
-WIND_DOWN_FINAL = "final"
 
 
 class GoalQuestion(StrEnum):
@@ -51,29 +51,18 @@ class IdleLadder:
 
     first_week: bool
     idle_days: int
-    wind_down: str | None
+    wind_down: WindDown | None
     goal_question: GoalQuestion = GoalQuestion.NONE
 
 
-@dataclass
-class DormancyState:
-    idle_days: int
-    date: str | None
-    dormant_since: datetime | None
-    goal_asked_at: datetime | None = None
-
-
-def state_from_user(user: UserDocument) -> DormancyState:
+def state_from_user(user: UserDocument) -> BriefingDormancy:
+    """Return the user's ladder marker with Mongo's naive UTC times made aware."""
     marker = user.briefing_dormancy or BriefingDormancy()
-    since = marker.dormant_since
-    # Mongo returns naive UTC datetimes; normalize before comparing.
-    if since is not None and since.tzinfo is None:
-        since = since.replace(tzinfo=UTC)
-    return DormancyState(
-        idle_days=marker.idle_days,
-        date=marker.date,
-        dormant_since=since,
-        goal_asked_at=as_utc(marker.goal_asked_at),
+    return marker.model_copy(
+        update={
+            "dormant_since": as_utc(marker.dormant_since),
+            "goal_asked_at": as_utc(marker.goal_asked_at),
+        }
     )
 
 
@@ -83,11 +72,11 @@ def in_first_week(user: UserDocument, now: datetime) -> bool:
     return signed_up is not None and now - signed_up < timedelta(days=FIRST_WEEK_DAYS)
 
 
-def wind_down_stage(idle_days: int) -> str | None:
+def wind_down_stage(idle_days: int) -> WindDown | None:
     if idle_days >= IDLE_DORMANT_DAYS:
-        return WIND_DOWN_FINAL
+        return WindDown.FINAL
     if idle_days == IDLE_WARN_DAYS:
-        return WIND_DOWN_WARN
+        return WindDown.WARN
     return None
 
 
@@ -102,7 +91,13 @@ async def latest_activity_since(user_id: str, since: datetime) -> datetime | Non
     return last_active if last_active is not None and last_active >= since else None
 
 
-async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_str: str) -> int:
+async def is_dormant(user: UserDocument) -> bool:
+    """Whether the loop is dormant with no activity since: its next run skips before reading anything."""
+    since = state_from_user(user).dormant_since
+    return since is not None and await latest_activity_since(user.id, since) is None
+
+
+async def record_idle_day(user_id: str, prior: BriefingDormancy, idle: bool, date_str: str) -> int:
     """Persist today's idle/active outcome; returns the consecutive idle count.
 
     Same-day reruns don't double-count (the one-brief-per-day law applies to the
@@ -117,7 +112,7 @@ async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_s
     return idle_days
 
 
-def goal_question(prior: DormancyState, now: datetime, *, has_goal: bool) -> GoalQuestion:
+def goal_question(prior: BriefingDormancy, now: datetime, *, has_goal: bool) -> GoalQuestion:
     """Say whether today's brief asks about the goal, or for one, or asked too recently to."""
     asked = prior.goal_asked_at
     if asked is not None and now - asked < GOAL_QUESTION_REASK:
@@ -126,7 +121,7 @@ def goal_question(prior: DormancyState, now: datetime, *, has_goal: bool) -> Goa
 
 
 async def climb_idle_ladder(
-    user: UserDocument, prior: DormancyState, date_str: str, *, has_news: bool, has_goal: bool
+    user: UserDocument, prior: BriefingDormancy, date_str: str, *, has_news: bool, has_goal: bool
 ) -> IdleLadder:
     """Record today as idle or active, and return the rung it reached and today's goal question.
 
@@ -155,14 +150,23 @@ async def leave_idle_ladder(user_id: str, ladder: IdleLadder) -> None:
     """Record a goal question that went out, for the goal or for one; pause the loop once the goodbye did."""
     if ladder.goal_question is not GoalQuestion.ASKED:
         await user_repository.record_goal_question(user_id)
-    if ladder.wind_down == WIND_DOWN_FINAL:
-        await enter_dormancy(user_id)
+    if ladder.wind_down == WindDown.FINAL:
+        await user_repository.enter_briefing_dormancy(user_id)
         log.info("briefing.dormancy_entered", user_id=user_id, idle_days=ladder.idle_days)
 
 
-async def enter_dormancy(user_id: str) -> None:
-    await user_repository.enter_briefing_dormancy(user_id)
+async def climb_weekly_ladder(
+    user: UserDocument, prior: BriefingDormancy, date_str: str, *, has_news: bool, has_goal: bool
+) -> None:
+    """Count an empty digest as idle for a user the weekly digest is the only brief of.
 
-
-async def clear_dormancy(user_id: str) -> None:
-    await user_repository.clear_briefing_dormancy(user_id)
+    Their loop goes dormant after IDLE_DORMANT_DAYS idle digests in a row; a user with a
+    daily brief climbs the ladder on it instead.
+    """
+    if DAILY_BRIEFING_WORKFLOW_KEY in BRIEF_RUN_DAYS[user.briefing_schedule.frequency]:
+        return
+    idle = not has_news and not has_goal and not in_first_week(user, datetime.now(UTC))
+    idle_days = await record_idle_day(user.id, prior, idle, date_str)
+    if idle and idle_days >= IDLE_DORMANT_DAYS:
+        await user_repository.enter_briefing_dormancy(user.id)
+        log.info("briefing.dormancy_entered", user_id=user.id, idle_days=idle_days)

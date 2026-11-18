@@ -135,6 +135,11 @@ class TestWorkflowNewEvents:
     async def test_update_captures(self, client: AsyncClient) -> None:
         with (
             patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ),
             patch(_WF_CAPTURE) as mock_capture,
         ):
             mock_svc.return_value = _make_workflow(title="Updated")
@@ -147,12 +152,37 @@ class TestWorkflowNewEvents:
     ) -> None:
         with (
             patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.NOW),
+            ),
             patch(_WF_CAPTURE) as mock_capture,
         ):
             mock_svc.return_value = _make_workflow(delivery=WorkflowDelivery.BRIEF)
             resp = await client.put(f"{WF}/wf_abc123", json={"delivery": "brief"})
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated(delivery="brief"))
+
+    @pytest.mark.regression
+    async def test_an_update_resending_the_same_delivery_reports_no_change(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(f"{_WF_SERVICE}.update_workflow", new_callable=AsyncMock) as mock_svc,
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(delivery=WorkflowDelivery.BRIEF),
+            ),
+            patch(_WF_CAPTURE) as mock_capture,
+        ):
+            mock_svc.return_value = _make_workflow(title="Renamed", delivery=WorkflowDelivery.BRIEF)
+            resp = await client.put(
+                f"{WF}/wf_abc123", json={"title": "Renamed", "delivery": "brief"}
+            )
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated())
 
     @pytest.mark.regression
     async def test_delete_captures(self, client: AsyncClient) -> None:

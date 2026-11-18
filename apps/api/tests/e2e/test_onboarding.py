@@ -54,6 +54,7 @@ from app.models.user_models import (
     PersonalizationBundle,
     StartingJobs,
     UserDocument,
+    UserUpdate,
 )
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.oauth_service import handle_oauth_connection
@@ -145,8 +146,6 @@ class _UserStore:
         doc = self.docs.get(user_id)
         if doc is None or (doc.get("onboarding") or {}).get("completed"):
             return None
-        if fields.get("timezone") is not None:
-            doc["timezone"] = fields["timezone"]
         sub = doc.setdefault("onboarding", {})
         sub.update(
             completed=True,
@@ -158,6 +157,13 @@ class _UserStore:
         sub.setdefault("preferences", {}).update(
             fields["preferences"].model_dump(exclude_unset=True)
         )
+        return await self.get(user_id)
+
+    async def update(self, user_id: str, update: UserUpdate) -> UserDocument | None:
+        doc = self.docs.get(user_id)
+        if doc is None:
+            return None
+        doc.update(update.model_dump(exclude_unset=True))
         return await self.get(user_id)
 
     async def clear_onboarding(self, user_id: str) -> None:
@@ -474,6 +480,9 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         patch(f"{SVC}.onboarding_service.memory_engine", memory),
         patch(f"{SVC}.onboarding_service.disconnect_integration", _disconnect),
         patch(f"{SVC}.onboarding_service.provision_briefing_workflows", _provision_briefings),
+        patch("app.services.user_timezone.user_repository", users),
+        # No briefing workflows exist before provisioning, so a timezone moves nothing.
+        patch("app.services.user_timezone.resync_briefing_schedules", AsyncMock()),
     ):
         stack.enter_context(patcher)
 

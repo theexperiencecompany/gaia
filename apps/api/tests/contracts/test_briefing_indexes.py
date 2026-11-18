@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from pymongo.errors import DuplicateKeyError, OperationFailure
 import pytest
 
+from app.constants import briefing as briefing_constants
 from app.db.mongodb import indexes
 
 _LEGACY = "user_id_1_created_at_-1"
@@ -59,3 +60,27 @@ async def test_dropping_the_legacy_index_failing_for_another_reason_is_not_swall
 
     with pytest.raises(OperationFailure):
         await indexes.create_briefing_indexes()
+
+
+async def _ttl_of(collection, key: str) -> int | None:
+    async for index in collection.list_indexes():
+        if list(index["key"]) == [key] and "expireAfterSeconds" in index:
+            return int(index["expireAfterSeconds"])
+    return None
+
+
+@pytest.mark.regression
+async def test_a_brief_is_kept_for_its_stated_retention_then_expires(raw_collection) -> None:
+    await indexes.create_briefing_indexes()
+
+    assert (
+        await _ttl_of(raw_collection, "created_at") == briefing_constants.BRIEFING_RETENTION_SECONDS
+    )
+
+
+@pytest.mark.regression
+async def test_a_held_result_left_behind_expires_after_its_retention(raw_collection) -> None:
+    await indexes.create_pending_brief_item_indexes()
+
+    retention = briefing_constants.PENDING_BRIEF_ITEM_RETENTION_SECONDS
+    assert await _ttl_of(raw_collection, "created_at") == retention

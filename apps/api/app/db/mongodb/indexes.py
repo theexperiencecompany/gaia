@@ -9,6 +9,10 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
 from app.constants.auth import InstanceRole
+from app.constants.briefing import (
+    BRIEFING_RETENTION_SECONDS,
+    PENDING_BRIEF_ITEM_RETENTION_SECONDS,
+)
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
@@ -723,7 +727,7 @@ async def create_workflow_execution_indexes() -> None:
 
 
 async def create_briefing_indexes() -> None:
-    """Create indexes for briefings collection (one payload per user/date/kind)."""
+    """Create indexes for briefings collection: one payload per user/date/kind, kept a year."""
     briefings_collection = get_async_collection("briefings")
     try:
         await briefings_collection.create_index(
@@ -734,6 +738,9 @@ async def create_briefing_indexes() -> None:
         # A signed edition URL names only its key: the image route finds the brief by it.
         await briefings_collection.create_index(
             [("edition.key", 1)], unique=True, sparse=True, name="edition_key_unique"
+        )
+        await briefings_collection.create_index(
+            "created_at", expireAfterSeconds=BRIEFING_RETENTION_SECONDS
         )
         # The archive now sorts on the unique index (date, kind); drop the old write-time one.
         try:
@@ -847,10 +854,12 @@ async def create_processed_webhook_indexes() -> None:
 
 
 async def create_pending_brief_item_indexes() -> None:
-    """Index pending_brief_items for the brief's per-user, oldest-first read."""
+    """Index pending_brief_items for the brief's per-user, oldest-first read; drop a month-old one."""
     try:
-        await get_async_collection("pending_brief_items").create_index(
-            [("user_id", 1), ("created_at", 1)]
+        pending = get_async_collection("pending_brief_items")
+        await pending.create_index([("user_id", 1), ("created_at", 1)])
+        await pending.create_index(
+            "created_at", expireAfterSeconds=PENDING_BRIEF_ITEM_RETENTION_SECONDS
         )
     except Exception as e:
         log.error(

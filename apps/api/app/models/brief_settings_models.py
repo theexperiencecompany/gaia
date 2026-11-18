@@ -30,6 +30,10 @@ class BriefingScheduleState(BriefingSchedule):
     next_daily_brief_at: datetime | None = Field(
         description="When the next daily brief runs (UTC); None while no daily brief runs."
     )
+    has_daily_brief: bool = Field(description="The schedule's frequency runs a daily brief.")
+    daily_brief_hour: int | None = Field(
+        description="The local hour the daily brief lands, past quiet hours; None without one."
+    )
 
 
 #: Where a workflow's results can go once there is no brief to hold them.
@@ -50,10 +54,6 @@ class BriefingScheduleUpdate(BriefingSchedule):
         if self.workflow_deliveries and self.frequency is not BriefingFrequency.OFF:
             raise ValueError("workflow_deliveries is only accepted when frequency is off")
         return self
-
-    def schedule(self) -> BriefingSchedule:
-        """Return the schedule to store, without the one-off deliveries."""
-        return BriefingSchedule(frequency=self.frequency, hour=self.hour)
 
 
 class BriefingEdition(BaseModel):

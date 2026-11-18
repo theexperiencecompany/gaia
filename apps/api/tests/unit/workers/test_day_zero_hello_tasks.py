@@ -250,6 +250,22 @@ class TestDelivery:
         assert promised in prompt
         assert "around 8" not in prompt
 
+    @pytest.mark.regression
+    async def test_a_weekdays_user_linking_on_saturday_is_promised_sundays_digest(
+        self, seams: Seams
+    ) -> None:
+        seams.get_user.return_value = _user(
+            timezone="Asia/Kolkata",
+            briefing_schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9),
+        )
+
+        # 17 Oct 2026 is a Saturday: the next brief is the digest, not Monday's daily.
+        with time_machine.travel(datetime(2026, 10, 17, 9, tzinfo=UTC), tick=False):
+            await seams.send()
+
+        prompt = seams.agent.await_args.kwargs["request"].message
+        assert "their first brief lands tomorrow at 5 PM." in prompt
+
     async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
         seams.get_user.return_value = _user(
             briefing_schedule=BriefingSchedule(frequency=BriefingFrequency.OFF)

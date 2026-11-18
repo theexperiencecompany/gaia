@@ -2742,9 +2742,26 @@
       "BriefingScheduleState": {
         "description": "The stored schedule and whether it runs: briefs on a schedule are a Pro feature.",
         "properties": {
+          "daily_brief_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The local hour the daily brief lands, past quiet hours; None without one.",
+            "title": "Daily Brief Hour"
+          },
           "frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
             "default": "daily"
+          },
+          "has_daily_brief": {
+            "description": "The schedule's frequency runs a daily brief.",
+            "title": "Has Daily Brief",
+            "type": "boolean"
           },
           "hour": {
             "default": 8,
@@ -2774,7 +2791,9 @@
         },
         "required": [
           "paused_for_plan",
-          "next_daily_brief_at"
+          "next_daily_brief_at",
+          "has_daily_brief",
+          "daily_brief_hour"
         ],
         "title": "BriefingScheduleState",
         "type": "object"
@@ -26981,6 +27000,120 @@
         ]
       }
     },
+    "/api/v1/briefings/editions": {
+      "get": {
+        "description": "Every daily edition family a brief can draw, and whether the user keeps it on or favours it.",
+        "operationId": "briefings_read_briefing_editions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Editions",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      },
+      "put": {
+        "description": "Replace which daily edition families are off or favourited; at least one must stay on.",
+        "operationId": "briefings_update_briefing_editions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingEditionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Editions",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
     "/api/v1/briefings/editions/{key}/{variant}": {
       "get": {
         "description": "Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.",
@@ -27108,6 +27241,130 @@
           }
         },
         "summary": "Get Postmarks",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/schedule": {
+      "get": {
+        "description": "How often the user's briefs come, the daily brief's hour on their clock, and whether they run.",
+        "operationId": "briefings_read_briefing_schedule",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingScheduleState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Schedule",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      },
+      "put": {
+        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.",
+        "operationId": "briefings_update_briefing_schedule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingScheduleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingScheduleState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefDeliveryWorkflowsConflict"
+                }
+              }
+            },
+            "description": "Briefs cannot turn off while workflows deliver to the brief"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Schedule",
         "tags": [
           "Briefings",
           "Briefings"
@@ -36354,240 +36611,6 @@
           }
         },
         "summary": "Mark All Read",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/preferences/briefing-editions": {
-      "get": {
-        "description": "Every daily edition family a brief can draw, and whether the user keeps it on or favours it.",
-        "operationId": "notification_read_briefing_editions",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BriefingEditions"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Read Briefing Editions",
-        "tags": [
-          "Notification"
-        ]
-      },
-      "put": {
-        "description": "Replace which daily edition families are off or favourited; at least one must stay on.",
-        "operationId": "notification_update_briefing_editions",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BriefingEditionsUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BriefingEditions"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update Briefing Editions",
-        "tags": [
-          "Notification"
-        ]
-      }
-    },
-    "/api/v1/notifications/preferences/briefing-schedule": {
-      "get": {
-        "description": "How often the user's briefs come, the daily brief's hour on their clock, and whether they run.",
-        "operationId": "notification_read_briefing_schedule",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BriefingScheduleState"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Read Briefing Schedule",
-        "tags": [
-          "Notification"
-        ]
-      },
-      "put": {
-        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.",
-        "operationId": "notification_update_briefing_schedule",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BriefingScheduleUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BriefingScheduleState"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BriefDeliveryWorkflowsConflict"
-                }
-              }
-            },
-            "description": "Briefs cannot turn off while workflows deliver to the brief"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Update Briefing Schedule",
         "tags": [
           "Notification"
         ]

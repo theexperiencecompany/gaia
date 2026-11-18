@@ -15,8 +15,8 @@ from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.user_models import UserDocument
-from app.services.briefing import chat_sync, dormancy
+from app.models.user_models import BriefingDormancy, UserDocument
+from app.services.briefing import chat_sync, wind_down
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
 from app.services.briefing.clock import UserClock
@@ -32,7 +32,7 @@ from app.services.briefing.lookback import (
     lookback_since,
 )
 from app.services.briefing.prose import Writing, reader_block
-from app.services.briefing.schedule import describe_briefing_schedule
+from app.services.briefing.run_times import describe_briefing_schedule
 from app.services.briefing.sections import Laid
 from app.services.briefing.slots import figures_in
 from app.services.briefing.standing import Standing, VoiceInputs, VoiceRequest
@@ -56,8 +56,8 @@ class DailyStanding(Standing):
     winback: WinbackState
     is_first: bool
     #: Where the idle ladder stood before today.
-    prior: dormancy.DormancyState
-    ladder: dormancy.IdleLadder | None = None
+    prior: BriefingDormancy
+    ladder: wind_down.IdleLadder | None = None
 
     @override
     @property
@@ -65,20 +65,20 @@ class DailyStanding(Standing):
         return self.lookback.since
 
     @property
-    def _ladder(self) -> dormancy.IdleLadder:
+    def _ladder(self) -> wind_down.IdleLadder:
         if self.ladder is None:
             raise RuntimeError("the daily brief read its idle ladder before climbing it")
         return self.ladder
 
     @override
-    async def climbed(self, gathered: GatheredCandidates) -> "DailyStanding":
+    async def climbed(self, gathered: GatheredCandidates, pool: FactPool) -> "DailyStanding":
         """Climb the idle ladder now the run knows whether it has news.
 
         Nothing to report and no goal (or an ignored goal question) escalates to a plain
         warning, one goodbye, then dormancy; the ladder also says whether today asks about
         the goal. A new account's first week never climbs it.
         """
-        ladder = await dormancy.climb_idle_ladder(
+        ladder = await wind_down.climb_idle_ladder(
             self.user,
             self.prior,
             self.clock.date_str,
@@ -108,7 +108,7 @@ class DailyStanding(Standing):
             and not shows_movement
             and not calendar.events
             and self._ladder.wind_down is None
-            and self._ladder.goal_question is dormancy.GoalQuestion.ASKED
+            and self._ladder.goal_question is wind_down.GoalQuestion.ASKED
         )
 
     @override
@@ -139,7 +139,7 @@ class DailyStanding(Standing):
                 wind_down=ladder.wind_down,
                 first_week=ladder.first_week,
                 offer_lighter_cadence=offer_lighter,
-                goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
+                goal_asked_recently=ladder.goal_question is wind_down.GoalQuestion.ASKED,
             ),
             recent=inputs.recent,
             fence=untrusted_fence(),
@@ -174,7 +174,7 @@ class DailyStanding(Standing):
     async def settle(self) -> None:
         """Clear the bootstrap and the ladder's rung."""
         await clear_bootstrap(self.user)
-        await dormancy.leave_idle_ladder(self.user.id, self._ladder)
+        await wind_down.leave_idle_ladder(self.user.id, self._ladder)
 
 
 async def stand_daily(user: UserDocument, clock: UserClock) -> DailyStanding | BriefingRunOutcome:

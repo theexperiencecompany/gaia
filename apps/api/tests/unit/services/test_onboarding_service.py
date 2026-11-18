@@ -171,6 +171,13 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
+def store_timezone() -> Iterator[AsyncMock]:
+    """Stub the one timezone setter; the tests that care assert on it."""
+    with patch(f"{SERVICE}.set_user_timezone", AsyncMock(return_value=MagicMock())) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def provision() -> Iterator[AsyncMock]:
     """Stub briefing provisioning; the tests that care assert on it."""
     with patch(f"{SERVICE}.provision_briefing_workflows", AsyncMock(return_value=[])) as mock:
@@ -538,7 +545,39 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         capture.assert_not_called()
-        provision.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_replay_provisions_the_briefs_a_failed_first_submit_left_out(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user: UserDocument,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
+
+        await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        provision.assert_awaited_once_with(sample_user_id)
+
+    async def test_a_provisioning_failure_on_replay_fails_the_submit_loudly(
+        self,
+        mock_repo: MagicMock,
+        provision: AsyncMock,
+        sample_user: UserDocument,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = None
+        mock_repo.get.return_value = sample_user
+        provision.side_effect = RuntimeError("workflow store down")
+
+        with pytest.raises(HTTPException) as exc_info:
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert exc_info.value.status_code == 500
 
     async def test_user_not_found(
         self,
@@ -570,9 +609,11 @@ class TestCompleteOnboarding:
 
         assert result.user_id == sample_user_id
 
+    @pytest.mark.regression
     async def test_sets_timezone(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -583,11 +624,12 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
-        assert mock_repo.complete_onboarding.call_args.kwargs["timezone"] == "America/New_York"
+        store_timezone.assert_awaited_once_with(sample_user_id, "America/New_York")
 
     async def test_passes_exact_normalized_kwargs_to_repository(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -600,9 +642,9 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
+        store_timezone.assert_awaited_once_with(sample_user_id, "UTC")
         mock_repo.complete_onboarding.assert_awaited_once_with(
             sample_user_id,
-            timezone="UTC",
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
             preferences=OnboardingPreferences(
@@ -615,6 +657,7 @@ class TestCompleteOnboarding:
     async def test_an_absent_timezone_is_not_written(
         self,
         mock_repo: MagicMock,
+        store_timezone: AsyncMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
@@ -623,7 +666,7 @@ class TestCompleteOnboarding:
 
         await complete_onboarding(sample_user_id, request)
 
-        assert mock_repo.complete_onboarding.await_args.kwargs["timezone"] is None
+        store_timezone.assert_not_awaited()
 
     async def test_duplicate_needs_are_deduped_in_selection_order(self) -> None:
         request = OnboardingRequest(
@@ -1579,7 +1622,6 @@ class TestCompleteOnboardingExactKwargs:
         await complete_onboarding(sample_user_id, request)
 
         kwargs = mock_repo.complete_onboarding.await_args.kwargs
-        assert kwargs["timezone"] == "UTC"
         assert kwargs["preferences"] == OnboardingPreferences(
             profession="Engineer",
             needs=[OnboardingNeed.MORNINGS],

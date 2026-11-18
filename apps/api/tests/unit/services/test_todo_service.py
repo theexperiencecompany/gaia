@@ -2192,7 +2192,9 @@ class TestReopenOfATakenRef:
 def reopen_seams() -> Iterator[SimpleNamespace]:
     """Patch what a landed reopen does to a tracked todo: activity entry, search flag, sync."""
     with (
-        patch("app.services.todos.todo_service.record_activity", new_callable=AsyncMock) as record,
+        patch(
+            "app.services.todos.todo_service.record_todo_activity", new_callable=AsyncMock
+        ) as record,
         patch(
             "app.services.todos.todo_service.set_canvas_completed", new_callable=AsyncMock
         ) as flag,

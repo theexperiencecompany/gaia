@@ -78,9 +78,7 @@ async def set_preferences(
 
     if timezone is not None:
         tz = timezone.strip()
-        user = await set_user_timezone(user_id, tz)
-        if user is None:
-            raise AppError(message="User not found", status_code=404)
+        await set_user_timezone(user_id, tz)
         updated.append(f"timezone set to {tz}")
 
     return f"Preferences updated: {'; '.join(updated)}."

@@ -12,10 +12,10 @@ import {
   workflowFormSchema,
 } from "@/features/workflows/schemas/workflowFormSchema";
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingSchedule: vi.fn(async () => ({ frequency: "daily", hour: 8 })),
-    updateBriefingSchedule: vi.fn(),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchSchedule: vi.fn(async () => ({ frequency: "daily", hour: 8 })),
+    updateSchedule: vi.fn(),
   },
 }));
 

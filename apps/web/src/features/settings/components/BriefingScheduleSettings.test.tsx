@@ -4,15 +4,15 @@ import type { QuietHours } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { briefingApi } from "@/features/briefing/api/briefingApi";
 import { quietHoursApi } from "@/features/settings/api/quietHoursApi";
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
-import { NotificationsAPI } from "@/services/api/notifications";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingSchedule: vi.fn(),
-    updateBriefingSchedule: vi.fn(),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchSchedule: vi.fn(),
+    updateSchedule: vi.fn(),
   },
 }));
 
@@ -36,17 +36,21 @@ type RunState = Pick<
 >;
 
 function renderSchedule(
-  stored: Omit<BriefingScheduleState, keyof RunState>,
+  stored: Pick<BriefingScheduleState, "frequency" | "hour">,
   quietHours: QuietHours,
   runs: Partial<RunState> = {},
 ) {
+  const hasDailyBrief =
+    stored.frequency === "daily" || stored.frequency === "weekdays";
   const schedule: BriefingScheduleState = {
     ...stored,
     paused_for_plan: false,
     next_daily_brief_at: null,
+    has_daily_brief: hasDailyBrief,
+    daily_brief_hour: hasDailyBrief ? (stored.hour ?? null) : null,
     ...runs,
   };
-  vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
+  vi.mocked(briefingApi.fetchSchedule).mockResolvedValue(schedule);
   vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

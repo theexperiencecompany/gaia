@@ -1,5 +1,6 @@
 """Unit tests for the workflows API endpoints (CRUD, execute/status, activate/publish, explore/community, regenerate-steps, generate-prompt)."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,11 +26,12 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
+from app.services.briefing.errors import BriefsOffError
 from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
 )
-from app.services.workflow.service import delivers_to_a_missing_brief
+from app.services.workflow.service import refuse_a_missing_brief
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
@@ -429,7 +431,11 @@ class TestCreateWorkflow:
             update={"briefing_schedule": BriefingSchedule(frequency=frequency)}
         )
 
-        assert delivers_to_a_missing_brief(owner, delivery) is refused
+        if refused:
+            with pytest.raises(BriefsOffError):
+                refuse_a_missing_brief(owner, delivery)
+        else:
+            refuse_a_missing_brief(owner, delivery)
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1381,6 +1387,14 @@ class TestGetWorkflow:
 
 class TestUpdateWorkflow:
     """Tests for the update workflow endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _stored(self) -> Iterator[None]:
+        """Serve the workflow as stored before the edit, read to tell whether its delivery changed."""
+        with patch(
+            f"{_WF_SERVICE}.get_workflow", new_callable=AsyncMock, return_value=_make_workflow()
+        ):
+            yield
 
     async def test_update_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(title="Updated Title")

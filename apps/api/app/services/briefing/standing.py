@@ -49,7 +49,7 @@ class Standing(Protocol):
 
     goals: list[StatedGoal]
 
-    async def climbed(self, gathered: GatheredCandidates) -> "Standing":
+    async def climbed(self, gathered: GatheredCandidates, pool: FactPool) -> "Standing":
         """Return the standing once the run knows whether it has news."""
         ...
 

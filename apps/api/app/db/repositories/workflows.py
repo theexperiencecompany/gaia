@@ -15,12 +15,11 @@ entity/generation cache would churn constantly for little read benefit, and
 the cross-user scan/routing reads are not keyed by id.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
 import re
 from typing import Any
 
-from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     WORKFLOW_LIMIT_NOTICE_PREFIX,
@@ -89,18 +88,20 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
 
     @staticmethod
     def _list_query(
-        user_id: str, *, exclude_todo_workflows: bool, exclude_system_workflows: bool = False
+        user_id: str,
+        *,
+        unlisted_keys: Collection[str],
+        exclude_todo_workflows: bool,
+        exclude_system_workflows: bool = False,
     ) -> dict[str, object]:
-        """Build the shared filter for a user's listed workflows.
+        """Build the shared filter for a user's listed workflows, leaving out unlisted_keys.
 
         The single source of truth for both list_for_user and count_for_user,
-        so a paginated list and its total can never drift apart. Briefing
-        rhythm crons are product plumbing, never user automations, so they are
-        never listed.
+        so a paginated list and its total can never drift apart.
         """
         query: dict[str, object] = {
             "user_id": user_id,
-            "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+            "system_workflow_key": {"$nin": sorted(unlisted_keys)},
         }
         if exclude_todo_workflows:
             query["$or"] = [
@@ -115,6 +116,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self,
         user_id: str,
         *,
+        unlisted_keys: Collection[str],
         exclude_todo_workflows: bool = True,
         limit: int | None = None,
         offset: int = 0,
@@ -126,7 +128,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         stay strict so a fetch of a known id surfaces the corruption instead.
         """
         return await self._find_lenient(
-            self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows),
+            self._list_query(
+                user_id,
+                unlisted_keys=unlisted_keys,
+                exclude_todo_workflows=exclude_todo_workflows,
+            ),
             sort=[("created_at", -1)],
             limit=limit or 0,
             skip=offset,
@@ -136,6 +142,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self,
         user_id: str,
         *,
+        unlisted_keys: Collection[str],
         exclude_todo_workflows: bool = True,
         exclude_system_workflows: bool = False,
     ) -> int:
@@ -147,6 +154,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._count(
             self._list_query(
                 user_id,
+                unlisted_keys=unlisted_keys,
                 exclude_todo_workflows=exclude_todo_workflows,
                 exclude_system_workflows=exclude_system_workflows,
             )
@@ -254,24 +262,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     async def find_brief_delivery_for_user(self, user_id: str) -> list[WorkflowDocument]:
         """Return the user's workflows whose results wait for their brief, newest first."""
         return await self._find(
-            {
-                "user_id": user_id,
-                "delivery": WorkflowDelivery.BRIEF.value,
-                "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
-            },
+            {"user_id": user_id, "delivery": WorkflowDelivery.BRIEF.value},
             sort=[("created_at", -1)],
         )
 
-    async def find_activated_for_user(self, user_id: str) -> list[WorkflowDocument]:
-        """Every activated workflow a user owns but the briefs: the dormancy sweep's pause set.
-
-        A brief winds itself down through its own winback and idle ladder (briefing.dormancy).
-        """
+    async def find_activated_for_user(
+        self, user_id: str, *, excluding_keys: Collection[str]
+    ) -> list[WorkflowDocument]:
+        """Every activated workflow a user owns but those under excluding_keys."""
         return await self._find(
             {
                 "user_id": user_id,
                 "activated": True,
-                "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+                "system_workflow_key": {"$nin": sorted(excluding_keys)},
             }
         )
 

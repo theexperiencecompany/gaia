@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
+from app.api.v1.middleware.activity import ActivityRecordingMiddleware
 from app.api.v1.middleware.agent_auth import AgentTokenInfo
 from app.api.v1.middleware.auth import (
     PostHogRequestContextMiddleware,
@@ -878,6 +879,8 @@ class TestRequestAttribution:
                     setattr(request.state, key, value)
                 return await call_next(request)
 
+        # In the app's order: activity inside the context PostHog's middleware binds.
+        app.add_middleware(ActivityRecordingMiddleware)
         app.add_middleware(PostHogRequestContextMiddleware)
         app.add_middleware(_Authenticate)
 

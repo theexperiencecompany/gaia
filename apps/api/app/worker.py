@@ -28,7 +28,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
-from app.constants.user_activity import REACTIVATE_USER_TASK
+from app.constants.user_activity import REACTIVATE_USER_MAX_TRIES, REACTIVATE_USER_TASK
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
@@ -87,7 +87,6 @@ from app.workers.tasks.tracked_todo_tasks import (
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.user_tasks import reactivate_user_task
 from app.workers.tasks.wait_tasks import resume_waiter
-from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
 # way main.py sets them for the API process. Process policy, so it lives in the
@@ -105,8 +104,10 @@ _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
 _check_inactive_users = arq_task(check_inactive_users)
-# Named from the constant record_activity enqueues by, so the two cannot drift.
-_reactivate_user = func(arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK)
+# Named from the constant mark_user_seen enqueues by, so the two cannot drift.
+_reactivate_user = func(
+    arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK, max_tries=REACTIVATE_USER_MAX_TRIES
+)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
@@ -142,7 +143,6 @@ _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
-_sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
 _send_day_zero_hello = arq_task(send_day_zero_hello)
@@ -222,7 +222,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _backfill_user_memories,
     _send_day_zero_hello,
     _promote_usage_badges,
-    _sweep_dormant_user_workflows,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
     _deliver_signup_emails,
@@ -327,14 +326,6 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
-        minute=0,
-        second=0,
-    ),
-    # Pause workflows owned by dormant users — they otherwise fire (and bill)
-    # forever. Undone by the user's next activity (reactivate_user), not by this sweep.
-    cron(
-        cast(WorkerCoroutine, _sweep_dormant_user_workflows),
-        hour=6,  # Daily at 06:00 UTC
         minute=0,
         second=0,
     ),

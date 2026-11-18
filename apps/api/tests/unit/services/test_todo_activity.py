@@ -10,8 +10,8 @@ from app.models.todo_models import TodoUpdate, TodoUpdateRequest
 from app.services import todo_activity
 from app.services.todo_activity import (
     activity_line,
-    record_activity,
     record_field_changes,
+    record_todo_activity,
     waiting_change_line,
 )
 
@@ -39,7 +39,9 @@ class TestActivityLine:
 class TestRecordActivity:
     async def test_the_entry_is_appended_to_that_todos_activity(self) -> None:
         with patch(f"{_MOD}.append_activity", AsyncMock(return_value=True)) as append:
-            assert await record_activity("t1", "u1", TodoActivityEvent.COMPLETED, "done") is True
+            assert (
+                await record_todo_activity("t1", "u1", TodoActivityEvent.COMPLETED, "done") is True
+            )
 
         todo_id, user_id, line = append.await_args.args
         assert (todo_id, user_id) == ("t1", "u1")
@@ -50,7 +52,7 @@ class TestRecordActivity:
             patch(f"{_MOD}.append_activity", AsyncMock(side_effect=RuntimeError("mongo down"))),
             patch(f"{_MOD}.log") as log,
         ):
-            assert await record_activity("t1", "u1", TodoActivityEvent.COMPLETED, "x") is False
+            assert await record_todo_activity("t1", "u1", TodoActivityEvent.COMPLETED, "x") is False
 
         log.warning.assert_called_once_with(
             "tracked_todo.activity_append_failed",
@@ -62,7 +64,7 @@ class TestRecordActivity:
 
 class TestRecordFieldChanges:
     async def _recorded(self, update: TodoUpdate | TodoUpdateRequest) -> list[tuple[str, str]]:
-        with patch(f"{_MOD}.record_activity", AsyncMock(return_value=True)) as record:
+        with patch(f"{_MOD}.record_todo_activity", AsyncMock(return_value=True)) as record:
             await record_field_changes("t1", "u1", update, by="GAIA in conversation 00f7c88f")
         assert {c.args[:2] for c in record.await_args_list} <= {("t1", "u1")}
         return [(c.args[2].value, c.args[3]) for c in record.await_args_list]

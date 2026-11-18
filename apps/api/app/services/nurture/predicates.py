@@ -12,6 +12,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import UserDocument
 from app.services.oauth.oauth_service import check_multiple_integrations_status
+from app.services.system_workflows.registry import UNLISTED_KEYS
 
 _TODOS_IN_USE_THRESHOLD = 5
 
@@ -42,7 +43,12 @@ async def uses_todos(user: UserDocument) -> bool:
 
 async def has_workflow(user: UserDocument) -> bool:
     """Return True once the user has at least one workflow (auto-generated todo workflows count)."""
-    return await workflow_repository.count_for_user(user.id, exclude_todo_workflows=False) > 0
+    return (
+        await workflow_repository.count_for_user(
+            user.id, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False
+        )
+        > 0
+    )
 
 
 # Async without await is intentional: uniform SKIP_PREDICATES interface (see module docstring).

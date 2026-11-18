@@ -191,7 +191,7 @@ def test_the_findings_are_lines_never_a_log_of_the_run() -> None:
     heading = _step(BRIEFING_STEP)[0]
 
     assert "never an account of the run" in heading
-    assert "no headings, counts line or blank lines" in heading
+    assert "no headings, counts line, bullets or blank lines" in heading
     assert "never named in a line" in heading
 
 

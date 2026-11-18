@@ -1,8 +1,8 @@
 """Firing a briefing workflow runs the briefing pipeline, not a chat turn.
 
 Briefing workflows share one ARQ entry point with every other workflow, separated only
-by system_workflow_key, so the key-to-pipeline mapping is asserted per key and the
-execution record is asserted whole.
+by the run their system_workflow_key declares, so the key-to-pipeline mapping is
+asserted per key and the execution record is asserted whole.
 """
 
 from contextlib import ExitStack
@@ -25,9 +25,11 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.briefing.errors import BriefingGenerationError
-from app.workers.tasks.workflow_tasks import _run_briefing_workflow, execute_workflow_by_id
+from app.services.system_workflows.runs import SYSTEM_RUNS
+from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
+RUNS = "app.services.system_workflows.definitions.briefing_runs"
 
 #: What a briefing fire records: no conversation to thread, no tool calls to
 #: replay, and the summary the execution history shows the user.
@@ -63,9 +65,13 @@ class _Pipelines:
 
     def __init__(self) -> None:
         self.run = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        self.release = AsyncMock()
 
     def patches(self) -> list:
-        return [patch("app.services.briefing.pipeline.run_brief", self.run)]
+        return [
+            patch(f"{RUNS}.run_brief", self.run),
+            patch(f"{RUNS}.release_after_daily_run", self.release),
+        ]
 
 
 @pytest.fixture
@@ -75,7 +81,7 @@ def pipelines() -> _Pipelines:
 
 @pytest.mark.unit
 class TestKeyChoosesThePipeline:
-    """_run_briefing_workflow maps the key to exactly one pipeline."""
+    """Each briefing key's declared run is exactly one pipeline."""
 
     async def test_daily_key_runs_the_daily_brief_for_that_user(
         self, pipelines: _Pipelines
@@ -85,12 +91,27 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
-            log = stack.enter_context(patch("app.workers.tasks.workflow_tasks.log"))
-            summary = await _run_briefing_workflow(workflow)
+            log = stack.enter_context(patch(f"{RUNS}.log"))
+            summary = await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](workflow)
 
         pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.DAILY)
         assert summary == BRIEFING_SUMMARY
         log.set_ns.assert_called_once_with("workflow", briefing_outcome="sent")
+
+    @pytest.mark.regression
+    async def test_a_daily_run_hands_its_outcome_to_the_held_release(
+        self, pipelines: _Pipelines
+    ) -> None:
+        pipelines.run.return_value = BriefingRunOutcome.WINBACK_BACKOFF
+
+        with ExitStack() as stack:
+            for patcher in pipelines.patches():
+                stack.enter_context(patcher)
+            await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](
+                _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY)
+            )
+
+        pipelines.release.assert_awaited_once_with(USER_ID, BriefingRunOutcome.WINBACK_BACKOFF)
 
     async def test_weekly_key_runs_the_weekly_digest_for_that_user(
         self, pipelines: _Pipelines
@@ -100,9 +121,10 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
-            summary = await _run_briefing_workflow(workflow)
+            summary = await SYSTEM_RUNS[WEEKLY_DIGEST_WORKFLOW_KEY](workflow)
 
         pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.WEEKLY)
+        pipelines.release.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
 
 

@@ -51,7 +51,7 @@ from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services import calendar_service
-from app.services.briefing import calendar_read, dormancy, goals as goals_module
+from app.services.briefing import calendar_read, goals as goals_module, wind_down
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead, read_calendar
 from app.services.briefing.clock import UserClock, due_on, resolve_clock
 from app.services.briefing.fact_pool.pool import PoolContext
@@ -400,7 +400,7 @@ class TestWinback:
     @pytest.fixture
     def last_active(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         read = AsyncMock(return_value=None)
-        monkeypatch.setattr(dormancy, "latest_activity_since", read)
+        monkeypatch.setattr(wind_down, "latest_activity_since", read)
         return read
 
     async def test_no_briefs_is_not_winback(
@@ -991,7 +991,7 @@ class TestWinbackReads:
         listing = AsyncMock(return_value=[_brief(BriefingMood.CLEAR)])
         signal = AsyncMock(return_value=None)
         monkeypatch.setattr(briefing_repository, "list_recent", listing)
-        monkeypatch.setattr(dormancy, "latest_activity_since", signal)
+        monkeypatch.setattr(wind_down, "latest_activity_since", signal)
 
         await compute_winback_state(_WINBACK_USER)
 

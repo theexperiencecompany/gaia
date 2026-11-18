@@ -3,12 +3,12 @@
 import type { BriefFreeDelivery } from "@gaia/shared";
 import type { BriefingScheduleState } from "@gaia/shared/types";
 import { useEffect, useState } from "react";
-import { toast } from "@/lib/toast";
+import { briefingApi } from "@/features/briefing/api/briefingApi";
 import {
   type BriefsOffBlock,
-  NotificationsAPI,
   readBriefsOffBlock,
-} from "@/services/api/notifications";
+} from "@/features/settings/utils/briefsOffBlock";
+import { toast } from "@/lib/toast";
 
 interface UseBriefingScheduleSettings {
   /** null until the stored schedule loads; nothing is shown as stored before then. */
@@ -44,9 +44,7 @@ export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
   );
 
   useEffect(() => {
-    NotificationsAPI.getBriefingSchedule().then(setSchedule, () =>
-      setLoadFailed(true),
-    );
+    briefingApi.fetchSchedule().then(setSchedule, () => setLoadFailed(true));
   }, []);
 
   const save = async (
@@ -58,7 +56,7 @@ export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
     setSaving(true);
     try {
       setSchedule(
-        await NotificationsAPI.updateBriefingSchedule({
+        await briefingApi.updateSchedule({
           frequency: next.frequency,
           hour: next.hour,
           workflow_deliveries: deliveries,

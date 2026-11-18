@@ -14,11 +14,12 @@ from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
 from app.constants.todos import (
     CANVAS_SECTIONS,
-    INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -47,6 +48,8 @@ KOLKATA = ZoneInfo("Asia/Kolkata")
 DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 TOMORROW_8 = datetime.now(UTC) + timedelta(hours=12)
 PROVISIONED_BY = "GAIA, setting up the Inbox desk"
+#: The default daily brief lands at 08:00, so the desk sweeps an hour ahead of it.
+DESK_RECURRENCE = "0 7 * * *"
 
 
 def _desk(**overrides: object) -> TodoDocument:
@@ -85,6 +88,7 @@ def _response() -> TrackedTodoCreation:
 def seams() -> Iterator[SimpleNamespace]:
     """Every call the provisioner makes; the repository holds whatever desk a test puts in it."""
     stored: dict[str, TodoDocument] = {}
+    users = {USER_ID: UserDocument(id=USER_ID, timezone="Asia/Kolkata")}
 
     async def _create(*_args: object, **kwargs: object) -> TrackedTodoCreation:
         schedule = kwargs["schedule"]
@@ -106,14 +110,11 @@ def seams() -> Iterator[SimpleNamespace]:
             f"{MODULE}.get_connected_integration_ids", AsyncMock(return_value={"gmail"})
         ) as connected,
         patch(f"{MODULE}.todo_repository", repo),
-        # Only the provisioned user lives in Kolkata; any other lookup falls back to UTC.
-        patch(
-            "app.services.user_service.get_user_by_id",
-            AsyncMock(
-                side_effect=lambda user_id: (
-                    UserDocument(timezone="Asia/Kolkata") if user_id == USER_ID else None
-                )
-            ),
+        # Only the provisioned user exists, in Kolkata, briefed at the default hour.
+        patch.object(
+            user_repository,
+            "get",
+            AsyncMock(side_effect=lambda user_id: users.get(user_id)),
         ),
         patch.object(
             TrackedTodoService, "create_tracked_todo", AsyncMock(side_effect=_create)
@@ -133,6 +134,7 @@ def seams() -> Iterator[SimpleNamespace]:
             schedule=schedule,
             timeline=timeline,
             capture=capture,
+            users=users,
         )
 
 
@@ -161,7 +163,7 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     assert kwargs["notify_on_run"] is True
     assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
-    assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
+    assert kwargs["schedule"].recurrence == DESK_RECURRENCE
     assert _at_7_in_kolkata(first)
     assert before < first <= before + timedelta(days=1)
     seams.repo.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
@@ -201,10 +203,10 @@ async def test_an_open_desk_without_a_schedule_is_rearmed_on_its_timeline(
 
     seams.create.assert_not_awaited()
     rearmed = seams.stored[DESK_ID]
-    assert rearmed.recurrence == INBOX_DESK_RECURRENCE
+    assert rearmed.recurrence == DESK_RECURRENCE
     assert rearmed.scheduled_at is not None
     assert _at_7_in_kolkata(rearmed.scheduled_at)
-    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
+    schedule = TodoUpdate(recurrence=DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
     seams.repo.update.assert_awaited_once_with(DESK_ID, user_id=USER_ID, update=schedule)
     seams.timeline.assert_awaited_once_with(DESK_ID, USER_ID, schedule, by=PROVISIONED_BY)
     seams.schedule.assert_awaited_once_with(DESK_ID, rearmed.scheduled_at)
@@ -215,7 +217,7 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
     seams: SimpleNamespace,
 ) -> None:
     seams.repo.find_latest_by_external_ref.return_value = _desk(
-        scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE
+        scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE
     )
 
     await provision_inbox_desk(USER_ID)
@@ -226,13 +228,51 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
 
 
 async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace) -> None:
-    winner = _desk(scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE)
+    winner = _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE)
     seams.create.side_effect = ExternalRefTakenError(winner)
 
     await provision_inbox_desk(USER_ID)
 
     seams.schedule.assert_awaited_once_with(DESK_ID, TOMORROW_8)
     seams.capture.assert_not_called()
+
+
+@pytest.mark.regression
+async def test_the_desk_sweeps_an_hour_ahead_of_the_users_own_brief(
+    seams: SimpleNamespace,
+) -> None:
+    seams.users[USER_ID].briefing_schedule = BriefingSchedule(hour=10)
+
+    await provision_inbox_desk(USER_ID)
+
+    schedule = seams.create.await_args.kwargs["schedule"]
+    assert schedule.recurrence == "0 9 * * *"
+    assert schedule.scheduled_at.astimezone(KOLKATA).hour == 9
+
+
+async def test_a_desk_on_the_old_brief_hour_follows_the_brief(seams: SimpleNamespace) -> None:
+    seams.stored[DESK_ID] = _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE)
+    seams.repo.find_latest_by_external_ref.return_value = seams.stored[DESK_ID]
+    seams.users[USER_ID].briefing_schedule = BriefingSchedule(hour=10)
+
+    await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    moved = seams.stored[DESK_ID]
+    assert moved.recurrence == "0 9 * * *"
+    assert moved.scheduled_at is not None
+    assert moved.scheduled_at.astimezone(KOLKATA).hour == 9
+    seams.schedule.assert_awaited_once_with(DESK_ID, moved.scheduled_at)
+
+
+async def test_a_desk_the_user_moved_stays_where_they_put_it(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk(
+        scheduled_at=TOMORROW_8, recurrence="30 6 * * 1-5"
+    )
+
+    await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    seams.repo.update.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
 
 
 async def test_a_user_without_a_plan_gets_no_desk(seams: SimpleNamespace) -> None:

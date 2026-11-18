@@ -8,26 +8,27 @@ from app.constants.briefing import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument
-from app.services.briefing import dormancy
+from app.models.user_models import BriefingDormancy, UserDocument
+from app.services.briefing import wind_down
 from app.services.briefing.clock import UserClock
+from app.utils.timezone import as_utc
 from shared.py.wide_events import log
 
 
-def bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
-    """Existing-user rollout gate: hold the first briefing until a goal is known.
-
-    Returns True to skip this run entirely. Once a goal memory arrives OR the
-    grace window elapses, the run proceeds (best-effort, re-asking on grace).
-    """
+def bootstrap_holds(user: UserDocument) -> bool:
+    """Whether an existing user's first brief is held for a goal: marked, inside the grace window."""
     marker = user.briefing_bootstrap
     if marker is None or not marker.pending:
         return False
-    if has_goal:
-        return False  # goal arrived — proceed and clear the marker after sending
-    since = marker.since if marker.since.tzinfo else marker.since.replace(tzinfo=UTC)
-    # Inside the interview grace window: hold. Past it: a best-effort briefing.
-    return datetime.now(UTC) - since < timedelta(days=BOOTSTRAP_GRACE_DAYS)
+    return datetime.now(UTC) - as_utc(marker.since) < timedelta(days=BOOTSTRAP_GRACE_DAYS)
+
+
+def bootstrap_should_skip(user: UserDocument, has_goal: bool) -> bool:
+    """Existing-user rollout gate: skip the run while the hold stands and no goal has arrived.
+
+    Past the grace window the run proceeds as a best-effort brief, re-asking for a goal.
+    """
+    return not has_goal and bootstrap_holds(user)
 
 
 async def clear_bootstrap(user: UserDocument) -> None:
@@ -35,19 +36,18 @@ async def clear_bootstrap(user: UserDocument) -> None:
         await user_repository.clear_briefing_bootstrap(user.id)
 
 
-async def wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
+async def wake_or_skip(user: UserDocument) -> BriefingDormancy | None:
     """Wake a dormant loop on a reactivation signal (user active, any message).
 
-    Otherwise None means skip before any LLM cost. The daily run is the only writer of
-    dormancy state.
+    Otherwise None means skip before any LLM cost.
     """
-    dstate = dormancy.state_from_user(user)
+    dstate = wind_down.state_from_user(user)
     if not dstate.dormant_since:
         return dstate
-    if await dormancy.latest_activity_since(user.id, dstate.dormant_since) is not None:
-        await dormancy.clear_dormancy(user.id)
+    if await wind_down.latest_activity_since(user.id, dstate.dormant_since) is not None:
+        await user_repository.clear_briefing_dormancy(user.id)
         log.info("briefing.dormancy_cleared", user_id=user.id)
-        return dormancy.DormancyState(
+        return BriefingDormancy(
             idle_days=0, date=None, dormant_since=None, goal_asked_at=dstate.goal_asked_at
         )
     log.info("briefing.dormant_skip", user_id=user.id)

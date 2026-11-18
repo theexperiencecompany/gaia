@@ -2,8 +2,8 @@
 
 import type { BriefingEdition, EditionChoice } from "@shared/api/generated";
 import { useEffect, useRef, useState } from "react";
+import { briefingApi } from "@/features/briefing/api/briefingApi";
 import { toast } from "@/lib/toast";
-import { NotificationsAPI } from "@/services/api/notifications";
 
 interface UseBriefingEditionsSettings {
   /** null until the stored choices load; nothing is shown as stored before then. */
@@ -34,7 +34,7 @@ export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
   const saving = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
-    NotificationsAPI.getBriefingEditions().then(
+    briefingApi.fetchEditions().then(
       (stored) => {
         confirmed.current = stored.editions;
         setEditions(stored.editions);
@@ -52,7 +52,7 @@ export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
     const choices = Object.fromEntries(next.map((e) => [e.family, e.choice]));
     saving.current = saving.current.then(async () => {
       try {
-        const stored = await NotificationsAPI.updateBriefingEditions({
+        const stored = await briefingApi.updateEditions({
           choices,
         });
         confirmed.current = stored.editions;

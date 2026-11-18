@@ -38,6 +38,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowStep,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     WorkflowPromptRequest,
@@ -801,7 +802,7 @@ class TestListWorkflows:
         # The todo-exclusion filter is the repository's contract; the service just
         # forwards the flag (and the unpaginated limit/offset).
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
@@ -809,7 +810,7 @@ class TestListWorkflows:
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=False, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
@@ -834,9 +835,11 @@ class TestListWorkflows:
         _result, total = await WorkflowService.list_workflows(USER_ID, limit=10, offset=20)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=10, offset=20
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=10, offset=20
         )
-        mock_count.assert_awaited_once_with(USER_ID, exclude_todo_workflows=True)
+        mock_count.assert_awaited_once_with(
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True
+        )
         assert total == 42
 
     @patch(f"{_REPO}.count_for_user", new_callable=AsyncMock)

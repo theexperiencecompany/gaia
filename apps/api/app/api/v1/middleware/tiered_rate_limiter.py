@@ -41,7 +41,7 @@ from app.services.limit_upsell import (
     current_limit_origin,
     schedule_limit_upsell,
 )
-from app.services.usage_activity import counts_as_activity, record_activity
+from app.services.usage_activity import count_daily_actions, counts_as_activity
 from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -300,7 +300,7 @@ class TieredRateLimiter:
 
         # Durable daily rollup for the activity heatmap (meaningful actions only).
         if counts_as_activity(feature_key):
-            spawn_background_task(record_activity(user_id))
+            spawn_background_task(count_daily_actions(user_id))
 
         return usage_info
 

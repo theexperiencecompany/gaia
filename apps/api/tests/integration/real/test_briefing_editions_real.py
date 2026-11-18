@@ -25,7 +25,7 @@ from tests.conftest import FAKE_USER
 
 pytestmark = pytest.mark.service
 
-EDITIONS_URL = "/api/v1/notifications/preferences/briefing-editions"
+EDITIONS_URL = "/api/v1/briefings/editions"
 USER_OID = ObjectId(FAKE_USER.user_id)
 
 

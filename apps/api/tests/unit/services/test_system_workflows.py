@@ -15,12 +15,11 @@ import pytest
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
-from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
 from app.models.quiet_hours_models import QuietHours
+from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
@@ -120,6 +119,8 @@ class TestProvisionSystemWorkflows:
         factory.assert_not_called()
 
     @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch(f"{MODULE}._switch_on_or_wait_for_pro", new_callable=AsyncMock)
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.workflow_repository")
@@ -128,6 +129,8 @@ class TestProvisionSystemWorkflows:
         mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
+        _switch: AsyncMock,
+        _install: AsyncMock,
     ) -> None:
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock()
@@ -175,15 +178,15 @@ class TestProvisionSystemWorkflows:
         mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.regression
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.workflow_repository")
-    async def test_generic_error_continues(
+    async def test_a_create_failure_fails_the_provisioning_loudly(
         self,
         mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
-        _patch_log: MagicMock,
     ) -> None:
         mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
@@ -197,13 +200,10 @@ class TestProvisionSystemWorkflows:
                 provision_system_workflows,
             )
 
-            # Should not raise
-            await provision_system_workflows("user-1", "gmail", "Gmail")
+            with pytest.raises(RuntimeError, match="unexpected"):
+                await provision_system_workflows("user-1", "gmail", "Gmail")
 
         mock_notify.assert_not_awaited()
-        _patch_log.error.assert_called_once()
-        assert _patch_log.error.call_args.kwargs["system_workflow_key"] == "gmail_digest"
-        assert _patch_log.error.call_args.kwargs["integration_display_name"] == "Gmail"
 
 
 @pytest.mark.parametrize(
@@ -217,7 +217,7 @@ class TestProvisionSystemWorkflows:
     ids=["profile-timezone", "unset", "blank", "no-user"],
 )
 @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
-@patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+@patch(f"{MODULE}._switch_on_or_wait_for_pro", new_callable=AsyncMock)
 @patch(f"{MODULE}.ensure_trigger_config_object")
 @patch("app.services.user_service.get_user_by_id", new_callable=AsyncMock)
 @patch(f"{MODULE}.WorkflowService")
@@ -1239,7 +1239,7 @@ class TestResetDefinitionAssembly:
 
 
 class TestActivationForPayingUsers:
-    """A Pro user's freshly provisioned system workflow is switched on at once; anyone else keeps it dormant."""
+    """A Pro user's freshly provisioned system workflow is switched on at once; a free user's waits for Pro."""
 
     @patch(f"{MODULE}.WorkflowService")
     @patch(
@@ -1254,14 +1254,14 @@ class TestActivationForPayingUsers:
         self, cached_plan: AsyncMock, fresh_status: AsyncMock, mock_service: MagicMock
     ) -> None:
         """Provisioning runs minutes after payment, exactly when the five-minute plan cache still says FREE; reading only the cache left the workflow dormant forever."""
-        from app.services.system_workflows.provisioner import _activate_for_paying_user
+        from app.services.system_workflows.provisioner import _switch_on_or_wait_for_pro
 
         cached_plan.return_value = PlanType.FREE
         fresh_status.return_value = MagicMock(plan_type=PlanType.PRO)
         mock_service.activate_workflow = AsyncMock()
 
         with patch("app.decorators.entitlements.invalidate_plan_cache", new_callable=AsyncMock):
-            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+            await _switch_on_or_wait_for_pro("wf-9", "user-1")
 
         mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
 
@@ -1270,59 +1270,53 @@ class TestActivationForPayingUsers:
     async def test_a_pro_user_gets_the_workflow_activated(
         self, is_active: AsyncMock, mock_service: MagicMock
     ) -> None:
-        from app.services.system_workflows.provisioner import _activate_for_paying_user
+        from app.services.system_workflows.provisioner import _switch_on_or_wait_for_pro
 
         is_active.return_value = True
         mock_service.activate_workflow = AsyncMock()
 
-        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+        await _switch_on_or_wait_for_pro("wf-9", "user-1")
 
         is_active.assert_awaited_once_with("user-1")
         mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
 
+    @pytest.mark.regression
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
-    async def test_a_user_without_a_plan_keeps_it_dormant(
+    async def test_a_free_users_waits_for_pro_as_a_lapsed_subscription(
         self, is_active: AsyncMock, mock_service: MagicMock
     ) -> None:
-        from app.services.system_workflows.provisioner import _activate_for_paying_user
+        """Left off with no reason, the restore on upgrade never switched it on."""
+        from app.services.system_workflows.provisioner import _switch_on_or_wait_for_pro
 
         is_active.return_value = False
         mock_service.activate_workflow = AsyncMock()
+        mock_service.deactivate_workflow = AsyncMock()
 
-        await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
+        await _switch_on_or_wait_for_pro("wf-9", "user-1")
 
         mock_service.activate_workflow.assert_not_awaited()
+        mock_service.deactivate_workflow.assert_awaited_once_with(
+            "wf-9", "user-1", reason=DeactivationReason.SUBSCRIPTION_LAPSED
+        )
 
+    @pytest.mark.regression
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
-    async def test_an_activation_failure_is_logged_with_its_cause_and_swallowed(
+    async def test_an_activation_failure_fails_loud(
         self, is_active: AsyncMock, mock_service: MagicMock
     ) -> None:
-        from app.services.system_workflows.provisioner import _activate_for_paying_user
+        from app.services.system_workflows.provisioner import _switch_on_or_wait_for_pro
 
         is_active.return_value = True
-        cause = "composio down " * 60  # 780 chars: the wide event keeps the first 500
-        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError(cause))
+        mock_service.activate_workflow = AsyncMock(side_effect=RuntimeError("composio down"))
 
-        with patch(f"{MODULE}.log") as mock_log:
-            await _activate_for_paying_user("wf-9", "user-1", "calendar:meeting_prep")
-
-        mock_log.warning.assert_called_once()
-        assert mock_log.warning.call_args.args == (
-            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
-        )
-        assert mock_log.warning.call_args.kwargs == {
-            "key": "calendar:meeting_prep",
-            "workflow_id": "wf-9",
-            "user_id": "user-1",
-            "error": cause[:500],
-            "error_type": "RuntimeError",
-        }
+        with pytest.raises(RuntimeError, match="composio down"):
+            await _switch_on_or_wait_for_pro("wf-9", "user-1")
 
     @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
-    @patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock)
+    @patch(f"{MODULE}._switch_on_or_wait_for_pro", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.workflow_repository")
     async def test_provisioning_activates_each_created_workflow(
@@ -1349,7 +1343,7 @@ class TestActivationForPayingUsers:
                 "user-1", "googlecalendar", "Google Calendar", notify=False
             )
 
-        activate.assert_awaited_once_with("wf-created", "user-1", "calendar:meeting_prep")
+        activate.assert_awaited_once_with("wf-created", "user-1")
         install.assert_awaited_once_with(
             "calendar:meeting_prep", "wf-created", "user-1", created.prompt, created.steps
         )
@@ -1382,7 +1376,7 @@ class TestTheDailyBriefFollowsQuietHours:
                 new_callable=AsyncMock,
                 return_value=MagicMock(value="Asia/Kolkata"),
             ),
-            patch(f"{MODULE}._activate_for_paying_user", new_callable=AsyncMock),
+            patch(f"{MODULE}._switch_on_or_wait_for_pro", new_callable=AsyncMock),
             patch(f"{MODULE}.resync_briefing_schedules", new_callable=AsyncMock) as resync,
         ):
             mock_repo.find_system_workflow = AsyncMock(return_value=None)
@@ -1409,7 +1403,7 @@ class TestTheDailyBriefFollowsQuietHours:
         }
         assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == cron
         assert created[DAILY_BRIEFING_WORKFLOW_KEY].timezone == "Asia/Kolkata"
-        assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == WEEKLY_DIGEST_CRON
+        assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == "0 17 * * 0"
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)

@@ -58,8 +58,8 @@ from app.services.todo_activity import (
     activity_line,
     agent_actor,
     field_change_lines,
-    record_activity,
     record_field_changes,
+    record_todo_activity,
     record_waiting_change,
     waiting_change_line,
 )
@@ -548,7 +548,7 @@ class TrackedTodoService:
 
         now = datetime.now(UTC)
 
-        await record_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
 
         # Derived, never the stored one: legacy docs carry a host-side /users/<uid>/todos/<id>
         # label this heals. The repository's cache refresh shows the completion at once.
@@ -573,7 +573,7 @@ class TrackedTodoService:
         await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
         # A sub-todo reports to its parent: its outcome is in the parent's next run.
         if doc.parent_todo_id:
-            await record_activity(
+            await record_todo_activity(
                 doc.parent_todo_id,
                 user_id,
                 TodoActivityEvent.SUB_TODO_COMPLETED,

@@ -3,13 +3,13 @@ import type { BriefingEdition } from "@shared/api/generated";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { NotificationsAPI } from "@/services/api/notifications";
+import { briefingApi } from "@/features/briefing/api/briefingApi";
 import { BriefingEditionsSettings } from "./BriefingEditionsSettings";
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getBriefingEditions: vi.fn(),
-    updateBriefingEditions: vi.fn(),
+vi.mock("@/features/briefing/api/briefingApi", () => ({
+  briefingApi: {
+    fetchEditions: vi.fn(),
+    updateEditions: vi.fn(),
   },
 }));
 
@@ -27,7 +27,7 @@ function chipOf(name: string): HTMLElement | null {
 
 describe("BriefingEditionsSettings", () => {
   it("marks only the editions taken out of the rotation as Disabled", async () => {
-    vi.mocked(NotificationsAPI.getBriefingEditions).mockResolvedValue({
+    vi.mocked(briefingApi.fetchEditions).mockResolvedValue({
       editions: EDITIONS,
     });
     render(<BriefingEditionsSettings />);
@@ -44,7 +44,7 @@ describe("BriefingEditionsSettings", () => {
   });
 
   it("holds the Disabled chip's place on every edition, so turning one off shifts nothing", async () => {
-    vi.mocked(NotificationsAPI.getBriefingEditions).mockResolvedValue({
+    vi.mocked(briefingApi.fetchEditions).mockResolvedValue({
       editions: EDITIONS,
     });
     render(<BriefingEditionsSettings />);
@@ -58,7 +58,7 @@ describe("BriefingEditionsSettings", () => {
   });
 
   it("opens an edition full screen on its sample brief without changing its choice", async () => {
-    vi.mocked(NotificationsAPI.getBriefingEditions).mockResolvedValue({
+    vi.mocked(briefingApi.fetchEditions).mockResolvedValue({
       editions: EDITIONS,
     });
     render(<BriefingEditionsSettings />);
@@ -76,6 +76,6 @@ describe("BriefingEditionsSettings", () => {
     expect(demo.getAttribute("src")).toContain(
       encodeURIComponent("/images/briefing/editions/demo/almanac.webp"),
     );
-    expect(NotificationsAPI.updateBriefingEditions).not.toHaveBeenCalled();
+    expect(briefingApi.updateEditions).not.toHaveBeenCalled();
   });
 });

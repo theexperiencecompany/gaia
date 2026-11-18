@@ -6374,7 +6374,7 @@
         "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
         "properties": {
           "frequency": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "enum": ["daily", "weekdays", "weekly_only", "off"],
             "title": "Frequency",
             "type": "string"
           },
@@ -9422,20 +9422,12 @@
             "title": "Is Todo Workflow"
           },
           "delivery": {
-            "anyOf": [
-              {
-                "enum": ["now", "brief", "silent"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delivery"
+            "enum": ["now", "brief", "silent"],
+            "title": "Delivery",
+            "type": "string"
           }
         },
-        "required": ["origin"],
+        "required": ["origin", "delivery"],
         "title": "WorkflowCreated",
         "type": "object"
       }

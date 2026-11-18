@@ -473,7 +473,7 @@ class TestADrainDueInsideQuietHours:
 
         assert result == f"Workflow {_GATED_ID} held until the user's quiet hours end"
         scheduler.get_task.assert_awaited_once_with(_GATED_ID)
-        gate.tz.assert_awaited_once_with(_OWNER_ID)
+        gate.owner_read.assert_awaited_once_with(_OWNER_ID)
         assert job.args == (_GATED_ID, {**context, "quiet_hours": {"kind": "hold"}})
         assert job.score == int(_on_kolkata_clock(2, 8, 0).timestamp() * 1000)
         assert event["workflow_id"] == _GATED_ID

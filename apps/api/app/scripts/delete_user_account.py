@@ -8,20 +8,22 @@ identity last (so a re-login cannot resurrect the account mid-teardown):
 
 1. Composio      — revoke OAuth grants (Gmail/Calendar/... access is cut first)
 2. E2B           — kill the user's sandboxes
-3. MongoDB       — every collection with a matching ``user_id`` (+ GridFS,
+3. Link content  — the bytes of every snapshot the user's shared links pinned
+4. MongoDB       — every collection with a matching ``user_id`` (+ GridFS,
                    ``support_requests`` by email, ``bot_sessions`` by platform
-                   link, ``users`` doc last)
-4. PostgreSQL    — memory graph, OAuth/MCP credentials, bridge devices, and the
+                   link, ``link_reports`` by reporter, ``users`` doc last)
+5. PostgreSQL    — memory graph, OAuth/MCP credentials, bridge devices, and the
                    LangGraph checkpoint threads of the user's conversations
-5. ChromaDB      — every collection, ``where={"user_id": ...}``
-6. JuiceFS       — the user's workspace directory (propagates to R2)
-7. Redis         — keys containing the uid (rate limits, caches, budgets)
-8. Resend        — marketing-audience contact
-9. WorkOS        — the login identity, last
+6. ChromaDB      — every collection, ``where={"user_id": ...}``
+7. JuiceFS       — the user's workspace directory (propagates to R2)
+8. Redis         — keys containing the uid (rate limits, caches, budgets)
+9. Resend        — marketing-audience contact
+10. WorkOS        — the login identity, last
 
 PostHog person deletion is a manual follow-up: the server only holds the
 capture token, not the personal API key that deletion requires. Langfuse traces
-keyed by ``user_id`` are likewise not covered here.
+keyed by ``user_id`` are likewise not covered here, nor are the hosted brief
+edition images, whose URLs the run prints for deletion.
 
 Usage (inside the dockered API, with Infisical bootstrap creds in env)::
 
@@ -67,7 +69,9 @@ from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
 from app.db.repositories.users import user_repository
 from app.models.platform_models import PlatformLinkEntry
+from app.models.short_link_models import LinkSnapshot
 from app.models.user_models import UserDocument
+from app.services.links.content import delete_snapshot
 from app.services.platform_link_service import linked_platforms_of
 
 UID_RE = re.compile(r"^[0-9a-f]{24}$")
@@ -119,6 +123,8 @@ def _mongo_inventory(db: MongoDatabase, uid: str, email: str) -> dict[str, int]:
             n += db.users.count_documents(object_id_filter(uid))
         if name == "support_requests":
             n = db[name].count_documents({"$or": [{"user_id": uid}, {"user_email": email}]})
+        if name == "link_reports":
+            n = db[name].count_documents({"$or": [{"user_id": uid}, {"reporter_key": uid}]})
         if n:
             counts[name] = n
     gridfs_count = sum(1 for _ in gridfs.GridFSBucket(db).find({"metadata.user_id": uid}))
@@ -181,6 +187,8 @@ class _Footprint:
     chroma_counts: dict[str, int]
     redis_keys: list[str]
     jfs_path: Path
+    link_snapshots: list[LinkSnapshot]
+    edition_image_urls: list[str]
 
 
 async def _build_footprint(
@@ -206,6 +214,18 @@ async def _build_footprint(
         str(i) for i in db.conversations.distinct("conversation_id", {"user_id": uid})
     ]
     platform_links = linked_platforms_of(user)
+    link_snapshots = [
+        LinkSnapshot.model_validate(link["snapshot"])
+        for link in db.short_links.find(
+            {"user_id": uid, "snapshot.content_id": {"$ne": None}}, {"snapshot": 1}
+        )
+    ]
+    edition_image_urls = [
+        str(brief["edition_image_url"])
+        for brief in db.briefings.find(
+            {"user_id": uid, "edition_image_url": {"$ne": None}}, {"edition_image_url": 1}
+        )
+    ]
     workos_users = (await workos.user_management.list_users(email=args.email)).data
 
     print("mongo:", mongo_counts or "none")
@@ -217,6 +237,8 @@ async def _build_footprint(
     print(f"e2b sandboxes: {sandbox_ids}")
     print(f"conversations (checkpoint threads to sweep): {len(conversation_ids)}")
     print(f"platform_links: {list(platform_links) or 'none'}")
+    print(f"shared-link snapshots: {len(link_snapshots)}")
+    print(f"brief edition images: {len(edition_image_urls)}")
     print(f"workos: {[(u.id, u.email) for u in workos_users]}")
 
     return _Footprint(
@@ -236,6 +258,8 @@ async def _build_footprint(
         chroma_counts=chroma_counts,
         redis_keys=redis_keys,
         jfs_path=jfs_path,
+        link_snapshots=link_snapshots,
+        edition_image_urls=edition_image_urls,
     )
 
 
@@ -256,6 +280,16 @@ async def _revoke_external_access(d: _Footprint) -> None:
             _step("e2b", f"killed {sandbox_id}")
         except Exception as e:
             _fail(f"e2b:{sandbox_id}", e)
+
+
+async def _delete_link_content(d: _Footprint) -> None:
+    """The bytes every shared-link snapshot pinned, before the links that name them go."""
+    for snapshot in d.link_snapshots:
+        try:
+            await delete_snapshot(d.uid, snapshot)
+            _step("link_content", f"deleted {snapshot.content_id}")
+        except Exception as e:
+            _fail(f"link_content:{snapshot.content_id}", e)
 
 
 def _platform_session_filters(
@@ -280,6 +314,8 @@ def _delete_mongo_data(d: _Footprint) -> None:
             n = d.db[name].delete_many({"user_id": d.uid}).deleted_count
             if name == "support_requests":
                 n += d.db[name].delete_many({"user_email": d.email}).deleted_count
+            if name == "link_reports":
+                n += d.db[name].delete_many({"reporter_key": d.uid}).deleted_count
             sessions = _platform_session_filters(d.platform_links)
             if name == "bot_sessions" and sessions:
                 n += d.db[name].delete_many({"$or": sessions}).deleted_count
@@ -390,6 +426,8 @@ async def _verify_removal(d: _Footprint) -> int:
         print(f"  {store}: {'CLEAN' if not leftover else f'REMNANT {leftover}'}")
     print("\nMANUAL FOLLOW-UP: delete the PostHog person for distinct_id", d.uid)
     print("MANUAL FOLLOW-UP: delete Langfuse traces for user_id", d.uid)
+    for url in d.edition_image_urls:
+        print("MANUAL FOLLOW-UP: delete the hosted brief edition image", url)
     if _failures:
         print("\nFAILED STEPS:")
         for failure in _failures:
@@ -428,6 +466,7 @@ async def _run(args: argparse.Namespace) -> int:
     # Order matters: external access is revoked first, data stores next, and
     # the login identity last (see module docstring).
     await _revoke_external_access(d)
+    await _delete_link_content(d)
     _delete_mongo_data(d)
     _delete_postgres_data(d)
     _delete_local_stores(d)

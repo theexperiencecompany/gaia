@@ -25,7 +25,6 @@ from app.agents.tools.workflow_shared_tools import (
     list_workflows,
     search_triggers,
 )
-from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
@@ -46,12 +45,9 @@ from app.models.workflow_tool_models import (
     WorkflowToolSuccess,
 )
 from app.services.analytics_service import capture
+from app.services.briefing.errors import BriefsOffError
 from app.services.wait_service import wait_for_user
-from app.services.workflow.service import (
-    BRIEFS_OFF_FIX,
-    WorkflowService,
-    delivers_to_a_missing_brief,
-)
+from app.services.workflow.service import WorkflowService, refuse_a_missing_brief
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 from app.utils.auth_utils import require_owner
@@ -131,14 +127,16 @@ async def create_workflow(
 
     try:
         user_id = get_user_id(config)
-        if delivery is WorkflowDelivery.BRIEF and delivers_to_a_missing_brief(
-            await require_owner(user_id), delivery
-        ):
-            return error_response(
-                BRIEFS_OFF,
-                "The user gets no daily brief, so this workflow's results cannot go to a "
-                f"brief. Ask them to pick instead: {BRIEFS_OFF_FIX}.",
-            )
+        # The service's own rule, asked before the workflow assistant runs for nothing.
+        if delivery is WorkflowDelivery.BRIEF:
+            try:
+                refuse_a_missing_brief(await require_owner(user_id), delivery)
+            except BriefsOffError as refused:
+                return error_response(
+                    refused.code,
+                    "The user gets no daily brief, so this workflow's results cannot go to a "
+                    f"brief. Ask them to pick instead: {refused.fix}.",
+                )
         thread_id = get_thread_id(config) or ""
         user_name = read_agent_configurable(config).user_name
         # Home timezone (IANA, e.g. Asia/Kolkata) for the new workflow's schedule
