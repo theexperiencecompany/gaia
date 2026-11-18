@@ -46,7 +46,5 @@ ARTIFACT_READY_SELECTOR = "[data-artifact-ready]"
 ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{program_sha256}"
 ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600
 
-#: Chromium renders running at once on one API process; the rest wait their turn.
-PDF_RENDER_MAX_CONCURRENT = 2
-#: Renders allowed to wait for a turn; past it a request is refused with 429.
+#: Chromium renders allowed to wait for a turn; past it a PDF export is refused with 429.
 PDF_RENDER_MAX_WAITING = 6

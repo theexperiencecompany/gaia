@@ -18,7 +18,7 @@ import struct
 from typing import Any
 
 from PIL import Image, ImageStat
-from playwright.async_api import async_playwright
+from playwright.async_api import ViewportSize
 import pytest
 
 from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome, EditionFamily
@@ -26,9 +26,14 @@ from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_catalogue
-from app.services.briefing.render import ImageRenderOptions, render_html_to_image
+from app.services.render.chromium import chromium_page
+from app.services.render.image import ImageRenderOptions, render_html_to_image
 from tests.factories import make_brief_item
 
+pytestmark = pytest.mark.asyncio(loop_scope="package")
+
+# The page a template's own markup is read from, outside the delivery render.
+_PAGE: ViewportSize = {"width": 540, "height": 800}
 # A brief, even a quiet one on the 540px canvas, is at least this many CSS px
 # tall; the blank render was 2px.
 _MIN_HEIGHT_PX = 200
@@ -169,14 +174,9 @@ def _render_html(family: EditionFamily, payload: dict[str, Any]) -> str:
 
 
 async def _visible_text(html: str) -> str:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 800})
-            await page.set_content(html, wait_until="networkidle")
-            return str(await page.evaluate("() => document.body.innerText"))
-        finally:
-            await browser.close()
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(html, wait_until="networkidle")
+        return str(await rendering.page.evaluate("() => document.body.innerText"))
 
 
 @pytest.mark.integration
@@ -429,14 +429,9 @@ _ROWS = """() => {
 @pytest.mark.integration
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_no_item_row_overprints_another_or_leaves_the_canvas(family: EditionFamily) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 800})
-            await page.set_content(_render_html(family, _as_rendered(family, _BUSY)))
-            measured = await page.evaluate(_ROWS)
-        finally:
-            await browser.close()
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(_render_html(family, _as_rendered(family, _BUSY)))
+        measured = await rendering.page.evaluate(_ROWS)
 
     rows, canvas = measured["rows"], measured["canvas"]
     assert rows, f"{family} marks no item rows"
@@ -521,16 +516,11 @@ _DRAWN_BLOCKS = """() => document.querySelectorAll('.rs-sec, .rs-lead, [data-blo
 @pytest.mark.integration
 @pytest.mark.parametrize("family", _FAMILIES)
 async def test_an_empty_brief_draws_no_block_and_no_heading(family: EditionFamily) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 800})
-            # The weekly lists the week ahead as its calendar, a real block: an empty brief has none.
-            empty = {**_QUIET, "week": None}
-            await page.set_content(_render_html(family, _as_rendered(family, empty)))
-            drawn = await page.evaluate(_DRAWN_BLOCKS)
-        finally:
-            await browser.close()
+    # The weekly lists the week ahead as its calendar, a real block: an empty brief has none.
+    empty = {**_QUIET, "week": None}
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(_render_html(family, _as_rendered(family, empty)))
+        drawn = await rendering.page.evaluate(_DRAWN_BLOCKS)
 
     assert drawn == 0, f"{family} drew {drawn} block(s) for a brief with none"
 
@@ -571,15 +561,10 @@ async def test_a_quote_in_printed_text_stays_inside_its_attribute(
         "artwork_catalogue",
         lambda: {_ARTWORK: artwork.model_copy(update={"title": _QUOTED_TITLE})},
     )
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 800})
-            await page.set_content(_render_html(family, _as_rendered(family, _DAILY)))
-            alts = await page.evaluate(
-                "() => [...document.querySelectorAll('img[alt]')].map((img) => img.alt)"
-            )
-        finally:
-            await browser.close()
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(_render_html(family, _as_rendered(family, _DAILY)))
+        alts = await rendering.page.evaluate(
+            "() => [...document.querySelectorAll('img[alt]')].map((img) => img.alt)"
+        )
 
     assert any(alt.startswith(_QUOTED_TITLE) for alt in alts), alts

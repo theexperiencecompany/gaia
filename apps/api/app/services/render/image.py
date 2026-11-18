@@ -1,23 +1,20 @@
-"""Rasterize briefing HTML into PNG bytes with headless Chromium.
-
-Each call owns a fresh browser (app.services.render.chromium).
-"""
+"""Rasterize an HTML document into image bytes with headless Chromium."""
 
 import asyncio
 from dataclasses import dataclass
 import io
-from typing import Literal
 
 from PIL import Image, ImageChops, ImageStat
 from playwright.async_api import FloatRect, Page
 
 from app.constants.log_tags import LogTag
-from app.services.render.chromium import chromium_browser
+from app.services.render.chromium import chromium_page
 from shared.py.wide_events import log
 
 # Chromium reports fonts as ready before glyphs are fully painted; a short settle
 # avoids capturing a frame mid-layout without polling for an arbitrary condition.
 _FONT_SETTLE_MS = 150
+_SET_CONTENT_TIMEOUT_MS = 15_000
 
 # How far (0-255, any colour channel) a pixel must differ from the image edge's own pixel
 # in the same row or column to count as content rather than background. Above a
@@ -53,15 +50,11 @@ _FOLD_TOP_SCRIPT = """(selector) => {
 
 @dataclass(frozen=True)
 class ImageRenderOptions:
-    """How a briefing HTML document is rasterized.
+    """How an HTML document is rasterized.
 
     Attributes:
         width: Viewport width in CSS pixels.
         device_scale_factor: Pixel density multiplier (2 = retina-sharp output).
-        full_page: Capture the entire scrollable page, not just the viewport.
-        image_format: "png" or "jpeg" (smaller, to dodge Gmail's ~102KB clip).
-        quality: JPEG quality 0-100 (ignored for PNG).
-        timeout_ms: Per-navigation timeout for set_content.
         clip_selector: Capture exactly this element's box, grown by clip_bleed_px a side.
         trim_margin_px: Cut the background around the visible content (shadows and
             tilted pieces included) down to this even margin, in CSS pixels.
@@ -69,10 +62,6 @@ class ImageRenderOptions:
 
     width: int = 1180
     device_scale_factor: int = 2
-    full_page: bool = True
-    image_format: Literal["png", "jpeg"] = "png"
-    quality: int | None = None
-    timeout_ms: int = 15000
     clip_selector: str | None = None
     clip_bleed_px: int = 0
     trim_margin_px: int | None = None
@@ -82,10 +71,6 @@ class ImageRenderOptions:
     paper_selector: str | None = None
     #: Leave the page's own white out, so a PNG keeps alpha wherever the document paints nothing.
     omit_background: bool = False
-
-    def __post_init__(self) -> None:
-        if self.omit_background and self.image_format == "jpeg":
-            raise ValueError("omit_background needs a PNG: JPEG has no alpha")
 
 
 @dataclass(frozen=True)
@@ -102,61 +87,43 @@ class RenderedImage:
 async def render_html_to_image(
     html: str, options: ImageRenderOptions = ImageRenderOptions()
 ) -> RenderedImage:
-    """Render an HTML string to image bytes via headless Chromium.
-
-    Raises:
-        RuntimeError: A script on the page threw, leaving the document unrendered.
-    """
-    async with chromium_browser() as browser:
-        context = await browser.new_context(
-            viewport={"width": options.width, "height": 1},
-            device_scale_factor=options.device_scale_factor,
-        )
-        page = await context.new_page()
-        page_errors: list[str] = []
-        page.on("pageerror", lambda error: page_errors.append(str(error)))
-        await page.set_content(html, wait_until="networkidle", timeout=options.timeout_ms)
-        if page_errors:
-            raise RuntimeError(f"Page script failed while rendering: {page_errors[0]}")
+    """Render an HTML string to a full-page PNG via headless Chromium; a script that threw fails it."""
+    async with chromium_page(
+        {"width": options.width, "height": 1}, options.device_scale_factor
+    ) as rendering:
+        page = rendering.page
+        await page.set_content(html, wait_until="networkidle", timeout=_SET_CONTENT_TIMEOUT_MS)
+        rendering.fail_on_script_errors("rendering")
         await page.wait_for_timeout(_FONT_SETTLE_MS)
         clip = (
             await _clip_for(page, options.clip_selector, options.clip_bleed_px)
             if options.clip_selector
             else None
         )
-        if options.image_format == "jpeg":
-            image = await page.screenshot(
-                full_page=options.full_page, type="jpeg", quality=options.quality, clip=clip
-            )
-        else:
-            image = await page.screenshot(
-                full_page=options.full_page,
-                type="png",
-                clip=clip,
-                omit_background=options.omit_background,
-            )
+        image = await page.screenshot(
+            full_page=True, type="png", clip=clip, omit_background=options.omit_background
+        )
         fold_px = await _fold_px(page, options, clip)
         paper_px = await _paper_px(page, options, clip)
-        if options.trim_margin_px is not None:
-            margin = options.trim_margin_px * options.device_scale_factor
-            image, box = await asyncio.to_thread(trim_to_content, image, margin, options)
-            if box is not None:
-                if fold_px is not None:
-                    fold_px -= box[1]
-                if paper_px is not None:
-                    x0, y0, x1, y1 = paper_px
-                    paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
-        log.debug(
-            f"{LogTag.TOOL} Rendered HTML to image",
-            image_format=options.image_format,
-            image_bytes=len(image),
-            width=options.width,
-        )
-        return RenderedImage(
-            image=image,
-            fold=_fold_share(image, fold_px),
-            paper=_paper_shares(image, paper_px),
-        )
+    if options.trim_margin_px is not None:
+        margin = options.trim_margin_px * options.device_scale_factor
+        image, box = await asyncio.to_thread(trim_to_content, image, margin)
+        if box is not None:
+            if fold_px is not None:
+                fold_px -= box[1]
+            if paper_px is not None:
+                x0, y0, x1, y1 = paper_px
+                paper_px = (x0 - box[0], y0 - box[1], x1 - box[0], y1 - box[1])
+    log.debug(
+        f"{LogTag.TOOL} Rendered HTML to image",
+        image_bytes=len(image),
+        width=options.width,
+    )
+    return RenderedImage(
+        image=image,
+        fold=_fold_share(image, fold_px),
+        paper=_paper_shares(image, paper_px),
+    )
 
 
 async def _fold_px(page: Page, options: ImageRenderOptions, clip: FloatRect | None) -> float | None:
@@ -275,23 +242,16 @@ def content_box(image: Image.Image, margin_px: int) -> tuple[int, int, int, int]
 
 
 def trim_to_content(
-    image_bytes: bytes, margin_px: int, options: ImageRenderOptions
+    image_bytes: bytes, margin_px: int
 ) -> tuple[bytes, tuple[int, int, int, int] | None]:
-    """Cut each side's background run down to margin_px device pixels; return the image and the box cut to.
+    """Cut each side's background run of a PNG down to margin_px device pixels; return it and the box cut to.
 
-    A blank image is returned unchanged, with no box. A PNG keeps its alpha; a JPEG, which has
-    none, is flattened.
+    A blank image is returned unchanged, with no box. The crop keeps the PNG's alpha.
     """
     image = Image.open(io.BytesIO(image_bytes))
     box = content_box(image, margin_px)
     if box is None:
         return image_bytes, None
-    cropped = image.crop(box)
-    if options.image_format == "jpeg":
-        cropped = cropped.convert("RGB")
-    save_options: dict[str, int] = (
-        {"quality": options.quality or 75} if options.image_format == "jpeg" else {}
-    )
     out = io.BytesIO()
-    cropped.save(out, format=options.image_format, **save_options)
+    image.crop(box).save(out, format="PNG")
     return out.getvalue(), box

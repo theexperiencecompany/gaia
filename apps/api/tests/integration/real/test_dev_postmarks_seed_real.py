@@ -14,8 +14,8 @@ from app.models.user_models import UserDocument
 from app.services.briefing import store
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.postmarks import collected_postmarks
-from app.services.briefing.render import RenderedImage
 from app.services.dev_postmarks_seed import seed_dev_postmarks
+from app.services.render.image import RenderedImage
 from app.utils.errors import AppError
 
 SEEDED = 12

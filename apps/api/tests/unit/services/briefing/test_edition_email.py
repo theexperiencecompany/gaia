@@ -29,7 +29,7 @@ from app.services.briefing.edition_email import (
     render_edition_png,
 )
 from app.services.briefing.editions import EXPLORER_RENDERER
-from app.services.briefing.render import RenderedImage
+from app.services.render.image import RenderedImage
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"

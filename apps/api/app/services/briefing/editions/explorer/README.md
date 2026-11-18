@@ -119,7 +119,7 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    code has no 2px gaps between its rows, because a PDF417 with gaps does not
    scan. If the page URL is too long for the width, it is squeezed below 1px per
    module, and the Code 128 then reads only at render size, not at the delivered
-   1080px. `tests/integration/test_edition_codes_scan.py` decodes each code from
+   1080px. `tests/integration/render/test_edition_codes_scan.py` decodes each code from
    the rendered PNG.
 10. **Every family is set in embedded type (2026-11-11).** The templates named
    macOS system faces (Helvetica Neue, Didot, Iowan Old Style, Menlo, American
@@ -250,12 +250,12 @@ user's artwork shuffle bag, over the Met Open Access works whose image fits that
 family's frame (`editions/artworks.py`), and recorded on the payload as
 `artwork_id`; that is data, not a template edit.
 
-`tests/integration/test_edition_families_render.py` renders every family in
+`tests/integration/render/test_edition_families_render.py` renders every family in
 Chromium and fails on a script error, a dropped item, a fixture string, a `null`
 or zero-filled figure, a block drawn for an empty brief, overprinted item rows, an
 image crop that lets the paper touch the edge or keeps more than 24px past its
 shadow, or a desk painted into the image.
-`tests/integration/test_edition_reading_system.py` renders every family over four
+`tests/integration/render/test_edition_reading_system.py` renders every family over four
 compositions and measures the reading system's rules on the page.
 
 The families whose paper lies on a desk (`edition_frame` in `editions/__init__.py`)

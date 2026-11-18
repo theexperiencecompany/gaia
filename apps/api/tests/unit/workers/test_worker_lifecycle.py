@@ -242,6 +242,17 @@ class TestWorkerShutdown:
 
         mock_stop.assert_awaited_once_with()
 
+    async def test_shutdown_closes_the_render_browser(self) -> None:
+        with (
+            patch("app.workers.lifecycle.shutdown.unified_shutdown", new_callable=AsyncMock),
+            patch(
+                "app.workers.lifecycle.shutdown.close_chromium", new_callable=AsyncMock
+            ) as close_chromium,
+        ):
+            await shutdown({"startup_time": 100.0})
+
+        close_chromium.assert_awaited_once_with()
+
     async def test_shutdown_records_the_runtime_since_startup(self):
         """Startup's loop-clock reading reaches shutdown through ARQ's ctx and becomes the runtime."""
         ctx: dict = {}

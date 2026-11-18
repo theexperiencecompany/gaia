@@ -122,7 +122,7 @@ const config: KnipConfig = {
 
     // The edition reading-system rules: read by test_edition_reading_system.py and evaluated
     // in the rendered page through Playwright, never imported.
-    "apps/api/tests/integration/edition_reading_rules.js",
+    "apps/api/tests/integration/render/edition_reading_rules.js",
 
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",

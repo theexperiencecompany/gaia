@@ -11,20 +11,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from playwright.async_api import CDPSession, Page, async_playwright
+from playwright.async_api import CDPSession, Page, ViewportSize
 import pytest
 
 from app.constants.briefing import EditionFamily
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.edition_fonts import EDITION_FAMILIES
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
-from tests.integration.test_edition_families_render import (
+from app.services.render.chromium import chromium_page
+from tests.integration.render.test_edition_families_render import (
     _DAILY,
     _QUIET,
     _artwork,
     _as_rendered,
     _render_html,
 )
+
+pytestmark = pytest.mark.asyncio(loop_scope="package")
+
+_PAGE: ViewportSize = {"width": 540, "height": 900}
 
 # The page's own skin plus one skin per axis option, each rendered by the template itself.
 _SKINS_JS = """() => {
@@ -92,20 +97,13 @@ async def _check_every_skin(page: Page, family: EditionFamily) -> list[str]:
 async def test_every_glyph_comes_from_an_embedded_font(
     family: EditionFamily, payload: dict[str, Any]
 ) -> None:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 900})
-            errors: list[str] = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            await page.set_content(
-                _render_html(family, _as_rendered(family, payload)), wait_until="networkidle"
-            )
-            failures = await _check_every_skin(page, family)
-        finally:
-            await browser.close()
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(
+            _render_html(family, _as_rendered(family, payload)), wait_until="networkidle"
+        )
+        failures = await _check_every_skin(rendering.page, family)
 
-    assert not errors, errors
+    assert not rendering.script_errors, rendering.script_errors
     assert not failures, "\n".join(failures)
 
 
@@ -117,16 +115,9 @@ async def test_every_composed_block_draws_from_an_embedded_font(
 ) -> None:
     payload = composed_payload(composition, family, _artwork(family))
     html = EXPLORER_RENDERER[family](payload, edition_no=287, generated_local="6:02 AM")
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        try:
-            page = await browser.new_page(viewport={"width": 540, "height": 900})
-            errors: list[str] = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            await page.set_content(html, wait_until="networkidle")
-            failures = await _check_every_skin(page, family)
-        finally:
-            await browser.close()
+    async with chromium_page(_PAGE) as rendering:
+        await rendering.page.set_content(html, wait_until="networkidle")
+        failures = await _check_every_skin(rendering.page, family)
 
-    assert not errors, errors
+    assert not rendering.script_errors, rendering.script_errors
     assert not failures, "\n".join(failures)
