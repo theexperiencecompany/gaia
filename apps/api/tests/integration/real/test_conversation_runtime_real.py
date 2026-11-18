@@ -73,7 +73,7 @@ from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_JEV_URL
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
@@ -207,6 +207,7 @@ from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.hil import jev_client, ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
+from app.services.hil.jev_client import decisions_url
 from app.services.notification_service import notification_service
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.workflow import thread_reset
@@ -3681,7 +3682,7 @@ async def test_a_tool_heavy_turn_shows_the_same_screen_live_and_on_reload(
 @contextmanager
 def _jev_out_of_credit() -> Iterator[None]:
     """Refuse every classifier call, as OpenRouter does with no credit left."""
-    refused = httpx.Response(402, request=httpx.Request("POST", HIL_JEV_URL))
+    refused = httpx.Response(402, request=httpx.Request("POST", decisions_url(None)))
     with (
         patch.object(jev_client.jev_http_client, "post", AsyncMock(return_value=refused)),
         patch.object(jev_client, "resolve", AsyncMock(return_value=ProviderConfig(api_key="k"))),

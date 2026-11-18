@@ -12,11 +12,11 @@ from app.constants.hil import (
     HIL_JEV_MODEL_NAME,
     HIL_JEV_REPLY_APPROVE_LINE,
     HIL_JEV_REPLY_DECIDE_FLOOR,
-    HIL_JEV_URL,
     ReplyChoice,
 )
 from app.models.jev_models import JevReplyVerdict
 from app.models.message_models import MessageDict
+from app.services.hil.jev_client import decisions_url
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.prompts import JEV_REPLY_CRITERIA
 
@@ -37,7 +37,7 @@ class TestTheDecisionsRequest:
             await ask_jev_reply("just the email", ACTIONS, None)
 
         post = client.post.await_args
-        assert post.args == (HIL_JEV_URL,)
+        assert post.args == (decisions_url(None),)
         assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
         posted = post.kwargs["json"]
         assert posted["model"] == HIL_JEV_MODEL_NAME

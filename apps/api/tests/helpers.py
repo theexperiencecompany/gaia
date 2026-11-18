@@ -62,7 +62,6 @@ from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.auth import SESSION_HINT_COOKIE
 from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
-from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
@@ -74,6 +73,7 @@ from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.screen import project_screen
+from app.services.hil.jev_client import decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.artifact_utils import FILE_LINKS
@@ -283,7 +283,7 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
         yield SimpleNamespace(
-            jev=router.post(HIL_JEV_URL),
+            jev=router.post(decisions_url(None)),
             enforced=enforced,
             capture=capture,
             tz=profile_tz,

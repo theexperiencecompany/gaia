@@ -21,6 +21,7 @@ from app.services.conversation import work_log
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.work_log import (
+    Continuing,
     WorkReport,
     approvals_awaited_by,
     record_approval_requested,
@@ -160,6 +161,16 @@ async def test_lost_work_is_logged_under_its_own_id_so_a_late_result_is_never_it
     await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.LOST, WorkReport(text=""))
     assert (await rt.entries())[-1].entry == WorkFinished(
         id="work:t1:lost", task_id="t1", outcome=WorkOutcome.LOST, report=""
+    )
+
+
+async def test_work_that_carries_on_ended_work_names_it_and_answers_nothing_new(
+    rt: Runtime,
+) -> None:
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    assert await record_work_carried(CONVERSATION, USER, "t2", Continuing("t1"))
+    assert (await rt.entries())[-1].entry == WorkStarted(
+        id="work:t2", task_id="t2", cause_through=1, cause_from=1, continues="t1"
     )
 
 

@@ -108,36 +108,14 @@
     "e2e-screen": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "E2E_SIM=1 pnpm exec playwright test e2e/screen-over-time.spec.ts e2e/screen-surfaces.spec.ts --workers=1",
+        "command": "E2E_SIM=1 pnpm exec playwright test e2e/screen- --workers=1",
         "cwd": "{projectRoot}"
       },
       "cache": false,
       "inputs": [
-        "{projectRoot}/package.json",
-        "{projectRoot}/playwright.config.ts",
-        "{projectRoot}/e2e/harness.ts",
-        "{projectRoot}/e2e/global-setup.ts",
-        "{projectRoot}/e2e/screen-*.ts",
-        "{projectRoot}/src/features/chat/**/*",
-        "{projectRoot}/src/hooks/**/*",
-        "{projectRoot}/src/services/**/*",
-        "{projectRoot}/src/stores/**/*",
-        "{projectRoot}/src/lib/**/*",
-        "{workspaceRoot}/libs/shared/ts/src/conversation/**/*",
-        "{workspaceRoot}/libs/shared/ts/src/chat/**/*",
-        "{workspaceRoot}/libs/shared/py/conversation_wire.py",
-        "{workspaceRoot}/libs/shared/py/approvals.py",
-        "{workspaceRoot}/apps/api/app/services/conversation/**/*",
-        "{workspaceRoot}/apps/api/app/services/runtime/**/*",
-        "{workspaceRoot}/apps/api/app/services/hil/**/*",
-        "{workspaceRoot}/apps/api/app/agents/core/**/*",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/conversations.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/approvals.py",
-        "{workspaceRoot}/apps/api/app/api/v1/endpoints/dev.py",
-        "{workspaceRoot}/tools/llm-stub/**/*",
-        "{workspaceRoot}/scripts/ci/sim-stack.sh",
-        "{workspaceRoot}/scripts/ci/test-services.sh",
-        "{workspaceRoot}/.github/actions/setup-python-test-env/**/*",
+        "default",
+        "^production",
+        "simStack",
         {
           "externalDependencies": []
         }

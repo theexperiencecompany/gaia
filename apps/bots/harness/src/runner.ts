@@ -287,15 +287,26 @@ export async function runScenario(
       const before = transcript.getEvents().length;
       if (turn.outage) adapter.startOutage(turn.outage);
       await deliverTurnMessages(adapter, user.platformUserId, turn);
+      let restartedAt: number | undefined;
       if (turn.restartAfterMs !== undefined) {
         await new Promise((resolve) =>
           setTimeout(resolve, turn.restartAfterMs),
         );
         // As the bot process does on Ctrl-C: its follows stop where they are.
         await adapter.shutdown("restart");
+        restartedAt = transcript.getEvents().length;
         adapter = await bootAdapter(platform, apiUrl, transcript);
       }
       await adapter.settleTurn();
+      if (restartedAt !== undefined) {
+        const resumed = restartResumedABubble(
+          transcript.getEvents().slice(before),
+          restartedAt - before,
+        );
+        if (resumed !== null) {
+          failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${resumed}`);
+        }
+      }
       // Settle BEFORE slicing: a late outbound delivery belongs to the turn
       // that caused it, and its assertions must be able to see it.
       await settle(
@@ -516,6 +527,28 @@ function shownTextFailures(
     }
   }
   return failures;
+}
+
+/**
+ * Why a restart turn tested nothing, or null when it did: the fresh bot must
+ * finish in place a bubble the stopped one had opened. A reply that ended
+ * before the restart leaves the scenario passing without exercising the resume.
+ */
+function restartResumedABubble(
+  events: readonly TranscriptEvent[],
+  restartedAt: number,
+): string | null {
+  const opened = new Set(
+    events
+      .slice(0, restartedAt)
+      .flatMap((e) => (e.type === "send" ? [e.messageId] : [])),
+  );
+  const finishedInPlace = events
+    .slice(restartedAt)
+    .some((e) => e.type === "edit" && opened.has(e.messageId));
+  return finishedInPlace
+    ? null
+    : "the restart hit no open bubble: nothing the stopped bot sent was finished in place after it (restartAfterMs is too late for this reply)";
 }
 
 /**

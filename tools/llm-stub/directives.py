@@ -104,6 +104,21 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # their schema docs instead), so a tool still unbound after one retrieval routes
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
+# An approval's wake (app/services/hil/ticket.py): the work redeems a plain yes with
+# execute(tool_name="approve", data={"id": ...}), and redoes a yes with a change as
+# execute(<the tool>, <the changed args>, amends=<id>). A real model follows the
+# ticket; the stub does the same, or no approved call would ever run under sim.
+_APPROVAL_TICKET_RE = re.compile(r"APPROVAL_READY (?P<id>[^\s:]+):")
+_PLAIN_REDEEM_MARK = 'execute(tool_name="approve"'
+APPROVE_TOOL = "approve"
+# A gated call's result while the user decides (app/services/hil/gate.py). A real model
+# leaves it pending and ends its run asking; its closing waits for the approval's wake.
+_PENDING_RESULT_RE = re.compile(r"^PENDING (?P<id>[^\s:]+):")
+# Any wake that answers a pending approval: the yes ticket, or the verdict of a no, an
+# expiry or a withdrawal (app/services/hil/ledger_decide.py), after which the run reports.
+_APPROVAL_WAKE_RE = re.compile(r"APPROVAL_READY (?P<id>[^\s:]+):|DECISION (?P<verdict>[^\s=]+)=")
+FINISH_TASK_TOOL = "finish_task"
+ASK_FOR_APPROVAL_ARGS = {"result": "Waiting for your approval.", "outcome": "ask"}
 
 _DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate|react):")
 _CLOSE = "]]"
@@ -398,6 +413,23 @@ def message_text(message: dict[str, Any]) -> str:
     return ""
 
 
+def unanswered_tool_calls(messages: Sequence[dict[str, Any]]) -> list[str]:
+    """Ids of assistant tool calls no tool message answers: a thread a real provider rejects.
+
+    OpenAI and OpenRouter refuse such a request (400 "No tool output found for
+    function call"), so the stub refuses it too, or a run that leaves a call open
+    would pass under sim and break every later turn in production.
+    """
+    answered = {m.get("tool_call_id") for m in messages if m.get("role") == "tool"}
+    return [
+        call["id"]
+        for message in messages
+        if message.get("role") == "assistant"
+        for call in message.get("tool_calls") or []
+        if isinstance(call, dict) and call.get("id") and call["id"] not in answered
+    ]
+
+
 def _last_user_index(messages: Sequence[dict[str, Any]]) -> int | None:
     for idx in range(len(messages) - 1, -1, -1):
         if messages[idx].get("role") == "user":
@@ -421,16 +453,25 @@ def _script_message_index(messages: Sequence[dict[str, Any]]) -> int | None:
 
 
 def _emitted_tool_names(messages: Sequence[dict[str, Any]]) -> list[str]:
-    """Ordered tool-call names from assistant messages, flattened."""
+    """Ordered tool-call names from assistant messages, flattened; the stub's own approval asks are left out."""
     names: list[str] = []
     for message in messages:
         if message.get("role") != "assistant":
             continue
         for call in message.get("tool_calls") or []:
-            name = (call.get("function") or {}).get("name")
-            if name:
+            function = call.get("function") or {}
+            name = function.get("name")
+            if name and not _is_stub_ask(name, function.get("arguments")):
                 names.append(name)
     return names
+
+
+def _is_stub_ask(name: str, arguments: str | None) -> bool:
+    """Whether a call is the ask the stub ends a run with while an approval waits: no scripted step."""
+    args = json.loads(arguments or "{}")
+    if name == EXECUTE_TOOL:
+        name, args = args.get("tool_name"), args.get("data")
+    return name == FINISH_TASK_TOOL and args == ASK_FOR_APPROVAL_ARGS
 
 
 def _retrieved_tool_names(messages: Sequence[dict[str, Any]]) -> set[str]:
@@ -487,7 +528,7 @@ def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
         if message.get("role") != "user":
             continue
         text = message_text(message)
-        if _is_interjection(text):
+        if _is_interjection(text) or _APPROVAL_TICKET_RE.search(text):
             continue
         if parse_directives(_strip_echoed_payloads(text)):
             return idx
@@ -541,9 +582,49 @@ def _collect_work_directives(
         if message.get("role") != "user":
             continue
         text = message_text(message)
-        if _is_interjection(text):
+        # An approval's wake reaches a live run as an interjection and an ended one as its own message.
+        ticket = _APPROVAL_TICKET_RE.search(text)
+        if ticket is not None:
+            genuine.extend(
+                _redeemed(ticket["id"], text, parse_directives(_strip_echoed_payloads(text)))
+            )
+        elif _is_interjection(text):
             genuine.extend(parse_directives(_strip_echoed_payloads(text)))
     return _script(genuine), primary_idx
+
+
+def _redeemed(approval_id: str, ticket: str, change: list[Directive]) -> list[Directive]:
+    """Redeem an approval's wake: run the approved call, or redo it with the change.
+
+    A plain yes runs the stored call through execute(approve). A yes with a change
+    carries the user's words, which script the redone calls: each runs through
+    execute with amends naming the approval, as the ticket asks.
+    """
+    if _PLAIN_REDEEM_MARK in ticket:
+        return [
+            ToolDirective(
+                name=EXECUTE_TOOL,
+                args={
+                    "task_description": "Run the approved call",
+                    "tool_name": APPROVE_TOOL,
+                    "data": {"id": approval_id},
+                },
+            )
+        ]
+    return [
+        ToolDirective(
+            name=EXECUTE_TOOL,
+            args={
+                "task_description": f"Run {d.name} with the change",
+                "tool_name": d.name,
+                "data": d.args,
+                "amends": approval_id,
+            },
+        )
+        if isinstance(d, ToolDirective)
+        else d
+        for d in change
+    ]
 
 
 def _terminal(script: _Script) -> SayResponse:
@@ -572,15 +653,35 @@ def _narration(script: _Script) -> dict[str, Any]:
     return {"text": narrate.text, "pace_ms": pace.ms if pace is not None else 0}
 
 
+def _awaiting_approval(tail: Sequence[dict[str, Any]]) -> bool:
+    """Whether a call this run made waits on the user's decision with no wake for it yet."""
+    pending = {
+        found["id"]
+        for message in tail
+        if message.get("role") == "tool"
+        and (found := _PENDING_RESULT_RE.match(message_text(message))) is not None
+    }
+    woken = {
+        found["id"] or found["verdict"]
+        for message in tail
+        if message.get("role") == "user"
+        for found in _APPROVAL_WAKE_RE.finditer(message_text(message))
+    }
+    return bool(pending - woken)
+
+
 def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
     """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
     script, primary_idx = _collect_work_directives(messages)
-    tool_dirs = script.tools
     tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
+    tool_dirs, tool_waits = script.tools, script.tool_waits
+    if _awaiting_approval(tail):
+        ask = ToolDirective(name=FINISH_TASK_TOOL, args=ASK_FOR_APPROVAL_ARGS)
+        tool_dirs, tool_waits = [*tool_dirs, ask], [*tool_waits, 0]
     di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
-        wait = script.tool_waits[di]
+        wait = tool_waits[di]
         if nxt.name not in available_tools:
             # retrieve_tools decides: internal tools bind, integration tools come
             # back as schema docs and stay unbound — those run through execute.

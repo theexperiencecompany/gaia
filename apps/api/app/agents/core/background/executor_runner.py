@@ -78,6 +78,7 @@ from app.services.browser.job_stop import stop_browser_job
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.work_deltas import WorkDeltas, work_cards
 from app.services.conversation.work_log import (
+    Continuing,
     WorkReport,
     record_work_carried,
     record_work_finished,
@@ -606,19 +607,24 @@ async def deliver_to_executor(
     *,
     tag: AgentTag | None = None,
     workflow_execution_id: str | None = None,
+    continues: str | None = None,
 ) -> None:
     """Give the executor work from outside a comms turn — the one way to do it.
 
     A live run absorbs the task through its inbox, an idle one gets a run started
     to carry it; never a second parallel answer. Tagged work (a subagent result)
     always travels through the inbox so it arrives framed. A free (or freed) lock is
-    a fast path — the claim inside _start_executor_run is the atomic decision.
+    a fast path — the claim inside _start_executor_run is the atomic decision; a run it starts shows as continues' work.
     """
     if (
         tag is None
         and await reclaim_dead_lock(conversation_id)
         and await _start_executor_run(
-            conversation_id, user, task, workflow_execution_id=workflow_execution_id
+            conversation_id,
+            user,
+            task,
+            workflow_execution_id=workflow_execution_id,
+            continues=continues,
         )
     ):
         return
@@ -703,6 +709,7 @@ async def _start_executor_run(
     task: str,
     *,
     workflow_execution_id: str | None = None,
+    continues: str | None = None,
 ) -> bool:
     """Materialize, log and spawn a detached run for the task. Returns whether it started.
 
@@ -714,7 +721,8 @@ async def _start_executor_run(
     )
     if prepared is None:
         return False
-    if not await record_work_carried(conversation_id, user.user_id, task_id):
+    carries_on = None if continues is None else Continuing(continues)
+    if not await record_work_carried(conversation_id, user.user_id, task_id, carries_on):
         await release_lock_if_owned(conversation_id, prepared.run.stream_id, task_id)
         teardown_session(prepared.run.stream_id)
         return False
@@ -752,6 +760,7 @@ async def _carry_pending_into_new_run(
             run.user,
             EXECUTOR_CARRY_TASK,
             workflow_execution_id=run.workflow_execution_id,
+            continues=run.task_id,
         )
         # Equivalent under mutation: the branch guards only a log.info.
         if not started:  # pragma: no mutate

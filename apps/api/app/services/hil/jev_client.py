@@ -10,28 +10,25 @@ from urllib.parse import urljoin
 
 import httpx
 
-from app.config.settings import settings
 from app.constants.hil import (
     HIL_JEV_MODEL_NAME,
     HIL_JEV_TIMEOUT_SECONDS,
-    HIL_JEV_URL,
     JevFailure,
 )
+from app.constants.llm import OPENROUTER_API_URL
 from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
 
 
-def decisions_url() -> str:
+def decisions_url(base_url: str | None) -> str:
     """Return OpenRouter's Decisions route, which sits beside v1 under /api.
 
-    A development OPENROUTER_BASE_URL (a test stack's model server) moves it with the
-    rest of OpenRouter; production refuses to boot with that override set.
+    A configured OpenRouter base (a test stack's model server) moves it with the
+    model calls; production refuses to boot with that override set.
     """
-    if not settings.OPENROUTER_BASE_URL:
-        return HIL_JEV_URL
     # A base given with its trailing slash resolves the same: "v1//" + "../" still lands on /api.
-    return urljoin(f"{settings.OPENROUTER_BASE_URL}/", "../alpha/decisions")
+    return urljoin(f"{base_url or OPENROUTER_API_URL}/", "../alpha/decisions")
 
 
 class JevUnconfiguredError(RuntimeError):
@@ -68,7 +65,7 @@ async def post_decisions(
     if not key:
         raise JevUnconfiguredError("No OpenRouter key saved or set; cannot reach the JEV judge")
     resp = await jev_http_client.post(
-        decisions_url(),
+        decisions_url(config.base_url if config else None),
         json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},
         headers={"Authorization": f"Bearer {key}"},
     )

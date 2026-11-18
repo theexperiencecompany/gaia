@@ -82,6 +82,9 @@ cmd_up() {
   export DEV_AUTH_BYPASS_EMAIL="$DEV_USER"
   export GAIA_SIM_MODE=1
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
+  # JEV (the approval reply classifier, reactions) is asked on the OpenRouter key, at the
+  # stub's Decisions route; an unscripted call is refused there like an unpaid account.
+  export OPENROUTER_API_KEY="sk-stub-dev" # pragma: allowlist secret
   export NEXT_PUBLIC_API_BASE_URL="http://localhost:$API_PORT/api/v1/"
   export FRONTEND_URL="http://localhost:$WEB_PORT"
   export HOST="http://localhost:$API_PORT"

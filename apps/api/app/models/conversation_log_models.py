@@ -218,6 +218,9 @@ class WorkStarted(_Entry):
     answers: tuple[str, ...] = ()
     # The live task this one was handed to while it ran; the two finish, and stop, as one.
     joins: str | None = None
+    # Ended work this run carries on: the decision on an approval it asked for woke it. The two
+    # show as one work item; each finishes on its own.
+    continues: str | None = None
     # A background subagent or browser job: its result lands in another run, so its finish wakes nothing.
     detached: bool = False
     # A workflow's playbook replay: it runs alone, so it never starts beside other work or a fire, nor they beside it.

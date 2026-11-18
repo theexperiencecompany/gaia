@@ -244,26 +244,6 @@ def _repo(row: Any = None) -> MagicMock:
 
 @pytest.mark.unit
 class TestDecideLedger:
-    async def test_approve_cas_commits_and_delivers_ticket(self) -> None:
-        from app.services.hil.ledger_decide import decide_ledger
-
-        repo = _repo(_row())
-        with (
-            patch(f"{MODULE}.approval_ledger_repository", new=repo),
-            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
-        ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.committed is True
-        assert outcome.outcome == ApprovalOutcome.APPROVED
-        repo.settle.assert_awaited_once_with(
-            "ap_abc",
-            ApprovalOutcome.APPROVED,
-            decided_by=USER_ID,
-            feedback=None,
-        )
-        deliver.assert_awaited_once()
-
     async def test_a_yes_on_an_approval_its_ended_run_withdrew_is_not_applied(
         self, logged_decisions: dict[str, ApprovalDecided]
     ) -> None:
@@ -298,29 +278,6 @@ class TestDecideLedger:
             pytest.raises(RuntimeError, match="redis down"),
         ):
             await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-    async def test_deny_commits_without_delivery(self) -> None:
-        from app.services.hil.ledger_decide import decide_ledger
-
-        repo = _repo(_row())
-        with (
-            patch(f"{MODULE}.approval_ledger_repository", new=repo),
-            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
-            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
-        ):
-            outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="deny", feedback="nope", via="card"
-            )
-
-        assert outcome.committed is True
-        assert outcome.outcome == ApprovalOutcome.DENIED
-        repo.settle.assert_awaited_once_with(
-            "ap_abc",
-            ApprovalOutcome.DENIED,
-            decided_by=USER_ID,
-            feedback="nope",
-        )
-        deliver.assert_not_awaited()
 
     async def test_unknown_id_raises_not_found(self) -> None:
         from app.services.hil.errors import ApprovalRequestNotFoundError
@@ -969,26 +926,6 @@ ANY_TEXT = "provider timed out; may or may not have run — never auto-retried"
 
 
 @pytest.mark.unit
-class TestApproveDeliversToExecutor:
-    async def test_approve_wakes_executor_with_redeem_task(self) -> None:
-        """Approval is permission, not execution: commit wakes the model with the ticket instead of scheduling a backend run."""
-        from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import decide_ledger
-
-        repo = _repo(_row())
-        with (
-            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
-        ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.committed is True
-        deliver.assert_awaited_once()
-        claimed_row = deliver.await_args.args[0]
-        assert claimed_row.approval_id == "ap_abc"
-
-
-@pytest.mark.unit
 class TestApproveResumesBackgroundOwner:
     @pytest.mark.parametrize("owner_run_type", ["todo", "workflow"])
     async def test_approving_a_background_owners_approval_starts_exactly_one_continuation(
@@ -1508,7 +1445,9 @@ class TestDecideLedgerOutcomes:
         assert abs(stalled_cutoff - expected) < timedelta(seconds=5)
 
     async def test_the_ticket_names_its_age_and_the_redeem_call(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(created_at=datetime.now(UTC) - timedelta(hours=2, minutes=5))
+        seams.rows["ap_1"] = _doc(
+            created_at=datetime.now(UTC) - timedelta(hours=2, minutes=5), task_id="t-asked"
+        )
 
         await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
 
@@ -1518,6 +1457,7 @@ class TestDecideLedgerOutcomes:
             "APPROVAL_READY ap_1: the user approved Send it (2h5m old). Run it now with "
             'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result. '
             "If it is no longer needed, say so instead of running it.",
+            continues="t-asked",
         )
 
     async def test_a_ticket_with_no_birth_time_says_so(self, seams: LedgerSeams) -> None:
@@ -1563,7 +1503,7 @@ class TestDecideLedgerOutcomes:
     async def test_a_deny_settles_the_card_and_tells_the_agent_why(
         self, seams: LedgerSeams
     ) -> None:
-        row = _doc()
+        row = _doc(task_id="t-asked")
         seams.rows["ap_1"] = row
 
         await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope", via="card")
@@ -1574,6 +1514,7 @@ class TestDecideLedgerOutcomes:
             wrap_agent_payload(
                 AgentTag.HIL_DECISION, f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}"
             ),
+            continues="t-asked",
         )
         [(denied, note)] = [call.args for call in seams.record_deny.await_args_list]
         assert (denied.approval_id, denied.outcome, note) == (

@@ -6,8 +6,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 import pytest
 
-from app.config.settings import settings
-from app.constants.hil import HIL_JEV_URL, JevFailure
+from app.constants.hil import JevFailure
 from app.services.hil import jev_client
 from app.services.hil.jev_client import JevUnconfiguredError, jev_failure, post_decisions
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -62,7 +61,7 @@ def test_the_values_are_the_labels_the_trigger_gate_alert_reads() -> None:
 @pytest.mark.parametrize(
     ("base_url", "decisions"),
     [
-        (None, HIL_JEV_URL),
+        (None, "https://openrouter.ai/api/alpha/decisions"),
         ("http://127.0.0.1:9797/api/v1", "http://127.0.0.1:9797/api/alpha/decisions"),
         ("http://127.0.0.1:9797/api/v1/", "http://127.0.0.1:9797/api/alpha/decisions"),
     ],
@@ -78,9 +77,8 @@ async def test_a_development_openrouter_base_moves_the_decisions_call_with_it(
         return httpx.Response(200, json={"answers": {}})
 
     async def configured(_provider: object) -> ProviderConfig:
-        return ProviderConfig(api_key="sk-or-test")
+        return ProviderConfig(api_key="sk-or-test", base_url=base_url)
 
-    monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", base_url)
     monkeypatch.setattr(jev_client, "resolve", configured)
     monkeypatch.setattr(
         jev_client, "jev_http_client", httpx.AsyncClient(transport=httpx.MockTransport(answer))

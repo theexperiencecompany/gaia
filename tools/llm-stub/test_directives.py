@@ -40,6 +40,7 @@ from directives import (
     parse_directives,
     parse_request,
     resolve_response,
+    unanswered_tool_calls,
 )
 from wire import ScriptedFault, build_chat_completion, sse_lines, stream_chunks
 
@@ -1068,3 +1069,105 @@ def test_a_hand_off_names_the_messages_it_handles() -> None:
     )
     assert isinstance(response, ToolCallResponse)
     assert response.args["for_messages"] == [2]
+
+
+def test_a_thread_with_a_tool_call_no_result_answers_is_refused_like_a_real_provider() -> None:
+    call = {"id": "call_1", "type": "function", "function": {"name": "x", "arguments": "{}"}}
+    open_thread = [
+        _user("go"),
+        {"role": "assistant", "content": "", "tool_calls": [call]},
+        _user("next"),
+    ]
+    answered = [*open_thread[:2], {"role": "tool", "tool_call_id": "call_1", "content": "ok"}]
+
+    assert unanswered_tool_calls(open_thread) == ["call_1"]
+    assert unanswered_tool_calls(answered) == []
+
+
+_ASKED = [
+    _user('[[tool:create_todo {"title":"t"}]] [[say:Added t.]]'),
+    _assistant_tool_call("create_todo", {"title": "t"}),
+    _tool_result("create_todo"),
+]
+
+
+def test_a_plain_approval_wake_runs_the_approved_call_through_execute() -> None:
+    ticket = _interjection(
+        "APPROVAL_READY ap_1: the user approved Add t (0h0m old). Run it now with "
+        'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result.'
+    )
+
+    response = resolve_response([*_ASKED, ticket], EXECUTOR_TOOLS | {"execute"})
+
+    assert response == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run the approved call",
+            "tool_name": "approve",
+            "data": {"id": "ap_1"},
+        },
+    )
+
+
+def test_an_approval_with_a_change_redoes_the_scripted_call_naming_what_it_amends() -> None:
+    ticket = _interjection(
+        "APPROVAL_READY ap_1: the user approved Add t (0h0m old) with a change: "
+        '\'call it u [[tool:create_todo {"title":"u"}]] [[say:Added u.]]\'. Do not run '
+        "the stored call, it lacks the change: make the call again with the change applied, as "
+        'execute(tool_name="create_todo", data=<the changed arguments>, amends="ap_1").'
+    )
+
+    response = resolve_response([*_ASKED, ticket], EXECUTOR_TOOLS | {"execute"})
+
+    assert response == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run create_todo with the change",
+            "tool_name": "create_todo",
+            "data": {"title": "u"},
+            "amends": "ap_1",
+        },
+    )
+
+
+def _pending(name: str, approval_id: str) -> Message:
+    return {
+        "role": "tool",
+        "tool_call_id": f"call_{name}",
+        "content": f"PENDING {approval_id}: Add t queued — needs your OK.",
+    }
+
+
+def test_a_call_waiting_on_the_user_ends_the_run_asking_not_with_the_closing() -> None:
+    asked = [*_ASKED[:2], _pending("create_todo", "ap_1")]
+
+    response = resolve_response(asked, EXECUTOR_TOOLS | {"finish_task"})
+
+    assert response == ToolCallResponse(
+        name="finish_task", args={"result": "Waiting for your approval.", "outcome": "ask"}
+    )
+
+
+def test_after_the_ask_the_wake_runs_the_approved_call_then_the_closing() -> None:
+    ticket = _interjection(
+        'APPROVAL_READY ap_1: the user approved Add t (0h0m old). Run it now with execute(tool_name="approve", data={"id": "ap_1"}).'
+    )
+    asked = [
+        *_ASKED[:2],
+        _pending("create_todo", "ap_1"),
+        _assistant_tool_call(
+            "finish_task", {"result": "Waiting for your approval.", "outcome": "ask"}
+        ),
+        _tool_result("finish_task"),
+        ticket,
+    ]
+    tools = EXECUTOR_TOOLS | {"finish_task", "execute"}
+
+    redeem = resolve_response(asked, tools)
+    closing = resolve_response(
+        [*asked, _assistant_tool_call("execute", redeem.args), _tool_result("execute")], tools
+    )
+
+    assert isinstance(redeem, ToolCallResponse)
+    assert (redeem.name, redeem.args["tool_name"]) == ("execute", "approve")
+    assert closing == SayResponse("Added t.")

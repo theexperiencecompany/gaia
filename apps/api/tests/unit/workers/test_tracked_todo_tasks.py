@@ -61,7 +61,6 @@ from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededExceptio
 from app.config.rate_limits import RateLimitPeriod
 from app.constants import todos as todo_constants
 from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
-from app.constants.hil import HIL_JEV_URL
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
@@ -120,6 +119,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.hil.jev_client import decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
@@ -2808,7 +2808,7 @@ class TestOneRunPerOccurrence:
             patch(f"{_DISPATCH}.capture"),
             time_machine.travel(datetime(2026, 10, 2, 2, 30, tzinfo=kolkata.tzinfo), tick=False),
         ):
-            jev.post(HIL_JEV_URL).mock(return_value=httpx.Response(200, json=can_wait))
+            jev.post(decisions_url(None)).mock(return_value=httpx.Response(200, json=can_wait))
             await tracked_todo_service.schedule_execution("todo-1", morning.astimezone(UTC))
             first_of_thread: dict[str, object] = {
                 "thread_id": "m-1",

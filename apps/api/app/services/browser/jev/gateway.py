@@ -252,7 +252,7 @@ def _build_jev_client(http: httpx.AsyncClient) -> JevGatewayClient:
         api_key, model, url = (
             settings.OPENROUTER_API_KEY,
             settings.BROWSER_USE_JEV_MODEL,
-            decisions_url(),
+            decisions_url(settings.OPENROUTER_BASE_URL),
         )
     if not api_key:
         raise BrowserUnavailableError(f"Jev's {provider} gateway has no API key configured.")
