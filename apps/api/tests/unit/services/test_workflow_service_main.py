@@ -2917,3 +2917,98 @@ class TestTriggerConfiguredWaits:
 
         mock_delete.assert_awaited_once()
         report.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# A trigger's integration counts as a requirement on every write path
+# ---------------------------------------------------------------------------
+
+
+def _gmail_triggered_workflow() -> Workflow:
+    """Build a workflow whose trigger needs Gmail but whose steps need nothing."""
+    return _make_workflow(
+        activated=False,
+        trigger_config=_make_trigger_config(
+            trigger_type=TriggerType.INTEGRATION, trigger_name="gmail_new_message"
+        ),
+    )
+
+
+@pytest.fixture
+def _gmail_disconnected():
+    status = AsyncMock(return_value={"gmail": False})
+    with (
+        patch("app.services.workflow.integration_requirements.get_all_integrations_status", status),
+        patch("app.services.oauth.oauth_service.get_all_integrations_status", status),
+    ):
+        yield
+
+
+_GET_WORKFLOW = "app.services.workflow.service.WorkflowService.get_workflow"
+
+
+@pytest.mark.usefixtures("_gmail_disconnected")
+class TestTriggerIntegrationIsRequired:
+    """Create, activate, regenerate and generate all ask the list view's question."""
+
+    @pytest.mark.regression
+    async def test_activate_names_the_trigger_integration(self) -> None:
+        with (
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch(f"{_REPO}.activate", new_callable=AsyncMock) as activate,
+            pytest.raises(ValueError, match=r"^Connect Gmail to enable this workflow\.$"),
+        ):
+            await WorkflowService.activate_workflow(WORKFLOW_ID, USER_ID)
+
+        activate.assert_not_awaited()
+
+    async def test_create_leaves_the_workflow_off(self) -> None:
+        request = _make_create_request(
+            trigger_config=_gmail_triggered_workflow().trigger_config,
+            steps=[WorkflowStep(id="s1", title="s", description="d")],
+        )
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch("app.services.workflow.service.ChromaClient") as chroma,
+            patch("app.services.workflow.service.workflow_scheduler"),
+            patch(f"{_REPO}.create", new_callable=AsyncMock),
+            patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock) as activate,
+        ):
+            chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+            result = await WorkflowService.create_workflow(request, USER_ID)
+
+        assert result.activated is False
+        activate.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_regenerate_keeps_the_workflow_off(self) -> None:
+        with (
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch.object(
+                WorkflowGenerationService,
+                "generate_steps_with_llm",
+                new_callable=AsyncMock,
+                return_value=[WorkflowStep(id="s1", title="s", description="d")],
+            ),
+            patch(f"{_REPO}.set_steps", new_callable=AsyncMock, return_value=None) as set_steps,
+        ):
+            await WorkflowService.regenerate_workflow_steps(WORKFLOW_ID, USER_ID)
+
+        assert set_steps.await_args.kwargs["deactivate"] is True
+
+    @pytest.mark.regression
+    async def test_generate_keeps_the_workflow_off(self) -> None:
+        with (
+            patch(f"{_REPO}.touch", new_callable=AsyncMock),
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch.object(
+                WorkflowGenerationService,
+                "generate_steps_with_llm",
+                new_callable=AsyncMock,
+                return_value=[WorkflowStep(id="s1", title="s", description="d")],
+            ),
+            patch(f"{_REPO}.set_steps", new_callable=AsyncMock) as set_steps,
+        ):
+            await WorkflowService._generate_workflow_steps(WORKFLOW_ID, USER_ID)
+
+        assert set_steps.await_args.kwargs["deactivate"] is True
