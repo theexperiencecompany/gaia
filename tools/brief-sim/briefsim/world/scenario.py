@@ -7,6 +7,7 @@ one API page, unicode titles, a task with no content, and a day where nothing ha
 """
 
 from collections.abc import Callable
+import copy
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 import random
@@ -81,7 +82,7 @@ class Clockwork:
 
 def _put_issue(item: GithubItem) -> Callable[[AppState], None]:
     def apply(state: AppState) -> None:
-        state.github[item.number] = item
+        state.github[item.number] = copy.deepcopy(item)
 
     return apply
 
@@ -110,7 +111,7 @@ def _reassign(number: int, to: str, at: datetime) -> Callable[[AppState], None]:
 
 def _put_event(event: CalendarEvent) -> Callable[[AppState], None]:
     def apply(state: AppState) -> None:
-        state.calendar[event.id] = event
+        state.calendar[event.id] = copy.deepcopy(event)
 
     return apply
 
@@ -136,7 +137,7 @@ def _set_event(event_id: str, at: datetime, **fields: str) -> Callable[[AppState
 
 def _put_task(task: TodoistTask) -> Callable[[AppState], None]:
     def apply(state: AppState) -> None:
-        state.todoist[task.id] = task
+        state.todoist[task.id] = copy.deepcopy(task)
 
     return apply
 

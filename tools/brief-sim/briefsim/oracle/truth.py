@@ -177,15 +177,19 @@ class Truth:
 
     def local_day_events(self, brief: Brief) -> list[CalendarEvent]:
         """Return the confirmed events overlapping the brief's local day, as the world held them when it ran."""
+        return self.local_events(brief, brief.local_date, days=1)
+
+    def local_events(self, brief: Brief, first: date, days: int) -> list[CalendarEvent]:
+        """Return the confirmed events overlapping days local days from first, as the world held them when brief ran."""
         state = self.state_at(brief.stored_at)
-        start = datetime.combine(brief.local_date, datetime.min.time(), self.tz)
-        end = start + timedelta(days=1)
+        start = datetime.combine(first, datetime.min.time(), self.tz)
+        end = start + timedelta(days=days)
         hits = []
         for event in state.calendar.values():
             if event.status != "confirmed":
                 continue
             if event.all_day is not None:
-                if event.all_day == brief.local_date:
+                if first <= event.all_day < first + timedelta(days=days):
                     hits.append(event)
             elif (
                 event.start is not None
@@ -195,6 +199,14 @@ class Truth:
             ):
                 hits.append(event)
         return hits
+
+    def gaia_todos_completed(self, since: datetime, at: datetime) -> int:
+        """Count the persona's GAIA todos completed between since and at."""
+        return sum(
+            1
+            for row in self.persona
+            if row["action"] == "complete_todo" and since <= parse_instant(str(row["at"])) <= at
+        )
 
     def gaia_todos(self, at: datetime) -> list[JsonObject]:
         """Return the persona's GAIA todos still open at the instant at."""

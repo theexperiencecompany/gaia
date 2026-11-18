@@ -266,6 +266,7 @@ def _true_counts(truth: Truth, brief: Brief) -> dict[str, set[int]]:
     local_today = brief.local_date
     events = truth.local_day_events(brief)
     todos = truth.gaia_todos(brief.stored_at)
+    weekly = _weekly_counts(truth, brief) if brief.kind == "weekly" else {}
     issue_like = {
         len(open_issues),
         len([i for i in open_issues if i.created > since]),
@@ -281,8 +282,30 @@ def _true_counts(truth: Truth, brief: Brief) -> dict[str, set[int]]:
             len([t for t in tasks if t.due_date and t.due_date < local_today]),
             len(todos),
             len([t for t in tasks if t.created > since]),
-        },
-        "meeting": {len(events), len([e for e in events if e.self_response != "declined"])},
+        }
+        | weekly.get("task", set()),
+        "meeting": {len(events), len([e for e in events if e.self_response != "declined"])}
+        | weekly.get("meeting", set()),
+    }
+
+
+def _weekly_counts(truth: Truth, brief: Brief) -> dict[str, set[int]]:
+    """Return the digest's own totals: what was finished since Monday and what the week ahead holds."""
+    state = truth.state_at(brief.stored_at)
+    monday = brief.local_date - timedelta(days=brief.local_date.weekday())
+    week_start = datetime.combine(monday, datetime.min.time(), truth.tz)
+    gaia_done = truth.gaia_todos_completed(week_start, brief.stored_at)
+    todoist_done = len(
+        [
+            t
+            for t in state.todoist.values()
+            if t.completed_at is not None and week_start <= t.completed_at <= brief.stored_at
+        ]
+    )
+    ahead = truth.local_events(brief, brief.local_date + timedelta(days=1), days=7)
+    return {
+        "task": {gaia_done, todoist_done, gaia_done + todoist_done},
+        "meeting": {len(ahead), len([e for e in ahead if e.self_response != "declined"])},
     }
 
 
