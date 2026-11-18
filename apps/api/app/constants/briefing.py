@@ -281,13 +281,44 @@ def hue_for_day(day_of_year: int) -> int:
     return (day_of_year * HUE_ROTATION_STEP) % HUE_MAX
 
 
-# The weekly recap's edition family (never drawn for a daily brief) and the Air
-# Mail family, the only one that carries a city stamp.
-WEEKLY_FAMILY: Final[str] = "weekly"
-POSTAL_FAMILY: Final[str] = "postal"
+class EditionFamily(StrEnum):
+    """Every edition family a brief is drawn in, one per vendored explorer template.
+
+    WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+    carries a city stamp. The editions package checks this set against the templates at import.
+    """
+
+    ALMANAC = "almanac"
+    BAND = "band"
+    BOARDINGPASS = "boardingpass"
+    BROADSHEET = "broadsheet"
+    EXHIBITION = "exhibition"
+    FLIGHTPLAN = "flightplan"
+    GRADIENT = "gradient"
+    INSTRUMENT = "instrument"
+    INVOICE = "invoice"
+    LIBRARYCARD = "librarycard"
+    MEMO = "memo"
+    MENU = "menu"
+    METROMAP = "metromap"
+    PLAYFAIR = "playfair"
+    POSTAL = "postal"
+    RECEIPT = "receipt"
+    SWISS = "swiss"
+    WEEKLY = "weekly"
+
+
 # Families whose paper lies on a desk: rendered without it, and trimmed to the paper.
-DESK_FAMILIES: Final[frozenset[str]] = frozenset(
-    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
+DESK_FAMILIES: Final[frozenset[EditionFamily]] = frozenset(
+    {
+        EditionFamily.BOARDINGPASS,
+        EditionFamily.INVOICE,
+        EditionFamily.LIBRARYCARD,
+        EditionFamily.MEMO,
+        EditionFamily.MENU,
+        EditionFamily.POSTAL,
+        EditionFamily.RECEIPT,
+    }
 )
 # Room around a desk family's root, in CSS px, so its widest shadow is captured whole
 # (Air Mail's envelope: 44px blur, 26px drop) before the trim cuts back to the paper.
@@ -301,9 +332,9 @@ EXPLORER_SCALE: Final[int] = 3
 class ArtFamily(StrEnum):
     """The edition families that hang a painting (their template reads ed.art)."""
 
-    EXHIBITION = "exhibition"
-    BROADSHEET = "broadsheet"
-    ALMANAC = "almanac"
+    EXHIBITION = EditionFamily.EXHIBITION.value
+    BROADSHEET = EditionFamily.BROADSHEET.value
+    ALMANAC = EditionFamily.ALMANAC.value
 
 
 # The web page that shows the user's collected Air Mail stamps.

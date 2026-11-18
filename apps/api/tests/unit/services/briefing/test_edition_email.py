@@ -166,11 +166,13 @@ class TestEditionRendering:
         with pytest.raises(ValidationError, match="template_family"):
             BriefingPayload.model_validate(data)
 
-    async def test_the_retired_classic_family_fails_the_render_instead_of_falling_back(
-        self, harness: Harness
-    ) -> None:
-        with pytest.raises(KeyError, match="edition"):
-            await host(make_payload(template_family="edition"))
+    def test_a_brief_cannot_name_the_retired_classic_family(self) -> None:
+        with pytest.raises(ValidationError, match="template_family"):
+            make_payload(template_family="edition")
+
+    async def test_a_quiet_note_has_no_edition_to_render(self, harness: Harness) -> None:
+        with pytest.raises(ValueError, match="quiet note"):
+            await host(make_payload(template_family=None))
 
         assert harness.render_calls == []
 

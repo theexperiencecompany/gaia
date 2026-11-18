@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.constants.briefing import EditionFamily
+
 _FONTS_DIR = Path(__file__).parent / "fonts"
 _MANIFEST = _FONTS_DIR / "fonts.json"
 
@@ -17,25 +19,25 @@ _HEROS = "TeX Gyre Heros"
 _AEONIK = "Aeonik Extended"
 
 # Every family a template's CSS names; a rendered glyph never falls through to a system font.
-EDITION_FAMILIES: dict[str, tuple[str, ...]] = {
-    "almanac": ("Libre Baskerville",),
-    "band": (_AEONIK, _HEROS),
-    "boardingpass": (_AEONIK, _HEROS, "JetBrains Mono"),
-    "broadsheet": ("Broadsheet Caslon", "Source Serif 4"),
-    "exhibition": ("Bodoni Moda", _HEROS),
-    "flightplan": ("Barlow Condensed",),
-    "gradient": ("Schibsted Grotesk", "JetBrains Mono"),
-    "instrument": (_AEONIK, "Sofia Sans Condensed"),
-    "invoice": (_HEROS,),
-    "librarycard": ("Special Elite", "Pinyon Script"),
-    "memo": ("Courier Prime",),
-    "menu": ("Cormorant", "EB Garamond"),
-    "metromap": ("Overpass",),
-    "playfair": ("Playfair Display", "Literata"),
-    "postal": ("Source Serif 4", "Cutive", _AEONIK, _HEROS),
-    "receipt": ("JetBrains Mono",),
-    "swiss": (_AEONIK, _HEROS),
-    "weekly": ("Newsreader", _HEROS),
+EDITION_FAMILIES: dict[EditionFamily, tuple[str, ...]] = {
+    EditionFamily.ALMANAC: ("Libre Baskerville",),
+    EditionFamily.BAND: (_AEONIK, _HEROS),
+    EditionFamily.BOARDINGPASS: (_AEONIK, _HEROS, "JetBrains Mono"),
+    EditionFamily.BROADSHEET: ("Broadsheet Caslon", "Source Serif 4"),
+    EditionFamily.EXHIBITION: ("Bodoni Moda", _HEROS),
+    EditionFamily.FLIGHTPLAN: ("Barlow Condensed",),
+    EditionFamily.GRADIENT: ("Schibsted Grotesk", "JetBrains Mono"),
+    EditionFamily.INSTRUMENT: (_AEONIK, "Sofia Sans Condensed"),
+    EditionFamily.INVOICE: (_HEROS,),
+    EditionFamily.LIBRARYCARD: ("Special Elite", "Pinyon Script"),
+    EditionFamily.MEMO: ("Courier Prime",),
+    EditionFamily.MENU: ("Cormorant", "EB Garamond"),
+    EditionFamily.METROMAP: ("Overpass",),
+    EditionFamily.PLAYFAIR: ("Playfair Display", "Literata"),
+    EditionFamily.POSTAL: ("Source Serif 4", "Cutive", _AEONIK, _HEROS),
+    EditionFamily.RECEIPT: ("JetBrains Mono",),
+    EditionFamily.SWISS: (_AEONIK, _HEROS),
+    EditionFamily.WEEKLY: ("Newsreader", _HEROS),
 }
 
 
@@ -80,7 +82,7 @@ def _family_rules() -> dict[str, str]:
     return rules
 
 
-def edition_font_faces_css(family: str) -> str:
+def edition_font_faces_css(family: EditionFamily) -> str:
     """Return the @font-face rules for the families one edition family is set in."""
     rules = _family_rules()
     return "".join(rules[name] for name in EDITION_FAMILIES[family])

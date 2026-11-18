@@ -18,8 +18,8 @@ import re
 from app.constants.briefing import (
     DESK_FAMILIES,
     DESK_SHADOW_BLEED_PX,
-    POSTAL_FAMILY,
     ArtFamily,
+    EditionFamily,
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.artworks import artwork_catalogue
@@ -131,7 +131,7 @@ def _asset_data_uris() -> dict[str, str]:
     }
 
 
-def _art(payload: BriefingPayload, family: str) -> ExplorerArt | None:
+def _art(payload: BriefingPayload, family: EditionFamily) -> ExplorerArt | None:
     """Return the painting a framed family hangs, loaded by its hosted URL; None for the rest."""
     if family not in ArtFamily:
         return None
@@ -159,7 +159,7 @@ def _json_for_script(value: object) -> str:
 def render_explorer_edition(
     payload: BriefingPayload,
     *,
-    family: str,
+    family: EditionFamily,
     skin_seed: str,
     edition_no: int,
     generated_local: str,
@@ -178,7 +178,7 @@ def render_explorer_edition(
         raise ValueError(f"unknown explorer family: {family!r}")
 
     assets = dict(_asset_data_uris())
-    if family == POSTAL_FAMILY:
+    if family == EditionFamily.POSTAL:
         # The drawn city's stamp; a legacy brief without one picks from the
         # template's city axis (every hosted city), so all their art loads.
         if payload.stamp_city:

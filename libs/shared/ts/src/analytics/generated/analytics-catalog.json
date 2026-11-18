@@ -1509,9 +1509,16 @@
             "type": "string"
           },
           "family": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Family",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
           },
           "mood": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",

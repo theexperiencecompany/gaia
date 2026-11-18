@@ -11,13 +11,13 @@ from app.constants.briefing import (
     DAILY_QUIET_HEADLINE,
     DAILY_QUIET_NOTHING_NEW,
     SERIES_WINDOW_DAYS,
-    WEEKLY_FAMILY,
     WEEKLY_KICKER,
     WEEKLY_QUIET_CALENDAR_CLEAR,
     WEEKLY_QUIET_HEADLINE,
     WEEKLY_QUIET_NOTHING_NEW,
     BriefingKind,
     BriefingRunOutcome,
+    EditionFamily,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -65,7 +65,7 @@ class BriefKindSpec:
     #: count, in place of the day's stats and calendar; it carries no held results.
     recaps_week: bool
     #: The family every edition is drawn in; None draws it from the user's rotation.
-    fixed_family: str | None
+    fixed_family: EditionFamily | None
     #: The voice call's ceiling: a stalled run fails the cron loudly instead of holding a worker.
     voice_timeout_seconds: int
 
@@ -110,7 +110,7 @@ KIND_SPECS: dict[BriefingKind, BriefKindSpec] = {
         frame=WEEKLY_FRAME,
         must_place=True,
         recaps_week=True,
-        fixed_family=WEEKLY_FAMILY,
+        fixed_family=EditionFamily.WEEKLY,
         voice_timeout_seconds=BRIEF_VOICE_TIMEOUT_SECONDS,
     ),
 }

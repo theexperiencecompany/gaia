@@ -6,7 +6,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.constants.briefing import POSTAL_FAMILY
+from app.constants.briefing import EditionFamily
 from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
@@ -55,7 +55,7 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
     assert len(briefs) == SEEDED
     assert len({b.payload.stamp_city for b in briefs}) == SEEDED
     assert len({b.date for b in briefs}) == SEEDED
-    assert all(b.payload.template_family == POSTAL_FAMILY for b in briefs)
+    assert all(b.payload.template_family == EditionFamily.POSTAL for b in briefs)
     assert all(b.delivered_channels for b in briefs)
     assert len(hosted_editions) == 2 * SEEDED
     assert all(b.edition == EditionRender(key=f"key-{b.id}") for b in briefs)

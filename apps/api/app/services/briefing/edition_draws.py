@@ -6,10 +6,10 @@ import random
 
 from app.constants.briefing import (
     FAVOURITE_WEIGHT_FACTOR,
-    POSTAL_FAMILY,
     ArtFamily,
     BriefingBag,
     EditionChoice,
+    EditionFamily,
 )
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import BriefBlock
@@ -48,7 +48,7 @@ def draw_from_bag(
     return BagDraw(bag=bag, member=member, next_state=next_state)
 
 
-def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]:
+def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[EditionFamily, int]:
     """Return the user's daily bag: families turned off left out, each favourite at twice its weight.
 
     Settings keep one family on, so the bag is empty only when every family left on was
@@ -73,7 +73,7 @@ class EditionDraw:
     draws are the bag draws the edition spent, persisted once a pushed brief went out.
     """
 
-    family: str
+    family: EditionFamily
     drawn: list[BriefBlock]
     undrawn: list[BriefBlock]
     stamp_city: str | None = None
@@ -90,11 +90,17 @@ def _drawn_family(user: UserDocument, blocks: list[BriefBlock]) -> BagDraw:
     """
     weights = daily_family_weights(user.briefing_editions)
     fits = families_drawing(weights, blocks)
-    return draw_from_bag(user, BriefingBag.EDITION_FAMILY, weights, eligible=fits or None)
+    # A bag holds its members as the strings the user doc stores.
+    return draw_from_bag(
+        user,
+        BriefingBag.EDITION_FAMILY,
+        {family.value: weight for family, weight in weights.items()},
+        eligible={family.value for family in fits} or None,
+    )
 
 
 def draw_edition(
-    user: UserDocument, blocks: list[BriefBlock], fixed_family: str | None
+    user: UserDocument, blocks: list[BriefBlock], fixed_family: EditionFamily | None
 ) -> EditionDraw:
     """Draw the edition the blocks print in: its family, then its stamp city or its painting.
 
@@ -102,11 +108,11 @@ def draw_edition(
     a stamp, a framed family a painting.
     """
     family_draws = [] if fixed_family is not None else [_drawn_family(user, blocks)]
-    family = fixed_family if fixed_family is not None else family_draws[0].member
+    family = fixed_family if fixed_family is not None else EditionFamily(family_draws[0].member)
     drawn, undrawn = split_drawable(family, blocks)
     if undrawn:
         log.info("briefing.blocks_undrawn", family=family, kinds=[b.kind for b in undrawn])
-    if family == POSTAL_FAMILY:
+    if family == EditionFamily.POSTAL:
         stamp = draw_from_bag(user, BriefingBag.STAMP_CITY, hosted_stamp_weights())
         return EditionDraw(
             family=family,

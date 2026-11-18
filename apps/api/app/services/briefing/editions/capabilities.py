@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import get_args
 
-from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import EditionFamily
 from app.models.brief_composition_models import BriefBlock, BriefBlockKind, ChartBlock, ChartKind
 
 
@@ -32,24 +32,26 @@ _EVERY_BLOCK: frozenset[BriefBlockKind] = frozenset(get_args(BriefBlockKind)) - 
 _EVERY_CHART = frozenset(ChartKind)
 _DRAWS_EVERYTHING = EditionCapabilities(blocks=_EVERY_BLOCK, charts=_EVERY_CHART)
 
-_LEAVE_OUTS: dict[str, EditionCapabilities] = {
-    "menu": EditionCapabilities(blocks=_EVERY_BLOCK - {"progress"}, charts=frozenset()),
-    POSTAL_FAMILY: EditionCapabilities(blocks=_EVERY_BLOCK, charts=frozenset()),
-    "memo": EditionCapabilities(
+_LEAVE_OUTS: dict[EditionFamily, EditionCapabilities] = {
+    EditionFamily.MENU: EditionCapabilities(blocks=_EVERY_BLOCK - {"progress"}, charts=frozenset()),
+    EditionFamily.POSTAL: EditionCapabilities(blocks=_EVERY_BLOCK, charts=frozenset()),
+    EditionFamily.MEMO: EditionCapabilities(
         blocks=_EVERY_BLOCK, charts=frozenset({ChartKind.BAR, ChartKind.STACKED_BAR})
     ),
-    WEEKLY_FAMILY: EditionCapabilities(
+    EditionFamily.WEEKLY: EditionCapabilities(
         blocks=_EVERY_BLOCK - {"lead", "quote"}, charts=_EVERY_CHART
     ),
 }
 
 
-def edition_capabilities(family: str) -> EditionCapabilities:
+def edition_capabilities(family: EditionFamily) -> EditionCapabilities:
     """Return what the family draws; every family not leaving something out draws every block."""
     return _LEAVE_OUTS.get(family, _DRAWS_EVERYTHING)
 
 
-def families_drawing(families: Iterable[str], blocks: list[BriefBlock]) -> frozenset[str]:
+def families_drawing(
+    families: Iterable[EditionFamily], blocks: list[BriefBlock]
+) -> frozenset[EditionFamily]:
     """Return the families that can draw every one of the blocks."""
     return frozenset(
         f for f in families if all(edition_capabilities(f).draws(block) for block in blocks)
@@ -57,7 +59,7 @@ def families_drawing(families: Iterable[str], blocks: list[BriefBlock]) -> froze
 
 
 def split_drawable(
-    family: str, blocks: list[BriefBlock]
+    family: EditionFamily, blocks: list[BriefBlock]
 ) -> tuple[list[BriefBlock], list[BriefBlock]]:
     """Split the blocks, in order, into those the family draws and those left to the brief's page."""
     capabilities = edition_capabilities(family)

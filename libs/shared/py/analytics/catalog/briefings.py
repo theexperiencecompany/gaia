@@ -30,7 +30,8 @@ class BriefingSent(ServerEvent):
 
     kind: BriefingKindName
     form: BriefFormName
-    family: Identifier
+    #: None for a quiet note, which is drawn in no family.
+    family: Identifier | None
     mood: Identifier
     item_count: int
     channel_count: int

@@ -12,7 +12,7 @@ from datetime import date
 import re
 from typing import TypedDict
 
-from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.constants.briefing import EditionFamily
 from app.models.briefing_models import BriefingEvent, BriefingPayload, BriefingTallies
 from app.services.briefing.editions.codes import CodeGeometry, Symbology, family_codes
 from app.services.briefing.editions.explorer_blocks import (
@@ -112,7 +112,7 @@ def build_ed(
     generated_local: str,
     assets: dict[str, str],
     art: ExplorerArt | None,
-    family: str,
+    family: EditionFamily,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.
 
@@ -140,16 +140,18 @@ def build_ed(
         "awaiting": awaiting(payload.blocks, payload.sections),
         "stats": _build_stats(payload.tallies),
         "sources": read_sources(payload.sources_read),
-        "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
+        "stamp": _build_stamp(payload.stamp_city) if family == EditionFamily.POSTAL else None,
         "art": art,
         "assets": assets,
         "codes": family_codes(family, payload.link),
     }
 
 
-def edition_calendar(payload: BriefingPayload, family: str) -> list[BriefingEvent]:
+def edition_calendar(payload: BriefingPayload, family: EditionFamily) -> list[BriefingEvent]:
     """Return the events the family's calendar lists: the weekly's week ahead, else today's."""
-    return payload.week.ahead if family == WEEKLY_FAMILY and payload.week else payload.calendar
+    return (
+        payload.week.ahead if family == EditionFamily.WEEKLY and payload.week else payload.calendar
+    )
 
 
 def _date_parts(iso_date: str) -> tuple[str, int, str, str, int, str]:

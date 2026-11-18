@@ -28,6 +28,7 @@ from app.constants.briefing import (
     BriefingKind,
     BriefOutcome,
     EditionChoice,
+    EditionFamily,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
@@ -284,10 +285,10 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
-    template_family: str = Field(
+    template_family: EditionFamily | None = Field(
         description=(
-            "The edition template family this brief was drawn in. Persisted so "
-            "the archive re-renders identically forever."
+            "The edition template family this brief was drawn in, persisted so the archive "
+            "re-renders identically forever; None for a quiet note, which is drawn in none."
         ),
     )
     stamp_city: str | None = Field(

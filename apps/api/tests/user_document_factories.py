@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.constants.briefing import POSTAL_FAMILY, BriefingFrequency, EditionChoice
+from app.constants.briefing import (
+    BriefingFrequency,
+    EditionChoice,
+    EditionFamily,
+)
 from app.models.briefing_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
 from app.models.quiet_hours_models import QuietHours
@@ -31,7 +35,7 @@ _USER_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_USER_SAMPLE_STAMP)),
     ("QuietHours", QuietHours(enabled=True, start_hour=1, end_hour=6)),
     ("BriefingSchedule", BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)),
-    ("EditionChoice", {POSTAL_FAMILY: EditionChoice.FAVOURITE}),
+    ("EditionChoice", {EditionFamily.POSTAL: EditionChoice.FAVOURITE}),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
     ("InstanceRole", InstanceRole.ADMIN),
     ("datetime", _USER_SAMPLE_STAMP),

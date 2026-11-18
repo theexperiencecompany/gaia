@@ -100,7 +100,7 @@ def quiet_note(clock: UserClock, spec: BriefKindSpec, facts: QuietFacts) -> Brie
         lede="",
         caption="",
         mood=BriefingMood.IDLE,
-        template_family="",
+        template_family=None,
         message="\n".join(lines),
         sources_unavailable=facts.unread,
     )

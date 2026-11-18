@@ -2644,9 +2644,15 @@
             ]
           },
           "template_family": {
-            "description": "The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.",
-            "title": "Template Family",
-            "type": "string"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditionFamily"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none."
           },
           "uncomposed": {
             "description": "Everything the brief read that the composition left out, for its full page.",
@@ -7255,6 +7261,31 @@
           "favourite"
         ],
         "title": "EditionChoice",
+        "type": "string"
+      },
+      "EditionFamily": {
+        "description": "Every edition family a brief is drawn in, one per vendored explorer template.\n\nWEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone\ncarries a city stamp. The editions package checks this set against the templates at import.",
+        "enum": [
+          "almanac",
+          "band",
+          "boardingpass",
+          "broadsheet",
+          "exhibition",
+          "flightplan",
+          "gradient",
+          "instrument",
+          "invoice",
+          "librarycard",
+          "memo",
+          "menu",
+          "metromap",
+          "playfair",
+          "postal",
+          "receipt",
+          "swiss",
+          "weekly"
+        ],
+        "title": "EditionFamily",
         "type": "string"
       },
       "EditionImage": {

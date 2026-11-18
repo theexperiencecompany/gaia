@@ -12,14 +12,13 @@ from datetime import UTC, date, datetime, timedelta
 
 from app.constants.briefing import (
     DAILY_KICKER,
-    POSTAL_FAMILY,
     SECTION_NUMERALS,
-    WEEKLY_FAMILY,
     WEEKLY_KICKER,
     ArtFamily,
     BriefAction,
     BriefingKind,
     BriefOutcome,
+    EditionFamily,
     hue_for_day,
 )
 from app.constants.notifications import (
@@ -29,6 +28,7 @@ from app.constants.notifications import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import BriefBlock, SectionBlock
+from app.models.brief_item_models import ItemState
 from app.models.briefing_models import (
     BriefDelivery,
     BriefingEvent,
@@ -283,7 +283,7 @@ def _brief_payload(
     day: date,
     seed: _SeedDay,
     recipient_name: str | None,
-    family: str,
+    family: EditionFamily,
     *,
     city_slug: str | None = None,
     artwork_id: str | None = None,
@@ -292,16 +292,19 @@ def _brief_payload(
     keyed_items = (
         (
             _ASKS_HEADING,
-            [BriefingItem(text=text, action=action, kind="you") for action, text in seed.needs_you],
+            [
+                BriefingItem(text=text, action=action, kind=ItemState.YOU)
+                for action, text in seed.needs_you
+            ],
         ),
         (
             _DONE_HEADING,
             [
-                BriefingItem(text=text, outcome=outcome, kind="lookback")
+                BriefingItem(text=text, outcome=outcome, kind=ItemState.LOOKBACK)
                 for outcome, text in seed.done
             ]
             + [
-                BriefingItem(text=text, outcome=BriefOutcome.STARTED, kind="gaia")
+                BriefingItem(text=text, outcome=BriefOutcome.STARTED, kind=ItemState.GAIA)
                 for text in seed.running
             ],
         ),
@@ -334,14 +337,14 @@ def _brief_payload(
     )
 
 
-def sample_edition_payload(family: str, recipient_name: str) -> BriefingPayload:
+def sample_edition_payload(family: EditionFamily, recipient_name: str) -> BriefingPayload:
     """Return the first seeded day as a daily brief in family, with its stamp or painting."""
     return _brief_payload(
         _FIRST_EDITION_DATE,
         _SEED_DAYS[0],
         recipient_name,
         family,
-        city_slug=min(hosted_stamp_weights()) if family == POSTAL_FAMILY else None,
+        city_slug=min(hosted_stamp_weights()) if family == EditionFamily.POSTAL else None,
         artwork_id=min(artworks_for(ArtFamily(family))) if family in ArtFamily else None,
     )
 
@@ -361,14 +364,14 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
         await _store(
             user,
-            _brief_payload(day, seed, user.name, POSTAL_FAMILY, city_slug=slug),
+            _brief_payload(day, seed, user.name, EditionFamily.POSTAL, city_slug=slug),
             BriefingKind.DAILY,
         )
 
 
 async def seed_dev_editions(user: UserDocument, count: int) -> None:
     """Render, host and upsert count daily briefs, one per non-postal family, then a weekly recap."""
-    families = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+    families = sorted(set(DAILY_FAMILY_WEIGHTS) - {EditionFamily.POSTAL})
     if count > len(families):
         raise create_error(
             message=f"Cannot seed {count} editions",
@@ -405,15 +408,19 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
                 numeral=SECTION_NUMERALS[0],
                 title=_ASKS_HEADING,
                 items=[
-                    BriefingItem(text="Offsite venue", action=BriefAction.REPLY, kind="you"),
-                    BriefingItem(text="New lease terms", action=BriefAction.APPROVE, kind="you"),
+                    BriefingItem(
+                        text="Offsite venue", action=BriefAction.REPLY, kind=ItemState.YOU
+                    ),
+                    BriefingItem(
+                        text="New lease terms", action=BriefAction.APPROVE, kind=ItemState.YOU
+                    ),
                 ],
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
                 title=_DONE_HEADING,
                 items=[
-                    BriefingItem(text=text, outcome=outcome, kind="lookback")
+                    BriefingItem(text=text, outcome=outcome, kind=ItemState.LOOKBACK)
                     for outcome, text in shipped
                 ],
             ),
@@ -422,7 +429,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         mood=BriefingMood.CLEAR,
         caption="Two decisions and the week is closed.",
         hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),
-        template_family=WEEKLY_FAMILY,
+        template_family=EditionFamily.WEEKLY,
         recipient_name=user.name,
         generated_at=_GENERATED_AT,
         tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),

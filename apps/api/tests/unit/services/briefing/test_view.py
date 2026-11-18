@@ -87,7 +87,7 @@ async def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
 
 async def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
     assert (await briefing_view(_brief(template_family="weekly"))).edition_name is None
-    assert (await briefing_view(_brief(template_family=""))).edition_name is None
+    assert (await briefing_view(_brief(template_family=None))).edition_name is None
 
 
 async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() -> None:
@@ -100,7 +100,7 @@ async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() 
     assert view.edition is not None
     assert view.edition.image_url.startswith(f"{settings.HOST}/api/v1/briefings/editions/k1/png?t=")
     assert (view.edition.fold, view.edition.paper) == (0.3, None)
-    assert (await briefing_view(_brief(template_family=""))).edition is None
+    assert (await briefing_view(_brief(template_family=None))).edition is None
 
 
 async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar() -> None:

@@ -23,9 +23,6 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
 from shared.py.wide_events import log
 
-#: The family a quiet note reports: it is drawn in none.
-QUIET_NOTE_FAMILY = "none"
-
 
 @dataclass(frozen=True)
 class PoolCounts:
@@ -90,7 +87,7 @@ def _record_sent(
         BriefingSent(
             kind=stored.kind,
             form=payload.form.value,
-            family=payload.template_family or QUIET_NOTE_FAMILY,
+            family=payload.template_family,
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
             channel_count=len(channels),

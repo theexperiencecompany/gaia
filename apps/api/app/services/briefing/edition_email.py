@@ -16,7 +16,7 @@ from html import escape
 from app.constants.briefing import (
     FOLD_MARKER_SELECTOR,
     PAPER_MARKER_SELECTOR,
-    WEEKLY_FAMILY,
+    EditionFamily,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -121,6 +121,8 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str, wording: _Em
 async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
     """Render the edition as a PNG cropped tight to its paper, with where its letter folds."""
     family = payload.template_family
+    if family is None:
+        raise ValueError("a quiet note is drawn in no family, so it has no edition to render")
     render = EXPLORER_RENDERER[family]
     edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
     frame = edition_frame(family)
@@ -169,7 +171,7 @@ def render_edition_email(
             delivered_message(payload),
             brief_url,
             unsubscribe_url,
-            _WEEKLY_WORDING if payload.template_family == WEEKLY_FAMILY else _DAILY_WORDING,
+            _WEEKLY_WORDING if payload.template_family == EditionFamily.WEEKLY else _DAILY_WORDING,
         )
         + "</div>"
     )

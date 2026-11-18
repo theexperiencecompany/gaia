@@ -1126,7 +1126,7 @@ class TestDailyBrief:
             lede="",
             mood=BriefingMood.IDLE,
             caption="",
-            template_family="",
+            template_family=None,
         )
         return BriefingModel(
             id=f"b-{day}-{kind}", user_id=_USER, date=day, kind=kind, payload=payload
@@ -2305,7 +2305,7 @@ class TestTheWeeklyReadsThisUsersWeek:
                 lede="",
                 mood=BriefingMood.IDLE,
                 caption="",
-                template_family="",
+                template_family=None,
             )
             return BriefingModel(
                 id=day, user_id=_USER, date=day, kind=BriefingKind.WEEKLY, payload=payload
@@ -2325,7 +2325,7 @@ class TestTheWeeklyReadsThisUsersWeek:
             "I'll flag anything that comes in.",
         ]
         payload = _stored_payload(world)
-        assert (payload.lede, payload.caption, payload.template_family) == ("", "", "")
+        assert (payload.lede, payload.caption, payload.template_family) == ("", "", None)
         channels = _delivered_to(world, BriefingKind.WEEKLY)
         assert channels
         assert world.capture.call_args.args == (
@@ -2333,7 +2333,7 @@ class TestTheWeeklyReadsThisUsersWeek:
             BriefingSent(
                 kind=BriefingKind.WEEKLY,
                 form="quiet_note",
-                family="none",
+                family=None,
                 mood=BriefingMood.IDLE,
                 item_count=0,
                 channel_count=len(channels),
@@ -2362,7 +2362,7 @@ class TestTheWeeklyReadsThisUsersWeek:
                 lede="",
                 mood=BriefingMood.IDLE,
                 caption="",
-                template_family="",
+                template_family=None,
             )
             return BriefingModel(id=day, user_id=_USER, date=day, kind=kind, payload=payload)
 

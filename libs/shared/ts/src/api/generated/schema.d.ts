@@ -7301,11 +7301,8 @@ export interface components {
             /** Stats */
             stats: components["schemas"]["BriefingStat"][];
             tallies: components["schemas"]["BriefingTallies"] | null;
-            /**
-             * Template Family
-             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.
-             */
-            template_family: string;
+            /** @description The edition template family this brief was drawn in, persisted so the archive re-renders identically forever; None for a quiet note, which is drawn in none. */
+            template_family: components["schemas"]["EditionFamily"] | null;
             /**
              * Uncomposed
              * @description Everything the brief read that the composition left out, for its full page.
@@ -9496,6 +9493,15 @@ export interface components {
          * @enum {string}
          */
         EditionChoice: "on" | "off" | "favourite";
+        /**
+         * EditionFamily
+         * @description Every edition family a brief is drawn in, one per vendored explorer template.
+         *
+         *     WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+         *     carries a city stamp. The editions package checks this set against the templates at import.
+         * @enum {string}
+         */
+        EditionFamily: "almanac" | "band" | "boardingpass" | "broadsheet" | "exhibition" | "flightplan" | "gradient" | "instrument" | "invoice" | "librarycard" | "memo" | "menu" | "metromap" | "playfair" | "postal" | "receipt" | "swiss" | "weekly";
         /**
          * EditionImage
          * @description A brief's edition as a surface loads it: its signed URL, its fold and its paper.
@@ -18240,6 +18246,7 @@ export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type EditionChoice = components['schemas']['EditionChoice'];
+export type EditionFamily = components['schemas']['EditionFamily'];
 export type EditionImage = components['schemas']['EditionImage'];
 export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
