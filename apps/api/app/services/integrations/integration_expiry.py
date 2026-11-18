@@ -43,6 +43,7 @@ from app.services.integrations.integration_accounts import (
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
+from app.utils.integration_links import integration_connect_path
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -217,8 +218,7 @@ async def announce_account_expiry(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url=f"/integrations?connect={integration_id}"
-                                f"&account={expired.account.id}",
+                                url=integration_connect_path(integration_id, expired.account.id),
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )

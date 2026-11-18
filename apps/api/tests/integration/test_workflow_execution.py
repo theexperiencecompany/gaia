@@ -492,10 +492,7 @@ class TestTriggerRegistration:
                 trigger_config=trigger_config,
             )
 
-        # _register_integration_triggers now returns (trigger_ids, integration_connected)
-        trigger_ids, connected = result
-        assert trigger_ids == ["trigger_id_1", "trigger_id_2"]
-        assert connected is True
+        assert result == ["trigger_id_1", "trigger_id_2"]
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
             # The parameter is `owner_id` now: registration serves tracked todos
@@ -508,7 +505,7 @@ class TestTriggerRegistration:
         )
 
     async def test_register_skips_non_integration_triggers(self):
-        """_register_integration_triggers returns ([], True) for manual triggers."""
+        """_register_integration_triggers returns [] for manual triggers."""
         trigger_config = _make_trigger_config(trigger_type=TriggerType.MANUAL)
 
         result = await WorkflowService._register_integration_triggers(
@@ -517,8 +514,7 @@ class TestTriggerRegistration:
             trigger_config=trigger_config,
         )
 
-        # Non-integration triggers return ([], True) — trigger_ids empty, integration_connected True
-        assert result == ([], True)
+        assert result == []
 
     async def test_register_raises_when_trigger_name_missing(self):
         """_register_integration_triggers raises when integration trigger has no name."""
@@ -1001,3 +997,84 @@ class TestActivateDeactivateLifecycle:
         assert result.activated is False
         # The repository deactivate() call persists activated=False.
         mock_deactivate.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TEST 11: A trigger's integration counts as a requirement everywhere
+# ---------------------------------------------------------------------------
+
+_GMAIL_TRIGGER = "gmail_new_message"
+
+
+def _gmail_triggered_workflow() -> Workflow:
+    """Build a workflow whose trigger needs Gmail but whose steps need nothing."""
+    workflow = _make_workflow(activated=False, trigger_type=TriggerType.INTEGRATION)
+    workflow.trigger_config.trigger_name = _GMAIL_TRIGGER
+    return workflow
+
+
+@pytest.fixture
+def _gmail_disconnected():
+    with (
+        patch(
+            "app.services.workflow.integration_requirements.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": False},
+        ),
+        patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new_callable=AsyncMock,
+            return_value={"gmail": False},
+        ),
+    ):
+        yield
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("_gmail_disconnected")
+class TestTriggerIntegrationIsRequired:
+    """Activate, regenerate and generate all ask the list view's question."""
+
+    @pytest.mark.regression
+    async def test_activate_names_the_trigger_integration(self):
+        with (
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch(f"{_REPO}.activate", new_callable=AsyncMock) as mock_activate,
+            pytest.raises(ValueError, match=r"^Connect Gmail to enable this workflow\.$"),
+        ):
+            await WorkflowService.activate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
+
+        mock_activate.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_regenerate_keeps_workflow_inactive(self):
+        with (
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch.object(
+                WorkflowGenerationService,
+                "generate_steps_with_llm",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_steps(1),
+            ),
+            patch(f"{_REPO}.set_steps", new_callable=AsyncMock, return_value=None) as set_steps,
+        ):
+            await WorkflowService.regenerate_workflow_steps(FAKE_WORKFLOW_ID, FAKE_USER_ID)
+
+        assert set_steps.await_args.kwargs["deactivate"] is True
+
+    @pytest.mark.regression
+    async def test_generate_keeps_workflow_inactive(self):
+        with (
+            patch(f"{_REPO}.touch", new_callable=AsyncMock),
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
+            patch.object(
+                WorkflowGenerationService,
+                "generate_steps_with_llm",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_steps(1),
+            ),
+            patch(f"{_REPO}.set_steps", new_callable=AsyncMock) as set_steps,
+        ):
+            await WorkflowService._generate_workflow_steps(FAKE_WORKFLOW_ID, FAKE_USER_ID)
+
+        assert set_steps.await_args.kwargs["deactivate"] is True

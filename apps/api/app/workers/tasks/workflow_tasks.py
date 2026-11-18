@@ -131,6 +131,7 @@ from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.errors import create_error
+from app.utils.integration_links import integration_connect_path
 from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
@@ -543,7 +544,7 @@ async def _notify_workflow_paused_for_integrations(
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=f"/integrations?id={first.id}",
+                                    url=integration_connect_path(first.id),
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )
