@@ -1,18 +1,18 @@
 """The composed sample briefs: what each family is handed, and the attribution their items carry."""
 
-from app.constants.briefing import POSTAL_FAMILY, BriefAction, BriefOutcome
+from app.constants.briefing import BriefAction, BriefOutcome, EditionFamily
 from app.models.brief_composition_models import ChartBlock
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 
-_DRAWS_EVERYTHING = "swiss"
+_DRAWS_EVERYTHING = EditionFamily.SWISS
 
 
 def test_a_family_without_charts_gets_the_chart_as_undrawn_and_draws_the_rest_in_order() -> None:
-    payload = composed_payload("busy", POSTAL_FAMILY, "stamp-art")
+    payload = composed_payload("busy", EditionFamily.POSTAL, "stamp-art")
 
     assert [block.kind for block in payload.blocks] == ["lead", "items", "items", "quote", "note"]
     assert [block.kind for block in payload.undrawn] == ["chart"]
-    assert payload.template_family == POSTAL_FAMILY
+    assert payload.template_family == EditionFamily.POSTAL
     assert payload.artwork_id == "stamp-art"
 
 

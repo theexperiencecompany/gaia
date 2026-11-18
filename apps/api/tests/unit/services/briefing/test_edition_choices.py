@@ -93,7 +93,9 @@ class TestSetEditionChoices:
         assert {e.family: e.choice for e in view.editions}["swiss"] == EditionChoice.FAVOURITE
 
     async def test_one_edition_left_on_is_accepted(self, seams: _Seams) -> None:
-        choices = {f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f != "swiss"}
+        choices: dict[str, EditionChoice] = {
+            f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f != "swiss"
+        }
 
         await set_edition_choices(_USER, choices)
 

@@ -306,8 +306,8 @@ class TestSampleEditionPayload:
     def test_air_mail_carries_a_stamp_and_a_framed_family_a_painting(self) -> None:
         with patch(f"{MODULE}.hosted_stamp_weights", return_value={"paris": 1, "lisbon": 1}):
             postal = dev_postmarks_seed.sample_edition_payload(EditionFamily.POSTAL, "Alex")
-        framed = dev_postmarks_seed.sample_edition_payload(ArtFamily.ALMANAC, "Alex")
-        plain = dev_postmarks_seed.sample_edition_payload("swiss", "Alex")
+        framed = dev_postmarks_seed.sample_edition_payload(EditionFamily.ALMANAC, "Alex")
+        plain = dev_postmarks_seed.sample_edition_payload(EditionFamily.SWISS, "Alex")
 
         assert (postal.stamp_city, postal.artwork_id) == ("lisbon", None)
         assert framed.stamp_city is None

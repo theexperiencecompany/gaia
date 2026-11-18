@@ -10,6 +10,7 @@ import pdf417gen
 import pytest
 import segno
 
+from app.constants.briefing import EditionFamily
 from app.services.briefing.editions.codes import (
     FAMILY_SYMBOLOGIES,
     CodeGeometry,
@@ -67,15 +68,17 @@ class TestCodeGeometry:
 
 class TestFamilyCodes:
     @pytest.mark.parametrize("family", sorted(FAMILY_SYMBOLOGIES))
-    def test_a_family_prints_each_of_its_symbologies_encoding_the_link(self, family: str) -> None:
+    def test_a_family_prints_each_of_its_symbologies_encoding_the_link(
+        self, family: EditionFamily
+    ) -> None:
         codes = family_codes(family, LINK)
 
         assert list(codes) == list(FAMILY_SYMBOLOGIES[family])
         assert all(codes[s] == code_geometry(s, LINK) for s in codes)
 
     def test_a_family_without_codes_prints_none_even_without_a_link(self) -> None:
-        assert family_codes("memo", None) == {}
+        assert family_codes(EditionFamily.MEMO, None) == {}
 
     def test_a_family_that_prints_a_code_needs_the_briefs_link(self) -> None:
         with pytest.raises(ValueError, match="the invoice edition prints the brief's link"):
-            family_codes("invoice", None)
+            family_codes(EditionFamily.INVOICE, None)

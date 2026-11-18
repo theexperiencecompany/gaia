@@ -62,7 +62,6 @@ apps/api/tests/integration/agents/test_turn_memory_recall.py	attr-defined
 apps/api/tests/integration/api/test_integration_endpoints.py	arg-type
 apps/api/tests/integration/api/test_share_download_flow.py	unused-ignore
 apps/api/tests/integration/api/test_tools_endpoints.py	arg-type
-apps/api/tests/integration/brief_compositions.py	arg-type
 apps/api/tests/integration/db/test_chroma_store.py	assignment
 apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
@@ -79,9 +78,6 @@ apps/api/tests/integration/real/test_local_sandbox_docker.py	misc
 apps/api/tests/integration/real/test_postgres_checkpointer.py	arg-type
 apps/api/tests/integration/real/test_sandbox_lock_real.py	attr-defined
 apps/api/tests/integration/real/test_websocket_broadcast_real.py	unused-ignore
-apps/api/tests/integration/test_edition_families_render.py	arg-type
-apps/api/tests/integration/test_edition_families_render.py	index
-apps/api/tests/integration/test_edition_fonts_render.py	index
 apps/api/tests/integration/test_lazy_provider_init.py	arg-type
 apps/api/tests/integration/test_lazy_provider_init.py	var-annotated
 apps/api/tests/integration/test_websocket_lifecycle.py	assignment
@@ -253,20 +249,6 @@ apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_capabilities.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_codes.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_codes.py	index
-apps/api/tests/unit/services/briefing/editions/test_edition_fonts.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_edition_fonts.py	index
-apps/api/tests/unit/services/briefing/editions/test_explorer_adapter.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_explorer_render.py	arg-type
-apps/api/tests/unit/services/briefing/editions/test_explorer_render.py	index
-apps/api/tests/unit/services/briefing/test_edition_choices.py	arg-type
-apps/api/tests/unit/services/briefing/test_edition_draws.py	arg-type
-apps/api/tests/unit/services/briefing/test_service.py	arg-type
-apps/api/tests/unit/services/briefing/test_shuffle_bag.py	arg-type
-apps/api/tests/unit/services/briefing/test_shuffle_bag.py	index
-apps/api/tests/unit/services/briefing/test_view.py	arg-type
 apps/api/tests/unit/services/browser/jev/test_gateway.py	attr-defined
 apps/api/tests/unit/services/browser/test_capability_code.py	arg-type
 apps/api/tests/unit/services/browser/test_capability_code.py	assignment
@@ -314,7 +296,6 @@ apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined
-apps/api/tests/unit/services/test_dev_postmarks_seed.py	arg-type
 apps/api/tests/unit/services/test_device_manifest_cache.py	operator
 apps/api/tests/unit/services/test_device_self_pair_service.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	attr-defined

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from tests.factories import make_brief_item as _item
 
-from app.constants.briefing import BriefAction
+from app.constants.briefing import BriefAction, EditionFamily
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions.codes import Symbology, code_geometry
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
@@ -44,7 +44,10 @@ def _payload(**overrides: Any) -> BriefingPayload:
 
 
 def _build(
-    payload: BriefingPayload, *, generated_local: str = "6:02 AM", family: str = "swiss"
+    payload: BriefingPayload,
+    *,
+    generated_local: str = "6:02 AM",
+    family: EditionFamily = EditionFamily.SWISS,
 ) -> dict[str, Any]:
     return dict(
         build_ed(
@@ -196,7 +199,7 @@ class TestBlocks:
         assert [b["kind"] for b in ed["blocks"]] == ["note", "items"]
 
     def test_the_weekly_family_lists_the_week_ahead_as_its_calendar(self) -> None:
-        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family="weekly")
+        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family=EditionFamily.WEEKLY)
 
         assert ed["blocks"] == [
             {
@@ -218,7 +221,7 @@ class TestBlocks:
         ]
 
     def test_a_daily_family_lists_todays_calendar(self) -> None:
-        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family="swiss")
+        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family=EditionFamily.SWISS)
 
         assert [
             e["title"] for b in ed["blocks"] if b["kind"] == "calendar" for e in b["events"]
@@ -229,7 +232,7 @@ class TestBlocks:
     ) -> None:
         ed = _build(
             _payload(calendar=[_TODAY_EVENT], sources_read=["Gmail"]),
-            family="swiss",
+            family=EditionFamily.SWISS,
         )
 
         [calendar] = [b for b in ed["blocks"] if b["kind"] == "calendar"]
@@ -240,13 +243,13 @@ class TestBlocks:
 @pytest.mark.unit
 class TestHeadline:
     @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet", "receipt"])
-    def test_every_family_leads_with_the_headline(self, family: str) -> None:
+    def test_every_family_leads_with_the_headline(self, family: EditionFamily) -> None:
         ed = _build(_payload(headline="Two replies need you"), family=family)
 
         assert ed["deck"] == "Two replies need you"
 
     def test_an_empty_day_draws_no_block_instead_of_a_placeholder_row(self) -> None:
-        assert _build(_payload(), family="boardingpass")["blocks"] == []
+        assert _build(_payload(), family=EditionFamily.BOARDINGPASS)["blocks"] == []
 
 
 @pytest.mark.unit
@@ -318,15 +321,15 @@ class TestAwaiting:
 @pytest.mark.unit
 class TestStamp:
     def test_air_mail_carries_the_drawn_citys_stamp(self) -> None:
-        ed = _build(_payload(stamp_city="paris"), family="postal")
+        ed = _build(_payload(stamp_city="paris"), family=EditionFamily.POSTAL)
 
         assert ed["stamp"] == stamp_for("paris")
 
     def test_a_legacy_air_mail_brief_without_a_city_keeps_the_template_axis(self) -> None:
-        assert _build(_payload(), family="postal")["stamp"] is None
+        assert _build(_payload(), family=EditionFamily.POSTAL)["stamp"] is None
 
     def test_other_families_carry_no_stamp(self) -> None:
-        assert _build(_payload(stamp_city="paris"), family="swiss")["stamp"] is None
+        assert _build(_payload(stamp_city="paris"), family=EditionFamily.SWISS)["stamp"] is None
 
 
 @pytest.mark.unit
@@ -341,7 +344,7 @@ class TestCodes:
         ],
     )
     def test_a_family_carries_only_the_codes_it_prints_each_encoding_the_link(
-        self, family: str, symbologies: list[Symbology]
+        self, family: EditionFamily, symbologies: list[Symbology]
     ) -> None:
         codes = _build(_payload(), family=family)["codes"]
 
@@ -349,7 +352,7 @@ class TestCodes:
 
     def test_a_family_that_prints_a_code_refuses_a_brief_without_a_link(self) -> None:
         with pytest.raises(ValueError, match="invoice"):
-            _build(_payload(link=None), family="invoice")
+            _build(_payload(link=None), family=EditionFamily.INVOICE)
 
     def test_a_family_without_a_code_renders_a_legacy_brief_without_a_link(self) -> None:
-        assert _build(_payload(link=None), family="swiss")["codes"] == {}
+        assert _build(_payload(link=None), family=EditionFamily.SWISS)["codes"] == {}

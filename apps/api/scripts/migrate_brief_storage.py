@@ -11,17 +11,14 @@
 Re-running skips every brief already moved. Run it in the post-deploy step, before the first
 brief runs on the new code.
 
-    cd apps/api && uv run python scripts/migrate_brief_storage.py [--apply]
+    cd apps/api && uv run python -m scripts.migrate_brief_storage [--apply]
 """
 
 import asyncio
-from pathlib import Path
 import sys
 from urllib.parse import urlsplit
 
 import httpx
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.constants.briefing import (
     BriefingKind,

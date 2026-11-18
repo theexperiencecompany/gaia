@@ -7,17 +7,14 @@ path}), drops the two old fields, and drops the indexes keyed on them so the API
 index build makes the new ones. Short links never reached production; this is for
 the databases that ran the branch (local dev and brief-eval copies).
 
-    cd apps/api && uv run python scripts/migrate_short_link_targets.py [--apply]
+    cd apps/api && uv run python -m scripts.migrate_short_link_targets [--apply]
 
 Dry run by default. Safely re-runnable: a link that already has its target is skipped.
 """
 
 import asyncio
 from collections.abc import Mapping
-from pathlib import Path
 import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pydantic import TypeAdapter
 

@@ -99,7 +99,7 @@ class TestDrawEdition:
     def test_a_framed_family_hangs_a_painting_that_fits_its_frame(self) -> None:
         family, unfit = _family_with_a_work_it_cannot_hang()
 
-        edition = draw_edition(_user_whose_bag_opens_on(unfit), [], family.value)
+        edition = draw_edition(_user_whose_bag_opens_on(unfit), [], EditionFamily(family))
 
         [drawn] = edition.draws
         assert edition.artwork_id == drawn.member

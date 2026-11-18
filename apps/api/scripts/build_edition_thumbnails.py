@@ -11,11 +11,13 @@ Usage (from apps/api, with a development apps/api/.env; nothing is read from its
 """
 
 import asyncio
+from collections.abc import Sequence
 import io
 from pathlib import Path
 
 from PIL import Image
 
+from app.constants.briefing import EditionFamily
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -57,7 +59,7 @@ def demo(png: bytes) -> bytes:
     return out.getvalue()
 
 
-def demo_payload(family: str) -> BriefingPayload:
+def demo_payload(family: EditionFamily) -> BriefingPayload:
     """Return the busy composition in family, wearing the sample's stamp or painting and day hue."""
     sample = sample_edition_payload(family, RECIPIENT)
     return composed_payload(DEMO_COMPOSITION, family, sample.artwork_id).model_copy(
@@ -70,7 +72,7 @@ def demo_payload(family: str) -> BriefingPayload:
     )
 
 
-def drop_stale(directory: Path, families: list[str]) -> None:
+def drop_stale(directory: Path, families: Sequence[str]) -> None:
     """Delete images for families that no longer exist."""
     for stale in set(directory.glob("*.webp")) - {directory / f"{f}.webp" for f in families}:
         stale.unlink()

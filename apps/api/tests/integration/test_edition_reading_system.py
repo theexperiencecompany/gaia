@@ -19,7 +19,7 @@ from playwright.async_api import Browser, async_playwright
 import pytest
 import pytest_asyncio
 
-from app.constants.briefing import EXPLORER_SCALE, ArtFamily, BriefAction
+from app.constants.briefing import EXPLORER_SCALE, ArtFamily, BriefAction, EditionFamily
 from app.models.brief_composition_models import ChartBlock, NoteBlock, ProgressBlock, QuoteBlock
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER
@@ -115,7 +115,7 @@ async def browser() -> AsyncIterator[Browser]:
 @pytest.mark.parametrize("composition", sorted(COMPOSITIONS))
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_family_draws_the_composition_by_the_reading_rules(
-    browser: Browser, family: str, composition: str
+    browser: Browser, family: EditionFamily, composition: str
 ) -> None:
     payload = composed_payload(composition, family, _ARTWORK if family in ArtFamily else None)
 

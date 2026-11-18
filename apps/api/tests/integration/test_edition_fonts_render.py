@@ -14,6 +14,7 @@ from typing import Any
 from playwright.async_api import CDPSession, Page, async_playwright
 import pytest
 
+from app.constants.briefing import EditionFamily
 from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.edition_fonts import EDITION_FAMILIES
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
@@ -69,7 +70,7 @@ async def _system_fonts(cdp: CDPSession) -> dict[str, int]:
     return used
 
 
-async def _check_every_skin(page: Page, family: str) -> list[str]:
+async def _check_every_skin(page: Page, family: EditionFamily) -> list[str]:
     cdp = await page.context.new_cdp_session(page)
     await cdp.send("DOM.enable")
     await cdp.send("CSS.enable")
@@ -89,7 +90,7 @@ async def _check_every_skin(page: Page, family: str) -> list[str]:
 @pytest.mark.parametrize("payload", [_DAILY, _QUIET], ids=["daily", "quiet"])
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_every_glyph_comes_from_an_embedded_font(
-    family: str, payload: dict[str, Any]
+    family: EditionFamily, payload: dict[str, Any]
 ) -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -112,7 +113,7 @@ async def test_every_glyph_comes_from_an_embedded_font(
 @pytest.mark.parametrize("composition", sorted(COMPOSITIONS))
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_every_composed_block_draws_from_an_embedded_font(
-    family: str, composition: str
+    family: EditionFamily, composition: str
 ) -> None:
     payload = composed_payload(composition, family, _artwork(family))
     html = EXPLORER_RENDERER[family](payload, edition_no=287, generated_local="6:02 AM")

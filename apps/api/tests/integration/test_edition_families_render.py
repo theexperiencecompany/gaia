@@ -21,7 +21,7 @@ from PIL import Image, ImageStat
 from playwright.async_api import async_playwright
 import pytest
 
-from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome
+from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome, EditionFamily
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
@@ -161,7 +161,7 @@ def _artwork(family: str) -> str | None:
     return _ARTWORK if family in ArtFamily else None
 
 
-def _render_html(family: str, payload: dict[str, Any]) -> str:
+def _render_html(family: EditionFamily, payload: dict[str, Any]) -> str:
     data = BriefingPayload.model_validate(
         {"artwork_id": _artwork(family), **payload, "template_family": family}
     )
@@ -182,7 +182,9 @@ async def _visible_text(html: str) -> str:
 @pytest.mark.integration
 @pytest.mark.parametrize("payload", [_DAILY, _QUIET], ids=["daily", "quiet"])
 @pytest.mark.parametrize("family", _FAMILIES)
-async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, Any]) -> None:
+async def test_family_renders_a_non_blank_png(
+    family: EditionFamily, payload: dict[str, Any]
+) -> None:
     frame = edition_frame(family)
     rendered = await render_html_to_image(
         _render_html(family, _as_rendered(family, payload)),
@@ -198,7 +200,7 @@ async def test_family_renders_a_non_blank_png(family: str, payload: dict[str, An
 @pytest.mark.parametrize("payload", [_DAILY, _QUIET], ids=["daily", "quiet"])
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_family_prints_the_brief_and_nothing_invented(
-    family: str, payload: dict[str, Any]
+    family: EditionFamily, payload: dict[str, Any]
 ) -> None:
     payload = _as_rendered(family, payload)
     text = await _visible_text(_render_html(family, payload))
@@ -249,7 +251,7 @@ async def test_family_prints_the_brief_and_nothing_invented(
 async def test_the_invoice_bills_what_awaits_the_user(
     payload: dict[str, Any], awaiting: str
 ) -> None:
-    text = " ".join((await _visible_text(_render_html("invoice", payload))).split())
+    text = " ".join((await _visible_text(_render_html(EditionFamily.INVOICE, payload))).split())
 
     assert awaiting in text, f"the amount box does not read {awaiting!r}: {text}"
     assert "Amount" not in text
@@ -350,7 +352,7 @@ def _shipped(family: str, payload: dict[str, Any]) -> BriefingPayload:
 @pytest.mark.parametrize("density", sorted(_DENSITIES))
 @pytest.mark.parametrize("family", _ON_A_DESK)
 async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
-    family: str, density: str
+    family: EditionFamily, density: str
 ) -> None:
     frame = edition_frame(family)
 
@@ -393,7 +395,7 @@ async def test_a_full_bleed_family_ships_opaque(family: str) -> None:
 @pytest.mark.parametrize("density", sorted(_DENSITIES))
 @pytest.mark.parametrize("family", _FULL_BLEED)
 async def test_a_full_bleed_family_ships_its_whole_page_and_nothing_more(
-    family: str, density: str
+    family: EditionFamily, density: str
 ) -> None:
     frame = edition_frame(family)
     payload = _shipped(family, _DENSITIES[density])
@@ -426,7 +428,7 @@ _ROWS = """() => {
 
 @pytest.mark.integration
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
-async def test_no_item_row_overprints_another_or_leaves_the_canvas(family: str) -> None:
+async def test_no_item_row_overprints_another_or_leaves_the_canvas(family: EditionFamily) -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
@@ -456,7 +458,7 @@ async def test_no_item_row_overprints_another_or_leaves_the_canvas(family: str) 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("family", ["boardingpass", "invoice", "memo", "postal"])
-async def test_the_edition_is_addressed_to_the_user_by_name(family: str) -> None:
+async def test_the_edition_is_addressed_to_the_user_by_name(family: EditionFamily) -> None:
     payload = {**_DAILY, "recipient_name": "Maya Okafor"}
 
     text = await _visible_text(_render_html(family, payload))
@@ -470,7 +472,9 @@ async def test_the_edition_is_addressed_to_the_user_by_name(family: str) -> None
 async def test_the_boarding_pass_barcode_line_carries_the_users_passenger_code(
     name: str, code: str
 ) -> None:
-    text = await _visible_text(_render_html("boardingpass", {**_DAILY, "recipient_name": name}))
+    text = await _visible_text(
+        _render_html(EditionFamily.BOARDINGPASS, {**_DAILY, "recipient_name": name})
+    )
 
     assert f"GA287 0602 {code}" in text
 
@@ -500,9 +504,9 @@ _PLACEHOLDER_ROW = re.compile(
 
 @pytest.mark.integration
 @pytest.mark.parametrize("payload", [_QUIET, _ONLY_OVERNIGHT], ids=["quiet", "only-overnight"])
-@pytest.mark.parametrize("family", sorted(set(EXPLORER_RENDERER) - {"weekly"}))
+@pytest.mark.parametrize("family", sorted(set(EXPLORER_RENDERER) - {EditionFamily.WEEKLY}))
 async def test_an_empty_bucket_renders_no_placeholder_row(
-    family: str, payload: dict[str, Any]
+    family: EditionFamily, payload: dict[str, Any]
 ) -> None:
     text = " ".join((await _visible_text(_render_html(family, payload))).split())
 
@@ -516,7 +520,7 @@ _DRAWN_BLOCKS = """() => document.querySelectorAll('.rs-sec, .rs-lead, [data-blo
 
 @pytest.mark.integration
 @pytest.mark.parametrize("family", _FAMILIES)
-async def test_an_empty_brief_draws_no_block_and_no_heading(family: str) -> None:
+async def test_an_empty_brief_draws_no_block_and_no_heading(family: EditionFamily) -> None:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
@@ -559,7 +563,7 @@ _QUOTED_TITLE = 'Wheat "Field" with Cypresses'
 @pytest.mark.integration
 @pytest.mark.parametrize("family", sorted(ArtFamily))
 async def test_a_quote_in_printed_text_stays_inside_its_attribute(
-    family: str, monkeypatch: pytest.MonkeyPatch
+    family: EditionFamily, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     artwork = artwork_catalogue()[_ARTWORK]
     monkeypatch.setattr(

@@ -827,7 +827,7 @@ def _prompt(w: World) -> str:
     return w.agent.await_args.kwargs["prompt"]
 
 
-def _family_first(w: World, family: str) -> None:
+def _family_first(w: World, family: EditionFamily) -> None:
     """Pin today's edition family: the default draw is random, and Air Mail adds a stamp line."""
     pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
     pool.remove(family)
@@ -866,7 +866,7 @@ class TestDailyBrief:
             blocked=[_todo("b1", "Approve the Priya reply")],
             completed=[_todo("c1", "Investor update")],
         )
-        _family_first(world, "memo")
+        _family_first(world, EditionFamily.MEMO)
 
         await run_brief(_USER, BriefingKind.DAILY)
 
@@ -1394,7 +1394,7 @@ class TestDailyBrief:
         monkeypatch.setattr(
             edition_draws, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
         )
-        _family_first(world, "postal")
+        _family_first(world, EditionFamily.POSTAL)
         seeded = world.bags["edition_family"].order
 
         await run_brief(_USER, BriefingKind.DAILY)
@@ -1411,7 +1411,7 @@ class TestDailyBrief:
     ) -> None:
         """A draw is spent only by a brief that went out: a failed run burns no member."""
         monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1})
-        _family_first(world, "postal")
+        _family_first(world, EditionFamily.POSTAL)
         family_before = world.bags["edition_family"]
         world.notify.side_effect = RuntimeError("orchestrator down")
 
@@ -1425,7 +1425,7 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"tokyo": 1})
-        _family_first(world, "postal")
+        _family_first(world, EditionFamily.POSTAL)
 
         await run_brief(_USER, BriefingKind.DAILY)
 
@@ -1443,7 +1443,7 @@ class TestDailyBrief:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"tokyo": 1})
-        _family_first(world, "postal")
+        _family_first(world, EditionFamily.POSTAL)
         earlier = BriefingModel(
             user_id=_USER,
             date="2026-09-01",
@@ -1467,7 +1467,7 @@ class TestDailyBrief:
         assert "New stamp" not in world.post.await_args.kwargs["text"]
 
     async def test_a_family_with_no_stamp_or_frame_draws_neither(self, world: World) -> None:
-        _family_first(world, "memo")
+        _family_first(world, EditionFamily.MEMO)
 
         await run_brief(_USER, BriefingKind.DAILY)
 
@@ -1477,7 +1477,7 @@ class TestDailyBrief:
 
     @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
     async def test_a_framed_brief_hangs_a_fitting_painting_from_the_artwork_bag(
-        self, world: World, family: str
+        self, world: World, family: EditionFamily
     ) -> None:
         _family_first(world, family)
 
@@ -1492,7 +1492,7 @@ class TestDailyBrief:
     async def test_the_next_framed_brief_hangs_the_next_painting_of_the_pass(
         self, world: World
     ) -> None:
-        _family_first(world, "exhibition")
+        _family_first(world, EditionFamily.EXHIBITION)
         order = sorted(artwork_weights())
         world.bags["artwork"] = ShuffleBag(order=order, index=3)
 
@@ -1504,7 +1504,7 @@ class TestDailyBrief:
     async def test_a_framed_brief_that_fails_to_deliver_spends_no_painting(
         self, world: World
     ) -> None:
-        _family_first(world, "almanac")
+        _family_first(world, EditionFamily.ALMANAC)
         world.notify.side_effect = RuntimeError("orchestrator down")
 
         with pytest.raises(RuntimeError, match="orchestrator down"):
@@ -3231,7 +3231,7 @@ class TestTheDailyRunWiring:
                 }
             )
         ]
-        _family_first(world, "memo")
+        _family_first(world, EditionFamily.MEMO)
 
         await run_brief(_USER, BriefingKind.DAILY)
 
@@ -3277,7 +3277,7 @@ class TestTheDailyRunWiring:
 
         world.composer.side_effect = with_progress
         monkeypatch.setattr(edition_draws, "families_drawing", lambda *_: set())
-        _family_first(world, "menu")
+        _family_first(world, EditionFamily.MENU)
 
         await run_brief(_USER, BriefingKind.DAILY)
 

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.constants.briefing import EditionChoice
+from app.constants.briefing import EditionChoice, EditionFamily
 from app.models.brief_composition_models import BriefBlock, ChartKind
 from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
@@ -73,7 +73,7 @@ _LEAD = {"kind": "lead", "section": 0}
 @pytest.mark.unit
 class TestCapabilities:
     @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
-    def test_every_family_draws_items_and_notes(self, family: str) -> None:
+    def test_every_family_draws_items_and_notes(self, family: EditionFamily) -> None:
         caps = edition_capabilities(family)
 
         assert {"items", "note"} <= caps.blocks
@@ -89,7 +89,7 @@ class TestCapabilities:
         ],
     )
     def test_a_family_leaves_out_what_the_gallery_says_it_cannot_draw(
-        self, family: str, leaves_out: set[str]
+        self, family: EditionFamily, leaves_out: set[str]
     ) -> None:
         candidates = {
             **{f"chart:{k.value}": _chart(k) for k in ChartKind},
@@ -110,12 +110,16 @@ class TestCapabilities:
         assert "menu" not in fits
         assert "memo" not in fits
         assert "postal" not in fits
-        assert fits == set(DAILY_FAMILY_WEIGHTS) - {"menu", "memo", "postal"}
+        assert fits == set(DAILY_FAMILY_WEIGHTS) - {
+            EditionFamily.MENU,
+            EditionFamily.MEMO,
+            EditionFamily.POSTAL,
+        }
 
     def test_split_keeps_the_reading_order_of_both_halves(self) -> None:
         blocks = _blocks(_NOTE, _chart(ChartKind.BAR), _PROGRESS, _chart(ChartKind.LINE))
 
-        drawn, undrawn = split_drawable("menu", blocks)
+        drawn, undrawn = split_drawable(EditionFamily.MENU, blocks)
 
         assert [b.kind for b in drawn] == ["note"]
         assert [getattr(b, "chart", b.kind) for b in undrawn] == [
@@ -133,7 +137,7 @@ def _user(order: list[str], index: int = 0) -> UserDocument:
     )
 
 
-def _pass_opening_with(first: str) -> list[str]:
+def _pass_opening_with(first: EditionFamily) -> list[str]:
     pool = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
     pool.remove(first)
     return [first, *pool]
@@ -142,13 +146,13 @@ def _pass_opening_with(first: str) -> list[str]:
 @pytest.mark.unit
 class TestDrawEdition:
     def test_the_bags_next_family_draws_when_it_can_draw_everything(self) -> None:
-        draw = draw_edition(_user(_pass_opening_with("menu")), _blocks(_NOTE), None)
+        draw = draw_edition(_user(_pass_opening_with(EditionFamily.MENU)), _blocks(_NOTE), None)
 
         assert draw.family == "menu"
         assert draw.undrawn == []
 
     def test_a_family_that_cannot_draw_a_block_keeps_its_turn_for_a_later_day(self) -> None:
-        order = _pass_opening_with("menu")
+        order = _pass_opening_with(EditionFamily.MENU)
 
         draw = draw_edition(_user(order), _blocks(_NOTE, _PROGRESS), None)
 

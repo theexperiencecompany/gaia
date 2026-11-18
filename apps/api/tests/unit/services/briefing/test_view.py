@@ -19,7 +19,7 @@ from app.services.briefing.view import briefing_view, public_view
 
 def _brief(
     *,
-    template_family: str,
+    template_family: EditionFamily | None,
     stamp_city: str | None = None,
     sections: list[BriefingSection] | None = None,
 ) -> BriefingModel:

@@ -266,17 +266,21 @@ class TestDocumentShell:
 
 @pytest.mark.unit
 class TestTransparentDesk:
-    @pytest.mark.parametrize(("family", "transparent"), [("postal", True), ("swiss", False)])
+    @pytest.mark.parametrize(
+        ("family", "transparent"), [(EditionFamily.POSTAL, True), (EditionFamily.SWISS, False)]
+    )
     def test_a_paper_on_a_desk_is_rendered_without_its_desk(
-        self, family: str, transparent: bool
+        self, family: EditionFamily, transparent: bool
     ) -> None:
         html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
 
         assert ("#root > article { background: none; }" in html) is transparent
         assert edition_frame(family).transparent_desk is transparent
 
-    @pytest.mark.parametrize("family", ["postal", "swiss"])
-    def test_nothing_but_the_family_rules_follows_the_body_width(self, family: str) -> None:
+    @pytest.mark.parametrize("family", [EditionFamily.POSTAL, EditionFamily.SWISS])
+    def test_nothing_but_the_family_rules_follows_the_body_width(
+        self, family: EditionFamily
+    ) -> None:
         html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
 
         style = html.split("<style>")[1].split("</style>")[0]
