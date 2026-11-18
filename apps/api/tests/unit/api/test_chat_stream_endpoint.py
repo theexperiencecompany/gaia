@@ -18,6 +18,10 @@ from httpx import AsyncClient
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.core.background.executor_capture import (
+    register_executor_capture,
+    teardown_executor_capture,
+)
 from app.agents.core.background.running_registry import RunningSubagents
 from app.api.v1.endpoints.chat import _stream_from_redis
 from app.core.stream_manager import stream_manager
@@ -25,6 +29,8 @@ from app.models.agent_models import RunningSubagent
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
+from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.browser_factories import make_browser_job_state
@@ -218,6 +224,38 @@ def _dropped_request() -> MagicMock:
     request = MagicMock()
     request.is_disconnected = AsyncMock(return_value=True)
     return request
+
+
+class TestReplyDeliveryStamp:
+    """The web reader stamps the turn's frame_written mark, the end of the egress stretch."""
+
+    async def test_the_first_reply_frame_sent_to_the_client_stamps_the_turn_clock(
+        self,
+    ) -> None:
+        clock = TurnClock(received=1.0)
+        register_executor_capture("s-stamp", clock=clock)
+
+        def reply(
+            stream_id: str, keepalive_interval: float = 15, last_event_id: str | None = None
+        ) -> AsyncGenerator[str, None]:
+            async def _gen() -> AsyncGenerator[str, None]:
+                yield 'id: 1700000000000-0\ndata: {"response": "hello"}\n\n'
+
+            return _gen()
+
+        try:
+            with (
+                patch("app.api.v1.endpoints.chat.stream_manager.subscribe_stream", new=reply),
+                patch("app.api.v1.endpoints.chat.redis_cache.redis", new=MagicMock()),
+            ):
+                frames = [
+                    chunk async for chunk in _stream_from_redis("s-stamp", _connected_request())
+                ]
+        finally:
+            teardown_executor_capture("s-stamp")
+
+        assert frames == ['id: 1700000000000-0\ndata: {"response": "hello"}\n\n']
+        assert TurnMark.FRAME_WRITTEN in clock.marks
 
 
 class TestSSEDeliveryLatency:
@@ -448,6 +486,54 @@ def accepted_turn(owned_conversations: set[tuple[str, str]]) -> Iterator[MagicMo
         patch("app.api.v1.endpoints.chat.capture") as mock_capture,
     ):
         yield mock_capture
+
+
+class TestChatTurnClock:
+    async def test_an_accepted_turn_hands_its_started_clock_to_the_background_run(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock
+            ) as run,
+            patch("app.services.turn_clock.time.perf_counter", return_value=42.5),
+        ):
+            response = await client.post("/api/v1/chat-stream", json=_DESKTOP_TURN)
+
+        assert response.status_code == 200, response.text
+        assert run.call_args.kwargs["clock"].marks[TurnMark.T0] == 42.5
+
+
+class TestChatIngressSteps:
+    async def test_an_accepted_turn_times_its_gates_ownership_and_stream_start_in_order(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock
+            ) as run,
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock
+            ) as start_stream,
+        ):
+            timings = begin_turn_timings()
+            response = await client.post(
+                "/api/v1/chat-stream", json={**_DESKTOP_TURN, "conversation_id": "conv-1"}
+            )
+
+        assert response.status_code == 200, response.text
+        assert run.call_args.kwargs["clock"].timings is timings
+        assert [step for phase, step in timings.steps if phase is TurnPhase.INGRESS] == [
+            TurnStep.RATE_LIMIT,
+            TurnStep.CHARGE,
+            TurnStep.OWNERSHIP,
+            TurnStep.START_STREAM,
+        ]
+        start_stream.assert_awaited_once_with(
+            stream_id=response.headers["X-Stream-Id"],
+            conversation_id="conv-1",
+            user_id=FAKE_USER.user_id,
+        )
 
 
 class TestChatCostGate:

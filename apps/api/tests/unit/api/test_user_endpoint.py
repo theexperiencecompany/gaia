@@ -14,6 +14,7 @@ import pytest
 
 from app.api.v1.endpoints.user import get_me
 from app.config.settings import settings
+from app.config.workos import workos_signing_keys
 from app.constants.auth import SESSION_HINT_COOKIE
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
@@ -593,6 +594,10 @@ class TestUpdateHoloCardColors:
 # ---------------------------------------------------------------------------
 
 
+# The shared signing-key cache is keyed by the session client's JWKS URL.
+_JWKS_URL = "https://api.workos.com/sso/jwks/client_test"
+
+
 class TestLogout:
     """POST /api/v1/user/logout."""
 
@@ -628,6 +633,7 @@ class TestLogout:
     @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
         session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
@@ -636,6 +642,11 @@ class TestLogout:
         assert response.status_code == 200
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
+        mock_workos.return_value.user_management.load_sealed_session.assert_called_once_with(
+            sealed_session="sealed_token", cookie_password=settings.WORKOS_COOKIE_PASSWORD
+        )
+        # Verified against the process's cached signing keys, not a fresh per-session fetch.
+        assert session.jwks is workos_signing_keys(_JWKS_URL)
 
     @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_to_switch_accounts_comes_back_to_sign_in_then_the_page(
@@ -643,6 +654,7 @@ class TestLogout:
     ):
         """Ending the hosted session too is what lets the next sign-in pick another account."""
         session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
@@ -674,6 +686,7 @@ class TestLogout:
         posthog_client.capture.side_effect = RuntimeError("ph down")
         posthog_provider(available=True, client=posthog_client)
         session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")

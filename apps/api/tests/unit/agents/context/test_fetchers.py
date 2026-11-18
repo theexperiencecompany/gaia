@@ -19,7 +19,6 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
-from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
     _dedupe_by_provider,
@@ -30,6 +29,7 @@ from app.agents.context.fetchers import (
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -94,6 +94,65 @@ def ctx(
         user_preferences=user_preferences,
         source=source,
     )
+
+
+_FAST_RECALL = "app.memory.fast_recall.fast_recall"
+
+
+@pytest.mark.unit
+class TestFastRecallBlock:
+    async def test_renders_the_turns_memories_recalled_for_this_user_and_conversation(
+        self,
+    ) -> None:
+        recall = AsyncMock(
+            return_value=[
+                memory("User likes coffee", mentioned="2026-01-05"),
+                memory("User prefers dark mode", mentioned="2026-02-11"),
+            ]
+        )
+        turn = replace(ctx(user_id="user-7", query="coffee?"), conversation_id="conv-1")
+        with patch(_FAST_RECALL, recall):
+            async with captured_wide_event() as event:
+                block = await build_fast_recall_block(turn)
+
+        assert block == (
+            f"{MEMORY_RECALL_HEADER}\n"
+            "- User likes coffee [mentioned 2026-01-05]\n"
+            "- User prefers dark mode [mentioned 2026-02-11]"
+        )
+        recall.assert_awaited_once_with("user-7", "coffee?", conversation_id="conv-1")
+        assert event["memory_fast_recall"] == {"count": 2}
+
+    @pytest.mark.parametrize("turn", [ctx(query=None), ctx(user_id=None)])
+    async def test_renders_nothing_without_both_a_user_and_a_query(
+        self, turn: SectionContext
+    ) -> None:
+        recall = AsyncMock(return_value=[memory("never shown")])
+        with patch(_FAST_RECALL, recall):
+            assert await build_fast_recall_block(turn) == ""
+
+        recall.assert_not_awaited()
+
+    async def test_renders_nothing_when_nothing_matched(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(return_value=[])):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx()) == ""
+
+        assert event["memory_fast_recall"] == {"count": 0}
+
+    async def test_a_failed_lane_costs_only_its_section_and_is_logged(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(side_effect=RuntimeError("pg down"))):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx(user_id="user-7")) == ""
+
+        assert event["errors"] == [
+            {
+                "msg": "Memory fast lane failed",
+                "user_id": "user-7",
+                "error_type": "RuntimeError",
+                "error": "pg down",
+            }
+        ]
 
 
 @pytest.mark.unit
@@ -824,17 +883,12 @@ class TestTrackedTodosListIsTheCachedRead:
         assert repo_reads.await_count == 2
 
 
-async def _never_finishes() -> str:
-    await asyncio.sleep(3600)
-    return ""
-
-
 @pytest.mark.unit
 class TestCoreContextSingleFlight:
     """Pin that the two core-memory sections share one in-flight core fetch.
 
-    They run in the same asyncio.gather, so they share rather than race; a task
-    bound to a dead loop is never awaited cross-loop.
+    They run in the same asyncio.gather, so they share rather than race; the
+    registry's own eviction and loop-binding are pinned in test_request_coalescing.
     """
 
     async def test_both_core_sections_share_one_fetch(self) -> None:
@@ -908,39 +962,6 @@ class TestCoreContextSingleFlight:
             with pytest.raises(asyncio.CancelledError):
                 await first
             assert await second == f"{CORE_MEMORY_HEADER}\nDocs."
-
-    async def test_the_inflight_entry_is_evicted_on_completion(self) -> None:
-        """Eviction bounds the registry; a leak would keep every user's core context forever."""
-
-        async def _core(user_id: str) -> str:
-            return "Docs."
-
-        with patch("app.memory.engine.memory_engine.get_core_context", _core):
-            await build_core_memory_block(ctx())
-
-        assert fetchers._inflight_core == {}
-
-    def test_a_task_from_a_previous_loop_is_never_awaited(self) -> None:
-        """A pending task left by a dead loop is ignored, never awaited cross-loop."""
-        other_loop = asyncio.new_event_loop()
-        stale = other_loop.create_task(_never_finishes())
-        fetchers._inflight_core[(other_loop, "user1")] = stale
-        fetched: list[str] = []
-
-        async def _core(user_id: str) -> str:
-            fetched.append(user_id)
-            return "Docs."
-
-        try:
-            with patch("app.memory.engine.memory_engine.get_core_context", _core):
-                block = asyncio.run(build_core_memory_block(ctx()))
-            assert fetched == ["user1"]
-            assert block == f"{CORE_MEMORY_HEADER}\nDocs."
-        finally:
-            fetchers._inflight_core.pop((other_loop, "user1"), None)
-            stale.cancel()
-            other_loop.run_until_complete(asyncio.sleep(0))
-            other_loop.close()
 
 
 @pytest.mark.unit
