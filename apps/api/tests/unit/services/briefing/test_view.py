@@ -3,6 +3,8 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
+from datetime import UTC, datetime
+
 from app.config.settings import settings
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome, EditionFamily
 from app.models.brief_composition_models import BriefBlock, SectionBlock
@@ -105,13 +107,21 @@ async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() 
     assert (await briefing_card(_brief(template_family=None))).edition is None
 
 
-async def test_the_owners_view_carries_the_briefs_card() -> None:
-    brief = _brief(template_family=EditionFamily.POSTAL, stamp_city="bogota")
+async def test_the_owners_view_carries_the_briefs_card_and_its_delivery() -> None:
+    opened = datetime(2026, 10, 21, 8, 5, tzinfo=UTC)
+    brief = _brief(template_family=EditionFamily.POSTAL, stamp_city="bogota").model_copy(
+        update={"opened_at": opened, "delivered_channels": ["inapp", "email"]}
+    )
 
     view = await briefing_view(brief)
 
     assert view.card == await briefing_card(brief)
     assert view.payload == brief.payload
+    assert (view.opened_at, view.delivered_channels, view.created_at) == (
+        opened,
+        ["inapp", "email"],
+        brief.created_at,
+    )
 
 
 def _items(section: int, count: int) -> list[BriefingItem]:
