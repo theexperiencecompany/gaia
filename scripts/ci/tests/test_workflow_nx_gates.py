@@ -166,6 +166,9 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("libs/shared/ts/src/bots/conversation/follower.ts", "bot-harness:e2e"),
         ("apps/api/app/services/hil/conversational.py", "bot-harness:e2e"),
         ("apps/bots/harness/scenarios/approval-yes-no.yaml", "bot-harness:e2e"),
+        # Anything the stack runs: a hand-kept list missed the services the flows go through.
+        ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
+        ("apps/api/app/services/mail/email_verdict.py", "bot-harness:e2e"),
         # A deleted file is a change: a per-file-ignores entry for it goes stale.
         ("apps/api/app/gone_module.py", "ci:ignore-staleness"),
     ],
@@ -186,9 +189,11 @@ def test_detect_selects(path: str, task: str) -> None:
         ("scripts/ci/deploy.sh", "ci:desktop-package"),
         ("apps/api/CLAUDE.md", "api:docker:build"),
         ("pnpm-lock.yaml", "api:docker:build"),
-        ("apps/web/src/features/landing/components/LazyMotionProvider.tsx", "web:e2e-screen"),
-        ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
-        ("apps/api/app/services/mail/email_verdict.py", "bot-harness:e2e"),
+        # The sim lanes wake on what the stack runs, never on the API's own tests or another app.
+        ("apps/api/tests/conftest.py", "web:e2e-screen"),
+        ("apps/api/tests/conftest.py", "bot-harness:e2e"),
+        ("apps/voice-agent/src/agent.py", "bot-harness:e2e"),
+        ("apps/desktop/src/main/index.ts", "web:e2e-screen"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:

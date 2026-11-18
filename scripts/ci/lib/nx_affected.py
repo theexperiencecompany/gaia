@@ -89,14 +89,19 @@ def _target(task: str) -> str:
 
 
 def _nx(*args: str) -> str:
-    return subprocess.run(
-        ["pnpm", "exec", "nx", *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+    # A file, not a pipe: nx exits before a macOS pipe drains and cut --explain at 512 bytes.
+    with tempfile.TemporaryFile(mode="w+") as stdout:
+        subprocess.run(
+            ["pnpm", "exec", "nx", *args],
+            cwd=REPO_ROOT,
+            env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        stdout.seek(0)
+        return stdout.read()
 
 
 def _json_after_banner(out: str, opener: str) -> object:
