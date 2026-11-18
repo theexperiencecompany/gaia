@@ -13,7 +13,6 @@ import type {
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
-import fetchDate from "@/utils/date/dateUtils";
 
 type SendMessageOverrides = {
   files?: MessageType["fileData"];
@@ -173,7 +172,7 @@ export async function sendMessage(
 
   trackFirstMessageMilestone();
 
-  const isoTimestamp = fetchDate();
+  const isoTimestamp = new Date().toISOString();
   const createdAt = new Date(isoTimestamp);
   const optimisticId = uuidv4();
 

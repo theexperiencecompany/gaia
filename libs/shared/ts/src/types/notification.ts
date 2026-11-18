@@ -1,4 +1,7 @@
-import type { NotificationActionView } from "../api/generated";
+import type {
+  ChannelPreferences,
+  NotificationActionView,
+} from "../api/generated";
 
 export type {
   BriefingFrequency,
@@ -76,19 +79,27 @@ export interface PlatformLinksResponse {
   platform_links: Record<string, PlatformLink>;
 }
 
-// Mirrors USER_CONFIGURABLE_CHANNELS in apps/api/app/constants/notifications.py:
-// every channel the user can switch on or off. `inapp` is absent on purpose — it
-// is always delivered, so it has no preference to store.
-export const NOTIFICATION_CHANNELS = [
-  "telegram",
-  "discord",
-  "whatsapp",
-  "slack",
-  "imessage",
-  "email",
-] as const;
+/**
+ * Every channel the user can switch on or off: the API's ChannelPreferences
+ * keys. `inapp` is absent on purpose; it is always delivered, so it has no
+ * preference to store.
+ */
+export type ChannelPlatform = keyof ChannelPreferences;
 
-export type ChannelPlatform = (typeof NOTIFICATION_CHANNELS)[number];
+// Keyed by ChannelPlatform, so a channel the API adds fails to compile until it is placed here.
+const CHANNEL_DISPLAY_ORDER: Record<ChannelPlatform, true> = {
+  telegram: true,
+  discord: true,
+  whatsapp: true,
+  slack: true,
+  imessage: true,
+  email: true,
+};
+
+/** The switchable channels in the order settings list them. */
+export const NOTIFICATION_CHANNELS = Object.keys(
+  CHANNEL_DISPLAY_ORDER,
+) as ChannelPlatform[];
 
 // What the email switch controls: GAIA's own emails to the user (the brief, tips,
 // check-ins), not a copy of every notification.

@@ -1,8 +1,8 @@
 "use client";
 
 import { Chip } from "@heroui/react";
-
 import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
+import { FIXED_LOCALE, formatRelativeDate } from "@shared/utils";
 import { track } from "@/lib/analytics";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
@@ -10,25 +10,10 @@ interface RedditPostCardProps {
   post: RedditPostData;
 }
 
-// Format timestamp to relative time
+// The date past a week is read in UTC so the server and the browser agree.
 function formatTime(timestamp: number): string {
-  const date = new Date(timestamp * 1000); // Convert Unix timestamp to ms
-  const now = new Date();
-  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-
-  if (diffInSeconds < 60) return "Just now";
-  if (diffInSeconds < 3600)
-    return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-  if (diffInSeconds < 86400)
-    return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-  if (diffInSeconds < 604800)
-    return `${Math.floor(diffInSeconds / 86400)} days ago`;
-
-  // UTC keeps the rendered date identical between SSR and the browser.
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  return formatRelativeDate(new Date(timestamp * 1000), {
+    locale: FIXED_LOCALE,
     timeZone: "UTC",
   });
 }

@@ -1,4 +1,3 @@
-import type { ChannelPlatform } from "@gaia/shared/types";
 import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
@@ -73,20 +72,6 @@ export class NotificationsAPI {
   static markAllAsRead(channelType?: string) {
     return api.post("/api/v1/notifications/mark-all-read", {
       query: { channel_type: channelType },
-    });
-  }
-
-  /** The enabled state of every user-configurable notification channel. */
-  static getChannelPreferences() {
-    return api.get("/api/v1/notifications/preferences/channels");
-  }
-
-  static async updateChannelPreference(
-    channel: ChannelPlatform,
-    enabled: boolean,
-  ): Promise<void> {
-    await api.put("/api/v1/notifications/preferences/channels", {
-      body: { [channel]: enabled },
     });
   }
 }

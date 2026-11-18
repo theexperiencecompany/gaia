@@ -2,47 +2,58 @@
 
 import { ArrowUpRight01Icon } from "@icons";
 import type {
-  BriefingEvent,
+  BriefingItem,
   BriefingPayload,
+  BriefingSection,
   BriefPoolItem,
 } from "@shared/api/generated";
+import { formatClockTime } from "@shared/utils";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { z } from "zod";
 
-import type { briefingSchema } from "@/config/openui/promptSpecs";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { cn } from "@/lib/utils";
 
-import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "../constants";
+import {
+  BRIEF_PAGE_COLUMN_CLASS,
+  EDITION_RENDER_WIDTH_PX,
+  EDITION_TYPICAL_HEIGHT_PX,
+} from "../letterTokens";
+import {
+  BRIEF_ITEM_STATES,
+  hiddenEvents,
+  leftOutItems,
+} from "../utils/editionLeftOut";
 
-/** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
-export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
-  calendar?: BriefingEvent[];
-  message?: string | null;
-  /** What the brief read but GAIA left out of today's composition. */
-  uncomposed?: BriefPoolItem[];
-  /** The brief as composed, in reading order: the blocks its edition drew. */
-  blocks?: BriefingPayload["blocks"];
-  /** Composed blocks the day's edition could not draw in its idiom. */
-  undrawn?: BriefingPayload["undrawn"];
-};
+/** An item as this view reads it: its words, its state and where it opens. */
+type EditionItem = Pick<BriefingItem, "text" | "kind"> &
+  Partial<Pick<BriefingItem, "todo_id" | "link">>;
+
+/**
+ * The brief's fields this view reads, off the stored payload. GAIA's OpenUI
+ * Briefing component carries only the headline and sections, so the rest is
+ * optional: the calendar, GAIA's message, what the composition left out
+ * (uncomposed), the blocks the edition drew and those it could not (undrawn).
+ */
+export type BriefingEditionPayload = Pick<BriefingPayload, "headline"> & {
+  sections: (Pick<BriefingSection, "numeral" | "title"> & {
+    items: EditionItem[];
+  })[];
+} & Partial<
+    Pick<
+      BriefingPayload,
+      "calendar" | "message" | "uncomposed" | "blocks" | "undrawn"
+    >
+  >;
 
 type UndrawnBlock = BriefingPayload["undrawn"][number];
-
-type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
 
 export interface BriefingEditionProps {
   payload: BriefingEditionPayload;
   /** The day's rendered edition, when the brief was rendered. */
   imageUrl?: string | null;
 }
-
-// Rendered at 3x: a 540px page, plus a desk family's transparent shadow margin. The
-// height only reserves space while loading: `h-auto` keeps the natural ratio.
-const EDITION_WIDTH = 1716;
-const EDITION_TYPICAL_HEIGHT = 4700;
 
 /**
  * The owner's copy carries todo_id and opens the in-app todo; the public copy
@@ -80,21 +91,6 @@ function undrawnLines(payload: BriefingEditionPayload): string[] {
     .filter((line): line is string => line !== null);
 }
 
-/** What the full page lists for a brief that has an edition: every item the image left out. */
-function leftOutItems(payload: BriefingEditionPayload): EditionItem[] {
-  const drawnOverflow = (payload.blocks ?? []).flatMap((block) =>
-    block.kind === "items"
-      ? (payload.sections[block.section]?.items ?? []).slice(EDITION_ROWS_SHOWN)
-      : [],
-  );
-  const undrawnSections = (payload.undrawn ?? []).flatMap((block) =>
-    block.kind === "lead" || block.kind === "items"
-      ? (payload.sections[block.section]?.items ?? [])
-      : [],
-  );
-  return [...undrawnSections, ...drawnOverflow];
-}
-
 function ItemRow({ text, href }: { text: string; href: string | null }) {
   if (!href) {
     return <p className="text-sm font-medium text-zinc-200">{text}</p>;
@@ -124,22 +120,20 @@ function ItemGroup({
   );
 }
 
-/** A calendar event's wall-clock "HH:MM" as the reader's own clock writes it. */
-function clockTime(start: string): string {
-  const [hours, minutes] = start.split(":").map(Number);
-  const at = new Date();
-  at.setHours(hours, minutes, 0, 0);
-  return at.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+interface BriefingTextProps {
+  payload: BriefingEditionPayload;
+  /** Only the letter the edition draws, for a page that lists what it left out below it. */
+  letterOnly?: boolean;
 }
 
-/** A brief with no rendered edition, read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
-function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
+/** A brief read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
+export function BriefingText({
+  payload,
+  letterOnly = false,
+}: BriefingTextProps) {
   const calendar = payload.calendar ?? [];
-  const uncomposed = payload.uncomposed ?? [];
-  const undrawn = undrawnLines(payload);
+  const uncomposed = letterOnly ? [] : (payload.uncomposed ?? []);
+  const undrawn = letterOnly ? [] : undrawnLines(payload);
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
       <p className="mb-3 text-sm font-semibold text-zinc-100">
@@ -161,7 +155,7 @@ function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
                 className="text-sm font-medium text-zinc-200"
               >
                 <span className="mr-2 text-xs text-zinc-500 tabular-nums">
-                  {event.start ? clockTime(event.start) : "All day"}
+                  {event.start ? formatClockTime(event.start) : "All day"}
                 </span>
                 {event.title}
               </p>
@@ -217,7 +211,10 @@ function BelowEdition({
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="mx-auto w-full max-w-[540px]">
+    <section
+      aria-labelledby={id}
+      className={cn("mx-auto w-full", BRIEF_PAGE_COLUMN_CLASS)}
+    >
       <h2 id={id} className="mb-1 text-sm font-medium text-zinc-300">
         {title}
       </h2>
@@ -287,7 +284,10 @@ function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
   return (
     <section
       aria-labelledby="brief-on-your-radar"
-      className="mx-auto w-full max-w-[540px] rounded-2xl bg-zinc-900 p-4"
+      className={cn(
+        "mx-auto w-full rounded-2xl bg-zinc-900 p-4",
+        BRIEF_PAGE_COLUMN_CLASS,
+      )}
     >
       <header className="mb-4 px-1">
         <h2
@@ -323,34 +323,36 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   const uncomposed = payload.uncomposed ?? [];
   const undrawn = undrawnLines(payload);
   const leftOut = leftOutItems(payload);
-  const hiddenEvents = (payload.calendar ?? []).slice(EDITION_ROWS_SHOWN);
+  const pastRows = hiddenEvents(payload.calendar);
   return (
     <div className="w-full space-y-8">
       <Image
         src={imageUrl}
         alt={payload.headline}
-        width={EDITION_WIDTH}
-        height={EDITION_TYPICAL_HEIGHT}
+        width={EDITION_RENDER_WIDTH_PX}
+        height={EDITION_TYPICAL_HEIGHT_PX}
         sizes="(max-width: 640px) 100vw, 572px"
         // On a phone the image's own transparent margin stands in for StandalonePage's
         // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
         className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
       />
-      {(undrawn.length > 0 ||
-        leftOut.length > 0 ||
-        hiddenEvents.length > 0) && (
+      {/* The edition is a picture of the letter; a screen reader reads the letter itself. */}
+      <div className="sr-only">
+        <BriefingText payload={payload} letterOnly />
+      </div>
+      {(undrawn.length > 0 || leftOut.length > 0 || pastRows.length > 0) && (
         <BelowEdition id="brief-more-from-gaia" title="More from GAIA">
           {undrawn.map((line) => (
             <li key={line} className="py-3 text-sm text-zinc-300">
               {line}
             </li>
           ))}
-          {hiddenEvents.map((event) => (
+          {pastRows.map((event) => (
             <li
               key={`${event.start ?? "all-day"}-${event.title}`}
               className="py-3 text-sm text-zinc-300"
             >
-              {event.start ? `${clockTime(event.start)} ` : ""}
+              {event.start ? `${formatClockTime(event.start)} ` : ""}
               {event.title}
             </li>
           ))}

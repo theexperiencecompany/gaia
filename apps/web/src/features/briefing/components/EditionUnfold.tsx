@@ -14,18 +14,20 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   LETTER_CLOSE_TRANSITION,
+  LETTER_CREASE_TRANSITION,
   LETTER_EXIT_SCALE,
   LETTER_OPEN_TRANSITION,
   LETTER_REDUCED_TRANSITION,
-} from "@/components/shared/LetterModal";
+  LETTER_TRAVEL_TRANSITION,
+} from "@/components/shared/letterMotion";
 import { cn } from "@/lib/utils";
-
 import {
-  LETTER_PERSPECTIVE_PX,
+  LETTER_FOLD_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
-  type PreparedEdition,
-  paperBackGradient,
-} from "../utils/preparedEdition";
+  LETTER_TILT_PERSPECTIVE_PX,
+} from "../letterTokens";
+import { panelBack } from "../paperMaterial";
+import type { PreparedEdition } from "../utils/preparedEdition";
 
 /** A panel stops short of a flat 180deg fold so stacked panels never z-fight. */
 const FOLDED_DEG = 177;
@@ -38,10 +40,6 @@ const LIFT_FROM_SCALE = 0.97;
 /** A letter rising from a card is fully shown by this share of its rise. */
 const FADE_IN_END = 0.6;
 
-/** A letter opened from a card rises on every letter's rise; one opened from chat travels from where it lay. */
-const TRAVEL_TRANSITION = { duration: 0.5, ease: [0.32, 0.72, 0, 1] } as const;
-/** Each crease unpeels gently and settles long, so a panel never flips or snaps flat. */
-const CREASE_TRANSITION = { duration: 0.42, ease: [0.5, 0, 0.15, 1] } as const;
 /** The first crease starts once the letter has begun to rise; a travelling one waits a little longer. */
 const FIRST_CREASE_DELAY_S = { lift: 0.1, travel: 0.14 } as const;
 /** The later creases start within this span of the first, however many there are. */
@@ -59,7 +57,7 @@ function creaseDelay(index: number, creases: number, travels: boolean): number {
 }
 
 /** The shading a crease casts on the panel below it; both fade to nothing as the panel lies flat. */
-function Crease({
+function CreaseShade({
   fold,
   isDarkPaper,
 }: {
@@ -146,7 +144,9 @@ function Panel({ index, edition, creases }: PanelProps) {
         <div className="absolute inset-x-0 bottom-0" style={{ top: overlap }}>
           <PanelFace bitmap={edition.panels[index]} />
         </div>
-        {!isFirst && <Crease fold={fold} isDarkPaper={edition.isDarkPaper} />}
+        {!isFirst && (
+          <CreaseShade fold={fold} isDarkPaper={edition.isDarkPaper} />
+        )}
       </div>
       <div
         aria-hidden
@@ -155,7 +155,7 @@ function Panel({ index, edition, creases }: PanelProps) {
           top: -overlap,
           backfaceVisibility: "hidden",
           transform: "rotateX(180deg)",
-          background: paperBackGradient(edition.paper),
+          background: panelBack(edition.paper),
         }}
       />
       {!isLast && (
@@ -215,7 +215,7 @@ export function EditionUnfold({
     fromY.set(origin.top - target.top);
     fromScale.set(origin.width / target.width);
     // Motion applies the values on its next frame; paint the starting pose now so frame one is the letter in place.
-    letter.style.transform = `perspective(${LETTER_PERSPECTIVE_PX}px) translateX(${fromX.get()}px) translateY(${fromY.get()}px) scale(${fromScale.get()}) rotateX(${LETTER_TILT_DEG}deg)`;
+    letter.style.transform = `perspective(${LETTER_TILT_PERSPECTIVE_PX}px) translateX(${fromX.get()}px) translateY(${fromY.get()}px) scale(${fromScale.get()}) rotateX(${LETTER_TILT_DEG}deg)`;
     setIsPlaced(true);
   }, [travels, origin, fromX, fromY, fromScale]);
 
@@ -228,11 +228,11 @@ export function EditionUnfold({
             animate(
               enter,
               1,
-              travels ? TRAVEL_TRANSITION : LETTER_OPEN_TRANSITION,
+              travels ? LETTER_TRAVEL_TRANSITION : LETTER_OPEN_TRANSITION,
             ),
             ...creases.slice(1).map((crease, index) =>
               animate(crease, 1, {
-                ...CREASE_TRANSITION,
+                ...LETTER_CREASE_TRANSITION,
                 delay: creaseDelay(index, creases.length - 1, travels),
               }),
             ),
@@ -309,7 +309,7 @@ export function EditionUnfold({
         y,
         scale,
         rotateX,
-        transformPerspective: travels ? LETTER_PERSPECTIVE_PX : undefined,
+        transformPerspective: travels ? LETTER_TILT_PERSPECTIVE_PX : undefined,
         // A settled letter shrinks about its centre; one still travelling keeps the corner it travels by.
         transformOrigin:
           travels && (isPresent || isOpening) ? "0 0" : "50% 50%",
@@ -326,7 +326,10 @@ export function EditionUnfold({
       {isOpening ? (
         <div
           className="absolute inset-0"
-          style={{ perspective: 1800, perspectiveOrigin: "50% 0%" }}
+          style={{
+            perspective: LETTER_FOLD_PERSPECTIVE_PX,
+            perspectiveOrigin: "50% 0%",
+          }}
         >
           <Panel index={0} edition={edition} creases={creases} />
         </div>

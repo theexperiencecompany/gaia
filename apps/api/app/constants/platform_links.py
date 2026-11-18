@@ -56,3 +56,6 @@ CHAT_LINK_PLATFORMS: frozenset[str] = frozenset(
 
 #: The ARQ task a brand-new chat link enqueues: GAIA's first hello on that platform.
 DAY_ZERO_HELLO_TASK = "send_day_zero_hello"
+
+# The web page where chat apps are linked and unlinked; mirrors libs/shared/ts/src/constants/routes.ts.
+LINKED_ACCOUNTS_SETTINGS_PATH = "/settings/linked-accounts"

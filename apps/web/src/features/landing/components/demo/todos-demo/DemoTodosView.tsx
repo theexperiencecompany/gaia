@@ -12,6 +12,7 @@ import {
   Tag01Icon,
   ZapIcon,
 } from "@icons";
+import { FIXED_LOCALE, formatDay } from "@shared/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -40,22 +41,7 @@ const priorityChipClassNames = {
 } as const;
 
 function formatDueDate(dateString: string): string {
-  const date = new Date(dateString);
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  if (date.toDateString() === today.toDateString()) {
-    return "Today";
-  }
-  if (date.toDateString() === tomorrow.toDateString()) {
-    return "Tomorrow";
-  }
-  return date.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return formatDay(dateString, "day", FIXED_LOCALE);
 }
 
 function isDueToday(dateString: string): boolean {

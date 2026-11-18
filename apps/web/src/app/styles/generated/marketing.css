@@ -38,6 +38,7 @@
 @source "../../not-found.tsx";
 @source "../../../config/appConfig.tsx";
 @source "../../../config/botPlatforms.ts";
+@source "../../../config/site.ts";
 @source "../../../config/toolIconConfig.ts";
 @source "../../../config/wallpapers.ts";
 @source "../../../data/tools.ts";
@@ -181,7 +182,6 @@
 @source "../../../lib/db/chatDb.ts";
 @source "../../../lib/electron/api.ts";
 @source "../../../types/features/toolDataTypes.ts";
-@source "../../../utils/date/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiClient.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiError.ts";
@@ -209,6 +209,7 @@
 @source "../../../../../../libs/shared/ts/src/constants/bots.ts";
 @source "../../../../../../libs/shared/ts/src/constants/instructions.ts";
 @source "../../../../../../libs/shared/ts/src/constants/platforms.ts";
+@source "../../../../../../libs/shared/ts/src/constants/routes.ts";
 @source "../../../../../../libs/shared/ts/src/constants/usage.ts";
 @source "../../../../../../libs/shared/ts/src/desktop-tools/index.ts";
 @source "../../../../../../libs/shared/ts/src/desktop-tools/types.ts";

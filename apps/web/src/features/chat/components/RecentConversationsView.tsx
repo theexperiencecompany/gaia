@@ -9,6 +9,7 @@ import {
   MessageMultiple02Icon,
   PlayIcon,
 } from "@icons";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
 import { DiscordIcon } from "@/components/shared/icons";
@@ -156,12 +157,10 @@ const RecentConversationsView = memo(() => {
                 >
                   <Calendar03Icon width={15} height={15} className="mx-1" />
                   <Chip.Label>
-                    {new Date(conversation.updated_at).toLocaleDateString(
-                      "en-US",
-                      // Explicit locale+timeZone: deterministic server/browser
-                      // text per no-locale-format-in-render.
-                      { timeZone: getBrowserTimezone() },
-                    )}
+                    {formatDate(conversation.updated_at, "numeric", {
+                      locale: FIXED_LOCALE,
+                      timeZone: getBrowserTimezone(),
+                    })}
                   </Chip.Label>
                 </Chip>
 

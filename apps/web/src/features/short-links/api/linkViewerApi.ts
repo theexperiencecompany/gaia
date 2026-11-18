@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api/baseUrl";
+import { apiBaseUrl } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 import type {
   ContentTokenResponse,
@@ -44,10 +44,10 @@ export async function reportLink(
 
 /** Browser URL that saves the file behind a link as an attachment. */
 export function linkDownloadUrl(slug: string): string {
-  return `${API_BASE}/l/${encodeURIComponent(slug)}/download`;
+  return `${apiBaseUrl}/l/${encodeURIComponent(slug)}/download`;
 }
 
 /** Browser URL of the PDF export of an artifact slug. */
 export function shortLinkPdfDownloadUrl(slug: string): string {
-  return `${API_BASE}/l/${encodeURIComponent(slug)}/pdf`;
+  return `${apiBaseUrl}/l/${encodeURIComponent(slug)}/pdf`;
 }

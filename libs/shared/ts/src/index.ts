@@ -476,7 +476,6 @@ export type {
   TriggerSchema,
 } from "./workflows";
 export {
-  BRIEF_DELIVERY_DESCRIPTION,
   BRIEF_FREE_DELIVERIES,
   BUILTIN_TRIGGER_META,
   buildDefaultTriggerConfig,

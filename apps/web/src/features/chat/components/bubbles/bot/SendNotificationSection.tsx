@@ -1,6 +1,7 @@
 import { CheckmarkCircle02Icon, NotificationIcon } from "@icons";
 import Image from "next/image";
 import {
+  isNotificationChannel,
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
 } from "@/features/notification/constants";
@@ -26,22 +27,23 @@ export default function SendNotificationSection({
       <div className="flex items-center gap-3 rounded-[22px] bg-zinc-800 p-3.5 shadow-2xl shadow-black/40">
         {isDelivered ? (
           <div className="flex shrink-0 -space-x-2">
-            {delivered_channels.map((channel, index) => {
-              const icon = NOTIFICATION_CHANNEL_ICONS[channel];
-              const label = NOTIFICATION_CHANNEL_LABELS[channel] ?? channel;
-              if (!icon) return null;
-              return (
-                <Image
-                  key={channel}
-                  src={icon}
-                  alt={label}
-                  title={label}
-                  width={44}
-                  height={44}
-                  className={`size-11 ${index % 2 === 0 ? "rotate-3" : "-rotate-3"}`}
-                />
-              );
-            })}
+            {delivered_channels
+              .filter(isNotificationChannel)
+              .map((channel, index) => {
+                const icon = NOTIFICATION_CHANNEL_ICONS[channel];
+                const label = NOTIFICATION_CHANNEL_LABELS[channel];
+                return (
+                  <Image
+                    key={channel}
+                    src={icon}
+                    alt={label}
+                    title={label}
+                    width={44}
+                    height={44}
+                    className={`size-11 ${index % 2 === 0 ? "rotate-3" : "-rotate-3"}`}
+                  />
+                );
+              })}
           </div>
         ) : (
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-700">

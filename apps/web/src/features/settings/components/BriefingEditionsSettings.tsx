@@ -1,11 +1,12 @@
 "use client";
 
-import { Chip, Skeleton } from "@heroui/react";
+import { Chip, Skeleton, useOverlayState } from "@heroui/react";
 import { FavouriteIcon, FullScreenIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LoadError } from "@/components/shared/LoadError";
 import { toneVariants } from "@/components/shared/tone";
 import { EditionDemoModal } from "@/features/settings/components/EditionDemoModal";
 import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
@@ -29,22 +30,25 @@ const SKELETON_KEYS = Array.from({ length: 6 }, (_, i) => `edition-${i}`);
  * drawing a sample brief.
  */
 export function BriefingEditionsSettings() {
-  const { editions, loadFailed, toggleOn, toggleFavourite } =
+  const { editions, loadFailed, refetch, toggleOn, toggleFavourite } =
     useBriefingEditionsSettings();
+  // The previewed edition outlives the close, so the letter leaves showing what it showed.
   const [previewed, setPreviewed] = useState<BriefingEdition | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const preview = useOverlayState();
 
   return (
     <section aria-label="Editions">
       <SettingsSectionHeader
         title="Editions"
-        description={
-          loadFailed
-            ? "Couldn't load your editions. Reload the page to try again."
-            : "Tap an edition to take it out of your rotation. Favourites come up twice as often."
-        }
+        description="Tap an edition to take it out of your rotation. Favourites come up twice as often."
       />
-      {!loadFailed && (
+      {loadFailed ? (
+        <LoadError
+          layout="inline"
+          title="Couldn't load your editions."
+          onRetry={refetch}
+        />
+      ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {editions
             ? editions.map((edition) => (
@@ -55,7 +59,7 @@ export function BriefingEditionsSettings() {
                   onFavourite={() => toggleFavourite(edition.family)}
                   onPreview={() => {
                     setPreviewed(edition);
-                    setIsPreviewOpen(true);
+                    preview.open();
                   }}
                 />
               ))
@@ -66,8 +70,8 @@ export function BriefingEditionsSettings() {
       )}
       <EditionDemoModal
         edition={previewed}
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
+        isOpen={preview.isOpen}
+        onClose={preview.close}
       />
     </section>
   );

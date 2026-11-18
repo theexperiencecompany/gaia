@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { type ComponentProps, useEffect, useRef, useState } from "react";
 import type {
@@ -13,9 +14,14 @@ import {
   type BotPlatform,
 } from "@/config/botPlatforms";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import {
+  platformLinksApi,
+  platformLinksQuery,
+} from "@/features/settings/api/platformLinksApi";
+import { preferenceKeys } from "@/features/settings/api/queryKeys";
 import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
-import { api } from "@/lib/api/typed";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import type { PlatformLinks } from "@/types/platform";
@@ -25,33 +31,27 @@ const POPUP_HEIGHT = 700;
 const POPUP_POLL_MS = 500;
 const MANUAL_INSTRUCTIONS_TOAST_MS = 10000;
 
-interface UsePlatformLinksOptions {
-  onLoadError?: () => void;
-}
-
 interface UsePlatformLinks {
   /** Null until the first load succeeds: an empty map would read as "nothing linked". */
   links: PlatformLinks | null;
   isLoading: boolean;
   loadFailed: boolean;
-  refetch: () => Promise<PlatformLinks | null>;
+  refetch: () => void;
   isLinked: (platform: BotPlatform) => boolean;
   /** "Name (@handle)", "@handle", or undefined when the link carries neither. */
   linkedAs: (platform: BotPlatform) => string | undefined;
   isLockedBehindPro: (platform: BotPlatform) => boolean;
   connectingPlatform: BotPlatform | null;
   connect: (platform: BotPlatform) => void;
-  disconnect: (platform: BotPlatform) => Promise<void>;
+  disconnect: (platform: BotPlatform) => void;
   phoneLinkModal: ComponentProps<typeof PhoneLinkModal>;
 }
 
 /** The user's bot platform links and the real connect / disconnect flows for them. */
-export function usePlatformLinks({
-  onLoadError,
-}: UsePlatformLinksOptions = {}): UsePlatformLinks {
-  const [links, setLinks] = useState<PlatformLinks | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
+export function usePlatformLinks(): UsePlatformLinks {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, refetch } = useQuery(platformLinksQuery());
+  const links = data?.platform_links ?? null;
   const [connectingPlatform, setConnectingPlatform] =
     useState<BotPlatform | null>(null);
   const [phoneModalPlatform, setPhoneModalPlatform] =
@@ -82,27 +82,10 @@ export function usePlatformLinks({
     }
   };
 
-  const refetch = async (): Promise<PlatformLinks | null> => {
-    setIsLoading(true);
-    try {
-      const data = await api.get("/api/v1/platform-links", { silent: true });
-      const next = data.platform_links || {};
-      setLinks(next);
-      setLoadFailed(false);
-      return next;
-    } catch {
-      setLoadFailed(true);
-      onLoadError?.();
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const reloadLinks = () =>
+    queryClient.invalidateQueries({ queryKey: preferenceKeys.platformLinks });
 
-  useEffect(() => {
-    void refetch();
-    return clearPollTimer;
-  }, []);
+  useEffect(() => clearPollTimer, []);
 
   const openAuthPopup = (platform: BotPlatform, authUrl: string) => {
     const left = window.screen.width / 2 - POPUP_WIDTH / 2;
@@ -116,7 +99,7 @@ export function usePlatformLinks({
     pollTimerRef.current = setInterval(() => {
       if (popup?.closed) {
         clearPollTimer();
-        void refetch().then(() => {
+        void reloadLinks().then(() => {
           setConnectingPlatform(null);
         });
       }
@@ -154,32 +137,34 @@ export function usePlatformLinks({
     const attempt = ++connectAttemptRef.current;
     try {
       setConnectingPlatform(platform);
-      const data = await api.post("/api/v1/platform-links/{platform}/connect", {
-        path: { platform },
-        body: phone ? { phone } : {},
-        silent: true,
-      });
+      const response = await platformLinksApi.connect(platform, phone);
       if (attempt !== connectAttemptRef.current) return;
 
-      if (data.auth_url) {
-        openAuthPopup(platform, data.auth_url);
+      if (response.auth_url) {
+        openAuthPopup(platform, response.auth_url);
         return;
       }
-      if (data.contact_number) {
+      if (response.contact_number) {
         // An sms: deep link resolves on Apple devices only, so the number and
         // the command have to be readable (and copyable) on any device.
         setPhoneLinkTarget({
-          contactNumber: data.contact_number,
+          contactNumber: response.contact_number,
           command: BOT_AUTH_COMMAND,
-          actionLink: data.action_link ?? undefined,
+          actionLink: response.action_link ?? undefined,
         });
-      } else if (data.auth_type === "manual" && data.instructions) {
-        showManualInstructions(platform, data.instructions, data.action_link);
+      } else if (response.auth_type === "manual" && response.instructions) {
+        showManualInstructions(
+          platform,
+          response.instructions,
+          response.action_link,
+        );
       }
       setConnectingPlatform(null);
-    } catch {
+    } catch (error) {
       if (attempt !== connectAttemptRef.current) return;
-      toast.error(`Failed to connect ${platform}`);
+      toast.error(`Couldn't connect ${BOT_PLATFORM_LABELS[platform]}`, {
+        description: apiErrorMessage(error),
+      });
       setConnectingPlatform(null);
     }
   };
@@ -200,18 +185,17 @@ export function usePlatformLinks({
     void requestConnect(platform);
   };
 
-  const disconnect = async (platform: BotPlatform) => {
-    try {
-      await api.delete("/api/v1/platform-links/{platform}", {
-        path: { platform },
-        silent: true,
-      });
-      toast.success(`Disconnected from ${platform}`);
-      await refetch();
-    } catch {
-      toast.error(`Failed to disconnect from ${platform}`);
-    }
-  };
+  const disconnection = useMutation({
+    mutationFn: platformLinksApi.disconnect,
+    onSuccess: (_response, platform) => {
+      toast.success(`Disconnected from ${BOT_PLATFORM_LABELS[platform]}`);
+      return reloadLinks();
+    },
+    onError: (error, platform) =>
+      toast.error(`Couldn't disconnect ${BOT_PLATFORM_LABELS[platform]}`, {
+        description: apiErrorMessage(error),
+      }),
+  });
 
   const isLinked = (platform: BotPlatform) =>
     links?.[platform]?.platformUserId != null;
@@ -226,14 +210,14 @@ export function usePlatformLinks({
   return {
     links,
     isLoading,
-    loadFailed,
-    refetch,
+    loadFailed: isError,
+    refetch: () => void refetch(),
     isLinked,
     linkedAs,
     isLockedBehindPro,
     connectingPlatform,
     connect,
-    disconnect,
+    disconnect: (platform) => disconnection.mutate(platform),
     phoneLinkModal: {
       isOpen: phoneModalPlatform != null,
       platformName: phoneModalPlatform
@@ -250,7 +234,7 @@ export function usePlatformLinks({
         setConnectingPlatform(null);
         setPhoneModalPlatform(null);
         setPhoneLinkTarget(null);
-        void refetch();
+        void reloadLinks();
       },
     },
   };

@@ -1,6 +1,11 @@
 "use client";
 
-import { formatHour12 } from "@shared/utils";
+import {
+  FIXED_LOCALE,
+  formatHour,
+  formatTime,
+  formatWeekday,
+} from "@shared/utils";
 import { useEffect, useMemo, useRef } from "react";
 import {
   DAY_START_HOUR,
@@ -12,14 +17,11 @@ import {
   PX_PER_MINUTE,
 } from "./calendarDemoConstants";
 
+/** "3 PM" on the hour, "3:30 PM" otherwise. */
 function formatTime12(date: Date): string {
-  const h = date.getHours();
-  const m = date.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return m === 0
-    ? `${h12} ${ampm}`
-    : `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
+  return date.getMinutes() === 0
+    ? formatHour(date.getHours(), FIXED_LOCALE)
+    : formatTime(date, { locale: FIXED_LOCALE });
 }
 
 export default function DemoCalendarView() {
@@ -63,9 +65,11 @@ export default function DemoCalendarView() {
         <div className="flex flex-1">
           {dates.map((date) => {
             const isToday = date.toDateString() === todayStr;
-            const dayLabel = date
-              .toLocaleDateString("en-US", { weekday: "short" })
-              .toUpperCase();
+            const dayLabel = formatWeekday(
+              date,
+              "short",
+              FIXED_LOCALE,
+            ).toUpperCase();
             const dayNum = date.getDate();
 
             return (
@@ -109,7 +113,7 @@ export default function DemoCalendarView() {
               style={{ height: PX_PER_HOUR }}
             >
               <span className="relative -top-2 text-[10px] text-zinc-500">
-                {formatHour12(hour)}
+                {formatHour(hour, FIXED_LOCALE)}
               </span>
             </div>
           ))}

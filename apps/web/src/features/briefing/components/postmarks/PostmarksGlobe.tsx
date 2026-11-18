@@ -14,8 +14,10 @@ import {
 } from "@/components/ui/map";
 import { useGlobeSpin } from "../../hooks/useGlobeSpin";
 import { useNightGlobeBasemap } from "../../hooks/useNightGlobeBasemap";
-import { postmarkBrief } from "../../utils/postmarkBrief";
+import type { BriefTriggerState } from "../../hooks/useOpenBrief";
+import { postmarkBrief } from "../../utils/briefCard";
 import { BriefingFold } from "../BriefingFold";
+import { BriefTrigger } from "../BriefTrigger";
 import { PostmarkCard } from "./PostmarkCard";
 
 const GLOBE_PROJECTION: ProjectionSpecification = { type: "globe" };
@@ -93,35 +95,33 @@ function CityLight({ postmark, isLatest }: CityLightProps) {
     <BriefingFold
       briefingId={postmark.briefing_id}
       brief={postmarkBrief(postmark)}
-      renderTrigger={({ open }) => (
-        <CityMarker postmark={postmark} isLatest={isLatest} onOpen={open} />
+    >
+      {(trigger) => (
+        <CityMarker postmark={postmark} isLatest={isLatest} trigger={trigger} />
       )}
-    />
+    </BriefingFold>
   );
 }
 
 function CityMarker({
   postmark,
   isLatest,
-  onOpen,
-}: CityLightProps & { onOpen: () => void }) {
+  trigger,
+}: CityLightProps & { trigger: BriefTriggerState }) {
   return (
-    <MapMarker
-      longitude={postmark.lng}
-      latitude={postmark.lat}
-      onClick={onOpen}
-    >
+    <MapMarker longitude={postmark.lng} latitude={postmark.lat}>
       <MarkerContent>
-        <span
-          role="img"
+        <BriefTrigger
+          trigger={trigger}
+          onPress={() => trigger.open()}
           aria-label={`${postmark.city}, ${postmark.country}`}
-          className="group relative flex size-6 items-center justify-center"
+          className="group relative flex size-6 items-center justify-center rounded-full"
         >
           {isLatest && (
             <span className="absolute size-4 rounded-full bg-accent/40 motion-safe:animate-ping" />
           )}
-          <span className="size-2.5 rounded-full bg-accent shadow-[0_0_10px_3px_rgb(0_187_255/0.55)] transition-transform duration-200 ease-out group-hover:scale-150" />
-        </span>
+          <span className="size-2.5 rounded-full bg-accent shadow-[0_0_10px_3px_rgb(0_187_255/0.55)] transition-transform duration-200 ease-out group-hover:scale-150 group-focus-visible:scale-150" />
+        </BriefTrigger>
       </MarkerContent>
       <MarkerTooltip offset={18} className="bg-transparent p-0 shadow-none">
         <PostmarkCard postmark={postmark} />

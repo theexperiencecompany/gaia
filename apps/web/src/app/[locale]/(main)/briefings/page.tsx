@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import BriefingsHeader from "@/components/layout/headers/BriefingsHeader";
-import { BriefingArchive } from "@/features/briefing/components/BriefingArchive";
+import { BriefingArchive } from "@/features/briefing";
 import { useHeader } from "@/hooks/layout/useHeader";
 
 export default function BriefingsPage() {

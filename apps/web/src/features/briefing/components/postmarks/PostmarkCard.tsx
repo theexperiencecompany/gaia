@@ -1,7 +1,7 @@
 import type { Postmark } from "@shared/api/generated";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
+import { parseISO } from "date-fns";
 import Image from "next/image";
-
-import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 interface PostmarkCardProps {
   postmark: Postmark;
@@ -24,7 +24,9 @@ export function PostmarkCard({ postmark }: PostmarkCardProps) {
         </p>
         <p className="truncate text-xs text-zinc-400">{postmark.country}</p>
         <p className="mt-1 text-xs text-zinc-500 tabular-nums">
-          {formatRelativeDate(postmark.date)}
+          {formatDate(parseISO(postmark.date), "long", {
+            locale: FIXED_LOCALE,
+          })}
         </p>
       </div>
     </div>

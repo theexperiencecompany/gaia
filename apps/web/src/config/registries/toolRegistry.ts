@@ -11,6 +11,7 @@ import type {
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
 } from "@shared/chat";
+import type { BriefCard } from "@/features/briefing";
 import type {
   DeviceApprovalRequiredData,
   DeviceOnboardingRequiredData,
@@ -20,7 +21,6 @@ import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
 } from "@/features/integrations/types";
-import type { BriefMessageData } from "@/types/features/briefingTypes";
 import type { BrowserTaskSnapshot } from "@/types/features/browserTaskTypes";
 import type {
   CalendarDeleteOptions,
@@ -157,7 +157,7 @@ const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   notification_data: null as unknown as { notifications: NotificationView[] },
   send_notification_data: null as unknown as SendNotificationData,
-  briefing_data: null as unknown as BriefMessageData,
+  briefing_data: null as unknown as BriefCard,
   integration_connection_required: null as unknown as IntegrationConnectionData,
   connect_options: null as unknown as ConnectOptionsData,
   integration_list_data: null as unknown as IntegrationListStreamData,

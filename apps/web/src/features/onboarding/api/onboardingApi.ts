@@ -55,8 +55,3 @@ export type LinkCodeResponse = MintPlatformLinkCodeResponse;
 export function mintLinkCode() {
   return api.post("/api/v1/platform-links/code", { silent: true });
 }
-
-/** The accounts linked to this user, polled while the wizard waits on a link. */
-export function fetchPlatformLinks() {
-  return api.get("/api/v1/platform-links", { silent: true });
-}

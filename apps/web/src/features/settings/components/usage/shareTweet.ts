@@ -1,4 +1,4 @@
-const SHARE_URL = "https://heygaia.io";
+import { SITE_URL } from "@/config/site";
 
 /** The X share copy — one builder shared by both the rendered image-card path
  *  and the text-only fallback so they can never drift apart.
@@ -20,7 +20,7 @@ export function buildTweetText(
 export function openTweetIntent(text: string): void {
   if (typeof window === "undefined") return;
   window.open(
-    `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(SHARE_URL)}`,
+    `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(SITE_URL)}`,
     "_blank",
     "noopener,noreferrer",
   );

@@ -1,20 +1,25 @@
 // @vitest-environment jsdom
 import type { BriefingScheduleState } from "@gaia/shared/types";
-import type { QuietHours } from "@shared/api/generated";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import type { BriefingScheduleUpdate, QuietHours } from "@shared/api/generated";
+import { QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { briefingApi } from "@/features/briefing/api/briefingApi";
-import { quietHoursApi } from "@/features/settings/api/quietHoursApi";
-import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
-import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
-vi.mock("@/features/briefing/api/briefingApi", () => ({
-  briefingApi: {
-    fetchSchedule: vi.fn(),
-    updateSchedule: vi.fn(),
-  },
-}));
+import {
+  renderWithQueryClient,
+  testQueryClient,
+} from "@/__tests__/helpers/queryClient";
+import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
+import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
+import { toast } from "@/lib/toast";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({
@@ -24,8 +29,22 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   }),
 }));
 
-vi.mock("@/features/settings/api/quietHoursApi", () => ({
-  quietHoursApi: { fetch: vi.fn(), update: vi.fn() },
+vi.mock("@/lib/toast", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+const { getSchedule, putSchedule, getQuietHours } = vi.hoisted(() => ({
+  getSchedule: vi.fn(),
+  putSchedule: vi.fn(),
+  getQuietHours: vi.fn(),
+}));
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: (path: string) =>
+      path.endsWith("/quiet-hours") ? getQuietHours() : getSchedule(),
+    put: (_path: string, init: { body: BriefingScheduleUpdate }) =>
+      putSchedule(init.body),
+  },
 }));
 
 const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
@@ -35,31 +54,26 @@ type RunState = Pick<
   "paused_for_plan" | "next_daily_brief_at"
 >;
 
+function stored(
+  schedule: Omit<BriefingScheduleState, keyof RunState>,
+  runs: Partial<RunState> = {},
+): BriefingScheduleState {
+  return {
+    ...schedule,
+    paused_for_plan: false,
+    next_daily_brief_at: null,
+    ...runs,
+  };
+}
+
 function renderSchedule(
-  stored: Pick<BriefingScheduleState, "frequency" | "hour">,
+  schedule: Omit<BriefingScheduleState, keyof RunState>,
   quietHours: QuietHours,
   runs: Partial<RunState> = {},
 ) {
-  const hasDailyBrief =
-    stored.frequency === "daily" || stored.frequency === "weekdays";
-  const schedule: BriefingScheduleState = {
-    ...stored,
-    paused_for_plan: false,
-    next_daily_brief_at: null,
-    has_daily_brief: hasDailyBrief,
-    daily_brief_hour: hasDailyBrief ? (stored.hour ?? null) : null,
-    ...runs,
-  };
-  vi.mocked(briefingApi.fetchSchedule).mockResolvedValue(schedule);
-  vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={client}>
-      <BriefingScheduleSettings />
-    </QueryClientProvider>,
-  );
+  getSchedule.mockResolvedValue(stored(schedule, runs));
+  getQuietHours.mockResolvedValue(quietHours);
+  return renderWithQueryClient(<BriefingScheduleSettings />);
 }
 
 const QUIET_NOTE = "Lands at 8 AM, when your quiet hours end.";
@@ -147,7 +161,9 @@ describe("when the next daily brief lands", () => {
       next_daily_brief_at: next,
     });
 
-    expect(await screen.findByText("Next one Mon 16 Nov, 9 AM.")).toBeTruthy();
+    expect(
+      await screen.findByText("Next one Mon, Nov 16, 9:00 AM."),
+    ).toBeTruthy();
   });
 
   it("names none while no daily brief runs", async () => {
@@ -155,5 +171,74 @@ describe("when the next daily brief lands", () => {
 
     await screen.findAllByText("9 AM");
     expect(screen.queryByText(/^Next one/)).toBeNull();
+  });
+});
+
+describe("saving the schedule", () => {
+  const DAILY_AT_8 = stored({ frequency: "daily", hour: 8 });
+
+  async function loaded() {
+    const client = testQueryClient();
+    const hook = renderHook(() => useBriefingScheduleSettings(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await waitFor(() => expect(hook.result.current.schedule).not.toBeNull());
+    return hook;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSchedule.mockResolvedValue(DAILY_AT_8);
+    putSchedule.mockImplementation((update: BriefingScheduleUpdate) =>
+      Promise.resolve({ ...DAILY_AT_8, ...update }),
+    );
+  });
+
+  it("saves a new frequency with the hour already set", async () => {
+    const { result } = await loaded();
+
+    act(() => result.current.update({ frequency: "weekdays" }));
+
+    await waitFor(() =>
+      expect(putSchedule).toHaveBeenCalledWith({
+        frequency: "weekdays",
+        hour: 8,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.schedule?.frequency).toBe("weekdays"),
+    );
+  });
+
+  it("does not call the server when nothing changed", async () => {
+    const { result } = await loaded();
+
+    act(() => result.current.update({ hour: 8 }));
+
+    expect(putSchedule).not.toHaveBeenCalled();
+  });
+
+  it("rolls back a change the server refused", async () => {
+    putSchedule.mockRejectedValue(new Error("500"));
+    const { result } = await loaded();
+
+    act(() => result.current.update({ frequency: "off" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(result.current.schedule).toEqual(DAILY_AT_8);
+  });
+
+  it("offers a retry when the schedule could not be read", async () => {
+    getSchedule
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue(DAILY_AT_8);
+    getQuietHours.mockResolvedValue(NIGHT);
+    renderWithQueryClient(<BriefingScheduleSettings />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect((await screen.findAllByText("8 AM")).length).toBeGreaterThan(0);
   });
 });

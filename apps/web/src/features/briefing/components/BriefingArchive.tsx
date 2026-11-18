@@ -3,24 +3,24 @@
 import { Skeleton } from "@heroui/react";
 import { News01Icon } from "@icons";
 import type { BriefingView } from "@shared/api/generated";
+import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
+import { formatDate } from "@shared/utils";
 import {
   endOfWeek,
-  format,
   isSameWeek,
   isSameYear,
   parseISO,
   startOfWeek,
   subWeeks,
 } from "date-fns";
-
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { LoadError } from "@/components/shared/LoadError";
 import { cn } from "@/lib/utils";
-
-import { BRIEFINGS_SETTINGS_PATH } from "../constants";
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
-import type { FoldedBriefSummary } from "./BriefCard";
+import { foldedBrief, viewCard } from "../utils/briefCard";
 import { BriefingFold } from "./BriefingFold";
+import { FoldedBriefCard } from "./FoldedBriefCard";
 
 const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
 /** The page is an @container; columns follow its width, as on the workflows page. */
@@ -35,19 +35,6 @@ export interface BriefingArchiveProps {
 interface WeekGroup {
   start: Date;
   briefings: BriefingView[];
-}
-
-function foldedBriefOf(briefing: BriefingView): FoldedBriefSummary {
-  return {
-    headline: briefing.payload.headline,
-    date: briefing.date,
-    kind: briefing.kind,
-    imageUrl: briefing.edition_image_url,
-    editionFold: briefing.edition_fold,
-    editionPaper: briefing.edition_paper,
-    editionName: briefing.edition_name,
-    stampCityName: briefing.stamp_city_name,
-  };
 }
 
 /** Briefs bucketed by Monday-start week, newest week first; the weekly recap leads its week. */
@@ -75,8 +62,8 @@ function weekTitle(start: Date, now: Date): string | null {
 
 function weekRange(start: Date, now: Date): string {
   const end = endOfWeek(start, WEEK_OPTIONS);
-  const range = `${format(start, "MMM d")} – ${format(end, "MMM d")}`;
-  return isSameYear(end, now) ? range : `${range}, ${format(end, "yyyy")}`;
+  const range = `${formatDate(start, "short")} – ${formatDate(end, "short")}`;
+  return isSameYear(end, now) ? range : `${range}, ${end.getFullYear()}`;
 }
 
 /** Pinned while its week scrolls by, so the reader always knows which week they are in. */
@@ -143,12 +130,11 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
 
   if (isError) {
     return (
-      <div className="flex items-center gap-3">
-        <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
-        <GaiaButton size="sm" variant="default-soft" onPress={() => refetch()}>
-          Try again
-        </GaiaButton>
-      </div>
+      <LoadError
+        layout="inline"
+        title="Couldn't load your briefings."
+        onRetry={() => void refetch()}
+      />
     );
   }
 
@@ -162,15 +148,26 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
         <section key={group.start.getTime()}>
           <WeekHeader start={group.start} />
           <ul className={GRID_CLASSES}>
-            {group.briefings.map((briefing) => (
-              <li key={briefing.id}>
-                <BriefingFold
-                  brief={foldedBriefOf(briefing)}
-                  payload={briefing.payload}
-                  briefingId={briefing.id}
-                />
-              </li>
-            ))}
+            {group.briefings.map((briefing) => {
+              const brief = foldedBrief(viewCard(briefing));
+              return (
+                <li key={briefing.id}>
+                  <BriefingFold
+                    brief={brief}
+                    payload={briefing.payload}
+                    briefingId={briefing.id}
+                  >
+                    {(trigger) => (
+                      <FoldedBriefCard
+                        brief={brief}
+                        showsWaiting={false}
+                        trigger={trigger}
+                      />
+                    )}
+                  </BriefingFold>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ))}

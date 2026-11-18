@@ -26,11 +26,16 @@ export interface EditionSource {
 }
 
 /** Where the paper sits inside the rendered edition, in source pixels, its colour and its tilt. */
-export interface PaperSheet {
+/** Where the paper lies in the edition's pixels. */
+export interface PaperBox {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+/** The paper as read off an unmarked edition: its box, colour, desk and tilt. */
+export interface PaperSheet extends PaperBox {
   /** Mean paper colour, 0..255 per channel. */
   rgb: [number, number, number];
   /** The desk's colour, which fills the corners when the sheet is turned square; null for a clear desk. */

@@ -1,10 +1,9 @@
 import type { BotPlatform } from "@/config/botPlatforms";
 
-/** Where chat apps are connected, managed and disconnected. */
-export const LINKED_ACCOUNTS_SETTINGS_PATH = "/settings/linked-accounts";
-
-/** Where every channel GAIA reaches you on is switched on or off. */
-export const NOTIFICATIONS_SETTINGS_PATH = "/settings/notifications";
+export {
+  LINKED_ACCOUNTS_SETTINGS_PATH,
+  NOTIFICATIONS_SETTINGS_PATH,
+} from "@shared/constants/routes";
 
 interface LinkedPlatformDetails {
   description: string;

@@ -11,6 +11,7 @@ import {
 import { MoreHorizontalIcon, Unlink04Icon } from "@icons";
 import Image from "next/image";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LoadError } from "@/components/shared/LoadError";
 import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import {
   BOT_PLATFORM_ICONS,
@@ -25,13 +26,12 @@ import { SettingsSection } from "@/features/settings/components/ui/SettingsSecti
 import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
 import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
 import { connectedAsLabel } from "@/features/settings/utils/platformLinkLabels";
-import { toast } from "@/lib/toast";
-
-const notifyLoadError = () => toast.error("Failed to load connected accounts");
 
 export default function LinkedAccountsSettings() {
   const {
     isLoading,
+    loadFailed,
+    refetch,
     isLinked,
     linkedAs,
     isLockedBehindPro,
@@ -39,7 +39,19 @@ export default function LinkedAccountsSettings() {
     connect,
     disconnect,
     phoneLinkModal,
-  } = usePlatformLinks({ onLoadError: notifyLoadError });
+  } = usePlatformLinks();
+
+  if (loadFailed) {
+    return (
+      <SettingsPage>
+        <LoadError
+          title="Couldn't load your linked accounts"
+          description="Your accounts are still linked. This page just couldn't reach them."
+          onRetry={refetch}
+        />
+      </SettingsPage>
+    );
+  }
 
   return (
     <SettingsPage>

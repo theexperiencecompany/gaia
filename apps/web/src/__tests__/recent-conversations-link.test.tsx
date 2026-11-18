@@ -19,6 +19,7 @@ vi.mock("@/features/chat/hooks/useConversationList", () => ({
         starred: false,
         createdAt: "2026-11-01T10:00:00Z",
         updatedAt: "2026-11-01T10:00:00Z",
+        updated_at: "2026-11-01T10:00:00Z",
       },
     ],
   }),

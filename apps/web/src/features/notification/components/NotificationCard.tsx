@@ -11,10 +11,20 @@ import {
   GaiaButton,
   type GaiaButtonVariant,
 } from "@/components/shared/GaiaButton";
-import { BriefingFold, type FoldedBriefSummary } from "@/features/briefing";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import { NOTIFICATION_KIND_BRIEFING_WEEKLY } from "@/features/notification/constants";
+import {
+  NESTED_TONE,
+  type SurfaceTone,
+  surfaceVariants,
+} from "@/components/shared/surfaceVariants";
+import {
+  BriefingFold,
+  briefPath,
+  FoldedBriefCard,
+  notificationBrief,
+} from "@/features/briefing";
+import { MarkdownRenderer } from "@/features/chat";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
+import { cn } from "@/lib/utils";
 import {
   ActionStyle,
   ActionType,
@@ -30,7 +40,7 @@ interface NotificationCardProps {
    * or a zinc-900 panel) or "inset" (zinc-900 card inside a zinc-800 surface,
    * e.g. chat tool cards).
    */
-  tone?: "raised" | "inset";
+  tone?: SurfaceTone;
   /** Clamp the body to two lines in dense contexts (popover, chat). */
   clampBody?: boolean;
   onMarkAsRead?: (id: string) => void | Promise<void>;
@@ -45,36 +55,6 @@ const ACTION_BUTTON_VARIANT: Record<ActionStyle, GaiaButtonVariant> = {
 
 // The folded brief below already carries the headline, so the header names the kind.
 const BRIEF_LABEL = "Briefing";
-
-/** The brief a briefing notification carries (its metadata names it), or null for any other notification. */
-function briefOf(notification: NotificationView) {
-  const metadata = notification.metadata ?? {};
-  const briefingId = metadata.briefing_id;
-  if (typeof briefingId !== "string") return null;
-  const text = (key: string) =>
-    typeof metadata[key] === "string" ? metadata[key] : null;
-  const summary: FoldedBriefSummary = {
-    headline: notification.content.title,
-    date: text("date") ?? undefined,
-    kind:
-      metadata.kind === NOTIFICATION_KIND_BRIEFING_WEEKLY ? "weekly" : "daily",
-    imageUrl: text("edition_image_url"),
-    editionFold:
-      typeof metadata.edition_fold === "number" ? metadata.edition_fold : null,
-    editionPaper: Array.isArray(metadata.edition_paper)
-      ? metadata.edition_paper.filter(
-          (share): share is number => typeof share === "number",
-        )
-      : null,
-    editionName: text("edition_name"),
-    stampCityName: text("stamp_city_name"),
-    needsYouCount:
-      typeof metadata.needs_you_count === "number"
-        ? metadata.needs_you_count
-        : null,
-  };
-  return { briefingId, summary };
-}
 
 /** Done actions show a check; a redirect shows where it goes, out of GAIA (a new tab or another site) or within it. */
 function actionIcon(action: NotificationAction) {
@@ -92,7 +72,7 @@ function actionIcon(action: NotificationAction) {
 
 /** The folded card already opens its brief, so an action pointing at that same brief is left out. */
 function opensBrief(action: NotificationAction, briefingId: string): boolean {
-  return action.config?.redirect?.url === `/brief/${briefingId}`;
+  return action.config?.redirect?.url === briefPath(briefingId);
 }
 
 export const NotificationCard = ({
@@ -107,7 +87,7 @@ export const NotificationCard = ({
   });
 
   const { title, body } = notification.content;
-  const brief = briefOf(notification);
+  const brief = notificationBrief(notification);
   const actions = (notification.content.actions ?? []).filter(
     (action) => !brief || !opensBrief(action, brief.briefingId),
   );
@@ -121,21 +101,21 @@ export const NotificationCard = ({
     await onMarkAsRead?.(notification.id);
   };
 
-  const surface =
-    tone === "raised"
-      ? isUnread
-        ? "bg-zinc-800"
-        : "bg-zinc-800/40"
-      : isUnread
-        ? "bg-zinc-900"
-        : "bg-zinc-900/40";
-
   return (
-    <div className={`w-full rounded-2xl p-4 transition-colors ${surface}`}>
+    <div
+      className={surfaceVariants({
+        tone,
+        faded: !isUnread,
+        className: "w-full rounded-2xl p-4 transition-colors",
+      })}
+    >
       <div className="min-w-0">
         <div className="flex min-h-6 items-center gap-2">
           <h3
-            className={`truncate text-sm font-medium ${isUnread ? "text-zinc-100" : "text-zinc-400"}`}
+            className={cn(
+              "truncate text-sm font-medium",
+              isUnread ? "text-zinc-100" : "text-zinc-400",
+            )}
           >
             {brief ? BRIEF_LABEL : title}
           </h3>
@@ -153,16 +133,24 @@ export const NotificationCard = ({
         </div>
         {brief ? (
           <div className="mt-2 w-full max-w-56">
-            <BriefingFold
-              brief={brief.summary}
-              briefingId={brief.briefingId}
-              tone={tone === "raised" ? "inset" : "raised"}
-            />
+            <BriefingFold brief={brief.summary} briefingId={brief.briefingId}>
+              {(trigger) => (
+                <FoldedBriefCard
+                  brief={brief.summary}
+                  tone={NESTED_TONE[tone]}
+                  trigger={trigger}
+                />
+              )}
+            </BriefingFold>
           </div>
         ) : (
           <MarkdownRenderer
             content={body}
-            className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
+            className={cn(
+              "mt-0.5 text-sm",
+              clampBody && "line-clamp-2",
+              isUnread ? "text-zinc-400" : "text-zinc-500",
+            )}
             hideCodeToolbar
           />
         )}
@@ -170,7 +158,10 @@ export const NotificationCard = ({
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
         <div
-          className={`mt-3 flex flex-wrap items-center gap-2 ${isUnread ? "" : "opacity-70"}`}
+          className={cn(
+            "mt-3 flex flex-wrap items-center gap-2",
+            !isUnread && "opacity-70",
+          )}
         >
           {actions.map((action) => {
             const isExecuted = Boolean(action.executed);
