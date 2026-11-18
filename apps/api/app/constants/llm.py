@@ -540,7 +540,7 @@ LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" counts identical calls issued this run, consecutive or not, regardless of
 # success or failure: a successful call whose result won't change is as much a loop
-# as a failing one (the failure counters above only see status="error").
+# as a failing one (the failure counters above only see failed calls).
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so counters are keyed by the run

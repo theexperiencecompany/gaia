@@ -54,15 +54,20 @@ def parsed_result(message: ToolMessage) -> object | None:
 def is_error_envelope(result: object) -> bool:
     """Return whether this is a "successful" tool message whose body says the call failed.
 
-    Many tools answer with {"success": false, ...} or {"error": "..."}
-    under a normal status, so status alone does not say the call worked.
+    Many tools answer with {"success": false, ...}, Composio's {"successful": false, ...}
+    or {"error": "..."} under a normal status, so status alone does not say the call worked.
     """
     if not isinstance(result, dict):
         return False
-    if result.get("success") is False:
+    if result.get("success") is False or result.get("successful") is False:
         return True
     error = result.get("error")
     return bool(error)
+
+
+def tool_call_failed(message: ToolMessage) -> bool:
+    """Return whether this tool message reports a failed call, by its status or by its body."""
+    return message.status == "error" or is_error_envelope(parsed_result(message))
 
 
 def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
@@ -74,10 +79,12 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
     """
     results: dict[str, object | None] = {}
     for message in messages:
-        if isinstance(message, ToolMessage) and message.status != "error" and message.tool_call_id:
-            result = parsed_result(message)
-            if not is_error_envelope(result):
-                results[message.tool_call_id] = result
+        if (
+            isinstance(message, ToolMessage)
+            and message.tool_call_id
+            and not tool_call_failed(message)
+        ):
+            results[message.tool_call_id] = parsed_result(message)
     lines: list[str] = []
     for message in messages:
         for call in getattr(message, "tool_calls", None) or []:

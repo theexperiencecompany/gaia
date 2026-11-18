@@ -735,3 +735,51 @@ async def test_repeats_do_not_carry_over_between_runs_of_one_thread() -> None:
         for _ in range(LOOP_GUARD_WARN_REPEAT - 1):
             result = await _wrap(mw, _request(root_request_id=run), _succeeding())
             assert "[Loop guard:" not in result.content
+
+
+# --- failures reported in the result body ------------------------------------ #
+
+_FAILED_BODIES = [
+    pytest.param(
+        '{"successful": false, "error": "Gmail connection expired", "data": {}}',
+        id="composio-error",
+    ),
+    pytest.param('{"successful": false, "data": {}}', id="composio-no-error-text"),
+    pytest.param('{"error": "Todo not found"}', id="dict-error"),
+    pytest.param('{"success": false, "message": "Reminder not found"}', id="success-false"),
+]
+
+
+@pytest.mark.parametrize("body", _FAILED_BODIES)
+async def test_hard_stop_counts_a_failure_reported_in_the_result_body(body: str) -> None:
+    executed = 0
+
+    async def handler(_request: ToolCallRequest) -> ToolMessage:
+        nonlocal executed
+        executed += 1
+        return ToolMessage(content=body, tool_call_id="call-1", name="GMAIL_SEND_EMAIL")
+
+    mw = LoopGuardMiddleware()
+    results = [
+        await _wrap(
+            mw,
+            _request(name="GMAIL_SEND_EMAIL", execution_mode="background", args={"to": str(i)}),
+            handler,
+        )
+        for i in range(LOOP_GUARD_STOP_SAME_TOOL + 1)
+    ]
+
+    assert executed == LOOP_GUARD_STOP_SAME_TOOL
+    assert results[-1].additional_kwargs["loop_guard_stopped"] is True
+
+
+async def test_a_successful_body_with_an_empty_error_field_is_not_a_failure() -> None:
+    mw = LoopGuardMiddleware()
+    body = '{"successful": true, "error": null, "data": {"id": "m1"}}'
+    for i in range(LOOP_GUARD_STOP_SAME_TOOL + 1):
+        result = await _wrap(
+            mw,
+            _request(name="GMAIL_SEND_EMAIL", execution_mode="background", args={"to": str(i)}),
+            _succeeding(body, name="GMAIL_SEND_EMAIL"),
+        )
+        assert "loop_guard_stopped" not in result.additional_kwargs
