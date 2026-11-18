@@ -13,10 +13,10 @@ the run before anything is written. Re-running copies nothing.
 
 import asyncio
 from collections.abc import Mapping
-import sys
 
 from app.db.mongodb.collections import get_async_collection
 from app.models.briefing_state_models import BriefingStateDocument
+from scripts._cli import apply_requested
 
 #: Each user-document field and the briefing_state field it becomes.
 _MOVED: dict[str, str] = {
@@ -100,4 +100,4 @@ async def contract(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

@@ -21,6 +21,7 @@ from app.db.repositories.users import user_repository
 from app.models.todo_models import ExternalRefSource
 from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.todos.inbox_desk import follow_the_brief
+from scripts._cli import apply_requested
 
 #: The recurrences GAIA gave every desk before the sweep followed the brief hour.
 _FIXED_RECURRENCES = ("0 8 * * *", "0 7 * * *")
@@ -59,4 +60,4 @@ async def migrate(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

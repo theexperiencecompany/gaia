@@ -21,6 +21,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.mongodb.collections import workflows_collection
+from scripts._cli import apply_requested
 
 _LEGACY_FIELD = "selected_integrations"
 
@@ -79,4 +80,4 @@ async def migrate(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

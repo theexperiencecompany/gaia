@@ -15,7 +15,6 @@ Re-running skips every brief already copied.
 """
 
 import asyncio
-import sys
 from urllib.parse import urlsplit
 
 import httpx
@@ -29,6 +28,7 @@ from app.db.mongodb.collections import get_async_collection
 from app.models.brief_document_models import BriefDelivery, DeliveryStep, EditionRender
 from app.services.blob_store import CloudinaryBlobStore
 from app.services.briefing.edition_image import store_edition
+from scripts._cli import apply_requested
 
 #: Everything after this in a Cloudinary delivery URL is the transformation, then v1/<public id>.
 _UPLOAD_SEGMENT = "/image/upload/"
@@ -120,4 +120,4 @@ async def contract(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

@@ -8,7 +8,6 @@ A dry run lists each briefing workflow whose cron would move; a re-run moves not
 """
 
 import asyncio
-import sys
 
 from app.constants.briefing import BRIEFING_KIND_BY_WORKFLOW_KEY
 from app.core.provider_registration import register_lazy_providers
@@ -17,6 +16,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.services.briefing.run_times import briefing_cron
 from app.services.briefing.schedule import resync_briefing_schedules
+from scripts._cli import apply_requested
 
 
 async def resync(apply: bool) -> int:
@@ -55,4 +55,4 @@ async def resync(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(resync(apply="--apply" in sys.argv))
+    asyncio.run(resync(apply=apply_requested(__doc__)))

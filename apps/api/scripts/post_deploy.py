@@ -15,11 +15,11 @@ stops the sequence loudly; the next run retries it.
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-import sys
 
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb.collections import get_async_collection
+from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
 from scripts.migrate_brief_storage import migrate as migrate_brief_storage
@@ -101,4 +101,4 @@ async def run_post_deploy(apply: bool) -> list[str]:
 
 
 if __name__ == "__main__":
-    asyncio.run(run_post_deploy(apply="--apply" in sys.argv))
+    asyncio.run(run_post_deploy(apply=apply_requested(__doc__)))

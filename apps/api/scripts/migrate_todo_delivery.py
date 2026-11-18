@@ -9,11 +9,11 @@ later. A todo that already carries a delivery keeps it, so re-running is safe.
 """
 
 import asyncio
-import sys
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.mongodb.collections import get_async_collection
 from app.models.todo_models import ExternalRefSource
+from scripts._cli import apply_requested
 
 _FLAG = "notify_on_run"
 _DESK = ExternalRefSource.INBOX_DESK.value
@@ -68,4 +68,4 @@ async def contract(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

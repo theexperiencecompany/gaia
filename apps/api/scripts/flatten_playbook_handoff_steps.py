@@ -38,6 +38,7 @@ from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.mongodb import RawDocument
 from app.models.playbook_models import PlaybookBody
 from app.services.workflow.playbook.placeholders import placeholder_tokens
+from scripts._cli import apply_requested
 
 PLAYBOOKS_COLLECTION = "playbooks"
 BACKUP_COLLECTION_PREFIX = "playbooks_backup_handoff_"
@@ -216,4 +217,4 @@ async def main(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(apply="--apply" in sys.argv))
+    asyncio.run(main(apply=apply_requested(__doc__)))

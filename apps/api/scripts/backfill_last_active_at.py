@@ -12,10 +12,10 @@ only ever moves last_active_at forward ($max), so a re-run changes nothing.
 
 import asyncio
 from datetime import UTC, datetime
-import sys
 
 from app.db.mongodb.collections import get_async_collection
 from app.db.mongodb.mongodb import object_id_filter
+from scripts._cli import apply_requested
 
 users_collection = get_async_collection("users")
 usage_daily_collection = get_async_collection("usage_daily")
@@ -55,4 +55,4 @@ async def backfill(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(backfill(apply="--apply" in sys.argv))
+    asyncio.run(backfill(apply=apply_requested(__doc__)))

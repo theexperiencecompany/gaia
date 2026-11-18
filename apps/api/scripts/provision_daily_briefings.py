@@ -13,11 +13,11 @@ Run: uv run python -m scripts.provision_daily_briefings [--apply]
 
 import asyncio
 from collections import Counter
-import sys
 
 from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.users import user_repository
 from app.services.briefing.rollout import provision_existing_user
+from scripts._cli import apply_requested
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
 
@@ -45,4 +45,4 @@ async def rollout(apply: bool) -> Counter[str]:
 
 
 if __name__ == "__main__":
-    asyncio.run(rollout(apply="--apply" in sys.argv))
+    asyncio.run(rollout(apply=apply_requested(__doc__)))
