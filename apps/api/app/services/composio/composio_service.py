@@ -101,6 +101,7 @@ class ComposioService:
         self.composio = Composio(
             provider=LangchainProvider(),
             api_key=api_key,
+            base_url=settings.COMPOSIO_BASE_URL,
             timeout=120,
             toolkit_versions=toolkit_versions or None,
         )

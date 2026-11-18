@@ -251,6 +251,8 @@ class Settings(BrowserHostSettings):
     # 0.72 tasks/s needs ~8). Fleet ceiling is 10 x M workers — scale this DOWN
     # (~ceil(8/M)) per worker added, since pools sum to 35 conns vs max 100.
     ARQ_MAX_JOBS: int = 10
+    # Seconds between the worker's queue polls; each poll also queues at most one missed run per cron.
+    ARQ_POLL_DELAY_SECONDS: float = 0.5
 
     # Process-wide cap on concurrent Chromium instances (see constants/search.py).
     # Falls back to the default on non-integer input; clamped to at least
@@ -515,6 +517,8 @@ class Settings(BrowserHostSettings):
 
     # External Service Integration
     COMPOSIO_KEY: str | None = None
+    # Composio's API origin; unset is Composio's production backend. The brief simulator's fake world sets it.
+    COMPOSIO_BASE_URL: str | None = None
     FIRECRAWL_API_KEY: str | None = None
 
     # Multi-provider failover, all optional. Exa is the primary free workhorse

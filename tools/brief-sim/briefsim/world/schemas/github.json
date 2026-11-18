@@ -1,0 +1,3187 @@
+[
+  {
+    "slug": "GITHUB_FIND_PULL_REQUESTS",
+    "name": "Find Pull Requests",
+    "description": "Searches pull requests by repository, author, state, labels, merge status, and other filters; without a repository or owner, it searches public repositories by default or PRs involving the authenticated user when requested. Search results are capped at approximately 1,000; creation and update date filters do not filter merge dates.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "github",
+      "name": "github",
+      "logo": "https://logos.composio.dev/api/github"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "FindPullRequestsRequest",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "title": "Page",
+          "default": 1,
+          "examples": [1, 2, 3],
+          "description": "Page number of results to fetch.",
+          "human_parameter_name": "Page number?",
+          "human_parameter_description": "Which page of results to view. Use this to move through large result sets."
+        },
+        "repo": {
+          "type": "string",
+          "title": "Repo",
+          "examples": [
+            "facebook/react",
+            "microsoft/vscode",
+            "octocat/Hello-World",
+            "react"
+          ],
+          "description": "Filter by specific repository. Can be provided in 'owner/repo' format (e.g., 'facebook/react'), or as just the repo name when used with the owner parameter. When owner and repo are both provided and have the same value, they are combined as 'owner/repo'. When omitted along with owner, search scope is determined by for_authenticated_user flag. The repository must exist and be accessible with your token. Prefer 'owner/repo' format; bare repo name without the `owner` parameter causes invalid repository format errors.",
+          "human_parameter_name": "Repository to filter by?",
+          "human_parameter_description": "Limit the search to a single repository. You can provide it in 'owner/repo' format like 'facebook/react', or just the repository name (like 'react') when also providing the owner parameter separately. If you want to search repository 'notetake/notetake', you can use repo='notetake/notetake' OR owner='notetake' with repo='notetake'. Leave blank to search across multiple repositories. The repository must exist and be accessible with your token."
+        },
+        "sort": {
+          "enum": [
+            "comments",
+            "reactions",
+            "interactions",
+            "created",
+            "updated"
+          ],
+          "type": "string",
+          "title": "Sort",
+          "default": "updated",
+          "examples": ["updated", "created", "comments"],
+          "description": "Field to sort results by. Set explicitly to 'updated' with `order=desc` when recency matters; default behavior may return best-match relevance ordering instead.",
+          "human_parameter_name": "Field to sort results by?",
+          "human_parameter_description": "Choose how to sort the results, such as by last updated, creation date, or number of comments."
+        },
+        "label": {
+          "type": "string",
+          "title": "Label",
+          "examples": [
+            "bug",
+            "enhancement",
+            "documentation",
+            "good first issue"
+          ],
+          "description": "Filter by label name.",
+          "human_parameter_name": "Label to filter by?",
+          "human_parameter_description": "Only include PRs with a particular label, such as 'bug' or 'enhancement'."
+        },
+        "order": {
+          "enum": ["desc", "asc"],
+          "type": "string",
+          "title": "Order",
+          "default": "desc",
+          "examples": ["desc", "asc"],
+          "description": "Sort order (ascending or descending).",
+          "human_parameter_name": "Sort order?",
+          "human_parameter_description": "Pick ascending or descending order for the selected sort field. Most recent first is 'desc'."
+        },
+        "owner": {
+          "type": "string",
+          "title": "Owner",
+          "examples": ["facebook", "microsoft", "octocat"],
+          "description": "Filter by repository owner (user or organization). Can be used alone to search all repositories for an owner, or combined with repo parameter to specify owner and repo separately. When both owner and repo are provided, the search is scoped to 'owner/repo'. When omitted along with repo, search scope is determined by for_authenticated_user flag. The owner must exist and repositories must be accessible with your token.",
+          "human_parameter_name": "Owner of the repository?",
+          "human_parameter_description": "Search within all repositories for a specific user or organization (like 'microsoft'), or provide it together with the repo parameter to specify owner and repository separately. If owner='notetake' and repo='notetake', the search will be in repository 'notetake/notetake'. Leave blank to search across multiple owners. The owner must exist and repositories must be accessible with your token."
+        },
+        "query": {
+          "type": "string",
+          "title": "Query",
+          "examples": [
+            "bug fix",
+            "feature auth",
+            "label:bug",
+            "label:bug OR label:enhancement",
+            "refactor api",
+            null
+          ],
+          "description": "Optional search query for PR title, description, or commit messages. Supports GitHub search syntax including label filters (e.g., 'label:bug'), logical operators (AND, OR, NOT), and text search. If not provided, PRs will be listed based on other filter parameters. Type qualifiers (type:pr, is:pr, is:issue, type:issue) are automatically normalized. When using logical operators with qualifiers like labels, the query is automatically grouped for proper parsing. When omitting query, ensure at least one structured filter parameter is provided; passing no query and no filters may cause validation errors. Prefer dedicated parameters (`label`, `state`, `author`) over embedding qualifiers in the query string. Exact title matching is not supported; post-filter on title client-side if needed.",
+          "human_parameter_description": "Enter words or phrases that appear in the PR title, description, or commit messages. You can also use GitHub search qualifiers like 'label:bug' or combine them with logical operators like 'label:bug OR label:enhancement'. This is optional - you can filter PRs by repository, state, owner, and other parameters without a text search query. Do not include type qualifiers like 'type:pr' or 'is:pr' as they are handled automatically."
+        },
+        "state": {
+          "type": "string",
+          "title": "State",
+          "default": "open",
+          "examples": ["open", "closed", "all"],
+          "description": "Filter by PR state: 'open', 'closed', or 'all'.",
+          "human_parameter_name": "State of the PR?",
+          "human_parameter_description": "Choose which PR states to include: open, closed, or all. Use 'all' to see every state."
+        },
+        "author": {
+          "type": "string",
+          "title": "Author",
+          "examples": ["octocat", "defunkt"],
+          "description": "Filter by PR author username. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed.",
+          "human_parameter_name": "Author's username?",
+          "human_parameter_description": "Find PRs created by a particular GitHub user. Enter their exact username (case-insensitive). GitHub usernames can only contain letters, numbers, and hyphens (no dots or other special characters). The user must exist on GitHub."
+        },
+        "assignee": {
+          "type": "string",
+          "title": "Assignee",
+          "examples": ["octocat", "@me"],
+          "description": "Filter by PR assignee username. Use '@me' for current user. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed.",
+          "human_parameter_name": "Assignee's username?",
+          "human_parameter_description": "Find PRs assigned to a specific user. Enter their exact username or use '@me' for yourself. GitHub usernames can only contain letters, numbers, and hyphens (no dots or other special characters). The user must exist on GitHub."
+        },
+        "language": {
+          "type": "string",
+          "title": "Language",
+          "examples": ["python", "javascript", "typescript", "go"],
+          "description": "Filter by programming language.",
+          "human_parameter_name": "Programming language?",
+          "human_parameter_description": "Restrict results to PRs in repositories primarily using a specific language, like Python or JavaScript."
+        },
+        "mentions": {
+          "type": "string",
+          "title": "Mentions",
+          "examples": ["octocat", "@me"],
+          "description": "Filter by username mentioned in PR. Must be a valid GitHub username (alphanumeric characters and hyphens only, cannot start or end with hyphen). No dots or other special characters allowed.",
+          "human_parameter_name": "Username mentioned in PR?",
+          "human_parameter_description": "Find PRs where a user is mentioned in the discussion. Enter their exact username or use '@me' for yourself. GitHub usernames can only contain letters, numbers, and hyphens (no dots or other special characters). The user must exist on GitHub."
+        },
+        "per_page": {
+          "type": "integer",
+          "title": "Per Page",
+          "default": 20,
+          "examples": [10, 20, 50],
+          "description": "Number of results per page (maximum 100). GitHub caps total search results at ~1000 items; iterate `page` until results fewer than `per_page` are returned, and add `repo`, `label`, or date filters when totals approach 1000.",
+          "human_parameter_name": "Number of results per page?",
+          "human_parameter_description": "How many results to show per page. Higher numbers return more results at once (up to 100)."
+        },
+        "is_merged": {
+          "type": "boolean",
+          "title": "Is Merged",
+          "examples": [true, false],
+          "description": "Filter by merge status. True for merged PRs, False for unmerged, None for all.",
+          "human_parameter_name": "Has the PR been merged?",
+          "human_parameter_description": "Filter for PRs that have been merged or not. Leave blank to include both."
+        },
+        "base_branch": {
+          "type": "string",
+          "title": "Base Branch",
+          "examples": ["main", "master", "develop", "staging"],
+          "description": "Filter by base branch name.",
+          "human_parameter_name": "Base branch name?",
+          "human_parameter_description": "Show PRs targeting a specific base branch (the branch being merged into), like 'main' or 'develop'."
+        },
+        "head_branch": {
+          "type": "string",
+          "title": "Head Branch",
+          "examples": ["feature/auth", "bugfix/login", "hotfix/critical"],
+          "description": "Filter by head branch name.",
+          "human_parameter_name": "Head branch name?",
+          "human_parameter_description": "Show PRs coming from a specific feature branch (the branch being merged), like 'feature/login'."
+        },
+        "created_since": {
+          "type": "string",
+          "title": "Created Since",
+          "examples": ["2024-01-01", "2024-01-01T00:00:00Z"],
+          "description": "Filter PRs created after this date (ISO 8601 format). Provide as UTC ISO 8601 timestamp to avoid off-by-one-day errors at range boundaries. Does not filter on `merged_at`.",
+          "human_parameter_name": "Creation date since?",
+          "human_parameter_description": "Include only PRs opened on or after this date. Use ISO dates like '2024-01-01' or '2024-01-01T00:00:00Z'."
+        },
+        "updated_since": {
+          "type": "string",
+          "title": "Updated Since",
+          "examples": ["2024-01-01", "2024-01-01T00:00:00Z"],
+          "description": "Filter PRs updated after this date (ISO 8601 format).",
+          "human_parameter_name": "Update date since?",
+          "human_parameter_description": "Include only PRs updated on or after this date. Use ISO dates like '2024-01-01' or '2024-01-01T00:00:00Z'."
+        },
+        "response_detail": {
+          "enum": ["minimal", "full"],
+          "type": "string",
+          "title": "Response Detail",
+          "default": "minimal",
+          "examples": ["minimal", "full"],
+          "description": "Level of detail in the response. 'minimal' (default) returns an optimized response for AI agents. 'full' returns the complete GitHub API response.",
+          "human_parameter_name": "Response detail level",
+          "human_parameter_description": "Choose 'minimal' for a cleaner, AI-optimized summary, or 'full' for the complete GitHub API response."
+        },
+        "for_authenticated_user": {
+          "type": "boolean",
+          "title": "For Authenticated User",
+          "default": false,
+          "examples": [true, false],
+          "description": "Include private repositories accessible to the authenticated user in search results. When True without repo/owner, searches PRs involving you (author, assignee, mentions, commenter) across all accessible repos. When False without repo/owner, restricts to public repos only. When repo/owner is specified, this flag has no effect on scope. Set to True when searching private repositories; False searches all of GitHub and produces large noisy result sets.",
+          "human_parameter_name": "Include private repositories?",
+          "human_parameter_description": "Turn this on to include private repositories you can access with your GitHub account. When no specific repo/owner is provided, this searches PRs where you're involved (author, assignee, mentioned, or commenter). Leave it off to search only public repositories."
+        }
+      },
+      "description": "Request schema for finding pull requests with AI-friendly parameters."
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "Link": {
+          "type": "object",
+          "title": "Link",
+          "required": ["href"],
+          "properties": {
+            "href": {
+              "type": "string",
+              "title": "Href",
+              "description": "URL to resource."
+            }
+          },
+          "description": "Hypermedia link."
+        },
+        "Team": {
+          "type": "object",
+          "title": "Team",
+          "required": ["id", "node_id", "name", "slug"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Team ID."
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Team name."
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug",
+              "description": "Team slug."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for GraphQL."
+            }
+          },
+          "description": "Team information."
+        },
+        "User": {
+          "type": "object",
+          "title": "User",
+          "required": ["login", "id", "html_url", "type"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "User ID."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the user."
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "User type: 'User' or 'Bot'."
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "GitHub username."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for GraphQL."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub profile URL."
+            },
+            "avatar_url": {
+              "type": "string",
+              "title": "Avatar Url",
+              "description": "URL to user's avatar image."
+            },
+            "site_admin": {
+              "type": "boolean",
+              "title": "Site Admin",
+              "description": "Whether the user is a site administrator."
+            }
+          },
+          "description": "User information."
+        },
+        "Label": {
+          "type": "object",
+          "title": "Label",
+          "required": ["id", "name", "color"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Label ID."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the label."
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Label name."
+            },
+            "color": {
+              "type": "string",
+              "title": "Color",
+              "description": "Hexadecimal color code."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for GraphQL."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Label description."
+            }
+          },
+          "description": "Label information."
+        },
+        "Links": {
+          "type": "object",
+          "title": "Links",
+          "required": [
+            "self",
+            "html",
+            "issue",
+            "comments",
+            "review_comments",
+            "review_comment",
+            "commits",
+            "statuses"
+          ],
+          "properties": {
+            "html": {
+              "$ref": "#/$defs/Link",
+              "title": "Html",
+              "description": "Link to HTML view."
+            },
+            "self": {
+              "$ref": "#/$defs/Link",
+              "title": "Self",
+              "description": "Link to this pull request."
+            },
+            "issue": {
+              "$ref": "#/$defs/Link",
+              "title": "Issue",
+              "description": "Link to associated issue."
+            },
+            "commits": {
+              "$ref": "#/$defs/Link",
+              "title": "Commits",
+              "description": "Link to commits."
+            },
+            "comments": {
+              "$ref": "#/$defs/Link",
+              "title": "Comments",
+              "description": "Link to comments."
+            },
+            "statuses": {
+              "$ref": "#/$defs/Link",
+              "title": "Statuses",
+              "description": "Link to statuses."
+            },
+            "review_comment": {
+              "$ref": "#/$defs/Link",
+              "title": "Review Comment",
+              "description": "URL template for review comments."
+            },
+            "review_comments": {
+              "$ref": "#/$defs/Link",
+              "title": "Review Comments",
+              "description": "Link to review comments."
+            }
+          },
+          "description": "Hypermedia links to related resources."
+        },
+        "Milestone": {
+          "type": "object",
+          "title": "Milestone",
+          "required": ["id", "node_id", "number", "title", "state"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Milestone ID."
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "Milestone state: 'open' or 'closed'."
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Milestone title."
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Milestone number."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for GraphQL."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Milestone description."
+            }
+          },
+          "description": "Milestone information."
+        },
+        "BranchInfo": {
+          "type": "object",
+          "title": "BranchInfo",
+          "required": ["label", "ref", "sha", "user", "repo"],
+          "properties": {
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "Branch name."
+            },
+            "sha": {
+              "type": "string",
+              "title": "Sha",
+              "description": "Commit SHA at the head of the branch."
+            },
+            "repo": {
+              "title": "Repo",
+              "description": "Full repository object."
+            },
+            "user": {
+              "title": "User",
+              "description": "Owner of the repository."
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "Label in 'user:branch' format."
+            }
+          },
+          "description": "Branch information for head or base."
+        },
+        "PullRequest": {
+          "type": "object",
+          "title": "PullRequest",
+          "required": [
+            "id",
+            "html_url",
+            "number",
+            "state",
+            "title",
+            "created_at",
+            "updated_at"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the pull request across all of GitHub."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for this pull request."
+            },
+            "base": {
+              "$ref": "#/$defs/BranchInfo",
+              "title": "Base",
+              "description": "Target branch information (where changes will be merged)."
+            },
+            "body": {
+              "type": "string",
+              "title": "Body",
+              "description": "Description or body content of the pull request in markdown format."
+            },
+            "head": {
+              "$ref": "#/$defs/BranchInfo",
+              "title": "Head",
+              "description": "Source branch information (where changes come from)."
+            },
+            "user": {
+              "$ref": "#/$defs/User",
+              "title": "User",
+              "description": "User who created the pull request."
+            },
+            "draft": {
+              "type": "boolean",
+              "title": "Draft",
+              "description": "Whether the pull request is marked as a draft."
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "State of the pull request: 'open' or 'closed'."
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Title of the pull request."
+            },
+            "_links": {
+              "$ref": "#/$defs/Links",
+              "title": " Links",
+              "description": "Hypermedia links to related resources."
+            },
+            "author": {
+              "$ref": "#/$defs/User",
+              "title": "Author",
+              "description": "User who created the pull request (alias for user in optimized responses)."
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Label"
+              },
+              "title": "Labels",
+              "description": "Labels associated with the pull request."
+            },
+            "locked": {
+              "type": "boolean",
+              "title": "Locked",
+              "description": "Whether the conversation is locked."
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Pull request number identifier within the repository."
+            },
+            "commits": {
+              "type": "integer",
+              "title": "Commits",
+              "description": "Number of commits in the pull request."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Global Node ID for GraphQL compatibility."
+            },
+            "assignee": {
+              "$ref": "#/$defs/User",
+              "title": "Assignee",
+              "description": "Primary assignee of the pull request."
+            },
+            "comments": {
+              "type": "integer",
+              "title": "Comments",
+              "description": "Number of comments on the pull request."
+            },
+            "diff_url": {
+              "type": "string",
+              "title": "Diff Url",
+              "description": "URL to view the diff of changes."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub web interface URL for viewing this pull request."
+            },
+            "additions": {
+              "type": "integer",
+              "title": "Additions",
+              "description": "Number of additions in the pull request."
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/User"
+              },
+              "title": "Assignees",
+              "description": "All users assigned to the pull request."
+            },
+            "closed_at": {
+              "type": "string",
+              "title": "Closed At",
+              "description": "ISO 8601 timestamp when the pull request was closed, null if open."
+            },
+            "deletions": {
+              "type": "integer",
+              "title": "Deletions",
+              "description": "Number of deletions in the pull request."
+            },
+            "issue_url": {
+              "type": "string",
+              "title": "Issue Url",
+              "description": "API URL for the associated issue resource."
+            },
+            "merged_at": {
+              "type": "string",
+              "title": "Merged At",
+              "description": "ISO 8601 timestamp when the pull request was merged, null if not merged."
+            },
+            "milestone": {
+              "$ref": "#/$defs/Milestone",
+              "title": "Milestone",
+              "description": "Associated milestone if any."
+            },
+            "patch_url": {
+              "type": "string",
+              "title": "Patch Url",
+              "description": "URL to download the patch file."
+            },
+            "auto_merge": {
+              "title": "Auto Merge",
+              "description": "Auto-merge configuration if enabled, null otherwise."
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "ISO 8601 timestamp when the pull request was created."
+            },
+            "repository": {
+              "type": "object",
+              "title": "Repository",
+              "description": "Repository information (when included).",
+              "additionalProperties": true
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp when the pull request was last updated."
+            },
+            "base_branch": {
+              "type": "string",
+              "title": "Base Branch",
+              "description": "Base branch name (from optimized responses)."
+            },
+            "commits_url": {
+              "type": "string",
+              "title": "Commits Url",
+              "description": "API URL to list commits in this pull request."
+            },
+            "head_branch": {
+              "type": "string",
+              "title": "Head Branch",
+              "description": "Head branch name (from optimized responses)."
+            },
+            "comments_url": {
+              "type": "string",
+              "title": "Comments Url",
+              "description": "API URL to list issue comments."
+            },
+            "statuses_url": {
+              "type": "string",
+              "title": "Statuses Url",
+              "description": "API URL to list commit statuses."
+            },
+            "changed_files": {
+              "type": "integer",
+              "title": "Changed Files",
+              "description": "Number of files changed in the pull request."
+            },
+            "requested_teams": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Team"
+              },
+              "title": "Requested Teams",
+              "description": "Teams requested to review the pull request."
+            },
+            "merge_commit_sha": {
+              "type": "string",
+              "title": "Merge Commit Sha",
+              "description": "SHA of the merge commit. Before merging: test merge commit SHA. After merge commit: merge commit SHA. After squash: squashed commit SHA."
+            },
+            "active_lock_reason": {
+              "type": "string",
+              "title": "Active Lock Reason",
+              "description": "Reason for locking the conversation, if locked."
+            },
+            "author_association": {
+              "type": "string",
+              "title": "Author Association",
+              "description": "Author's relationship to the repository: COLLABORATOR, CONTRIBUTOR, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR, MANNEQUIN, MEMBER, NONE, OWNER."
+            },
+            "review_comment_url": {
+              "type": "string",
+              "title": "Review Comment Url",
+              "description": "URL template for individual review comments."
+            },
+            "requested_reviewers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/User"
+              },
+              "title": "Requested Reviewers",
+              "description": "Users requested to review the pull request."
+            },
+            "review_comments_url": {
+              "type": "string",
+              "title": "Review Comments Url",
+              "description": "API URL to list review comments."
+            }
+          },
+          "description": "Pull request information."
+        },
+        "FindPullRequestsResponse": {
+          "type": "object",
+          "title": "FindPullRequestsResponse",
+          "required": ["pull_requests"],
+          "properties": {
+            "total_count": {
+              "type": "integer",
+              "title": "Total Count",
+              "description": "Total number of pull requests matching the search query. Useful for understanding result set size and pagination."
+            },
+            "pull_requests": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/PullRequest"
+              },
+              "title": "Pull Requests",
+              "description": "Array of pull request objects"
+            },
+            "incomplete_results": {
+              "type": "boolean",
+              "title": "Incomplete Results",
+              "description": "Whether the results are incomplete due to timeout. If True, try narrowing your search query."
+            }
+          },
+          "description": "Response schema for `FindPullRequests`."
+        }
+      },
+      "title": "FindPullRequestsResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/FindPullRequestsResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["public_repo", "repo"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["public_repo", "repo"]
+        }
+      ]
+    },
+    "tags": [
+      "important",
+      "openWorldHint",
+      "readOnlyHint",
+      "idempotentHint",
+      "search"
+    ],
+    "no_auth": false,
+    "human_description": "This action allows users to search and filter pull requests based on various criteria like repository, author, state, labels, and more. It returns a structured response that includes essential information about the pull requests found.",
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Find Pull Requests",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/github"
+      }
+    }
+  },
+  {
+    "slug": "GITHUB_GET_THE_AUTHENTICATED_USER",
+    "name": "Get the authenticated user",
+    "description": "Gets the profile information for the currently authenticated GitHub user, including potentially private details based on user settings.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "github",
+      "name": "github",
+      "logo": "https://logos.composio.dev/api/github"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "GetTheAuthenticatedUserRequest",
+      "properties": {},
+      "description": "Request schema for `GetTheAuthenticatedUser`."
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "Plan": {
+          "type": "object",
+          "title": "Plan",
+          "required": ["name", "space", "collaborators", "private_repos"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Plan name (e.g., 'free', 'pro')"
+            },
+            "space": {
+              "type": "integer",
+              "title": "Space",
+              "description": "Storage space allocated in bytes"
+            },
+            "collaborators": {
+              "type": "integer",
+              "title": "Collaborators",
+              "description": "Number of collaborators allowed"
+            },
+            "private_repos": {
+              "type": "integer",
+              "title": "Private Repos",
+              "description": "Number of private repositories allowed"
+            }
+          },
+          "description": "Subscription plan details."
+        },
+        "GetTheAuthenticatedUserResponse": {
+          "type": "object",
+          "title": "GetTheAuthenticatedUserResponse",
+          "required": [
+            "login",
+            "id",
+            "node_id",
+            "avatar_url",
+            "gravatar_id",
+            "url",
+            "html_url",
+            "followers_url",
+            "following_url",
+            "gists_url",
+            "starred_url",
+            "subscriptions_url",
+            "organizations_url",
+            "repos_url",
+            "events_url",
+            "received_events_url",
+            "type",
+            "site_admin",
+            "public_repos",
+            "public_gists",
+            "followers",
+            "following",
+            "created_at",
+            "updated_at"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique user identifier"
+            },
+            "bio": {
+              "type": "string",
+              "title": "Bio",
+              "description": "User's profile biography (null if not set)"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for this user resource"
+            },
+            "blog": {
+              "type": "string",
+              "title": "Blog",
+              "description": "Personal website or blog URL (null if not set)"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "User's display name (null if not set)"
+            },
+            "plan": {
+              "$ref": "#/$defs/Plan",
+              "title": "Plan",
+              "description": "Subscription plan details (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "Account type (typically 'User')"
+            },
+            "email": {
+              "type": "string",
+              "title": "Email",
+              "description": "Publicly visible email address from profile page (null if not set)"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "The user's GitHub username/handle"
+            },
+            "company": {
+              "type": "string",
+              "title": "Company",
+              "description": "Company affiliation (null if not set)"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "GraphQL node identifier"
+            },
+            "hireable": {
+              "type": "boolean",
+              "title": "Hireable",
+              "description": "Whether the user is available for hire (null if not set)"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub profile page URL"
+            },
+            "location": {
+              "type": "string",
+              "title": "Location",
+              "description": "Geographic location (null if not set)"
+            },
+            "followers": {
+              "type": "integer",
+              "title": "Followers",
+              "description": "Number of followers"
+            },
+            "following": {
+              "type": "integer",
+              "title": "Following",
+              "description": "Number of users being followed"
+            },
+            "gists_url": {
+              "type": "string",
+              "title": "Gists Url",
+              "description": "API endpoint template for user's gists"
+            },
+            "repos_url": {
+              "type": "string",
+              "title": "Repos Url",
+              "description": "API endpoint for user's repositories"
+            },
+            "avatar_url": {
+              "type": "string",
+              "title": "Avatar Url",
+              "description": "URL of the user's profile avatar image"
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "ISO 8601 timestamp when the account was created"
+            },
+            "disk_usage": {
+              "type": "integer",
+              "title": "Disk Usage",
+              "description": "Disk space used by user's repositories in kilobytes (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API endpoint template for user's events"
+            },
+            "site_admin": {
+              "type": "boolean",
+              "title": "Site Admin",
+              "description": "Whether the user is a GitHub site administrator"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp when the profile was last updated"
+            },
+            "gravatar_id": {
+              "type": "string",
+              "title": "Gravatar Id",
+              "description": "Gravatar identifier (may be empty string or null)"
+            },
+            "starred_url": {
+              "type": "string",
+              "title": "Starred Url",
+              "description": "API endpoint template for user's starred repositories"
+            },
+            "public_gists": {
+              "type": "integer",
+              "title": "Public Gists",
+              "description": "Count of public gists"
+            },
+            "public_repos": {
+              "type": "integer",
+              "title": "Public Repos",
+              "description": "Count of public repositories"
+            },
+            "collaborators": {
+              "type": "integer",
+              "title": "Collaborators",
+              "description": "Number of collaborators across user's repositories (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "followers_url": {
+              "type": "string",
+              "title": "Followers Url",
+              "description": "API endpoint to retrieve user's followers"
+            },
+            "following_url": {
+              "type": "string",
+              "title": "Following Url",
+              "description": "API endpoint template for user's following list"
+            },
+            "private_gists": {
+              "type": "integer",
+              "title": "Private Gists",
+              "description": "Count of private gists (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "twitter_username": {
+              "type": "string",
+              "title": "Twitter Username",
+              "description": "Twitter/X username (null if not set)"
+            },
+            "organizations_url": {
+              "type": "string",
+              "title": "Organizations Url",
+              "description": "API endpoint for user's organizations"
+            },
+            "subscriptions_url": {
+              "type": "string",
+              "title": "Subscriptions Url",
+              "description": "API endpoint for user's subscriptions"
+            },
+            "owned_private_repos": {
+              "type": "integer",
+              "title": "Owned Private Repos",
+              "description": "Count of private repositories directly owned by user (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "received_events_url": {
+              "type": "string",
+              "title": "Received Events Url",
+              "description": "API endpoint for events received by user"
+            },
+            "total_private_repos": {
+              "type": "integer",
+              "title": "Total Private Repos",
+              "description": "Total count of private repositories owned (requires 'user' scope with OAuth or GitHub App authentication)"
+            },
+            "two_factor_authentication": {
+              "type": "boolean",
+              "title": "Two Factor Authentication",
+              "description": "Whether two-factor authentication is enabled (requires 'user' scope with OAuth or GitHub App authentication)"
+            }
+          },
+          "description": "Response schema for `GetTheAuthenticatedUser`."
+        }
+      },
+      "title": "GetTheAuthenticatedUserResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/GetTheAuthenticatedUserResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": [],
+    "scope_requirements": null,
+    "tags": ["readOnlyHint", "idempotentHint", "openWorldHint", "Users"],
+    "no_auth": false,
+    "human_description": "Gets the profile information for the currently authenticated GitHub user, including potentially private details based on user settings.",
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Get the authenticated user",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/github"
+      }
+    }
+  },
+  {
+    "slug": "GITHUB_LIST_ISSUES_ASSIGNED_TO_THE_AUTHENTICATED_USER",
+    "name": "List issues for user",
+    "description": "Lists GitHub issues for the authenticated user across visible repositories, with filtering by user relationship, state, labels, an ISO 8601 `since` timestamp (YYYY-MM-DDTHH:MM:SSZ), and sorting options; pull requests are typically included.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "github",
+      "name": "github",
+      "logo": "https://logos.composio.dev/api/github"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "ListIssuesForUserRequest",
+      "properties": {
+        "page": {
+          "type": "integer",
+          "title": "Page",
+          "default": 1,
+          "examples": ["1", "2", "10"],
+          "description": "Page number for results.",
+          "human_parameter_description": "Which page of results to view. Use this to move through the full result set."
+        },
+        "sort": {
+          "type": "string",
+          "title": "Sort",
+          "default": "created",
+          "examples": ["created", "updated", "comments"],
+          "description": "Field to sort issues by.",
+          "human_parameter_description": "The field to sort by so results appear in the order you prefer, such as when they were created or last updated."
+        },
+        "since": {
+          "type": "string",
+          "title": "Since",
+          "examples": ["2023-01-15T10:00:00Z"],
+          "description": "Return issues updated at or after this ISO 8601 timestamp (YYYY-MM-DDTHH:MM:SSZ).",
+          "human_parameter_description": "Only include issues updated on or after this date and time. Great for seeing what changed recently."
+        },
+        "state": {
+          "type": "string",
+          "title": "State",
+          "default": "open",
+          "examples": ["open", "closed", "all"],
+          "description": "Filter issues by state (e.g., 'open', 'closed').",
+          "human_parameter_description": "Which issue status to include, like open, closed, or all. Use this to focus on active work or review past items."
+        },
+        "filter": {
+          "type": "string",
+          "title": "Filter",
+          "default": "assigned",
+          "examples": ["assigned", "created", "mentioned", "subscribed", "all"],
+          "description": "Specifies the relationship for filtering issues (e.g., 'assigned', 'created').",
+          "human_parameter_description": "How you want to filter issues by your relationship to them (for example, assigned to you or created by you). Choose what fits what you\u2019re trying to review."
+        },
+        "labels": {
+          "type": "string",
+          "title": "Labels",
+          "examples": ["bug", "enhancement,docs", "priority:high"],
+          "description": "Comma-separated list of label names for filtering.",
+          "human_parameter_description": "One or more label names separated by commas to narrow the list. Helpful to focus on topics like 'bug' or 'enhancement'."
+        },
+        "per_page": {
+          "type": "integer",
+          "title": "Per Page",
+          "default": 30,
+          "examples": ["30", "50", "100"],
+          "description": "Number of results per page (max 100).",
+          "human_parameter_description": "How many items to show per page. Increase this to see more results at once."
+        },
+        "direction": {
+          "type": "string",
+          "title": "Direction",
+          "default": "desc",
+          "examples": ["asc", "desc"],
+          "description": "Sort direction.",
+          "human_parameter_description": "Whether to sort ascending or descending. Choose descending to see the most recent first."
+        }
+      }
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "IssueItem": {
+          "type": "object",
+          "title": "IssueItem",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique numerical identifier."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "Issue's REST API URL."
+            },
+            "body": {
+              "type": "string",
+              "title": "Body",
+              "description": "Main content/description; can be null."
+            },
+            "user": {
+              "$ref": "#/$defs/IssueUser",
+              "title": "User",
+              "description": "User who created the issue."
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "Issue state (e.g., 'open', 'closed')."
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Issue title."
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IssueLabel"
+              },
+              "title": "Labels",
+              "description": "List of labels applied to the issue."
+            },
+            "locked": {
+              "type": "boolean",
+              "title": "Locked",
+              "description": "Indicates if issue is locked (prevents new comments)."
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Repository-unique issue number."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Globally unique identifier (Node ID)."
+            },
+            "assignee": {
+              "$ref": "#/$defs/IssueUser",
+              "title": "Assignee",
+              "description": "User assigned to the issue; null if unassigned."
+            },
+            "comments": {
+              "type": "integer",
+              "title": "Comments",
+              "description": "Number of comments on the issue."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "Issue's GitHub HTML URL."
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IssueUser"
+              },
+              "title": "Assignees",
+              "description": "List of users assigned to the issue."
+            },
+            "closed_at": {
+              "type": "string",
+              "title": "Closed At",
+              "description": "Closure timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ); null if open."
+            },
+            "milestone": {
+              "$ref": "#/$defs/IssueMilestone",
+              "title": "Milestone",
+              "description": "Associated milestone; null if not part of one."
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "Creation timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ)."
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL for issue's events."
+            },
+            "labels_url": {
+              "type": "string",
+              "title": "Labels Url",
+              "description": "API URL for issue's labels (URI template)."
+            },
+            "repository": {
+              "$ref": "#/$defs/IssueRepository",
+              "title": "Repository",
+              "description": "Repository to which this issue belongs."
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "Last update timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ)."
+            },
+            "comments_url": {
+              "type": "string",
+              "title": "Comments Url",
+              "description": "API URL for issue's comments."
+            },
+            "pull_request": {
+              "$ref": "#/$defs/IssuePullRequest",
+              "title": "Pull Request",
+              "description": "Details if issue is linked to a pull request; present if issue is a PR."
+            },
+            "repository_url": {
+              "type": "string",
+              "title": "Repository Url",
+              "description": "Containing repository's REST API URL."
+            },
+            "active_lock_reason": {
+              "type": "string",
+              "title": "Active Lock Reason",
+              "description": "Reason issue was locked; null if not locked or no reason."
+            },
+            "author_association": {
+              "type": "string",
+              "title": "Author Association",
+              "description": "Author's relationship to the repository (e.g., 'OWNER', 'MEMBER')."
+            }
+          }
+        },
+        "IssueUser": {
+          "type": "object",
+          "title": "IssueUser",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique numerical identifier."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "User's REST API URL."
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "GitHub account type (e.g., 'User', 'Organization')."
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "Unique login name."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Globally unique identifier (Node ID)."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "User's GitHub HTML URL."
+            },
+            "gists_url": {
+              "type": "string",
+              "title": "Gists Url",
+              "description": "User's gists API URL (e.g., `.../{/gist_id}`)."
+            },
+            "repos_url": {
+              "type": "string",
+              "title": "Repos Url",
+              "description": "User's repositories API URL."
+            },
+            "avatar_url": {
+              "type": "string",
+              "title": "Avatar Url",
+              "description": "User's avatar image URL."
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL for user's performed events (e.g., `.../{/privacy}`)."
+            },
+            "site_admin": {
+              "type": "boolean",
+              "title": "Site Admin",
+              "description": "Indicates if user is a GitHub site administrator."
+            },
+            "gravatar_id": {
+              "type": "string",
+              "title": "Gravatar Id",
+              "description": "Gravatar ID; can be empty string."
+            },
+            "starred_url": {
+              "type": "string",
+              "title": "Starred Url",
+              "description": "API URL for user's starred repositories (e.g., `.../{/owner}{/repo}`)."
+            },
+            "followers_url": {
+              "type": "string",
+              "title": "Followers Url",
+              "description": "User's followers API URL."
+            },
+            "following_url": {
+              "type": "string",
+              "title": "Following Url",
+              "description": "API URL for users this user is following (e.g., `.../{/other_user}`)."
+            },
+            "organizations_url": {
+              "type": "string",
+              "title": "Organizations Url",
+              "description": "User's organizations API URL."
+            },
+            "subscriptions_url": {
+              "type": "string",
+              "title": "Subscriptions Url",
+              "description": "User's subscriptions API URL."
+            },
+            "received_events_url": {
+              "type": "string",
+              "title": "Received Events Url",
+              "description": "API URL for user's received events."
+            }
+          }
+        },
+        "IssueLabel": {
+          "type": "object",
+          "title": "IssueLabel",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique numerical identifier."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "Label's REST API URL."
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Label name."
+            },
+            "color": {
+              "type": "string",
+              "title": "Color",
+              "description": "Hexadecimal color code (no leading '#')."
+            },
+            "default": {
+              "type": "boolean",
+              "title": "Default",
+              "description": "Indicates if this is a default GitHub label."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Globally unique identifier (Node ID)."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Short description; can be null."
+            }
+          }
+        },
+        "IssueMilestone": {
+          "type": "object",
+          "title": "IssueMilestone",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique numerical identifier."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "Milestone's REST API URL."
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "Milestone state (e.g., 'open', 'closed')."
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Milestone title."
+            },
+            "due_on": {
+              "type": "string",
+              "title": "Due On",
+              "description": "Due date timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ); can be null."
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Repository-unique number for the milestone."
+            },
+            "creator": {
+              "$ref": "#/$defs/IssueUser",
+              "title": "Creator",
+              "description": "User who created the milestone."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Globally unique identifier (Node ID)."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "Milestone's GitHub HTML URL."
+            },
+            "closed_at": {
+              "type": "string",
+              "title": "Closed At",
+              "description": "Closure timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ); null if open."
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "Creation timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ)."
+            },
+            "labels_url": {
+              "type": "string",
+              "title": "Labels Url",
+              "description": "API URL for milestone's labels."
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "Last update timestamp (ISO 8601: YYYY-MM-DDTHH:MM:SSZ)."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Description; can be null."
+            },
+            "open_issues": {
+              "type": "integer",
+              "title": "Open Issues",
+              "description": "Number of open issues in milestone."
+            },
+            "closed_issues": {
+              "type": "integer",
+              "title": "Closed Issues",
+              "description": "Number of closed issues in milestone."
+            }
+          }
+        },
+        "IssueRepository": {
+          "type": "object",
+          "title": "IssueRepository",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique numerical identifier."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "Repository's REST API URL."
+            },
+            "fork": {
+              "type": "boolean",
+              "title": "Fork",
+              "description": "Indicates if repository is a fork."
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Repository name."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Globally unique identifier (Node ID)."
+            },
+            "private": {
+              "type": "boolean",
+              "title": "Private",
+              "description": "Indicates if repository is private."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "Repository's GitHub HTML URL."
+            },
+            "full_name": {
+              "type": "string",
+              "title": "Full Name",
+              "description": "Full name in 'owner/name' format."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Description; can be null."
+            }
+          }
+        },
+        "IssuePullRequest": {
+          "type": "object",
+          "title": "IssuePullRequest",
+          "properties": {
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "Pull request's details REST API URL."
+            },
+            "diff_url": {
+              "type": "string",
+              "title": "Diff Url",
+              "description": "Pull request's diff URL."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "Pull request's GitHub HTML URL."
+            },
+            "patch_url": {
+              "type": "string",
+              "title": "Patch Url",
+              "description": "Pull request's patch URL."
+            }
+          }
+        },
+        "ListIssuesForUserResponse": {
+          "type": "object",
+          "title": "ListIssuesForUserResponse",
+          "required": ["issues"],
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/IssueItem"
+              },
+              "title": "Issues",
+              "description": "List of issues matching the query criteria."
+            }
+          }
+        }
+      },
+      "title": "ListIssuesForUserResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ListIssuesForUserResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["repo"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["repo"]
+        }
+      ]
+    },
+    "tags": ["readOnlyHint", "idempotentHint", "openWorldHint"],
+    "no_auth": false,
+    "human_description": "This action retrieves all relevant GitHub issues for the authenticated user, including those assigned or created by them. Users can filter results based on various criteria such as issue state and labels for better management of their issues.",
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "List issues for user",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/github"
+      }
+    }
+  },
+  {
+    "slug": "GITHUB_LIST_NOTIFICATIONS_FOR_THE_AUTHENTICATED_USER",
+    "name": "List notifications for the authenticated user (Deprecated)",
+    "description": "DEPRECATED: Use GITHUB_LIST_NOTIFICATIONS instead. Lists notifications for the authenticated user, sorted by most recent update, with filtering and pagination options.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "github",
+      "name": "github",
+      "logo": "https://logos.composio.dev/api/github"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "ListNotificationsForTheAuthenticatedUserRequest",
+      "properties": {
+        "all": {
+          "type": "boolean",
+          "title": "All",
+          "default": false,
+          "description": "If `true`, shows all notifications including those marked as read.",
+          "human_parameter_name": "Show all notifications?",
+          "human_parameter_description": "Turn this on to include notifications you've already read. Use it when you want to see everything, not just unread items."
+        },
+        "page": {
+          "type": "integer",
+          "title": "Page",
+          "default": 1,
+          "examples": ["1", "2", "3"],
+          "description": "Page number of results to fetch.",
+          "human_parameter_name": "Page number to fetch?",
+          "human_parameter_description": "Which page of results you want to view. Increase this number to move forward through the list."
+        },
+        "since": {
+          "type": "string",
+          "title": "Since",
+          "examples": ["2023-01-01T00:00:00Z"],
+          "description": "Only show notifications updated after this ISO 8601 timestamp (e.g., `YYYY-MM-DDTHH:MM:SSZ`).",
+          "human_parameter_name": "Show notifications since this date?",
+          "human_parameter_description": "Enter the date and time after which you want to see notifications. Helpful for catching up from a specific point (e.g., 2023-01-01T00:00:00Z)."
+        },
+        "before": {
+          "type": "string",
+          "title": "Before",
+          "examples": ["2023-12-31T23:59:59Z"],
+          "description": "Only show notifications updated before this ISO 8601 timestamp (e.g., `YYYY-MM-DDTHH:MM:SSZ`).",
+          "human_parameter_name": "Show notifications before this date?",
+          "human_parameter_description": "Enter the date and time before which you want to see notifications. Useful for reviewing older notifications up to a cutoff (e.g., 2023-12-31T23:59:59Z)."
+        },
+        "per_page": {
+          "type": "integer",
+          "title": "Per Page",
+          "default": 50,
+          "examples": ["30", "50"],
+          "description": "Number of results per page (max 50).",
+          "human_parameter_name": "Number of results per page?",
+          "human_parameter_description": "How many notifications to show on each page. Choose fewer for quicker loading or the maximum to see more at once."
+        },
+        "participating": {
+          "type": "boolean",
+          "title": "Participating",
+          "default": false,
+          "description": "If `true`, shows only notifications in which the authenticated user is directly participating or has been mentioned.",
+          "human_parameter_name": "Show only notifications for me?",
+          "human_parameter_description": "Show only notifications where you're directly involved or mentioned. Use this to focus on items most likely needing your attention."
+        }
+      },
+      "description": "Request schema for `ListNotificationsForTheAuthenticatedUser`"
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "SimpleUser": {
+          "type": "object",
+          "title": "SimpleUser",
+          "required": [
+            "login",
+            "id",
+            "node_id",
+            "avatar_url",
+            "url",
+            "html_url",
+            "followers_url",
+            "following_url",
+            "gists_url",
+            "starred_url",
+            "subscriptions_url",
+            "organizations_url",
+            "repos_url",
+            "events_url",
+            "received_events_url",
+            "type",
+            "site_admin"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the user."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the user."
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "Type of the user account (e.g., 'User' or 'Organization')."
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "Username of the repository owner."
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for the user."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub profile URL for the user."
+            },
+            "gists_url": {
+              "type": "string",
+              "title": "Gists Url",
+              "description": "API URL template for the user's gists."
+            },
+            "repos_url": {
+              "type": "string",
+              "title": "Repos Url",
+              "description": "API URL for the user's repositories."
+            },
+            "avatar_url": {
+              "type": "string",
+              "title": "Avatar Url",
+              "description": "URL to the user's avatar image."
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL template for the user's events."
+            },
+            "site_admin": {
+              "type": "boolean",
+              "title": "Site Admin",
+              "description": "Whether the user is a GitHub site administrator."
+            },
+            "gravatar_id": {
+              "type": "string",
+              "title": "Gravatar Id",
+              "description": "Gravatar ID for the user."
+            },
+            "starred_url": {
+              "type": "string",
+              "title": "Starred Url",
+              "description": "API URL template for repositories starred by the user."
+            },
+            "followers_url": {
+              "type": "string",
+              "title": "Followers Url",
+              "description": "API URL for the user's followers."
+            },
+            "following_url": {
+              "type": "string",
+              "title": "Following Url",
+              "description": "API URL template for users the user is following."
+            },
+            "organizations_url": {
+              "type": "string",
+              "title": "Organizations Url",
+              "description": "API URL for the user's organizations."
+            },
+            "subscriptions_url": {
+              "type": "string",
+              "title": "Subscriptions Url",
+              "description": "API URL for the user's subscriptions."
+            },
+            "received_events_url": {
+              "type": "string",
+              "title": "Received Events Url",
+              "description": "API URL for events received by the user."
+            }
+          },
+          "description": "Simple user object representing the repository owner."
+        },
+        "MinimalRepository": {
+          "type": "object",
+          "title": "MinimalRepository",
+          "required": [
+            "id",
+            "node_id",
+            "name",
+            "full_name",
+            "owner",
+            "private",
+            "html_url",
+            "fork",
+            "url",
+            "archive_url",
+            "assignees_url",
+            "blobs_url",
+            "branches_url",
+            "collaborators_url",
+            "comments_url",
+            "commits_url",
+            "compare_url",
+            "contents_url",
+            "contributors_url",
+            "deployments_url",
+            "downloads_url",
+            "events_url",
+            "forks_url",
+            "git_commits_url",
+            "git_refs_url",
+            "git_tags_url",
+            "hooks_url",
+            "issue_comment_url",
+            "issue_events_url",
+            "issues_url",
+            "keys_url",
+            "labels_url",
+            "languages_url",
+            "merges_url",
+            "milestones_url",
+            "notifications_url",
+            "pulls_url",
+            "releases_url",
+            "stargazers_url",
+            "statuses_url",
+            "subscribers_url",
+            "subscription_url",
+            "tags_url",
+            "teams_url",
+            "trees_url"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the repository."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the repository."
+            },
+            "fork": {
+              "type": "boolean",
+              "title": "Fork",
+              "description": "Whether the repository is a fork."
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Name of the repository."
+            },
+            "owner": {
+              "$ref": "#/$defs/SimpleUser",
+              "title": "Owner"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Node ID for the repository."
+            },
+            "private": {
+              "type": "boolean",
+              "title": "Private",
+              "description": "Whether the repository is private."
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub URL for the repository."
+            },
+            "keys_url": {
+              "type": "string",
+              "title": "Keys Url",
+              "description": "API URL template for repository deploy keys."
+            },
+            "tags_url": {
+              "type": "string",
+              "title": "Tags Url",
+              "description": "API URL for repository tags."
+            },
+            "blobs_url": {
+              "type": "string",
+              "title": "Blobs Url",
+              "description": "API URL template for repository blobs."
+            },
+            "forks_url": {
+              "type": "string",
+              "title": "Forks Url",
+              "description": "API URL for repository forks."
+            },
+            "full_name": {
+              "type": "string",
+              "title": "Full Name",
+              "description": "Full name of the repository including owner."
+            },
+            "hooks_url": {
+              "type": "string",
+              "title": "Hooks Url",
+              "description": "API URL for repository webhooks."
+            },
+            "pulls_url": {
+              "type": "string",
+              "title": "Pulls Url",
+              "description": "API URL template for repository pull requests."
+            },
+            "teams_url": {
+              "type": "string",
+              "title": "Teams Url",
+              "description": "API URL for repository teams."
+            },
+            "trees_url": {
+              "type": "string",
+              "title": "Trees Url",
+              "description": "API URL template for git trees."
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL for repository events."
+            },
+            "issues_url": {
+              "type": "string",
+              "title": "Issues Url",
+              "description": "API URL template for repository issues."
+            },
+            "labels_url": {
+              "type": "string",
+              "title": "Labels Url",
+              "description": "API URL template for repository labels."
+            },
+            "merges_url": {
+              "type": "string",
+              "title": "Merges Url",
+              "description": "API URL for repository merges."
+            },
+            "archive_url": {
+              "type": "string",
+              "title": "Archive Url",
+              "description": "API URL template for repository archives."
+            },
+            "commits_url": {
+              "type": "string",
+              "title": "Commits Url",
+              "description": "API URL template for repository commits."
+            },
+            "compare_url": {
+              "type": "string",
+              "title": "Compare Url",
+              "description": "API URL template for comparing commits."
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Description of the repository."
+            },
+            "branches_url": {
+              "type": "string",
+              "title": "Branches Url",
+              "description": "API URL template for repository branches."
+            },
+            "comments_url": {
+              "type": "string",
+              "title": "Comments Url",
+              "description": "API URL template for repository comments."
+            },
+            "contents_url": {
+              "type": "string",
+              "title": "Contents Url",
+              "description": "API URL template for repository contents."
+            },
+            "git_refs_url": {
+              "type": "string",
+              "title": "Git Refs Url",
+              "description": "API URL template for git references."
+            },
+            "git_tags_url": {
+              "type": "string",
+              "title": "Git Tags Url",
+              "description": "API URL template for git tags."
+            },
+            "releases_url": {
+              "type": "string",
+              "title": "Releases Url",
+              "description": "API URL template for repository releases."
+            },
+            "statuses_url": {
+              "type": "string",
+              "title": "Statuses Url",
+              "description": "API URL template for commit statuses."
+            },
+            "assignees_url": {
+              "type": "string",
+              "title": "Assignees Url",
+              "description": "API URL template for repository assignees."
+            },
+            "downloads_url": {
+              "type": "string",
+              "title": "Downloads Url",
+              "description": "API URL for repository downloads."
+            },
+            "languages_url": {
+              "type": "string",
+              "title": "Languages Url",
+              "description": "API URL for repository languages."
+            },
+            "milestones_url": {
+              "type": "string",
+              "title": "Milestones Url",
+              "description": "API URL template for repository milestones."
+            },
+            "stargazers_url": {
+              "type": "string",
+              "title": "Stargazers Url",
+              "description": "API URL for repository stargazers."
+            },
+            "deployments_url": {
+              "type": "string",
+              "title": "Deployments Url",
+              "description": "API URL for repository deployments."
+            },
+            "git_commits_url": {
+              "type": "string",
+              "title": "Git Commits Url",
+              "description": "API URL template for git commits."
+            },
+            "subscribers_url": {
+              "type": "string",
+              "title": "Subscribers Url",
+              "description": "API URL for repository subscribers."
+            },
+            "contributors_url": {
+              "type": "string",
+              "title": "Contributors Url",
+              "description": "API URL for repository contributors."
+            },
+            "issue_events_url": {
+              "type": "string",
+              "title": "Issue Events Url",
+              "description": "API URL template for issue events."
+            },
+            "subscription_url": {
+              "type": "string",
+              "title": "Subscription Url",
+              "description": "API URL for the user's subscription to the repository."
+            },
+            "collaborators_url": {
+              "type": "string",
+              "title": "Collaborators Url",
+              "description": "API URL template for repository collaborators."
+            },
+            "issue_comment_url": {
+              "type": "string",
+              "title": "Issue Comment Url",
+              "description": "API URL template for issue comments."
+            },
+            "notifications_url": {
+              "type": "string",
+              "title": "Notifications Url",
+              "description": "API URL template for repository notifications."
+            }
+          },
+          "description": "Minimal repository object containing details about the associated repository."
+        },
+        "NotificationThread": {
+          "type": "object",
+          "title": "NotificationThread",
+          "required": [
+            "id",
+            "repository",
+            "subject",
+            "reason",
+            "unread",
+            "updated_at",
+            "url",
+            "subscription_url"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "Unique identifier for the notification thread."
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the notification thread."
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason",
+              "description": "The reason for receiving the notification (e.g., 'subscribed', 'mentioned', 'author', 'comment', 'invitation', 'manual', 'assign', 'review_requested', 'security_alert', 'state_change', 'team_mention')."
+            },
+            "unread": {
+              "type": "boolean",
+              "title": "Unread",
+              "description": "Whether the notification is unread."
+            },
+            "subject": {
+              "$ref": "#/$defs/NotificationSubject",
+              "title": "Subject"
+            },
+            "repository": {
+              "$ref": "#/$defs/MinimalRepository",
+              "title": "Repository"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp of when the notification was last updated."
+            },
+            "last_read_at": {
+              "type": "string",
+              "title": "Last Read At",
+              "description": "ISO 8601 timestamp of when the notification was last read. Can be null if never read."
+            },
+            "subscription_url": {
+              "type": "string",
+              "title": "Subscription Url",
+              "description": "API URL for managing the thread subscription."
+            }
+          },
+          "description": "Notification thread object."
+        },
+        "NotificationSubject": {
+          "type": "object",
+          "title": "NotificationSubject",
+          "required": ["title", "type"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the subject."
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "Type of the subject (e.g., 'Issue', 'PullRequest', 'Commit')."
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Title of the subject."
+            },
+            "latest_comment_url": {
+              "type": "string",
+              "title": "Latest Comment Url",
+              "description": "API URL for the latest comment on the subject."
+            }
+          },
+          "description": "Information about the notification subject (issue, pull request, or commit)."
+        },
+        "ListNotificationsForTheAuthenticatedUserResponse": {
+          "type": "object",
+          "title": "ListNotificationsForTheAuthenticatedUserResponse",
+          "required": ["notifications"],
+          "properties": {
+            "notifications": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/NotificationThread"
+              },
+              "title": "Notifications",
+              "description": "List of notification threads for the authenticated user."
+            }
+          },
+          "description": "Response schema for `ListNotificationsForTheAuthenticatedUser`"
+        }
+      },
+      "title": "ListNotificationsForTheAuthenticatedUserResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/ListNotificationsForTheAuthenticatedUserResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["notifications", "repo"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["notifications", "repo"]
+        }
+      ]
+    },
+    "tags": ["activity", "openWorldHint", "readOnlyHint", "deprecated"],
+    "no_auth": false,
+    "human_description": "This action retrieves notifications for the authenticated user from the GitHub API.\n    Users can specify filters such as whether to display all notifications or only those they are mentioned in,\n    along with pagination options to navigate through the results.",
+    "is_deprecated": true,
+    "deprecated": {
+      "displayName": "List notifications for the authenticated user (Deprecated)",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": true,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/github"
+      }
+    }
+  },
+  {
+    "slug": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "name": "Search issues and pull requests",
+    "description": "Searches GitHub for issues and pull requests using keywords and qualifiers, with sorting and pagination. Standalone issue or pull request type filters must be combined with another term; @me is resolved by GitHub.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "github",
+      "name": "github",
+      "logo": "https://logos.composio.dev/api/github"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "SearchIssuesAndPullRequestsRequest",
+      "required": ["q"],
+      "properties": {
+        "q": {
+          "type": "string",
+          "title": "Q",
+          "examples": [
+            "bug repo:octocat/Spoon-Knife is:issue is:open label:\"help wanted\"",
+            "assignee:@me is:issue state:open",
+            "state:open label:bug",
+            "bug is:pr"
+          ],
+          "maxLength": 256,
+          "description": "Search query using GitHub's search syntax. Supports keywords, qualifiers (repo:, org:, user:, state:, label:, author:, assignee:, mentions:, etc.), and type filters (is:issue, is:pr). IMPORTANT: Type filters (is:issue, is:pr) cannot be used alone - they must be combined with at least one keyword or other qualifier. All other qualifiers work independently (e.g., 'state:open', 'label:bug', 'assignee:octocat'). The @me shorthand (e.g., assignee:@me, mentions:@me, author:@me) can be used to reference the authenticated user. Logical operators (AND, OR, NOT) can be used to combine terms (maximum 5 operators total).",
+          "human_parameter_description": "The search query for GitHub issues and pull requests. Use keywords, qualifiers (repo:, state:, label:, author:, etc.), and type filters (is:issue, is:pr). Type filters cannot be used alone - combine them with keywords or other qualifiers. All other qualifiers work independently. The @me shorthand can be used to reference the authenticated user. Maximum 5 AND/OR/NOT operators total."
+        },
+        "page": {
+          "type": "integer",
+          "title": "Page",
+          "default": 1,
+          "minimum": 1,
+          "examples": ["1", "2", "5"],
+          "description": "Page number for results.",
+          "human_parameter_name": "Page number",
+          "human_parameter_description": "Which page of results to view, starting at 1. Use this to move through large result sets."
+        },
+        "sort": {
+          "enum": [
+            "comments",
+            "reactions",
+            "reactions-+1",
+            "reactions--1",
+            "reactions-smile",
+            "reactions-thinking_face",
+            "reactions-heart",
+            "reactions-tada",
+            "interactions",
+            "created",
+            "updated"
+          ],
+          "type": "string",
+          "title": "SortEnm",
+          "examples": ["comments", "created", "updated"],
+          "description": "Field for sorting results. GitHub defaults to 'best match' if unspecified.",
+          "human_parameter_name": "Sort results by",
+          "human_parameter_description": "Choose how the results should be sorted, like by comments or date. Leave blank to use GitHub's best match."
+        },
+        "order": {
+          "enum": ["desc", "asc"],
+          "type": "string",
+          "title": "Order",
+          "default": "desc",
+          "examples": ["desc", "asc"],
+          "description": "Order for sorted results (ascending/descending). Effective only if `sort` is also provided.",
+          "human_parameter_name": "Sort order",
+          "human_parameter_description": "Pick whether the sort should be descending (newest/most first) or ascending. This only applies if you also choose a sort field."
+        },
+        "per_page": {
+          "type": "integer",
+          "title": "Per Page",
+          "default": 30,
+          "maximum": 100,
+          "minimum": 1,
+          "examples": ["30", "50", "100"],
+          "description": "Number of results per page.",
+          "human_parameter_name": "Results per page",
+          "human_parameter_description": "How many results to show per page. Increase this to see more results at once (up to 100)."
+        },
+        "response_detail": {
+          "enum": ["minimal", "full"],
+          "type": "string",
+          "title": "Response Detail",
+          "default": "minimal",
+          "examples": ["minimal", "full"],
+          "description": "Level of detail in the response. 'minimal' (default) returns an optimized response for AI agents. 'full' returns the complete GitHub API response.",
+          "human_parameter_name": "Response detail level",
+          "human_parameter_description": "Choose 'minimal' for a simplified view, or 'full' for the complete raw API payload."
+        }
+      },
+      "description": "Request schema for searching issues and pull requests on GitHub."
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "User": {
+          "type": "object",
+          "title": "User",
+          "required": [
+            "login",
+            "id",
+            "node_id",
+            "avatar_url",
+            "url",
+            "html_url",
+            "followers_url",
+            "following_url",
+            "gists_url",
+            "starred_url",
+            "subscriptions_url",
+            "organizations_url",
+            "repos_url",
+            "events_url",
+            "received_events_url",
+            "type",
+            "site_admin"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "User's unique identifier"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the user"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type",
+              "description": "Type of account (e.g., 'User', 'Organization', 'Bot')"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "GitHub username"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "GraphQL node ID"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub profile URL"
+            },
+            "gists_url": {
+              "type": "string",
+              "title": "Gists Url",
+              "description": "API URL template for user's gists"
+            },
+            "repos_url": {
+              "type": "string",
+              "title": "Repos Url",
+              "description": "API URL for user's repositories"
+            },
+            "avatar_url": {
+              "type": "string",
+              "title": "Avatar Url",
+              "description": "URL to user's avatar image"
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL template for user's events"
+            },
+            "site_admin": {
+              "type": "boolean",
+              "title": "Site Admin",
+              "description": "Whether the user is a GitHub site administrator"
+            },
+            "gravatar_id": {
+              "type": "string",
+              "title": "Gravatar Id",
+              "description": "Gravatar ID (often empty string)"
+            },
+            "starred_url": {
+              "type": "string",
+              "title": "Starred Url",
+              "description": "API URL template for user's starred repositories"
+            },
+            "followers_url": {
+              "type": "string",
+              "title": "Followers Url",
+              "description": "API URL for user's followers"
+            },
+            "following_url": {
+              "type": "string",
+              "title": "Following Url",
+              "description": "API URL template for users this user follows"
+            },
+            "organizations_url": {
+              "type": "string",
+              "title": "Organizations Url",
+              "description": "API URL for user's organizations"
+            },
+            "subscriptions_url": {
+              "type": "string",
+              "title": "Subscriptions Url",
+              "description": "API URL for user's subscriptions"
+            },
+            "received_events_url": {
+              "type": "string",
+              "title": "Received Events Url",
+              "description": "API URL for events received by the user"
+            }
+          },
+          "description": "GitHub user information."
+        },
+        "Issue": {
+          "type": "object",
+          "title": "Issue",
+          "required": [
+            "id",
+            "node_id",
+            "url",
+            "repository_url",
+            "labels_url",
+            "comments_url",
+            "events_url",
+            "html_url",
+            "number",
+            "title",
+            "state",
+            "locked",
+            "comments",
+            "created_at",
+            "updated_at",
+            "author_association",
+            "score",
+            "user",
+            "assignees",
+            "labels"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the issue"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for accessing the issue details"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body",
+              "description": "Description content of the issue or pull request in markdown format"
+            },
+            "user": {
+              "$ref": "#/$defs/User",
+              "title": "User",
+              "description": "User who created the issue"
+            },
+            "draft": {
+              "type": "boolean",
+              "title": "Draft",
+              "description": "Whether the pull request is in draft mode (only present for pull requests)"
+            },
+            "score": {
+              "type": "number",
+              "title": "Score",
+              "description": "Relevance score for search result ranking"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "Current state of the issue (open or closed)"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Title of the issue or pull request"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Label"
+              },
+              "title": "Labels",
+              "description": "Array of labels applied to the issue"
+            },
+            "locked": {
+              "type": "boolean",
+              "title": "Locked",
+              "description": "Whether the issue is locked from further discussion"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Issue or pull request number within the repository"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "Global GraphQL node identifier"
+            },
+            "assignee": {
+              "$ref": "#/$defs/User",
+              "title": "Assignee",
+              "description": "User assigned to the issue, or null if unassigned"
+            },
+            "comments": {
+              "type": "integer",
+              "title": "Comments",
+              "description": "Number of comments on the issue"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub web interface URL for viewing the issue"
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/User"
+              },
+              "title": "Assignees",
+              "description": "Array of users assigned to the issue"
+            },
+            "closed_at": {
+              "type": "string",
+              "title": "Closed At",
+              "description": "ISO 8601 timestamp when the issue was closed, or null if still open"
+            },
+            "closed_by": {
+              "$ref": "#/$defs/User",
+              "title": "Closed By",
+              "description": "User who closed the issue, or null if still open"
+            },
+            "milestone": {
+              "$ref": "#/$defs/Milestone",
+              "title": "Milestone",
+              "description": "Milestone associated with the issue, or null if no milestone"
+            },
+            "reactions": {
+              "$ref": "#/$defs/Reactions",
+              "title": "Reactions",
+              "description": "Reaction counts for the issue"
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "ISO 8601 timestamp when the issue was created"
+            },
+            "events_url": {
+              "type": "string",
+              "title": "Events Url",
+              "description": "API URL for accessing issue events"
+            },
+            "labels_url": {
+              "type": "string",
+              "title": "Labels Url",
+              "description": "API URL template for accessing issue labels"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp when the issue was last updated"
+            },
+            "comments_url": {
+              "type": "string",
+              "title": "Comments Url",
+              "description": "API URL for accessing issue comments"
+            },
+            "pull_request": {
+              "$ref": "#/$defs/PullRequest",
+              "title": "Pull Request",
+              "description": "Pull request information if this issue is a pull request (presence of this field indicates the item is a PR)"
+            },
+            "state_reason": {
+              "type": "string",
+              "title": "State Reason",
+              "description": "Reason for the current state (e.g., 'completed', 'not_planned', 'reopened', 'duplicate')"
+            },
+            "text_matches": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TextMatch"
+              },
+              "title": "Text Matches",
+              "description": "Text match metadata when using text-match media type (application/vnd.github.text-match+json)"
+            },
+            "timeline_url": {
+              "type": "string",
+              "title": "Timeline Url",
+              "description": "API URL for accessing the issue timeline"
+            },
+            "repository_url": {
+              "type": "string",
+              "title": "Repository Url",
+              "description": "API URL for the repository containing this issue"
+            },
+            "active_lock_reason": {
+              "type": "string",
+              "title": "Active Lock Reason",
+              "description": "Reason the issue was locked, if applicable (e.g., 'off-topic', 'too heated', 'resolved', 'spam')"
+            },
+            "author_association": {
+              "type": "string",
+              "title": "Author Association",
+              "description": "Association between the issue author and the repository (e.g., 'OWNER', 'COLLABORATOR', 'CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'MEMBER', 'NONE')"
+            },
+            "performed_via_github_app": {
+              "$ref": "#/$defs/GitHubApp",
+              "title": "Performed Via Github App",
+              "description": "GitHub App that performed the action, or null if not performed by an app"
+            }
+          },
+          "description": "GitHub issue or pull request."
+        },
+        "Label": {
+          "type": "object",
+          "title": "Label",
+          "required": ["id", "node_id", "url", "name", "color", "default"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the label"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the label"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Display name of the label"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color",
+              "description": "Hexadecimal color code for the label (without '#')"
+            },
+            "default": {
+              "type": "boolean",
+              "title": "Default",
+              "description": "Whether this is a default GitHub label"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "GraphQL node ID for the label"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Description of what the label represents"
+            }
+          },
+          "description": "GitHub label information."
+        },
+        "GitHubApp": {
+          "type": "object",
+          "title": "GitHubApp",
+          "required": [
+            "id",
+            "node_id",
+            "name",
+            "external_url",
+            "html_url",
+            "created_at",
+            "updated_at",
+            "permissions",
+            "events"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier of the GitHub app"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Name of the GitHub app"
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug",
+              "description": "Slug name of the GitHub app"
+            },
+            "owner": {
+              "$ref": "#/$defs/User",
+              "title": "Owner",
+              "description": "User or organization that owns the GitHub app"
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Events",
+              "description": "List of event types the GitHub app subscribes to"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "GraphQL node identifier"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub web interface URL for the app"
+            },
+            "client_id": {
+              "type": "string",
+              "title": "Client Id",
+              "description": "OAuth application client identifier"
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "ISO 8601 timestamp when the app was created"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp when the app was last updated"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "App description text"
+            },
+            "permissions": {
+              "type": "object",
+              "title": "Permissions",
+              "description": "Permission scopes granted to the app (key-value pairs)",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "external_url": {
+              "type": "string",
+              "title": "External Url",
+              "description": "External website URL"
+            }
+          },
+          "description": "GitHub App information."
+        },
+        "Milestone": {
+          "type": "object",
+          "title": "Milestone",
+          "required": [
+            "id",
+            "node_id",
+            "number",
+            "state",
+            "title",
+            "creator",
+            "open_issues",
+            "closed_issues",
+            "created_at",
+            "updated_at",
+            "url",
+            "html_url",
+            "labels_url"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "Unique identifier for the milestone"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the milestone"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "State of the milestone (open or closed)"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "Title of the milestone"
+            },
+            "due_on": {
+              "type": "string",
+              "title": "Due On",
+              "description": "ISO 8601 timestamp for the milestone due date, or null"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "Milestone number within the repository"
+            },
+            "creator": {
+              "$ref": "#/$defs/User",
+              "title": "Creator",
+              "description": "User who created the milestone"
+            },
+            "node_id": {
+              "type": "string",
+              "title": "Node Id",
+              "description": "GraphQL node ID for the milestone"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub web interface URL for the milestone"
+            },
+            "closed_at": {
+              "type": "string",
+              "title": "Closed At",
+              "description": "ISO 8601 timestamp when the milestone was closed, or null"
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "ISO 8601 timestamp when the milestone was created"
+            },
+            "labels_url": {
+              "type": "string",
+              "title": "Labels Url",
+              "description": "API URL for milestone labels"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "ISO 8601 timestamp when the milestone was last updated"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Description of the milestone"
+            },
+            "open_issues": {
+              "type": "integer",
+              "title": "Open Issues",
+              "description": "Number of open issues in this milestone"
+            },
+            "closed_issues": {
+              "type": "integer",
+              "title": "Closed Issues",
+              "description": "Number of closed issues in this milestone"
+            }
+          },
+          "description": "GitHub milestone information."
+        },
+        "Reactions": {
+          "type": "object",
+          "title": "Reactions",
+          "required": [
+            "url",
+            "total_count",
+            "+1",
+            "-1",
+            "laugh",
+            "hooray",
+            "confused",
+            "heart",
+            "rocket",
+            "eyes"
+          ],
+          "properties": {
+            "+1": {
+              "type": "integer",
+              "title": "+1",
+              "description": "Number of thumbs up reactions"
+            },
+            "-1": {
+              "type": "integer",
+              "title": " 1",
+              "description": "Number of thumbs down reactions"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for accessing reactions"
+            },
+            "eyes": {
+              "type": "integer",
+              "title": "Eyes",
+              "description": "Number of eyes reactions"
+            },
+            "heart": {
+              "type": "integer",
+              "title": "Heart",
+              "description": "Number of heart reactions"
+            },
+            "laugh": {
+              "type": "integer",
+              "title": "Laugh",
+              "description": "Number of laugh reactions"
+            },
+            "hooray": {
+              "type": "integer",
+              "title": "Hooray",
+              "description": "Number of hooray/celebration reactions"
+            },
+            "rocket": {
+              "type": "integer",
+              "title": "Rocket",
+              "description": "Number of rocket reactions"
+            },
+            "confused": {
+              "type": "integer",
+              "title": "Confused",
+              "description": "Number of confused reactions"
+            },
+            "total_count": {
+              "type": "integer",
+              "title": "Total Count",
+              "description": "Total number of reactions"
+            }
+          },
+          "description": "Reaction counts for the issue."
+        },
+        "TextMatch": {
+          "type": "object",
+          "title": "TextMatch",
+          "required": [
+            "object_url",
+            "object_type",
+            "property",
+            "fragment",
+            "matches"
+          ],
+          "properties": {
+            "matches": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TextMatchDetail"
+              },
+              "title": "Matches",
+              "description": "Array of match details"
+            },
+            "fragment": {
+              "type": "string",
+              "title": "Fragment",
+              "description": "Text fragment containing the match"
+            },
+            "property": {
+              "type": "string",
+              "title": "Property",
+              "description": "Property where the match was found (e.g., 'body', 'title')"
+            },
+            "object_url": {
+              "type": "string",
+              "title": "Object Url",
+              "description": "API URL of the object containing the match"
+            },
+            "object_type": {
+              "type": "string",
+              "title": "Object Type",
+              "description": "Type of object (e.g., 'Issue', 'IssueComment')"
+            }
+          },
+          "description": "Text match metadata."
+        },
+        "PullRequest": {
+          "type": "object",
+          "title": "PullRequest",
+          "required": ["url", "html_url", "diff_url", "patch_url"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "API URL for the pull request"
+            },
+            "diff_url": {
+              "type": "string",
+              "title": "Diff Url",
+              "description": "URL to download the diff file"
+            },
+            "html_url": {
+              "type": "string",
+              "title": "Html Url",
+              "description": "GitHub web interface URL for the pull request"
+            },
+            "patch_url": {
+              "type": "string",
+              "title": "Patch Url",
+              "description": "URL to download the patch file"
+            }
+          },
+          "description": "Pull request information."
+        },
+        "TextMatchDetail": {
+          "type": "object",
+          "title": "TextMatchDetail",
+          "required": ["text", "indices"],
+          "properties": {
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "Matched text"
+            },
+            "indices": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "title": "Indices",
+              "description": "Start and end position of the match"
+            }
+          },
+          "description": "Detail of a text match."
+        },
+        "SearchIssuesAndPullRequestsResponse": {
+          "type": "object",
+          "title": "SearchIssuesAndPullRequestsResponse",
+          "required": ["total_count", "incomplete_results", "items"],
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Issue"
+              },
+              "title": "Items",
+              "description": "Array of issue and pull request objects matching the search query (up to 100 per page)"
+            },
+            "total_count": {
+              "type": "integer",
+              "title": "Total Count",
+              "description": "Total number of matching results across all pages"
+            },
+            "incomplete_results": {
+              "type": "boolean",
+              "title": "Incomplete Results",
+              "description": "Indicates whether the search timed out before completing. If true, results are incomplete."
+            }
+          },
+          "description": "Response schema for `SearchIssuesAndPullRequests`, containing the search results."
+        }
+      },
+      "title": "SearchIssuesAndPullRequestsResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/SearchIssuesAndPullRequestsResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["repo", "public_repo"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["repo", "public_repo"]
+        }
+      ]
+    },
+    "tags": ["openWorldHint", "readOnlyHint", "idempotentHint", "search"],
+    "no_auth": false,
+    "human_description": "This action enables users to search for issues and pull requests on GitHub using specific keywords and qualifiers. It allows filtering results based on various parameters like repository, state, and labels to narrow down search outcomes.",
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Search issues and pull requests",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/github"
+      }
+    }
+  }
+]

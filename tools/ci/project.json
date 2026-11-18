@@ -517,7 +517,7 @@
     "mypy": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\""
+        "command": "uv run --project apps/api --frozen --group backend --group dev mypy tools/lints --ignore-missing-imports && MYPYPATH=scripts/ci:scripts/ci/tests uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases scripts/ci --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/scripts-ci\" && MYPYPATH=tools/brief-sim uv run --project apps/api --frozen --group backend --group dev mypy --explicit-package-bases tools/brief-sim/briefsim tools/brief-sim/clockboot --ignore-missing-imports --cache-dir \"${MYPY_CACHE_DIR:-.mypy_cache}/brief-sim\""
       },
       "cache": false,
       "inputs": [
@@ -527,6 +527,7 @@
         "ciHarness",
         "{workspaceRoot}/tools/lints/**/*.py",
         "{workspaceRoot}/scripts/ci/**/*.py",
+        "{workspaceRoot}/tools/brief-sim/**/*.py",
         {
           "externalDependencies": []
         }

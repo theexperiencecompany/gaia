@@ -1,0 +1,1453 @@
+[
+  {
+    "slug": "TODOIST_FILTER_TASKS",
+    "name": "Filter Tasks",
+    "description": "Tool to get all tasks matching the filter. Use when you need to retrieve tasks based on specific filter criteria. This is a paginated endpoint using cursor-based pagination.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "todoist",
+      "name": "todoist",
+      "logo": "https://logos.composio.dev/api/todoist"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "FilterTasksRequest",
+      "required": ["query"],
+      "properties": {
+        "lang": {
+          "type": "string",
+          "title": "Lang",
+          "examples": ["en", "es", "fr", "de"],
+          "description": "IETF language tag defining what language filter is written in, if differs from default English."
+        },
+        "limit": {
+          "type": "integer",
+          "title": "Limit",
+          "maximum": 200,
+          "minimum": 1,
+          "examples": [50, 100],
+          "description": "The number of objects to return in a page (1-200). Default is 50."
+        },
+        "query": {
+          "type": "string",
+          "title": "Query",
+          "examples": [
+            "all",
+            "today | overdue",
+            "7 days",
+            "-7 days",
+            "created after: -14 days",
+            "p1 & !#Work",
+            "#Personal",
+            "search: meeting",
+            "search: yoga | search: gym",
+            "due after: 2024-01-01",
+            "due after: 2024-01-01 & due before: 2024-01-31",
+            "due before: 2024-12-31 & p1",
+            "no due date"
+          ],
+          "description": "Filter tasks using Todoist filter syntax. Terms must be valid keywords or reference existing entities in the user's account. Comma operator (,) is NOT supported. **CRITICAL: Multiple filter conditions MUST be joined with explicit logical operators (&, |, !). Space-separated filters are INVALID and will fail.** Supported filters: predefined keywords ('today', 'overdue', 'no due date', 'all', etc.), priority ('p1'-'p4'), projects ('#Name'), labels ('@Name'), relative dates ('7 days', '-7 days'), date filters ('due before: YYYY-MM-DD', 'due after: YYYY-MM-DD'), created/deadline ('created after: -14 days'), search ('search: keyword'). Operators: '&' (AND), '|' (OR), '!' (NOT)."
+        },
+        "cursor": {
+          "type": "string",
+          "title": "Cursor",
+          "description": "Cursor for pagination. Provide the next_cursor value from previous response to get next page."
+        }
+      }
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "Task": {
+          "type": "object",
+          "title": "Task",
+          "required": [
+            "id",
+            "user_id",
+            "project_id",
+            "checked",
+            "is_deleted",
+            "added_at",
+            "updated_at",
+            "priority",
+            "child_order",
+            "content",
+            "description",
+            "note_count",
+            "day_order",
+            "is_collapsed"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "Unique task identifier (alphanumeric string)"
+            },
+            "due": {
+              "$ref": "#/$defs/DueDate",
+              "title": "Due",
+              "description": "Due date/time details or null"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Labels",
+              "description": "List of label names assigned to task"
+            },
+            "checked": {
+              "type": "boolean",
+              "title": "Checked",
+              "description": "Whether task is completed (checked off)"
+            },
+            "content": {
+              "type": "string",
+              "title": "Content",
+              "description": "Task title; supports markdown and hyperlinks"
+            },
+            "user_id": {
+              "type": "string",
+              "title": "User Id",
+              "description": "ID of the user who owns this task"
+            },
+            "added_at": {
+              "type": "string",
+              "title": "Added At",
+              "description": "Creation timestamp in RFC3339 format (read-only)"
+            },
+            "deadline": {
+              "$ref": "#/$defs/Deadline",
+              "title": "Deadline",
+              "description": "Deadline date or null"
+            },
+            "duration": {
+              "$ref": "#/$defs/Duration",
+              "title": "Duration",
+              "description": "Time estimate with amount and unit or null"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "Priority level from 1 (normal) to 4 (urgent)"
+            },
+            "day_order": {
+              "type": "integer",
+              "title": "Day Order",
+              "description": "Order within the day"
+            },
+            "parent_id": {
+              "type": "string",
+              "title": "Parent Id",
+              "description": "Parent task ID (null for top-level tasks)"
+            },
+            "is_deleted": {
+              "type": "boolean",
+              "title": "Is Deleted",
+              "description": "Whether task is deleted"
+            },
+            "note_count": {
+              "type": "integer",
+              "title": "Note Count",
+              "description": "Number of associated comments (read-only)"
+            },
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Associated project identifier"
+            },
+            "section_id": {
+              "type": "string",
+              "title": "Section Id",
+              "description": "Section identifier (null if no parent section)"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "Last update timestamp in RFC3339 format"
+            },
+            "child_order": {
+              "type": "integer",
+              "title": "Child Order",
+              "description": "Position within parent/project (read-only)"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Extended task details; supports markdown"
+            },
+            "added_by_uid": {
+              "type": "string",
+              "title": "Added By Uid",
+              "description": "ID of user who added the task (null for tasks created before this field was tracked)"
+            },
+            "completed_at": {
+              "type": "string",
+              "title": "Completed At",
+              "description": "Completion timestamp in RFC3339 format"
+            },
+            "is_collapsed": {
+              "type": "boolean",
+              "title": "Is Collapsed",
+              "description": "Whether subtasks are collapsed"
+            },
+            "assigned_by_uid": {
+              "type": "string",
+              "title": "Assigned By Uid",
+              "description": "ID of user who assigned task"
+            },
+            "responsible_uid": {
+              "type": "string",
+              "title": "Responsible Uid",
+              "description": "Responsible user ID or null if unassigned"
+            },
+            "completed_by_uid": {
+              "type": "string",
+              "title": "Completed By Uid",
+              "description": "ID of user who completed the task"
+            }
+          }
+        },
+        "DueDate": {
+          "type": "object",
+          "title": "DueDate",
+          "required": ["date", "is_recurring"],
+          "properties": {
+            "date": {
+              "type": "string",
+              "title": "Date",
+              "description": "Date in format YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS for datetime"
+            },
+            "lang": {
+              "type": "string",
+              "title": "Lang",
+              "description": "Language code for parsing the string value"
+            },
+            "string": {
+              "type": "string",
+              "title": "String",
+              "description": "Human-readable date format"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "User's timezone in tzdata format or UTC offset (only included for exact times)"
+            },
+            "is_recurring": {
+              "type": "boolean",
+              "title": "Is Recurring",
+              "description": "Whether the task has a recurring due date"
+            }
+          }
+        },
+        "Deadline": {
+          "type": "object",
+          "title": "Deadline",
+          "required": ["date"],
+          "properties": {
+            "date": {
+              "type": "string",
+              "title": "Date",
+              "description": "Date in format YYYY-MM-DD corrected to user's timezone"
+            }
+          }
+        },
+        "Duration": {
+          "type": "object",
+          "title": "Duration",
+          "required": ["amount", "unit"],
+          "properties": {
+            "unit": {
+              "type": "string",
+              "title": "Unit",
+              "description": "Either 'minute' or 'day' - both fields are mandatory when duration is set"
+            },
+            "amount": {
+              "type": "integer",
+              "title": "Amount",
+              "description": "Positive number representing the quantity of time"
+            }
+          }
+        },
+        "FilterTasksResponse": {
+          "type": "object",
+          "title": "FilterTasksResponse",
+          "required": ["results"],
+          "properties": {
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Task"
+              },
+              "title": "Results",
+              "description": "List of tasks matching the filter"
+            },
+            "next_cursor": {
+              "type": "string",
+              "title": "Next Cursor",
+              "description": "Cursor for pagination to fetch next page of results"
+            }
+          }
+        }
+      },
+      "title": "FilterTasksResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/FilterTasksResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["data:read", "data:read_write"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["data:read", "data:read_write"]
+        }
+      ]
+    },
+    "tags": ["important", "readOnlyHint", "openWorldHint", "tasks"],
+    "no_auth": false,
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Filter Tasks",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/todoist"
+      }
+    }
+  },
+  {
+    "slug": "TODOIST_GET_ALL_PROJECTS",
+    "name": "Get all projects",
+    "description": "Get a page of active projects from a user's Todoist account. Returns projects with their id, name, color, parent, sharing status and inbox_project flag, plus a next cursor for pagination.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "todoist",
+      "name": "todoist",
+      "logo": "https://logos.composio.dev/api/todoist"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "GetAllProjectsRequest",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "title": "Limit",
+          "minimum": 1,
+          "description": "The number of projects to return per page. Defaults to server default if not provided."
+        },
+        "cursor": {
+          "type": "string",
+          "title": "Cursor",
+          "description": "Pagination cursor from a previous response. Use the next_cursor value to fetch the next page of results."
+        }
+      }
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "ProjectAccess": {
+          "type": "object",
+          "title": "ProjectAccess",
+          "required": ["visibility"],
+          "properties": {
+            "visibility": {
+              "type": "string",
+              "title": "Visibility",
+              "description": "Access visibility (e.g., 'restricted')"
+            },
+            "configuration": {
+              "$ref": "#/$defs/ProjectAccessConfiguration",
+              "title": "Configuration",
+              "description": "Access configuration settings"
+            }
+          },
+          "additionalProperties": true
+        },
+        "ProjectResponse": {
+          "type": "object",
+          "title": "ProjectResponse",
+          "required": [
+            "id",
+            "name",
+            "color",
+            "child_order",
+            "is_shared",
+            "is_favorite",
+            "view_style",
+            "is_archived",
+            "is_deleted",
+            "is_frozen",
+            "is_collapsed",
+            "can_assign_tasks",
+            "created_at",
+            "updated_at",
+            "default_order",
+            "public_access"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "Unique project identifier"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "Project name"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "description": "User's role in the project (e.g., 'CREATOR', 'READ_WRITE')"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color",
+              "description": "The color of the project icon"
+            },
+            "access": {
+              "$ref": "#/$defs/ProjectAccess",
+              "title": "Access",
+              "description": "Access control settings for the project"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "Project status (e.g., 'IN_PROGRESS')"
+            },
+            "folder_id": {
+              "type": "string",
+              "title": "Folder Id",
+              "description": "ID of the folder containing this project"
+            },
+            "is_frozen": {
+              "type": "boolean",
+              "title": "Is Frozen",
+              "description": "Whether the project is frozen"
+            },
+            "is_shared": {
+              "type": "boolean",
+              "title": "Is Shared",
+              "description": "Whether the project is shared"
+            },
+            "parent_id": {
+              "type": "string",
+              "title": "Parent Id",
+              "description": "ID of parent project (null for top-level projects)"
+            },
+            "created_at": {
+              "type": "string",
+              "title": "Created At",
+              "description": "Project creation timestamp (ISO 8601)"
+            },
+            "is_deleted": {
+              "type": "boolean",
+              "title": "Is Deleted",
+              "description": "Whether the project is deleted"
+            },
+            "public_key": {
+              "type": "string",
+              "title": "Public Key",
+              "description": "Public key for sharing the project"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "Project last update timestamp (ISO 8601)"
+            },
+            "view_style": {
+              "type": "string",
+              "title": "View Style",
+              "description": "Display style ('list' or 'board')"
+            },
+            "can_comment": {
+              "type": "boolean",
+              "title": "Can Comment",
+              "description": "Whether comments can be added to tasks in this project"
+            },
+            "child_order": {
+              "type": "integer",
+              "title": "Child Order",
+              "description": "Project position under the same parent"
+            },
+            "creator_uid": {
+              "type": "string",
+              "title": "Creator Uid",
+              "description": "User ID of the project creator"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "default": "",
+              "description": "Project description"
+            },
+            "is_archived": {
+              "type": "boolean",
+              "title": "Is Archived",
+              "description": "Whether the project is archived"
+            },
+            "is_favorite": {
+              "type": "boolean",
+              "title": "Is Favorite",
+              "description": "Whether the project is a favorite"
+            },
+            "is_collapsed": {
+              "type": "boolean",
+              "title": "Is Collapsed",
+              "description": "Whether the project is collapsed in the UI"
+            },
+            "workspace_id": {
+              "type": "string",
+              "title": "Workspace Id",
+              "description": "ID of the workspace this project belongs to"
+            },
+            "default_order": {
+              "type": "integer",
+              "title": "Default Order",
+              "description": "Default order value for the project"
+            },
+            "inbox_project": {
+              "type": "boolean",
+              "title": "Inbox Project",
+              "description": "Whether the project is the user's Inbox (only present for personal projects)"
+            },
+            "public_access": {
+              "type": "boolean",
+              "title": "Public Access",
+              "description": "Whether the project has public access enabled"
+            },
+            "is_invite_only": {
+              "type": "boolean",
+              "title": "Is Invite Only",
+              "description": "Whether the project is invite-only"
+            },
+            "can_assign_tasks": {
+              "type": "boolean",
+              "title": "Can Assign Tasks",
+              "description": "Whether tasks can be assigned in this project"
+            },
+            "is_link_sharing_enabled": {
+              "type": "boolean",
+              "title": "Is Link Sharing Enabled",
+              "description": "Whether link sharing is enabled"
+            },
+            "collaborator_role_default": {
+              "type": "string",
+              "title": "Collaborator Role Default",
+              "description": "Default role for collaborators (e.g., 'READ_WRITE')"
+            },
+            "is_project_insights_enabled": {
+              "type": "boolean",
+              "title": "Is Project Insights Enabled",
+              "description": "Whether project insights are enabled"
+            },
+            "is_pending_default_collaborator_invites": {
+              "type": "boolean",
+              "title": "Is Pending Default Collaborator Invites",
+              "description": "Whether there are pending default collaborator invites"
+            }
+          }
+        },
+        "GetAllProjectsResponse": {
+          "type": "object",
+          "title": "GetAllProjectsResponse",
+          "required": ["projects"],
+          "properties": {
+            "projects": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ProjectResponse"
+              },
+              "title": "Projects",
+              "description": "List of all projects"
+            },
+            "next_cursor": {
+              "type": "string",
+              "title": "Next Cursor",
+              "description": "Cursor for pagination (null if no more results)"
+            }
+          }
+        },
+        "ProjectAccessConfiguration": {
+          "type": "object",
+          "title": "ProjectAccessConfiguration",
+          "properties": {},
+          "description": "Configuration settings for project access.",
+          "additionalProperties": true
+        }
+      },
+      "title": "GetAllProjectsResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/GetAllProjectsResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["data:read"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["data:read"]
+        }
+      ]
+    },
+    "tags": ["important", "openWorldHint", "readOnlyHint"],
+    "no_auth": false,
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Get all projects",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/todoist"
+      }
+    }
+  },
+  {
+    "slug": "TODOIST_GET_ALL_TASKS",
+    "name": "Get All Tasks",
+    "description": "Fetches all INCOMPLETE tasks from Todoist and returns their details. Supports cursor-based pagination. IMPORTANT LIMITATIONS: - This endpoint only returns active (incomplete) tasks - Cannot retrieve completed tasks - use a different endpoint for that - Filter queries using 'completed', '!completed', or 'completed after' will fail - Project/label references must use ACTUAL EXISTING names from the user's account - Arbitrary text in filters causes 400 errors - use 'search: keyword' for text search Common use cases: - Get all tasks: no filter - Get today's tasks: filter=\"today\" - Get overdue tasks: filter=\"overdue\" - Get tasks from specific project: filter=\"#ProjectName\" (project must exist) - Get high priority tasks: filter=\"p1\" - Search task content: filter=\"search: keyword\" - Paginate results: use limit and cursor parameters",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "todoist",
+      "name": "todoist",
+      "logo": "https://logos.composio.dev/api/todoist"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "GetAllTasksRequest",
+      "properties": {
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ids",
+          "examples": [["6Xvwww9XFpHQc2qW", "6Xvwww8jQhrQjFPW"]],
+          "description": "List of task IDs to retrieve (alphanumeric string IDs)."
+        },
+        "lang": {
+          "type": "string",
+          "title": "Lang",
+          "examples": ["en", "es"],
+          "description": "Language code for parsing date/times in queries."
+        },
+        "limit": {
+          "type": "integer",
+          "title": "Limit",
+          "minimum": 1,
+          "examples": [50, 100],
+          "description": "The number of tasks to return per page. Default is 50."
+        },
+        "cursor": {
+          "type": "string",
+          "title": "Cursor",
+          "description": "Cursor for pagination. Provide the next_cursor value from previous response to get next page."
+        },
+        "filter": {
+          "type": "string",
+          "title": "Filter",
+          "examples": [
+            "today | overdue",
+            "7 days",
+            "-7 days",
+            "created after: -14 days",
+            "p1 & !#Work",
+            "#Personal",
+            "search: meeting",
+            "search: yoga | search: gym",
+            "due after: 2024-01-01",
+            "no due date"
+          ],
+          "description": "Filter tasks using Todoist filter syntax. This endpoint only returns INCOMPLETE tasks. Terms must be valid keywords or reference existing entities; arbitrary text causes 400 errors. Supported filters: predefined keywords ('today', 'overdue', 'no due date', etc.), priority ('p1'-'p4'), projects ('#Name'), labels ('@Name'), relative dates ('7 days', '-7 days'), date filters ('due before: YYYY-MM-DD'), created/deadline ('created after: -14 days'), search ('search: keyword'). Operators: '&' (AND), '|' (OR), '!' (NOT). DO NOT USE: 'completed', '!completed', 'completed after' - these cause 400 errors on this endpoint (use TODOIST_GET_COMPLETED_TASKS_BY_COMPLETION_DATE instead)."
+        }
+      }
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "Task": {
+          "type": "object",
+          "title": "Task",
+          "required": [
+            "id",
+            "user_id",
+            "project_id",
+            "checked",
+            "is_deleted",
+            "added_at",
+            "updated_at",
+            "priority",
+            "child_order",
+            "content",
+            "description",
+            "note_count",
+            "day_order",
+            "is_collapsed"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "Unique task identifier (alphanumeric string)"
+            },
+            "due": {
+              "$ref": "#/$defs/DueDate",
+              "title": "Due",
+              "description": "Due date/time details or null"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "title": "Labels",
+              "description": "List of label names assigned to task"
+            },
+            "checked": {
+              "type": "boolean",
+              "title": "Checked",
+              "description": "Whether task is completed (checked off)"
+            },
+            "content": {
+              "type": "string",
+              "title": "Content",
+              "description": "Task title; supports markdown and hyperlinks"
+            },
+            "user_id": {
+              "type": "string",
+              "title": "User Id",
+              "description": "ID of the user who owns this task"
+            },
+            "added_at": {
+              "type": "string",
+              "title": "Added At",
+              "description": "Creation timestamp in RFC3339 format (read-only)"
+            },
+            "deadline": {
+              "$ref": "#/$defs/Deadline",
+              "title": "Deadline",
+              "description": "Deadline date or null"
+            },
+            "duration": {
+              "$ref": "#/$defs/Duration",
+              "title": "Duration",
+              "description": "Time estimate with amount and unit or null"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "Priority level from 1 (normal) to 4 (urgent)"
+            },
+            "day_order": {
+              "type": "integer",
+              "title": "Day Order",
+              "description": "Order within the day"
+            },
+            "parent_id": {
+              "type": "string",
+              "title": "Parent Id",
+              "description": "Parent task ID (null for top-level tasks)"
+            },
+            "is_deleted": {
+              "type": "boolean",
+              "title": "Is Deleted",
+              "description": "Whether task is deleted"
+            },
+            "note_count": {
+              "type": "integer",
+              "title": "Note Count",
+              "description": "Number of associated comments (read-only)"
+            },
+            "project_id": {
+              "type": "string",
+              "title": "Project Id",
+              "description": "Associated project identifier"
+            },
+            "section_id": {
+              "type": "string",
+              "title": "Section Id",
+              "description": "Section identifier (null if no parent section)"
+            },
+            "updated_at": {
+              "type": "string",
+              "title": "Updated At",
+              "description": "Last update timestamp in RFC3339 format"
+            },
+            "child_order": {
+              "type": "integer",
+              "title": "Child Order",
+              "description": "Position within parent/project (read-only)"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description",
+              "description": "Extended task details; supports markdown"
+            },
+            "added_by_uid": {
+              "type": "string",
+              "title": "Added By Uid",
+              "description": "ID of user who added the task (null for legacy tasks)"
+            },
+            "completed_at": {
+              "type": "string",
+              "title": "Completed At",
+              "description": "Completion timestamp in RFC3339 format"
+            },
+            "is_collapsed": {
+              "type": "boolean",
+              "title": "Is Collapsed",
+              "description": "Whether subtasks are collapsed"
+            },
+            "assigned_by_uid": {
+              "type": "string",
+              "title": "Assigned By Uid",
+              "description": "ID of user who assigned task"
+            },
+            "responsible_uid": {
+              "type": "string",
+              "title": "Responsible Uid",
+              "description": "Responsible user ID or null if unassigned"
+            },
+            "completed_by_uid": {
+              "type": "string",
+              "title": "Completed By Uid",
+              "description": "ID of user who completed the task"
+            }
+          }
+        },
+        "DueDate": {
+          "type": "object",
+          "title": "DueDate",
+          "required": ["date", "is_recurring"],
+          "properties": {
+            "date": {
+              "type": "string",
+              "title": "Date",
+              "description": "Date in format YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS for datetime"
+            },
+            "lang": {
+              "type": "string",
+              "title": "Lang",
+              "description": "Language code for parsing the string value"
+            },
+            "string": {
+              "type": "string",
+              "title": "String",
+              "description": "Human-readable date format"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "User's timezone in tzdata format or UTC offset (only included for exact times)"
+            },
+            "is_recurring": {
+              "type": "boolean",
+              "title": "Is Recurring",
+              "description": "Whether the task has a recurring due date"
+            }
+          }
+        },
+        "Deadline": {
+          "type": "object",
+          "title": "Deadline",
+          "required": ["date"],
+          "properties": {
+            "date": {
+              "type": "string",
+              "title": "Date",
+              "description": "Date in format YYYY-MM-DD corrected to user's timezone"
+            }
+          }
+        },
+        "Duration": {
+          "type": "object",
+          "title": "Duration",
+          "required": ["amount", "unit"],
+          "properties": {
+            "unit": {
+              "type": "string",
+              "title": "Unit",
+              "description": "Either 'minute' or 'day' - both fields are mandatory when duration is set"
+            },
+            "amount": {
+              "type": "integer",
+              "title": "Amount",
+              "description": "Positive number representing the quantity of time"
+            }
+          }
+        },
+        "GetAllTasksResponse": {
+          "type": "object",
+          "title": "GetAllTasksResponse",
+          "required": ["tasks"],
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Task"
+              },
+              "title": "Tasks",
+              "description": "List of tasks."
+            },
+            "next_cursor": {
+              "type": "string",
+              "title": "Next Cursor",
+              "description": "Cursor for pagination to fetch next page of results"
+            }
+          }
+        }
+      },
+      "title": "GetAllTasksResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/GetAllTasksResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": [],
+    "scope_requirements": null,
+    "tags": ["important", "openWorldHint", "readOnlyHint"],
+    "no_auth": false,
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Get All Tasks",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/todoist"
+      }
+    }
+  },
+  {
+    "slug": "TODOIST_GET_USER",
+    "name": "Get User",
+    "description": "Tool to retrieve information about the currently authenticated user. Use when you need user details like email, name, preferences, karma, or subscription status.",
+    "available_versions": ["20261112_00"],
+    "version": "20261112_00",
+    "toolkit": {
+      "slug": "todoist",
+      "name": "todoist",
+      "logo": "https://logos.composio.dev/api/todoist"
+    },
+    "input_parameters": {
+      "type": "object",
+      "title": "GetUserRequest",
+      "properties": {},
+      "description": "Request model for retrieving current user information."
+    },
+    "output_parameters": {
+      "type": "object",
+      "$defs": {
+        "TzInfo": {
+          "type": "object",
+          "title": "TzInfo",
+          "properties": {
+            "hours": {
+              "type": "integer",
+              "title": "Hours",
+              "description": "Hours difference from GMT."
+            },
+            "is_dst": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Is Dst",
+              "description": "Whether daylight saving time applies (can be bool or int 0/1)."
+            },
+            "minutes": {
+              "type": "integer",
+              "title": "Minutes",
+              "description": "Minutes difference from GMT."
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "The user's timezone as a string value."
+            },
+            "gmt_string": {
+              "type": "string",
+              "title": "Gmt String",
+              "description": "String value of the time difference from GMT."
+            }
+          },
+          "description": "Timezone information for the user."
+        },
+        "GetUserResponse": {
+          "type": "object",
+          "title": "GetUserResponse",
+          "required": [
+            "id",
+            "email",
+            "full_name",
+            "has_password",
+            "verification_status",
+            "mfa_enabled",
+            "is_premium",
+            "has_started_a_trial",
+            "date_format",
+            "sort_order",
+            "theme_id",
+            "start_day",
+            "weekend_start_day",
+            "next_week",
+            "auto_reminder",
+            "start_page",
+            "lang",
+            "tz_info",
+            "karma",
+            "daily_goal",
+            "weekly_goal",
+            "days_off",
+            "is_celebrations_enabled",
+            "completed_count",
+            "completed_today",
+            "share_limit",
+            "features",
+            "feature_identifier",
+            "onboarding_completed",
+            "onboarding_initiated",
+            "onboarding_started",
+            "activated_user",
+            "has_magic_number",
+            "websocket_url"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id",
+              "description": "User ID."
+            },
+            "lang": {
+              "enum": [
+                "cs",
+                "da",
+                "de",
+                "en",
+                "es",
+                "fi",
+                "fr",
+                "it",
+                "ja",
+                "ko",
+                "nl",
+                "pl",
+                "pt_BR",
+                "ru",
+                "sv",
+                "tr",
+                "zh_CN",
+                "zh_TW"
+              ],
+              "type": "string",
+              "title": "Lang",
+              "description": "The user's language."
+            },
+            "email": {
+              "type": "string",
+              "title": "Email",
+              "description": "User's email address."
+            },
+            "karma": {
+              "type": "number",
+              "title": "Karma",
+              "description": "The user's karma score."
+            },
+            "token": {
+              "type": "string",
+              "title": "Token",
+              "description": "The user's token that should be used to call the other API methods."
+            },
+            "tz_info": {
+              "$ref": "#/$defs/TzInfo",
+              "title": "Tz Info",
+              "description": "The user's timezone information, which includes the timezone as a string value, the hours and minutes difference from GMT, whether daylight saving time applies denoted by is_dst, and a string value of the time difference from GMT that is gmt_string."
+            },
+            "days_off": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              },
+              "title": "Days Off",
+              "description": "Array of integers representing user's days off (between 1 and 7, where 1 is Monday and 7 is Sunday)."
+            },
+            "features": {
+              "type": "object",
+              "title": "Features",
+              "description": "Feature flags and settings for the user.",
+              "additionalProperties": true
+            },
+            "image_id": {
+              "type": "string",
+              "title": "Image Id",
+              "description": "The ID of the user's avatar."
+            },
+            "theme_id": {
+              "type": "string",
+              "title": "Theme Id",
+              "description": "The currently selected Todoist theme (a number between 0 and 13)."
+            },
+            "full_name": {
+              "type": "string",
+              "title": "Full Name",
+              "description": "The user's real name formatted as Firstname Lastname."
+            },
+            "joined_at": {
+              "type": "string",
+              "title": "Joined At",
+              "description": "Date when user joined Todoist (ISO 8601 format)."
+            },
+            "next_week": {
+              "type": "integer",
+              "title": "Next Week",
+              "maximum": 7,
+              "minimum": 1,
+              "description": "The day of the next week, that tasks will be postponed to (between 1 and 7, where 1 is Monday and 7 is Sunday)."
+            },
+            "start_day": {
+              "type": "integer",
+              "title": "Start Day",
+              "maximum": 7,
+              "minimum": 1,
+              "description": "The first day of the week (between 1 and 7, where 1 is Monday and 7 is Sunday)."
+            },
+            "avatar_big": {
+              "type": "string",
+              "title": "Avatar Big",
+              "description": "The link to a 195x195 pixels image of the user's avatar."
+            },
+            "daily_goal": {
+              "type": "integer",
+              "title": "Daily Goal",
+              "description": "The daily goal number of completed tasks for karma."
+            },
+            "deleted_at": {
+              "type": "string",
+              "title": "Deleted At",
+              "description": "Date when user was deleted (ISO 8601 format)."
+            },
+            "is_deleted": {
+              "type": "boolean",
+              "title": "Is Deleted",
+              "default": false,
+              "description": "Whether the user is deleted."
+            },
+            "is_premium": {
+              "type": "boolean",
+              "title": "Is Premium",
+              "description": "Whether the user has a Todoist Pro subscription (a true or false value)."
+            },
+            "sort_order": {
+              "enum": [0, 1],
+              "type": "integer",
+              "title": "Sort Order",
+              "description": "Whether to show projects in an oldest dates first order (if set to 0), or a oldest dates last order (if set to 1)."
+            },
+            "start_page": {
+              "type": "string",
+              "title": "Start Page",
+              "description": "The user's default view on Todoist. The start page can be one of the following: inbox, teaminbox, today, next7days, project?id=1234 to open a project, label?name=abc to open a label, or filter?id=1234 to open a filter."
+            },
+            "avatar_s640": {
+              "type": "string",
+              "title": "Avatar S640",
+              "description": "The link to a 640x640 pixels image of the user's avatar."
+            },
+            "date_format": {
+              "enum": [0, 1],
+              "type": "integer",
+              "title": "Date Format",
+              "description": "Whether to use the DD-MM-YYYY date format (if set to 0), or the MM-DD-YYYY format (if set to 1)."
+            },
+            "karma_trend": {
+              "type": "string",
+              "title": "Karma Trend",
+              "description": "The user's karma trend. Can be 'up', 'down', or '-' (no change)."
+            },
+            "mfa_enabled": {
+              "type": "boolean",
+              "title": "Mfa Enabled",
+              "description": "Whether multi-factor authentication is enabled."
+            },
+            "share_limit": {
+              "type": "integer",
+              "title": "Share Limit",
+              "description": "Maximum number of collaborators allowed in shared projects."
+            },
+            "time_format": {
+              "type": "integer",
+              "title": "Time Format",
+              "description": "Whether to use a 24h format such as 13:00 (if set to 0) when displaying time, or a 12h format such as 1:00pm (if set to 1)."
+            },
+            "weekly_goal": {
+              "type": "integer",
+              "title": "Weekly Goal",
+              "description": "The target number of tasks to complete per week."
+            },
+            "avatar_small": {
+              "type": "string",
+              "title": "Avatar Small",
+              "description": "The link to a 35x35 pixels image of the user's avatar."
+            },
+            "has_password": {
+              "type": "boolean",
+              "title": "Has Password",
+              "description": "Whether the user has a password set on the account. It will be false if they have only authenticated without a password (e.g. using Google, Facebook, etc.)."
+            },
+            "auto_reminder": {
+              "type": "integer",
+              "title": "Auto Reminder",
+              "description": "The default time in minutes for the automatic reminders set, whenever a due date has been specified for a task."
+            },
+            "avatar_medium": {
+              "type": "string",
+              "title": "Avatar Medium",
+              "description": "The link to a 60x60 pixels image of the user's avatar."
+            },
+            "premium_until": {
+              "type": "string",
+              "title": "Premium Until",
+              "description": "The date when the user's Todoist Pro subscription ends (null if not a Todoist Pro user). This should be used for informational purposes only as this does not include the grace period upon expiration."
+            },
+            "unique_prefix": {
+              "type": "integer",
+              "title": "Unique Prefix",
+              "description": "Unique prefix for the user."
+            },
+            "websocket_url": {
+              "type": "string",
+              "title": "Websocket Url",
+              "description": "WebSocket URL for real-time updates."
+            },
+            "activated_user": {
+              "type": "boolean",
+              "title": "Activated User",
+              "description": "Whether the user is considered activated (completed key onboarding actions)."
+            },
+            "premium_status": {
+              "type": "string",
+              "title": "Premium Status",
+              "description": "Outlines why a user is premium, possible values are: not_premium, current_personal_plan, legacy_personal_plan or teams_business_member."
+            },
+            "completed_count": {
+              "type": "integer",
+              "title": "Completed Count",
+              "description": "Total number of tasks completed by user."
+            },
+            "completed_today": {
+              "type": "integer",
+              "title": "Completed Today",
+              "description": "Number of tasks completed today by the user."
+            },
+            "onboarding_role": {
+              "type": "string",
+              "title": "Onboarding Role",
+              "description": "User's role selection during onboarding."
+            },
+            "has_magic_number": {
+              "type": "boolean",
+              "title": "Has Magic Number",
+              "description": "Whether the user has reached a magic number milestone."
+            },
+            "inbox_project_id": {
+              "type": "string",
+              "title": "Inbox Project Id",
+              "description": "The ID of the user's Inbox project."
+            },
+            "onboarding_level": {
+              "type": "string",
+              "title": "Onboarding Level",
+              "description": "User's self-reported skill level during onboarding."
+            },
+            "weekend_start_day": {
+              "type": "integer",
+              "title": "Weekend Start Day",
+              "maximum": 7,
+              "minimum": 1,
+              "description": "The day used when a user chooses to schedule a task for the 'Weekend' (between 1 and 7, where 1 is Monday and 7 is Sunday)."
+            },
+            "feature_identifier": {
+              "type": "string",
+              "title": "Feature Identifier",
+              "description": "Feature identifier for feature flag evaluations."
+            },
+            "free_trial_expires": {
+              "type": "string",
+              "title": "Free Trial Expires",
+              "description": "Date when free trial expires (ISO 8601 format)."
+            },
+            "joinable_workspace": {
+              "type": "object",
+              "title": "Joinable Workspace",
+              "description": "Information about workspaces the user can join.",
+              "additionalProperties": true
+            },
+            "onboarding_persona": {
+              "type": "string",
+              "title": "Onboarding Persona",
+              "description": "User's onboarding persona selection."
+            },
+            "onboarding_started": {
+              "type": "boolean",
+              "title": "Onboarding Started",
+              "description": "Whether the user has started onboarding."
+            },
+            "business_account_id": {
+              "type": "integer",
+              "title": "Business Account Id",
+              "description": "The ID of the user's business account."
+            },
+            "has_started_a_trial": {
+              "type": "boolean",
+              "title": "Has Started A Trial",
+              "description": "Whether the user has ever started a free trial."
+            },
+            "verification_status": {
+              "enum": ["unverified", "verified", "blocked", "legacy"],
+              "type": "string",
+              "title": "Verification Status",
+              "description": "User's email verification status. unverified (just signed up), verified (verified email or social login), blocked (failed to verify in 7 days), legacy (signed up before August 2022)."
+            },
+            "onboarding_completed": {
+              "type": "boolean",
+              "title": "Onboarding Completed",
+              "description": "Whether the user has completed onboarding."
+            },
+            "onboarding_initiated": {
+              "type": "boolean",
+              "title": "Onboarding Initiated",
+              "description": "Whether the user has initiated onboarding."
+            },
+            "onboarding_team_mode": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ],
+              "title": "Onboarding Team Mode",
+              "description": "Whether user selected team mode during onboarding (can be str or bool)."
+            },
+            "onboarding_use_cases": {
+              "type": "array",
+              "items": {},
+              "title": "Onboarding Use Cases",
+              "description": "Use cases the user selected during onboarding."
+            },
+            "ramble_sessions_usage": {
+              "type": "object",
+              "title": "Ramble Sessions Usage",
+              "description": "Usage information for ramble sessions.",
+              "additionalProperties": true
+            },
+            "is_celebrations_enabled": {
+              "type": "boolean",
+              "title": "Is Celebrations Enabled",
+              "description": "Whether celebration animations are enabled."
+            },
+            "getting_started_guide_projects": {
+              "type": "array",
+              "items": {},
+              "title": "Getting Started Guide Projects",
+              "description": "List of getting started guide projects."
+            }
+          },
+          "description": "Response model for user information."
+        }
+      },
+      "title": "GetUserResponseWrapper",
+      "required": ["data", "successful"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/GetUserResponse",
+          "title": "Data",
+          "description": "Data from the action execution"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error",
+          "description": "Error if any occurred during the execution of the action"
+        },
+        "successful": {
+          "type": "boolean",
+          "title": "Successful",
+          "description": "Whether or not the action execution was successful or not"
+        }
+      }
+    },
+    "scopes": ["data:read", "data:read_write"],
+    "scope_requirements": {
+      "all_of": [
+        {
+          "any_of": ["data:read", "data:read_write"]
+        }
+      ]
+    },
+    "tags": ["important", "readOnlyHint", "openWorldHint", "user"],
+    "no_auth": false,
+    "is_deprecated": false,
+    "deprecated": {
+      "displayName": "Get User",
+      "version": "20261112_00",
+      "available_versions": ["20261112_00"],
+      "is_deprecated": false,
+      "toolkit": {
+        "logo": "https://logos.composio.dev/api/todoist"
+      }
+    }
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "name": "brief-sim",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "tools/brief-sim",
+  "projectType": "application",
+  "tags": ["scope:tooling"],
+  "targets": {
+    "sim": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "PYTHONPATH=tools/brief-sim uv run --project apps/api --frozen --group backend --group dev python -m briefsim"
+      }
+    }
+  }
+}

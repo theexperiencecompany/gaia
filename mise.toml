@@ -519,6 +519,10 @@ no_assert=""
 cd apps/api && uv run --group backend python -m scripts.analytics_ops e2e --api-url "$api" --email "$DEV_AUTH_BYPASS_EMAIL" $no_assert
 '''
 
+[tasks."brief-sim"]
+description = "Run GAIA's real daily/weekly brief system (API, ARQ worker, scheduler, Mongo, Redis) over simulated days against a fake outside world (Composio apps, Cloudinary, Resend) and check every brief against ground truth. `mise brief-sim run --days 14 --out .context/brief-sim/<run>`, then open <run>/report.html. Needs the docker infra up and an Infisical login (reads OPENAI_API_KEY from development only)"
+run = "pnpm nx run brief-sim:sim --"
+
 [tasks."analytics:reconcile"]
 description = "Print PostHog next to Mongo ground truth (signups, messages per source, payments and subscription events, support requests, LLM cost, active subscribers) for the last 30 days; exit 1 on drift. Needs POSTHOG_PERSONAL_API_KEY and a read-only ANALYTICS_MONGO_URI"
 run = "cd apps/api && uv run --group backend python -m scripts.analytics_ops reconcile"

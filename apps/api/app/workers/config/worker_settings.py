@@ -45,6 +45,7 @@ class WorkerSettings:
     # 0.72 tasks/s needs ~8 concurrent (Little's Law, peaks ~16); below ~8 the
     # queue grows unbounded. PER PROCESS: scale via ARQ_MAX_JOBS, not more workers.
     max_jobs = settings.ARQ_MAX_JOBS
+    poll_delay = settings.ARQ_POLL_DELAY_SECONDS
     job_timeout = WORKER_JOB_TIMEOUT_SECONDS + ARQ_BACKSTOP_GRACE_SECONDS
     keep_result = 0  # Don't keep results in Redis
     log_results = True
