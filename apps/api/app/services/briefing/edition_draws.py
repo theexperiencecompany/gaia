@@ -17,7 +17,7 @@ from app.models.briefing_state_models import BagDraw, BriefingStateDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.capabilities import families_drawing, split_drawable
-from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.editions.stamps import stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from shared.py.wide_events import log
 
@@ -105,7 +105,7 @@ def draw_edition(
     if undrawn:
         log.info("briefing.blocks_undrawn", family=family, kinds=[b.kind for b in undrawn])
     if family == EditionFamily.POSTAL:
-        stamp = draw_from_bag(state, BriefingBag.STAMP_CITY, hosted_stamp_weights())
+        stamp = draw_from_bag(state, BriefingBag.STAMP_CITY, stamp_weights())
         return EditionDraw(
             family=family,
             drawn=drawn,

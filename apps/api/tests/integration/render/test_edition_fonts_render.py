@@ -26,6 +26,7 @@ from tests.integration.render.test_edition_families_render import (
     _artwork,
     _as_rendered,
     _render_html,
+    _stamp,
 )
 
 pytestmark = pytest.mark.asyncio(loop_scope="package")
@@ -114,7 +115,7 @@ async def test_every_glyph_comes_from_an_embedded_font(
 async def test_every_composed_block_draws_from_an_embedded_font(
     family: EditionFamily, composition: str
 ) -> None:
-    payload = composed_payload(composition, family, _artwork(family))
+    payload = composed_payload(composition, family, _artwork(family), _stamp(family))
     html = EXPLORER_RENDERER[family](payload, link=_LINK, edition_no=287)
     async with chromium_page(_PAGE) as rendering:
         await rendering.page.set_content(html, wait_until="networkidle")

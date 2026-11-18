@@ -63,9 +63,10 @@ def demo(png: bytes) -> bytes:
 def demo_payload(family: EditionFamily) -> BriefingPayload:
     """Return the busy composition in family, wearing the sample's stamp or painting and day hue."""
     sample = sample_edition_payload(family, RECIPIENT)
-    return composed_payload(DEMO_COMPOSITION, family, sample.artwork_id).model_copy(
+    return composed_payload(
+        DEMO_COMPOSITION, family, sample.artwork_id, sample.stamp_city
+    ).model_copy(
         update={
-            "stamp_city": sample.stamp_city,
             "hue": sample.hue,
             "recipient_name": RECIPIENT,
         }

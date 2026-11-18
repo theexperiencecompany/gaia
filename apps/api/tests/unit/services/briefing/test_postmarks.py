@@ -23,6 +23,7 @@ from app.services.briefing.postmarks import collected_postmarks
 MODULE = "app.services.briefing.postmarks"
 USER_ID = make_user_id()
 _EDITION_URL = f"{settings.HOST}/api/v1/briefings/editions/"
+_STAMP_URL = f"{settings.HOST}/api/v1/briefings/stamps/"
 _PAPER = [0.1, 0.05, 0.9, 0.95]
 
 
@@ -89,7 +90,7 @@ async def test_each_city_is_shown_with_the_card_of_the_brief_it_first_came_on() 
             country="Japan",
             lat=35.68,
             lng=139.69,
-            stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tokyo.webp",
+            stamp_url=f"{_STAMP_URL}tokyo.webp",
             card=_card("brief_1", "2026-09-01", "Tokyo"),
         ),
         Postmark(
@@ -98,7 +99,7 @@ async def test_each_city_is_shown_with_the_card_of_the_brief_it_first_came_on() 
             country="Peru",
             lat=-12.05,
             lng=-77.04,
-            stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lima.webp",
+            stamp_url=f"{_STAMP_URL}lima.webp",
             card=_card("brief_2", "2026-09-04", "Lima"),
         ),
     ]

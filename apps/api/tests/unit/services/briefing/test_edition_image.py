@@ -39,7 +39,7 @@ _DATE = "2026-10-14"
 _BRIEF_ID = "brief_0123456789ab"
 _NOW = datetime(2026, 10, 14, 7, 0, tzinfo=UTC)
 _PLAN = BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY)
-_BRIEF = make_briefing_payload(date=_DATE, template_family=EditionFamily.POSTAL)
+_BRIEF = make_briefing_payload(date=_DATE, template_family=EditionFamily.POSTAL, stamp_city="paris")
 
 
 def _png(width: int, height: int) -> bytes:

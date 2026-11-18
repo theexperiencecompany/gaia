@@ -762,10 +762,6 @@ async def create_workflow_execution_indexes() -> None:
         raise
 
 
-#: The briefings' write-time index, which the retention sweep reads; once a TTL index.
-_BRIEFING_CREATED_AT = "created_at_1"
-
-
 async def create_briefing_indexes() -> None:
     """Create indexes for briefings collection: one payload per user/date/kind, found by age to expire."""
     briefings_collection = get_async_collection("briefings")
@@ -779,15 +775,8 @@ async def create_briefing_indexes() -> None:
         await briefings_collection.create_index(
             [("edition.key", 1)], unique=True, sparse=True, name="edition_key_unique"
         )
-        # Retention is the nightly sweep's, which deletes each brief's edition image with it;
-        # a TTL index would drop the document and strand the image, so the old one goes.
-        if "expireAfterSeconds" in (await briefings_collection.index_information()).get(
-            _BRIEFING_CREATED_AT, {}
-        ):
-            await briefings_collection.drop_index(_BRIEFING_CREATED_AT)
+        # Not a TTL index: the retention sweep deletes each brief's edition image with it.
         await briefings_collection.create_index("created_at")
-        # The archive now sorts on the unique index (date, kind); drop the old write-time one.
-        await _drop_index_if_present(briefings_collection, "user_id_1_created_at_-1")
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating briefing indexes",

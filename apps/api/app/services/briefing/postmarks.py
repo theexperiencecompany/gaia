@@ -5,16 +5,19 @@ city counts once, on the day its stamp first arrived; that brief's card is the o
 the Postmarks page opens.
 """
 
+from app.config.settings import settings
+from app.constants.http import API_V1_PREFIX
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_payload_models import NewStamp
 from app.models.brief_view_models import Postmark, PostmarksResponse
-from app.services.briefing.editions.stamps import (
-    hosted_stamp_weights,
-    stamp_asset_url,
-    stamp_catalogue,
-)
+from app.services.briefing.editions.stamps import stamp_catalogue, stamp_weights
 from app.services.briefing.view import briefing_card
 from shared.py.wide_events import log
+
+
+def stamp_art_url(slug: str) -> str:
+    """Return where a browser loads a city's stamp art: this deployment's own API."""
+    return f"{settings.HOST}{API_V1_PREFIX}/briefings/stamps/{slug}.webp"
 
 
 async def collected_postmarks(user_id: str) -> PostmarksResponse:
@@ -35,11 +38,11 @@ async def collected_postmarks(user_id: str) -> PostmarksResponse:
                 country=city.country,
                 lat=city.lat,
                 lng=city.lng,
-                stamp_url=stamp_asset_url(slug),
+                stamp_url=stamp_art_url(slug),
                 card=await briefing_card(brief),
             )
         )
-    return PostmarksResponse(total=len(hosted_stamp_weights()), postmarks=postmarks)
+    return PostmarksResponse(total=len(stamp_weights()), postmarks=postmarks)
 
 
 async def new_stamp(user_id: str, slug: str) -> NewStamp | None:
@@ -54,5 +57,5 @@ async def new_stamp(user_id: str, slug: str) -> NewStamp | None:
         city=city.name,
         country=city.country,
         collected=len(collected - {None}) + 1,
-        total=len(hosted_stamp_weights()),
+        total=len(stamp_weights()),
     )

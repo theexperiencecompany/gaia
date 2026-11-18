@@ -24,7 +24,7 @@ from app.services.briefing.editions.explorer_blocks import build_blocks
 from app.services.briefing.editions.explorer_render import EXPLORER_CANVAS_PX
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 from app.services.render.chromium import chromium_page
-from tests.integration.render.test_edition_families_render import _LINK
+from tests.integration.render.test_edition_families_render import _LINK, _stamp
 
 pytestmark = pytest.mark.asyncio(loop_scope="package")
 
@@ -100,6 +100,8 @@ async def reading_problems(payload: BriefingPayload) -> list[str]:
 async def test_family_draws_the_composition_by_the_reading_rules(
     family: EditionFamily, composition: str
 ) -> None:
-    payload = composed_payload(composition, family, _ARTWORK if family in ArtFamily else None)
+    payload = composed_payload(
+        composition, family, _ARTWORK if family in ArtFamily else None, _stamp(family)
+    )
 
     assert await reading_problems(payload) == []

@@ -61,6 +61,7 @@ from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
 )
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.links.service import attach_link
@@ -585,6 +586,7 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
         await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
     await record_field_changes(existing.id, existing.user_id, update, by=actor)
     await record_waiting_change(existing.id, existing.user_id, update, by=actor)
+    await release_on_tell_me_now(existing.user_id, [existing.id], update.delivery)
     # The link check and this write are two separate writes: when the parent
     # closed in between, the move is rolled back rather than completing the
     # user's open todo out from under them.

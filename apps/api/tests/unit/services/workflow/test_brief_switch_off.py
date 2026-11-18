@@ -21,8 +21,10 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
+    UpdateWorkflowRequest,
     WorkflowDocument,
     WorkflowStep,
+    WorkflowWithIntegrations,
 )
 from app.services import member_offboarding
 from app.services.member_offboarding import stop_acting_for_removed_member
@@ -153,6 +155,65 @@ class TestSwitchingTheDailyBriefOff:
 
         await WorkflowService.deactivate_workflow(
             seams.workflow.id, seams.user_id, reason=DeactivationReason.MEMBER_REMOVED
+        )
+
+        seams.notify.assert_not_awaited()
+        seams.consume.assert_not_awaited()
+
+
+class TestTellMeNow:
+    """Moving a workflow off the brief to Tell me now sends what it already held, at once."""
+
+    @pytest.fixture
+    def digest(self, seams: _Seams, monkeypatch: pytest.MonkeyPatch) -> WorkflowDocument:
+        digest = _brief_workflow(seams.user_id, DAILY_BRIEFING_WORKFLOW_KEY).model_copy(
+            update={
+                "id": "wf-digest",
+                "title": "Digest",
+                "delivery": WorkflowDelivery.BRIEF,
+                "is_system_workflow": False,
+                "system_workflow_key": None,
+            }
+        )
+        seams.held.append(
+            PendingBriefItemDocument(
+                user_id=seams.user_id,
+                source=BriefItemSource.WORKFLOW,
+                source_id="wf-other",
+                source_title="Other",
+                conversation_id="c2",
+                text="Still for the brief",
+            )
+        )
+        monkeypatch.setattr(
+            WorkflowService,
+            "get_workflow",
+            AsyncMock(return_value=WorkflowWithIntegrations(**digest.model_dump())),
+        )
+        monkeypatch.setattr(workflow_repository, "update_for_user", AsyncMock(return_value=digest))
+        return digest
+
+    @pytest.mark.regression
+    async def test_switching_a_held_delivery_to_now_releases_only_what_it_held(
+        self, seams: _Seams, digest: WorkflowDocument
+    ) -> None:
+        """Regression: a workflow moved to Tell me now left its held results waiting for the brief."""
+        await WorkflowService.update_workflow(
+            digest.id, UpdateWorkflowRequest(delivery=WorkflowDelivery.NOW), seams.user_id
+        )
+
+        [request] = [c.args[0] for c in seams.notify.await_args_list]
+        assert (request.content.title, request.content.body) == (
+            HELD_RELEASE_TITLE,
+            "Digest: Three new leads",
+        )
+        seams.consume.assert_awaited_once_with(seams.user_id, [seams.held[0].id])
+
+    async def test_switching_it_to_silent_leaves_its_results_for_the_brief(
+        self, seams: _Seams, digest: WorkflowDocument
+    ) -> None:
+        await WorkflowService.update_workflow(
+            digest.id, UpdateWorkflowRequest(delivery=WorkflowDelivery.SILENT), seams.user_id
         )
 
         seams.notify.assert_not_awaited()

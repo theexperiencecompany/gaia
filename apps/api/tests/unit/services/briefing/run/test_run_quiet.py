@@ -17,6 +17,7 @@ from tests.briefing_run_world import (
     composed,
     expected_note,
     held,
+    idle_day,
     own,
     own_open,
     quiet_day,
@@ -29,8 +30,10 @@ from tests.briefing_run_world import (
 )
 
 from app.constants.briefing import (
+    IDLE_DORMANT_DAYS,
     WEEKLY_KICKER,
     BriefForm,
+    BriefingFrequency,
     BriefingKind,
     BriefingRunOutcome,
 )
@@ -43,6 +46,7 @@ from app.models.brief_payload_models import (
     UnreadSource,
 )
 from app.models.brief_pool_models import GoalOrigin
+from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_view_models import BriefNoteNotification
 from app.models.scout_models import (
     ScoutSkipReason,
@@ -51,6 +55,7 @@ from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.goals import StatedGoal
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.quiet_note import QuietFacts
+from app.services.briefing.wind_down import ladder_state
 from app.services.briefing.work import TrackedWork
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -217,6 +222,24 @@ class TestAQuietWeek:
         assert world.today(BriefingKind.WEEKLY) is not None
         assert (payload.form, payload.kicker) == (BriefForm.QUIET_NOTE, WEEKLY_KICKER)
         assert payload.message == expected_note(BriefingKind.WEEKLY, QuietFacts(calendar=None))
+
+    @pytest.mark.regression
+    async def test_a_weekly_only_readers_last_empty_digest_says_goodbye_before_winding_down(
+        self, world: World
+    ) -> None:
+        """Regression: a weekly-only loop stopped silently after its third empty digest."""
+        world.state.schedule = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY)
+        world.calendar = []
+        world.todos.rows.clear()
+        idle_day(world, IDLE_DORMANT_DAYS)
+        world.replies = [weekly_reply()]
+
+        assert await run_brief(USER, BriefingKind.WEEKLY) is BriefingRunOutcome.SENT
+
+        assert world.stored().form is BriefForm.EDITION
+        assert "This is the goodbye brief." in world.voice.call_args.args[1]
+        assert world.delivered_to(BriefingKind.WEEKLY)
+        assert ladder_state(world.state).wound_down_since == NOW
 
     async def test_a_week_whose_goal_work_sat_stuck_is_recapped_never_quiet(
         self, world: World

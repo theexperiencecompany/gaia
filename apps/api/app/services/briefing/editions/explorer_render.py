@@ -2,8 +2,8 @@
 
 The families are the founder's approved JS design explorer (editions/explorer/js/
 tpl-*.js), executed inside the headless-Chromium raster pipeline. The document runs
-synchronously (no fetch or timers); its hosted images (a stamp, a painting) are what
-Playwright's networkidle wait holds the capture for.
+synchronously (no fetch or timers); every image it draws (a stamp, a painting) is inlined
+as a data URI from the files shipped beside it, so a render loads nothing over the network.
 
 Skin selection reimplements the explorer shell's mulberry32/strSeed RNG rather than
 importing it: the vendored files never expose it.
@@ -22,17 +22,12 @@ from app.constants.briefing import (
     EditionFamily,
 )
 from app.models.brief_payload_models import BriefingPayload
-from app.services.briefing.editions.artworks import artwork_catalogue
+from app.services.briefing.editions.artworks import artwork_art, artwork_catalogue
 from app.services.briefing.editions.edition_fonts import edition_font_faces_css
 from app.services.briefing.editions.edition_logos import logo_css, logo_kinds
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed, edition_calendar
 from app.services.briefing.editions.explorer_blocks import printed_logos
-from app.services.briefing.editions.stamps import (
-    city_axis,
-    city_axis_assets,
-    stamp_asset_key,
-    stamp_asset_url,
-)
+from app.services.briefing.editions.stamps import city_axis, stamp_art, stamp_asset_key
 
 # The families' portrait canvas (explorer/README.md), exported at 3x.
 EXPLORER_CANVAS_PX = 540
@@ -124,22 +119,25 @@ def _raw_assets() -> dict[str, str]:
 @lru_cache(maxsize=1)
 def _asset_data_uris() -> dict[str, str]:
     """Return the images every family may read from ed.assets, as data URIs."""
-    tec_mark = base64.b64encode(_TEC_MARK_WEBP.read_bytes()).decode()
     return {
         _BAND_ASSET_KEY: f"data:image/webp;base64,{_raw_assets()[_BAND_ASSET_KEY]}",
-        _TEC_MARK_ASSET_KEY: f"data:image/webp;base64,{tec_mark}",
+        _TEC_MARK_ASSET_KEY: _webp_data_uri(_TEC_MARK_WEBP),
     }
 
 
+def _webp_data_uri(path: Path) -> str:
+    return f"data:image/webp;base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
 def _art(payload: BriefingPayload, family: EditionFamily) -> ExplorerArt | None:
-    """Return the painting a framed family hangs, loaded by its hosted URL; None for the rest."""
+    """Return the painting a framed family hangs, inlined from its file; None for the rest."""
     if family not in ArtFamily:
         return None
     if payload.artwork_id is None:
         raise ValueError(f"a {family} edition needs the artwork_id drawn for it")
     artwork = artwork_catalogue()[payload.artwork_id]
     return {
-        "src": artwork.url,
+        "src": _webp_data_uri(artwork_art(payload.artwork_id)),
         "title": artwork.title,
         "artist": artwork.artist,
         "year": artwork.date,
@@ -174,12 +172,9 @@ def render_explorer_edition(
 
     assets = dict(_asset_data_uris())
     if family == EditionFamily.POSTAL:
-        # The drawn city's stamp; a legacy brief without one picks from the
-        # template's city axis (every hosted city), so all their art loads.
-        if payload.stamp_city:
-            assets[stamp_asset_key(payload.stamp_city)] = stamp_asset_url(payload.stamp_city)
-        else:
-            assets.update(city_axis_assets())
+        if payload.stamp_city is None:
+            raise ValueError(f"a {family} edition needs the stamp_city drawn for it")
+        assets[stamp_asset_key(payload.stamp_city)] = _webp_data_uri(stamp_art(payload.stamp_city))
     ed = build_ed(
         payload,
         link=link,

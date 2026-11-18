@@ -43,7 +43,7 @@ from app.models.brief_payload_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artworks_for
-from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.editions.stamps import stamp_weights
 from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
@@ -343,14 +343,14 @@ def sample_edition_payload(family: EditionFamily, recipient_name: str) -> Briefi
         _SEED_DAYS[0],
         recipient_name,
         family,
-        city_slug=min(hosted_stamp_weights()) if family == EditionFamily.POSTAL else None,
+        city_slug=min(stamp_weights()) if family == EditionFamily.POSTAL else None,
         artwork_id=min(artworks_for(ArtFamily(family))) if family in ArtFamily else None,
     )
 
 
 async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
     """Render, host and upsert count delivered postal briefs on consecutive days, one city each."""
-    cities = sorted(hosted_stamp_weights())
+    cities = sorted(stamp_weights())
     if count > len(cities):
         raise create_error(
             message=f"Cannot seed {count} postmarks",

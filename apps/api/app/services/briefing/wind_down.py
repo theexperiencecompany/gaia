@@ -34,7 +34,6 @@ from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
 from app.models.user_models import UserDocument
 from app.utils.timezone import as_utc
-from shared.py.wide_events import log
 
 
 class GoalQuestion(StrEnum):
@@ -157,16 +156,14 @@ async def climb_weekly_ladder(
     *,
     has_news: bool,
     has_goal: bool,
-) -> None:
+) -> bool:
     """Count an empty digest as idle for a user the weekly digest is the only brief of.
 
-    Their loop winds down after IDLE_DORMANT_DAYS idle digests in a row; a user with a
-    daily brief climbs the ladder on it instead.
+    Return whether this digest is their goodbye: the IDLE_DORMANT_DAYS-th idle one in a row,
+    after which the loop winds down. A user with a daily brief climbs the ladder on it instead.
     """
     if DAILY_BRIEFING_WORKFLOW_KEY in BRIEF_RUN_DAYS[schedule.frequency]:
-        return
+        return False
     idle = not has_news and not has_goal and not in_first_week(user, datetime.now(UTC))
     idle_days = await record_idle_day(user.id, prior, idle, date_str)
-    if idle and idle_days >= IDLE_DORMANT_DAYS:
-        await briefing_state_repository.enter_wind_down(user.id)
-        log.info("briefing.wind_down_entered", user_id=user.id, idle_days=idle_days)
+    return idle and idle_days >= IDLE_DORMANT_DAYS

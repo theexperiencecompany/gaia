@@ -35,6 +35,8 @@ class WeeklyStanding(Standing):
     goals: list[StatedGoal]
     #: Where the idle ladder stood before this digest.
     prior: BriefingWindDown
+    #: This digest is a weekly-only reader's goodbye: the loop winds down after it.
+    goodbye: bool = False
 
     @override
     @property
@@ -44,26 +46,20 @@ class WeeklyStanding(Standing):
     @override
     async def climbed(self, gathered: GatheredCandidates, pool: FactPool) -> "WeeklyStanding":
         """Count an empty digest on the ladder of a user the digest is the only brief of."""
-        await wind_down.climb_weekly_ladder(
+        goodbye = await wind_down.climb_weekly_ladder(
             self.user,
             self.state.schedule,
             self.prior,
             self.clock.date_str,
-            has_news=not self.quiet_before_composing(pool),
+            has_news=not _week_is_empty(pool),
             has_goal=bool(self.goals),
         )
-        return self
+        return replace(self, goodbye=goodbye)
 
     @override
     def quiet_before_composing(self, pool: FactPool) -> bool:
-        """Say whether the week holds nothing to recap: nothing done, due, waiting, found or ahead.
-
-        Undated todos of their own are backlog, never a week's news; a goal whose work moved or
-        sat stuck all week is the recap's first answer.
-        """
-        return all(c.backlog for c in pool.items.values()) and not any(
-            goal.done or goal.stalled for goal in pool.goals
-        )
+        """Say whether the digest is the quiet note: an empty week, unless it says the goodbye."""
+        return _week_is_empty(pool) and not self.goodbye
 
     @override
     def quiet_after_composing(self, laid: Laid, calendar: CalendarRead) -> bool:
@@ -85,6 +81,7 @@ class WeeklyStanding(Standing):
                 blocks=blocks,
                 recent=inputs.recent,
                 fence=untrusted_fence(),
+                goodbye=self.goodbye,
             ),
             writing=Writing(
                 # The goals they stated are their own words, quotable as they stand.
@@ -105,7 +102,18 @@ class WeeklyStanding(Standing):
 
     @override
     def settlement(self) -> BriefSettlement:
-        return BriefSettlement()
+        return BriefSettlement(winds_down=self.goodbye)
+
+
+def _week_is_empty(pool: FactPool) -> bool:
+    """Say whether the week holds nothing to recap: nothing done, due, waiting, found or ahead.
+
+    Undated todos of their own are backlog, never a week's news; a goal whose work moved or
+    sat stuck all week is the recap's first answer.
+    """
+    return all(c.backlog for c in pool.items.values()) and not any(
+        goal.done or goal.stalled for goal in pool.goals
+    )
 
 
 async def stand_weekly(

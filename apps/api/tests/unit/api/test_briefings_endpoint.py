@@ -45,6 +45,7 @@ from app.models.brief_settings_models import (
 from app.models.brief_view_models import BriefCard, Postmark, PostmarksResponse
 from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
+from app.services.briefing.editions.stamps import stamp_art
 from app.services.briefing.view import briefing_card
 from app.workers.brief_slots import slot_minute
 from shared.py.analytics import UserId
@@ -120,6 +121,21 @@ async def test_someone_elses_or_a_missing_brief_is_a_404(client: AsyncClient) ->
         response = await client.get(f"{BASE}/brief_nope")
 
     assert (response.status_code, response.json()["message"]) == (404, "Briefing not found")
+
+
+async def test_a_stamps_art_is_served_by_the_deployment_itself(client: AsyncClient) -> None:
+    response = await client.get(f"{BASE}/stamps/tokyo.webp")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    assert response.content == stamp_art("tokyo").read_bytes()
+
+
+@pytest.mark.parametrize("slug", ["atlantis", "..%2Fcities"])
+async def test_a_stamp_off_the_catalogue_is_a_404(client: AsyncClient, slug: str) -> None:
+    response = await client.get(f"{BASE}/stamps/{slug}.webp")
+
+    assert response.status_code == 404
 
 
 async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> None:

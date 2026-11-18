@@ -59,7 +59,7 @@ from app.models.user_models import UserDocument
 from app.services.briefing.calendar_read import CalendarGap
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights
-from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.editions.stamps import stamp_weights
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.prose import reader_block
 from app.utils.message_breaks import split_message_bubbles
@@ -316,7 +316,7 @@ class TestTheEdition:
         assert payload.template_family == "postal"
         # The stored pass was read and advanced, not reshuffled from scratch.
         assert world.bags["edition_family"] == ShuffleBag(order=seeded, index=1)
-        assert payload.stamp_city in hosted_stamp_weights()
+        assert payload.stamp_city in stamp_weights()
         assert world.bags["stamp_city"].order[0] == payload.stamp_city
 
     @pytest.mark.parametrize(

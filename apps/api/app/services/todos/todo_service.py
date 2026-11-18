@@ -50,6 +50,7 @@ from app.models.todo_models import (
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.briefing.errors import refuse_a_missing_brief
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_activity import record_todo_activity
@@ -662,6 +663,7 @@ class TodoService:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        await release_on_tell_me_now(user_id, [todo_id], updates.delivery)
         if updates.completed is not None:
             # Toggle semantics: fires for both completing and un-completing,
             # tracked or plain.
@@ -783,6 +785,7 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
+            await release_on_tell_me_now(user_id, succeeded, request.updates.delivery)
 
         return BulkOperationResponse(
             success=succeeded,

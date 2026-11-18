@@ -380,6 +380,17 @@ it again today, in any wording, and do not ask them to name one: mention a goal 
 """.strip()
 
 
+#: The idle ladder's one goodbye, on the daily brief or, for a weekly-only reader, the digest.
+_GOODBYE_NOTE = (
+    "\nThis is the goodbye brief. ONE short message only: you're pausing the "
+    "briefs and the night work because there's nothing to work on, and one "
+    "reply naming a goal brings it all back the moment they send it. No "
+    "summary, no stats, no filler; warm, short, zero guilt. This overrides "
+    "every other instruction below: no recap, no multi-option question, just the "
+    "goodbye.\n"
+)
+
+
 @dataclass(frozen=True)
 class VoiceSituation:
     """Where the user stands today; each flag adds its one note to the voice prompt.
@@ -421,14 +432,7 @@ def build_briefing_voice_prompt(
             "you working on right now?).\n"
         )
     elif situation.wind_down is WindDown.FINAL:
-        wind_down_note = (
-            "\nThis is the goodbye brief. ONE short message only: you're pausing the daily "
-            "briefs and the night work because there's nothing to work on, and one "
-            "reply naming a goal brings it all back the moment they send it. No "
-            "summary, no stats, no filler; warm, short, zero guilt. This overrides "
-            "the goal-question guidance below: no multi-option question, just the "
-            "goodbye.\n"
-        )
+        wind_down_note = _GOODBYE_NOTE
     winback_note = (
         (
             "\nThis user has ignored the last several briefings; this is the one "
@@ -563,17 +567,18 @@ _SERIES_TOTAL = value_slot_text(SlotKind.SERIES, SERIES_PLACEHOLDER, SeriesField
 
 
 def build_weekly_voice_prompt(
-    *, date_local: str, blocks: VoicePromptBlocks, recent: RecentLines, fence: str
+    *, date_local: str, blocks: VoicePromptBlocks, recent: RecentLines, fence: str, goodbye: bool
 ) -> str:
     """Voice pass over the week's code-built facts: what moved, what waits, and the week ahead.
 
     recent is what the last few briefs printed, daily and weekly, so the digest says it fresh;
-    every block read from the user's apps sits inside fence.
+    every block read from the user's apps sits inside fence. goodbye makes it the idle ladder's
+    goodbye, for a reader the digest is the only brief of.
     """
     return f"""{_SPEAKER}
 
 You are voicing this user's weekly digest for the week ending {date_local}.
-
+{_GOODBYE_NOTE if goodbye else ""}
 {UNTRUSTED_DATA_NOTE.format(fence=fence)}
 
 This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.

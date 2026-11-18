@@ -12,7 +12,7 @@ from app.models.brief_document_models import EditionRender
 from app.models.brief_payload_models import BriefingPayload
 from app.models.user_models import UserDocument
 from app.services.briefing import store
-from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.editions.stamps import stamp_weights
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.dev_postmarks_seed import seed_dev_postmarks
 from app.services.render.image import RenderedImage
@@ -77,7 +77,7 @@ async def test_asking_for_more_postmarks_than_cities_writes_nothing(
     dev_user: UserDocument, hosted_editions: list[str | None]
 ) -> None:
     with pytest.raises(AppError) as exc:
-        await seed_dev_postmarks(dev_user, len(hosted_stamp_weights()) + 1)
+        await seed_dev_postmarks(dev_user, len(stamp_weights()) + 1)
 
     assert exc.value.status_code == 400
     assert await briefing_repository.list_stamped(dev_user.id) == []

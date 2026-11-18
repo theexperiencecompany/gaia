@@ -431,6 +431,9 @@ EDITION_JPG_QUALITY: Final[int] = 85
 EDITION_URL_TTL_DAYS: Final[int] = 365
 # How long a browser may reuse an edition image: a same-day re-render keeps its URL.
 EDITION_IMAGE_MAX_AGE_SECONDS: Final[int] = 3_600
+# How long a browser may reuse a stamp's art: one file for everyone, rebuilt rarely.
+STAMP_ART_MAX_AGE_SECONDS: Final[int] = 86_400
+STAMP_ART_CONTENT_TYPE: Final[str] = "image/webp"
 # A brief's notification ranks just below an urgent one (1 is highest).
 BRIEF_NOTIFICATION_PRIORITY: Final[int] = 2
 BRIEF_NOTIFICATION_ACTION_LABEL: Final[str] = "Open briefing"

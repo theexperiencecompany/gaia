@@ -480,11 +480,12 @@ COMPOSITIONS: dict[str, dict[str, Any]] = {
 
 
 def composed_payload(
-    composition: str, family: EditionFamily, artwork_id: str | None
+    composition: str, family: EditionFamily, artwork_id: str | None, stamp_city: str | None = None
 ) -> BriefingPayload:
     """Return the composition as the pipeline hands it to the family: its blocks split by what it draws."""
     payload = BriefingPayload.model_validate(
-        COMPOSITIONS[composition] | {"template_family": family, "artwork_id": artwork_id}
+        COMPOSITIONS[composition]
+        | {"template_family": family, "artwork_id": artwork_id, "stamp_city": stamp_city}
     )
     drawn, undrawn = split_drawable(family, payload.blocks)
     return payload.model_copy(update={"blocks": drawn, "undrawn": undrawn})

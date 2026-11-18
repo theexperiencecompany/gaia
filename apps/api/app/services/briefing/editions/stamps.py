@@ -1,10 +1,10 @@
 """Air Mail city stamps: the founder's 85 city artworks and their postage.
 
-The artworks are hosted on Cloudinary (uploaded by scripts/upload_briefing_art.py),
-never committed. explorer/assets/stamps/ holds cities.json and countries.json. A
-brief's stamp city is drawn from the user's shuffle bag; stamp_for turns it into the
-city skin the vendored postal template reads, and the Postmarks page places it on
-the globe by its lat/lng.
+explorer/assets/stamps/ holds each city's art as <slug>.webp (written by
+scripts/build_edition_art.py), shipped in the image so no deployment fetches it from
+elsewhere, beside cities.json and countries.json. A brief's stamp city is drawn from the
+user's shuffle bag; stamp_for turns it into the city skin the vendored postal template
+reads, and the Postmarks page places it on the globe by its lat/lng.
 """
 
 from functools import lru_cache
@@ -38,7 +38,7 @@ class Stamp(TypedDict):
 
 
 class StampCity(BaseModel):
-    """One catalogued city: its name, where it sits on the globe, and its hosted art."""
+    """One catalogued city: its name and where it sits on the globe."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -47,7 +47,6 @@ class StampCity(BaseModel):
     country: str
     lat: float
     lng: float
-    url: str | None
 
 
 class _Postage(TypedDict):
@@ -69,13 +68,9 @@ def _postage() -> dict[str, _Postage]:
     return data
 
 
-def hosted_stamp_weights() -> dict[str, int]:
-    """Return the drawable stamp cities, once per pass of the user's stamp bag.
-
-    Every catalogued city whose art is uploaded is drawable.
-    """
-    cities: dict[str, StampCity] = stamp_catalogue()
-    return {slug: 1 for slug, city in cities.items() if city.url}
+def stamp_weights() -> dict[str, int]:
+    """Return the user's stamp bag: every catalogued city once per pass."""
+    return dict.fromkeys(stamp_catalogue(), 1)
 
 
 def stamp_for(slug: str) -> Stamp:
@@ -98,21 +93,10 @@ def stamp_asset_key(slug: str) -> str:
 
 
 def city_axis() -> list[Stamp]:
-    """Return the postal template's city axis: every drawable city's stamp skin."""
-    return [stamp_for(slug) for slug in hosted_stamp_weights()]
+    """Return the postal template's city axis: every catalogued city's stamp skin."""
+    return [stamp_for(slug) for slug in stamp_catalogue()]
 
 
-def city_axis_assets() -> dict[str, str]:
-    """Return every drawable city's hosted stamp art, by asset key."""
-    return {stamp_asset_key(slug): stamp_asset_url(slug) for slug in hosted_stamp_weights()}
-
-
-def stamp_asset_url(slug: str) -> str:
-    """Return the city's hosted stamp art, loaded by the render page as the stamp image."""
-    city: StampCity | None = stamp_catalogue().get(slug)
-    url = city.url if city else None
-    if not url:
-        raise KeyError(
-            f"stamp city {slug!r} has no hosted art (run scripts/upload_briefing_art.py stamps)"
-        )
-    return url
+def stamp_art(slug: str) -> Path:
+    """Return the file holding a catalogued city's stamp art; KeyError for any other slug."""
+    return _STAMPS_DIR / f"{stamp_catalogue()[slug].slug}.webp"

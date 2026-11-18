@@ -108,7 +108,7 @@ from app.services.briefing.clock import resolve_clock
 from app.services.briefing.composition import headings as composition_headings
 from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
-from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.editions.stamps import stamp_weights
 from app.services.briefing.fact_pool.pool import FactPool, build_fact_pool
 from app.services.briefing.facts import FactSources, build_facts
 from app.services.briefing.goals import StatedGoal
@@ -748,7 +748,7 @@ class World:
 
     def stamp_first(self, city: str) -> None:
         """Pin today's Air Mail stamp: the pass over every hosted city opens on city."""
-        others = sorted(set(hosted_stamp_weights()) - {city})
+        others = sorted(set(stamp_weights()) - {city})
         self.bags[BriefingBag.STAMP_CITY] = ShuffleBag(order=[city, *others], index=0)
 
     def briefs_read(self, briefs: list[BriefingModel]) -> None:
