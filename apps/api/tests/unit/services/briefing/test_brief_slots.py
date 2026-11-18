@@ -66,9 +66,10 @@ class TestRendering:
                 "due [[fact:1.time]], [[fact:2.time]] and [[fact:3.time]], respectively.",
                 "due Fri Nov 13.",
             ),
+            ("both due [[fact:1.time]] / [[fact:2.time]].", "both due Fri Nov 13."),
             ("due [[fact:1.time]] and [[fact:4.time]].", "due Fri Nov 13 and Sat Nov 14."),
         ],
-        ids=["two alike", "three alike, respectively", "different"],
+        ids=["two alike", "three alike, respectively", "two alike, slashed", "different"],
     )
     def test_a_list_of_slots_that_render_alike_says_the_value_once(
         self, written: str, rendered: str

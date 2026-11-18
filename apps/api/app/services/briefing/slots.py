@@ -117,7 +117,7 @@ _TITLE_SLOT_RE = re.compile(rf"\[\[{_FACT}:(\d+)\]\]")
 _ANY_SLOT_RE = re.compile(rf"\[\[(?:{_KINDS}):\w+(?:\.\w+)?\]\]")
 # A value slot, or several listed ("[[fact:1.time]], [[fact:2.time]] and [[fact:3.time]]").
 _SLOT_LIST_RE = re.compile(
-    rf"{_ANY_SLOT_RE.pattern}(?:(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+){_ANY_SLOT_RE.pattern})*"
+    rf"{_ANY_SLOT_RE.pattern}(?:(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or|/|&)\s+){_ANY_SLOT_RE.pattern})*"
     r"(?:,\s*respectively)?"
 )
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
