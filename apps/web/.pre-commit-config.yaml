@@ -14,7 +14,7 @@ repos:
         priority: 0
       - id: lint-all
         name: Format & Lint & Apply Fixes
-        entry: bash -c 'pnpm fix'
+        entry: mise exec -- bash -c 'pnpm fix'
         language: system
         types_or: [javascript, jsx, ts, tsx, json, markdown, css]
         pass_filenames: false
