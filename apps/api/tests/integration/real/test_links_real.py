@@ -58,7 +58,7 @@ from tests.conftest import FAKE_USER
 pytestmark = pytest.mark.service
 
 OWNER = FAKE_USER
-GRANTEE = AuthenticatedUser(
+RECIPIENT = AuthenticatedUser(
     user_id="507f1f77bcf86cd799439022", email="friend@example.com", auth_provider="workos"
 )
 STRANGER = AuthenticatedUser(
@@ -234,21 +234,17 @@ async def _stored(slug: str) -> ShortLink:
 
 
 class TestAccessLevels:
-    async def test_specific_people_opens_for_the_owner_and_grantees_only(
+    async def test_owner_only_opens_for_the_owner_alone(
         self, client: AsyncClient, viewer: Viewer, captured: list
     ) -> None:
         todo_id = await _todo()
-        link = await _share(
-            client, _rec(TODO, todo_id), access="people", grantees=["Friend@Example.com"]
-        )
+        link = await _share(client, _rec(TODO, todo_id), access="owner")
         slug = link["slug"]
-        assert link["access"] == "people"
+        assert link["access"] == "owner"
         assert link["url"].endswith(f"/{slug}")
 
         viewer.user = OWNER
         owner_view = await _open(client, slug)
-        viewer.user = GRANTEE
-        grantee_view = await _open(client, slug)
         viewer.user = None
         anonymous = await _open(client, slug)
         viewer.user = STRANGER
@@ -257,18 +253,12 @@ class TestAccessLevels:
         assert owner_view.status_code == 200
         assert owner_view.json()["is_owner"] is True
         assert owner_view.json()["owner_target"] == {"type": TODO, "id": todo_id}
-        assert grantee_view.status_code == 200
-        assert grantee_view.json()["is_owner"] is False
-        assert grantee_view.json()["owner_target"] is None
-        assert grantee_view.json()["view"]["title"] == "Reply to Acme"
-        assert grantee_view.headers["cache-control"] == "private, no-store"
+        assert owner_view.headers["cache-control"] == "private, no-store"
         assert (anonymous.status_code, anonymous.json()["code"]) == (401, "link_sign_in_required")
         assert (stranger.status_code, stranger.json()["code"]) == (403, "link_forbidden")
         assert stranger.json()["signed_in_as"] == "someone@example.com"
         assert "title" not in stranger.text
-        stored = await _stored(slug)
-        assert stored.access is LinkAccess.PEOPLE
-        assert stored.grantees == ["Friend@example.com"]
+        assert (await _stored(slug)).access is LinkAccess.OWNER
         # The page's server-side read is no viewer's open: only the browser's /opened counts a denial.
         assert _names(captured).count("ShortLinkDenied") == 0
         for denied_viewer in (None, STRANGER):
@@ -286,15 +276,6 @@ class TestAccessLevels:
         assert opened.json()["access"] == "unlisted"
         assert opened.json()["downloadable"] is False
         assert opened.json()["target_type"] == TODO
-
-    async def test_owner_only_turns_away_everyone_else(
-        self, client: AsyncClient, viewer: Viewer
-    ) -> None:
-        link = await _share(client, _rec(TODO, await _todo()), access="owner")
-        viewer.user = GRANTEE
-        assert (await _open(client, link["slug"])).status_code == 403
-        viewer.user = OWNER
-        assert (await _open(client, link["slug"])).status_code == 200
 
     async def test_changing_access_takes_effect_on_the_next_open(
         self, client: AsyncClient, viewer: Viewer, captured: list
@@ -325,62 +306,6 @@ class TestAccessLevels:
 
         assert response.status_code == 404
         assert (await _stored(slug)).access is LinkAccess.UNLISTED
-
-    async def test_more_than_fifty_people_is_refused(self, client: AsyncClient) -> None:
-        response = await client.post(
-            "/api/v1/l",
-            json={
-                "target": _rec(TODO, await _todo()),
-                "settings": {"access": "people", "grantees": [f"p{n}@x.com" for n in range(51)]},
-            },
-        )
-        assert response.status_code == 422
-
-
-class TestLocalSignIn:
-    """Where account emails are unverified, a grant names accounts, never an address anyone can register."""
-
-    @pytest.fixture(autouse=True)
-    async def local_auth(self, monkeypatch: pytest.MonkeyPatch, mongo_db) -> AsyncIterator[None]:
-        monkeypatch.setattr(settings, "AUTH_MODE", "local")
-        await mongo_db["users"].delete_many({"email": "friend@example.com"})
-        yield
-        await mongo_db["users"].delete_many({"email": "friend@example.com"})
-
-    async def test_an_address_with_no_account_cannot_be_granted(self, client: AsyncClient) -> None:
-        response = await client.post(
-            "/api/v1/l",
-            json={
-                "target": _rec(TODO, await _todo()),
-                "settings": {"access": "people", "grantees": ["friend@example.com"]},
-            },
-        )
-        assert (response.status_code, response.json()["code"]) == (422, "link_grantee_not_a_member")
-        assert response.json()["missing"] == ["friend@example.com"]
-
-    async def test_the_grant_follows_the_account_not_the_email(
-        self, client: AsyncClient, viewer: Viewer, mongo_db
-    ) -> None:
-        inserted = await mongo_db["users"].insert_one({"email": "friend@example.com", "name": "F"})
-        member_id = str(inserted.inserted_id)
-        link = await _share(
-            client, _rec(TODO, await _todo()), access="people", grantees=["friend@example.com"]
-        )
-
-        viewer.user = AuthenticatedUser(
-            user_id="507f1f77bcf86cd799439077", email="friend@example.com", auth_provider="local"
-        )
-        impostor = await _open(client, link["slug"])
-        viewer.user = AuthenticatedUser(
-            user_id=member_id, email="friend@example.com", auth_provider="local"
-        )
-        member = await _open(client, link["slug"])
-
-        assert impostor.status_code == 403
-        # The page still tells them which account they are in; it just grants nothing.
-        assert impostor.json()["signed_in_as"] == "friend@example.com"
-        assert member.status_code == 200
-        assert (await _stored(link["slug"])).grantee_ids == [member_id]
 
 
 class TestRevokeRotateExpire:
@@ -441,17 +366,15 @@ class TestRevokeRotateExpire:
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
         todo_id = await _todo()
-        old = await _share(
-            client, _rec(TODO, todo_id), access="people", grantees=["friend@example.com"]
-        )
+        old = await _share(client, _rec(TODO, todo_id), access="owner")
 
         rotated = await client.post(f"/api/v1/l/{old['slug']}/rotate")
 
         new = rotated.json()
         assert rotated.status_code == 200
         assert new["slug"] != old["slug"]
-        assert (new["access"], new["grantees"]) == ("people", ["friend@example.com"])
-        viewer.user = GRANTEE
+        assert new["access"] == "owner"
+        viewer.user = OWNER
         assert (await _open(client, new["slug"])).status_code == 200
         gone = await _open(client, old["slug"])
         assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
@@ -530,7 +453,7 @@ class TestPreviewMeta:
         assert (await client.get(f"/api/v1/l/{slug}/meta")).json()["indexable"] is True
 
     async def test_a_gated_link_previews_only_its_kind(self, client: AsyncClient) -> None:
-        slug = (await _share(client, _rec(TODO, await _todo("Secret merger")), access="people"))[
+        slug = (await _share(client, _rec(TODO, await _todo("Secret merger")), access="owner"))[
             "slug"
         ]
         meta = (await client.get(f"/api/v1/l/{slug}/meta")).json()
@@ -567,12 +490,14 @@ class TestOpens:
         await client.post(
             f"/api/v1/l/{slug}/opened", headers={"user-agent": "Slackbot-LinkExpanding 1.0"}
         )
-        viewer.user = GRANTEE
-        as_grantee = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+        viewer.user = RECIPIENT
+        as_recipient = await client.post(
+            f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER}
+        )
 
         # One browser call both counts the open and tells the owner apart.
-        assert (as_owner.json()["is_owner"], as_grantee.json()["is_owner"]) == (True, False)
-        assert as_grantee.json()["view"]["title"] == "Reply to Acme"
+        assert (as_owner.json()["is_owner"], as_recipient.json()["is_owner"]) == (True, False)
+        assert as_recipient.json()["view"]["title"] == "Reply to Acme"
         assert _names(captured) == ["ShortLinkOpened"]
         assert captured[0][1].viewer_signed_in is True
         assert captured[0][1].access == "unlisted"
@@ -773,16 +698,13 @@ class TestSharedFiles:
         target = workspace.write("login.html", b"<form><input type=password></form>")
         link = await _share(client, target)
 
-        assert link["content_max_access"] == "people"
+        assert link["content_max_access"] == "owner"
         refused = (await _open(client, link["slug"])).json()
         assert (refused["content"], refused["downloadable"]) == (None, False)
         assert (await client.get(f"/api/v1/l/{link['slug']}/download")).status_code == 404
 
-        await client.patch(
-            f"/api/v1/l/{link['slug']}",
-            json={"access": "people", "grantees": ["friend@example.com"]},
-        )
-        viewer.user = GRANTEE
+        await client.patch(f"/api/v1/l/{link['slug']}", json={"access": "owner"})
+        viewer.user = OWNER
         assert (await _open(client, link["slug"])).json()["content"]["render"] == "frame_active"
 
     async def test_a_restricted_file_ships_no_source_text_at_a_wider_level(
@@ -1028,8 +950,8 @@ class TestRemovingTheOwner:
         cid = (await _stored(file_slug)).snapshot.content_id
         todo_slug = (await _share(client, _rec(TODO, await _todo())))["slug"]
         others = await share(
-            GRANTEE.user_id,
-            RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=await _todo_for(GRANTEE)),
+            RECIPIENT.user_id,
+            RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=await _todo_for(RECIPIENT)),
             LinkSettings(),
         )
         others_slug = others.slug
@@ -1085,7 +1007,7 @@ class TestTheBriefsLink:
         viewer.user = OWNER
         opened = await _open(client, slug)
         assert opened.status_code == 200, opened.text
-        assert opened.json()["view"]["payload"]["headline"] == "Google Cloud waits"
+        assert opened.json()["view"]["headline"] == "Google Cloud waits"
 
 
 @pytest.fixture(autouse=True)

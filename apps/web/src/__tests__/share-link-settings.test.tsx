@@ -33,7 +33,6 @@ const LIVE: ShortLinkResponse = {
   url: "https://heygaia.link/abcdefghijk",
   slug: "abcdefghijk",
   access: "unlisted",
-  grantees: [],
   expires_at: null,
   content_max_access: null,
 };
@@ -59,12 +58,6 @@ async function chooseAccess(dialog: HTMLElement, label: RegExp) {
   fireEvent.click(await screen.findByRole("option", { name: label }));
 }
 
-function addEmail(dialog: HTMLElement, value: string) {
-  const input = within(dialog).getByRole("textbox", { name: /People/ });
-  fireEvent.change(input, { target: { value } });
-  fireEvent.keyDown(input, { key: "Enter" });
-}
-
 function save(dialog: HTMLElement) {
   fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 }
@@ -88,7 +81,7 @@ describe("share settings", () => {
     await waitFor(() =>
       expect(api.updateLinkSettings).toHaveBeenCalledWith(
         LIVE.slug,
-        expect.objectContaining({ access: "owner", grantees: [] }),
+        expect.objectContaining({ access: "owner" }),
       ),
     );
     expect(api.createShortLink).not.toHaveBeenCalled();
@@ -108,35 +101,6 @@ describe("share settings", () => {
       ),
     );
     expect(api.updateLinkSettings).not.toHaveBeenCalled();
-  });
-
-  it("specific people needs at least one valid email before it saves", async () => {
-    api.updateLinkSettings.mockResolvedValue({ ...LIVE, access: "people" });
-    const dialog = await openSettings(LIVE);
-
-    await chooseAccess(dialog, /Specific people/);
-    save(dialog);
-    expect(
-      await within(dialog).findByText(/Add at least one email/),
-    ).toBeTruthy();
-
-    addEmail(dialog, "not-an-email");
-    expect(await within(dialog).findByText(/valid email address/)).toBeTruthy();
-    save(dialog);
-    expect(api.updateLinkSettings).not.toHaveBeenCalled();
-
-    addEmail(dialog, "Friend@Example.com");
-    save(dialog);
-
-    await waitFor(() =>
-      expect(api.updateLinkSettings).toHaveBeenCalledWith(
-        LIVE.slug,
-        expect.objectContaining({
-          access: "people",
-          grantees: ["friend@example.com"],
-        }),
-      ),
-    );
   });
 
   it("an expiry preset saves as an ISO time that far from now", async () => {
@@ -195,7 +159,7 @@ describe("share settings", () => {
   it("warns when the chosen access is wider than the file can be shown at", async () => {
     const dialog = await openSettings({
       ...LIVE,
-      content_max_access: "people",
+      content_max_access: "owner",
     });
 
     expect(within(dialog).getByText(/see only its name/)).toBeTruthy();

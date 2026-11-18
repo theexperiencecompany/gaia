@@ -28,18 +28,12 @@ from app.services.links.access import (
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 OWNER_ID = "507f1f77bcf86cd799439011"
-GRANTEE_EMAIL = "Friend@Example.com"
 BROWSER = "Mozilla/5.0 (Macintosh) Safari/605.1.15"
 
-ANON = LinkViewer(user_id=None, email=None, ip="1.2.3.4", user_agent=BROWSER)
-OWNER = LinkViewer(user_id=OWNER_ID, email="owner@example.com", ip="1.2.3.4", user_agent=BROWSER)
-# The grant matches the account email case-insensitively.
-GRANTEE = LinkViewer(user_id="g", email="friend@example.com", ip="1.2.3.4", user_agent=BROWSER)
-STRANGER = LinkViewer(user_id="s", email="someone@example.com", ip="1.2.3.4", user_agent=BROWSER)
-NO_EMAIL = LinkViewer(user_id="n", email=None, ip="1.2.3.4", user_agent=BROWSER)
-SLACKBOT = LinkViewer(
-    user_id=None, email=None, ip="1.2.3.4", user_agent="Slackbot-LinkExpanding 1.0"
-)
+ANON = LinkViewer(user_id=None, ip="1.2.3.4", user_agent=BROWSER)
+OWNER = LinkViewer(user_id=OWNER_ID, ip="1.2.3.4", user_agent=BROWSER)
+STRANGER = LinkViewer(user_id="s", ip="1.2.3.4", user_agent=BROWSER)
+SLACKBOT = LinkViewer(user_id=None, ip="1.2.3.4", user_agent="Slackbot-LinkExpanding 1.0")
 
 
 def _link(access: LinkAccess, **overrides: object) -> ShortLink:
@@ -48,7 +42,6 @@ def _link(access: LinkAccess, **overrides: object) -> ShortLink:
         "user_id": OWNER_ID,
         "target": RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1"),
         "access": access,
-        "grantees": [GRANTEE_EMAIL],
     }
     data.update(overrides)
     return ShortLink.model_validate(data)
@@ -63,20 +56,12 @@ _FORBIDDEN = Denied(LinkDenial.FORBIDDEN)
 LIVE_MATRIX = [
     (LinkAccess.PUBLIC, ANON, _RECIPIENT),
     (LinkAccess.PUBLIC, OWNER, _OWNER),
-    (LinkAccess.PUBLIC, GRANTEE, _RECIPIENT),
     (LinkAccess.PUBLIC, STRANGER, _RECIPIENT),
     (LinkAccess.UNLISTED, ANON, _RECIPIENT),
     (LinkAccess.UNLISTED, OWNER, _OWNER),
-    (LinkAccess.UNLISTED, GRANTEE, _RECIPIENT),
     (LinkAccess.UNLISTED, STRANGER, _RECIPIENT),
-    (LinkAccess.PEOPLE, ANON, _SIGN_IN),
-    (LinkAccess.PEOPLE, OWNER, _OWNER),
-    (LinkAccess.PEOPLE, GRANTEE, _RECIPIENT),
-    (LinkAccess.PEOPLE, STRANGER, _FORBIDDEN),
-    (LinkAccess.PEOPLE, NO_EMAIL, _FORBIDDEN),
     (LinkAccess.OWNER, ANON, _SIGN_IN),
     (LinkAccess.OWNER, OWNER, _OWNER),
-    (LinkAccess.OWNER, GRANTEE, _FORBIDDEN),
     (LinkAccess.OWNER, STRANGER, _FORBIDDEN),
 ]
 
@@ -118,7 +103,7 @@ DEAD_STATES = [
 
 
 @pytest.mark.parametrize("access", list(LinkAccess))
-@pytest.mark.parametrize("viewer", [ANON, GRANTEE, STRANGER, SLACKBOT])
+@pytest.mark.parametrize("viewer", [ANON, STRANGER, SLACKBOT])
 @pytest.mark.parametrize(("state", "denial", "_owner_sees"), DEAD_STATES)
 def test_a_dead_link_opens_for_no_one_but_maybe_its_owner(
     access: LinkAccess,
@@ -155,18 +140,17 @@ def test_an_unfurl_bot_opens_an_open_link_as_a_bot(access: LinkAccess) -> None:
     assert evaluate(_link(access), SLACKBOT, NOW) == Granted(LinkViewerKind.UNFURL_BOT)
 
 
-@pytest.mark.parametrize("access", [LinkAccess.PEOPLE, LinkAccess.OWNER])
-def test_an_unfurl_bot_never_opens_a_gated_link(access: LinkAccess) -> None:
-    assert evaluate(_link(access), SLACKBOT, NOW) == _SIGN_IN
+def test_an_unfurl_bot_never_opens_an_owner_only_link() -> None:
+    assert evaluate(_link(LinkAccess.OWNER), SLACKBOT, NOW) == _SIGN_IN
 
 
 @pytest.mark.parametrize(
     ("access", "cap", "fits"),
     [
         (LinkAccess.OWNER, LinkAccess.OWNER, True),
-        (LinkAccess.PEOPLE, LinkAccess.OWNER, False),
-        (LinkAccess.PEOPLE, LinkAccess.PEOPLE, True),
-        (LinkAccess.UNLISTED, LinkAccess.PEOPLE, False),
+        (LinkAccess.UNLISTED, LinkAccess.OWNER, False),
+        (LinkAccess.UNLISTED, LinkAccess.UNLISTED, True),
+        (LinkAccess.OWNER, LinkAccess.PUBLIC, True),
         (LinkAccess.UNLISTED, LinkAccess.PUBLIC, True),
         (LinkAccess.PUBLIC, LinkAccess.UNLISTED, False),
         (LinkAccess.PUBLIC, LinkAccess.PUBLIC, True),
@@ -183,7 +167,6 @@ def test_at_most_orders_levels_by_who_they_open_for(
     [
         (LinkAccess.PUBLIC, True),
         (LinkAccess.UNLISTED, True),
-        (LinkAccess.PEOPLE, False),
         (LinkAccess.OWNER, False),
     ],
 )
@@ -198,7 +181,7 @@ def _file(**overrides: object) -> LinkSnapshot:
         "size_bytes": 4,
         "render": RenderMode.FRAME_ACTIVE,
         "content_id": "c" * 26,
-        "max_access": LinkAccess.PEOPLE,
+        "max_access": LinkAccess.OWNER,
     }
     data.update(overrides)
     return LinkSnapshot.model_validate(data)
@@ -207,12 +190,12 @@ def _file(**overrides: object) -> LinkSnapshot:
 @pytest.mark.parametrize(
     ("link", "serves"),
     [
-        (_link(LinkAccess.PEOPLE, snapshot=_file()), True),
+        (_link(LinkAccess.OWNER, snapshot=_file()), True),
         (_link(LinkAccess.UNLISTED, snapshot=_file()), False),
-        (_link(LinkAccess.PEOPLE, snapshot=_file(content_id=None)), False),
-        (_link(LinkAccess.PEOPLE), False),
-        (_link(LinkAccess.PEOPLE, snapshot=_file(), suspended=True), False),
-        (_link(LinkAccess.PEOPLE, snapshot=_file(), expires_at=NOW), False),
+        (_link(LinkAccess.OWNER, snapshot=_file(content_id=None)), False),
+        (_link(LinkAccess.OWNER), False),
+        (_link(LinkAccess.OWNER, snapshot=_file(), suspended=True), False),
+        (_link(LinkAccess.OWNER, snapshot=_file(), expires_at=NOW), False),
     ],
 )
 def test_a_link_serves_its_bytes_only_live_published_and_within_their_cap(

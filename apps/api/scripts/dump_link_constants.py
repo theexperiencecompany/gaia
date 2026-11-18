@@ -19,7 +19,7 @@ from app.constants.short_links import (
     THUMBNAIL_PATH,
     UNFURL_BOT_USER_AGENT_MARKERS,
 )
-from app.models.short_link_models import MAX_GRANTEES, LinkAccess, LinkDenial
+from app.models.short_link_models import LinkAccess, LinkDenial
 from app.services.links.access import ACCESS_WIDEST_FIRST, OWNER_STILL_OPENS
 from app.services.links.errors import LINK_PAGE_COPY
 from app.utils.loggable_path import LINK_CONTENT_ROUTE_PREFIX
@@ -31,7 +31,6 @@ class LinkConstants(TypedDict):
     contentIdLength: int
     thumbnailPath: str
     shortLinkWebRoute: str
-    maxGrantees: int
     accessWidestFirst: list[LinkAccess]
     ownerStillOpens: list[LinkDenial]
     unfurlBotUserAgentMarkers: list[str]
@@ -45,7 +44,6 @@ def link_constants() -> LinkConstants:
         "contentIdLength": CONTENT_ID_LENGTH,
         "thumbnailPath": THUMBNAIL_PATH,
         "shortLinkWebRoute": SHORTLINK_WEB_ROUTE,
-        "maxGrantees": MAX_GRANTEES,
         "accessWidestFirst": list(ACCESS_WIDEST_FIRST),
         "ownerStillOpens": sorted(OWNER_STILL_OPENS),
         "unfurlBotUserAgentMarkers": list(UNFURL_BOT_USER_AGENT_MARKERS),

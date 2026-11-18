@@ -5,11 +5,9 @@ export const LINK_CONSTANTS = {
   "contentIdLength": 26,
   "thumbnailPath": "thumb.jpg",
   "shortLinkWebRoute": "/l",
-  "maxGrantees": 50,
   "accessWidestFirst": [
     "public",
     "unlisted",
-    "people",
     "owner"
   ],
   "ownerStillOpens": [

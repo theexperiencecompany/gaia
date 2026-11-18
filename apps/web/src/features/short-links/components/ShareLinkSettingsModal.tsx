@@ -17,7 +17,6 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
-import { GranteeEmailsInput } from "@/features/short-links/components/GranteeEmailsInput";
 import {
   EXPIRY_PRESETS,
   type ExpiryChoice,
@@ -107,11 +106,9 @@ function ShareSettingsForm({
   link: ShortLinkResponse | null;
 }) {
   const [access, setAccess] = useState<LinkAccess>(link?.access ?? "unlisted");
-  const [grantees, setGrantees] = useState<string[]>(link?.grantees ?? []);
   const [expiry, setExpiry] = useState<ExpiryChoice>(
     link?.expires_at ? "keep" : "never",
   );
-  const [missingPeople, setMissingPeople] = useState(false);
   const [confirmingRotate, setConfirmingRotate] = useState(false);
 
   const maxAccess = link?.content_max_access;
@@ -126,16 +123,7 @@ function ShareSettingsForm({
   ];
 
   const save = () => {
-    const isPeople = access === "people";
-    if (isPeople && grantees.length === 0) {
-      setMissingPeople(true);
-      return;
-    }
-    share.saveSettings({
-      access,
-      grantees: isPeople ? grantees : [],
-      ...expiryChange(expiry),
-    });
+    share.saveSettings({ access, ...expiryChange(expiry) });
   };
 
   return (
@@ -172,17 +160,6 @@ function ShareSettingsForm({
             </ListBox>
           </Select.Popover>
         </Select>
-
-        {access === "people" && (
-          <GranteeEmailsInput
-            emails={grantees}
-            onEmailsChange={(emails) => {
-              setGrantees(emails);
-              setMissingPeople(false);
-            }}
-            isMissing={missingPeople}
-          />
-        )}
 
         {exceedsContent && (
           <div className="flex gap-2 rounded-xl bg-amber-400/10 p-3 text-sm text-amber-400">

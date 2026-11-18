@@ -18,14 +18,8 @@ vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
   RichContentRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
 vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
-  ShareLinkControls: ({
-    target,
-    stopWarning,
-  }: {
-    target: LinkTarget;
-    stopWarning?: string;
-  }) => (
-    <span data-testid="share" data-warning={stopWarning ?? ""}>
+  ShareLinkControls: ({ target }: { target: LinkTarget }) => (
+    <span data-testid="share">
       {"id" in target
         ? `${target.type}:${target.id}`
         : `${target.type}:${target.conversation_id}:${target.path}`}
@@ -33,14 +27,13 @@ vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
   ),
 }));
 
-import { BRIEF_STOP_WARNING } from "@/features/briefing";
 import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
 import type { LinkEnvelope, LinkTarget } from "@/types/features/shortLinkTypes";
 
 function envelope(isOwner: boolean): LinkEnvelope {
   return {
-    access: "people",
+    access: "unlisted",
     target_type: "todo_deliverable",
     view: {
       target_type: "todo_deliverable",
@@ -64,34 +57,25 @@ describe("PublicLinkView chrome", () => {
     );
   });
 
-  it("warns the owner of a brief what stopping cannot take back", () => {
+  it("shows a shared brief as its front page, with no edition image", () => {
     const brief: LinkEnvelope = {
-      ...envelope(true),
+      ...envelope(false),
       target_type: "briefing",
-      owner_target: { type: "briefing", id: "brief-1" },
       view: {
         target_type: "briefing",
         kind: "daily",
-        edition_image_url: null,
-        payload: {
-          kicker: "Friday",
-          date: "Nov 13",
-          headline: "A clear Friday",
-          lede: "",
-          stats: [],
-          sections: [],
-          mood: "clear",
-          caption: "",
-          hue: 0,
-          calendar: [],
-        },
+        kicker: "THE MORNING BRIEF",
+        date: "Nov 13",
+        headline: "A clear Friday",
       },
     };
     render(<PublicLinkView slug="abcdefghijk" envelope={brief} />);
 
-    expect(screen.getByTestId("share").dataset.warning).toBe(
-      BRIEF_STOP_WARNING,
-    );
+    expect(
+      screen.getByRole("heading", { name: "A clear Friday" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Nov 13/)).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "A clear Friday" })).toBeNull();
   });
 
   it("shows a recipient no share controls", () => {

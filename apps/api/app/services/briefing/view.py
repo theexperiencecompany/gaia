@@ -1,4 +1,4 @@
-"""A stored brief as the API shows it: its card, its owner's view and the public view."""
+"""A stored brief as the API shows it: its card, its owner's view and the front page anyone else sees."""
 
 from datetime import UTC, datetime
 
@@ -7,11 +7,11 @@ from app.models.brief_document_models import BriefCardRecord, BriefingModel, Edi
 from app.models.brief_payload_models import BriefingPayload
 from app.models.brief_view_models import (
     BriefCard,
-    BriefingPublicView,
     BriefingView,
     EditionLeftOut,
     UncomposedItem,
 )
+from app.models.short_link_models import PublicBriefing, ShortLinkTargetType
 from app.services.briefing.edition_image import edition_url
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_blocks import events_past_rows, left_out_items
@@ -76,17 +76,13 @@ async def briefing_view(briefing: BriefingModel) -> BriefingView:
     )
 
 
-async def public_view(briefing: BriefingModel) -> BriefingPublicView:
-    """Project the brief for a viewer who is not its owner: the edition and its front page alone."""
+def public_view(briefing: BriefingModel) -> PublicBriefing:
+    """Project the brief for anyone but its owner: its front page, never an item or the item-bearing edition."""
     payload = briefing.payload
-    return BriefingPublicView(
+    return PublicBriefing(
+        target_type=ShortLinkTargetType.BRIEFING,
         kind=briefing.kind,
         kicker=payload.kicker,
         date=payload.date,
         headline=payload.headline,
-        lede=payload.lede,
-        caption=payload.caption,
-        mood=payload.mood,
-        hue=payload.hue,
-        edition=await edition_image(briefing),
     )

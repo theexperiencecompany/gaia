@@ -5,7 +5,7 @@ import type { BriefingView } from "@shared/api/generated";
 import { StandalonePage } from "@/components/layout/StandalonePage";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
-import { BACK_TO_BRIEFINGS, BRIEF_STOP_WARNING } from "../constants";
+import { BACK_TO_BRIEFINGS } from "../constants";
 
 import { BriefingEdition } from "./BriefingEdition";
 
@@ -31,7 +31,6 @@ export function StandaloneBriefing({
         ownedBriefingId && (
           <ShareLinkControls
             target={{ type: "briefing", id: ownedBriefingId }}
-            stopWarning={BRIEF_STOP_WARNING}
           />
         )
       }

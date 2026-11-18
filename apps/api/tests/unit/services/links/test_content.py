@@ -284,12 +284,12 @@ class TestPublish:
             b'<input name="card" autocomplete="cc-number">',
         ],
     )
-    async def test_html_asking_for_secrets_opens_only_for_specific_people(
+    async def test_html_asking_for_secrets_opens_only_for_its_owner(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None, html: bytes
     ) -> None:
         snapshot = await publish(OWNER, FILE, _source("login.html", "text/html", html))
         assert snapshot.content_id is not None
-        assert snapshot.max_access is LinkAccess.PEOPLE
+        assert snapshot.max_access is LinkAccess.OWNER
         assert snapshot.restricted_by is ContentRestriction.CREDENTIAL_FORM
 
     @pytest.mark.parametrize(
@@ -305,13 +305,13 @@ class TestPublish:
         assert snapshot.restricted_by is ContentRestriction.EXECUTABLE
         assert snapshot.render is RenderMode.DOWNLOAD
 
-    async def test_an_owner_with_repeated_takedowns_shares_html_only_with_people(
+    async def test_an_owner_with_repeated_takedowns_shares_html_only_with_themselves(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         no_takedowns.return_value = 2
         snapshot = await publish(OWNER, FILE, _source("r.html", "text/html", b"<p>hi</p>"))
         no_takedowns.assert_awaited_once_with(OWNER)
-        assert snapshot.max_access is LinkAccess.PEOPLE
+        assert snapshot.max_access is LinkAccess.OWNER
         assert snapshot.restricted_by is ContentRestriction.REPEAT_TAKEDOWNS
 
     async def test_one_takedown_does_not_narrow_html(
@@ -836,6 +836,6 @@ class TestPresentation:
         assert _framed(unstored, LinkAccess.UNLISTED) is None
 
     def test_a_link_wider_than_its_bytes_allow_frames_nothing(self, origin: None) -> None:
-        restricted = _snapshot(RenderMode.FRAME_ACTIVE, max_access=LinkAccess.PEOPLE)
+        restricted = _snapshot(RenderMode.FRAME_ACTIVE, max_access=LinkAccess.OWNER)
         assert _framed(restricted, LinkAccess.UNLISTED) is None
-        assert _framed(restricted, LinkAccess.PEOPLE) is not None
+        assert _framed(restricted, LinkAccess.OWNER) is not None

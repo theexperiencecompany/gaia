@@ -1386,9 +1386,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
-    "from_access": "public" | "unlisted" | "people" | "owner";
-    "to_access": "public" | "unlisted" | "people" | "owner";
-    "grantee_count": number;
+    "from_access": "public" | "unlisted" | "owner";
+    "to_access": "public" | "unlisted" | "owner";
   };
   "short_link:content_published": {
     "actor": "user" | "agent";
@@ -1404,14 +1403,14 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
     "reason": "executable" | "credential_form" | "repeat_takedowns";
-    "max_access": "public" | "unlisted" | "people" | "owner";
+    "max_access": "public" | "unlisted" | "owner";
   };
   "short_link:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
-    "access": "public" | "unlisted" | "people" | "owner";
+    "access": "public" | "unlisted" | "owner";
     "origin": "owner_share" | "gaia_attached";
     "has_expiry": boolean;
   };
@@ -1427,7 +1426,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
-    "access": "public" | "unlisted" | "people" | "owner";
+    "access": "public" | "unlisted" | "owner";
     "viewer_signed_in": boolean;
   };
   "short_link:publish_rejected": {
@@ -1457,7 +1456,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
-    "access": "public" | "unlisted" | "people" | "owner";
+    "access": "public" | "unlisted" | "owner";
   };
   "short_link:taken_down": {
     "actor": "user" | "agent";

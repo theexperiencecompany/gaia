@@ -26,7 +26,7 @@ __all__ = [
 ShortLinkTarget = Literal[
     "todo_deliverable", "briefing", "workspace_file", "workflow_run", "openui_artifact"
 ]
-ShortLinkAccess = Literal["public", "unlisted", "people", "owner"]
+ShortLinkAccess = Literal["public", "unlisted", "owner"]
 ShortLinkRevokeReason = Literal[
     "owner", "rotated", "expired", "takedown", "target_deleted", "account_removed"
 ]
@@ -77,7 +77,6 @@ class ShortLinkAccessChanged(ServerEvent):
     target_type: ShortLinkTarget
     from_access: ShortLinkAccess
     to_access: ShortLinkAccess
-    grantee_count: int
 
 
 class ShortLinkRotated(ServerEvent):

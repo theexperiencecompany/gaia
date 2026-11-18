@@ -33,13 +33,13 @@ describe("copyShortLink", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("says only the listed people can open a people link", async () => {
+  it("says only the owner can open an owner-only link", async () => {
     stubClipboard(vi.fn().mockResolvedValue(undefined));
 
-    await copyShortLink({ url: URL, access: "people" });
+    await copyShortLink({ url: URL, access: "owner" });
 
     expect(toast.success).toHaveBeenCalledWith("Link copied", {
-      description: "Only the people you added can view it, once signed in.",
+      description: "Only you can open it.",
     });
   });
 

@@ -12,8 +12,6 @@ import type { LinkTarget } from "@/types/features/shortLinkTypes";
 
 interface ShareLinkControlsProps {
   target: LinkTarget;
-  /** What stopping cannot take back, shown before and after stopping. */
-  stopWarning?: string;
   /** A bare icon trigger for dense rows and toolbars; a labelled "Share" button otherwise. */
   iconOnly?: boolean;
 }
@@ -29,10 +27,9 @@ function stopPropagation(event: MouseEvent | KeyboardEvent) {
  */
 export function ShareLinkControls({
   target,
-  stopWarning,
   iconOnly = false,
 }: ShareLinkControlsProps) {
-  const share = useShareLink(target, stopWarning);
+  const share = useShareLink(target);
 
   return (
     <span
@@ -54,7 +51,7 @@ export function ShareLinkControls({
         </GaiaButton>
         <DropdownPopover placement="bottom end" className="max-w-72">
           <DropdownMenu aria-label="Share">
-            {shareLinkMenuItems(share, stopWarning)}
+            {shareLinkMenuItems(share)}
           </DropdownMenu>
         </DropdownPopover>
       </Dropdown>

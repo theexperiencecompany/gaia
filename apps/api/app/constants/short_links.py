@@ -40,7 +40,7 @@ PUBLISHED_BYTES_TTL_SECONDS = 2 * 24 * 3600
 EXECUTABLE_EXTENSIONS = frozenset(
     {"exe", "msi", "dmg", "pkg", "apk", "app", "deb", "rpm", "bat", "cmd", "ps1", "scr", "jar"}
 )
-#: An owner with this many takedowns can share HTML only with specific people.
+#: An owner with this many takedowns can no longer share HTML beyond themselves.
 REPEAT_ABUSE_TAKEDOWNS = 2
 
 # Content ids: 26 lowercase base32 characters (130 bits), one per snapshot and one origin each.

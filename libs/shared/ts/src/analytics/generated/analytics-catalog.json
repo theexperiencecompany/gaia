@@ -7253,7 +7253,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "From Access",
@@ -7263,22 +7262,16 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "To Access",
             "type": "string"
-          },
-          "grantee_count": {
-            "title": "Grantee Count",
-            "type": "integer"
           }
         },
         "required": [
           "target_type",
           "from_access",
-          "to_access",
-          "grantee_count"
+          "to_access"
         ],
         "title": "ShortLinkAccessChanged",
         "type": "object"
@@ -7380,7 +7373,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Max Access",
@@ -7425,7 +7417,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",
@@ -7529,7 +7520,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",
@@ -7716,7 +7706,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",

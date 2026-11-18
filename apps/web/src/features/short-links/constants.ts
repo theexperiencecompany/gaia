@@ -24,11 +24,6 @@ export const LINK_ACCESS_OPTIONS: Record<LinkAccess, AccessOption> = {
     description: "Never listed by search engines",
     copiedNote: "Anyone with this link can view it.",
   },
-  people: {
-    label: "Specific people",
-    description: "Signed-in GAIA users with an email you add",
-    copiedNote: "Only the people you added can view it, once signed in.",
-  },
   owner: {
     label: "Only you",
     description: "Nobody else can open it",

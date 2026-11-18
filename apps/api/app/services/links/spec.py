@@ -74,8 +74,6 @@ class LinkTargetSpec(Generic[T]):
     source: Callable[[str, T], Awaitable[SnapshotSource | None]] | None = None
     #: This type's targets inside one conversation: (owner_id, conversation_id).
     in_conversation: Callable[[str, str], Awaitable[list[T]]] | None = None
-    #: The targets this one links to (a brief's items), whose GAIA-attached links follow its access.
-    carries: Callable[[str, T], Awaitable[list[LinkTarget]]] | None = None
     #: The target as a file to save (GET /l/{slug}/export), for types that print one.
     export: Callable[[str, T], Awaitable[ExportedFile]] | None = None
 
