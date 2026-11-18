@@ -7,7 +7,7 @@ claimed from.
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.todos import todo_repository
-from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
 from app.models.brief_item_models import ItemState
 from app.models.brief_models import PendingBriefItemDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -33,23 +33,21 @@ async def held_candidates(
             # The desk writes each finding as one self-contained line.
             candidates.append(
                 BriefCandidate(
-                    origin=CandidateOrigin.HELD,
+                    origin=HeldResult(id=doc.id),
                     source=GMAIL_INTEGRATION_ID,
                     app=integration_name(GMAIL_INTEGRATION_ID),
                     state=ItemState.NOTE,
                     title=first or doc.source_title,
-                    held_id=doc.id,
                 )
             )
             continue
         candidates.append(
             BriefCandidate(
-                origin=CandidateOrigin.HELD,
+                origin=HeldResult(id=doc.id),
                 source=GAIA_SOURCE,
                 app=GAIA_APP_NAME,
                 state=ItemState.NOTE,
                 title=held_text(doc),
-                held_id=doc.id,
                 # Only a workflow result is held from a run that succeeded; a todo run's report says itself how it went.
                 outcome=BriefOutcome.FINISHED if doc.source is BriefItemSource.WORKFLOW else None,
             )

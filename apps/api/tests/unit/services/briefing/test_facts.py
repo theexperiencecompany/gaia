@@ -15,7 +15,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
-from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, HeldResult
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import (
@@ -395,12 +395,11 @@ class TestEachCountClaimsOnlyItsOwn:
     def test_only_held_results_are_while_away_and_an_event_or_backlog_never_waits(self) -> None:
         """Regression: every placed note was counted as come in while away, a calendar lead too."""
         held = BriefCandidate(
-            origin=CandidateOrigin.HELD,
+            origin=HeldResult(id="h1"),
             source="gaia",
             app="GAIA",
             state=ItemState.NOTE,
             title="Digest: 3 papers",
-            held_id="h1",
         )
         signal = BriefCandidate(
             origin=CandidateOrigin.TRACKED,

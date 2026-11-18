@@ -36,7 +36,7 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import CandidateOrigin, OutsideRef
+from app.models.brief_candidate_models import CandidateOrigin, HeldResult, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
@@ -402,12 +402,12 @@ class TestHeldResults:
 
         found = await held_candidates(USER_ID, held)
 
-        assert [(c.app, c.title, c.held_id, c.outcome) for c in found] == [
-            ("Gmail", "Stripe payout of $2,400 landed", "h1", None),
+        assert [(c.app, c.title, c.origin, c.outcome) for c in found] == [
+            ("Gmail", "Stripe payout of $2,400 landed", HeldResult(id="h1"), None),
             (
                 "GAIA",
                 "Research digest: 3 new papers on retrieval",
-                "h2",
+                HeldResult(id="h2"),
                 BriefOutcome.FINISHED,
             ),
         ]

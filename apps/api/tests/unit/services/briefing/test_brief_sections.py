@@ -7,7 +7,7 @@ import pytest
 from tests.helpers import user_clock
 
 from app.constants.briefing import LEAD_OFFERS, BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, HeldResult
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartBlock,
@@ -69,13 +69,12 @@ POOL = FactPool(
             people=["Maya"],
         ),
         2: BriefCandidate(
-            origin=CandidateOrigin.HELD,
+            origin=HeldResult(id="h2"),
             source="gaia",
             app="GAIA",
             state=ItemState.FAILED,
             title="CRM sync failed",
             action=BriefAction.RETRY,
-            held_id="h2",
         ),
         3: BriefCandidate(
             origin=CandidateOrigin.TRACKED,
@@ -103,12 +102,11 @@ POOL = FactPool(
             title="Board call",
         ),
         6: BriefCandidate(
-            origin=CandidateOrigin.HELD,
+            origin=HeldResult(id="h6"),
             source="gaia",
             app="GAIA",
             state=ItemState.NOTE,
             title="Digest: three papers",
-            held_id="h6",
         ),
     },
     series=[_SERIES],

@@ -26,7 +26,7 @@ from app.agents.prompts.brief_fact_prompts import (
     WEEK_AHEAD_SPAN,
     WEEK_IN_NUMBERS_HEADER,
 )
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_item_models import GroupState
 from app.models.brief_payload_models import (
@@ -185,7 +185,7 @@ def _counts(
         CountName.IN_PROGRESS: sum(
             1 for it, _ in placed if it.kind.group is GroupState.IN_PROGRESS
         ),
-        CountName.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
+        CountName.WHILE_AWAY: sum(1 for _, c in placed if isinstance(c.origin, HeldResult)),
         CountName.OPEN_TODOS: sources.open_todos,
         CountName.OVERDUE_TODOS: sources.overdue_todos,
         CountName.OPEN_TRACKED: sources.open_tracked,

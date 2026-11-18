@@ -25,6 +25,7 @@ from app.models.brief_candidate_models import (
     CandidateOrigin,
     GaiaRef,
     GaiaRefKind,
+    HeldResult,
     OutsideRef,
 )
 from app.models.brief_item_models import ItemState
@@ -132,7 +133,6 @@ def _found(
     detail: str | None = None,
     due_at: datetime | None = None,
     todo_id: str | None = None,
-    held_id: str | None = None,
 ) -> BriefCandidate:
     return BriefCandidate(
         origin=CandidateOrigin.APP_SIGNAL,
@@ -144,7 +144,6 @@ def _found(
         detail=detail,
         due_at=due_at,
         todo_id=todo_id,
-        held_id=held_id,
     )
 
 
@@ -156,39 +155,29 @@ class TestFoldingTwoFindsOfOneThing:
             detail="needs sign-off",
             due_at=NOW,
             todo_id="todo-1",
-            held_id="held-1",
         )
 
         [merged] = _one_per_thing([first, again])
 
-        assert (merged.title, merged.detail, merged.due_at, merged.todo_id, merged.held_id) == (
+        assert (merged.title, merged.detail, merged.due_at, merged.todo_id) == (
             "Reply to Maya",
             "needs sign-off",
             NOW,
             "todo-1",
-            "held-1",
         )
 
     def test_what_the_first_find_knew_wins_over_the_second(self) -> None:
-        first = _found(
-            "Reply to Maya", detail="first", due_at=NOW, todo_id="todo-1", held_id="held-1"
-        )
+        first = _found("Reply to Maya", detail="first", due_at=NOW, todo_id="todo-1")
         again = _found(
             "Re: term sheet",
             detail="second",
             due_at=datetime(2026, 11, 20, tzinfo=UTC),
             todo_id="todo-2",
-            held_id="held-2",
         )
 
         [merged] = _one_per_thing([first, again])
 
-        assert (merged.detail, merged.due_at, merged.todo_id, merged.held_id) == (
-            "first",
-            NOW,
-            "todo-1",
-            "held-1",
-        )
+        assert (merged.detail, merged.due_at, merged.todo_id) == ("first", NOW, "todo-1")
 
     def test_a_repeat_does_not_end_the_folding_of_what_follows(self) -> None:
         other = BriefCandidate(
@@ -282,7 +271,7 @@ class TestHowMemoryKeysACandidate:
 
     def test_a_held_result_or_an_event_is_new_each_time(self) -> None:
         held = BriefCandidate(
-            origin=CandidateOrigin.HELD,
+            origin=HeldResult(id="held-1"),
             source="gaia",
             app="GAIA",
             state=ItemState.NOTE,

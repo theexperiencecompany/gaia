@@ -31,10 +31,16 @@ class CandidateOrigin(StrEnum):
     REMINDER = "reminder"
     FAILED_RUN = "failed_run"
     APP_SIGNAL = "app_signal"
-    #: A result a workflow or todo run held for the brief.
-    HELD = "held"
     #: A calendar event: the edition draws the day's calendar itself, so it can only lead.
     EVENT = "event"
+
+
+class HeldResult(BaseModel):
+    """The origin of a result a workflow or todo run held for the brief: the id it is cleared by."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
 
 
 class OutsideRef(BaseModel):
@@ -70,7 +76,8 @@ class GaiaRef(BaseModel):
 class BriefCandidate(BaseModel):
     """One thing the brief could tell the user, with the references its run writes back to."""
 
-    origin: CandidateOrigin
+    #: The producer that found it; a held result names the result the brief clears once it accounts for it.
+    origin: CandidateOrigin | HeldResult
     #: An integration id, or GAIA_SOURCE for GAIA's own work.
     source: str
     app: str = Field(description="Display name: GitHub, Gmail, GAIA")
@@ -95,8 +102,6 @@ class BriefCandidate(BaseModel):
     todo_id: str | None = None
     #: How many tracked todos this one candidate stands for (one subject, several todos).
     count: int = Field(default=1, ge=1)
-    #: The held result it carries, cleared once the brief accounts for it.
-    held_id: str | None = None
     #: The app signal it is, marked shown when the message speaks of it.
     signal: Signal | None = None
     #: The outside thing it is about, which another source may find too.
