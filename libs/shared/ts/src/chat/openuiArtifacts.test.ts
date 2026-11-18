@@ -63,3 +63,18 @@ describe("artifact stream frames", () => {
     ).toEqual(["ac", "b"]);
   });
 });
+
+describe("an artifact_done entry of a kind this client does not know", () => {
+  it("fails loudly instead of folding in as some other tool's data", () => {
+    expect(() =>
+      fold([
+        {
+          tool_data: {
+            tool_name: "artifact_done",
+            data: { ...header, kind: "spreadsheet", status: "ready" },
+          },
+        },
+      ]),
+    ).toThrow(/kind/);
+  });
+});

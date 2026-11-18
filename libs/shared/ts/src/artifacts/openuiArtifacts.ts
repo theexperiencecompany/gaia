@@ -9,10 +9,10 @@ import type { ArtifactCardData, ArtifactDelta } from "./types";
 
 export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
 
+/** An artifact card's data, or null for another tool's entry; a card this client cannot read throws. */
 function cardOf(entry: StreamToolDataEntry): ArtifactCardData | null {
   if (entry.tool_name !== ARTIFACT_CARD_TOOL_NAME) return null;
-  const parsed = ArtifactCardDataSchema.safeParse(entry.data);
-  return parsed.success ? parsed.data : null;
+  return ArtifactCardDataSchema.parse(entry.data);
 }
 
 function upsertCard(
