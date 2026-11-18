@@ -258,6 +258,9 @@ const config: KnipConfig = {
   workspaces: {
     // ── Root ──────────────────────────────────────────────────────────
     ".": {
+      // The OpenUI prompt generator: run by checks.mjs openui-prompts through `pnpm exec tsx`, a
+      // subprocess knip can't trace. An entry, not an ignore, so the specs it imports count as used.
+      entry: ["scripts/openui/generate-prompts.ts"],
       ignoreDependencies: [
         // Spawned by scripts/ts/type-check.mjs at runtime. knip only traces
         // imports, so a compiler invoked through spawnSync reads as unused.

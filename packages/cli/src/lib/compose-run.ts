@@ -7,12 +7,9 @@
 
 import * as fs from "node:fs";
 import { execa } from "execa";
+import { applyComposeEvent, createComposeProgress } from "./compose-events.js";
 import { ComposeError, explainComposeFailure } from "./compose-failure.js";
-import {
-  applyComposeEvent,
-  createComposeProgress,
-  describeComposeProgress,
-} from "./compose-progress.js";
+import { describeComposeProgress } from "./compose-progress.js";
 import type { ComposeEvent, ComposePhase } from "./compose-progress.types.js";
 import { assertDockerSupportsGaia } from "./docker.js";
 import { createLineSplitter, newLogPath } from "./logs.js";

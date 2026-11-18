@@ -3,14 +3,16 @@
 import { Button, type ButtonProps } from "@heroui/react";
 
 import {
-  type ButtonElevation,
-  type ButtonHoverTone,
-  type ButtonInset,
-  type ButtonVariants,
   buttonOverlayVariants,
   buttonVariants,
   isGaiaButtonFill,
 } from "./buttonVariants";
+import type {
+  ButtonElevation,
+  ButtonHoverTone,
+  ButtonInset,
+  ButtonVariants,
+} from "./buttonVariants.types";
 import type { Shape } from "./shape";
 import type { TextTone } from "./tone";
 

@@ -1,5 +1,5 @@
 import { buttonVariants as heroButtonVariants } from "@heroui/react";
-import { tv, type VariantProps } from "tailwind-variants";
+import { tv } from "tailwind-variants";
 
 import { SOFT_TINT_CLASSES } from "./controlVariants";
 import { SHAPE_CLASSES } from "./shape";
@@ -17,8 +17,6 @@ export const BUTTON_HOVER_TONE_CLASSES = {
   accent: "hover:text-accent",
 } as const;
 
-export type ButtonHoverTone = keyof typeof BUTTON_HOVER_TONE_CLASSES;
-
 /** Horizontal inset: tight is v2's px-2 compact button, none is a flush text action. */
 export const BUTTON_INSET_CLASSES = {
   default: "",
@@ -26,15 +24,11 @@ export const BUTTON_INSET_CLASSES = {
   none: "p-0",
 } as const;
 
-export type ButtonInset = keyof typeof BUTTON_INSET_CLASSES;
-
 /** Floating: a control pinned over a raised sheet (a letter's close and open controls), lifted off it. */
 export const BUTTON_ELEVATION_CLASSES = {
   none: "",
   floating: "shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)]",
 } as const;
-
-export type ButtonElevation = keyof typeof BUTTON_ELEVATION_CLASSES;
 
 const GAIA_DIMENSIONS = {
   shape: SHAPE_CLASSES,
@@ -96,5 +90,3 @@ export const buttonVariants = tv({
   variants: { variant: GAIA_BUTTON_FILLS, ...GAIA_DIMENSIONS },
   defaultVariants: GAIA_DEFAULTS,
 });
-
-export type ButtonVariants = VariantProps<typeof buttonVariants>;
