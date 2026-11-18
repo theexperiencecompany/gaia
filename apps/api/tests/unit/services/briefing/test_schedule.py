@@ -12,20 +12,16 @@ import time_machine
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
-    HELD_RELEASE_TITLE,
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
-    BriefItemSource,
 )
 from app.constants.error_codes import BRIEF_DELIVERY_WORKFLOWS_EXIST
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
-from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import BriefingStateDocument, BriefingStateUpdate
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
@@ -33,7 +29,6 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing import run_times, schedule
-from app.services.notification_service import notification_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from app.workers.brief_slots import spread_cron
@@ -96,10 +91,6 @@ class Seams:
     deactivate: AsyncMock
     is_paid: AsyncMock
     capture: MagicMock
-    daily: AsyncMock
-    held: AsyncMock
-    consume: AsyncMock
-    notify: AsyncMock
     #: The user's briefing_state row, as state_for reads it and upsert writes it.
     store: BriefingStateDocument
     user: UserDocument | None
@@ -120,10 +111,6 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
         deactivate=AsyncMock(return_value=MagicMock()),
         is_paid=AsyncMock(return_value=True),
         capture=MagicMock(),
-        daily=AsyncMock(return_value=MagicMock(activated=True)),
-        held=AsyncMock(return_value=[]),
-        consume=AsyncMock(return_value=0),
-        notify=AsyncMock(),
         store=BriefingStateDocument(user_id=USER_ID),
         user=UserDocument(id=USER_ID, timezone=_TZ, quiet_hours=DEFAULT_QUIET_HOURS),
     )
@@ -156,10 +143,6 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     monkeypatch.setattr(WorkflowService, "update_workflow", s.update)
     monkeypatch.setattr(briefing_repository, "was_delivered", s.was_delivered)
     monkeypatch.setattr(briefing_repository, "list_recent", AsyncMock(return_value=[]))
-    monkeypatch.setattr(workflow_repository, "find_system_workflow", s.daily)
-    monkeypatch.setattr(pending_brief_items_repository, "list_for_user", s.held)
-    monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
-    monkeypatch.setattr(notification_service, "create_notification", s.notify)
     monkeypatch.setattr(
         todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
     )
@@ -453,65 +436,6 @@ class TestSetBriefingSchedule:
         capture.assert_not_called()
         seams.update.assert_not_awaited()
         assert seams.store == BriefingStateDocument(user_id=USER_ID)
-
-
-def _held(source_title: str, text: str) -> PendingBriefItemDocument:
-    return PendingBriefItemDocument(
-        user_id=USER_ID,
-        source=BriefItemSource.WORKFLOW,
-        source_id=f"wf-{source_title}",
-        source_title=source_title,
-        conversation_id="conv-1",
-        text=text,
-    )
-
-
-class TestWhatTheBriefHeld:
-    """Results held for the daily brief were stranded once the user moved off it."""
-
-    @pytest.fixture
-    def moving(
-        self, seams: Seams, monkeypatch: pytest.MonkeyPatch
-    ) -> list[PendingBriefItemDocument]:
-        _user(seams, DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.WEEKLY_ONLY)
-        held = [_held("Digest", "Three new leads\nmore detail"), _held("Prices", "Down 4%")]
-        seams.held.return_value = held
-        seams.consume.return_value = len(held)
-        return held
-
-    async def test_moving_off_the_daily_brief_sends_what_it_held_now(
-        self, seams: Seams, moving: list[PendingBriefItemDocument]
-    ) -> None:
-        seams.daily.return_value = MagicMock(activated=False)
-
-        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKLY_ONLY, "settings")
-
-        seams.daily.assert_awaited_once_with(USER_ID, DAILY_BRIEFING_WORKFLOW_KEY)
-        seams.held.assert_awaited_once_with(USER_ID, sort=[("created_at", 1)])
-        [request] = [call.args[0] for call in seams.notify.await_args_list]
-        assert (request.user_id, request.content.title, request.content.body) == (
-            USER_ID,
-            HELD_RELEASE_TITLE,
-            "Digest: Three new leads\nPrices: Down 4%",
-        )
-        seams.consume.assert_awaited_once_with(USER_ID, [doc.id for doc in moving])
-
-    async def test_a_daily_brief_that_still_runs_keeps_carrying_them(
-        self, seams: Seams, moving: list[PendingBriefItemDocument]
-    ) -> None:
-        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKDAYS, "settings")
-
-        seams.notify.assert_not_awaited()
-        seams.consume.assert_not_awaited()
-
-    async def test_nothing_held_sends_nothing(self, seams: Seams, moving: object) -> None:
-        seams.daily.return_value = None
-        seams.held.return_value = []
-
-        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.WEEKLY_ONLY, "settings")
-
-        seams.notify.assert_not_awaited()
-        seams.consume.assert_not_awaited()
 
 
 class TestBriefingScheduleState:

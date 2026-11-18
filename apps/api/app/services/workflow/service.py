@@ -31,7 +31,7 @@ from app.models.workflow_models import (
 )
 from app.services.briefing.errors import refuse_a_missing_brief
 from app.services.integrations.integration_status import get_all_integrations_status
-from app.services.system_workflows.registry import UNLISTED_KEYS
+from app.services.system_workflows.registry import UNLISTED_KEYS, behaviour_of
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
 from app.services.wait_service import report_wait_met
 from app.services.workflow.integration_requirements import (
@@ -1144,6 +1144,9 @@ class WorkflowService:
 
             if deactivated is None:
                 return None
+            switched_off = behaviour_of(workflow.system_workflow_key).on_switched_off
+            if switched_off is not None:
+                await switched_off(user_id)
 
             log.set(workflow={"id": workflow_id, "status": "deactivated"})
             log.info(
