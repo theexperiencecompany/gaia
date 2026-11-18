@@ -24,6 +24,7 @@ from app.db.mongodb.collections import get_async_collection
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.utils.cron_utils import get_next_run_time
+from scripts._cli import apply_requested
 
 workflows_collection = get_async_collection("workflows")
 
@@ -147,4 +148,4 @@ async def migrate(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

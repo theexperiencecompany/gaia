@@ -877,7 +877,8 @@ async def execute_graph_silent(
 
     Used for background processing and workflow triggers that don't need streaming.
     Stores intermediate messages and tool outputs as they happen, like normal chat.
-    Returns (complete_message, tool_data).
+    Returns (complete_message, tool_data); the message keeps its link placeholders,
+    which the caller resolves where it delivers the message.
     """
     acc = _SilentAccumulators()
     is_comms = _RunConfigView.model_validate(config).agent_name == COMMS_AGENT_NAME
@@ -924,9 +925,7 @@ async def execute_graph_silent(
         elif stream_mode == "custom":
             _accumulate_silent_custom_event(payload, acc)
 
-    acc.complete_message = await resolve_link_placeholders(
-        user_id, acc.held.flush(acc.complete_message)
-    )
+    acc.complete_message = acc.held.flush(acc.complete_message)
 
     # Inject accumulated todo_progress as a single tool_data entry
     if acc.todo_progress:

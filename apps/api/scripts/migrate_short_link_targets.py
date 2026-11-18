@@ -15,12 +15,12 @@ Dry run by default. Safely re-runnable: a link that already has its target is sk
 
 import asyncio
 from collections.abc import Mapping
-import sys
 
 from pydantic import TypeAdapter
 
 from app.db.mongodb.collections import get_async_collection
 from app.models.short_link_models import LinkTarget, ShortLinkTargetType
+from scripts._cli import apply_requested
 
 COLLECTION = "short_links"
 OLD_TYPE_FIELD = "target_type"
@@ -89,4 +89,4 @@ async def main(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(apply="--apply" in sys.argv))
+    asyncio.run(main(apply=apply_requested(__doc__)))

@@ -222,13 +222,16 @@ class TestAFailedBrief:
     """A failed brief told the user "Workflow Failed: Daily brief" for a workflow they never see."""
 
     async def _fail(
-        self, workflow: Workflow, pipelines: _Pipelines
+        self, workflow: Workflow, pipelines: _Pipelines, raised: type[Exception]
     ) -> tuple[_FireHarness, AsyncMock]:
         pipelines.run.side_effect = BriefingGenerationError("the prose contradicts its items")
         harness = _FireHarness(workflow)
         harness.chat.side_effect = RuntimeError("the chat turn broke")
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with (
+            patch(f"{MODULE}.notification_service.create_notification", notify),
+            pytest.raises(raised),
+        ):
             await _fire(harness, pipelines)
         return harness, notify
 
@@ -236,7 +239,7 @@ class TestAFailedBrief:
         self, pipelines: _Pipelines
     ) -> None:
         harness, notify = await self._fail(
-            _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY), pipelines
+            _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY), pipelines, BriefingGenerationError
         )
 
         notify.assert_not_awaited()
@@ -248,7 +251,9 @@ class TestAFailedBrief:
     async def test_a_users_own_workflow_that_fails_still_tells_them(
         self, pipelines: _Pipelines
     ) -> None:
-        _harness, notify = await self._fail(_briefing_workflow("todo_followup"), pipelines)
+        _harness, notify = await self._fail(
+            _briefing_workflow("todo_followup"), pipelines, RuntimeError
+        )
 
         [call] = notify.await_args_list
         assert call.args[0].content.title == "Workflow Failed: Daily brief"

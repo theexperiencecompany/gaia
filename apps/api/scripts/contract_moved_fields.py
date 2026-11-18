@@ -11,7 +11,6 @@ its expand, so whatever the previous release wrote in the old shape meanwhile is
 """
 
 import asyncio
-import sys
 
 from scripts import (
     migrate_brief_storage,
@@ -19,6 +18,7 @@ from scripts import (
     migrate_short_link_targets,
     migrate_todo_delivery,
 )
+from scripts._cli import apply_requested
 
 
 async def contract(apply: bool) -> None:
@@ -30,4 +30,4 @@ async def contract(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(contract(apply="--apply" in sys.argv))
+    asyncio.run(contract(apply=apply_requested(__doc__)))

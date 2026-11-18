@@ -35,6 +35,7 @@ from app.db.repositories.hil import hil_approval_repository
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.hil.approvals_store import clear_resume_item, mark_decided
 from app.services.hil.bridge import publish_decision
+from scripts._cli import apply_requested
 
 #: The retired ``SubagentKind.MCP`` value a handoff subagent's resume recipe carries.
 HANDOFF_SUBAGENT_KIND = "mcp"
@@ -119,4 +120,4 @@ async def main(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(apply="--apply" in sys.argv))
+    asyncio.run(main(apply=apply_requested(__doc__)))

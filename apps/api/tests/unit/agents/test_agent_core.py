@@ -43,7 +43,9 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.presence_models import PresenceSnapshot
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
+from app.services.links.placeholders import link_placeholder
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -956,6 +958,36 @@ class TestCallAgentSilent:
 
         assert (result.message, result.tool_data) == ("Hello!", {"tool": "data"})
         assert UUID(result.stream_id).version == 4
+
+    @pytest.mark.asyncio
+    async def test_the_returned_message_carries_the_live_link_not_its_placeholder(self):
+        """Its callers deliver the message as is, so the placeholder is resolved here."""
+        target = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        user = _make_user()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=(f"[The plan]({link_placeholder(target)})", []),
+            ),
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                new_callable=AsyncMock,
+                return_value=ShortLink(slug="planlink123", user_id=user.user_id, target=target),
+            ) as live,
+        ):
+            result = await call_agent_silent(
+                request=_make_request(), conversation_id="conv-1", user=user
+            )
+
+        assert result.message == f"[The plan]({settings.SHORTLINK_BASE_URL}/planlink123)"
+        live.assert_awaited_once_with(user.user_id, target)
 
     @pytest.mark.asyncio
     async def test_a_caller_that_seeded_the_run_record_names_the_run_it_keys(self):

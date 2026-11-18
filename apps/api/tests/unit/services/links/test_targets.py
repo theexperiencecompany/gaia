@@ -53,7 +53,7 @@ from app.models.todo_models import TodoDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.canvas_markdown import deliverable_markdown
 from app.services.links.registry import REGISTRY
-from app.services.links.spec import SnapshotSource
+from app.services.links.spec import PreviewFacts, SnapshotSource
 from app.services.storage import ArtifactInfo, JuiceFSUnavailable
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from app.utils.errors import AppError
@@ -278,6 +278,16 @@ class TestBriefItemLinks:
 
 
 class TestBriefing:
+    async def test_a_brief_previews_by_its_headline_on_a_generated_card(self):
+        brief = _brief_with_items()
+        brief.edition = EditionRender(key="edition-key")
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
+            repo.get = AsyncMock(return_value=brief)
+            facts = await REGISTRY[ShortLinkTargetType.BRIEFING].preview("owner", BRIEF, None)
+
+        assert facts == PreviewFacts(title=brief.payload.headline, image_url=None)
+        repo.get.assert_awaited_once_with("brief_abc", user_id="owner")
+
     async def test_serves_the_brief_without_ids_or_chat_bubbles(self):
         briefing = BriefingModel(
             id="brief_abc",

@@ -508,7 +508,8 @@ class TestWorkflowTaskExecution:
             mock_wf_service.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
 
-            result = await execute_workflow_by_id(ARQ_CTX, "wf-fail")
+            with pytest.raises(RuntimeError, match="^Agent crashed$"):
+                await execute_workflow_by_id(ARQ_CTX, "wf-fail")
 
             # Verify execution completed with failure
             mock_complete_exec.assert_awaited_once()
@@ -523,8 +524,6 @@ class TestWorkflowTaskExecution:
 
             # Verify failure notification sent
             mock_notif.create_notification.assert_awaited_once()
-
-            assert "Error" in result
 
 
 # ---------------------------------------------------------------------------

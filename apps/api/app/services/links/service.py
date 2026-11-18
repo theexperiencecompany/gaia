@@ -58,6 +58,7 @@ from app.services.links.content import (
     unchanged,
 )
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
+from app.services.links.metrics import LINK_MINT_TOTAL, LinkMintOutcome
 from app.services.links.registry import REGISTRY
 from app.services.links.urls import build_url
 from app.utils.errors import AppError
@@ -167,7 +168,7 @@ async def _insert(link_fields: ShortLink) -> ShortLink | None:
     """Insert under a fresh slug; None when a concurrent mint already made the target's live link."""
     for _ in range(MAX_SLUG_ATTEMPTS):
         try:
-            return await short_link_repository.create(
+            minted = await short_link_repository.create(
                 link_fields.model_copy(update={"slug": _random_slug()})
             )
         except DuplicateKeyError as e:
@@ -177,6 +178,8 @@ async def _insert(link_fields: ShortLink) -> ShortLink | None:
             if f"index: {LIVE_TARGET_UNIQUE_INDEX}" in violated:
                 return None
             raise
+        LINK_MINT_TOTAL.labels(LinkMintOutcome.MINTED).inc()
+        return minted
     log.error("short_link.slug_exhausted", user_id=link_fields.user_id)
     raise ShortLinkExhaustedError(
         f"Could not mint a unique slug for user {link_fields.user_id} after {MAX_SLUG_ATTEMPTS} attempts"
@@ -287,6 +290,7 @@ async def attach_link(
             return latest
         return await share(user_id, target, LinkSettings(access=access), gaia_attached=True)
     except _MINT_ERRORS as exc:
+        LINK_MINT_TOTAL.labels(LinkMintOutcome.FAILED).inc()
         log.error(
             "short_link.mint_failed",
             user_id=user_id,

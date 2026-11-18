@@ -12,10 +12,10 @@ work and is safe before or after the new code ships.
 """
 
 import asyncio
-import sys
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
+from scripts._cli import apply_requested
 
 
 async def migrate(apply: bool) -> None:
@@ -37,4 +37,4 @@ async def migrate(apply: bool) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

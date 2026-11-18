@@ -194,6 +194,27 @@ class TestDecideBrowserHandoff:
             )
         ]
 
+    @pytest.mark.regression
+    async def test_a_decision_whose_thread_write_failed_still_reports_it_decided(
+        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The handoff is settled before the thread write: an error would tell the user their tap did nothing."""
+        monkeypatch.setattr(
+            handoff_buttons,
+            "record_exchange_in_thread",
+            AsyncMock(side_effect=RuntimeError("checkpointer down")),
+        )
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
+
+        async with captured_wide_event() as event:
+            resp = await browser_ep.decide_browser_handoff("h1", payload, USER_ID)
+
+        assert resp.status is HandoffStatus.COMPLETED
+        record = await get_handoff("h1")
+        assert record is not None
+        assert record.status is HandoffStatus.COMPLETED
+        assert [error["error_type"] for error in event["errors"]] == ["RuntimeError"]
+
     async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
