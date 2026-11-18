@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.chat import ConversationSource
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.user_models import AuthenticatedUser
@@ -12,6 +13,7 @@ from app.models.work_cancel_models import ConversationStopResponse, WorkCancelle
 from app.services import bot_session_stop, conversation_stop_service
 from app.services.bot_service import BotService
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
+from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics.catalog.chat import ChatWorkStopped
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "logged_stops")]
@@ -165,3 +167,58 @@ class TestReset:
         await reset_bot_session("slack", "user123", "channel789", USER)
 
         assert _stop_events(captured) == []
+
+
+@pytest.fixture
+def stopped_runs(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Stand in for stopping the browser runs a chat controls, which test_job_stop covers."""
+    mock = AsyncMock(return_value={})
+    monkeypatch.setattr(bot_session_stop, "stop_chat_jobs", mock)
+    return mock
+
+
+_DM_RUNS = (f"telegram:{USER.user_id}", RequesterChat(USER.user_id, ConversationSource.TELEGRAM))
+
+
+class TestRunsStartedInAGroup:
+    """Regression: a DM's /stop or /new no longer reached a browser run started in a group, which answers to the DM."""
+
+    @pytest.mark.parametrize("session", ["dm_session", "no_session"])
+    async def test_a_dm_stop_reaches_the_runs_answering_to_the_dm(
+        self,
+        session: str,
+        request: pytest.FixtureRequest,
+        cancelled: AsyncMock,
+        captured: MagicMock,
+        stopped_runs: AsyncMock,
+    ) -> None:
+        request.getfixturevalue(session)
+
+        await stop_bot_session("telegram", "user123", None, USER, is_dm=True)
+
+        stopped_runs.assert_awaited_once_with(*_DM_RUNS)
+
+    async def test_new_in_a_dm_reaches_them_too(
+        self,
+        no_session: _Sessions,
+        cancelled: AsyncMock,
+        captured: MagicMock,
+        stopped_runs: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(BotService, "reset_session", AsyncMock(return_value="conv-new"))
+
+        await reset_bot_session("telegram", "user123", None, USER, is_dm=True)
+
+        stopped_runs.assert_awaited_once_with(*_DM_RUNS)
+
+    async def test_a_group_stop_reaches_only_its_own_conversation(
+        self,
+        dm_session: _Sessions,
+        cancelled: AsyncMock,
+        captured: MagicMock,
+        stopped_runs: AsyncMock,
+    ) -> None:
+        await stop_bot_session("telegram", "user123", "group-1", USER)
+
+        stopped_runs.assert_not_awaited()

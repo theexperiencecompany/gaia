@@ -305,7 +305,7 @@ async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserS
     conversation_id, job_id = await _start(
         stack,
         user,
-        f"Open {hang} and tell me what it shows; if it never loads, tell me the heading of {home}. {marker}",
+        f"Open {hang} and tell me what it shows; if it fails to load, tell me the heading of {home}. {marker}",
         hang,
     )
     result = await stack.finished(job_id)
@@ -482,9 +482,12 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
 
     assert result.status is BrowserSessionStatus.CANCELLED
     assert CAPTCHA_HEADING not in result.summary
-    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell anything.
+    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell a result. The tap is the
+    # user's word in the conversation (047cd53a26), so the one thing said after it is its answer.
     assert await stack.ending(job_id) is JobEnding.STOPPED
-    assert len(_told(dm)) == told_before, [d.text for d in _told(dm)]
+    after = _told(dm)[told_before:]
+    assert len(after) == 1, [d.text for d in _told(dm)]
+    assert CAPTCHA_HEADING not in after[0].said
 
 
 async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_over(

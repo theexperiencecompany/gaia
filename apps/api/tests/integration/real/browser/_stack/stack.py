@@ -368,10 +368,10 @@ class BrowserStack:
         )
 
     async def stop_command(self, user: BotUser, *, channel_id: str | None = None) -> None:
-        """Send /stop the way the bot does: a session reset for that chat."""
+        """Send /stop the way the bot does: stop that chat's conversation, keeping its session."""
         async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
             response = await client.post(
-                "/api/v1/bot/reset-session",
+                "/api/v1/bot/stop",
                 json={
                     "platform": _TELEGRAM,
                     "platform_user_id": user.telegram_id,
@@ -381,9 +381,7 @@ class BrowserStack:
                 headers=self._bot_headers(user.telegram_id),
             )
             if response.status_code != 200:
-                raise AssertionError(
-                    f"reset-session answered {response.status_code}: {response.text}"
-                )
+                raise AssertionError(f"bot/stop answered {response.status_code}: {response.text}")
 
     def _bot_headers(self, telegram_id: str) -> dict[str, str]:
         return {
