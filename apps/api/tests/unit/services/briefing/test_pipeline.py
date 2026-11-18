@@ -1039,7 +1039,7 @@ class TestADailyBrief:
         assert request.details.card.edition.image_url.startswith(_EDITION_URL)
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
-        assert world.render.await_args.args[0].link == _BRIEF_LINK
+        assert world.render.await_args.args[1] == _BRIEF_LINK
         assert request.details.brief_url == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
@@ -2965,13 +2965,14 @@ class TestHowARunEnds:
     async def test_resuming_an_edition_brief_stored_without_its_edition_fails_loud(
         self, world: World
     ) -> None:
-        stored = _brief(_DATE, BriefForm.EDITION, message="Gym", link=_BRIEF_LINK).model_copy(
+        stored = _brief(_DATE, BriefForm.EDITION, message="Gym").model_copy(
             update={
+                "link": _BRIEF_LINK,
                 "delivery": BriefDelivery(
                     push=True,
                     notification_kind=NotificationKind.BRIEFING_DAILY,
                     done=[DeliveryStep.CHAT],
-                )
+                ),
             }
         )
         world.briefs[stored.id] = stored

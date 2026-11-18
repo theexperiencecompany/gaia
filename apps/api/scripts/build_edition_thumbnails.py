@@ -68,7 +68,6 @@ def demo_payload(family: EditionFamily) -> BriefingPayload:
             "stamp_city": sample.stamp_city,
             "hue": sample.hue,
             "recipient_name": RECIPIENT,
-            "link": SAMPLE_LINK,
         }
     )
 
@@ -86,12 +85,10 @@ async def main() -> None:
     drop_stale(DEMO_OUT, families)
     try:
         for family in families:
-            payload = sample_edition_payload(family, RECIPIENT).model_copy(
-                update={"link": SAMPLE_LINK}
-            )
-            rendered = await render_edition_png(payload)
+            payload = sample_edition_payload(family, RECIPIENT)
+            rendered = await render_edition_png(payload, SAMPLE_LINK)
             (OUT / f"{family}.webp").write_bytes(thumbnail(rendered.image))
-            shown = await render_edition_png(demo_payload(family))
+            shown = await render_edition_png(demo_payload(family), SAMPLE_LINK)
             (DEMO_OUT / f"{family}.webp").write_bytes(demo(shown.image))
             print(f"{family}.webp")
     finally:

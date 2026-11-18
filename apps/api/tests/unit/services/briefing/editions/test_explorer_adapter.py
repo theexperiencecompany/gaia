@@ -30,14 +30,14 @@ ART: ExplorerArt = {
 def _build(
     payload: BriefingPayload,
     *,
-    generated_local: str = "6:02 AM",
+    link: str | None = LINK,
     family: EditionFamily = EditionFamily.SWISS,
 ) -> dict[str, Any]:
     return dict(
         build_ed(
             payload,
+            link=link,
             edition_no=42,
-            generated_local=generated_local,
             assets=ASSETS,
             art=ART,
             family=family,
@@ -126,14 +126,14 @@ class TestEditionScalars:
         ],
     )
     def test_generated_time_is_converted_to_24_hour(self, generated: str, expected24: str) -> None:
-        ed = _build(make_briefing_payload(), generated_local=generated)
+        ed = _build(make_briefing_payload(generated_at=generated))
 
         assert ed["time"] == generated
         assert ed["time24"] == expected24
 
     @pytest.mark.parametrize("generated", ["", "just now", "6.02 AM", "6:2 AM", "18:30"])
     def test_unparseable_generation_time_passes_through_unchanged(self, generated: str) -> None:
-        ed = _build(make_briefing_payload(), generated_local=generated)
+        ed = _build(make_briefing_payload(generated_at=generated))
 
         assert ed["time"] == generated
         assert ed["time24"] == generated
@@ -234,17 +234,12 @@ class TestBlocks:
 class TestHeadline:
     @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet", "receipt"])
     def test_every_family_leads_with_the_headline(self, family: EditionFamily) -> None:
-        ed = _build(
-            make_briefing_payload(headline="Two replies need you", link=LINK), family=family
-        )
+        ed = _build(make_briefing_payload(headline="Two replies need you"), family=family)
 
         assert ed["deck"] == "Two replies need you"
 
     def test_an_empty_day_draws_no_block_instead_of_a_placeholder_row(self) -> None:
-        assert (
-            _build(make_briefing_payload(link=LINK), family=EditionFamily.BOARDINGPASS)["blocks"]
-            == []
-        )
+        assert _build(make_briefing_payload(), family=EditionFamily.BOARDINGPASS)["blocks"] == []
 
 
 @pytest.mark.unit
@@ -352,13 +347,13 @@ class TestCodes:
     def test_a_family_carries_only_the_codes_it_prints_each_encoding_the_link(
         self, family: EditionFamily, symbologies: list[Symbology]
     ) -> None:
-        codes = _build(make_briefing_payload(link=LINK), family=family)["codes"]
+        codes = _build(make_briefing_payload(), link=LINK, family=family)["codes"]
 
         assert codes == {s: code_geometry(s, LINK) for s in symbologies}
 
     def test_a_family_that_prints_a_code_refuses_a_brief_without_a_link(self) -> None:
         with pytest.raises(ValueError, match="invoice"):
-            _build(make_briefing_payload(link=None), family=EditionFamily.INVOICE)
+            _build(make_briefing_payload(), link=None, family=EditionFamily.INVOICE)
 
     def test_a_family_without_a_code_renders_a_legacy_brief_without_a_link(self) -> None:
-        assert _build(make_briefing_payload(link=None), family=EditionFamily.SWISS)["codes"] == {}
+        assert _build(make_briefing_payload(), link=None, family=EditionFamily.SWISS)["codes"] == {}

@@ -159,21 +159,16 @@ def _json_for_script(value: object) -> str:
 def render_explorer_edition(
     payload: BriefingPayload,
     *,
+    link: str | None,
     family: EditionFamily,
     skin_seed: str,
     edition_no: int,
-    generated_local: str,
-    # The default is unobservable — the parameter is deleted before its first
-    # read (see below), so no value of it can reach the document.
-    tz_label: str = "",  # pragma: no mutate
 ) -> str:
     """Render a briefing payload through one vendored explorer family.
 
     Raises ValueError for a family not in explorer_family_ids(). skin_seed makes the skin
-    deterministic; a desk family renders without its desk; tz_label is accepted for signature
-    parity with EditionRenderer, unused.
+    deterministic; a desk family renders without its desk.
     """
-    del tz_label  # accepted for signature parity; see docstring
     if family not in explorer_family_ids():
         raise ValueError(f"unknown explorer family: {family!r}")
 
@@ -187,8 +182,8 @@ def render_explorer_edition(
             assets.update(city_axis_assets())
     ed = build_ed(
         payload,
+        link=link,
         edition_no=edition_no,
-        generated_local=generated_local,
         assets=assets,
         art=_art(payload, family),
         family=family,

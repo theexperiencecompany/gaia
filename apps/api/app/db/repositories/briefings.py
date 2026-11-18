@@ -195,7 +195,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(self, brief: BriefingModel) -> BriefingModel:
-        """Store the brief's payload, edition and delivery plan (one per user/date/kind) under its id.
+        """Store the brief's payload, link, edition and delivery plan (one per user/date/kind) under its id.
 
         Preserves opened_at and delivered_channels across a same-day rerun. Persisted
         BEFORE delivery so the dashboard never misses a brief that reached a channel.
@@ -207,6 +207,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {
                 "$set": {
                     "payload": brief.payload.model_dump(),
+                    "link": brief.link,
                     "edition": brief.edition.model_dump() if brief.edition else None,
                     "delivery": brief.delivery.model_dump() if brief.delivery else None,
                 },

@@ -5,16 +5,18 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 import uuid
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 from scripts.retire_legacy_triggers import UnknownTriggerTypeError
 
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerType
-from scripts import post_deploy
-from tests.factories import make_user_id
+from scripts import migrate_brief_link, post_deploy
+from tests.factories import make_briefing_payload, make_user_id
 
 
 def _steps(*names: str) -> dict[str, AsyncMock]:
@@ -115,16 +117,26 @@ def _legacy_email_workflow(*, activated: bool) -> dict[str, object]:
     }
 
 
-@pytest.fixture
-async def workflow_release(raw_collection, monkeypatch: pytest.MonkeyPatch):
-    """Run only the real workflow steps, over raw_collection, marking them in a collection apart."""
+def _release_of(
+    raw_collection: AsyncIOMotorCollection,
+    monkeypatch: pytest.MonkeyPatch,
+    names: tuple[str, ...],
+) -> AsyncIOMotorCollection:
+    """Run only the named real steps, over raw_collection; return the collection marking them."""
     markers = raw_collection.database[f"{raw_collection.name}_deploy_steps"]
     monkeypatch.setattr(post_deploy, "deploy_steps", markers)
     monkeypatch.setattr(
         post_deploy,
         "POST_DEPLOY_STEPS",
-        tuple(step for step in post_deploy.POST_DEPLOY_STEPS if step[0] in _WORKFLOW_STEPS),
+        tuple(step for step in post_deploy.POST_DEPLOY_STEPS if step[0] in names),
     )
+    return markers
+
+
+@pytest.fixture
+async def workflow_release(raw_collection, monkeypatch: pytest.MonkeyPatch):
+    """Run only the real workflow steps, over raw_collection, marking them in a collection apart."""
+    markers = _release_of(raw_collection, monkeypatch, _WORKFLOW_STEPS)
     yield
     await markers.drop()
 
@@ -185,3 +197,85 @@ class TestLegacyEmailTrigger:
 
         with pytest.raises(UnknownTriggerTypeError, match="fax"):
             await post_deploy.run_post_deploy(apply=True)
+
+
+_BRIEF_LINK = "https://heygaia.link/abcdefghijk"
+
+
+def _brief_as_stored_with_its_link_on_the_payload(link: str | None) -> dict[str, object]:
+    """Build a brief as the previous release stored it: its link set on its payload."""
+    return {
+        "_id": f"brief_{uuid.uuid4().hex[:12]}",
+        "user_id": make_user_id(),
+        "date": "2026-11-17",
+        "kind": "daily",
+        "payload": {**make_briefing_payload(date="2026-11-17").model_dump(), "link": link},
+        "delivered_channels": ["inapp"],
+        "created_at": datetime(2026, 11, 17, tzinfo=UTC),
+    }
+
+
+@pytest.fixture
+async def brief_link_release(raw_collection, monkeypatch: pytest.MonkeyPatch):
+    """Run only the brief link step, over raw_collection, marking it in a collection apart."""
+    markers = _release_of(raw_collection, monkeypatch, ("migrate_brief_link",))
+    monkeypatch.setattr(migrate_brief_link, "briefings_collection", raw_collection)
+    yield
+    await markers.drop()
+
+
+@pytest.mark.usefixtures("brief_link_release")
+class TestBriefLinkMovesOffThePayload:
+    async def test_the_release_gives_each_brief_the_link_its_payload_carried(
+        self, raw_collection
+    ) -> None:
+        edition = _brief_as_stored_with_its_link_on_the_payload(_BRIEF_LINK)
+        note = _brief_as_stored_with_its_link_on_the_payload(None)
+        await raw_collection.insert_many([edition, note])
+
+        assert await post_deploy.run_post_deploy(apply=True) == ["migrate_brief_link"]
+
+        moved = await briefing_repository.get(str(edition["_id"]), user_id=str(edition["user_id"]))
+        quiet = await briefing_repository.get(str(note["_id"]), user_id=str(note["user_id"]))
+        assert moved is not None and quiet is not None
+        assert (moved.link, quiet.link) == (_BRIEF_LINK, None)
+        # The previous release still serves while the release runs, so its payload keeps the link.
+        raw = await raw_collection.find_one({"_id": edition["_id"]})
+        assert raw is not None and raw["payload"]["link"] == _BRIEF_LINK
+
+    async def test_a_dry_run_writes_nothing(self, raw_collection) -> None:
+        stored = _brief_as_stored_with_its_link_on_the_payload(_BRIEF_LINK)
+        await raw_collection.insert_one(stored)
+
+        await post_deploy.run_post_deploy(apply=False)
+
+        assert await raw_collection.find_one({"_id": stored["_id"]}) == stored
+
+    async def test_a_brief_already_carrying_its_link_keeps_it(self, raw_collection) -> None:
+        stored = {
+            **_brief_as_stored_with_its_link_on_the_payload("https://heygaia.link/stale"),
+            "link": _BRIEF_LINK,
+        }
+        await raw_collection.insert_one(stored)
+
+        assert await migrate_brief_link.migrate(apply=True) == 0
+
+        assert await raw_collection.find_one({"_id": stored["_id"]}) == stored
+
+    async def test_contract_moves_what_the_previous_release_stored_since_then_drops_the_payload_link(
+        self, raw_collection
+    ) -> None:
+        await raw_collection.insert_one(_brief_as_stored_with_its_link_on_the_payload(_BRIEF_LINK))
+        await migrate_brief_link.migrate(apply=True)
+        late = _brief_as_stored_with_its_link_on_the_payload(_BRIEF_LINK)
+        await raw_collection.insert_one(late)
+        carrying = {"payload.link": {"$exists": True}}
+
+        assert await migrate_brief_link.contract(apply=False) == 2
+        assert await raw_collection.count_documents(carrying) == 2
+
+        assert await migrate_brief_link.contract(apply=True) == 2
+
+        assert await raw_collection.count_documents(carrying) == 0
+        moved = await briefing_repository.get(str(late["_id"]), user_id=str(late["user_id"]))
+        assert moved is not None and moved.link == _BRIEF_LINK

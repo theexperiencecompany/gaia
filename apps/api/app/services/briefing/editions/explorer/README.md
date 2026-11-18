@@ -106,7 +106,7 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    Receipt's barcode and the Boarding Pass's barcode were pixels seeded by the
    edition number, and encoded nothing. `qr()` (tpl-paper.js) and both `barcode()`
    functions (tpl-receipt.js, tpl-transit.js) are deleted. `editions/codes.py`
-   encodes `payload.link` (its heygaia.link, or its page URL when minting failed)
+   encodes the stored brief's `link` (its heygaia.link, or its page URL when minting failed)
    and passes the geometry as `ed.codes`. Each template draws it with
    `EXPLORER.code`, which `explorer_render.py` defines. The Invoice draws a QR
    (segno) in the same 108px box. The Receipt draws a Code 128 (python-barcode) at

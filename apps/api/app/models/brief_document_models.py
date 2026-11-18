@@ -108,6 +108,9 @@ class BriefingModel(UserScopedDocument):
     kind: BriefingKind = BriefingKind.DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
+    #: Minted once the brief is stored, before its edition renders (whose codes encode it): its
+    #: heygaia.link, or its page URL when minting failed; None for a quiet day's note.
+    link: str | None = None
     #: The stored edition render; None for a quiet day's note, which has none.
     edition: EditionRender | None = None
     #: None only on a brief whose delivery was never planned (a seed, a legacy row).

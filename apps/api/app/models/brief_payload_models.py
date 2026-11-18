@@ -235,14 +235,6 @@ class BriefingPayload(BaseModel):
     generated_at: str | None = Field(
         default=None, description='User-local generation time, e.g. "6:02 AM".'
     )
-    link: str | None = Field(
-        default=None,
-        description=(
-            "The brief's link, set before its edition renders: its heygaia.link, or its "
-            "page URL when minting failed. The edition's QR and barcodes encode it; "
-            "None on legacy rows."
-        ),
-    )
     #: An edition, or the plain note a quiet day sends instead of one.
     form: BriefForm = BriefForm.EDITION
     calendar: list[BriefingEvent] = Field(

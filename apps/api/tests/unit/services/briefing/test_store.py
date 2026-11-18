@@ -66,9 +66,7 @@ class TestStoreBrief:
         seams["attach_link"].assert_awaited_once_with(
             USER_ID, RecordTarget(type=ShortLinkTargetType.BRIEFING, id=_BRIEF_ID)
         )
-        linked = payload.model_copy(update={"link": _LINK_URL})
-        assert payload.link is None
-        assert seams["render_edition_png"].await_args.args == (linked,)
+        assert seams["render_edition_png"].await_args.args == (payload, _LINK_URL)
         seams["store_edition"].assert_awaited_once_with(USER_ID, _BRIEF_ID, b"png")
         [brief] = seams["upsert_briefing"].await_args.args
         assert (brief.id, brief.user_id, brief.date, brief.kind) == (
@@ -77,11 +75,11 @@ class TestStoreBrief:
             _DATE,
             "daily",
         )
-        assert (brief.payload, brief.delivery) == (linked, _PLAN)
+        assert (brief.payload, brief.delivery, brief.link) == (payload, _PLAN, _LINK_URL)
         assert brief.edition == EditionRender(
             key="edition-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
         )
-        assert (stored.id, stored.payload.link) == (_BRIEF_ID, _LINK_URL)
+        assert (stored.id, stored.link) == (_BRIEF_ID, _LINK_URL)
 
     async def test_the_brief_exists_before_its_link_is_minted(
         self, seams: dict[str, AsyncMock]
@@ -118,7 +116,7 @@ class TestStoreBrief:
             USER_ID, _DATE, BriefingKind.DAILY, make_briefing_payload(date=_DATE), _PLAN
         )
 
-        assert stored.payload.link == "https://app.test/brief/brief-1"
+        assert stored.link == "https://app.test/brief/brief-1"
 
     async def test_an_edition_without_a_fold_or_paper_box_stores_neither(
         self, seams: dict[str, AsyncMock]
@@ -151,4 +149,4 @@ class TestStoreNote:
         seams["attach_link"].assert_not_awaited()
         seams["render_edition_png"].assert_not_awaited()
         seams["store_edition"].assert_not_awaited()
-        assert (stored.id, stored.payload.link) == (_BRIEF_ID, None)
+        assert (stored.id, stored.link) == (_BRIEF_ID, None)

@@ -22,6 +22,7 @@ from app.db.mongodb.collections import get_async_collection
 from scripts._cli import apply_requested
 from scripts.backfill_last_active_at import backfill as backfill_last_active_at
 from scripts.clear_email_derived_names import clear_email_derived_names
+from scripts.migrate_brief_link import migrate as migrate_brief_link
 from scripts.migrate_brief_storage import migrate as migrate_brief_storage
 from scripts.migrate_briefing_state import migrate as migrate_briefing_state
 from scripts.migrate_inbox_desk_recurrence import migrate as migrate_inbox_desk_recurrence
@@ -51,6 +52,7 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("resync_brief_schedules", resync_brief_schedules),
     ("clear_email_derived_names", clear_email_derived_names),
     ("migrate_notification_details", migrate_notification_details),
+    ("migrate_brief_link", migrate_brief_link),
 )
 
 #: A claim older than this belongs to a runner that died mid-step; the next run takes it over.

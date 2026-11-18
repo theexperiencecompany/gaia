@@ -24,6 +24,7 @@ from app.services.briefing.editions.explorer_blocks import build_blocks
 from app.services.briefing.editions.explorer_render import EXPLORER_CANVAS_PX
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 from app.services.render.chromium import chromium_page
+from tests.integration.render.test_edition_families_render import _LINK
 
 pytestmark = pytest.mark.asyncio(loop_scope="package")
 
@@ -80,9 +81,7 @@ def expectations(payload: BriefingPayload) -> dict[str, Any]:
 
 async def reading_problems(payload: BriefingPayload) -> list[str]:
     """Render the payload's family at the export scale and return every broken reading rule."""
-    html = EXPLORER_RENDERER[payload.template_family](
-        payload, edition_no=42, generated_local="6:02 AM"
-    )
+    html = EXPLORER_RENDERER[payload.template_family](payload, link=_LINK, edition_no=42)
     async with chromium_page(
         {"width": EXPLORER_CANVAS_PX, "height": 900}, EXPLORER_SCALE
     ) as rendering:

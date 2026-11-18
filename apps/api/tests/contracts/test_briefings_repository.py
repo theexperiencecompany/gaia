@@ -131,6 +131,21 @@ class TestBriefingsUpsert:
         assert await repo.owner_of_edition("edition-key") == "u-image"
         assert await repo.owner_of_edition("another-key") is None
 
+    async def test_upsert_records_the_link_its_edition_encodes(self, repo):
+        link = "https://heygaia.link/abcdefghijk"
+        stored = await repo.upsert_briefing(
+            BriefingModel(
+                user_id="u-link",
+                date="2026-08-06",
+                payload=make_briefing_payload(),
+                link=link,
+                edition=_EDITION,
+                delivery=_PLAN,
+            )
+        )
+        fetched = await repo.get(stored.id, user_id="u-link")
+        assert fetched is not None and (stored.link, fetched.link) == (link, link)
+
     async def test_upsert_records_where_the_edition_folds_and_where_its_paper_sits(self, repo):
         edition = EditionRender(key="fold-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8])
         stored = await _upsert(

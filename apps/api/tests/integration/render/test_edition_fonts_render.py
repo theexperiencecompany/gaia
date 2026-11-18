@@ -21,6 +21,7 @@ from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
 from app.services.render.chromium import chromium_page
 from tests.integration.render.test_edition_families_render import (
     _DAILY,
+    _LINK,
     _QUIET,
     _artwork,
     _as_rendered,
@@ -114,7 +115,7 @@ async def test_every_composed_block_draws_from_an_embedded_font(
     family: EditionFamily, composition: str
 ) -> None:
     payload = composed_payload(composition, family, _artwork(family))
-    html = EXPLORER_RENDERER[family](payload, edition_no=287, generated_local="6:02 AM")
+    html = EXPLORER_RENDERER[family](payload, link=_LINK, edition_no=287)
     async with chromium_page(_PAGE) as rendering:
         await rendering.page.set_content(html, wait_until="networkidle")
         failures = await _check_every_skin(rendering.page, family)

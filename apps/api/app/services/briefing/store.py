@@ -46,14 +46,13 @@ async def store_brief(
         user_id, RecordTarget(type=ShortLinkTargetType.BRIEFING, id=draft.id)
     )
     link = build_url(short_link.slug) if short_link else full_brief_url(draft.id)
-    payload = payload.model_copy(update={"link": link})
-    rendered = await render_edition_png(payload)
+    rendered = await render_edition_png(payload, link)
     key = await store_edition(user_id, draft.id, rendered.image)
     edition = EditionRender(
         key=key, fold=rendered.fold, paper=list(rendered.paper) if rendered.paper else None
     )
     return await briefing_repository.upsert_briefing(
-        draft.model_copy(update={"payload": payload, "edition": edition})
+        draft.model_copy(update={"link": link, "edition": edition})
     )
 
 

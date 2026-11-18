@@ -82,15 +82,16 @@ _SUNDAY = make_briefing_payload(
     headline="A quiet Sunday",
     tallies={"done_by_you": 1, "done_by_gaia": 2},
     calendar=[_STANDUP],
+    generated_at="6:02 AM",
 )
 
 
 def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
+        "link": None,
         "family": "swiss",
         "skin_seed": "2026-07-05",
         "edition_no": 12,
-        "generated_local": "6:02 AM",
     }
     kwargs.update(overrides)
     return render_explorer_edition(payload or _SUNDAY, **kwargs)
@@ -269,7 +270,7 @@ class TestTransparentDesk:
     def test_a_paper_on_a_desk_is_rendered_without_its_desk(
         self, family: EditionFamily, transparent: bool
     ) -> None:
-        html = EXPLORER_RENDERER[family](_SUNDAY, edition_no=12, generated_local="")
+        html = EXPLORER_RENDERER[family](_SUNDAY, link=None, edition_no=12)
 
         assert ("#root > article { background: none; }" in html) is transparent
         assert edition_frame(family).transparent_desk is transparent
@@ -278,7 +279,7 @@ class TestTransparentDesk:
     def test_nothing_but_the_family_rules_follows_the_body_width(
         self, family: EditionFamily
     ) -> None:
-        html = EXPLORER_RENDERER[family](_SUNDAY, edition_no=12, generated_local="")
+        html = EXPLORER_RENDERER[family](_SUNDAY, link=None, edition_no=12)
 
         style = html.split("<style>")[1].split("</style>")[0]
         after_body_width = style.split(f"body {{ width: {EXPLORER_CANVAS_PX}px; }}")[1]
@@ -456,12 +457,3 @@ class TestScriptEscaping:
 
         assert "</script>alert(1)" not in html
         assert "<\\/script>alert(1)" in html
-
-
-@pytest.mark.unit
-class TestTimezoneLabel:
-    def test_tz_label_is_accepted_for_parity_and_changes_nothing(self) -> None:
-        assert _render(tz_label="IST") == _render(tz_label="")
-
-    def test_tz_label_never_reaches_the_document(self) -> None:
-        assert "Antarctica/Troll" not in _render(tz_label="Antarctica/Troll")

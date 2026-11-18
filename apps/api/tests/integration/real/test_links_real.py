@@ -1077,7 +1077,7 @@ class TestTheBriefsLink:
                 BriefDelivery(push=True, notification_kind=NotificationKind.BRIEFING_DAILY),
             )
 
-        link_url = stored.payload.link or ""
+        link_url = stored.link or ""
         slug = link_url.removeprefix("https://heygaia.link/")
         link = await _stored(slug)
         assert link.target == RecordTarget(type=ShortLinkTargetType.BRIEFING, id=stored.id)

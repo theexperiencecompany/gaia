@@ -69,8 +69,8 @@ def seeded() -> Iterator[Seeded]:
     rendered: list[tuple[BriefingPayload, str]] = []
     owners: list[str] = []
 
-    async def fake_render(payload: BriefingPayload) -> RenderedImage:
-        rendered.append((payload, payload.date))
+    async def fake_render(payload: BriefingPayload, link: str | None) -> RenderedImage:
+        rendered.append((payload, link))
         return RenderedImage(image=b"png")
 
     async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
@@ -128,10 +128,9 @@ async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_i
 ) -> None:
     await seed_dev_postmarks(user, 3)
 
-    keys = [key for _, key in seeded.rendered]
-    assert len(set(keys)) == 3
+    assert len({payload.date for payload, _ in seeded.rendered}) == 3
     linked = seeded.upsert.await_args_list[::2]
-    for (payload, key), first_call, upsert_call, deliver_call in zip(
+    for (payload, link), first_call, upsert_call, deliver_call in zip(
         seeded.rendered,
         linked,
         seeded.stored(),
@@ -143,7 +142,7 @@ async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_i
         assert (first.id, first.user_id, first.kind) == (brief.id, brief.user_id, brief.kind)
         assert (brief.user_id, brief.date, brief.kind) == (user.id, payload.date, "daily")
         assert brief.payload == payload
-        assert payload.link == SHORT_LINK
+        assert (link, brief.link) == (SHORT_LINK, SHORT_LINK)
         assert brief.id == f"brief_{payload.date}"
         assert brief.edition == EditionRender(key=f"key-brief_{payload.date}")
         delivered = brief.delivery
@@ -328,5 +327,4 @@ class TestSampleEditionPayload:
 
         sample = dev_postmarks_seed.sample_edition_payload(first.template_family, "Ada")
 
-        stored_only = {"link", "edition_render"}
-        assert sample.model_dump(exclude=stored_only) == first.model_dump(exclude=stored_only)
+        assert sample == first

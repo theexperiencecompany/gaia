@@ -25,7 +25,6 @@ _BASE: dict[str, Any] = {
     "caption": "",
     "generated_at": "6:02 AM",
     "recipient_name": "Alexandra Okonkwo-Fitzgerald",
-    "link": "https://heygaia.link/aB3dE5gH7jK",
     "template_family": "swiss",
 }
 

@@ -30,12 +30,12 @@ async def dev_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[UserDocument
 
 
 @pytest.fixture
-def hosted_editions(monkeypatch: pytest.MonkeyPatch) -> list[BriefingPayload]:
-    """Stand in for the Chromium render and the blob store: record each payload rendered."""
-    rendered: list[BriefingPayload] = []
+def hosted_editions(monkeypatch: pytest.MonkeyPatch) -> list[str | None]:
+    """Stand in for the Chromium render and the blob store: record the link each edition encodes."""
+    rendered: list[str | None] = []
 
-    async def fake_render(payload: BriefingPayload) -> RenderedImage:
-        rendered.append(payload)
+    async def fake_render(payload: BriefingPayload, link: str | None) -> RenderedImage:
+        rendered.append(link)
         return RenderedImage(image=b"png")
 
     async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
@@ -47,7 +47,7 @@ def hosted_editions(monkeypatch: pytest.MonkeyPatch) -> list[BriefingPayload]:
 
 
 async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
-    dev_user: UserDocument, hosted_editions: list[BriefingPayload]
+    dev_user: UserDocument, hosted_editions: list[str | None]
 ) -> None:
     await seed_dev_postmarks(dev_user, SEEDED)
     await seed_dev_postmarks(dev_user, SEEDED)
@@ -62,8 +62,8 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
     assert all(b.edition == EditionRender(key=f"key-{b.id}") for b in briefs)
     assert len({b.payload.headline for b in briefs}) == SEEDED
     # A reseed keeps each brief's id, so its edition still encodes the one link it was given.
-    assert len({b.payload.link for b in briefs}) == SEEDED
-    assert [p.link for p in hosted_editions[:SEEDED]] == [p.link for p in hosted_editions[SEEDED:]]
+    assert len({b.link for b in briefs}) == SEEDED
+    assert hosted_editions[:SEEDED] == hosted_editions[SEEDED:]
     assert all(any(s.items for s in b.payload.sections) for b in briefs)
 
     postmarks = await collected_postmarks(dev_user.id)
@@ -74,7 +74,7 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
 
 
 async def test_asking_for_more_postmarks_than_cities_writes_nothing(
-    dev_user: UserDocument, hosted_editions: list[BriefingPayload]
+    dev_user: UserDocument, hosted_editions: list[str | None]
 ) -> None:
     with pytest.raises(AppError) as exc:
         await seed_dev_postmarks(dev_user, len(hosted_stamp_weights()) + 1)

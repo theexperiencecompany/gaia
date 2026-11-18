@@ -77,12 +77,14 @@ _DAILY: dict[str, Any] = {
         "ahead": [{"date": "2026-10-19", "start": "09:00", "title": "Board call"}],
     },
     "generated_at": "6:02 AM",
-    # Set before every render (store_brief): the Invoice, Receipt and Boarding Pass encode it.
-    "link": "https://heygaia.link/aB3dE5gH7jK",
     "mood": "packed",
     "caption": "Coffee first, Priya second.",
     "hue": 120,
 }
+
+
+#: The stored brief's link every render is given: the Invoice, Receipt and Boarding Pass encode it.
+_LINK = "https://heygaia.link/aB3dE5gH7jK"
 
 
 def _composed(payload: dict[str, Any]) -> dict[str, Any]:
@@ -170,7 +172,7 @@ def _render_html(family: EditionFamily, payload: dict[str, Any]) -> str:
     data = BriefingPayload.model_validate(
         {"artwork_id": _artwork(family), **payload, "template_family": family}
     )
-    return EXPLORER_RENDERER[family](data, edition_no=287, generated_local="", tz_label="")
+    return EXPLORER_RENDERER[family](data, link=_LINK, edition_no=287)
 
 
 async def _visible_text(html: str) -> str:
@@ -356,7 +358,7 @@ async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
 ) -> None:
     frame = edition_frame(family)
 
-    png = (await render_edition_png(_shipped(family, _DENSITIES[density]))).image
+    png = (await render_edition_png(_shipped(family, _DENSITIES[density]), _LINK)).image
 
     paper = _clear_margins(png, frame.device_scale_factor, _OPAQUE - 1)
     shadow = _clear_margins(png, frame.device_scale_factor, 0)
@@ -369,7 +371,9 @@ async def test_a_paper_on_a_desk_is_cropped_tight_with_an_even_margin(
 @pytest.mark.integration
 @pytest.mark.parametrize("family", _ON_A_DESK)
 async def test_a_paper_on_a_desk_ships_without_its_desk_or_a_cut_shadow(family: str) -> None:
-    image = Image.open(io.BytesIO((await render_edition_png(_shipped(family, _DAILY))).image))
+    image = Image.open(
+        io.BytesIO((await render_edition_png(_shipped(family, _DAILY), _LINK)).image)
+    )
 
     assert image.mode == "RGBA"
     alpha = image.getchannel("A")
@@ -386,7 +390,9 @@ async def test_a_paper_on_a_desk_ships_without_its_desk_or_a_cut_shadow(family: 
 @pytest.mark.integration
 @pytest.mark.parametrize("family", _FULL_BLEED)
 async def test_a_full_bleed_family_ships_opaque(family: str) -> None:
-    image = Image.open(io.BytesIO((await render_edition_png(_shipped(family, _DAILY))).image))
+    image = Image.open(
+        io.BytesIO((await render_edition_png(_shipped(family, _DAILY), _LINK)).image)
+    )
 
     assert ImageStat.Stat(image.convert("RGBA").getchannel("A")).extrema == [(_OPAQUE, _OPAQUE)]
 
@@ -400,7 +406,7 @@ async def test_a_full_bleed_family_ships_its_whole_page_and_nothing_more(
     frame = edition_frame(family)
     payload = _shipped(family, _DENSITIES[density])
 
-    png = (await render_edition_png(payload)).image
+    png = (await render_edition_png(payload, _LINK)).image
     page = (
         await render_html_to_image(
             _render_html(family, payload.model_dump()),
@@ -529,7 +535,7 @@ async def test_an_empty_brief_draws_no_block_and_no_heading(family: EditionFamil
 @pytest.mark.parametrize("family", _FAMILIES)
 async def test_every_family_marks_where_its_letter_folds(family: str) -> None:
     """The chat letter folds at the template's marker, a gap after the header, not mid-line."""
-    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
+    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]), _LINK)
 
     assert rendered.fold is not None, f"{family} has no fold marker"
     assert 0.05 < rendered.fold < 0.8, f"{family} folds at {rendered.fold:.2f} of its height"
@@ -539,7 +545,7 @@ async def test_every_family_marks_where_its_letter_folds(family: str) -> None:
 @pytest.mark.parametrize("family", _ON_A_DESK)
 async def test_a_family_on_a_desk_records_where_its_paper_lies(family: str) -> None:
     """The letter and the unfold crop to this box, so no desk shows around the paper."""
-    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]))
+    rendered = await render_edition_png(_shipped(family, _DENSITIES[sorted(_DENSITIES)[0]]), _LINK)
 
     assert rendered.paper is not None, f"{family} has no paper marker"
     left, top, right, bottom = rendered.paper
@@ -561,7 +567,7 @@ _ONE_SHEET = sorted(set(_ON_A_DESK) - {EditionFamily.POSTAL})
 @pytest.mark.parametrize("family", _ONE_SHEET)
 async def test_a_turned_sheets_paper_box_holds_no_desk_along_its_edges(family: str) -> None:
     """A sheet set at an angle is cut to the level box inside it, not the box around it."""
-    rendered = await render_edition_png(_shipped(family, _DAILY))
+    rendered = await render_edition_png(_shipped(family, _DAILY), _LINK)
     assert rendered.paper is not None
     alpha = Image.open(io.BytesIO(rendered.image)).convert("RGBA").getchannel("A")
     left, top, right, bottom = (

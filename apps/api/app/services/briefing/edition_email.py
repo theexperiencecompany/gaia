@@ -114,13 +114,13 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str, wording: _Em
     )
 
 
-async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
-    """Render the edition as a PNG cropped tight to its paper, with where its letter folds."""
+async def render_edition_png(payload: BriefingPayload, link: str | None) -> RenderedImage:
+    """Render the edition, its codes encoding link, as a PNG cropped to its paper, with its fold."""
     family = payload.template_family
     if family is None:
         raise ValueError("a quiet note is drawn in no family, so it has no edition to render")
     render = EXPLORER_RENDERER[family]
-    edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
+    edition_html = render(payload, link=link, edition_no=_edition_no(payload.date))
     frame = edition_frame(family)
     # The image is stored and referenced by URL (Gmail blocks base64 data: URIs),
     # so its size has no ceiling.

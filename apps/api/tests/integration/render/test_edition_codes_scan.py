@@ -42,10 +42,8 @@ _CODES = pytest.mark.parametrize(
 
 
 async def _render(family: str, link: str, date: str) -> Image.Image:
-    payload = BriefingPayload.model_validate(
-        {**_DAILY, "date": date, "template_family": family, "link": link}
-    )
-    rendered = await render_edition_png(payload)
+    payload = BriefingPayload.model_validate({**_DAILY, "date": date, "template_family": family})
+    rendered = await render_edition_png(payload, link)
     return Image.open(io.BytesIO(rendered.image))
 
 

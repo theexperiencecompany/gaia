@@ -134,12 +134,12 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
 
 
 async def host(payload: BriefingPayload) -> RenderedImage:
-    return await render_edition_png(payload)
+    return await render_edition_png(payload, BRIEF_URL)
 
 
 @pytest.mark.unit
 class TestEditionRendering:
-    async def test_the_payloads_family_renders_with_the_edition_number_and_no_generation_time(
+    async def test_the_payloads_family_renders_with_its_link_and_edition_number(
         self, harness: Harness
     ) -> None:
         await host(make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT))
@@ -148,8 +148,8 @@ class TestEditionRendering:
             {
                 "renderer": "receipt",
                 "payload": make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT),
+                "link": BRIEF_URL,
                 "edition_no": 10,
-                "generated_local": "",
             }
         ]
         assert harness.image_calls[0]["html"] == "<edition>receipt</edition>"

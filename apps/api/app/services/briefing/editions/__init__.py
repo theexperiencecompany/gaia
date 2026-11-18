@@ -32,9 +32,8 @@ class EditionRenderer(Protocol):
         self,
         payload: BriefingPayload,
         *,
+        link: str | None,
         edition_no: int,
-        generated_local: str,
-        tz_label: str = "",
     ) -> str: ...
 
 
@@ -44,17 +43,15 @@ def _make_explorer_renderer(family: EditionFamily) -> EditionRenderer:
     def _render(
         payload: BriefingPayload,
         *,
+        link: str | None,
         edition_no: int,
-        generated_local: str,
-        tz_label: str = "",
     ) -> str:
         return render_explorer_edition(
             payload,
+            link=link,
             family=family,
             skin_seed=f"{payload.date}:{family}",
             edition_no=edition_no,
-            generated_local=generated_local,
-            tz_label=tz_label,
         )
 
     return _render

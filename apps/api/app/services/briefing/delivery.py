@@ -73,9 +73,9 @@ def _notification_metadata(
     """Return what the brief's notification carries: a note its kind, an edition its link and card."""
     if kind is NotificationKind.BRIEFING_NOTE:
         return BriefNoteNotification(kind=kind)
-    if brief.payload.link is None or card is None:
+    if brief.link is None or card is None:
         raise ValueError(f"{kind} brief {brief.id} was stored without its link or edition")
-    return BriefEditionNotification(kind=kind, brief_url=brief.payload.link, card=card)
+    return BriefEditionNotification(kind=kind, brief_url=brief.link, card=card)
 
 
 async def _notify(
@@ -131,8 +131,8 @@ async def _post_to_chat(user: UserDocument, channel: ChatChannel, brief: Briefin
     result = await post_to_platform_chat(
         user=build_user_context(user, auth_provider=None),
         channel=channel,
-        text=chat_text(payload, payload.link)
-        if payload.link is not None
+        text=chat_text(payload, brief.link)
+        if brief.link is not None
         else delivered_message(payload),
         origin=f"{brief.kind} brief",
         message_class=ProactiveMessageClass.ROUTINE,

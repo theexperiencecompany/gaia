@@ -108,20 +108,20 @@ class ExplorerEdition(TypedDict):
 def build_ed(
     payload: BriefingPayload,
     *,
+    link: str | None,
     edition_no: int,
-    generated_local: str,
     assets: dict[str, str],
     art: ExplorerArt | None,
     family: EditionFamily,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.
 
-    generated_local (e.g. "6:02 AM"); empty uses the payload's generated_at. assets maps
-    asset key to image URL. family decides whether the calendar is the week ahead, and the stamp.
+    link is what the family's codes encode, the stored brief's. assets maps asset key to image
+    URL. family decides whether the calendar is the week ahead, and the stamp.
     """
     date_parts = _date_parts(payload.date)
     calendar = edition_calendar(payload, family)
-    generated = generated_local or payload.generated_at or ""
+    generated = payload.generated_at or ""
 
     return {
         "n": edition_no,
@@ -143,7 +143,7 @@ def build_ed(
         "stamp": _build_stamp(payload.stamp_city) if family == EditionFamily.POSTAL else None,
         "art": art,
         "assets": assets,
-        "codes": family_codes(family, payload.link),
+        "codes": family_codes(family, link),
     }
 
 
