@@ -1,6 +1,7 @@
 """The conversation step: the one writer that answers a conversation's waking entries, in order."""
 
 import asyncio
+import bisect
 from collections.abc import Iterator, Sequence
 import contextlib
 import itertools
@@ -183,14 +184,12 @@ def _answered_by_started_work(
 ) -> tuple[tuple[str, ...], int]:
     """Return the waking inputs live work already answers, and the seq through which every input is.
 
-    Only inputs above the reply count: a reply never answers one logged below it.
+    Only inputs below the reply count: a reply never answers one logged after it.
     """
     started = {entry_id for work in state.work for entry_id in work.answers}
-    waking = [
-        item
-        for item in logged
-        if item.seq in state.unsettled_waking and (reply_seq is None or item.seq < reply_seq)
-    ]
+    pending = state.unsettled_waking
+    below = pending if reply_seq is None else pending[: bisect.bisect_left(pending, reply_seq)]
+    waking = [item for item in logged if item.seq in below]
     answered = {item.seq for item in waking if item.entry.id in started}
     through = watermark(waking, answered, state.settled_through)
     return tuple(item.entry.id for item in waking if item.seq <= through), through

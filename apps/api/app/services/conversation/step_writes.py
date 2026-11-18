@@ -107,7 +107,7 @@ def _riders(attempt: Attempt) -> tuple[LoggedEntry, ...]:
 def next_segment(attempt: Attempt) -> None:
     """Count the settled segment's inputs answered and start the next segment, unopened."""
     attempt.answered_seqs |= {logged.seq for logged in attempt.covers}
-    attempt.covers = ()
+    attempt.covers = ()  # pragma: no mutate — read only as truthy until conclude sets it
     attempt.segment += 1
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = Quiet(reason=CommitReason.MODEL_OUTPUT)
