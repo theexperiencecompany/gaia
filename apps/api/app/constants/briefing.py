@@ -49,10 +49,12 @@ EVERY_DAY: Final[frozenset[int]] = frozenset(range(7))
 MONDAY_TO_FRIDAY: Final[frozenset[int]] = frozenset(range(5))
 SUNDAY: Final[frozenset[int]] = frozenset({6})
 
-# Retention. A sent brief stays in the archive and on the postmark globe for a year; a
-# held result the loop neither carried nor released is dropped after a month (its full
-# run stays in its workflow's or todo's conversation).
-BRIEFING_RETENTION_SECONDS: Final[int] = 365 * 24 * 60 * 60
+# Retention. A sent brief stays in the archive and on the postmark globe for a year, then a
+# nightly sweep deletes it with its edition image; a held result the loop neither carried nor
+# released is dropped after a month (its full run stays in its workflow's or todo's conversation).
+BRIEFING_RETENTION: Final = timedelta(days=365)
+#: How many expired briefs one page of the nightly sweep reads before deleting them.
+BRIEFING_EXPIRY_PAGE: Final[int] = 200
 PENDING_BRIEF_ITEM_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
 
 

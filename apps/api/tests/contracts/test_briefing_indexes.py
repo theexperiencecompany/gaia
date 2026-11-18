@@ -70,12 +70,16 @@ async def _ttl_of(collection, key: str) -> int | None:
 
 
 @pytest.mark.regression
-async def test_a_brief_is_kept_for_its_stated_retention_then_expires(raw_collection) -> None:
+async def test_a_briefs_age_index_carries_no_ttl_so_the_sweep_deletes_its_image_too(
+    raw_collection,
+) -> None:
+    await raw_collection.create_index("created_at", expireAfterSeconds=60)
+
+    await indexes.create_briefing_indexes()
     await indexes.create_briefing_indexes()
 
-    assert (
-        await _ttl_of(raw_collection, "created_at") == briefing_constants.BRIEFING_RETENTION_SECONDS
-    )
+    assert await _ttl_of(raw_collection, "created_at") is None
+    assert "created_at_1" in await _index_names(raw_collection)
 
 
 @pytest.mark.regression

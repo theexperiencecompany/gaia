@@ -60,6 +60,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
 from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.delivery_alert_tasks import (
     record_delivery_failure,
@@ -146,6 +147,7 @@ _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
+_sweep_expired_briefings = arq_task(sweep_expired_briefings)
 # Named from the constant platform linking enqueues it by, so the two cannot drift.
 _send_day_zero_hello = func(arq_task(send_day_zero_hello), name=DAY_ZERO_HELLO_TASK)
 # keep_result=0: the per-user job id means a kept result blocks re-enqueue for
@@ -226,6 +228,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _promote_usage_badges,
     _sweep_abandoned_imessage_registrations,
     _sweep_expired_memories,
+    _sweep_expired_briefings,
     _deliver_signup_emails,
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
@@ -346,6 +349,14 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _sweep_expired_memories),
         hour=2,  # Daily at 02:00 UTC, before the session/checkpoint prunes
         minute=0,
+        second=0,
+    ),
+    # Briefs past their year of retention, each with its edition image (a TTL index
+    # would strand the image). Daily, off the other 02:00 sweep's minute.
+    cron(
+        cast(WorkerCoroutine, _sweep_expired_briefings),
+        hour=2,
+        minute=45,
         second=0,
     ),
 ]

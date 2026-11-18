@@ -264,7 +264,7 @@ def _footprint(**overrides: Any) -> Any:
         "redis_keys": [],
         "jfs_path": JFS_USERS_ROOT / UID,
         "link_snapshots": [],
-        "edition_image_urls": [],
+        "edition_keys": [],
     }
     defaults.update(overrides)
     return _Footprint(**defaults)
@@ -498,6 +498,17 @@ class TestDeleteNewStores:
             await _delete_link_content(d)
 
         assert delete.await_args_list == [call(UID, snapshots[0]), call(UID, snapshots[1])]
+
+    @pytest.mark.regression
+    async def test_every_brief_edition_image_is_deleted(self) -> None:
+        d = _footprint(edition_keys=["k-1", "k-2"])
+
+        with patch(
+            "app.scripts.delete_user_account.delete_edition", new_callable=AsyncMock
+        ) as delete:
+            await _delete_link_content(d)
+
+        assert delete.await_args_list == [call(UID, "k-1"), call(UID, "k-2")]
 
     async def test_a_snapshot_that_will_not_delete_is_a_failed_step(self) -> None:
         snapshot = LinkSnapshot.model_construct(content_id="c-1")

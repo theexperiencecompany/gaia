@@ -11,7 +11,7 @@ be served by a single-id entity cache.
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.constants.briefing import (
     BriefForm,
@@ -30,6 +30,14 @@ from app.utils.errors import AppError
 
 class _BriefingOwner(BaseModel):
     user_id: str
+
+
+class ExpiredBriefing(BaseModel):
+    """A brief past its retention: whose it is, and the edition key its image is stored under."""
+
+    id: str = Field(alias="_id")
+    user_id: str
+    edition_key: str | None = None
 
 
 # A brief counts as delivered once every step of its delivery is done; one whose run died
@@ -100,6 +108,18 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {"edition.key": key}, {"user_id": 1, "_id": 0}, _BriefingOwner
         )
         return owner.user_id if owner is not None else None
+
+    async def list_expired(self, created_before: datetime, limit: int) -> list[ExpiredBriefing]:
+        """Return up to limit briefs written before created_before, oldest first, for the retention sweep."""
+        return await self._aggregate(
+            [
+                {"$match": {"created_at": {"$lt": created_before}}},
+                {"$sort": {"created_at": 1}},
+                {"$limit": limit},
+                {"$project": {"user_id": 1, "edition_key": "$edition.key"}},
+            ],
+            ExpiredBriefing,
+        )
 
     async def has_daily_briefing(self, user_id: str) -> bool:
         """Whether the user has ever received a daily briefing (first-briefing gate)."""

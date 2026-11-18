@@ -8,7 +8,8 @@ identity last (so a re-login cannot resurrect the account mid-teardown):
 
 1. Composio      — revoke OAuth grants (Gmail/Calendar/... access is cut first)
 2. E2B           — kill the user's sandboxes
-3. Link content  — the bytes of every snapshot the user's shared links pinned
+3. Link content  — the bytes of every snapshot the user's shared links pinned,
+                   and every brief's edition image
 4. MongoDB       — every collection with a matching ``user_id`` (+ GridFS,
                    ``support_requests`` by email, ``bot_sessions`` by platform
                    link, ``link_reports`` by reporter, ``users`` doc last)
@@ -22,8 +23,7 @@ identity last (so a re-login cannot resurrect the account mid-teardown):
 
 PostHog person deletion is a manual follow-up: the server only holds the
 capture token, not the personal API key that deletion requires. Langfuse traces
-keyed by ``user_id`` are likewise not covered here, nor are the hosted brief
-edition images, whose URLs the run prints for deletion.
+keyed by ``user_id`` are likewise not covered here.
 
 Usage (inside the dockered API, with Infisical bootstrap creds in env)::
 
@@ -71,6 +71,7 @@ from app.db.repositories.users import user_repository
 from app.models.platform_models import PlatformLinkEntry
 from app.models.short_link_models import LinkSnapshot
 from app.models.user_models import UserDocument
+from app.services.briefing.edition_image import delete_edition
 from app.services.links.content import delete_snapshot
 from app.services.platform_link_service import linked_platforms_of
 
@@ -188,7 +189,7 @@ class _Footprint:
     redis_keys: list[str]
     jfs_path: Path
     link_snapshots: list[LinkSnapshot]
-    edition_image_urls: list[str]
+    edition_keys: list[str]
 
 
 async def _build_footprint(
@@ -220,10 +221,10 @@ async def _build_footprint(
             {"user_id": uid, "snapshot.content_id": {"$ne": None}}, {"snapshot": 1}
         )
     ]
-    edition_image_urls = [
-        str(brief["edition_image_url"])
-        for brief in db.briefings.find(
-            {"user_id": uid, "edition_image_url": {"$ne": None}}, {"edition_image_url": 1}
+    edition_keys = [
+        str(key)
+        for key in db.briefings.distinct(
+            "edition.key", {"user_id": uid, "edition.key": {"$ne": None}}
         )
     ]
     workos_users = (await workos.user_management.list_users(email=args.email)).data
@@ -238,7 +239,7 @@ async def _build_footprint(
     print(f"conversations (checkpoint threads to sweep): {len(conversation_ids)}")
     print(f"platform_links: {list(platform_links) or 'none'}")
     print(f"shared-link snapshots: {len(link_snapshots)}")
-    print(f"brief edition images: {len(edition_image_urls)}")
+    print(f"brief edition images: {len(edition_keys)}")
     print(f"workos: {[(u.id, u.email) for u in workos_users]}")
 
     return _Footprint(
@@ -259,7 +260,7 @@ async def _build_footprint(
         redis_keys=redis_keys,
         jfs_path=jfs_path,
         link_snapshots=link_snapshots,
-        edition_image_urls=edition_image_urls,
+        edition_keys=edition_keys,
     )
 
 
@@ -283,13 +284,19 @@ async def _revoke_external_access(d: _Footprint) -> None:
 
 
 async def _delete_link_content(d: _Footprint) -> None:
-    """The bytes every shared-link snapshot pinned, before the links that name them go."""
+    """The bytes every shared-link snapshot and brief edition pinned, before the documents naming them go."""
     for snapshot in d.link_snapshots:
         try:
             await delete_snapshot(d.uid, snapshot)
             _step("link_content", f"deleted {snapshot.content_id}")
         except Exception as e:
             _fail(f"link_content:{snapshot.content_id}", e)
+    for key in d.edition_keys:
+        try:
+            await delete_edition(d.uid, key)
+            _step("link_content", f"deleted brief edition {key}")
+        except Exception as e:
+            _fail(f"link_content:edition:{key}", e)
 
 
 def _platform_session_filters(
@@ -426,8 +433,6 @@ async def _verify_removal(d: _Footprint) -> int:
         print(f"  {store}: {'CLEAN' if not leftover else f'REMNANT {leftover}'}")
     print("\nMANUAL FOLLOW-UP: delete the PostHog person for distinct_id", d.uid)
     print("MANUAL FOLLOW-UP: delete Langfuse traces for user_id", d.uid)
-    for url in d.edition_image_urls:
-        print("MANUAL FOLLOW-UP: delete the hosted brief edition image", url)
     if _failures:
         print("\nFAILED STEPS:")
         for failure in _failures:
