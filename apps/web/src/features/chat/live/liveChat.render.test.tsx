@@ -155,6 +155,51 @@ describe("the chat rendered from the server's screen patches", () => {
     expect(document.body.textContent).toContain(" word".repeat(deltas).trim());
   });
 
+  // web-e2e-screen: a reply's later bubble showed in full while an earlier one still read "Part",
+  // because each bubble deferred its own text and a bubble mounting in the same render did not.
+  it("shows a streaming multi-bubble reply only as states the reply passed through", async () => {
+    renderChat();
+    await feed(
+      insertFrame(userItem("m1", 1, "three parts")),
+      insertFrame(replyItem("r1", 2, "")),
+      stateFrame(2, DISPLAY_STATE.THINKING),
+    );
+    const deltas: [string, number][] = [
+      ["Part", 0],
+      [" one.", 0],
+      ["Part", 1],
+      [" two.", 1],
+      ["Part", 2],
+      [" three.", 2],
+    ];
+    const passed: string[][] = [[]];
+    const shown: string[][] = [];
+    const bubbles = () =>
+      Array.from(
+        screenRow("r1").querySelectorAll<HTMLElement>(".imessage-bubble"),
+      ).map((bubble) => bubble.textContent?.trim() ?? "");
+    for (const [index, [text, bubble]] of deltas.entries()) {
+      const next = [...(passed.at(-1) ?? [])];
+      next[bubble] = (next[bubble] ?? "") + text;
+      passed.push(next);
+      useLiveConversationStore
+        .getState()
+        .applyFrames(CONVERSATION, [
+          replyDelta("a1", "r1", index, text, bubble),
+        ]);
+      // The store write renders in a microtask; a deferred render waits for a task.
+      await Promise.resolve();
+      shown.push(bubbles());
+    }
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    shown.push(bubbles());
+    const passedThrough = new Set(passed.map((state) => JSON.stringify(state)));
+    expect(
+      shown.filter((state) => !passedThrough.has(JSON.stringify(state))),
+    ).toEqual([]);
+    expect(shown.at(-1)).toEqual(["Part one.", "Part two.", "Part three."]);
+  });
+
   it("words a failed reply with nothing shown in the server's failure line", async () => {
     renderChat();
     const failed = {

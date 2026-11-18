@@ -292,6 +292,26 @@ class StepScenarios:
         assert live[-1] == settled[0].bubbles
         assert "/workspace/sessions" not in "".join(live[-1])
 
+    async def test_a_paced_multi_bubble_reply_streams_exactly_the_bubbles_it_settles_as(
+        self, rt: Runtime
+    ) -> None:
+        said = NEW_MESSAGE_BREAKER.join(("Part one.", "Part two.", "Part three."))
+        # The LLM stub's paced chunks: one word each, keeping the whitespace after it.
+        words = ["Part ", f"one.{NEW_MESSAGE_BREAKER}Part ", f"two.{NEW_MESSAGE_BREAKER}Part "]
+        rt.runner.script(
+            [
+                *(text(word) for word in [*words, "three."]),
+                ModelOutput(False),
+                Finished(Replied(said)),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        live = streamed_bubbles(reply_deltas(rt))
+        screen = project_screen(CONVERSATION, await rt.entries(), TEST_FILE_LINKS)
+        settled = [item for item in screen if isinstance(item, ReplyItem)]
+        assert live[-1] == settled[0].bubbles == ("Part one.", "Part two.", "Part three.")
+
     async def test_second_message_before_commit_restarts_into_one_reply_answering_both(
         self, rt: Runtime
     ) -> None:

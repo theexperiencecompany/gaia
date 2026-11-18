@@ -4,6 +4,7 @@ import {
   type ScreenItem,
   type StreamDraft,
 } from "@shared/conversation";
+import { useDeferredValue } from "react";
 import { BASE_MESSAGE_SCHEMA } from "@/config/registries/baseMessageRegistry";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -108,9 +109,14 @@ export function GaiaRow({
   actions: RowActions;
   layout: RowLayout;
 }>) {
+  // One snapshot of the whole reply renders at a deferred priority: a burst of deltas becomes one
+  // interruptible render (each markdown bubble sets state in an effect on new text), and no bubble
+  // ever shows text ahead of or behind the others.
+  const shownItem = useDeferredValue(item);
+  const shownDraft = useDeferredValue(draft);
   let content: GaiaContent | null = null;
-  if (item) content = itemContent(item, draft);
-  else if (draft) content = draftContent(draft);
+  if (shownItem) content = itemContent(shownItem, shownDraft);
+  else if (shownDraft) content = draftContent(shownDraft);
   if (!content) return null;
   const { retryFrom, ...shown } = content;
   const quiet =

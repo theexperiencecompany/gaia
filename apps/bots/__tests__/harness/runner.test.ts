@@ -156,19 +156,28 @@ describe("deliverTurn", () => {
   });
 
   it("sends a burst at its gaps without waiting for the replies", async () => {
-    const { adapter, arrivals, releaseIdle } = recordingAdapter();
-    releaseIdle();
-    await deliverTurn(adapter, "u", {
-      burst: [
-        { send: "one" },
-        { send: "two", afterMs: 10 },
-        { send: "three", afterMs: 10 },
-      ],
-    });
-    expect(arrivals.map((a) => a.text)).toEqual(["one", "two", "three"]);
-    // Each reply takes 50ms, so an arrival gated on the previous reply lands past it.
-    expect(arrivals[2].at).toBeLessThan(50);
-    expect(arrivals[1].at).toBeGreaterThanOrEqual(10);
+    vi.useFakeTimers();
+    try {
+      const { adapter, arrivals, releaseIdle } = recordingAdapter();
+      releaseIdle();
+      const turn = deliverTurn(adapter, "u", {
+        burst: [
+          { send: "one" },
+          { send: "two", afterMs: 10 },
+          { send: "three", afterMs: 10 },
+        ],
+      });
+      await vi.runAllTimersAsync();
+      await turn;
+      // Each reply takes 50ms, so a send gated on the previous reply lands at 60 and 120.
+      expect(arrivals).toEqual([
+        { text: "one", at: 0 },
+        { text: "two", at: 10 },
+        { text: "three", at: 20 },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a turn that sets both send and burst, or neither", async () => {
