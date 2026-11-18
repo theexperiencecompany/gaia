@@ -38,7 +38,7 @@ def _record(**overrides: object) -> NotificationRecord:
         ),
     }
     data.update(overrides)
-    return NotificationRecord(**data)
+    return NotificationRecord.model_validate(data)
 
 
 async def _edition_details(family: EditionFamily) -> BriefEditionNotification:

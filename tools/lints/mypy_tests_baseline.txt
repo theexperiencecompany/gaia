@@ -16,7 +16,6 @@ apps/api/tests/_harness/chroma_fakes.py	attr-defined
 apps/api/tests/contracts/test_blog_repository.py	misc
 apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_folded_cards.py	list-item
-apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
