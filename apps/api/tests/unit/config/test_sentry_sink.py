@@ -13,11 +13,13 @@ scope (logger/module tags, PII-scrubbed extras) and picks the capture level.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import json
 import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from fastapi import FastAPI
 import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -33,6 +35,7 @@ from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
 from app.config.settings import settings
+from app.constants.http import VIEWER_IP_HEADER
 from shared.py import logging as shared_logging
 from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
@@ -605,3 +608,55 @@ def test_the_internal_api_token_never_reaches_sentry(name: str) -> None:
 
     assert event is not None
     assert event["request"]["headers"] == {"user-agent": "node"}
+
+
+def _link_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/api/v1/l/{slug}")
+    async def resolve(slug: str) -> dict[str, str]:
+        if slug.startswith("boom"):
+            raise RuntimeError("resolve failed")
+        return {"slug": slug}
+
+    return app
+
+
+async def _request_link(slug: str) -> None:
+    transport = httpx.ASGITransport(app=_link_app(), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
+        await client.get(
+            f"/api/v1/l/{slug}",
+            params={"t": "content-token-secret"},
+            headers={VIEWER_IP_HEADER: "203.0.113.9", "user-agent": "node"},
+        )
+
+
+def _carried(event: Event) -> str:
+    return json.dumps(event, default=str)
+
+
+@pytest.mark.regression
+async def test_a_captured_error_carries_no_link_slug_content_token_or_viewer_ip(
+    sentry_events: list[Event],
+) -> None:
+    await _request_link("boom-secret-slug")
+
+    [event] = sentry_events
+    carried = _carried(event)
+    for secret in ("boom-secret-slug", "content-token-secret", "203.0.113.9"):
+        assert secret not in carried
+    assert event["request"]["url"] == "http://api.test/api/v1/l/{slug}"
+
+
+@pytest.mark.regression
+async def test_a_trace_carries_no_link_slug_content_token_or_viewer_ip(
+    sentry_transactions: list[Event],
+) -> None:
+    await _request_link("unlisted-secret-slug")
+
+    [transaction] = sentry_transactions
+    carried = _carried(transaction)
+    for secret in ("unlisted-secret-slug", "content-token-secret", "203.0.113.9"):
+        assert secret not in carried
+    assert transaction["transaction"] == "/api/v1/l/{slug}"

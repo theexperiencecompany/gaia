@@ -73,19 +73,28 @@ class TestRecordPlatformDelivery:
 
         graph.aupdate_state.assert_not_called()
 
-    async def test_failure_to_record_is_swallowed_and_reported_on_the_wide_event(self) -> None:
-        """A checkpoint failure must not break the caller, but log.error must land in the wide event's errors[]."""
+    @pytest.mark.regression
+    async def test_a_failed_checkpoint_write_is_handed_to_the_retrying_job(self) -> None:
+        """A write that raised was once reported as recorded, so the retry job never ran."""
         graph = _fake_comms_graph()
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
-        with _patch_graph(graph):
+        enqueue = AsyncMock()
+        with (
+            _patch_graph(graph),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=POOL)),
+        ):
             async with captured_wide_event() as event:
                 await record_platform_delivery(CONVERSATION_ID, "hello")
 
-        (error,) = [e for e in event["errors"] if "Failed to record" in e["msg"]]
-        assert error["msg"] == (f"{LogTag.AGENT} Failed to record messages in conversation thread")
-        assert error["conversation_id"] == CONVERSATION_ID
-        assert error["error"] == "checkpoint down"
-        assert error["error_type"] == "RuntimeError"
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.args[1:] == (PROACTIVE_RECORD_TASK, CONVERSATION_ID, "hello")
+        (warning,) = event["warnings"]
+        assert warning["msg"] == (
+            f"{LogTag.AGENT} Recording a delivered message failed; retrying in a job"
+        )
+        assert warning["error"] == "checkpoint down"
+        assert warning["error_type"] == "RuntimeError"
 
 
 class TestProactiveWritesWaitForTheThread:
@@ -186,6 +195,13 @@ class TestProactiveWritesWaitForTheThread:
 
 
 class TestRecordExchangeInThread:
+    @pytest.mark.regression
+    async def test_a_failed_write_raises_to_the_caller(self) -> None:
+        graph = _fake_comms_graph()
+        graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
+        with _patch_graph(graph), pytest.raises(RuntimeError, match="checkpoint down"):
+            await record_exchange_in_thread(CONVERSATION_ID, "cancel that step", "Cancelled it.")
+
     async def test_the_user_message_and_reply_are_appended_in_order(self) -> None:
         """A reply that resolved a paused task never ran the graph; the thread must still hold both turns."""
         graph = _fake_comms_graph()

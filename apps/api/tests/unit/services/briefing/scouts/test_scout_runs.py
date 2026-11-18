@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 from langchain_core.tools import BaseTool, tool
+from prometheus_client import REGISTRY
 import pytest
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
@@ -31,6 +32,7 @@ from app.db.repositories.scouts import scouts_repository
 from app.models.payment_models import PlanType
 from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import (
+    ScoutCriteria,
     ScoutDocument,
     ScoutOutcome,
     ScoutResult,
@@ -50,13 +52,16 @@ from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
 )
-from app.services.payments.payment_service import payment_service
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.errors import AppError
 
 USER_ID = make_user_id()
 _NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
-CRITERIA = "open issues assigned to the user; leave out closed ones"
+CRITERIA = ScoutCriteria(
+    needs_you="open issues assigned to the user",
+    important="due within a day",
+    leave_out="closed ones",
+)
 _SPEND_KEY = f"scouts:spend:{USER_ID}:2026-10-22"
 
 
@@ -112,7 +117,7 @@ def _scout(
         if watching
         else None,
         sources=[_SOURCE] if watching else [],
-        criteria=CRITERIA if watching else "",
+        criteria=CRITERIA if watching else None,
         learned_at=datetime(2026, 10, 1, tzinfo=UTC),
     )
 
@@ -186,9 +191,9 @@ def scouts(
         assert user_id == USER_ID
         return s.activity
 
-    async def plan(user_id: str) -> PlanType:
+    async def paid(user_id: str) -> bool:
         assert user_id == USER_ID
-        return s.plan
+        return s.plan is PlanType.PRO
 
     monkeypatch.setattr(service, "scout_integrations", integrations)
     monkeypatch.setattr(service, "scout_tools", tools)
@@ -197,7 +202,7 @@ def scouts(
     monkeypatch.setattr(service, "learn_scout", s.learn)
     monkeypatch.setattr(service, "watch", s.watch)
     monkeypatch.setattr(service, "activity_status_of", activity)
-    monkeypatch.setattr(payment_service, "get_cached_plan_type", plan)
+    monkeypatch.setattr(service, "is_paid", paid)
     with time_machine.travel(_NOW, tick=False):
         yield s
 
@@ -262,17 +267,6 @@ class TestReplayOrLearn:
         assert (result.outcome, _ids(result)) == (ScoutOutcome.LEARNED, ["learned-1"])
         assert scouts.learn.await_count == 1
 
-    async def test_a_watch_frozen_without_criteria_relearns_instead_of_replaying(
-        self, scouts: Scouts
-    ) -> None:
-        scouts.stored["linear"] = _scout(LINEAR).model_copy(update={"criteria": ""})
-
-        [result] = await service.run_scouts(USER)
-
-        assert result.outcome is ScoutOutcome.LEARNED
-        scouts.watch.assert_not_awaited()
-        assert scouts.stored["linear"].criteria == CRITERIA
-
     async def test_nothing_to_watch_is_skipped_until_the_tools_change(self, scouts: Scouts) -> None:
         scouts.stored["linear"] = _scout(LINEAR, status=ScoutStatus.NOTHING_TO_WATCH)
 
@@ -307,13 +301,13 @@ class TestScoutSignals:
                 integration_id="linear",
                 app="Linear",
                 outcome=ScoutOutcome.REPLAYED,
-                criteria="open issues assigned to the user",
+                criteria=CRITERIA,
             ),
             ScoutResult(
                 integration_id="github",
                 app="GitHub",
                 outcome=ScoutOutcome.LEARNED,
-                criteria="open pull requests awaiting the user",
+                criteria=CRITERIA,
             ),
             ScoutResult(
                 integration_id="notion", app="Notion", outcome=ScoutOutcome.REPLAYED, criteria=None
@@ -324,7 +318,10 @@ class TestScoutSignals:
 
         signals = await service.scout_signals(USER, _NOW)
 
-        assert signals.criteria == {"Linear": "open issues assigned to the user"}
+        assert signals.criteria == {
+            "Linear": "needs you: open issues assigned to the user; important: due within a day; "
+            "leave out: closed ones"
+        }
         assert signals.results == results
 
 
@@ -768,6 +765,25 @@ class TestOneScoutFailing:
         assert error["msg"] == "briefing.scout_failed"
         assert error["error"] == "no tools reachable for github"
         assert error["error_type"] == "AppError"
+
+    @pytest.mark.regression
+    async def test_every_scouts_turn_is_counted_for_the_scout_failure_alert(
+        self, scouts: Scouts
+    ) -> None:
+        """A failed scout was only a wide-event error; no series could alert on the rate."""
+        scouts.integrations = [GITHUB, LINEAR]
+        scouts.broken_tools = {"github": AppError(message="no tools reachable for github")}
+        scouts.stored["linear"] = _scout(LINEAR)
+
+        def counted(outcome: str, skip_reason: str) -> float:
+            labels = {"outcome": outcome, "skip_reason": skip_reason}
+            return REGISTRY.get_sample_value("gaia_brief_scout_total", labels) or 0.0
+
+        failed, replayed = counted("skipped", "failed"), counted("replayed", "none")
+        await service.run_scouts(USER)
+
+        assert counted("skipped", "failed") == failed + 1
+        assert counted("replayed", "none") == replayed + 1
 
     async def test_a_scout_that_never_returns_is_skipped_so_the_next_one_still_runs(
         self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch

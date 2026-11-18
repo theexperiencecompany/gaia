@@ -18571,7 +18571,9 @@
           "source_failed",
           "no_read_only_tools",
           "unknown_integration",
-          "signed_out"
+          "signed_out",
+          "free_plan",
+          "dormant"
         ],
         "title": "ScoutSkipReason",
         "type": "string"

@@ -13,7 +13,7 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
+from app.constants.integrations import INTEGRATION_STATUS_CREATED, INTEGRATION_STATUS_EXPIRED
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST, MCP_UNLISTED_CONNECT_MAX
 from app.constants.providers import CredentialProviderName
@@ -444,10 +444,10 @@ class MCPClient:
         """Say how a credential that no longer works reads: expired once it ever connected, else never set up."""
         if await user_integration_repository.has_connected_before(self.user_id, integration_id):
             return INTEGRATION_STATUS_EXPIRED
-        return "created"
+        return INTEGRATION_STATUS_CREATED
 
     async def _reset_to_disconnected(
-        self, integration_id: str, *, status: UserIntegrationStatus = "created"
+        self, integration_id: str, *, status: UserIntegrationStatus = INTEGRATION_STATUS_CREATED
     ) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 

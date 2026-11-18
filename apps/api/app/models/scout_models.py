@@ -8,10 +8,19 @@ with no model, and each frozen result is read into signals by the paths the lear
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import NamedTuple, Protocol
+from typing import Annotated, NamedTuple, Protocol, Self
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StringConstraints,
+    model_validator,
+)
 
+from app.constants.scouts import SCOUT_CRITERION_MAX_CHARS
 from app.db.repositories.base import UserScopedDocument
 from app.models.playbook_models import MAX_FOR_EACH_ITEMS, ForEachStep, PlaybookBody, ToolStep
 
@@ -156,12 +165,47 @@ class ScoutStep(BaseModel):
         )
 
 
+def _one_line(value: object) -> object:
+    """Collapse a criterion to one line of plain text, cut at the cap."""
+    if not isinstance(value, str):
+        return value
+    return " ".join(value.split())[:SCOUT_CRITERION_MAX_CHARS]
+
+
+#: One criterion: written by a learn run from the app's own data, so never trusted as free text.
+Criterion = Annotated[
+    str,
+    BeforeValidator(_one_line),
+    StringConstraints(min_length=1, max_length=SCOUT_CRITERION_MAX_CHARS),
+]
+
+
+class ScoutCriteria(BaseModel):
+    """How a scout tells which of its app's items matter, as three capped one-line fields.
+
+    Every read re-validates them, so a stored criterion can never grow past its cap or
+    break onto a new line inside the brief's prompt.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    needs_you: Criterion = Field(description="Which items need this user")
+    important: Criterion = Field(description="Which of those are important")
+    leave_out: Criterion = Field(description="What to leave out")
+
+    def line(self) -> str:
+        """Return the criteria as the one line the brief's selection reads."""
+        return (
+            f"needs you: {self.needs_you}; important: {self.important}; leave out: {self.leave_out}"
+        )
+
+
 class ScoutReport(BaseModel):
     """The learn run's final answer: what it watches, how to repeat it, what it found today."""
 
     watching: str = Field(description="One line: what in this app can need the user")
-    criteria: str = Field(
-        default="",
+    criteria: ScoutCriteria | None = Field(
+        default=None,
         description="How to tell which items need this user and which are important",
     )
     nothing_to_watch: bool = False
@@ -194,11 +238,18 @@ class ScoutDocument(UserScopedDocument):
     playbook: PlaybookBody | None = None
     sources: list[SignalSource] = Field(default_factory=list)
     #: The learn run's criteria for which items matter; replayed items are judged by them.
-    criteria: str = ""
+    criteria: ScoutCriteria | None = None
     learned_at: datetime
     failed_learns: int = 0
     next_learn_at: datetime | None = None
     failed_replays: int = 0
+
+    @model_validator(mode="after")
+    def _a_watch_is_complete(self) -> Self:
+        """A watching scout always holds the calls it replays and the criteria its rows are judged by."""
+        if self.status is ScoutStatus.WATCHING and (self.playbook is None or self.criteria is None):
+            raise ValueError("a watching scout needs its playbook and its criteria")
+        return self
 
 
 class ScoutUpdate(BaseModel):
@@ -231,6 +282,10 @@ class ScoutSkipReason(StrEnum):
     UNKNOWN_INTEGRATION = "unknown_integration"
     #: The app's sign-in expired or was revoked: only the user reconnecting it brings it back.
     SIGNED_OUT = "signed_out"
+    #: Scouts are a Pro feature: a free user's brief runs none.
+    FREE_PLAN = "free_plan"
+    #: A dormant user's brief runs none: nobody would read what they found.
+    DORMANT = "dormant"
 
 
 class ScoutResult(BaseModel):
@@ -242,7 +297,7 @@ class ScoutResult(BaseModel):
     outcome: ScoutOutcome
     signals: list[Signal] = Field(default_factory=list)
     #: A replayed scout's criteria, which the brief's selection judge reads its rows by.
-    criteria: str | None = None
+    criteria: ScoutCriteria | None = None
     skip_reason: ScoutSkipReason | None = None
     error: str | None = None
     #: Whether the integration has tools that change things, so GAIA can act in it, not only read.
@@ -255,6 +310,8 @@ class SignalMemoryDocument(UserScopedDocument):
     integration_id: str
     external_id: str
     first_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: The latest brief that saw it; a memory not seen for SIGNAL_MEMORY_RETENTION expires.
+    last_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     times_shown: int = 0
     last_shown: datetime | None = None
     last_state: str | None = None

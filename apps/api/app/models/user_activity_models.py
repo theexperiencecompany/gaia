@@ -19,6 +19,13 @@ def status_window(status: ActivityStatus, now: datetime) -> tuple[datetime | Non
             return None, now - DORMANT_AFTER
 
 
+class UserActivityRow(BaseModel):
+    """A user's id and last-seen instant: all a sweep over one activity status reads."""
+
+    id: str
+    last_active_at: datetime | None = None
+
+
 class UserActivityDates(BaseModel):
     """The two user fields activity is judged from.
 

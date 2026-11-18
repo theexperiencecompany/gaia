@@ -16,14 +16,14 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware import rate_limiter
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 from app.api.v1.middleware.rate_limiter import (
+    RateLimitMiddleware,
     RequestBucket,
-    RouterAwareSlowAPIMiddleware,
     find_route_handler,
+    rate_limit_handler,
 )
 from app.config.settings import settings
 from app.constants.http import INTERNAL_CALLER_HEADER, VIEWER_IP_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
-from app.core.middleware import rate_limit_handler
 from app.models.user_models import AuthenticatedUser
 from tests.conftest import FAKE_USER
 
@@ -53,7 +53,7 @@ class _FakeAuth(BaseHTTPMiddleware):
 def _app(*, enabled: bool = True, storage_uri: str = "memory://") -> FastAPI:
     """Mount routes the way routes.py does: under an include-time /api/v1 prefix."""
     app = FastAPI()
-    app.add_middleware(RouterAwareSlowAPIMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(_FakeAuth)
     app.exception_handler(RateLimitExceeded)(rate_limit_handler)
     app.state.limiter = rate_limiter.build_limiter(storage_uri)
@@ -310,7 +310,7 @@ async def test_a_redis_outage_keeps_counting_in_memory_instead_of_crashing() -> 
 async def test_the_token_never_signs_anyone_in() -> None:
     """Behind the real auth middlewares, a token request with no session is still a 401 for user data."""
     app = FastAPI()
-    app.add_middleware(RouterAwareSlowAPIMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(WorkOSAuthMiddleware)
     app.add_middleware(BotAuthMiddleware)
     app.exception_handler(RateLimitExceeded)(rate_limit_handler)

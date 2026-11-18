@@ -53,21 +53,37 @@ def _isolate_stream_registries() -> Iterator[None]:
 
 
 class _CapturingTransport(Transport):
-    """Keep every error event the client would send to Sentry, in send order."""
+    """Keep every error event and transaction the client would send to Sentry, in send order."""
 
     def __init__(self, options: dict[str, object]) -> None:
         super().__init__(options)
         self.events: list[Event] = []
+        self.transactions: list[Event] = []
 
     def capture_envelope(self, envelope: Envelope) -> None:
         event = envelope.get_event()
         if event is not None:
             self.events.append(event)
+        transaction = envelope.get_transaction_event()
+        if transaction is not None:
+            self.transactions.append(transaction)
 
 
 @pytest.fixture
-def sentry_events() -> Iterator[list[Event]]:
-    """Run the real init_sentry against a transport stub; yields the error events sent."""
+def sentry_events(_sentry_transport: _CapturingTransport) -> list[Event]:
+    """Return the error events the real init_sentry sends, in send order."""
+    return _sentry_transport.events
+
+
+@pytest.fixture
+def sentry_transactions(_sentry_transport: _CapturingTransport) -> list[Event]:
+    """Return the transactions the real init_sentry sends, in send order."""
+    return _sentry_transport.transactions
+
+
+@pytest.fixture
+def _sentry_transport() -> Iterator[_CapturingTransport]:
+    """Run the real init_sentry against a transport stub that keeps what it would send."""
     with (
         patch("app.config.sentry.settings.SENTRY_DSN", "https://public@sentry.invalid/1"),
         patch("app.config.sentry._loguru") as sentry_loguru,
@@ -80,7 +96,7 @@ def sentry_events() -> Iterator[list[Event]]:
     client = sentry_sdk.get_client()
     transport = _CapturingTransport(client.options)
     client.transport = transport
-    yield transport.events
+    yield transport
     for handler_id in added_sinks:
         loguru_logger.remove(handler_id)
     # init_sentry's tags live on the global scope; left there, a later test reads them as its own.

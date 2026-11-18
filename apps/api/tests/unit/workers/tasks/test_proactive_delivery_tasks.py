@@ -6,7 +6,11 @@ from arq.worker import Retry
 import pytest
 
 from app.agents.core.background.platform_chat import DeferredChatMessage, PlatformImage
-from app.constants.notifications import PROACTIVE_RECORD_RETRY_DELAY, ProactiveMessageClass
+from app.constants.notifications import (
+    PROACTIVE_RECORD_MAX_TRIES,
+    PROACTIVE_RECORD_RETRY_DELAY,
+    ProactiveMessageClass,
+)
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import UserDocument
@@ -87,7 +91,7 @@ class TestRecordProactiveDelivery:
         with patch.object(proactive_delivery_tasks, "try_record_platform_delivery", try_record):
             async with captured_wide_event() as event:
                 outcome = await proactive_delivery_tasks.record_proactive_delivery(
-                    {}, "conv-1", "Digest is ready."
+                    {"job_try": 1}, "conv-1", "Digest is ready."
                 )
 
         assert outcome == "recorded"
@@ -100,6 +104,37 @@ class TestRecordProactiveDelivery:
             patch.object(proactive_delivery_tasks, "try_record_platform_delivery", held),
             pytest.raises(Retry) as retry,
         ):
-            await proactive_delivery_tasks.record_proactive_delivery({}, "conv-1", "Digest.")
+            await proactive_delivery_tasks.record_proactive_delivery(
+                {"job_try": 1}, "conv-1", "Digest."
+            )
 
         assert retry.value.defer_score == PROACTIVE_RECORD_RETRY_DELAY.total_seconds() * 1000
+
+    @pytest.mark.regression
+    async def test_a_write_that_raises_is_retried_not_dropped(self) -> None:
+        broken = AsyncMock(side_effect=RuntimeError("checkpoint down"))
+        with (
+            patch.object(proactive_delivery_tasks, "try_record_platform_delivery", broken),
+            pytest.raises(Retry),
+        ):
+            async with captured_wide_event() as event:
+                await proactive_delivery_tasks.record_proactive_delivery(
+                    {"job_try": 1}, "conv-1", "Digest."
+                )
+
+        (warning,) = event["warnings"]
+        assert warning["error_type"] == "RuntimeError"
+
+    @pytest.mark.regression
+    async def test_the_last_try_gives_up_loudly(self) -> None:
+        held = AsyncMock(return_value=False)
+        with patch.object(proactive_delivery_tasks, "try_record_platform_delivery", held):
+            async with captured_wide_event() as event:
+                outcome = await proactive_delivery_tasks.record_proactive_delivery(
+                    {"job_try": PROACTIVE_RECORD_MAX_TRIES}, "conv-1", "Digest."
+                )
+
+        assert outcome == "failed"
+        (error,) = event["errors"]
+        assert error["msg"] == "delivered message never reached its conversation's thread"
+        assert error["tries"] == PROACTIVE_RECORD_MAX_TRIES

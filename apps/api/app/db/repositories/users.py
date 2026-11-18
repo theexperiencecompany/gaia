@@ -50,7 +50,7 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
 )
 from app.models.quiet_hours_models import QuietHours
-from app.models.user_activity_models import UserActivityDates, status_window
+from app.models.user_activity_models import UserActivityDates, UserActivityRow, status_window
 from app.models.user_models import (
     BioStatus,
     BriefingBootstrap,
@@ -151,9 +151,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             branches.append({"last_active_at": None, "created_at": None})
         return {"$or": branches}
 
-    async def find_by_activity_status(
-        self, status: ActivityStatus, *, among: Collection[str] | None = None
-    ) -> list[UserDocument]:
+    def _status_query(
+        self, status: ActivityStatus, among: Collection[str] | None
+    ) -> dict[str, object]:
         """Live users in status now, optionally only those whose id is in among (invalid ids skipped)."""
         query: dict[str, object] = {
             **self._activity_filter(status, datetime.now(UTC)),
@@ -163,7 +163,25 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             query["_id"] = {
                 "$in": [self._id_value(user_id) for user_id in among if self.is_valid_id(user_id)]
             }
-        return await self._find_lenient(query)
+        return query
+
+    async def find_by_activity_status(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserDocument]:
+        """Live users in status now, as whole documents; a sweep needing only ids reads find_activity_rows."""
+        return await self._find_lenient(self._status_query(status, among))
+
+    async def find_activity_rows(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserActivityRow]:
+        """Live users in status now, as their id and last-seen instant only."""
+        return await self._aggregate(
+            [
+                {"$match": self._status_query(status, among)},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "last_active_at": True}},
+            ],
+            UserActivityRow,
+        )
 
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
         """Recently-signed-up, still-active users — the nurture-sequence cohort.

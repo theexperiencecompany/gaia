@@ -21,6 +21,7 @@ from app.constants.notifications import (
 )
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.platform_links import DAY_ZERO_HELLO_TASK
 from app.constants.scouts import LEARN_SCOUT_TASK
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
@@ -145,7 +146,8 @@ _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
 _sweep_expired_memories = arq_task(sweep_expired_memories)
-_send_day_zero_hello = arq_task(send_day_zero_hello)
+# Named from the constant platform linking enqueues it by, so the two cannot drift.
+_send_day_zero_hello = func(arq_task(send_day_zero_hello), name=DAY_ZERO_HELLO_TASK)
 # keep_result=0: the per-user job id means a kept result blocks re-enqueue for
 # an hour, including the hourly recovery sweep's retry of an ESP-rejected
 # delivery. Re-runs are made harmless by delivery stamps, not by the result.

@@ -18,6 +18,9 @@ import re
 
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 
+#: The user-facing comms graph's name: its GraphManager key and its runs' agent_name.
+COMMS_AGENT_NAME = "comms_agent"
+
 
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""

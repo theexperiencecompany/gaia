@@ -14,6 +14,7 @@ from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.services.briefing import run_times
+from app.workers.brief_slots import spread_cron
 
 _KOLKATA = ZoneInfo("Asia/Kolkata")
 
@@ -56,7 +57,9 @@ class TestTheDailyBriefsCron:
     ) -> None:
         user = _user(quiet_hours=quiet_hours)
 
-        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == cron
+        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == spread_cron(
+            cron, user.id
+        )
 
     @pytest.mark.parametrize(
         ("frequency", "hour", "cron"),
@@ -74,17 +77,25 @@ class TestTheDailyBriefsCron:
     ) -> None:
         user = _user(frequency, hour)
 
-        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == cron
+        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user) == spread_cron(
+            cron, user.id
+        )
 
 
 class TestTheWeeklyDigestsCron:
     def test_it_runs_on_sunday_at_five(self) -> None:
-        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, _user()) == "0 17 * * 0"
+        user = _user()
+
+        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user) == spread_cron(
+            "0 17 * * 0", user.id
+        )
 
     def test_quiet_hours_covering_it_push_it_to_when_they_end(self) -> None:
         user = _user(quiet_hours=QuietHours(enabled=True, start_hour=16, end_hour=19))
 
-        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user) == "0 19 * * 0"
+        assert run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user) == spread_cron(
+            "0 19 * * 0", user.id
+        )
 
 
 class TestBriefSlots:

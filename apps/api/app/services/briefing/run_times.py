@@ -22,6 +22,7 @@ from app.constants.todos import INBOX_DESK_LEAD_HOURS
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import UserDocument
+from app.workers.brief_slots import spread_cron
 
 
 @dataclass(frozen=True)
@@ -121,11 +122,11 @@ def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:
-    """Return the cron the profile gives the briefing workflow under key.
+    """Return the cron the profile gives the briefing workflow under key, at the user's slot minute.
 
     A workflow the frequency does not run keeps the every-day cron at the user's hour.
     """
-    return _slots_running(key, user)[key].cron
+    return spread_cron(_slots_running(key, user)[key].cron, user.id)
 
 
 def _slots_running(key: str, user: UserDocument) -> dict[str, BriefSlot]:

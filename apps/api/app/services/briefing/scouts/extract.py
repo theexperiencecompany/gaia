@@ -119,11 +119,15 @@ class _Item:
 
 
 def is_the_user(person: object, handles: frozenset[str]) -> bool:
-    """Say whether an app's person, a name or an object, carries one of the user's own handles."""
+    """Say whether an app's person, a handle or an object, carries one of the user's own handles.
+
+    An object is matched on its identity fields only: a display name is free text any
+    teammate can set to the user's handle.
+    """
     if isinstance(person, Mapping):
         return any(
             isinstance(value, str) and value.casefold() in handles
-            for value in (person.get(key) for key in (*PERSON_NAME_KEYS, *PERSON_ID_KEYS))
+            for value in (person.get(key) for key in PERSON_ID_KEYS)
         )
     return isinstance(person, str) and person.casefold() in handles
 

@@ -507,6 +507,32 @@ class TestCreateAllIndexes:
             for p in patches.values():
                 p.stop()
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "creator",
+        ["create_briefing_indexes", "create_scout_indexes", "create_signal_memory_indexes"],
+    )
+    @patch("app.db.mongodb.indexes.log")
+    async def test_a_failed_brief_store_index_build_stops_startup(
+        self, mock_log: MagicMock, creator: str
+    ) -> None:
+        """Their unique keys are what make a rerun replace a brief, scout or memory, not add one."""
+        patches = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches.items()}
+        mocks[creator].side_effect = DuplicateKeyError("E11000 duplicate key")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(DuplicateKeyError):
+                await create_all_indexes()
+        finally:
+            for p in patches.values():
+                p.stop()
+
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_success(self, mock_log: MagicMock) -> None:
         """All index creators succeeding should report full success."""

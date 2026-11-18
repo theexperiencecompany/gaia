@@ -20,7 +20,7 @@ from app.constants.scouts import (
 )
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.scouts import scouts_repository
-from app.models.payment_models import PlanType
+from app.decorators.entitlements import is_paid
 from app.models.scout_models import (
     RememberedSignal,
     ScoutDocument,
@@ -32,6 +32,7 @@ from app.models.scout_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.memory import remember
+from app.services.briefing.scouts.metrics import record_scout_turn
 from app.services.briefing.scouts.spend import reserve_learn
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -41,7 +42,6 @@ from app.services.briefing.scouts.tools import (
 )
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
 from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS, MCPIntegrationNotFoundError
-from app.services.payments.payment_service import payment_service
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.timezone import Timezone
@@ -160,12 +160,9 @@ async def _source_failed(
 async def _replay(
     user: UserDocument, integration: ScoutIntegration, tools: ScoutTools, scout: ScoutDocument
 ) -> ScoutResult:
-    """Replay a watching scout; a moved result shape relearns it, an app that fails keeps it.
-
-    A scout frozen with no criteria (before they existed) relearns: its rows cannot be judged.
-    """
-    if scout.playbook is None or not scout.criteria.strip():
-        return await _relearn(user, integration, tools, scout)
+    """Replay a watching scout; a moved result shape relearns it, an app that fails keeps it."""
+    if scout.playbook is None:
+        raise ValueError("only a watching scout replays, and it always holds its playbook")
     try:
         signals = await watch(
             _playbook_user(user),
@@ -258,12 +255,12 @@ async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> Scou
         )
 
 
-async def _scouts_skipped(user_id: str) -> str | None:
+async def _scouts_skipped(user_id: str) -> ScoutSkipReason | None:
     """Why this user's brief runs no scouts at all, or None when it does."""
-    if await payment_service.get_cached_plan_type(user_id) is PlanType.FREE:
-        return "free_plan"
+    if not await is_paid(user_id):
+        return ScoutSkipReason.FREE_PLAN
     if await activity_status_of(user_id) is ActivityStatus.DORMANT:
-        return "dormant"
+        return ScoutSkipReason.DORMANT
     return None
 
 
@@ -271,7 +268,7 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
     """Run the scout of every connected integration the brief does not cover elsewhere, a few at once."""
     skipped = await _scouts_skipped(user.id)
     if skipped is not None:
-        log.set_ns("scouts", skipped=skipped)
+        log.set_ns("scouts", skipped=skipped.value)
         return []
     slots = asyncio.Semaphore(SCOUT_CONCURRENCY)
 
@@ -281,6 +278,8 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
             return await _scout_turn(user, integration)
 
     results = list(await asyncio.gather(*(turn(i) for i in await scout_integrations(user.id))))
+    for result in results:
+        record_scout_turn(result)
     log.set_ns(
         "scouts",
         outcomes={r.integration_id: r.outcome.value for r in results},
@@ -308,7 +307,9 @@ async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
     results = await run_scouts(user)
     remembered = await remember(user.id, [s for r in results for s in r.signals], now)
     criteria = {
-        r.app: r.criteria for r in results if r.outcome is ScoutOutcome.REPLAYED and r.criteria
+        r.app: r.criteria.line()
+        for r in results
+        if r.outcome is ScoutOutcome.REPLAYED and r.criteria is not None
     }
     return ScoutSignals(remembered=remembered, criteria=criteria, results=results)
 

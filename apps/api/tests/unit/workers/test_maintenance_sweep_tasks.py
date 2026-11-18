@@ -25,7 +25,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
+from app.models.user_activity_models import UserActivityRow
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -744,8 +744,8 @@ class TestMaintenanceSweep:
         with (
             _sweep(list=[away, here], health="ARCHIVE: done") as (_pool, mocks),
             patch(
-                f"{MODULE}.user_repository.find_by_activity_status",
-                AsyncMock(return_value=[UserDocument(id="user-away")]),
+                f"{MODULE}.user_repository.find_activity_rows",
+                AsyncMock(return_value=[UserActivityRow(id="user-away")]),
             ) as find,
         ):
             summary = await maintenance_sweep_tracked_todos({})

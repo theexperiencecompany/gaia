@@ -80,6 +80,23 @@ class TestReadingItems:
         assert signal.people == ["Aryan Randeriya", "Sam Lee", "ARYAN@HEYGAIA.IO"]
         assert signal.people_you == ["Aryan Randeriya", "ARYAN@HEYGAIA.IO"]
 
+    @pytest.mark.regression
+    def test_a_teammate_named_after_the_users_handle_is_not_the_user(self) -> None:
+        """A display name is free text anyone can set; only an account's own id field is the user."""
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}
+        )
+        pr = _pr(7, state="open")
+        pr["assignees"] = [
+            {"name": "aryan-randeriya", "login": "mallory"},
+            {"display_name": "ARYAN@HEYGAIA.IO", "id": "u-9"},
+        ]
+        mine = replace(GITHUB, handles=frozenset({"aryan-randeriya", "aryan@heygaia.io"}))
+
+        [signal] = extract_signals(mine, [source], {"reviews": {"items": [pr]}})
+
+        assert signal.people_you == []
+
     def test_an_app_with_no_known_handle_marks_nobody_as_the_user(self) -> None:
         source = SOURCE.model_copy(
             update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}

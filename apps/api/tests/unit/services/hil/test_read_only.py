@@ -9,7 +9,9 @@ from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
+from app.agents.llm.lane import ModelLane
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY, HIL_LLM_TIMEOUT_SECONDS
+from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.hil.read_only import (
     _ReadOnlyJudgement,
@@ -152,18 +154,32 @@ class TestVoicesWriteIntent:
 class _Verdicts:
     """Stands in for the Mongo verdict cache and the helper model."""
 
-    cache: dict[str, ToolReadOnlyVerdict] = field(default_factory=dict)
+    cache: dict[tuple[str, str], ToolReadOnlyVerdict] = field(default_factory=dict)
     judge: AsyncMock = field(
         default_factory=lambda: AsyncMock(
             return_value=_ReadOnlyJudgement(has_side_effects=False, certain=True)
         )
     )
 
-    async def find_verdict(self, tool_hash: str) -> ToolReadOnlyVerdict | None:
-        return self.cache.get(tool_hash)
+    async def find_verdict(self, tool_hash: str, classifier: str) -> ToolReadOnlyVerdict | None:
+        return self.cache.get((tool_hash, classifier))
 
     async def upsert_verdict(self, verdict: ToolReadOnlyVerdict) -> None:
-        self.cache[verdict.tool_hash] = verdict
+        self.cache[(verdict.tool_hash, verdict.classifier)] = verdict
+
+    def stored(self, tool: BaseTool) -> ToolReadOnlyVerdict:
+        [verdict] = [v for (shape, _), v in self.cache.items() if shape == tool_shape_hash(tool)]
+        return verdict
+
+
+def _judge_lane(model: str) -> ModelLane:
+    return ModelLane(
+        provider=LLMProviderName.GEMINI,
+        model=model,
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
 
 
 @pytest.fixture
@@ -172,6 +188,8 @@ def verdicts() -> Iterator[_Verdicts]:
     with (
         patch(f"{MODULE}.tool_read_only_verdict_repository", state),
         patch(f"{MODULE}.ainvoke_structured", state.judge),
+        # create=True: the regression lane runs this suite against a base without the seam.
+        patch(f"{MODULE}.one_shot_lane", lambda use: _judge_lane("judge-1"), create=True),
     ):
         yield state
 
@@ -278,7 +296,7 @@ class TestIsReadOnly:
         tool = _reading_tool()
 
         assert await is_read_only(tool) is True
-        assert verdicts.cache[tool_shape_hash(tool)].read_only is True
+        assert verdicts.stored(tool).read_only is True
 
     @pytest.mark.parametrize(
         "judgement",
@@ -330,7 +348,7 @@ class TestIsReadOnly:
 
         await is_read_only(tool)
 
-        stored = verdicts.cache[tool_shape_hash(tool)]
+        stored = verdicts.stored(tool)
         assert (stored.tool_name, stored.read_only, stored.rationale) == (
             "list_open_tickets",
             True,
@@ -348,6 +366,31 @@ class TestIsReadOnly:
         verdicts.judge.return_value = _ReadOnlyJudgement(has_side_effects=True, certain=True)
 
         assert await is_read_only(_reading_tool("List open tickets and their owners.")) is False
+        assert verdicts.judge.await_count == 2
+
+    @pytest.mark.regression
+    async def test_a_new_classifier_prompt_judges_a_cached_tool_again(
+        self, verdicts: _Verdicts
+    ) -> None:
+        """A wrong cached "read-only" survived every fix to the classifier prompt."""
+        await is_read_only(_reading_tool())
+        verdicts.judge.return_value = _ReadOnlyJudgement(has_side_effects=True, certain=True)
+
+        with patch(
+            f"{MODULE}.TOOL_READ_ONLY_PROMPT",
+            "a stricter prompt {nonce}{name}{description}{schema}",
+        ):
+            assert await is_read_only(_reading_tool()) is False
+        assert verdicts.judge.await_count == 2
+
+    @pytest.mark.regression
+    async def test_a_new_classifier_model_judges_a_cached_tool_again(
+        self, verdicts: _Verdicts
+    ) -> None:
+        await is_read_only(_reading_tool())
+
+        with patch(f"{MODULE}.one_shot_lane", lambda use: _judge_lane("judge-2"), create=True):
+            await is_read_only(_reading_tool())
         assert verdicts.judge.await_count == 2
 
     async def test_a_failed_classification_raises_and_caches_nothing(

@@ -3013,7 +3013,7 @@ class TestTheDailyRunWiring:
     async def test_every_run_is_counted_by_kind_and_how_it_ended(self, world: World) -> None:
         def count(outcome: str) -> float:
             labels = {"kind": "daily", "outcome": outcome}
-            return REGISTRY.get_sample_value("gaia_briefing_run_total", labels) or 0.0
+            return REGISTRY.get_sample_value("gaia_brief_run_total", labels) or 0.0
 
         sent, failed = count("sent"), count("failed")
         await run_brief(_USER, BriefingKind.DAILY)

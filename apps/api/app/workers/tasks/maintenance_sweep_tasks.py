@@ -68,7 +68,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
     # A dormant owner would read none of what the sweep's LLM checks produce.
-    away = await user_repository.find_by_activity_status(
+    away = await user_repository.find_activity_rows(
         ActivityStatus.DORMANT, among={todo.user_id for todo in todos}
     )
     away_ids = {user.id for user in away}

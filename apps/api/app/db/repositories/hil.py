@@ -168,14 +168,14 @@ class ToolReadOnlyVerdictRepository(
     uses_object_id = True
     cache_policy = None
 
-    async def find_verdict(self, tool_hash: str) -> ToolReadOnlyVerdict | None:
-        """Return the stored verdict for this exact name, description and schema, or None."""
-        return await self._find_one({"tool_hash": tool_hash})
+    async def find_verdict(self, tool_hash: str, classifier: str) -> ToolReadOnlyVerdict | None:
+        """Return the verdict this classifier gave this exact name, description and schema, or None."""
+        return await self._find_one({"tool_hash": tool_hash, "classifier": classifier})
 
     async def upsert_verdict(self, verdict: ToolReadOnlyVerdict) -> None:
-        """Store the verdict on its tool_hash; concurrent classifications of one tool converge."""
+        """Store the verdict on its tool and classifier; concurrent classifications converge."""
         await self._raw_collection().update_one(
-            {"tool_hash": verdict.tool_hash},
+            {"tool_hash": verdict.tool_hash, "classifier": verdict.classifier},
             {"$set": verdict.model_dump(exclude={"id"})},
             upsert=True,
         )

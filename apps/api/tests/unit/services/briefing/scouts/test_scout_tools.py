@@ -319,10 +319,12 @@ class TestReadOnly:
     ) -> None:
         """A custom MCP rarely sets readOnlyHint; its reading tools must still reach the scout."""
         mcp_client.ensure_connected.return_value = [list_open_tickets, create_ticket, fetch_digest]
-        stored: dict[str, ToolReadOnlyVerdict] = {}
+        stored: dict[tuple[str, str], ToolReadOnlyVerdict] = {}
         repository = MagicMock(
-            find_verdict=AsyncMock(side_effect=stored.get),
-            upsert_verdict=AsyncMock(side_effect=lambda v: stored.__setitem__(v.tool_hash, v)),
+            find_verdict=AsyncMock(side_effect=lambda shape, by: stored.get((shape, by))),
+            upsert_verdict=AsyncMock(
+                side_effect=lambda v: stored.__setitem__((v.tool_hash, v.classifier), v)
+            ),
         )
         judged: list[str] = []
 
@@ -333,6 +335,7 @@ class TestReadOnly:
 
         monkeypatch.setattr(read_only_module, "tool_read_only_verdict_repository", repository)
         monkeypatch.setattr(read_only_module, "ainvoke_structured", judge)
+        monkeypatch.setattr(read_only_module, "classifier_fingerprint", lambda: "judge")
 
         result = await scout_tools(USER_ID, CUSTOM_MCP)
 

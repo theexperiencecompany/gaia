@@ -22,7 +22,8 @@ from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
-from app.services.briefing.metrics import BRIEFING_RUN_TOTAL, create_briefing_run_series
+from app.services.briefing.metrics import BRIEF_RUN_TOTAL, create_brief_run_series
+from app.services.briefing.scouts.metrics import ALL_SCOUT_COLLECTORS, create_alerted_scout_series
 from app.services.latency_metrics import ALL_COLLECTORS
 from app.services.storage.metrics import (
     _FS_OP_BYTES_TOTAL,
@@ -69,7 +70,9 @@ for _collector in (
     # Playbook decisions and replays: workflow runs execute on the worker.
     *ALL_PLAYBOOK_COLLECTORS,
     # Briefing runs by outcome: briefs run on the worker.
-    BRIEFING_RUN_TOTAL,
+    BRIEF_RUN_TOTAL,
+    # Brief scout turns: briefs run on the worker.
+    *ALL_SCOUT_COLLECTORS,
 ):
     # Already registered on this registry (re-import under reload).
     with contextlib.suppress(ValueError):
@@ -79,5 +82,6 @@ for _collector in (
 def start_metrics_server(port: int) -> None:
     """Start the Prometheus metrics HTTP server on the given port, the alerted series already at zero."""
     create_alerted_series()
-    create_briefing_run_series()
+    create_brief_run_series()
+    create_alerted_scout_series()
     start_http_server(port, registry=REGISTRY)

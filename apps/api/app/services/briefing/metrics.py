@@ -17,10 +17,10 @@ from shared.py.wide_events import log
 #: The outcome label of a run that raised before it could end.
 FAILED: Final = "failed"
 
-BRIEFING_RUN_TOTAL = _register_once(
-    "gaia_briefing_run_total",
+BRIEF_RUN_TOTAL = _register_once(
+    "gaia_brief_run_total",
     lambda: Counter(
-        name="gaia_briefing_run_total",
+        name="gaia_brief_run_total",
         documentation="Briefing runs by kind and how each ended; failed is a run that raised",
         labelnames=("kind", "outcome"),
     ),
@@ -32,16 +32,16 @@ async def counted_run(kind: BriefingKind, run: Awaitable[BriefingRunOutcome]) ->
     try:
         outcome = await run
     except Exception:
-        BRIEFING_RUN_TOTAL.labels(kind, FAILED).inc()
+        BRIEF_RUN_TOTAL.labels(kind, FAILED).inc()
         log.set_ns("briefing", outcome=FAILED)
         raise
-    BRIEFING_RUN_TOTAL.labels(kind, outcome.value).inc()
+    BRIEF_RUN_TOTAL.labels(kind, outcome.value).inc()
     log.set_ns("briefing", outcome=outcome.value)
     return outcome
 
 
-def create_briefing_run_series() -> None:
+def create_brief_run_series() -> None:
     """Create every briefing run series at zero, so its first increment is visible."""
     for kind in BriefingKind:
         for outcome in [*(o.value for o in BriefingRunOutcome), FAILED]:
-            BRIEFING_RUN_TOTAL.labels(kind, outcome)
+            BRIEF_RUN_TOTAL.labels(kind, outcome)

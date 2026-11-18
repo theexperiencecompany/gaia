@@ -236,6 +236,8 @@ _SELFHOST_INFRA_FIELDS = {
     "AGENT_SECRET",
     "BOT_SESSION_TOKEN_SECRET",
     "EMAIL_UNSUBSCRIBE_SECRET",
+    # Written by the CLI on install and update: the web container is told apart from viewers.
+    "INTERNAL_API_TOKEN",
 }
 
 # String form for provisioning via monkeypatch.setenv (get_settings path).

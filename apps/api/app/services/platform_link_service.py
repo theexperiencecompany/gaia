@@ -16,6 +16,7 @@ from redis.exceptions import RedisError
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.platform_links import (
+    DAY_ZERO_HELLO_TASK,
     IMESSAGE_PENDING_REGISTRATION_TTL,
     LINK_CONFLICT_ACCOUNT_HAS_OTHER,
     LINK_CONFLICT_PLATFORM_TAKEN,
@@ -68,7 +69,7 @@ async def _enqueue_day_zero_hello(user_id: str, platform: str) -> None:
         pool = await RedisPoolManager.get_pool()
         await enqueue_worker_job(
             pool,
-            "send_day_zero_hello",
+            DAY_ZERO_HELLO_TASK,
             user_id,
             platform,
             _job_id=DAY_ZERO_HELLO_JOB_ID.format(user_id=user_id),

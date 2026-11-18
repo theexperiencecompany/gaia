@@ -1,0 +1,34 @@
+# gaia-brief-none-sent — fires when no brief was sent in six hours.
+#
+# gaia_brief_run_total{kind,outcome} is the brief pipeline's run counter on the worker's
+# REGISTRY; its sent series exists at 0 from worker start.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-brief-none-sent fires when sends stop for six hours
+    interval: 10m
+    input_series:
+      - series: 'gaia_brief_run_total{kind="daily",outcome="sent"}'
+        values: '0+3x12 36x48'
+    alert_rule_test:
+      - eval_time: 9h
+        alertname: gaia-brief-none-sent
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+            exp_annotations:
+              description: >-
+                Nobody has received a brief for six hours. Check that the worker is consuming the briefing queue, that brief workflows are still scheduled (the scheduler re-arms them after each run), and the outcome label of gaia_brief_run_total: runs that end skipped rather than failed point at the dormancy or quiet-note rules.
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-brief-none-sent
+
+  - name: gaia-brief-none-sent stays quiet while briefs keep going out
+    interval: 10m
+    input_series:
+      - series: 'gaia_brief_run_total{kind="daily",outcome="sent"}'
+        values: '0+3x60'
+    alert_rule_test:
+      - eval_time: 8h
+        alertname: gaia-brief-none-sent
+        exp_alerts: []

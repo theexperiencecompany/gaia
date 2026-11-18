@@ -2,8 +2,10 @@
 
 A tool's own metadata is final: MCP readOnlyHint/destructiveHint or Composio's tags. When the
 metadata is silent, a write-intent token in its name or description is a hard no, and
-otherwise a cheap model judging the name, description and full input schema decides. That verdict is cached per tool shape (name, description,
-input schema), so a tool is classified once and again only when its shape changes.
+otherwise a cheap model judging the name, description and full input schema decides. That
+verdict is cached per tool shape (name, description, input schema) and classifier (the prompt
+and the model judging), so a tool is judged again when either changes, and every verdict
+expires after TOOL_READ_ONLY_VERDICT_TTL.
 """
 
 import hashlib
@@ -14,6 +16,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions, ainvoke_structured
+from app.agents.llm.lane import one_shot_lane
 from app.constants.hil import (
     COMPOSIO_TAGS_METADATA_KEY,
     COMPOSIO_WRITE_TAGS,
@@ -117,10 +120,11 @@ async def is_read_only(tool: BaseTool | None) -> bool:
     if voices_write_intent(tool.name, tool.description):
         return False
     shape_hash = tool_shape_hash(tool)
-    cached = await tool_read_only_verdict_repository.find_verdict(shape_hash)
+    classifier = classifier_fingerprint()
+    cached = await tool_read_only_verdict_repository.find_verdict(shape_hash, classifier)
     if cached is not None:
         return cached.read_only
-    verdict = await _classify(tool, shape_hash)
+    verdict = await _classify(tool, shape_hash, classifier)
     await tool_read_only_verdict_repository.upsert_verdict(verdict)
     log.info(
         "hil.tool_read_only_classified",
@@ -132,7 +136,14 @@ async def is_read_only(tool: BaseTool | None) -> bool:
     return verdict.read_only
 
 
-async def _classify(tool: BaseTool, shape_hash: str) -> ToolReadOnlyVerdict:
+def classifier_fingerprint() -> str:
+    """Name what judges a tool now: the model the judgement runs on and the prompt it reads."""
+    lane = one_shot_lane(StructuredCallOptions().use)
+    prompt = hashlib.sha256(TOOL_READ_ONLY_PROMPT.encode()).hexdigest()
+    return f"{lane.provider}:{lane.model}:{prompt}"
+
+
+async def _classify(tool: BaseTool, shape_hash: str, classifier: str) -> ToolReadOnlyVerdict:
     """Ask the helper model about a TOOL, not a request: unattributed, as it runs once per shape."""
     judgement = await ainvoke_structured(
         _ReadOnlyJudgement,
@@ -148,6 +159,7 @@ async def _classify(tool: BaseTool, shape_hash: str) -> ToolReadOnlyVerdict:
     )
     return ToolReadOnlyVerdict(
         tool_hash=shape_hash,
+        classifier=classifier,
         tool_name=tool.name,
         read_only=judgement.certain and not judgement.has_side_effects,
         rationale=judgement.rationale,

@@ -13,7 +13,7 @@ Isolation, so the default -n 4 xdist run is safe:
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC
 import os
 import uuid
@@ -102,3 +102,31 @@ async def redis(redis_url: str, monkeypatch: pytest.MonkeyPatch) -> AsyncIterato
 
     await client.flushdb()
     await client.aclose()
+
+
+#: Runs one repository read and returns the plan summary of every operation it sent.
+QueryPlans = Callable[[Awaitable[object]], Awaitable[list[str]]]
+
+
+@pytest.fixture
+def query_plans(raw_collection: AsyncIOMotorCollection) -> QueryPlans:
+    """Return a runner that profiles one read on the fixture collection and reports its plans.
+
+    The profiler is the server's own record of what ran, so a plan read here is the plan
+    production gets for that exact filter and sort, not a hand-copied explain.
+    """
+    database = raw_collection.database
+    namespace = f"{database.name}.{raw_collection.name}"
+
+    async def run(read: Awaitable[object]) -> list[str]:
+        await database.command("profile", 2, filter={"ns": namespace})
+        try:
+            await read
+        finally:
+            await database.command("profile", 0)
+        profile = database["system.profile"].find(
+            {"ns": namespace, "planSummary": {"$exists": True}}
+        )
+        return [str(entry["planSummary"]) async for entry in profile]
+
+    return run

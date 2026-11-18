@@ -21,6 +21,7 @@ MAX_MY_INTEGRATIONS_RESULTS = 100
 
 # Integration connection status values. `Final` keeps the literal type so these
 # still satisfy update_user_integration_status's UserIntegrationStatus.
+INTEGRATION_STATUS_CREATED: Final = "created"
 INTEGRATION_STATUS_CONNECTED: Final = "connected"
 INTEGRATION_STATUS_EXPIRED: Final = "expired"
 

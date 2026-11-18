@@ -59,7 +59,7 @@ async def _active_user_ids() -> list[str]:
     return [
         user.id
         for status in (ActivityStatus.ACTIVE, ActivityStatus.IDLE)
-        for user in await user_repository.find_by_activity_status(status)
+        for user in await user_repository.find_activity_rows(status)
     ]
 
 

@@ -16,12 +16,13 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import resolve_model
-from app.agents.llm.lane import helper_lane
+from app.agents.llm.lane import one_shot_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
 from app.constants.scouts import (
     SCOUT_AGENT_NAME,
+    SCOUT_CRITERION_MAX_CHARS,
     SCOUT_LEARN_RECURSION_LIMIT,
     SCOUT_LEARN_TIMEOUT,
     SCOUT_RESULT_BRIEF,
@@ -66,7 +67,7 @@ async def _run_agent(
         "user_id": user_id,
         "conversation_id": f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         "execution_mode": "background",
-        "lane": helper_lane().to_configurable(),
+        "lane": one_shot_lane(ModelUse.HELPER).to_configurable(),
         "read_only": True,
     }
     async with asyncio.timeout(SCOUT_LEARN_TIMEOUT.total_seconds()):
@@ -120,7 +121,7 @@ def _report_problem(freeze: _Freeze) -> str | None:
     unread = [s.step_id for s in freeze.report.sources if s.step_id not in step_ids]
     if unread:
         return f"sources read steps that were not frozen: {', '.join(unread)}"
-    if not freeze.report.criteria.strip():
+    if freeze.report.criteria is None:
         return "the report froze calls but gave no criteria to judge their items by"
     return None
 
@@ -169,6 +170,7 @@ async def learn_scout(
         app=integration.name,
         today=Timezone.parse(user.timezone).localize(now).date().isoformat(),
         timezone=user.timezone,
+        criterion_chars=SCOUT_CRITERION_MAX_CHARS,
     )
     text, calls = await _run_agent(user_id, integration, bound, prompt, spend)
     report = _parse_report(text, integration)
