@@ -35,12 +35,18 @@ const DEPLOY_TEMPLATES = [
 
 const QUIET_ENV = { ...process.env, LOG_LEVEL: "ERROR" };
 
-/** Exit 1 when any of paths differs from the committed tree; --write skips the diff. */
+/**
+ * Exit 1 when any of paths differs from the index or is untracked; --write skips the diff.
+ * A regeneration already staged is what the commit carries, so a pre-commit run passes it.
+ */
 function failOnDrift(argv, paths, { drift, ok }) {
   if (argv.includes("--write")) return;
   const dirty = execFileSync("git", ["status", "--porcelain", "--", ...paths], {
     encoding: "utf8",
-  }).trim();
+  })
+    .split("\n")
+    .filter((line) => line.length > 1 && line[1] !== " ")
+    .join("\n");
   if (dirty) {
     console.log(dirty);
     console.error(`❌ ${drift}`);
