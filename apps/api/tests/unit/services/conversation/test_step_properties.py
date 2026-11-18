@@ -576,6 +576,12 @@ _A_STOP_WITH_A_NEW_ASK_BELOW = [
 ]
 # A model call retried after its text showed: the shown reply fails as it stood.
 _RETRIED_AFTER_TEXT_SHOWED = [("text", ""), ("retry", ""), ("replied", "")]
+# Two messages open and a run ending on words it never streamed, naming neither: the run told
+# which streams its text below those words, never over them.
+_UNSTREAMED_WORDS_THEN_A_TOLD_RUN = [
+    [("forget", ""), ("replied", "")],
+    [("text", ""), ("replied", "")],
+]
 
 
 @settings(max_examples=STEP_EXAMPLES)
@@ -591,6 +597,11 @@ _RETRIED_AFTER_TEXT_SHOWED = [("text", ""), ("retry", ""), ("replied", "")]
     approves=False,
 )
 @example(op_list=[AppendOp("fire")], plans=[_RETRIED_AFTER_TEXT_SHOWED], approves=False)
+@example(
+    op_list=[AppendOp("user"), AppendOp("user")],
+    plans=_UNSTREAMED_WORDS_THEN_A_TOLD_RUN,
+    approves=False,
+)
 @example(
     op_list=[AppendOp("user")],
     plans=[[("text", ""), ("retry", ""), ("fail", "")]],

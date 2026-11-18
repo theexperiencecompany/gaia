@@ -45,7 +45,12 @@ from app.services.conversation.step_endings import end_attempt
 from app.services.conversation.step_view import StepView
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
-from shared.py.conversation_wire import FailureReason, ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    FailureReason,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import barge, user
 from tests.unit.services.conversation.runtime_doubles import (
@@ -397,6 +402,20 @@ async def test_cards_alone_leave_the_one_open_message_owed_to_a_second_run() -> 
     assert first == Started(batch=(1,), context=())
     assert isinstance(again, Started) and again.note is not None
     assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+
+
+async def test_a_second_runs_text_follows_the_words_the_first_run_ended_on() -> None:
+    # Two messages open, neither named: the run told which streams below the unstreamed words.
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), Finished(Replied("on it "))],
+        [card(), text("done"), Close(seqs=(1, 2)), Finished(Replied("done"))],
+    )
+    await send(rt, user("u1"), user("u2"))
+    await run(rt)
+    [reply] = {item.reply_id: item for item in await replies(rt)}.values()
+    assert reply.text == f"on it{NEW_MESSAGE_BREAKER}done"
+    assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
 
 
 async def test_a_message_owed_when_the_answer_was_final_is_told_to_one_second_run() -> None:

@@ -2,9 +2,10 @@
 
 import pytest
 
-from app.services.conversation.reply_text import bubble_deltas, screen_bubbles
+from app.models.conversation_frame_models import ResponseEvent
+from app.services.conversation.reply_text import ReplyText, bubble_deltas, screen_bubbles
 from app.utils.errors import ShownTextTakenBackError
-from shared.py.conversation_wire import BubbleTextDelta
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubbleTextDelta
 from tests.helpers import TEST_FILE_LINKS
 
 
@@ -72,3 +73,14 @@ def test_a_file_the_reply_names_links_to_its_own_conversation() -> None:
     assert screen_bubbles("See [report](artifacts/report.pdf)", "c1", TEST_FILE_LINKS) == (
         "See [report](https://gaia.test/c/c1)",
     )
+
+
+def test_text_streamed_after_a_kept_message_opens_a_bubble_below_it() -> None:
+    text = ReplyText.kept("an answer").take(ResponseEvent(response="more"))
+
+    assert text.text == f"an answer{NEW_MESSAGE_BREAKER}more"
+    assert text.shown == text.text
+
+
+def test_nothing_kept_is_an_empty_reply_text() -> None:
+    assert ReplyText.kept("") == ReplyText()

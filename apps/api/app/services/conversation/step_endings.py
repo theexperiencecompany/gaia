@@ -21,6 +21,7 @@ from app.services.conversation.ports import (
     RuntimePorts,
     StepLimitReached,
 )
+from app.services.conversation.reply_text import ReplyText
 from app.services.conversation.step_attempt import (
     Attempt,
     Drafting,
@@ -193,6 +194,10 @@ async def finish_run(
     reply, worded = final_reply(attempt, outcome)
     if worded and not isinstance(attempt.progress, Showing):
         # Words the run said but never streamed are what this segment shows before it settles.
+        if not attempt.text.raw:
+            # They are its first kept message: a later run's text follows them, never replaces them.
+            attempt.text = ReplyText.kept(reply.text)
+            reply = reply.model_copy(update={"text": attempt.text.text})
         attempt.progress = Drafting(reply=reply)
     named = await settle_passed(ports, attempt)
     if base_reply(attempt).text.strip() and answer_sole(attempt.ledger):
