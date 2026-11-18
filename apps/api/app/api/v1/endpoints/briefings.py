@@ -4,10 +4,15 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.briefing import EDITION_IMAGE_MAX_AGE_SECONDS, EditionVariant
+from app.constants.briefing import (
+    EDITION_IMAGE_MAX_AGE_SECONDS,
+    STAMP_ART_CONTENT_TYPE,
+    STAMP_ART_MAX_AGE_SECONDS,
+    EditionVariant,
+)
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_settings_models import (
@@ -22,6 +27,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition
+from app.services.briefing.editions.stamps import stamp_art
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
 from app.services.briefing.view import briefing_card, briefing_view
@@ -164,4 +170,23 @@ async def get_edition_image(
         image,
         media_type=EDITION_CONTENT_TYPES[variant],
         headers={"Cache-Control": f"private, max-age={EDITION_IMAGE_MAX_AGE_SECONDS}"},
+    )
+
+
+@router.get(
+    "/stamps/{slug}.webp",
+    response_class=FileResponse,
+    responses={200: {"content": {STAMP_ART_CONTENT_TYPE: {}}}},
+)
+async def get_stamp_art(slug: str) -> FileResponse:
+    """Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404."""
+    log.set(briefing={"operation": "stamp_art", "city_slug": slug})
+    try:
+        art = stamp_art(slug)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Stamp not found") from None
+    return FileResponse(
+        art,
+        media_type=STAMP_ART_CONTENT_TYPE,
+        headers={"Cache-Control": f"public, max-age={STAMP_ART_MAX_AGE_SECONDS}"},
     )

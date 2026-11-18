@@ -28181,6 +28181,66 @@
         ]
       }
     },
+    "/api/v1/briefings/stamps/{slug}.webp": {
+      "get": {
+        "description": "Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404.",
+        "operationId": "briefings_get_stamp_art",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/webp": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Stamp Art",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
     "/api/v1/briefings/{briefing_id}": {
       "get": {
         "description": "Return one of the user's briefs; the first open marks it and emits briefing:opened.",

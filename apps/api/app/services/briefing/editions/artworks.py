@@ -1,9 +1,9 @@
 """The public-domain artworks the Exhibition, Broadsheet and Almanac hang.
 
-Every one is a Metropolitan Museum of Art Open Access image (CC0), hosted on Cloudinary
-by scripts/upload_briefing_art.py and catalogued in explorer/assets/artworks/artworks.json
-with the families whose frame it fits. A brief draws its artwork from the user's shuffle
-bag and records it on the payload, so a re-render hangs the same one.
+Every one is a Metropolitan Museum of Art Open Access image (CC0), shipped in the image as
+explorer/assets/artworks/<slug>.webp (written by scripts/build_edition_art.py) and catalogued
+in artworks.json beside it with the families whose frame it fits. A brief draws its artwork
+from the user's shuffle bag and records it on the payload, so a re-render hangs the same one.
 """
 
 from dataclasses import dataclass
@@ -53,7 +53,7 @@ ART_FRAMES: dict[ArtFamily, ArtFrame] = {
 
 
 class Artwork(BaseModel):
-    """One catalogued work: its Met record, its caption line and its hosted image."""
+    """One catalogued work: its Met record, its caption line and its image size."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -66,7 +66,6 @@ class Artwork(BaseModel):
     medium: str
     source_url: str
     families: frozenset[ArtFamily]
-    url: str
     width: int
     height: int
 
@@ -86,3 +85,8 @@ def artwork_weights() -> dict[str, int]:
 def artworks_for(family: ArtFamily) -> frozenset[str]:
     """Return the works whose image fits the family's frame."""
     return frozenset(slug for slug, work in artwork_catalogue().items() if family in work.families)
+
+
+def artwork_art(slug: str) -> Path:
+    """Return the file holding a catalogued work's image; KeyError for any other slug."""
+    return ARTWORKS_JSON.parent / f"{artwork_catalogue()[slug].slug}.webp"

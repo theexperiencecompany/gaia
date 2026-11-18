@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 
+from PIL import Image
 import pytest
 
 from app.constants.briefing import ArtFamily
@@ -11,6 +12,7 @@ from app.services.briefing.editions import artworks
 from app.services.briefing.editions.artworks import (
     ART_FRAMES,
     ARTWORKS_JSON,
+    artwork_art,
     artwork_catalogue,
     artwork_weights,
     artworks_for,
@@ -18,9 +20,6 @@ from app.services.briefing.editions.artworks import (
 
 _JS_DIR = Path(artworks.__file__).parent / "explorer" / "js"
 _REGISTERED_ID = re.compile(r'EXPLORER\.register\(\{\s*id:\s*"([a-z0-9-]+)"')
-_HOSTED_URL = re.compile(
-    r"^https://res\.cloudinary\.com/[a-z0-9]+/image/upload/briefing/artworks/(?P<slug>[a-z0-9-]+)\.webp$"
-)
 # Enough that a daily reader sees no repeat for months.
 _MIN_WORKS_PER_FAMILY = 50
 
@@ -56,11 +55,15 @@ class TestCatalogue:
             row["slug"]: row["title"] for row in json.loads(ARTWORKS_JSON.read_text())
         }
 
-    def test_every_work_is_hosted_at_its_own_versionless_url(self) -> None:
+    def test_every_work_ships_its_image_at_the_size_the_catalogue_records(self) -> None:
         for slug, work in artwork_catalogue().items():
-            hosted = _HOSTED_URL.match(work.url)
-            assert hosted is not None, work.url
-            assert hosted.group("slug") == slug
+            with Image.open(artwork_art(slug)) as image:
+                assert (image.format, image.size) == ("WEBP", (work.width, work.height)), slug
+        assert {p.stem for p in ARTWORKS_JSON.parent.glob("*.webp")} == set(artwork_catalogue())
+
+    def test_a_slug_off_the_catalogue_has_no_image(self) -> None:
+        with pytest.raises(KeyError):
+            artwork_art("../artworks")
 
     def test_every_work_carries_the_caption_line_and_its_met_record(self) -> None:
         for work in artwork_catalogue().values():

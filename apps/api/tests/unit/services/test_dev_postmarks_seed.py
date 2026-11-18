@@ -78,7 +78,7 @@ def seeded() -> Iterator[Seeded]:
         return f"key-{briefing_id}"
 
     with (
-        patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
+        patch(f"{MODULE}.stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
         patch(f"{STORE}.render_edition_png", side_effect=fake_render),
         patch(f"{STORE}.store_edition", side_effect=fake_store),
         patch(
@@ -304,7 +304,7 @@ async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
 @pytest.mark.unit
 class TestSampleEditionPayload:
     def test_air_mail_carries_a_stamp_and_a_framed_family_a_painting(self) -> None:
-        with patch(f"{MODULE}.hosted_stamp_weights", return_value={"paris": 1, "lisbon": 1}):
+        with patch(f"{MODULE}.stamp_weights", return_value={"paris": 1, "lisbon": 1}):
             postal = dev_postmarks_seed.sample_edition_payload(EditionFamily.POSTAL, "Alex")
         framed = dev_postmarks_seed.sample_edition_payload(EditionFamily.ALMANAC, "Alex")
         plain = dev_postmarks_seed.sample_edition_payload(EditionFamily.SWISS, "Alex")

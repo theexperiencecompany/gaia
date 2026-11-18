@@ -235,7 +235,8 @@ class TestHeadline:
     @pytest.mark.parametrize("family", ["memo", "postal", "broadsheet", "receipt"])
     def test_every_family_leads_with_the_headline(self, family: EditionFamily) -> None:
         ed = _build(
-            make_briefing_payload(headline="Two replies need you", link=LINK), family=family
+            make_briefing_payload(headline="Two replies need you", link=LINK, stamp_city="paris"),
+            family=family,
         )
 
         assert ed["deck"] == "Two replies need you"
@@ -328,8 +329,9 @@ class TestStamp:
 
         assert ed["stamp"] == stamp_for("paris")
 
-    def test_a_legacy_air_mail_brief_without_a_city_keeps_the_template_axis(self) -> None:
-        assert _build(make_briefing_payload(), family=EditionFamily.POSTAL)["stamp"] is None
+    def test_an_air_mail_edition_without_a_drawn_city_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="needs the stamp_city"):
+            _build(make_briefing_payload(), family=EditionFamily.POSTAL)
 
     def test_other_families_carry_no_stamp(self) -> None:
         assert (

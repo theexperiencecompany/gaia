@@ -221,9 +221,8 @@ def _build_recipient(name: str | None) -> ExplorerRecipient | None:
     return {"name": full, "first": full.partition(" ")[0]} if full else None
 
 
-def _build_stamp(slug: str | None) -> Stamp | None:
-    """Return the drawn city's stamp skin.
-
-    Legacy payloads without one keep the template's own city axis.
-    """
-    return stamp_for(slug) if slug else None
+def _build_stamp(slug: str | None) -> Stamp:
+    """Return the drawn city's stamp skin; an Air Mail edition always has one drawn."""
+    if slug is None:
+        raise ValueError("an Air Mail edition needs the stamp_city drawn for it")
+    return stamp_for(slug)

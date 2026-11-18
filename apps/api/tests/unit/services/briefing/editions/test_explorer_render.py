@@ -4,6 +4,7 @@ Assertions are on the document itself (inlined modules, embedded ed/seed literal
 script-tag escaping, the failure path), not on rastered pixels.
 """
 
+import base64
 from collections.abc import Iterator
 import json
 import re
@@ -17,7 +18,7 @@ from app.constants.briefing import EditionFamily
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing import editions
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
-from app.services.briefing.editions.artworks import artwork_catalogue
+from app.services.briefing.editions.artworks import artwork_art
 from app.services.briefing.editions.explorer_render import (
     _TRANSPARENT_DESK_CSS,
     EXPLORER_CANVAS_PX,
@@ -29,7 +30,7 @@ from app.services.briefing.editions.explorer_render import (
     explorer_family_names,
     render_explorer_edition,
 )
-from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_asset_url, stamp_for
+from app.services.briefing.editions.stamps import stamp_art, stamp_for, stamp_weights
 
 # Every loader is @lru_cache(maxsize=1) and the cache outlives the test that fills it,
 # so each test must start cold.
@@ -82,6 +83,7 @@ _SUNDAY = make_briefing_payload(
     headline="A quiet Sunday",
     tallies={"done_by_you": 1, "done_by_gaia": 2},
     calendar=[_STANDUP],
+    stamp_city="paris",
 )
 
 
@@ -314,21 +316,22 @@ class TestEmbeddedLiterals:
         assert ed["stats"]["done"] == 3
 
     @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
-    def test_a_framed_family_hangs_the_drawn_artwork_by_its_hosted_url(self, family: str) -> None:
-        artwork = artwork_catalogue()["oxbow"]
+    def test_a_framed_family_hangs_the_drawn_artwork_inlined_from_its_file(
+        self, family: str
+    ) -> None:
+        image = base64.b64encode(artwork_art("oxbow").read_bytes()).decode()
 
         art = _embedded_const(
             _render(make_briefing_payload(artwork_id="oxbow"), family=family), "ed"
         )["art"]
 
         assert art == {
-            "src": artwork.url,
+            "src": f"data:image/webp;base64,{image}",
             "title": "The Oxbow",
             "artist": "Thomas Cole",
             "year": "1836",
             "medium": "oil on canvas",
         }
-        assert art["src"].startswith("https://res.cloudinary.com/")
 
     def test_a_re_render_hangs_the_same_artwork_whatever_the_edition_number(self) -> None:
         payload = make_briefing_payload(artwork_id="kambara")
@@ -376,34 +379,31 @@ class TestEmbeddedLiterals:
 
 @pytest.mark.unit
 class TestPostalStamp:
-    def test_postal_loads_the_drawn_citys_hosted_art_as_the_stamp_asset(self) -> None:
+    @pytest.mark.regression
+    def test_postal_inlines_the_drawn_citys_art_so_the_render_fetches_nothing(self) -> None:
+        """Regression: the stamp loaded from GAIA Cloud's Cloudinary, even on a self-host."""
+        image = base64.b64encode(stamp_art("paris").read_bytes()).decode()
+
         html = _render(make_briefing_payload(stamp_city="paris"), family="postal")
         ed = _embedded_const(html, "ed")
 
         assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {"CITY_PARIS"}
-        assert ed["assets"]["CITY_PARIS"] == stamp_asset_url("paris")
-        assert ed["assets"]["CITY_PARIS"].startswith("https://")
+        assert ed["assets"]["CITY_PARIS"] == f"data:image/webp;base64,{image}"
+        assert "https://" not in json.dumps(ed["assets"])
         assert ed["stamp"]["id"] == "paris"
         assert ed["stamp"]["key"] == "CITY_PARIS"
 
-    def test_postal_without_a_drawn_city_loads_every_hosted_citys_art(self) -> None:
-        ed = _embedded_const(_render(family="postal"), "ed")
+    def test_postal_without_a_drawn_city_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="postal edition needs the stamp_city"):
+            _render(make_briefing_payload(), family="postal")
 
-        hosted = hosted_stamp_weights()
-        assert len(hosted) == 85
-        assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {
-            f"CITY_{slug.upper()}" for slug in hosted
-        }
-        assert ed["assets"]["CITY_NEW_YORK_CITY"] == stamp_asset_url("new_york_city")
-        assert ed["stamp"] is None
-
-    def test_the_template_city_axis_is_every_hosted_city(self) -> None:
+    def test_the_template_city_axis_is_every_catalogued_city(self) -> None:
         html = _render(family="swiss")
         match = re.search(r"\n  cities: (\[.*?\]),\n", html, re.S)
 
         assert match is not None
         cities = json.loads(match.group(1))
-        assert [c["id"] for c in cities] == list(hosted_stamp_weights())
+        assert [c["id"] for c in cities] == list(stamp_weights())
         assert cities[0] == stamp_for(cities[0]["id"])
 
     def test_other_families_ignore_the_stamp_city(self) -> None:
@@ -414,7 +414,7 @@ class TestPostalStamp:
         assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
         assert ed["stamp"] is None
 
-    def test_a_postal_city_without_hosted_art_fails_loud(self) -> None:
+    def test_a_postal_city_off_the_catalogue_fails_loud(self) -> None:
         with pytest.raises(KeyError, match="atlantis"):
             _render(make_briefing_payload(stamp_city="atlantis"), family="postal")
 

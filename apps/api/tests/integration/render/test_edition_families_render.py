@@ -168,7 +168,12 @@ def _artwork(family: str) -> str | None:
 
 def _render_html(family: EditionFamily, payload: dict[str, Any]) -> str:
     data = BriefingPayload.model_validate(
-        {"artwork_id": _artwork(family), **payload, "template_family": family}
+        {
+            "artwork_id": _artwork(family),
+            "stamp_city": "tokyo" if family == EditionFamily.POSTAL else None,
+            **payload,
+            "template_family": family,
+        }
     )
     return EXPLORER_RENDERER[family](data, edition_no=287, generated_local="", tz_label="")
 

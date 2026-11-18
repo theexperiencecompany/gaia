@@ -687,6 +687,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings/stamps/{slug}.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stamp Art
+         * @description Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404.
+         */
+        get: operations["briefings_get_stamp_art"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/handoffs/{handoff_id}/decision": {
         parameters: {
             query?: never;
@@ -20872,6 +20892,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BriefDeliveryWorkflowsConflict"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_stamp_art: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": unknown;
                 };
             };
             /** @description Unprocessable Entity */

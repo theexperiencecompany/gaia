@@ -1244,7 +1244,7 @@ class TestTheEdition:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            edition_draws, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
+            edition_draws, "stamp_weights", lambda: {"paris": 1, "tokyo": 1, "lima": 1}
         )
         world.family_first(EditionFamily.POSTAL)
         seeded = world.bags["edition_family"].order
@@ -1266,7 +1266,7 @@ class TestTheEdition:
         self, world: World, monkeypatch: pytest.MonkeyPatch, family: EditionFamily, bag: str
     ) -> None:
         """A draw is spent only by a brief that went out: a failed run burns no member."""
-        monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"paris": 1, "tokyo": 1})
+        monkeypatch.setattr(edition_draws, "stamp_weights", lambda: {"paris": 1, "tokyo": 1})
         world.family_first(family)
         family_before = world.bags["edition_family"]
         world.notify.side_effect = RuntimeError("orchestrator down")
@@ -1280,7 +1280,7 @@ class TestTheEdition:
     async def test_a_first_stamp_is_announced_on_every_channel(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"tokyo": 1})
+        monkeypatch.setattr(edition_draws, "stamp_weights", lambda: {"tokyo": 1})
         world.family_first(EditionFamily.POSTAL)
 
         await run_brief(_USER, BriefingKind.DAILY)
@@ -1297,7 +1297,7 @@ class TestTheEdition:
     async def test_a_city_already_collected_is_not_announced_again(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(edition_draws, "hosted_stamp_weights", lambda: {"tokyo": 1})
+        monkeypatch.setattr(edition_draws, "stamp_weights", lambda: {"tokyo": 1})
         world.family_first(EditionFamily.POSTAL)
         world.stamped.return_value = [
             _brief(
