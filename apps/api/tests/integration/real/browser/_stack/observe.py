@@ -1,4 +1,4 @@
-"""What a Telegram user of the browser stack would receive: the outbound queue, read as transcripts.
+"""What a Telegram user of the browser stack would receive: the outbound queue and the conversations it wakes, as transcripts.
 
 The API and the worker publish every bot message to outbound.telegram on
 the stack's RabbitMQ vhost, as in production. The real bot is not running; this
@@ -7,15 +7,14 @@ holds an exclusive consumer and copies each message to a per-chat transcript
 queue, in queue order. A second stack on the same vhost (another xdist worker)
 waits for the exclusive consumer and takes over when the holder goes, so
 neither ever steals the other's messages, and each stack reads only the chats
-it registered. A message for a chat nobody registered is dropped.
+it registered. A message for a chat nobody registered is dropped. A wake on
+the queue carries no content: its conversation is followed as the bot does (chat_follow).
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import json
-import re
 import time
 from typing import Any
 
@@ -25,60 +24,30 @@ import aiormq.exceptions
 
 from app.constants.chat import ConversationSource
 from app.constants.outbound import OUTBOUND_QUEUES, work_queue_arguments
+from app.models.conversation_send_models import ActiveBotConversation
+from tests.integration.real.browser._stack.chat_follow import BotHeaders, ChatFollow
 from tests.integration.real.browser._stack.progress import Progress
+from tests.integration.real.browser._stack.transcript import Delivery, Transcript
 
 _OUTBOUND = OUTBOUND_QUEUES[ConversationSource.TELEGRAM]
 _TRANSCRIPT_PREFIX = "browser-stack.transcript."
 #: How long the relay waits before asking again for a consumer another stack holds.
 _RELAY_RETRY_SECONDS = 0.5
-_POLL_SECONDS = 0.2
 #: How long connecting to the broker may take.
 _CONNECT_SECONDS = 30.0
 
 
-@dataclass(frozen=True)
-class Delivery:
-    """One message the bot would have sent, as the envelope carried it."""
-
-    destination_id: str
-    is_channel: bool
-    text: str
-    photo_url: str | None
-    caption: str | None
-    at: float
-
-    @property
-    def said(self) -> str:
-        """Everything the user reads in it: the text, or a photo's caption."""
-        return self.text or (self.caption or "")
-
-
-@dataclass
-class Transcript:
-    """Everything delivered to one chat, oldest first."""
-
-    destination_id: str
-    deliveries: list[Delivery] = field(default_factory=list)
-
-    @property
-    def texts(self) -> list[str]:
-        return [d.text for d in self.deliveries if d.text]
-
-    @property
-    def photos(self) -> list[Delivery]:
-        return [d for d in self.deliveries if d.photo_url]
-
-    def matching(self, pattern: str) -> list[Delivery]:
-        return [d for d in self.deliveries if re.search(pattern, d.said, re.IGNORECASE)]
-
-
-def _delivery(envelope: dict[str, Any]) -> Delivery:
+def _delivery(envelope: dict[str, Any]) -> Delivery | None:
+    """Return the message an envelope carries itself; None for a wake, which carries none."""
     attachment = envelope.get("attachment") or {}
     parts = envelope.get("text_parts") or []
+    text = envelope.get("text") or "\n".join(parts)
+    if not text and not attachment:
+        return None
     return Delivery(
         destination_id=str(envelope["destination_id"]),
         is_channel=bool(envelope.get("is_channel")),
-        text=envelope.get("text") or "\n".join(parts),
+        text=text,
         photo_url=attachment.get("url"),
         caption=attachment.get("caption"),
         at=time.monotonic(),
@@ -86,14 +55,20 @@ def _delivery(envelope: dict[str, Any]) -> Delivery:
 
 
 class OutboundObserver:
-    """Reads the stack's outbound Telegram messages into one transcript per registered chat."""
+    """Reads the stack's outbound Telegram messages, and the conversations they wake, into one transcript per chat."""
 
-    def __init__(self, rabbitmq_url: str, progress: Progress) -> None:
+    def __init__(
+        self, rabbitmq_url: str, progress: Progress, api_url: str, bot_headers: BotHeaders
+    ) -> None:
         self._url = rabbitmq_url
         self._progress = progress
+        self._api_url = api_url
+        self._bot_headers = bot_headers
         self._connection: AbstractRobustConnection | None = None
         self._channel: AbstractChannel | None = None
         self._relay: asyncio.Task[None] | None = None
+        self._chats: dict[str, ChatFollow] = {}
+        self._follows: dict[str, asyncio.Task[None]] = {}
         self.transcripts: dict[str, Transcript] = {}
 
     async def start(self) -> None:
@@ -107,16 +82,21 @@ class OutboundObserver:
         self._relay = asyncio.create_task(self._relay_forever())
 
     async def stop(self) -> None:
-        if self._relay is not None:
-            self._relay.cancel()
-            await asyncio.gather(self._relay, return_exceptions=True)
+        tasks = [*self._follows.values(), *([self._relay] if self._relay is not None else [])]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         if self._connection is not None:
             await self._connection.close()
 
     async def drained(self) -> bool:
-        """Whether every message published so far has reached its transcript."""
+        """Whether every message published so far has reached its transcript, and every woken conversation is idle."""
         if self._channel is None:
             raise RuntimeError("the observer is not started")
+        for task in self._follows.values():
+            if not task.done():
+                return False
+            task.result()
         outbound = await self._channel.declare_queue(_OUTBOUND, passive=True)
         if outbound.declaration_result.message_count:
             return False
@@ -127,6 +107,33 @@ class OutboundObserver:
             if queue.declaration_result.message_count:
                 return False
         return True
+
+    def follow(self, conversation: ActiveBotConversation, *, expect: int | None = None) -> None:
+        """Follow a conversation from its cursor until idle, joining the follow already running for it."""
+        chat = self._chats.get(conversation.conversation_id)
+        if chat is None:
+            chat = self._chats[conversation.conversation_id] = ChatFollow(conversation, self._send)
+        if expect is not None:
+            chat.expected.add(expect)
+        running = self._follows.get(conversation.conversation_id)
+        if running is not None and not running.done():
+            return
+        if running is not None:
+            running.result()
+        chat.conversation = conversation
+        task = asyncio.create_task(chat.follow(self._api_url, self._bot_headers))
+        task.add_done_callback(self._say_failure)
+        self._follows[conversation.conversation_id] = task
+
+    def _say_failure(self, task: asyncio.Task[None]) -> None:
+        """Say a follow's failure as it happens; drained raises it, but a scenario may be waiting on a line."""
+        if not task.cancelled() and task.exception() is not None:
+            self._progress.say(f"a conversation follow failed: {task.exception()!r}")
+
+    def _send(self, delivery: Delivery) -> None:
+        transcript = self.transcripts.get(delivery.destination_id)
+        if transcript is not None:
+            transcript.deliveries.append(delivery)
 
     async def watch(self, destination_id: str) -> Transcript:
         """Start collecting what is sent to one chat; call before anything is sent there."""
@@ -140,7 +147,12 @@ class OutboundObserver:
 
         async def collect(message: AbstractIncomingMessage) -> None:
             async with message.process():
-                transcript.deliveries.append(_delivery(json.loads(message.body)))
+                envelope = json.loads(message.body)
+                if envelope.get("follow") is not None:
+                    self.follow(ActiveBotConversation.model_validate(envelope["follow"]))
+                delivery = _delivery(envelope)
+                if delivery is not None:
+                    transcript.deliveries.append(delivery)
 
         # Named, not aiormq's default: that one is drawn from `random`, which pytest-randomly
         # reseeds identically for a test's rerun, so the rerun's tag collided with the failed
@@ -189,17 +201,3 @@ class OutboundObserver:
                 aio_pika.Message(body=message.body),
                 routing_key=f"{_TRANSCRIPT_PREFIX}{destination}",
             )
-
-
-async def wait_for(transcript: Transcript, pattern: str, *, timeout: float) -> Delivery:
-    """Return the first delivery to transcript matching pattern, polling until timeout."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        found = transcript.matching(pattern)
-        if found:
-            return found[0]
-        await asyncio.sleep(_POLL_SECONDS)
-    raise AssertionError(
-        f"nothing matching {pattern!r} reached {transcript.destination_id} in {timeout}s: "
-        f"{[d.said[:120] for d in transcript.deliveries]}"
-    )

@@ -45,7 +45,7 @@ from app.db.mongodb import collections
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
-from app.models.conversation_send_models import MessageAccepted
+from app.models.conversation_send_models import ActiveBotConversation, BotMessageAccepted
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
@@ -58,7 +58,7 @@ from tests.helpers import pick_free_port, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
 from tests.integration.real.browser._stack.live_viewer import LiveViewer
-from tests.integration.real.browser._stack.observe import OutboundObserver, Transcript
+from tests.integration.real.browser._stack.observe import OutboundObserver
 from tests.integration.real.browser._stack.processes import (
     BrowserHost,
     BrowserWorker,
@@ -70,6 +70,7 @@ from tests.integration.real.browser._stack.processes import (
 )
 from tests.integration.real.browser._stack.progress import Progress
 from tests.integration.real.browser._stack.tls import FixtureTls, issue
+from tests.integration.real.browser._stack.transcript import Transcript
 
 _TELEGRAM = "telegram"
 _BOT_KEY = "browser-stack-bot-key-" + "x" * 16
@@ -129,7 +130,9 @@ class BrowserStack:
         self.host_key = secrets.token_hex(16)
         #: Encrypts the logins a run saves, as production's key does.
         self.state_key = Fernet.generate_key().decode()
-        self.observer = OutboundObserver(settings.RABBITMQ_URL, progress)
+        self.observer = OutboundObserver(
+            settings.RABBITMQ_URL, progress, self.api_url, self._bot_headers
+        )
         self.tls: FixtureTls | None = None
         self.chrome: BrowserHost | None = None
         self.obscura: BrowserHost | None = None
@@ -332,13 +335,27 @@ class BrowserStack:
         async with (
             asyncio.timeout(RUN_SECONDS),
             httpx.AsyncClient(
-                base_url=self.api_url, headers=self._bot_headers(user), timeout=RUN_SECONDS
+                base_url=self.api_url,
+                headers=self._bot_headers(user.telegram_id),
+                timeout=RUN_SECONDS,
             ) as client,
         ):
             posted = await client.post("/api/v1/bot/messages", json=body)
             if posted.status_code != 202:
                 raise AssertionError(f"bot/messages answered {posted.status_code}: {posted.text}")
-            accepted = MessageAccepted.model_validate(posted.json())
+            accepted = BotMessageAccepted.model_validate(posted.json())
+            # The bot follows the conversation for the chat from the server's cursor, as it does on every post.
+            self.observer.follow(
+                ActiveBotConversation(
+                    conversation_id=accepted.conversation_id,
+                    platform_user_id=user.telegram_id,
+                    channel_id=channel_id,
+                    is_dm=channel_id is None,
+                    after_seq=accepted.after_seq,
+                    partial_reply=accepted.partial_reply,
+                ),
+                expect=accepted.seq,
+            )
             reader = TurnReader(text, accepted.message_id, wait_for_work=False)
             await follow(
                 client, self.api_url, accepted.conversation_id, reader, after=accepted.seq - 1
@@ -361,18 +378,18 @@ class BrowserStack:
                     "channel_id": channel_id,
                     "is_dm": channel_id is None,
                 },
-                headers=self._bot_headers(user),
+                headers=self._bot_headers(user.telegram_id),
             )
             if response.status_code != 200:
                 raise AssertionError(
                     f"reset-session answered {response.status_code}: {response.text}"
                 )
 
-    def _bot_headers(self, user: BotUser) -> dict[str, str]:
+    def _bot_headers(self, telegram_id: str) -> dict[str, str]:
         return {
             "X-Bot-API-Key": _BOT_KEY,
             "X-Bot-Platform": _TELEGRAM,
-            "X-Bot-Platform-User-Id": user.telegram_id,
+            "X-Bot-Platform-User-Id": telegram_id,
         }
 
     async def set_obscura(self, user: BotUser) -> None:

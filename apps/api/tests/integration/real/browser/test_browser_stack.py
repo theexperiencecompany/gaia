@@ -36,13 +36,13 @@ from tests.integration.real.browser._stack.fixture_site import (
     NEW_WINDOW_HEADING,
     SECURE_HEADING,
 )
-from tests.integration.real.browser._stack.observe import Delivery, Transcript, wait_for
 from tests.integration.real.browser._stack.stack import (
     RUN_SECONDS,
     SCENARIO_SECONDS,
     BotUser,
     BrowserStack,
 )
+from tests.integration.real.browser._stack.transcript import Delivery, Transcript, wait_for
 
 pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(SCENARIO_SECONDS)]
 
