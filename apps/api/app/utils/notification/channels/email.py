@@ -7,9 +7,9 @@ as failed.
 
 Template selection keys off notification.metadata["kind"]: briefing_daily and
 briefing_weekly embed the edition image the briefing service already rendered and
-stored (metadata["edition"]["image_url"], a signed URL), linked to the brief's heygaia.link
-(metadata["brief_url"]). A briefing notification missing either, or its
-content.rich_content payload, fails at transform. Anything else renders the
+stored (the card's signed edition URL), linked to the brief's heygaia.link, above the
+stored brief's message. A briefing notification missing its card, edition or link, or
+whose brief is no longer stored, fails at transform. Anything else renders the
 plain-notification template.
 """
 
@@ -22,9 +22,10 @@ from pydantic import BaseModel
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationChannel
+from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
-from app.models.brief_document_models import EditionImage
 from app.models.brief_payload_models import BriefingPayload
+from app.models.brief_view_models import BriefNotificationMetadata
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
@@ -49,13 +50,6 @@ class _EmailMetadata(BaseModel):
     """The notification-metadata field every email reads: the template kind."""
 
     kind: str | None = None
-
-
-class _BriefingEmailMetadata(_EmailMetadata):
-    """A briefing's metadata: its heygaia.link and its stored edition image."""
-
-    brief_url: str
-    edition: EditionImage
 
 
 @dataclass(frozen=True)
@@ -101,15 +95,21 @@ class EmailChannelAdapter(ChannelAdapter[EmailContent]):
         if kind is None or not is_edition_kind(kind):
             return EmailContent(title=content.title, body=content.body)
 
-        metadata = _BriefingEmailMetadata.model_validate(notification.metadata)
+        metadata = BriefNotificationMetadata.model_validate(notification.metadata)
+        card, brief_url = metadata.card, metadata.brief_url
+        if card is None or card.edition is None or brief_url is None:
+            raise ValueError(f"a {kind} notification carries no edition card or brief link")
+        brief = await briefing_repository.get(card.briefing_id, user_id=notification.user_id)
+        if brief is None:
+            raise LookupError(f"brief {card.briefing_id} of a {kind} notification is not stored")
         return EmailContent(
             title=content.title,
             body=content.body,
             briefing=BriefingEmail(
                 kind=kind,
-                payload=BriefingPayload.model_validate(content.rich_content),
-                brief_url=metadata.brief_url,
-                edition_image_url=metadata.edition.image_url,
+                payload=brief.payload,
+                brief_url=brief_url,
+                edition_image_url=card.edition.image_url,
             ),
         )
 

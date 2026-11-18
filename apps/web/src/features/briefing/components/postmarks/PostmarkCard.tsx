@@ -24,7 +24,7 @@ export function PostmarkCard({ postmark }: PostmarkCardProps) {
         </p>
         <p className="truncate text-xs text-zinc-400">{postmark.country}</p>
         <p className="mt-1 text-xs text-zinc-500 tabular-nums">
-          {formatDate(parseISO(postmark.date), "long", {
+          {formatDate(parseISO(postmark.card.date), "long", {
             locale: FIXED_LOCALE,
           })}
         </p>

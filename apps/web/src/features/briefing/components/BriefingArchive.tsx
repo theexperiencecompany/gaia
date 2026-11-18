@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@heroui/react";
 import { News01Icon } from "@icons";
-import type { BriefingView } from "@shared/api/generated";
+import type { BriefCard } from "@shared/api/generated";
 import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
 import { formatDate } from "@shared/utils";
 import {
@@ -18,7 +18,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 import { cn } from "@/lib/utils";
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
-import { foldedBrief, viewCard } from "../utils/briefCard";
+import { foldedBrief } from "../utils/briefCard";
 import { BriefingFold } from "./BriefingFold";
 import { FoldedBriefCard } from "./FoldedBriefCard";
 
@@ -34,11 +34,11 @@ export interface BriefingArchiveProps {
 
 interface WeekGroup {
   start: Date;
-  briefings: BriefingView[];
+  briefings: BriefCard[];
 }
 
 /** Briefs bucketed by Monday-start week, newest week first; the weekly recap leads its week. */
-function groupByWeek(briefings: BriefingView[]): WeekGroup[] {
+function groupByWeek(briefings: BriefCard[]): WeekGroup[] {
   const groups = new Map<number, WeekGroup>();
   for (const briefing of briefings) {
     const start = startOfWeek(parseISO(briefing.date), WEEK_OPTIONS);
@@ -149,14 +149,10 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
           <WeekHeader start={group.start} />
           <ul className={GRID_CLASSES}>
             {group.briefings.map((briefing) => {
-              const brief = foldedBrief(viewCard(briefing));
+              const brief = foldedBrief(briefing);
               return (
-                <li key={briefing.id}>
-                  <BriefingFold
-                    brief={brief}
-                    payload={briefing.payload}
-                    briefingId={briefing.id}
-                  >
+                <li key={briefing.briefing_id}>
+                  <BriefingFold brief={brief} briefingId={briefing.briefing_id}>
                     {(trigger) => (
                       <FoldedBriefCard
                         brief={brief}

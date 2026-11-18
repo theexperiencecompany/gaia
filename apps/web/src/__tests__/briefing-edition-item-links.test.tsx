@@ -3,10 +3,15 @@
  * Brief items: the owner's copy opens the in-app todo even when the brief also
  * shared a public link; the public copy (no todo_id) opens the shared link.
  * The written message links an item on its phrase, never as a pasted URL.
- * What the composition left out is listed after it, so the page loses nothing,
- * and so is every composed block the day's edition could not draw.
+ * What the API says the edition left out is listed after it, so the page loses
+ * nothing, and so is every composed block the day's edition could not draw.
  */
 
+import type {
+  BriefingItem,
+  EditionLeftOut,
+  UncomposedItem,
+} from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +31,38 @@ function payload(
     sections: [{ numeral: "I", title: "GAIA'S WORK", items: [item] }],
   };
 }
+
+function leftOut(parts: Partial<EditionLeftOut>): EditionLeftOut {
+  return { items: [], events: [], uncomposed: [], ...parts };
+}
+
+function leftOutItem(text: string): BriefingItem {
+  return {
+    text,
+    kind: "you",
+    action: "reply",
+    outcome: null,
+    detail: null,
+    todo_id: null,
+    link: null,
+    count: 1,
+    app: null,
+    source: null,
+    url: null,
+    people: [],
+    offer: null,
+  };
+}
+
+const LOGIN_FIX: UncomposedItem = {
+  title: "Fix the login redirect",
+  detail: "due tomorrow",
+  kind: "you",
+  state_label: "Waiting on you",
+  app: "Linear",
+  url: "https://linear.app/ENG-12",
+  todo_id: null,
+};
 
 /** The matches a sighted reader sees; the edition's screen-reader copy of the letter is left out. */
 function shown(text: string | RegExp): HTMLElement[] {
@@ -107,30 +144,24 @@ describe("brief item links", () => {
     expect(screen.queryByText(/\]\(/)).toBeNull();
   });
 
-  it("lists what the composition left out as also on your radar, each with its source and state", () => {
+  it("lists what the composition left out as also on your radar, each with its source and the API's words for its state", () => {
     render(
       <BriefingEdition
-        payload={{
-          ...payload({ text: "Deck", kind: "lookback" }),
+        payload={payload({ text: "Deck", kind: "lookback" })}
+        leftOut={leftOut({
           uncomposed: [
-            {
-              title: "Fix the login redirect",
-              detail: "due tomorrow",
-              kind: "you",
-              app: "Linear",
-              url: "https://linear.app/ENG-12",
-              todo_id: null,
-            },
+            LOGIN_FIX,
             {
               title: "Digest: three papers",
               detail: null,
               kind: "note",
+              state_label: "Note",
               app: "GAIA",
               url: null,
               todo_id: "t9",
             },
           ],
-        }}
+        })}
       />,
     );
 
@@ -171,17 +202,8 @@ describe("brief item links", () => {
           ...payload({ text: "Deck", kind: "lookback" }),
           message: "The deck is ready.",
           undrawn: [{ kind: "note", text: "Three hires closed this week." }],
-          uncomposed: [
-            {
-              title: "Fix the login redirect",
-              detail: "due tomorrow",
-              kind: "you",
-              app: "Linear",
-              url: "https://linear.app/ENG-12",
-              todo_id: null,
-            },
-          ],
         }}
+        leftOut={leftOut({ uncomposed: [LOGIN_FIX] })}
       />,
     );
 
@@ -243,43 +265,24 @@ describe("brief item links", () => {
     expect(screen.getByText("Fill eight roles: 5 of 8 done")).toBeTruthy();
   });
 
-  it("lists the items the edition's three rows cut off, the weekly lead it could not draw and the events past three", () => {
-    const item = (text: string) => ({ text, kind: "you" as const });
+  it("lists under the edition the items and events the API says it left out", () => {
     render(
       <BriefingEdition
         imageUrl="https://cdn.example/edition.png"
-        payload={{
-          ...payload(item("unused")),
-          sections: [
-            {
-              numeral: "I",
-              title: "Lead",
-              items: [item("Weekly lead request")],
-            },
-            {
-              numeral: "II",
-              title: "Needs you",
-              items: ["One", "Two", "Three", "Fourth row", "Fifth row"].map(
-                item,
-              ),
-            },
+        payload={payload({ text: "Drawn row", kind: "you" })}
+        leftOut={leftOut({
+          items: [
+            leftOutItem("Weekly lead request"),
+            leftOutItem("Fourth row"),
           ],
-          blocks: [{ kind: "items", section: 1 }],
-          undrawn: [{ kind: "lead", section: 0 }],
-          calendar: ["A", "B", "C", "Late call"].map((title, at) => ({
-            date: "2026-10-14",
-            title,
-            start: `0${at + 8}:00`,
-          })),
-        }}
+          events: [{ date: "2026-10-14", start: "11:00", title: "Late call" }],
+        })}
       />,
     );
 
     expect(shown("Weekly lead request")).toHaveLength(1);
     expect(shown("Fourth row")).toHaveLength(1);
-    expect(shown("Fifth row")).toHaveLength(1);
     expect(shown(/Late call/)).toHaveLength(1);
-    expect(shown("Three")).toHaveLength(0);
-    expect(shown("B")).toHaveLength(0);
+    expect(shown("Drawn row")).toHaveLength(0);
   });
 });

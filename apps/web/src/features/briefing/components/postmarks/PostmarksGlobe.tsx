@@ -15,7 +15,7 @@ import {
 import { useGlobeSpin } from "../../hooks/useGlobeSpin";
 import { useNightGlobeBasemap } from "../../hooks/useNightGlobeBasemap";
 import type { BriefTriggerState } from "../../hooks/useOpenBrief";
-import { postmarkBrief } from "../../utils/briefCard";
+import { foldedBrief } from "../../utils/briefCard";
 import { BriefingFold } from "../BriefingFold";
 import { BriefTrigger } from "../BriefTrigger";
 import { PostmarkCard } from "./PostmarkCard";
@@ -93,8 +93,8 @@ interface CityLightProps {
 function CityLight({ postmark, isLatest }: CityLightProps) {
   return (
     <BriefingFold
-      briefingId={postmark.briefing_id}
-      brief={postmarkBrief(postmark)}
+      briefingId={postmark.card.briefing_id}
+      brief={foldedBrief(postmark.card)}
     >
       {(trigger) => (
         <CityMarker postmark={postmark} isLatest={isLatest} trigger={trigger} />

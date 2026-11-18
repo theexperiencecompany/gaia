@@ -6,7 +6,7 @@ import { Focusable } from "react-aria-components";
 import { overlayVariants } from "@/components/shared/controlVariants";
 
 import { useGridColumnCount } from "../../hooks/useGridColumnCount";
-import { postmarkBrief } from "../../utils/briefCard";
+import { foldedBrief } from "../../utils/briefCard";
 import { stampSheet } from "../../utils/stampSheet";
 import { BriefingFold } from "../BriefingFold";
 import { BriefTrigger } from "../BriefTrigger";
@@ -23,8 +23,8 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
   const place = `${postmark.city}, ${postmark.country}`;
   return (
     <BriefingFold
-      briefingId={postmark.briefing_id}
-      brief={postmarkBrief(postmark)}
+      briefingId={postmark.card.briefing_id}
+      brief={foldedBrief(postmark.card)}
     >
       {(trigger) => (
         <Tooltip closeDelay={0}>

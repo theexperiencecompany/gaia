@@ -1,4 +1,4 @@
-"""A stored brief as the API shows it: the owner's view, the public view, its card, the archive and the postmarks."""
+"""A stored brief as the API shows it: its card, the owner's view, the public view, the archive and the postmarks."""
 
 from datetime import datetime
 
@@ -6,24 +6,26 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefingKind
 from app.models.brief_document_models import EditionImage
-from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.brief_payload_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingMood,
+    BriefingPayload,
+    BriefPoolItem,
+)
 from app.schemas.common import ResponseModel
 
 
-class BriefingView(BaseModel):
-    """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
+class BriefCard(BaseModel):
+    """A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
-    id: str
+    briefing_id: str
     date: str = Field(description="User-local YYYY-MM-DD.")
     kind: BriefingKind
-    payload: BriefingPayload
-    delivered_channels: list[str]
-    opened_at: datetime | None
-    created_at: datetime
+    headline: str
     edition: EditionImage | None = Field(description="The edition image; None for a quiet note.")
-
     edition_name: str | None = Field(
         description="The daily edition family's name; None for the weekly recap and a quiet note."
     )
@@ -31,6 +33,47 @@ class BriefingView(BaseModel):
     needs_you_count: int = Field(
         ge=0, description="Items in the brief's Needs you section, as its edition lists them."
     )
+
+
+class BriefNotificationMetadata(BaseModel):
+    """What a brief's notification carries in its metadata, for the in-app card and the email."""
+
+    kind: str = Field(description="The notification kind: a daily brief, a weekly recap or a note.")
+    brief_url: str | None = Field(description="The brief's heygaia.link.")
+    card: BriefCard | None = Field(description="The brief's card; None for a quiet note.")
+
+
+class UncomposedItem(BriefPoolItem):
+    """What GAIA read but the composition left out, with the words for where it stands."""
+
+    state_label: str = Field(
+        description="The item's state in a few words, as the brief page shows it."
+    )
+
+
+class EditionLeftOut(BaseModel):
+    """What the rendered edition left to the brief's page, listed under it."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    items: list[BriefingItem] = Field(
+        description="The sections the edition could not draw, then the rows past its own."
+    )
+    events: list[BriefingEvent] = Field(description="The day's events past the rows it prints.")
+    uncomposed: list[UncomposedItem]
+
+
+class BriefingView(BaseModel):
+    """A brief as its owner opens it: its card, the stored brief, and what its edition left out."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    card: BriefCard
+    payload: BriefingPayload
+    delivered_channels: list[str]
+    opened_at: datetime | None
+    created_at: datetime
+    left_out: EditionLeftOut
 
 
 class BriefingPublicView(BaseModel):
@@ -53,32 +96,19 @@ class BriefingPublicView(BaseModel):
     edition: EditionImage | None
 
 
-class BriefingCardData(BaseModel):
-    """A brief folded to its card: what the in-app notification and GAIA's chat message carry."""
-
-    briefing_id: str
-    date: str
-    kind: BriefingKind
-    headline: str
-    edition: EditionImage | None
-    edition_name: str | None
-    stamp_city_name: str | None
-    needs_you_count: int = Field(ge=0)
-
-
 class BriefingListResponse(BaseModel):
     """One page of the archive, newest first, and where the next page starts."""
 
-    briefings: list[BriefingView]
+    briefings: list[BriefCard]
     next_cursor: str | None = Field(
         description="Pass as before to read the next page; None on the last page."
     )
 
 
 class Postmark(ResponseModel):
-    """One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+    """One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.
 
-    It carries that brief's edition, so the page can ready the letter before the
+    The card carries that brief's edition, so the page can ready the letter before the
     stamp is pressed without fetching the brief, which would mark it opened.
     """
 
@@ -88,9 +118,7 @@ class Postmark(ResponseModel):
     lat: float
     lng: float
     stamp_url: str
-    date: str = Field(description="User-local YYYY-MM-DD the stamp first arrived.")
-    briefing_id: str = Field(description="The brief that first carried the stamp.")
-    edition: EditionImage | None = Field(description="That brief's edition image.")
+    card: BriefCard
 
 
 class PostmarksResponse(ResponseModel):

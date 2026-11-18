@@ -32,8 +32,7 @@ interface FoldedBriefCardProps {
   trigger: BriefTriggerState;
 }
 
-function dateLabel(brief: FoldedBriefSummary): string | null {
-  if (!brief.date) return null;
+function dateLabel(brief: FoldedBriefSummary): string {
   const date = parseISO(brief.date);
   if (brief.kind === "weekly") return `Week to ${formatDate(date, "day")}`;
   return formatDay(date, "day");
@@ -89,25 +88,16 @@ export function FoldedBriefCard({
 }: FoldedBriefCardProps) {
   const date = dateLabel(brief);
   const edition = editionLabel(brief);
-  const needsYou = showsWaiting ? (brief.needsYouCount ?? 0) : 0;
-  const hasMeta = Boolean(date) || needsYou >= NOTABLE_NEEDS_YOU;
-  const hasFoot = Boolean(brief.kind || edition);
-  // The name stays the headline; the date, lede and edition are read after it as its description.
+  const needsYou = showsWaiting ? brief.needsYouCount : 0;
+  // The name stays the headline; the date and edition are read after it as its description.
   const id = useId();
-  const describedBy = [
-    hasMeta && `${id}-meta`,
-    brief.lede && `${id}-lede`,
-    hasFoot && `${id}-foot`,
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   return (
     <BriefTrigger
       trigger={trigger}
       onPress={() => trigger.open()}
       aria-label={`Open brief: ${brief.headline}`}
-      aria-describedby={describedBy || undefined}
+      aria-describedby={`${id}-meta ${id}-foot`}
       className={cn(
         "group relative flex h-full w-full min-w-0 flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 active:scale-[0.97]",
         surfaceVariants({ tone }),
@@ -115,57 +105,43 @@ export function FoldedBriefCard({
     >
       <Preview imageUrl={brief.imageUrl} tone={tone} />
       <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
-        {hasMeta && (
+        <span
+          id={`${id}-meta`}
+          className="flex items-baseline justify-between gap-2 text-xs text-zinc-500"
+        >
           <span
-            id={`${id}-meta`}
-            className="flex items-baseline justify-between gap-2 text-xs text-zinc-500"
-          >
-            <span
-              className={cn(
-                "truncate",
-                date === TODAY && "font-medium text-accent",
-              )}
-            >
-              {date}
-            </span>
-            {needsYou >= NOTABLE_NEEDS_YOU && (
-              <span className="shrink-0 text-amber-300/90 tabular-nums">
-                {needsYou} waiting
-              </span>
+            className={cn(
+              "truncate",
+              date === TODAY && "font-medium text-accent",
             )}
+          >
+            {date}
           </span>
-        )}
+          {needsYou >= NOTABLE_NEEDS_YOU && (
+            <span className="shrink-0 text-amber-300/90 tabular-nums">
+              {needsYou} waiting
+            </span>
+          )}
+        </span>
         <span className="line-clamp-2 text-sm font-medium leading-snug text-balance text-zinc-100">
           {brief.headline}
         </span>
-        {brief.lede && (
-          <span
-            id={`${id}-lede`}
-            className="line-clamp-2 text-xs leading-relaxed text-pretty text-zinc-400"
+        <span
+          id={`${id}-foot`}
+          className="mt-auto flex min-w-0 items-center gap-1.5 pt-1"
+        >
+          <Chip
+            size="sm"
+            variant="soft"
+            color={brief.kind === "weekly" ? "accent" : "default"}
+            className="shrink-0"
           >
-            {brief.lede}
-          </span>
-        )}
-        {hasFoot && (
-          <span
-            id={`${id}-foot`}
-            className="mt-auto flex min-w-0 items-center gap-1.5 pt-1"
-          >
-            {brief.kind && (
-              <Chip
-                size="sm"
-                variant="soft"
-                color={brief.kind === "weekly" ? "accent" : "default"}
-                className="shrink-0"
-              >
-                <Chip.Label>{KIND_LABELS[brief.kind]}</Chip.Label>
-              </Chip>
-            )}
-            {edition && (
-              <span className="truncate text-xs text-zinc-500">{edition}</span>
-            )}
-          </span>
-        )}
+            <Chip.Label>{KIND_LABELS[brief.kind]}</Chip.Label>
+          </Chip>
+          {edition && (
+            <span className="truncate text-xs text-zinc-500">{edition}</span>
+          )}
+        </span>
       </span>
     </BriefTrigger>
   );

@@ -32,6 +32,17 @@ vi.mock("@/features/briefing/components/postmarks/LazyPostmarksGlobe", () => ({
   PostmarksGlobe: () => null,
 }));
 
+const TOKYO_CARD = {
+  briefing_id: "brief_tokyo",
+  date: "2026-09-01",
+  kind: "daily",
+  headline: "A quiet Tuesday from Tokyo",
+  edition: null,
+  edition_name: "Air Mail",
+  stamp_city_name: "Tokyo",
+  needs_you_count: 0,
+} satisfies PostmarksResponse["postmarks"][number]["card"];
+
 const TOKYO = {
   city_slug: "tokyo",
   city: "Tokyo",
@@ -39,9 +50,7 @@ const TOKYO = {
   lat: 35.68,
   lng: 139.69,
   stamp_url: "https://cdn.example/tokyo.webp",
-  date: "2026-09-01",
-  briefing_id: "brief_tokyo",
-  edition: null,
+  card: TOKYO_CARD,
 } satisfies PostmarksResponse["postmarks"][number];
 
 const LISBON = {
@@ -49,20 +58,16 @@ const LISBON = {
   city_slug: "lisbon",
   city: "Lisbon",
   country: "Portugal",
-  briefing_id: "brief_lisbon",
+  card: { ...TOKYO_CARD, briefing_id: "brief_lisbon" },
 } satisfies PostmarksResponse["postmarks"][number];
 
 // No edition image, so the brief opens as its text sheet: jsdom cannot decode an edition.
 const TOKYO_BRIEF = {
-  id: "brief_tokyo",
-  user_id: "u1",
-  date: "2026-09-01",
-  kind: "daily",
+  card: TOKYO_CARD,
   delivered_channels: ["inapp"],
-  edition: null,
   opened_at: null,
   created_at: "2026-09-01T02:30:00Z",
-  updated_at: null,
+  left_out: { items: [], events: [], uncomposed: [] },
   payload: {
     kicker: "THE MORNING BRIEF",
     date: "2026-09-01",
@@ -178,7 +183,13 @@ describe("PostmarksSettings", () => {
     renderPostmarks({
       total: 85,
       postmarks: [
-        { ...TOKYO, edition: { image_url: edition, fold: 0.3, paper: null } },
+        {
+          ...TOKYO,
+          card: {
+            ...TOKYO_CARD,
+            edition: { image_url: edition, fold: 0.3, paper: null },
+          },
+        },
       ],
     });
     const stamp = await screen.findByRole("button", { name: "Tokyo, Japan" });

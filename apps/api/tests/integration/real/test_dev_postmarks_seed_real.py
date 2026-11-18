@@ -52,7 +52,7 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
     await seed_dev_postmarks(dev_user, SEEDED)
     await seed_dev_postmarks(dev_user, SEEDED)
 
-    briefs = await briefing_repository.list_stamped(dev_user.id)
+    briefs = await briefing_repository.list_recent(dev_user.id, limit=2 * SEEDED)
     assert len(briefs) == SEEDED
     assert len({b.payload.stamp_city for b in briefs}) == SEEDED
     assert len({b.date for b in briefs}) == SEEDED
@@ -69,7 +69,7 @@ async def test_reseeding_yields_one_delivered_postal_brief_per_distinct_city(
     postmarks = await collected_postmarks(dev_user.id)
     assert len(postmarks.postmarks) == SEEDED
     first = postmarks.postmarks[0]
-    opened = await briefing_repository.get(first.briefing_id, user_id=dev_user.id)
+    opened = await briefing_repository.get(first.card.briefing_id, user_id=dev_user.id)
     assert opened is not None and opened.payload.stamp_city == first.city_slug
 
 

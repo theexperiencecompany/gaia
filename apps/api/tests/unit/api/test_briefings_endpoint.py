@@ -20,16 +20,21 @@ from app.constants.briefing import (
     EditionFamily,
 )
 from app.constants.workflows import WorkflowDelivery
-from app.models.brief_document_models import BriefingModel, EditionImage, EditionRender
+from app.models.brief_document_models import (
+    BriefCardRecord,
+    BriefingModel,
+    EditionImage,
+    EditionRender,
+)
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.brief_settings_models import (
     BriefingEditions,
     BriefingSchedule,
     BriefingScheduleUpdate,
 )
-from app.models.brief_view_models import Postmark, PostmarksResponse
+from app.models.brief_view_models import BriefCard, Postmark, PostmarksResponse
 from app.models.user_models import UserDocument
-from app.services.briefing.view import briefing_view
+from app.services.briefing.view import briefing_card
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from tests.conftest import FAKE_USER
@@ -73,8 +78,9 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["id"] == "brief_abc123"
-    assert body["edition"]["image_url"].startswith(
+    assert body["card"]["briefing_id"] == "brief_abc123"
+    assert body["payload"]["headline"] == "Two replies need you"
+    assert body["card"]["edition"]["image_url"].startswith(
         f"{settings.HOST}/api/v1/briefings/editions/k1/png?t="
     )
     get.assert_awaited_once_with("brief_abc123", user_id=FAKE_USER.user_id)
@@ -113,37 +119,49 @@ async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> 
     assert event["briefing"] == {"operation": "get", "id": "brief_abc123"}
 
 
-async def test_the_archive_lists_only_the_users_editions_and_tags_the_wide_event() -> None:
-    brief = _brief(opened=True)
+def _record(brief: BriefingModel) -> BriefCardRecord:
+    return BriefCardRecord.model_validate(brief, from_attributes=True)
+
+
+async def test_the_archive_lists_the_users_editions_as_cards_and_tags_the_wide_event() -> None:
+    record = _record(_brief(opened=True))
     with patch(
-        f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[brief])
-    ) as list_recent:
+        f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=[record])
+    ) as list_cards:
         async with captured_wide_event() as event:
             response = await list_briefings(user=FAKE_USER, limit=7)
 
-    assert response.briefings == [await briefing_view(brief)]
+    assert response.briefings == [await briefing_card(record)]
     assert response.next_cursor is None
     # One past the page, to learn whether another page follows.
-    list_recent.assert_awaited_once_with(
-        FAKE_USER.user_id, limit=8, editions_only=True, before=None
-    )
+    list_cards.assert_awaited_once_with(FAKE_USER.user_id, limit=8, before=None)
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "list", "limit": 7}
 
 
-def _dated(day: int) -> BriefingModel:
+async def test_the_archive_sends_each_briefs_card_never_its_payload(client: AsyncClient) -> None:
+    record = _record(_brief(opened=True))
+    with patch(f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=[record])):
+        response = await client.get(BASE)
+
+    [card] = response.json()["briefings"]
+    assert "payload" not in card
+    assert (card["briefing_id"], card["headline"]) == ("brief_abc123", "Two replies need you")
+
+
+def _dated(day: int) -> BriefCardRecord:
     brief = _brief(opened=True)
-    return brief.model_copy(update={"id": f"brief_{day}", "date": f"2026-10-{day:02d}"})
+    return _record(brief.model_copy(update={"id": f"brief_{day}", "date": f"2026-10-{day:02d}"}))
 
 
 async def test_a_full_page_names_where_the_next_one_starts(client: AsyncClient) -> None:
     briefs = [_dated(14), _dated(13), _dated(12), _dated(11)]
-    with patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=briefs)):
+    with patch(f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=briefs)):
         response = await client.get(BASE, params={"limit": 3})
 
     assert response.status_code == 200
     body = response.json()
-    assert [b["id"] for b in body["briefings"]] == ["brief_14", "brief_13", "brief_12"]
+    assert [b["briefing_id"] for b in body["briefings"]] == ["brief_14", "brief_13", "brief_12"]
     assert body["next_cursor"] == "brief_12"
 
 
@@ -151,7 +169,7 @@ async def test_a_page_that_takes_the_last_briefs_exactly_names_no_next_one(
     client: AsyncClient,
 ) -> None:
     briefs = [_dated(14), _dated(13)]
-    with patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=briefs)):
+    with patch(f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=briefs)):
         response = await client.get(BASE, params={"limit": 2})
 
     assert response.json()["next_cursor"] is None
@@ -159,40 +177,38 @@ async def test_a_page_that_takes_the_last_briefs_exactly_names_no_next_one(
 
 async def test_the_archive_reads_thirty_briefs_a_page_unless_asked() -> None:
     with patch(
-        f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[])
-    ) as list_recent:
+        f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=[])
+    ) as list_cards:
         await list_briefings(user=FAKE_USER)
 
-    assert list_recent.await_args.kwargs["limit"] == 31
+    assert list_cards.await_args.kwargs["limit"] == 31
 
 
 async def test_the_next_page_is_read_from_after_the_cursors_brief(client: AsyncClient) -> None:
     anchor = _dated(13)
     with (
-        patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=anchor)) as get,
+        patch(f"{MODULE}.briefing_repository.get_card", AsyncMock(return_value=anchor)) as get,
         patch(
-            f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[_dated(12)])
-        ) as list_recent,
+            f"{MODULE}.briefing_repository.list_cards", AsyncMock(return_value=[_dated(12)])
+        ) as list_cards,
     ):
         response = await client.get(BASE, params={"limit": 2, "before": "brief_13"})
 
     assert response.status_code == 200
     assert response.json()["next_cursor"] is None
     get.assert_awaited_once_with("brief_13", user_id=FAKE_USER.user_id)
-    list_recent.assert_awaited_once_with(
-        FAKE_USER.user_id, limit=3, editions_only=True, before=anchor
-    )
+    list_cards.assert_awaited_once_with(FAKE_USER.user_id, limit=3, before=anchor)
 
 
 async def test_a_cursor_naming_no_brief_of_the_users_is_a_404(client: AsyncClient) -> None:
     with (
-        patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=None)),
-        patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock()) as list_recent,
+        patch(f"{MODULE}.briefing_repository.get_card", AsyncMock(return_value=None)),
+        patch(f"{MODULE}.briefing_repository.list_cards", AsyncMock()) as list_cards,
     ):
         response = await client.get(BASE, params={"before": "brief_nope"})
 
     assert (response.status_code, response.json()["message"]) == (404, "Briefing not found")
-    list_recent.assert_not_awaited()
+    list_cards.assert_not_awaited()
 
 
 async def test_postmarks_returns_the_collection_and_reports_the_view(
@@ -205,9 +221,16 @@ async def test_postmarks_returns_the_collection_and_reports_the_view(
         lat=35.68,
         lng=139.69,
         stamp_url="https://cdn.example/tokyo.webp",
-        date="2026-09-01",
-        briefing_id="brief_abc123",
-        edition=EditionImage(image_url="https://cdn.example/edition.png", fold=0.3),
+        card=BriefCard(
+            briefing_id="brief_abc123",
+            date="2026-09-01",
+            kind=BriefingKind.DAILY,
+            headline="Two replies need you",
+            edition=EditionImage(image_url="https://cdn.example/edition.png", fold=0.3),
+            edition_name="Air Mail",
+            stamp_city_name="Tokyo",
+            needs_you_count=0,
+        ),
     )
     collection = PostmarksResponse(total=85, postmarks=[tokyo])
     with (

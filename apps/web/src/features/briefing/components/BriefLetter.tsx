@@ -105,8 +105,7 @@ function FoldedPanels({ edition }: { edition: PreparedEdition }) {
  * reverse. Its face is the unfold's first frame; hover lifts the sheet off the desk.
  */
 export function BriefLetter({ brief, trigger }: BriefLetterProps) {
-  const { headline, imageUrl } = brief;
-  const { editionFold = null, editionPaper = null } = brief;
+  const { headline, imageUrl, editionFold, editionPaper } = brief;
   const rootRef = useRef<HTMLDivElement>(null);
   const faceRef = useRef<HTMLSpanElement>(null);
   const isNear = useInView(rootRef, { once: true, margin: PREPARE_MARGIN });

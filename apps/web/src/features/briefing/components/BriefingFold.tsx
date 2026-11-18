@@ -13,45 +13,36 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 
 import { briefingQuery } from "../api/briefingApi";
-import {
-  type BriefSource,
-  type BriefTriggerState,
-  useOpenBrief,
-} from "../hooks/useOpenBrief";
+import { type BriefTriggerState, useOpenBrief } from "../hooks/useOpenBrief";
 import { BRIEF_LETTER_WIDTH } from "../letterTokens";
 
 import { briefPath, type FoldedBriefSummary } from "../utils/briefCard";
 import { BriefingEdition, BriefingText } from "./BriefingEdition";
 import { EditionUnfold } from "./EditionUnfold";
 
-export type BriefingFoldProps = BriefSource & {
+export interface BriefingFoldProps {
+  briefingId: string;
   brief: FoldedBriefSummary;
   /** Draws the folded brief: a FoldedBriefCard, the chat's BriefLetter, a postmark's stamp. */
   children: (trigger: BriefTriggerState) => ReactNode;
-};
+}
 
 /** A folded brief; pressing it unfolds the edition (or its text) above the page. */
 export function BriefingFold({
+  briefingId,
   brief,
   children,
-  ...source
 }: BriefingFoldProps) {
   const { trigger, opened, origin, isOpen, close, retry, settle } =
-    useOpenBrief(brief, source);
+    useOpenBrief(brief, briefingId);
   // The unfolding edition is a picture; a screen reader reads the letter's text, fetched alongside it.
   const { data: stored } = useQuery({
-    ...briefingQuery(source.briefingId ?? ""),
-    enabled:
-      Boolean(source.briefingId) &&
-      !source.payload &&
-      opened?.kind === "edition",
+    ...briefingQuery(briefingId),
+    enabled: opened?.kind === "edition",
   });
-  const letterText = source.payload ?? stored?.payload;
   const { headline } = brief;
   const fullBrief =
-    source.briefingId && opened && opened.kind !== "missing"
-      ? briefPath(source.briefingId)
-      : null;
+    opened && opened.kind !== "missing" ? briefPath(briefingId) : null;
 
   return (
     <>
@@ -83,9 +74,12 @@ export function BriefingFold({
               origin={origin}
               onFolded={settle}
             />
-            {letterText && (
+            {stored && (
               <div className="sr-only">
-                <BriefingText payload={letterText} />
+                <BriefingText
+                  payload={stored.payload}
+                  uncomposed={stored.left_out.uncomposed}
+                />
               </div>
             )}
           </>
@@ -95,7 +89,10 @@ export function BriefingFold({
             className="rounded-2xl shadow-[0_32px_80px_-24px_rgba(0,0,0,0.75)]"
           >
             {opened?.kind === "text" ? (
-              <BriefingEdition payload={opened.payload} />
+              <BriefingEdition
+                payload={opened.briefing.payload}
+                leftOut={opened.briefing.left_out}
+              />
             ) : opened?.kind === "failed" ? (
               <LoadError
                 className="bg-zinc-800"
