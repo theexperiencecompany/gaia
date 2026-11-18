@@ -89,14 +89,18 @@ class OutboundObserver:
         if self._connection is not None:
             await self._connection.close()
 
-    async def drained(self) -> bool:
-        """Whether every message published so far has reached its transcript, and every woken conversation is idle."""
+    async def drained(self, conversation_id: str) -> bool:
+        """Whether every message published so far has reached its transcript, and the conversation's follow ended.
+
+        Only that conversation's follow: another scenario's run may never go idle.
+        """
         if self._channel is None:
             raise RuntimeError("the observer is not started")
-        for task in self._follows.values():
-            if not task.done():
+        follow = self._follows.get(conversation_id)
+        if follow is not None:
+            if not follow.done():
                 return False
-            task.result()
+            follow.result()
         outbound = await self._channel.declare_queue(_OUTBOUND, passive=True)
         if outbound.declaration_result.message_count:
             return False

@@ -441,7 +441,7 @@ class BrowserStack:
             job_id = await get_latest_job(conversation_id)
             running = job_id is not None and await done_state(job_id) is None
             idle = not running and await get_lock_holder(conversation_id) is None
-            quiet = quiet + 1 if idle and await self.observer.drained() else 0
+            quiet = quiet + 1 if idle and await self.observer.drained(conversation_id) else 0
             if quiet >= 2:
                 return
             await asyncio.sleep(1.0)
