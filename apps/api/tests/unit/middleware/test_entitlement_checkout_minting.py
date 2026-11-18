@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.models.payment_models import PlanType
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from tests.conftest import FAKE_USER, _create_test_app
 
 pytestmark = pytest.mark.unit
@@ -109,3 +110,16 @@ class TestGateDoesNotMintPerBlockedRequest:
 
         assert response.status_code == 402
         assert response.json()["code"] == "subscription_required"
+
+
+class TestEntitlementStepTiming:
+    async def test_the_paid_plan_check_is_timed_as_the_turns_entitlement_step(
+        self, gated_client: AsyncClient
+    ) -> None:
+        timings = begin_turn_timings()
+        with patch(
+            "app.api.v1.middleware.entitlement.require_active_subscription", new_callable=AsyncMock
+        ):
+            await gated_client.get(SHELL_STARTUP_PATHS[0])
+
+        assert (TurnPhase.INGRESS, TurnStep.ENTITLEMENT) in timings.steps

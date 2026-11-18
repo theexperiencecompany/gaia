@@ -16,7 +16,7 @@ from app.constants.memory import (
     MemoryShelfLife,
     MemorySourceType,
 )
-from app.memory import cap_counter, chroma_store, pg_store
+from app.memory import cap_counter, chroma_store, pg_store, vector_index
 from app.memory.context import invalidate_core_context, invalidate_user_memory_caches
 from app.memory.embeddings import embed_batch
 from app.memory.mappers import document_to_model, episode_to_model, row_to_entry
@@ -250,6 +250,7 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
             }
         ]
     )
+    await vector_index.index_memories(user_id, [(row.id, row.content)])
     await _reconsolidate_documents(user_id, row)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)

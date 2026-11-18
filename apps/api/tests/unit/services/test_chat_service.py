@@ -16,13 +16,13 @@ from collections.abc import AsyncGenerator, Iterator
 import contextlib
 from datetime import datetime, timedelta
 import json
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
 from prometheus_client import REGISTRY
 import pytest
+from starlette.requests import Request
 
 from app.agents.core.background.session import (
     RunKind,
@@ -56,6 +56,7 @@ from app.services.chat.stream import (
     _StreamState,
     run_chat_stream_background,
 )
+from app.services.turn_clock import TurnClock
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -791,7 +792,7 @@ class TestRunChatStreamBackground:
                 user=test_user,
                 conversation_id="conv_existing_123",
                 source="desktop",
-                t0_perf=time.perf_counter(),
+                clock=TurnClock.accepted(Request({"type": "http", "state": {}})),
             )
 
         event = mock_capture.call_args.args[1]
