@@ -2321,8 +2321,7 @@
             "$ref": "#/components/schemas/EditionChoice"
           },
           "family": {
-            "title": "Family",
-            "type": "string"
+            "$ref": "#/components/schemas/EditionFamily"
           },
           "name": {
             "title": "Name",

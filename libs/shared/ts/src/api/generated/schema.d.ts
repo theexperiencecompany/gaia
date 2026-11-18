@@ -7209,8 +7209,7 @@ export interface components {
          */
         BriefingEdition: {
             choice: components["schemas"]["EditionChoice"];
-            /** Family */
-            family: string;
+            family: components["schemas"]["EditionFamily"];
             /** Name */
             name: string;
         };
