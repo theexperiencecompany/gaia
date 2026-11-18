@@ -93,6 +93,8 @@ USER = "507f1f77bcf86cd799439011"
 #: A ledger no attempt opened: the closing tools close nothing on it.
 LEDGER = "ledger-under-test"
 CONFIRM_SECONDS = 0.05
+# A run that cannot stop fails its test here, not at the suite's 120s per-test cap.
+HANG_LIMIT_SECONDS = 10
 EntryT = TypeVar("EntryT")
 # The text streams, the translator closes the message, the model node returns, the answer is
 # final once the follow-up pass starts, its suggestions stream, the run ends.
@@ -441,7 +443,7 @@ async def test_a_run_that_fails_before_it_streams_raises_through_its_events(
                 (),
                 LEDGER,
             )
-            async with asyncio.timeout(10):
+            async with asyncio.timeout(HANG_LIMIT_SECONDS):
                 with pytest.raises(ValueError, match="ObjectId"):
                     await collect(run)
     assert run.task.done()
@@ -1172,11 +1174,12 @@ async def test_nothing_joins_a_run_once_it_is_being_cancelled(conversation_id: s
             run = await runner(conversation_id, step=step).start(
                 claim(conversation_id), first, (), LEDGER
             )
-            await model.entered(0).wait()
-            cancelling = asyncio.create_task(run.cancel(CancelReason.RESTART))
-            await asyncio.sleep(0)
-            await run.absorb([logged(2, user("u2"))])
-            await cancelling
+            async with asyncio.timeout(HANG_LIMIT_SECONDS):
+                await model.entered(0).wait()
+                cancelling = asyncio.create_task(run.cancel(CancelReason.RESTART))
+                await asyncio.sleep(0)
+                await run.absorb([logged(2, user("u2"))])
+                await cancelling
     assert step == {
         "epoch": 1,
         "batch_start": 1,
