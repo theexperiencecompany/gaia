@@ -21,6 +21,13 @@ from app.workers.lifecycle.shutdown import shutdown
 
 
 @pytest.fixture(autouse=True)
+def post_deploy_started() -> Iterator[MagicMock]:
+    """Record the post-deploy start; a real one runs every migration against the live Mongo."""
+    with patch("app.workers.lifecycle.startup.start_post_deploy") as start:
+        yield start
+
+
+@pytest.fixture(autouse=True)
 def browser_worker_calls() -> Iterator[list[str]]:
     """Record the browser worker's start/stop; a real one would consume the live Redis queue."""
     calls: list[str] = []
@@ -85,6 +92,17 @@ class TestWorkerStartup:
             await startup(ctx)
 
         assert browser_worker_calls == ["start"]
+
+    @pytest.mark.regression
+    async def test_startup_runs_the_post_deploy_step(
+        self, ctx: dict, post_deploy_started: MagicMock
+    ) -> None:
+        with patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock):
+            from app.workers.lifecycle.startup import startup
+
+            await startup(ctx)
+
+        post_deploy_started.assert_called_once_with()
 
     @pytest.fixture
     def ctx(self) -> dict:
