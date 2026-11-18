@@ -259,6 +259,7 @@ async def _decide_ledger(
                 conversation_id=context.conversation_id,
                 tool_call=call,
                 summary=summary,
+                question=description.question or summary,
                 integration_name=integration_name,
             ),
             background=context.background,

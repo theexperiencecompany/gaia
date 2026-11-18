@@ -49,16 +49,14 @@ OUTPUT RESTRICTIONS for a call:
 - Keep it short and conversational, a few spoken sentences. Give the key fact first; offer more if they want it.
 """
 
-# Text-only channels have no approval card, so an action awaiting go-ahead must
-# invite a chat reply. Approval is permission, not execution: the action stays unrun
-# until the user decides, and the HIL resolver commits their yes/no reply.
+# Text-only channels have no approval card, and GAIA asks there itself (the bot's
+# prompt, or a link to the app for work's own chat), so a reply never says what to answer.
 _MESSAGING_APPROVAL: Final[str] = (
     "APPROVALS ON THIS PLATFORM:\n"
     "- When an action needs the user's approval, it does not run until they decide. "
-    "There is no approval card or button here for them to see or click. Tell them "
-    "plainly to reply YES to approve or NO to decline; their Yes or No (or "
-    '"go ahead" / "no, don\'t") reply in the chat is what decides it, and GAIA then '
-    "carries the action out or leaves it undone.\n\n"
+    "There is no approval card or button here for them to see or click. GAIA asks them "
+    "itself, in its own message, so never tell them how to approve or what to reply. "
+    "Once they decide, GAIA carries the action out or leaves it undone.\n\n"
 )
 
 

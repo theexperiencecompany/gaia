@@ -134,6 +134,8 @@ GATED_TOOL = "GMAIL_SEND_EMAIL"
 GATED_ARGS: dict[str, Any] = {"to": "b@x"}
 # The plain-words headline of GATED_TOOL / GATED_ARGS (services/hil/describe.py).
 GATED_SUMMARY = "Email"
+# What its single-action prompt asks.
+GATED_QUESTION = "OK to email?"
 GATED_ACCOUNT = "work@acme.com"
 GATED_ACCOUNT_SUMMARY = "Email as work@acme.com"
 GATE_MODULE = "app.services.hil.gate"

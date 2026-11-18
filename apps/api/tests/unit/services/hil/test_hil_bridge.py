@@ -20,6 +20,7 @@ APPROVAL = GatedApproval(
     conversation_id=CONVERSATION_ID,
     tool_call=GatedCall(name="send_email", id="call_1", args={"to": "ada@example.com"}),
     summary="Send an email to ada@example.com",
+    question="OK to email ada@example.com?",
     integration_name="Gmail",
 )
 
@@ -45,9 +46,7 @@ class TestAnnounceApproval:
         """Detached, so a push that fails can never hold the gate."""
         await announce_approval(APPROVAL, background=False)
 
-        seams.push.assert_called_once_with(
-            USER_ID, CONVERSATION_ID, "ap_1", "Send an email to ada@example.com"
-        )
+        seams.push.assert_called_once_with(APPROVAL)
         seams.spawn.assert_called_once_with(
             "approval_pending_notification",
             "push",

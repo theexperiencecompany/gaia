@@ -55,6 +55,8 @@ class GatedApproval:
     conversation_id: str
     tool_call: GatedCall
     summary: str
+    #: What a single-action prompt asks, the sentence a chat app shows the user.
+    question: str
     integration_name: str | None
 
 

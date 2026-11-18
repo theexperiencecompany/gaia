@@ -23,6 +23,10 @@ CHANNEL_TYPE_PUSH: Final = "push"
 CHANNEL_TYPE_CONVERSATION: Final = "conversation"
 #: The push category the mobile app answers with approve/deny buttons.
 APPROVAL_PUSH_CATEGORY: Final = "hil_approval"
+#: The title a pending approval's push carries.
+APPROVAL_PUSH_TITLE: Final = "GAIA needs your approval"
+#: The link under an approval sent to a chat app, which opens the chat it was asked in.
+APPROVAL_CHAT_LINK_LABEL: Final = "Approve or decline it in GAIA"
 
 # External channel types a notification can be delivered on
 EXTERNAL_NOTIFICATION_CHANNELS = (

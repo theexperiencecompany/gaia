@@ -131,19 +131,21 @@ UI_SOURCES = tuple(sorted(set(COMMS_PROMPT_BY_SOURCE) - BOT_CONVERSATION_SOURCES
 class TestApprovalMessagingWording:
     """GAIA-713: approval asks must be channel-aware.
 
-    Messaging channels have no approval card or button, so the user must be told
-    to reply YES/NO in chat. Web/mobile/desktop keep the card-based approval.
+    Messaging channels have no approval card or button, and GAIA asks there itself
+    (the bot's prompt, or a link to the app for an approval asked in a todo's or a
+    workflow's chat), so a reply never tells the user what to answer.
+    Web/mobile/desktop keep the card-based approval.
     """
 
     def test_every_channel_is_classified(self) -> None:
         assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
 
     @pytest.mark.regression
-    def test_non_ui_channels_instruct_reply_yes_no(self) -> None:
+    def test_messaging_channels_leave_the_asking_to_gaia(self) -> None:
         for source in MESSAGING_SOURCES:
             prompt = get_comms_static_prompt(source)
-            assert "reply YES to approve or NO to decline" in prompt, (
-                f"{source} did not instruct a YES/NO chat reply"
+            assert "never tell them how to approve or what to reply" in prompt, (
+                f"{source} lets a reply explain how to approve"
             )
             assert "no approval card or button here" in prompt
             # The only allowed mention of a card is the one saying there is none.
@@ -156,18 +158,13 @@ class TestApprovalMessagingWording:
             assert "## Approvals in the app" in prompt
             assert "approval card" in prompt
             assert "do not ask them to type a reply in chat" in prompt
-            # UI channels must NOT ask the user to reply YES/NO in chat.
-            assert "reply YES to approve or NO to decline" not in prompt
             assert "APPROVALS ON THIS PLATFORM" not in prompt
 
     @pytest.mark.regression
-    def test_channel_aware_not_telegram_only(self) -> None:
-        # The YES/NO wording is driven by the channel (all messaging sources),
-        # not hardcoded to Telegram.
-        for source in MESSAGING_SOURCES:
-            assert "reply YES to approve or NO to decline" in get_comms_static_prompt(source)
-        for source in UI_SOURCES:
-            assert "reply YES to approve or NO to decline" not in get_comms_static_prompt(source)
+    def test_no_channel_tells_the_user_to_reply_yes(self) -> None:
+        # Bug 30: a todo's parked write-up said "Reply YES", which answers nothing anywhere.
+        for source in COMMS_PROMPT_BY_SOURCE:
+            assert "reply YES" not in get_comms_static_prompt(source)
 
     @pytest.mark.regression
     def test_approval_is_permission_not_execution(self) -> None:

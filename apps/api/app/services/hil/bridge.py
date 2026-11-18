@@ -44,9 +44,7 @@ async def announce_approval(approval: GatedApproval, *, background: bool) -> Non
     # Detached, since a push failure must never block the gate.
     spawn_logged_task(
         "approval_pending_notification",
-        notify_approval_pending(
-            approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-        ),
+        notify_approval_pending(approval),
         user={"id": approval.user_id},
         conversation_id=approval.conversation_id,
         approval_id=approval.approval_id,

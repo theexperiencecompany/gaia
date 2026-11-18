@@ -31,7 +31,9 @@ from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.hil.notify import notify_approval_pending
+from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.integrations.integration_expiry import AccountExpired, announce_account_expiry
 from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.notifications import notify_workflow_result
@@ -275,11 +277,27 @@ async def test_a_todo_run_result_is_delivered_once_on_the_users_channel(
     ] * bot_messages
 
 
-async def test_a_pending_approval_pushes_once_and_never_prompts_the_bot(
-    mongo_db, delivered: Delivered
+def _approval(user_id: str, conversation_id: str) -> GatedApproval:
+    return GatedApproval(
+        approval_id="approval-1",
+        stream_id="stream-1",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        tool_call=GatedCall(name="create_todo", id="call-1", args={"title": "Renew passport"}),
+        summary="Add “Renew passport” to your todos",
+        question="Want me to add “Renew passport” to your todos?",
+        integration_name=None,
+    )
+
+
+async def test_an_approval_in_a_chat_app_conversation_pushes_once_and_leaves_the_prompt_to_its_bot(
+    mongo_db, conversations_collection, delivered: Delivered
 ) -> None:
+    await conversations_collection.insert_one(
+        {"conversation_id": "conv-9", "user_id": str(LINKED_OID), "source": "telegram"}
+    )
     for _ in range(2):
-        await notify_approval_pending(str(LINKED_OID), "conv-9", "approval-1", "Send the email?")
+        await notify_approval_pending(_approval(str(LINKED_OID), "conv-9"))
 
     (push,) = delivered.pushes
     (message,) = push
@@ -288,8 +306,33 @@ async def test_a_pending_approval_pushes_once_and_never_prompts_the_bot(
     assert isinstance(data, dict)
     assert data["approval_id"] == "approval-1"
     assert delivered.bot_messages == []
+    assert await _notices(mongo_db) == []
     assert delivered.socket_events == []
     assert len(await _notifications(mongo_db, str(LINKED_OID))) == 1
+
+
+@pytest.mark.parametrize(
+    ("oid", "bot_messages"), [(LINKED_OID, 1), (UNLINKED_OID, 0)], ids=["chat-app", "app-only"]
+)
+async def test_an_approval_asked_in_a_todos_chat_reaches_the_chat_app_once_with_a_link_to_it(
+    mongo_db, conversations_collection, delivered: Delivered, oid: ObjectId, bot_messages: int
+) -> None:
+    """Regression for bug 30: no bot follows a todo's own chat, so its approvals never reached Telegram."""
+    todo_chat = await get_or_create_todo_conversation(str(oid), "todo-1", "Renew passport")
+
+    # A replayed gate announces the same approval again.
+    for _ in range(2):
+        await notify_approval_pending(_approval(str(oid), todo_chat))
+
+    assert [n["text"] for n in await _notices(mongo_db)] == [
+        "**Want me to add “Renew passport” to your todos?**\n\n"
+        f"[Approve or decline it in GAIA]({FILE_LINKS.conversation_page(todo_chat)})"
+    ] * bot_messages
+    assert [w["destination_id"] for w in delivered.bot_messages] == [
+        TELEGRAM_USER_ID
+    ] * bot_messages
+    assert len(delivered.pushes) == 1
+    assert len(await _notifications(mongo_db, str(oid))) == 1
 
 
 async def test_an_integration_expiry_raises_one_notification(
