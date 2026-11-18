@@ -14,6 +14,7 @@ from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.thread_writes import with_message_ids
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -44,7 +45,7 @@ async def narrate_executor_result(
     or an empty string on failure.
     """
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(COMMS_AGENT_NAME)
     except GraphUnavailableError as e:
         # Degrade contract: background narration must never crash the executor
         # flow — drop the narration but log the real cause loudly.
@@ -64,7 +65,7 @@ async def narrate_executor_result(
             identity=AgentIdentity(
                 conversation_id=conversation_id,
                 user=agent_user_context(user),
-                agent_name="comms_agent",
+                agent_name=COMMS_AGENT_NAME,
             ),
             lane=AgentLane(role=AgentRole.COMMS),
             turn=AgentTurn(
@@ -126,7 +127,7 @@ async def record_executor_cancellation(
         name=BACKGROUND_EXECUTOR_NAME,
     )
     try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
+        comms_graph = await GraphManager.get_graph(COMMS_AGENT_NAME)
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
             {"messages": with_message_ids([marker])},
