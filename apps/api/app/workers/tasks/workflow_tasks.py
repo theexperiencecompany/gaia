@@ -1354,6 +1354,7 @@ async def _record_run_failure(
     execution_id: str | None,
     trigger_type: str | None,
 ) -> str:
+    """Close out a failed fire, then re-raise it; a plan-quota refusal is a skip and returns."""
     # A failure after a partial replay arrives wrapped with the replay's
     # trace; the bookkeeping below classifies the real error, and the
     # record keeps the calls that already happened.
@@ -1365,7 +1366,9 @@ async def _record_run_failure(
     # error) must not permanently kill a recurring workflow.
     await _rearm_quietly(workflow_scheduler, workflow, trigger_type, workflow_id)
 
-    return f"Error executing workflow {workflow_id}: {e}"
+    if isinstance(e, RateLimitExceededException):
+        return f"Workflow {workflow_id} skipped: {e}"
+    raise raised
 
 
 async def _reschedule_refill_safe(

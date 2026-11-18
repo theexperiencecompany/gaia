@@ -38,6 +38,8 @@ from app.services.workflow.notifications import (
 from app.utils import auth_utils
 from app.utils.errors import AppError
 from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
+from app.workers.metrics import REGISTRY as WORKER_METRICS
+from app.workers.task_envelope import arq_task
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
     _rate_limit_failure_content,
@@ -276,10 +278,40 @@ class TestExecuteWorkflowById:
             ),
         ):
             mock_wf_svc.increment_execution_count = mock_increment
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(RuntimeError, match="^LLM timeout$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
         mock_increment.assert_awaited_once_with(workflow.id, workflow.user_id, is_successful=False)
-        assert "Error executing workflow" in result
+
+    @pytest.mark.regression
+    async def test_a_failed_run_is_counted_as_a_failed_task(self, ctx):
+        """A failed run once returned a string, so the ARQ envelope counted it a success and no alert saw it."""
+        workflow = _make_workflow()
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+        _, p_scheduler = _patch_scheduler(workflow)
+        failed = {"task_name": execute_workflow_by_id.__name__, "status": "error"}
+        before = WORKER_METRICS.get_sample_value("arq_task_total", failed) or 0.0
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(side_effect=RuntimeError("LLM timeout")),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.notification_service"),
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            with pytest.raises(RuntimeError, match="^LLM timeout$"):
+                await arq_task(execute_workflow_by_id)(ctx, workflow.id)
+
+        assert WORKER_METRICS.get_sample_value("arq_task_total", failed) == before + 1
 
     @pytest.mark.parametrize(
         "context,expected_trigger_type",
@@ -350,7 +382,8 @@ class TestExecuteWorkflowById:
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
-            await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(ValueError, match="^boom$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
         mock_scheduler.close.assert_not_awaited()
 
@@ -434,9 +467,9 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks._rearm_quietly", rearm),
         ):
-            result = await execute_workflow_by_id(ctx, workflow.id, context=context)
+            with pytest.raises(ValueError, match="^boom$"):
+                await execute_workflow_by_id(ctx, workflow.id, context=context)
 
-        assert "Error executing workflow" in result
         record_failure.assert_awaited_once_with(
             error, workflow, workflow.id, execution_id, record=None
         )
@@ -1430,7 +1463,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "Resets" in notif_req.content.body
@@ -1464,7 +1497,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "not available on your current plan" in notif_req.content.body
         assert "Upgrade to Pro" in notif_req.content.body
@@ -1496,7 +1529,7 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.create_notification = AsyncMock()
             result = await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
+        assert f"Workflow {workflow.id} skipped: " in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         # Falls back to the version without the reset time formatting
         assert "You've used all your workflow executions" in notif_req.content.body
@@ -1520,9 +1553,9 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(ValueError, match="^Something broke$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "encountered an error" in notif_req.content.body
         # No upgrade action for generic errors
@@ -1549,9 +1582,8 @@ class TestExecuteWorkflowByIdNotifications:
             mock_notif.create_notification = AsyncMock(
                 side_effect=RuntimeError("Notification service down")
             )
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(ValueError, match="^Original error$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_complete_execution_failure_during_error_is_swallowed(self, ctx):
         """If complete_execution fails during error handling, it doesn't crash."""
@@ -1581,9 +1613,8 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(RuntimeError, match="^LLM crash$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_increment_execution_count_failure_during_error_is_swallowed(self, ctx):
         """If increment_execution_count fails during error handling, it doesn't crash."""
@@ -1615,9 +1646,8 @@ class TestExecuteWorkflowByIdNotifications:
                 side_effect=RuntimeError("Stats DB down")
             )
             mock_notif.create_notification = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
-
-        assert "Error executing workflow" in result
+            with pytest.raises(RuntimeError, match="^LLM crash$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
     async def test_no_execution_id_skips_complete_execution_on_error(self, ctx):
         """When create_execution itself fails, execution_id is None and complete_execution is not called."""
@@ -1642,9 +1672,9 @@ class TestExecuteWorkflowByIdNotifications:
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()
-            result = await execute_workflow_by_id(ctx, workflow.id)
+            with pytest.raises(RuntimeError, match="^DB unavailable$"):
+                await execute_workflow_by_id(ctx, workflow.id)
 
-        assert "Error executing workflow" in result
         # complete_execution should NOT have been called since execution_id is None
         mock_complete_exec.assert_not_awaited()
 
