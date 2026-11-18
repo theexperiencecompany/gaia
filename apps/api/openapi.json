@@ -17017,6 +17017,17 @@
             "title": "Date",
             "type": "string"
           },
+          "full_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Url"
+          },
           "headline": {
             "title": "Headline",
             "type": "string"

@@ -1,4 +1,4 @@
-"""A persisted daily or weekly brief, served as its front page: the edition and its items stay with the owner."""
+"""A persisted daily or weekly brief: its owner is sent to the full brief, anyone else sees its front page."""
 
 from app.db.repositories.briefings import briefing_repository
 from app.models.short_link_models import (
@@ -9,15 +9,21 @@ from app.models.short_link_models import (
     ShortLink,
     ShortLinkTargetType,
 )
+from app.services.briefing.message import full_brief_url
 from app.services.briefing.view import public_view
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
 
 async def _project(
-    link: ShortLink, target: RecordTarget, _viewer: LinkViewerKind
+    link: ShortLink, target: RecordTarget, viewer: LinkViewerKind
 ) -> PublicBriefing | None:
     briefing = await briefing_repository.get(target.id, user_id=link.user_id)
-    return public_view(briefing) if briefing is not None else None
+    if briefing is None:
+        return None
+    view = public_view(briefing)
+    if viewer is LinkViewerKind.OWNER:
+        return view.model_copy(update={"full_url": full_brief_url(briefing.id)})
+    return view
 
 
 async def _preview(

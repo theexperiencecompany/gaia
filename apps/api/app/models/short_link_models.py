@@ -286,6 +286,8 @@ class PublicBriefing(_PublicView):
     kicker: str
     date: str
     headline: str
+    #: The full brief in the app, where its owner is sent; None for every other viewer.
+    full_url: str | None = None
 
 
 class PublicWorkspaceFile(_PublicView):

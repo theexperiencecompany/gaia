@@ -14034,6 +14034,8 @@ export interface components {
         PublicBriefing: {
             /** Date */
             date: string;
+            /** Full Url */
+            full_url?: string | null;
             /** Headline */
             headline: string;
             /** Kicker */

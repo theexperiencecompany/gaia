@@ -113,4 +113,32 @@ describe("OpenLinkView", () => {
     expect(screen.queryByTestId("share")).toBeNull();
     expect(screen.getByText("Trip plan")).toBeTruthy();
   });
+  it("sends the owner of a brief's link on to the full brief", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { ...window.location, replace });
+    const brief = (fullUrl: string | null): LinkEnvelope => ({
+      ...envelope(fullUrl !== null),
+      target_type: "briefing",
+      view: {
+        target_type: "briefing",
+        kind: "daily",
+        kicker: "THE MORNING BRIEF",
+        date: "Nov 13",
+        headline: "A clear Friday",
+        full_url: fullUrl,
+      },
+    });
+    openLinkInBrowser.mockResolvedValue(
+      brief("https://heygaia.io/brief/brief_abc"),
+    );
+
+    render(<OpenLinkView slug="abcdefghijk" envelope={brief(null)} />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "https://heygaia.io/brief/brief_abc",
+      ),
+    );
+    vi.unstubAllGlobals();
+  });
 });

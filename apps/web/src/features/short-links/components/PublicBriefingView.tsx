@@ -1,7 +1,20 @@
+"use client";
+
+import { useEffect } from "react";
+
 import type { LinkViewProps } from "../types";
 
-/** A shared brief's front page: its kicker, date and headline, never its items or edition. */
+/**
+ * A shared brief's front page: its kicker, date and headline, never its items or edition.
+ * Its owner is sent on to the full brief, which only they get a URL for.
+ */
 export function PublicBriefingView({ view }: LinkViewProps<"briefing">) {
+  const fullUrl = view.full_url;
+
+  useEffect(() => {
+    if (fullUrl) window.location.replace(fullUrl);
+  }, [fullUrl]);
+
   return (
     <article className="flex flex-col gap-2">
       <p className="flex items-center gap-2 text-xs tracking-wide text-zinc-500 uppercase">

@@ -176,8 +176,10 @@ class TestBriefing:
         assert facts == PreviewFacts(title=brief.payload.headline, image_url=None)
         repo.get.assert_awaited_once_with("brief_abc", user_id="owner")
 
-    @pytest.mark.parametrize("viewer", list(LinkViewerKind))
-    async def test_serves_the_front_page_alone_to_every_viewer(self, viewer: LinkViewerKind):
+    @pytest.mark.parametrize("viewer", [LinkViewerKind.RECIPIENT, LinkViewerKind.UNFURL_BOT])
+    async def test_serves_the_front_page_alone_to_anyone_but_its_owner(
+        self, viewer: LinkViewerKind
+    ):
         briefing = BriefingModel(
             id="brief_abc",
             user_id="owner",
@@ -225,6 +227,27 @@ class TestBriefing:
             date="Oct 14",
             headline="A clear day",
         )
+
+    async def test_its_owner_is_sent_to_the_full_brief(self):
+        """The email button, the chat "Full brief" line and the QR code are this link."""
+        briefing = _brief_with_items()
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
+            repo.get = AsyncMock(return_value=briefing)
+            view = await _project(
+                ShortLinkTargetType.BRIEFING, "owner", briefing.id, LinkViewerKind.OWNER
+            )
+
+        assert isinstance(view, PublicBriefing)
+        assert view.full_url == f"{settings.FRONTEND_URL}/brief/{briefing.id}"
+
+    async def test_anyone_else_gets_no_way_to_the_full_brief(self):
+        briefing = _brief_with_items()
+        with patch("app.services.links.targets.briefing.briefing_repository") as repo:
+            repo.get = AsyncMock(return_value=briefing)
+            view = await _project(ShortLinkTargetType.BRIEFING, "owner", briefing.id)
+
+        assert isinstance(view, PublicBriefing)
+        assert view.full_url is None
 
     async def test_someone_elses_brief_projects_to_nothing(self):
         with patch("app.services.links.targets.briefing.briefing_repository") as repo:
