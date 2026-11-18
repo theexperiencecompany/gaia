@@ -299,7 +299,7 @@ class TestReplayOrLearn:
 
 
 class TestScoutSignals:
-    async def test_only_a_replays_criteria_reach_the_brief_keyed_by_app(
+    async def test_a_frozen_scouts_criteria_reach_the_brief_keyed_by_app(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         results = [
@@ -324,10 +324,11 @@ class TestScoutSignals:
 
         signals = await service.scout_signals(USER, _NOW)
 
-        assert signals.criteria == {
-            "Linear": "needs you: open issues assigned to the user; important: due within a day; "
+        line = (
+            "needs you: open issues assigned to the user; important: due within a day; "
             "leave out: closed ones"
-        }
+        )
+        assert signals.criteria == {"Linear": line, "GitHub": line}
         assert signals.results == results
 
 

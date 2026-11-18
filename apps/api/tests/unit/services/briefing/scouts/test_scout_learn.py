@@ -237,9 +237,7 @@ class TestLearnFreezeReplay:
         ]
         # The agent's call, the freeze's verification replay, then the brief's replay.
         assert app.calls == [{"assignee": "me", "user_id": USER_ID}] * 3
-        assert [(s.external_id, s.why, s.importance) for s in learned.signals] == [
-            ("ENG-12", "due this evening", SignalImportance.HIGH)
-        ]
+        assert learned.signals == replayed
         [signal] = replayed
         assert (signal.app, signal.external_id, signal.title, signal.state, signal.people) == (
             "Linear",
@@ -251,6 +249,31 @@ class TestLearnFreezeReplay:
         # A replayed row is only a candidate: the judge decides what matters.
         assert signal.importance is SignalImportance.NORMAL
         assert scout.criteria == scout_models.ScoutCriteria.model_validate(CRITERIA)
+
+    @pytest.mark.regression
+    async def test_a_frozen_learn_reports_the_rows_its_replay_reads(self) -> None:
+        """Replay: the learn model wrote checked=false, the replay checked: false, so every item moved."""
+        reported = {
+            "external_id": "ENG-12",
+            "kind": "open issue",
+            "title": "Fix the login redirect",
+            "why": "due this evening",
+            "importance": "high",
+        }
+        app = _App([_ISSUE])
+        with _seams(app, _report(signals=[{**reported, "state": "in progress"}])):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+            assert learned.scout is not None
+            assert learned.scout.playbook is not None
+            replayed = await watch(
+                USER,
+                USER_ID,
+                FrozenWatch(LINEAR, learned.scout.playbook, learned.scout.sources),
+                app.tools(),
+            )
+
+        assert learned.signals == replayed
+        assert [s.state for s in learned.signals] == ["In Progress"]
 
     @pytest.mark.regression
     async def test_learned_criteria_are_kept_as_capped_one_line_fields(self) -> None:

@@ -298,7 +298,7 @@ class ScoutResult(BaseModel):
     app: str
     outcome: ScoutOutcome
     signals: list[Signal] = Field(default_factory=list)
-    #: A replayed scout's criteria, which the brief's selection judge reads its rows by.
+    #: A frozen scout's criteria, which the brief's selection judge reads its replayed rows by.
     criteria: ScoutCriteria | None = None
     skip_reason: ScoutSkipReason | None = None
     error: str | None = None

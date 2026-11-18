@@ -49,6 +49,7 @@ from shared.py.wide_events import log
 class Learned:
     """What a learn run found today, and the scout it froze (None when nothing would freeze)."""
 
+    #: A frozen scout's replayed rows, the shape every later replay reads; else what the model reported.
     signals: list[Signal]
     scout: ScoutDocument | None
     freeze_problem: str | None = None
@@ -126,10 +127,10 @@ def _report_problem(freeze: _Freeze) -> str | None:
     return None
 
 
-async def _freeze_problem(
+async def _frozen_replay(
     user: PlaybookUser, user_id: str, integration: ScoutIntegration, freeze: _Freeze
-) -> str | None:
-    """Return why the report's calls cannot be frozen, or None when a model-free replay works."""
+) -> list[Signal] | str:
+    """Replay the report's calls with no model and return its signals, or why they cannot freeze."""
     problem = _report_problem(freeze)
     if problem is not None:
         return problem
@@ -145,7 +146,7 @@ async def _freeze_problem(
     if not validation.valid:
         return "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues)
     try:
-        await watch(
+        return await watch(
             user,
             user_id,
             FrozenWatch(integration, freeze.body, freeze.report.sources),
@@ -153,7 +154,14 @@ async def _freeze_problem(
         )
     except AppError as exc:
         return f"the frozen calls did not replay: {exc}"
-    return None
+
+
+def _not_frozen(integration: ScoutIntegration, signals: list[Signal], problem: str) -> Learned:
+    """Report what the model found when its calls would not freeze, and why not."""
+    log.warning(
+        "briefing.scout_not_frozen", integration_id=integration.integration_id, problem=problem
+    )
+    return Learned(signals=signals, scout=None, freeze_problem=problem)
 
 
 async def learn_scout(
@@ -193,18 +201,11 @@ async def learn_scout(
         )
         return Learned(signals=[], scout=scout)
     body = _body(report)
-    problem = (
-        "the report froze no calls"
-        if body is None
-        else await _freeze_problem(user, user_id, integration, _Freeze(report, body, bound, calls))
-    )
-    if body is None or problem is not None:
-        log.warning(
-            "briefing.scout_not_frozen",
-            integration_id=integration.integration_id,
-            problem=problem,
-        )
-        return Learned(signals=signals, scout=None, freeze_problem=problem)
+    if body is None:
+        return _not_frozen(integration, signals, "the report froze no calls")
+    replayed = await _frozen_replay(user, user_id, integration, _Freeze(report, body, bound, calls))
+    if isinstance(replayed, str):
+        return _not_frozen(integration, signals, replayed)
     scout = ScoutDocument(
         user_id=user_id,
         integration_id=integration.integration_id,
@@ -215,4 +216,4 @@ async def learn_scout(
         criteria=report.criteria,
         learned_at=now,
     )
-    return Learned(signals=signals, scout=scout)
+    return Learned(signals=replayed, scout=scout)

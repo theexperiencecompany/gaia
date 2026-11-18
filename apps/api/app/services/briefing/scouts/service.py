@@ -125,6 +125,7 @@ async def _learn(
         app=integration.name,
         outcome=ScoutOutcome.NOTHING_TO_WATCH if nothing else ScoutOutcome.LEARNED,
         signals=learned.signals,
+        criteria=learned.scout.criteria if learned.scout is not None else None,
     )
 
 
@@ -354,11 +355,7 @@ async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
         else await run_scouts(user)
     )
     remembered = await remember(user.id, [s for r in results for s in r.signals], now)
-    criteria = {
-        r.app: r.criteria.line()
-        for r in results
-        if r.outcome is ScoutOutcome.REPLAYED and r.criteria is not None
-    }
+    criteria = {r.app: r.criteria.line() for r in results if r.criteria is not None}
     return ScoutSignals(remembered=remembered, criteria=criteria, results=results)
 
 
