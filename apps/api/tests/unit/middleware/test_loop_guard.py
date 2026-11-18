@@ -556,7 +556,9 @@ async def test_identical_successful_calls_are_warned_at_the_repeat_threshold() -
     assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in results[-1].content
     # The note rides after the separator the record reads through, so the
     # result stays a JSON document to everything that parses it.
-    assert results[-1].content.startswith("ok" + TOOL_RESULT_NOTE_SEPARATOR)
+    content = results[-1].content
+    assert isinstance(content, str)
+    assert content.startswith("ok" + TOOL_RESULT_NOTE_SEPARATOR)
     assert results[-1].additional_kwargs["loop_guard_warned"] is True
 
 
