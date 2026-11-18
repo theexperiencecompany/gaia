@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 from app.constants.briefing import BRIEF_POOL_PER_SOURCE, BriefAction
 from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL, WaitingOn
@@ -447,32 +448,72 @@ class TestOneItemPerThing:
         assert len(gathered.pool) == 2
 
 
+def _app_signal(
+    n: int,
+    importance: SignalImportance = SignalImportance.NORMAL,
+    *,
+    app: str = "Gmail",
+    shown: bool = False,
+) -> RememberedSignal:
+    found = _gmail_signal(f"t{n}", f"{app} {n}")
+    signal = found.signal.model_copy(
+        update={"importance": importance, "integration_id": app.lower(), "app": app}
+    )
+    memory = _shown(f"t{n}", signal.state or "", 1) if shown else None
+    return RememberedSignal(signal=signal, memory=memory)
+
+
+async def _gathered_signals(*remembered: RememberedSignal) -> GatheredCandidates:
+    events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
+    sources = CandidateSources(
+        TrackedWork(), _scouts(*remembered), events, CLOCK.day_start(days_ago=-1), []
+    )
+    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+
+def _titles(gathered: GatheredCandidates, source: str) -> list[str]:
+    return [c.title for c in gathered.pool.values() if c.source == source]
+
+
 class TestEachSourceIsCappedByRank:
     async def test_a_flooded_source_keeps_its_most_important_finds_and_others_keep_theirs(
         self,
     ) -> None:
-        def signal(n: int, importance: SignalImportance) -> RememberedSignal:
-            found = _gmail_signal(f"t{n}", f"Thread {n}")
-            return RememberedSignal(
-                signal=found.signal.model_copy(update={"importance": importance})
-            )
+        normal = [_app_signal(n) for n in range(BRIEF_POOL_PER_SOURCE)]
+        high = [_app_signal(n, SignalImportance.HIGH) for n in range(100, 102)]
+        linear = [_app_signal(n, app="Linear") for n in range(200, 202)]
 
-        normal = [signal(n, SignalImportance.NORMAL) for n in range(BRIEF_POOL_PER_SOURCE)]
-        high = [signal(n, SignalImportance.HIGH) for n in range(100, 102)]
-        events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
-        sources = CandidateSources(
-            TrackedWork(), _scouts(*normal, *high), events, CLOCK.day_start(days_ago=-1), []
-        )
+        async with captured_wide_event() as event:
+            gathered = await _gathered_signals(*normal, *high, *linear)
 
-        gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
-
-        assert list(gathered.pool) == list(range(1, BRIEF_POOL_PER_SOURCE + 2))
-        assert [c.title for c in gathered.pool.values() if c.source == "gmail"] == [
-            *(f"Thread {n}" for n in range(BRIEF_POOL_PER_SOURCE - 2)),
-            "Thread 100",
-            "Thread 101",
+        assert list(gathered.pool) == list(range(1, BRIEF_POOL_PER_SOURCE + 4))
+        assert _titles(gathered, "gmail") == [
+            *(f"Gmail {n}" for n in range(BRIEF_POOL_PER_SOURCE - 2)),
+            "Gmail 100",
+            "Gmail 101",
         ]
+        assert _titles(gathered, "linear") == ["Linear 200", "Linear 201"]
         assert [c.title for c in gathered.pool.values() if c.is_event] == ["Board call"]
+        assert event["briefing"]["pool_capped"] == 2
+
+    async def test_news_outranks_what_an_earlier_brief_already_showed(self) -> None:
+        shown = [_app_signal(n, shown=True) for n in range(BRIEF_POOL_PER_SOURCE)]
+        news = [_app_signal(n) for n in range(100, 102)]
+
+        gathered = await _gathered_signals(*shown, *news)
+
+        assert _titles(gathered, "gmail")[-3:] == [
+            f"Gmail {BRIEF_POOL_PER_SOURCE - 3}",
+            "Gmail 100",
+            "Gmail 101",
+        ]
+
+    async def test_a_pool_within_its_caps_drops_nothing_and_says_nothing(self) -> None:
+        async with captured_wide_event() as event:
+            gathered = await _gathered_signals(_app_signal(1))
+
+        assert _titles(gathered, "gmail") == ["Gmail 1"]
+        assert "pool_capped" not in event.get("briefing", {})
 
     async def test_every_calendar_event_stays_for_the_calendar_is_listed_whole(self) -> None:
         events = [

@@ -500,7 +500,7 @@ class TestDeleteNewStores:
         assert delete.await_args_list == [call(UID, snapshots[0]), call(UID, snapshots[1])]
 
     @pytest.mark.regression
-    async def test_every_brief_edition_image_is_deleted(self) -> None:
+    async def test_every_brief_edition_image_is_deleted(self, capsys: Any) -> None:
         d = _footprint(edition_keys=["k-1", "k-2"])
 
         with patch(
@@ -509,6 +509,20 @@ class TestDeleteNewStores:
             await _delete_link_content(d)
 
         assert delete.await_args_list == [call(UID, "k-1"), call(UID, "k-2")]
+        out = capsys.readouterr().out
+        assert "[link_content] deleted brief edition k-1" in out.splitlines()
+
+    async def test_an_edition_that_will_not_delete_is_a_failed_step(self) -> None:
+        d = _footprint(edition_keys=["k-1"])
+
+        with patch(
+            "app.scripts.delete_user_account.delete_edition",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("bucket down"),
+        ):
+            await _delete_link_content(d)
+
+        assert _failures == ["link_content:edition:k-1: RuntimeError: bucket down"]
 
     async def test_a_snapshot_that_will_not_delete_is_a_failed_step(self) -> None:
         snapshot = LinkSnapshot.model_construct(content_id="c-1")
@@ -1063,6 +1077,7 @@ class TestBuildFootprint:
         db = MagicMock()
         db.e2b_sandboxes.distinct.return_value = ["sbx-1"]
         db.conversations.distinct.return_value = ["conv-1"]
+        db.briefings.distinct.return_value = ["k-1"]
         user = _user_doc(platform_links={"telegram": {"id": "tg-1"}})
 
         d, mocks = await _run_build_footprint(
@@ -1093,6 +1108,10 @@ class TestBuildFootprint:
         assert d.composio_accounts == [account]
         assert d.workos_users == [workos_user]
         assert d.jfs_path == JFS_USERS_ROOT / UID
+        assert d.edition_keys == ["k-1"]
+        db.briefings.distinct.assert_called_once_with(
+            "edition.key", {"user_id": UID, "edition.key": {"$ne": None}}
+        )
         db.e2b_sandboxes.distinct.assert_called_once_with("sandbox_id", {"user_id": UID})
         db.conversations.distinct.assert_called_once_with("conversation_id", {"user_id": UID})
         mocks["composio"].connected_accounts.list.assert_called_once_with(user_ids=[UID])
@@ -1105,6 +1124,7 @@ class TestBuildFootprint:
         assert "e2b sandboxes: ['sbx-1']" in out
         assert "conversations (checkpoint threads to sweep): 1" in out
         assert "platform_links: ['telegram']" in out
+        assert "brief edition images: 1" in out.splitlines()
 
     async def test_an_empty_postgres_inventory_prints_none_not_an_empty_dict(
         self, capsys: Any

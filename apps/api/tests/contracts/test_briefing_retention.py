@@ -13,14 +13,15 @@ from PIL import Image
 import pytest
 
 from app.config.settings import settings
-from app.constants.briefing import BRIEFING_RETENTION, BriefingKind, EditionFamily
+from app.constants.briefing import BRIEFING_RETENTION, BriefingKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
-from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.services.briefing.edition_image import store_edition
 from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
+from tests.factories import make_briefing_payload, make_user_id
+from tests.helpers import captured_wide_event
 
-_USER = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 @pytest.fixture(autouse=True)
@@ -38,25 +39,19 @@ def _png() -> bytes:
 
 
 async def _brief(date: str, *, with_edition: bool, age: timedelta, raw_collection) -> BriefingModel:
-    briefing_id = await briefing_repository.briefing_id_for(_USER, date, BriefingKind.DAILY)
+    briefing_id = await briefing_repository.briefing_id_for(USER_ID, date, BriefingKind.DAILY)
     edition = (
-        EditionRender(key=await store_edition(_USER, briefing_id, _png())) if with_edition else None
+        EditionRender(key=await store_edition(USER_ID, briefing_id, _png()))
+        if with_edition
+        else None
     )
     stored = await briefing_repository.upsert_briefing(
         BriefingModel(
             id=briefing_id,
-            user_id=_USER,
+            user_id=USER_ID,
             date=date,
             kind=BriefingKind.DAILY,
-            payload=BriefingPayload(
-                kicker="K",
-                date=date,
-                headline="h",
-                lede="l",
-                mood=BriefingMood.CLEAR,
-                caption="c",
-                template_family=EditionFamily.POSTAL,
-            ),
+            payload=make_briefing_payload(date=date),
             edition=edition,
             delivery=BriefDelivery(push=True, notification_kind="briefing_daily"),
         )
@@ -68,7 +63,7 @@ async def _brief(date: str, *, with_edition: bool, age: timedelta, raw_collectio
 
 
 def _images(tmp_path: Path) -> list[str]:
-    owner = tmp_path / _USER
+    owner = tmp_path / USER_ID
     return sorted(p.name for p in owner.iterdir()) if owner.exists() else []
 
 
@@ -77,18 +72,22 @@ async def test_an_expired_brief_goes_with_its_image_and_a_younger_one_stays(
 ) -> None:
     past = BRIEFING_RETENTION + timedelta(days=1)
     expired = await _brief("2025-10-01", with_edition=True, age=past, raw_collection=raw_collection)
+    older = await _brief("2025-09-30", with_edition=True, age=past, raw_collection=raw_collection)
     note = await _brief("2025-10-02", with_edition=False, age=past, raw_collection=raw_collection)
     kept = await _brief(
         "2026-10-01", with_edition=True, age=timedelta(days=1), raw_collection=raw_collection
     )
     assert expired.edition is not None and kept.edition is not None
 
-    summary = await sweep_expired_briefings({})
+    async with captured_wide_event() as event:
+        summary = await sweep_expired_briefings({})
 
-    assert summary == "expired=2 images=1"
-    assert await briefing_repository.get(expired.id, user_id=_USER) is None
-    assert await briefing_repository.get(note.id, user_id=_USER) is None
-    assert await briefing_repository.get(kept.id, user_id=_USER) is not None
+    assert summary == "expired=3 images=2"
+    assert event["briefing_retention"] == {"briefs_expired": 3, "edition_images_deleted": 2}
+    assert await briefing_repository.get(older.id, user_id=USER_ID) is None
+    assert await briefing_repository.get(expired.id, user_id=USER_ID) is None
+    assert await briefing_repository.get(note.id, user_id=USER_ID) is None
+    assert await briefing_repository.get(kept.id, user_id=USER_ID) is not None
     assert _images(tmp_path) == [
         f"brief-edition-{kept.edition.key}.jpg",
         f"brief-edition-{kept.edition.key}.png",

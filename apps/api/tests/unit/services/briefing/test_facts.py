@@ -465,7 +465,7 @@ class TestEachCountClaimsOnlyItsOwn:
 class TestTheAppsBlock:
     @staticmethod
     def _placed(
-        app: str, n: int, importance: SignalImportance
+        app: str, n: int, importance: SignalImportance, url: str | None = None
     ) -> tuple[BriefingItem, BriefCandidate]:
         signal = Signal(
             integration_id=app.lower(),
@@ -485,6 +485,7 @@ class TestTheAppsBlock:
                 title=f"Issue {n}",
                 importance=importance,
                 due_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
+                url=url,
                 signal=signal,
             ),
         )
@@ -493,7 +494,7 @@ class TestTheAppsBlock:
         self,
     ) -> None:
         placed = [
-            self._placed("Linear", 1, SignalImportance.NORMAL),
+            self._placed("Linear", 1, SignalImportance.NORMAL, "https://linear.app/i/1"),
             self._placed("Jira", 2, SignalImportance.NORMAL),
             self._placed("Linear", 3, SignalImportance.HIGH),
         ]
@@ -509,7 +510,7 @@ class TestTheAppsBlock:
             "3. [Linear] waiting on you, important: Issue 3 | due [[fact:3.time]] (Fri Nov 13)"
             " | GAIA can only read Linear: no offer on it",
             "1. [Linear] waiting on you: Issue 1 | due [[fact:1.time]] (Fri Nov 13)"
-            " | GAIA can only read Linear: no offer on it",
+            " | linkable | GAIA can only read Linear: no offer on it",
         ]
 
     def test_no_signal_placed_is_no_block(self) -> None:
