@@ -7,6 +7,8 @@ from app.models.brief_document_models import BriefingModel
 from app.services.briefing.formats import day, long_day
 from app.utils.timezone import Timezone, as_utc
 
+_DAYS_IN_WEEK = 7
+
 
 @dataclass(frozen=True)
 class DayWindow:
@@ -77,6 +79,10 @@ class UserClock:
     def this_week(self) -> DayWindow:
         """Return this week from Monday to today."""
         return self.days_ending_today(self.today.weekday() + 1)
+
+    def whole_week(self) -> DayWindow:
+        """Return this week from Monday to Sunday, days still ahead included."""
+        return self.days(self.this_week().first_day, _DAYS_IN_WEEK)
 
 
 def resolve_clock(user_timezone: str | None) -> UserClock:
