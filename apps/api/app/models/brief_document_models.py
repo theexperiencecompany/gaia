@@ -11,6 +11,8 @@ from app.constants.notifications import NotificationKind
 from app.db.repositories.base import UserScopedDocument
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingPayload
+from app.models.briefing_state_models import BagDraw
+from app.models.scout_models import Sighting
 
 
 def new_briefing_id() -> str:
@@ -55,14 +57,34 @@ class DeliveryStep(StrEnum):
     CHAT = "chat"
 
 
+class BriefSettlement(BaseModel):
+    """What the brief's run owes the reader's briefing state once the brief went out."""
+
+    #: The hold an existing user's first brief waited under for a goal is cleared.
+    clears_bootstrap: bool = False
+    #: The brief asked about the user's goal, or for one.
+    asked_goal: bool = False
+    #: The brief said the idle ladder's goodbye: the loop goes dormant.
+    goes_dormant: bool = False
+
+
 class BriefDelivery(BaseModel):
-    """How a stored brief goes out and how far it got, so a retried run finishes it instead of resending it."""
+    """How a stored brief goes out and how far it got, so a retried run finishes it instead of resending it.
+
+    The step that completes its delivery also settles what its run owes: the held results it
+    carries, the bag draws it spent, the items it showed and the reader's state.
+    """
 
     #: Whether it goes beyond in-app: email when wanted, and the chat app.
     push: bool
     notification_kind: NotificationKind
     #: The held results it carries, consumed in the step that completes its delivery.
     held_ids: list[str] = Field(default_factory=list)
+    #: The edition's bag draws, spent only by a pushed brief.
+    draws: list[BagDraw] = Field(default_factory=list)
+    #: The placed items as signal memory keys them, marked shown.
+    shown: list[Sighting] = Field(default_factory=list)
+    settlement: BriefSettlement = Field(default_factory=BriefSettlement)
     done: list[DeliveryStep] = Field(default_factory=list)
     completed_at: datetime | None = None
 

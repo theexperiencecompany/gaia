@@ -27,7 +27,7 @@ from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead, read_calendar
-from app.services.briefing.candidates.memory import mark_placed_shown
+from app.services.briefing.candidates.memory import sighting
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
@@ -134,10 +134,6 @@ async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
     if run.standing.quiet_after_composing(laid, reads.calendar):
         return await _quiet(run, pool)
     await _publish_edition(run, pool, laid)
-    await mark_placed_shown(
-        user_id, [c for picked in laid.chosen.picked for _, c in picked], datetime.now(UTC)
-    )
-    await run.standing.settle()
     return BriefingRunOutcome.SENT
 
 
@@ -235,9 +231,13 @@ async def _quiet(run: Run, pool: FactPool) -> BriefingRunOutcome:
         run.clock,
         spec,
         quiet_note(run.clock, spec, facts),
-        Sending(push=True, pool=PoolCounts.of(pool), held_ids=_carried(reads.gathered)),
+        Sending(
+            push=True,
+            pool=PoolCounts.of(pool),
+            held_ids=_carried(reads.gathered),
+            settlement=run.standing.settlement(),
+        ),
     )
-    await run.standing.settle()
     return BriefingRunOutcome.SENT
 
 
@@ -321,5 +321,13 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
             signal_count=sum(c.signal is not None for p in laid.chosen.picked for _, c in p),
             held_ids=_carried(reads.gathered),
             draws=edition.draws,
+            # Shown whether its message named it or not.
+            shown=[
+                seen
+                for picked in laid.chosen.picked
+                for _, c in picked
+                if (seen := sighting(c)) is not None
+            ],
+            settlement=standing.settlement(),
         ),
     )

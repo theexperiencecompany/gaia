@@ -2833,6 +2833,39 @@ class TestHowARunEnds:
         assert world.delivered_to() == [*_ORCHESTRATED, "telegram"]
         assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
 
+    @pytest.mark.regression
+    async def test_a_resumed_goodbye_still_puts_the_loop_to_sleep_and_spends_its_draw(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A goodbye whose delivery died was finished on the retry, but the loop never went dormant."""
+        _idle_day(monkeypatch, world, IDLE_DORMANT_DAYS)
+        world.post.side_effect = RuntimeError("worker killed")
+        with pytest.raises(RuntimeError, match="worker killed"):
+            await run_brief(_USER, BriefingKind.DAILY)
+        world.enter_dormancy.assert_not_awaited()
+        world.post.side_effect = None
+
+        assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        world.enter_dormancy.assert_awaited_once_with(_USER)
+        world.goal_asked.assert_awaited_once_with(_USER)
+        assert BriefingBag.EDITION_FAMILY.value in world.bags
+
+    @pytest.mark.regression
+    async def test_a_resumed_brief_marks_what_it_placed_shown(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN)
+        world.post.side_effect = RuntimeError("worker killed")
+        with pytest.raises(RuntimeError, match="worker killed"):
+            await run_brief(_USER, BriefingKind.DAILY)
+        world.shown.assert_not_awaited()
+        world.post.side_effect = None
+
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        world.shown.assert_awaited_once_with(
+            _USER, [Sighting("linear", _LOGIN.external_id, _LOGIN.state)], _NOW
+        )
+
     async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
         await run_brief(_USER, BriefingKind.DAILY)
 

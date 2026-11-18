@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app.agents.prompts.briefing_prompts import RecentLines
+from app.models.brief_document_models import BriefSettlement
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
@@ -69,6 +70,6 @@ class Standing(Protocol):
         """Say whether the brief goes beyond in-app."""
         ...
 
-    async def settle(self) -> None:
-        """Close a run that sent something."""
+    def settlement(self) -> BriefSettlement:
+        """Say what the run owes the reader's state once its brief went out."""
         ...

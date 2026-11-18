@@ -149,15 +149,6 @@ async def climb_idle_ladder(
     )
 
 
-async def leave_idle_ladder(user_id: str, ladder: IdleLadder) -> None:
-    """Record a goal question that went out, for the goal or for one; pause the loop once the goodbye did."""
-    if ladder.goal_question is not GoalQuestion.ASKED:
-        await briefing_state_repository.record_goal_question(user_id)
-    if ladder.wind_down == WindDown.FINAL:
-        await briefing_state_repository.enter_dormancy(user_id)
-        log.info("briefing.dormancy_entered", user_id=user_id, idle_days=ladder.idle_days)
-
-
 async def climb_weekly_ladder(
     user: UserDocument,
     schedule: BriefingSchedule,

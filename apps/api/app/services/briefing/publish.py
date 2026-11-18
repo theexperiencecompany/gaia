@@ -10,13 +10,14 @@ from app.constants.briefing import BriefForm, BriefingKind
 from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock
-from app.models.brief_document_models import BriefDelivery, BriefingModel
+from app.models.brief_document_models import BriefDelivery, BriefingModel, BriefSettlement
 from app.models.brief_payload_models import BriefingPayload
+from app.models.briefing_state_models import BagDraw
+from app.models.scout_models import Sighting
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing.clock import UserClock
 from app.services.briefing.delivery import deliver_brief
-from app.services.briefing.edition_draws import BagDraw, persist_draws
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.kinds import BriefKindSpec
 from app.services.briefing.store import store_brief, store_note
@@ -48,6 +49,9 @@ class Sending:
     held_ids: list[str] = field(default_factory=list)
     #: The edition's bag draws, persisted once a pushed brief went out.
     draws: list[BagDraw] = field(default_factory=list)
+    #: The placed items as signal memory keys them, marked shown once the brief went out.
+    shown: list[Sighting] = field(default_factory=list)
+    settlement: BriefSettlement = field(default_factory=BriefSettlement)
 
 
 async def publish(
@@ -61,19 +65,21 @@ async def publish(
 
     An edition is rendered around its link as it is stored, and a render failure stores and
     sends nothing; a quiet note renders no edition. A brief that is not pushed goes in-app
-    only and spends no shuffle-bag draw.
+    only and spends no shuffle-bag draw. The run's bookkeeping travels on the stored plan, so
+    a resumed delivery settles it exactly as this one does.
     """
     note = payload.form is BriefForm.QUIET_NOTE
     plan = BriefDelivery(
         push=sending.push,
         notification_kind=NotificationKind.BRIEFING_NOTE if note else spec.notification_kind,
         held_ids=sending.held_ids,
+        draws=sending.draws if sending.push else [],
+        shown=sending.shown,
+        settlement=sending.settlement,
     )
     store = store_note if note else store_brief
     stored = await store(user.id, clock.date_str, spec.kind, payload, plan)
     channels = await deliver_brief(user, stored)
-    if sending.push:
-        await persist_draws(user.id, sending.draws)
     _record_sent(user, stored, channels, sending)
     return stored
 

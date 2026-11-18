@@ -42,6 +42,16 @@ class ShuffleBag(BaseModel):
     index: int = Field(ge=0)
 
 
+class BagDraw(BaseModel):
+    """Today's member of one shuffle bag and the state that continues its pass."""
+
+    model_config = ConfigDict(frozen=True)
+
+    bag: BriefingBag
+    member: str
+    next_state: ShuffleBag
+
+
 class BriefingStateDocument(MongoDocument):
     """A user's briefing state as stored in briefing_state; a user with no row has every default.
 

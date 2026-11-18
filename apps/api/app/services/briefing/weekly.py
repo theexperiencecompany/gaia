@@ -7,6 +7,7 @@ from typing_extensions import override
 
 from app.agents.prompts.briefing_prompts import VoicePromptBlocks, build_weekly_voice_prompt
 from app.constants.briefing import BriefingRunOutcome
+from app.models.brief_document_models import BriefSettlement
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
 from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
 from app.models.user_models import UserDocument
@@ -103,8 +104,8 @@ class WeeklyStanding(Standing):
         return True
 
     @override
-    async def settle(self) -> None:
-        return None
+    def settlement(self) -> BriefSettlement:
+        return BriefSettlement()
 
 
 async def stand_weekly(

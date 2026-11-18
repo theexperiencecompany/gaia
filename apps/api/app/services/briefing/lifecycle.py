@@ -8,6 +8,7 @@ from app.constants.briefing import (
 )
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
+from app.models.brief_document_models import BriefSettlement
 from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
 from app.services.briefing import wind_down
 from app.services.briefing.clock import UserClock
@@ -31,9 +32,15 @@ def bootstrap_should_skip(state: BriefingStateDocument, has_goal: bool) -> bool:
     return not has_goal and bootstrap_holds(state)
 
 
-async def clear_bootstrap(state: BriefingStateDocument) -> None:
-    if state.bootstrap is not None:
-        await briefing_state_repository.clear_bootstrap(state.user_id)
+async def settle_brief(user_id: str, settlement: BriefSettlement) -> None:
+    """Settle the reader's state for a brief that went out: its bootstrap hold, goal question and goodbye."""
+    if settlement.clears_bootstrap:
+        await briefing_state_repository.clear_bootstrap(user_id)
+    if settlement.asked_goal:
+        await briefing_state_repository.record_goal_question(user_id)
+    if settlement.goes_dormant:
+        await briefing_state_repository.enter_dormancy(user_id)
+        log.info("briefing.dormancy_entered", user_id=user_id)
 
 
 async def wake_or_skip(state: BriefingStateDocument) -> BriefingDormancy | None:

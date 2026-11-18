@@ -1,7 +1,6 @@
 """The idle ladder state the daily run reads off the user document."""
 
 from collections.abc import Iterator
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -209,36 +208,6 @@ class TestTheGoalQuestion:
         )
 
         assert (ladder.idle_days, ladder.wind_down) == (0, None)
-
-    async def test_the_goodbye_puts_the_loop_to_sleep(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        enter = AsyncMock()
-        monkeypatch.setattr(briefing_state_repository, "record_goal_question", AsyncMock())
-        monkeypatch.setattr(briefing_state_repository, "enter_dormancy", enter)
-        goodbye = wind_down.IdleLadder(
-            first_week=False, idle_days=IDLE_DORMANT_DAYS, wind_down=WindDown.FINAL
-        )
-
-        await wind_down.leave_idle_ladder("u1", goodbye)
-
-        enter.assert_awaited_once_with("u1")
-
-    async def test_the_goal_question_is_recorded_only_when_it_goes_out(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        record = AsyncMock()
-        monkeypatch.setattr(briefing_state_repository, "record_goal_question", record)
-        asked = wind_down.IdleLadder(
-            first_week=False, idle_days=0, wind_down=None, goal_question=wind_down.GoalQuestion.ASK
-        )
-
-        await wind_down.leave_idle_ladder(
-            "u0", replace(asked, goal_question=wind_down.GoalQuestion.ASKED)
-        )
-        await wind_down.leave_idle_ladder("u1", asked)
-
-        record.assert_awaited_once_with("u1")
 
     def test_the_marker_carries_when_the_goal_was_last_asked_about(self) -> None:
         state = BriefingStateDocument(
