@@ -30,6 +30,7 @@ from app.models.workflow_models import (
     public_workflow_steps,
 )
 from app.services.briefing.errors import refuse_a_missing_brief
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.system_workflows.registry import UNLISTED_KEYS, behaviour_of
 from app.services.triggers.gate_edits import apply_gate_edit, report_gate_edit
@@ -789,6 +790,7 @@ class WorkflowService:
 
             if updated is None:
                 return None
+            await release_on_tell_me_now(user_id, [workflow_id], request.delivery)
             if trigger_config_changed:
                 await report_wait_met(
                     user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow_id

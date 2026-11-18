@@ -565,6 +565,9 @@ class TestUpdateTrackedTodoValidation:
                 new_callable=AsyncMock,
                 return_value=existing,
             ) as update,
+            patch(
+                "app.services.briefing.held.release_held_items", new_callable=AsyncMock
+            ) as release,
         ):
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", delivery=value
@@ -573,6 +576,10 @@ class TestUpdateTrackedTodoValidation:
         written = update.await_args.kwargs["update"]
         assert written.model_dump(exclude_unset=True) == {"delivery": value}
         assert "delivery" in result
+        # Tell me now owes at once what the todo held for the brief.
+        assert release.await_args_list == (
+            [call("u1", source_ids=["t1"])] if value is WorkflowDelivery.NOW else []
+        )
 
     async def test_todo_not_found_returns_error(self):
         with patch(
@@ -2689,6 +2696,7 @@ class TestSubTodoTools:
             patch(self._GET, AsyncMock(return_value=existing)),
             patch(self._REQUIRE, AsyncMock()),
             patch(self._UPDATE, AsyncMock(return_value=existing)) as update,
+            patch("app.services.briefing.held.release_held_items", new_callable=AsyncMock),
         ):
             await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", parent_todo_id=self.DESK

@@ -780,6 +780,33 @@ class TestUpdateTodo:
         assert result.sub_todo_count == 2
         mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("delivery", "released"), [(WorkflowDelivery.NOW, True), (WorkflowDelivery.SILENT, False)]
+    )
+    async def test_switching_a_held_delivery_to_now_releases_what_the_todo_held(
+        self,
+        mock_todo_repo,
+        mock_project_repo,
+        mock_vector_utils,
+        mock_sync,
+        monkeypatch: pytest.MonkeyPatch,
+        delivery: WorkflowDelivery,
+        released: bool,
+    ):
+        """Regression: a todo moved to Tell me now left its held results waiting for the brief."""
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        release = AsyncMock()
+        monkeypatch.setattr("app.services.briefing.held.release_held_items", release)
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(delivery=delivery), FAKE_USER_ID
+        )
+
+        assert release.await_args_list == (
+            [call(FAKE_USER_ID, source_ids=[FAKE_TODO_ID])] if released else []
+        )
+
     async def test_a_new_title_retitles_the_todos_chat(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, retitled_chats
     ):
@@ -1259,6 +1286,22 @@ class TestDeletingAParentDeletesItsSubTodos:
 
 _TRACKED_PATH = "/workspace/gaia-tasks/x"
 _COMPLETE_TRACKED = "app.services.tracked_todo_service.tracked_todo_service.complete_tracked_todo"
+
+
+async def test_a_bulk_switch_to_now_releases_what_the_updated_todos_held(
+    mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, monkeypatch: pytest.MonkeyPatch
+):
+    mock_todo_repo.find_by_ids = AsyncMock(return_value=[])
+    mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+    release = AsyncMock()
+    monkeypatch.setattr("app.services.briefing.held.release_held_items", release)
+    req = BulkUpdateRequest(
+        todo_ids=["a", "b"], updates=TodoUpdateRequest(delivery=WorkflowDelivery.NOW)
+    )
+
+    await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+    release.assert_awaited_once_with(FAKE_USER_ID, source_ids=["a", "b"])
 
 
 class TestBulkCompleteRunsTheTrackedLifecycle:

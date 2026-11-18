@@ -7,7 +7,7 @@ sent each result now, and whatever was held when the loop stops is released at o
 the app.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 
 from app.constants.briefing import (
@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.users import user_repository
@@ -99,9 +100,13 @@ def held_text(doc: PendingBriefItemDocument) -> str:
     return f"{doc.source_title}: {first}" if first else doc.source_title
 
 
-async def release_held_items(user_id: str) -> None:
-    """Send everything held as one in-app notification now, and clear it."""
-    held = await held_items(user_id)
+async def release_held_items(user_id: str, *, source_ids: Collection[str] | None = None) -> None:
+    """Send what is held (only what source_ids held, when given) as one notification now; clear it."""
+    held = [
+        doc
+        for doc in await held_items(user_id)
+        if source_ids is None or doc.source_id in source_ids
+    ]
     if not held:
         return
     await notification_service.create_notification(
@@ -115,3 +120,11 @@ async def release_held_items(user_id: str) -> None:
     )
     released = await pending_brief_items_repository.consume(user_id, [doc.id for doc in held])
     log.info("briefing.held_items_released", user_id=user_id, released=released)
+
+
+async def release_on_tell_me_now(
+    user_id: str, source_ids: Collection[str], delivery: WorkflowDelivery | None
+) -> None:
+    """Send what the workflows or todos held for the brief once their delivery moves to now."""
+    if delivery is WorkflowDelivery.NOW:
+        await release_held_items(user_id, source_ids=source_ids)
