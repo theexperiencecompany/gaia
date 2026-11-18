@@ -2360,13 +2360,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Get Share State Route
          * @description Say whether one of your artifacts is shared, with its live link and settings. Never mints one.
+         *
+         *     A POST only because a target is a structured reference, which a query string cannot carry.
          */
-        get: operations["short_links_get_share_state_route"];
-        put?: never;
-        post?: never;
+        post: operations["short_links_get_share_state_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11189,11 +11191,11 @@ export interface components {
             downloadable: boolean;
             /** Is Owner */
             is_owner: boolean;
-            /** Owner Target Id */
-            owner_target_id: string | null;
+            /** Owner Target */
+            owner_target: (components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"]) | null;
             target_type: components["schemas"]["ShortLinkTargetType"];
             /** View */
-            view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
+            view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicWorkspaceFile"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
         };
         /**
          * LinkPlatformRequest
@@ -14081,30 +14083,6 @@ export interface components {
             title: string;
         };
         /**
-         * PublicSessionArtifact
-         * @description A file GAIA produced in a session's sandbox, as its link pinned it.
-         *
-         *     text is the file's text when it is shown as text (code, markdown, and HTML
-         *     source where the instance has no content origin); the page renders it
-         *     itself. Every other file is framed from the content origin (LinkEnvelope.content)
-         *     or offered as a download.
-         */
-        PublicSessionArtifact: {
-            /** Content Type */
-            content_type: string;
-            /** Filename */
-            filename: string;
-            /** Size Bytes */
-            size_bytes: number;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            target_type: "session_artifact";
-            /** Text */
-            text: string | null;
-        };
-        /**
          * PublicSupportRequestCreate
          * @description A contact-form request that may come from a visitor with no GAIA session.
          */
@@ -14252,6 +14230,30 @@ export interface components {
             id: string;
             /** Title */
             title: string;
+        };
+        /**
+         * PublicWorkspaceFile
+         * @description A file GAIA wrote in a conversation's workspace, as its link pinned it.
+         *
+         *     text is the file's text when it is shown as text (code, markdown, and HTML
+         *     source where the instance has no content origin); the page renders it
+         *     itself. Every other file is framed from the content origin (LinkEnvelope.content)
+         *     or offered as a download.
+         */
+        PublicWorkspaceFile: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workspace_file";
+            /** Text */
+            text: string | null;
         };
         /** PublishIntegrationResponse */
         PublishIntegrationResponse: {
@@ -14424,6 +14426,19 @@ export interface components {
             tool_category?: string;
             /** Tool Name */
             tool_name: string;
+        };
+        /**
+         * RecordTarget
+         * @description A target that is one of the owner's stored records (a todo, brief, workflow run or artifact), by id.
+         */
+        RecordTarget: {
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "briefing" | "openui_artifact" | "todo_deliverable" | "workflow_run";
         };
         /**
          * RecurrenceData
@@ -15194,9 +15209,8 @@ export interface components {
          */
         ShareLinkRequest: {
             settings?: components["schemas"]["LinkSettings"];
-            /** Target Id */
-            target_id: string;
-            target_type: components["schemas"]["ShortLinkTargetType"];
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
         };
         /**
          * ShortLinkResponse
@@ -15229,16 +15243,15 @@ export interface components {
          * @description One of the owner's artifacts, to read or stop sharing.
          */
         ShortLinkTargetRequest: {
-            /** Target Id */
-            target_id: string;
-            target_type: components["schemas"]["ShortLinkTargetType"];
+            /** Target */
+            target: components["schemas"]["RecordTarget"] | components["schemas"]["WorkspaceFileTarget"];
         };
         /**
          * ShortLinkTargetType
          * @description Every kind of artifact a heygaia.link can point at.
          * @enum {string}
          */
-        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "workspace_file" | "workflow_run" | "openui_artifact";
         /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
@@ -18044,6 +18057,21 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * WorkspaceFileTarget
+         * @description A file GAIA wrote in one conversation's workspace, by its path under the workspace's files.
+         */
+        WorkspaceFileTarget: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Path */
+            path: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "workspace_file";
+        };
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -18532,13 +18560,13 @@ export type PublicBriefingSection = components['schemas']['PublicBriefingSection
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
 export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
-export type PublicSessionArtifact = components['schemas']['PublicSessionArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
 export type PublicWorkflowRun = components['schemas']['PublicWorkflowRun'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
+export type PublicWorkspaceFile = components['schemas']['PublicWorkspaceFile'];
 export type PublishIntegrationResponse = components['schemas']['PublishIntegrationResponse'];
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
@@ -18548,6 +18576,7 @@ export type QuoteBlock = components['schemas']['QuoteBlock'];
 export type QuoteSpan = components['schemas']['QuoteSpan'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
+export type RecordTarget = components['schemas']['RecordTarget'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
@@ -18731,6 +18760,7 @@ export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkspaceFileTarget = components['schemas']['WorkspaceFileTarget'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];
@@ -25379,15 +25409,16 @@ export interface operations {
     };
     short_links_get_share_state_route: {
         parameters: {
-            query: {
-                target_id: string;
-                target_type: components["schemas"]["ShortLinkTargetType"];
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
         responses: {
             /** @description Client Error */
             "4XX": {

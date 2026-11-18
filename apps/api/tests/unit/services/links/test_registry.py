@@ -13,9 +13,11 @@ from app.models.short_link_models import (
     ReportReason,
     RevokeReason,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
-from app.services.links.registry import REGISTRY
-from app.services.links.spec import build_registry
+from app.services.links.registry import REGISTRY, SPECS
+from app.services.links.spec import LinkTargetSpec, build_registry
+from app.services.links.targets import workspace_file
 from shared.py.analytics.catalog import short_links as catalog
 
 
@@ -25,22 +27,31 @@ def test_every_target_type_has_its_own_spec() -> None:
 
 
 def test_a_registry_indexes_each_spec_under_its_own_type() -> None:
-    specs = tuple(REGISTRY.values())
-
-    assert dict(build_registry(specs)) == {spec.type: spec for spec in specs}
+    assert dict(build_registry(SPECS)) == {spec.type: spec for spec in SPECS}
 
 
 def test_a_registry_missing_a_type_refuses_to_build() -> None:
-    specs = tuple(
-        spec for spec in REGISTRY.values() if spec.type is not ShortLinkTargetType.BRIEFING
-    )
+    specs = tuple(spec for spec in SPECS if spec.type is not ShortLinkTargetType.BRIEFING)
     with pytest.raises(ValueError, match="briefing"):
         build_registry(specs)
 
 
 def test_a_type_with_two_specs_refuses_to_build() -> None:
-    specs = (*REGISTRY.values(), REGISTRY[ShortLinkTargetType.BRIEFING])
+    specs = (*SPECS, SPECS[0])
     with pytest.raises(ValueError, match="two link target specs"):
+        build_registry(specs)
+
+
+def test_a_spec_taking_another_types_targets_refuses_to_build() -> None:
+    misfiled = LinkTargetSpec(
+        target=WorkspaceFileTarget,
+        type=ShortLinkTargetType.BRIEFING,
+        kind_line="A brief",
+        project=workspace_file.SPEC.project,
+        preview=workspace_file.SPEC.preview,
+    )
+    specs = tuple(misfiled if spec.type is ShortLinkTargetType.BRIEFING else spec for spec in SPECS)
+    with pytest.raises(ValueError, match="the briefing spec takes WorkspaceFileTarget targets"):
         build_registry(specs)
 
 

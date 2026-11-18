@@ -23,7 +23,7 @@ from app.models.openui_artifact_models import (
     ArtifactKind,
     ArtifactStreamHeader,
 )
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.openui_artifacts.create import ArtifactCreationError
 from app.services.openui_artifacts.generate import ArtifactRequest
@@ -158,8 +158,7 @@ class TestCreateArtifact:
                     return_value=ShortLink(
                         slug="abcdefghijk",
                         user_id="user-1",
-                        target_type=ShortLinkTargetType.OPENUI_ARTIFACT,
-                        target_id="a1",
+                        target=RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1"),
                     )
                 ),
             ) as link,
@@ -176,7 +175,9 @@ class TestCreateArtifact:
             interactive=False,
         )
         assert create.await_args.args[1] == "Q3 plan"
-        link.assert_awaited_once_with("user-1", ShortLinkTargetType.OPENUI_ARTIFACT, "a1")
+        link.assert_awaited_once_with(
+            "user-1", RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1")
+        )
         [done] = [c.args[0] for c in writer.call_args_list if ARTIFACT_DONE_EVENT in c.args[0]]
         card = done[ARTIFACT_DONE_EVENT]
         assert (card["kind"], card["title"], card["status"], card["artifact_id"]) == (
@@ -186,7 +187,9 @@ class TestCreateArtifact:
             "a1",
         )
         assert card["stream_id"]
-        placeholder = link_placeholder(ShortLinkTargetType.OPENUI_ARTIFACT, "a1")
+        placeholder = link_placeholder(
+            RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="a1")
+        )
         assert result == (
             'Created the report "Q3 plan". The user sees it as a card in chat and can open it '
             f"there; do not repeat its contents in your reply. {LINK_NOTE} Its link: {placeholder}"

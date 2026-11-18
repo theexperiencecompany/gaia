@@ -17,7 +17,6 @@ import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareLinkSettingsModal";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
-import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { useConversationArtifacts } from "@/stores/chatStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
@@ -101,10 +100,11 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
     link.click();
     document.body.removeChild(link);
   }, [artifact.path, conversationId, filename]);
-  const share = useShareLink(
-    "session_artifact",
-    sessionArtifactTargetId(conversationId, artifact.path),
-  );
+  const share = useShareLink({
+    type: "workspace_file",
+    conversation_id: conversationId,
+    path: artifact.path,
+  });
 
   return (
     <>

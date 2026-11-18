@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Final
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from app.models.short_link_models import (
     LinkAccess,
     LinkPreviewMeta,
     LinkSnapshot,
+    RecordTarget,
     RenderMode,
     RevokeReason,
     ShortLink,
@@ -24,7 +26,7 @@ from app.services.links.preview import (
 )
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
-TODO = ShortLinkTargetType.TODO_DELIVERABLE
+TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
 KIND_LINE = "Something GAIA worked on."
 DEAD = LinkPreviewMeta(
     live=False,
@@ -48,8 +50,7 @@ def _link(**overrides: object) -> ShortLink:
     data: dict[str, object] = {
         "slug": "abcdefghijk",
         "user_id": "owner",
-        "target_type": TODO,
-        "target_id": "t1",
+        "target": RecordTarget(type=TODO, id="t1"),
         "access": LinkAccess.PUBLIC,
     }
     data.update(overrides)
@@ -59,7 +60,9 @@ def _link(**overrides: object) -> ShortLink:
 @pytest.fixture
 def previewer() -> Iterator[AsyncMock]:
     read = AsyncMock(return_value=PreviewFacts(title="Q3 plan", image_url="https://img/q3.png"))
-    spec = LinkTargetSpec(type=TODO, kind_line=KIND_LINE, project=AsyncMock(), preview=read)
+    spec = LinkTargetSpec(
+        target=RecordTarget, type=TODO, kind_line=KIND_LINE, project=AsyncMock(), preview=read
+    )
     with patch("app.services.links.preview.REGISTRY", {TODO: spec}):
         yield read
 
@@ -85,7 +88,7 @@ async def test_a_link_that_expires_later_still_previews_its_file(previewer: Asyn
     link = _link(expires_at=datetime.now(UTC) + timedelta(days=1), snapshot=SNAPSHOT)
     meta = await preview_meta(link)
     assert meta.live is True
-    previewer.assert_awaited_once_with("owner", "t1", SNAPSHOT)
+    previewer.assert_awaited_once_with("owner", RecordTarget(type=TODO, id="t1"), SNAPSHOT)
 
 
 @pytest.mark.parametrize("access", [LinkAccess.PEOPLE, LinkAccess.OWNER])
@@ -121,7 +124,7 @@ async def test_an_open_link_previews_its_real_title_and_image(
         description=KIND_LINE,
         image_url="https://img/q3.png",
     )
-    previewer.assert_awaited_once_with("owner", "t1", SNAPSHOT)
+    previewer.assert_awaited_once_with("owner", RecordTarget(type=TODO, id="t1"), SNAPSHOT)
 
 
 async def test_a_snapshot_capped_below_the_links_access_is_withheld_from_the_preview(
@@ -129,7 +132,7 @@ async def test_a_snapshot_capped_below_the_links_access_is_withheld_from_the_pre
 ) -> None:
     capped = SNAPSHOT.model_copy(update={"max_access": LinkAccess.UNLISTED})
     await preview_meta(_link(access=LinkAccess.PUBLIC, snapshot=capped))
-    previewer.assert_awaited_once_with("owner", "t1", None)
+    previewer.assert_awaited_once_with("owner", RecordTarget(type=TODO, id="t1"), None)
 
 
 async def test_a_deleted_target_previews_as_gone(previewer: AsyncMock) -> None:

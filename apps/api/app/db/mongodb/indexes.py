@@ -24,6 +24,9 @@ from app.db.repositories.short_links import (
     LIVE_TARGET_UNIQUE_INDEX,
     SLUG_UNIQUE_INDEX,
     TARGET_HISTORY_INDEX,
+    TARGET_INDEX_KEY,
+    WORKSPACE_FILE_CONVERSATION_INDEX,
+    WORKSPACE_FILE_LIVE_FILTER,
 )
 from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
@@ -1698,21 +1701,25 @@ async def create_short_link_indexes() -> None:
     The live-target index is partial on revoked: False, so a revoked link never
     blocks the next mint and the idempotency read is served by it. The history
     index serves the newest-link read that tells whether the owner turned
-    sharing off. The content-id index serves the content origin's lookup.
+    sharing off; the others serve the content origin and a conversation's linked files.
     """
     short_links_collection = get_async_collection("short_links")
     try:
         await asyncio.gather(
             short_links_collection.create_index([("slug", 1)], unique=True, name=SLUG_UNIQUE_INDEX),
             short_links_collection.create_index(
-                [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+                [("user_id", 1), *TARGET_INDEX_KEY],
                 unique=True,
                 partialFilterExpression={"revoked": False},
                 name=LIVE_TARGET_UNIQUE_INDEX,
             ),
             short_links_collection.create_index(
-                [("user_id", 1), ("target_type", 1), ("target_id", 1), ("created_at", -1)],
-                name=TARGET_HISTORY_INDEX,
+                [("user_id", 1), *TARGET_INDEX_KEY, ("created_at", -1)], name=TARGET_HISTORY_INDEX
+            ),
+            short_links_collection.create_index(
+                [("user_id", 1), ("target.conversation_id", 1)],
+                partialFilterExpression=WORKSPACE_FILE_LIVE_FILTER,
+                name=WORKSPACE_FILE_CONVERSATION_INDEX,
             ),
             short_links_collection.create_index(
                 [("snapshot.content_id", 1)],

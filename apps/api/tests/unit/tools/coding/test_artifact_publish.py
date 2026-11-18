@@ -24,15 +24,16 @@ from app.agents.workspace.paths import (
     detect_content_type,
 )
 from app.config.settings import settings
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.storage import ArtifactInfo
 
 LINK = ShortLink(
     slug="abcdefghijk",
     user_id="u1",
-    target_type=ShortLinkTargetType.SESSION_ARTIFACT,
-    target_id="c1/report.html",
+    target=WorkspaceFileTarget(
+        type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="c1", path="report.html"
+    ),
 )
 
 
@@ -212,9 +213,9 @@ async def test_a_file_written_this_turn_carries_its_link(mint: AsyncMock) -> Non
             "u1", "c1", _artifact("report.html", 12, 1.0), "<p>hi</p>", written_this_turn=True
         )
 
-    assert handed == link_placeholder(ShortLinkTargetType.SESSION_ARTIFACT, "c1/report.html")
+    assert handed == link_placeholder(LINK.target)
     assert events[0][1]["short_url"] == f"{settings.SHORTLINK_BASE_URL}/abcdefghijk"
-    mint.assert_awaited_once_with("u1", ShortLinkTargetType.SESSION_ARTIFACT, "c1/report.html")
+    mint.assert_awaited_once_with("u1", LINK.target)
 
 
 async def test_a_file_not_written_this_turn_is_published_without_a_link(mint: AsyncMock) -> None:

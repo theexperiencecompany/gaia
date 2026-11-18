@@ -26,8 +26,10 @@ from app.models.short_link_models import (
     LinkSettings,
     LinkViewer,
     PublicTodoDeliverable,
+    RecordTarget,
     ShortLink,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
 from app.services.links.errors import LinkDeniedError
 from app.services.storage import JuiceFSUnavailable
@@ -40,7 +42,10 @@ SLUG = "abcdefghijk"
 TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
 _ENDPOINT = "app.api.v1.endpoints.short_links"
 _OPENUI_TARGET = "app.services.links.targets.openui_artifact"
-_LINK = ShortLink(slug=SLUG, user_id="owner", target_type=TODO, target_id="t1")
+TODO_T = RecordTarget(type=TODO, id="t1")
+TODO_JSON = {"type": TODO.value, "id": "t1"}
+FILE_JSON = {"type": "workspace_file", "conversation_id": "conv-1", "path": "a/b.html"}
+_LINK = ShortLink(slug=SLUG, user_id="owner", target=TODO_T)
 _SIGNED_OUT = LinkViewer(user_id=None, email=None, ip="127.0.0.1", user_agent="Safari/605")
 _EXPIRES = datetime(2030, 1, 1, tzinfo=UTC)
 _SHARED = _LINK.model_copy(
@@ -78,7 +83,7 @@ _ENVELOPE = LinkEnvelope(
     content=None,
     downloadable=False,
     is_owner=False,
-    owner_target_id=None,
+    owner_target=None,
 )
 
 
@@ -229,8 +234,7 @@ class TestShare:
                 response = await client.post(
                     BASE,
                     json={
-                        "target_type": TODO.value,
-                        "target_id": "t1",
+                        "target": TODO_JSON,
                         "settings": {"access": "people", "grantees": ["a@example.com"]},
                     },
                 )
@@ -239,8 +243,7 @@ class TestShare:
         assert response.json() == _SHARED_JSON
         share.assert_awaited_once_with(
             FAKE_USER.user_id,
-            TODO,
-            "t1",
+            TODO_T,
             LinkSettings(access=LinkAccess.PEOPLE, grantees=["a@example.com"]),
         )
         assert event["user"] == {"id": FAKE_USER.user_id}
@@ -249,7 +252,7 @@ class TestShare:
     async def test_workspace_storage_offline_is_503_not_500(self, client: AsyncClient) -> None:
         with (
             patch(
-                "app.services.links.targets.session_artifact.stat_artifact",
+                "app.services.links.targets.workspace_file.stat_artifact",
                 AsyncMock(side_effect=JuiceFSUnavailable("down")),
             ),
             patch(
@@ -257,9 +260,7 @@ class TestShare:
                 AsyncMock(return_value=None),
             ),
         ):
-            response = await client.post(
-                BASE, json={"target_type": "session_artifact", "target_id": "conv-1/a.html"}
-            )
+            response = await client.post(BASE, json={"target": FILE_JSON})
 
         assert response.status_code == 503
         assert response.json()["code"] == "workspace_storage_offline"
@@ -276,7 +277,7 @@ class TestShare:
         ):
             repo.get_live_for_target = AsyncMock(return_value=None)
             repo.create = AsyncMock()
-            response = await client.post(BASE, json={"target_type": TODO.value, "target_id": "t1"})
+            response = await client.post(BASE, json={"target": TODO_JSON})
 
         assert response.status_code == 404
         read.assert_awaited_once_with("t1", user_id=FAKE_USER.user_id)
@@ -285,7 +286,7 @@ class TestShare:
     async def test_an_unknown_setting_is_422(self, client: AsyncClient) -> None:
         response = await client.post(
             BASE,
-            json={"target_type": TODO.value, "target_id": "t1", "settings": {"acess": "public"}},
+            json={"target": TODO_JSON, "settings": {"acess": "public"}},
         )
         assert response.status_code == 422
 
@@ -301,20 +302,30 @@ class TestShare:
 class TestShareState:
     async def test_the_state_route_is_not_resolved_as_a_slug(self, client: AsyncClient) -> None:
         with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=None)) as live:
-            response = await client.get(
-                f"{BASE}/state", params={"target_type": TODO.value, "target_id": "t1"}
-            )
+            response = await client.post(f"{BASE}/state", json={"target": TODO_JSON})
 
         assert response.status_code == 200
         assert response.json() == {"link": None}
-        live.assert_awaited_once_with(FAKE_USER.user_id, TODO, "t1")
+        live.assert_awaited_once_with(FAKE_USER.user_id, TODO_T)
+
+    async def test_a_workspace_file_is_read_by_its_conversation_and_path(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=None)) as live:
+            response = await client.post(f"{BASE}/state", json={"target": FILE_JSON})
+
+        assert response.status_code == 200
+        live.assert_awaited_once_with(
+            FAKE_USER.user_id,
+            WorkspaceFileTarget(
+                type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="conv-1", path="a/b.html"
+            ),
+        )
 
     async def test_a_shared_target_answers_with_its_live_link(self, client: AsyncClient) -> None:
         with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=_SHARED)):
             async with captured_wide_event() as event:
-                response = await client.get(
-                    f"{BASE}/state", params={"target_type": TODO.value, "target_id": "t1"}
-                )
+                response = await client.post(f"{BASE}/state", json={"target": TODO_JSON})
 
         assert response.json() == {"link": _SHARED_JSON}
         assert event["user"] == {"id": FAKE_USER.user_id}
@@ -327,14 +338,24 @@ class TestShareState:
     async def test_an_unshared_target_is_logged_as_not_shared(self, client: AsyncClient) -> None:
         with patch(f"{_ENDPOINT}.live_share_link", AsyncMock(return_value=None)):
             async with captured_wide_event() as event:
-                await client.get(
-                    f"{BASE}/state", params={"target_type": TODO.value, "target_id": "t1"}
-                )
+                await client.post(f"{BASE}/state", json={"target": TODO_JSON})
 
         assert event["short_link"]["shared"] is False
 
-    async def test_a_missing_target_is_422(self, client: AsyncClient) -> None:
-        response = await client.get(f"{BASE}/state", params={"target_type": "briefing"})
+    @pytest.mark.parametrize(
+        "target",
+        [
+            {"type": "briefing"},
+            {"type": "workspace_file", "conversation_id": "conv-1"},
+            {"type": "workspace_file", "conversation_id": "conv-1", "path": ""},
+            {"type": "workspace_file", "id": "conv-1/a.html"},
+            {"type": "workspace_file", "conversation_id": "../other-user", "path": "a.html"},
+        ],
+    )
+    async def test_a_target_missing_its_fields_is_422(
+        self, client: AsyncClient, target: dict[str, str]
+    ) -> None:
+        response = await client.post(f"{BASE}/state", json={"target": target})
         assert response.status_code == 422
 
 
@@ -372,7 +393,9 @@ class TestShortLinkPdf:
     async def test_a_link_the_viewer_may_open_serves_its_pdf(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
     ) -> None:
-        link = _LINK.model_copy(update={"target_type": ShortLinkTargetType.OPENUI_ARTIFACT})
+        link = _LINK.model_copy(
+            update={"target": RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="t1")}
+        )
         artifact = OpenUIArtifact(
             id="t1",
             user_id="owner",

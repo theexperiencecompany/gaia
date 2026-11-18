@@ -58,7 +58,7 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
@@ -458,8 +458,7 @@ class TestWorkflowResultCarriesTheRunLink:
     RUN_LINK = ShortLink(
         slug="runlink1234",
         user_id=USER_ID,
-        target_type=ShortLinkTargetType.WORKFLOW_RUN,
-        target_id="exec-7",
+        target=RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7"),
     )
 
     @property
@@ -495,7 +494,9 @@ class TestWorkflowResultCarriesTheRunLink:
 
         save, deliver, mint = await self._deliver_workflow(run)
 
-        mint.assert_awaited_once_with(USER_ID, ShortLinkTargetType.WORKFLOW_RUN, "exec-7")
+        mint.assert_awaited_once_with(
+            USER_ID, RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7")
+        )
         assert self.run_url in deliver.await_args.kwargs["notification_text"]
         saved = save.await_args.args[0].messages[0]
         assert self.run_url in saved.response

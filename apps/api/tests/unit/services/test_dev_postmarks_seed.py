@@ -24,7 +24,7 @@ from app.constants.briefing import (
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
 from app.models.briefing_models import BriefingPayload, EditionRender
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
@@ -89,8 +89,7 @@ def seeded() -> Iterator[Seeded]:
                 return_value=ShortLink(
                     slug="seededBrief",
                     user_id="seed",
-                    target_type=ShortLinkTargetType.BRIEFING,
-                    target_id="brief",
+                    target=RecordTarget(type=ShortLinkTargetType.BRIEFING, id="brief"),
                 )
             ),
         ),

@@ -10,7 +10,7 @@ import pytest
 from app.config.settings import settings
 from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import BriefingPayload, EditionRender
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.briefing import store
 from app.services.briefing.edition_email import HostedEditionImage
 
@@ -32,7 +32,9 @@ def _payload() -> BriefingPayload:
 
 
 _LINK = ShortLink(
-    slug="abcdefghijk", user_id=_USER, target_type=ShortLinkTargetType.BRIEFING, target_id=_BRIEF_ID
+    slug="abcdefghijk",
+    user_id=_USER,
+    target=RecordTarget(type=ShortLinkTargetType.BRIEFING, id=_BRIEF_ID),
 )
 _LINK_URL = f"{settings.SHORTLINK_BASE_URL}/abcdefghijk"
 
@@ -69,7 +71,7 @@ class TestStoreBrief:
 
         seams["briefing_id_for"].assert_awaited_once_with(_USER, _DATE, "daily")
         seams["attach_link"].assert_awaited_once_with(
-            _USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID
+            _USER, RecordTarget(type=ShortLinkTargetType.BRIEFING, id=_BRIEF_ID)
         )
         assert payload.link == _LINK_URL
         assert seams["host_edition_image"].await_args.args == (payload,)

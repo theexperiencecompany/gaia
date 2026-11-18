@@ -139,7 +139,7 @@
       // that cookieless per-file origin and the API's PDF CSP (frame-ancestors
       // the app). The other frame in this file (HTML and SVG) keeps its sandbox.
       {
-        "files": ["src/features/short-links/components/PublicSessionArtifactView.tsx"],
+        "files": ["src/features/short-links/components/PublicWorkspaceFileView.tsx"],
         "rules": ["react-doctor/iframe-missing-sandbox"]
       },
       // timezoneSearchText() returns a string; .includes(query) is substring

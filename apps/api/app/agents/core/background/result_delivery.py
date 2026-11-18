@@ -61,7 +61,7 @@ from app.models.chat_models import (
 )
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData, TodoRunWake
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
@@ -337,7 +337,8 @@ async def _workflow_run_link_line(run: ExecutorRun) -> str:
     if not (run.workflow_id and run.workflow_execution_id):
         return ""
     link = await attach_link(
-        run.user.user_id, ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
+        run.user.user_id,
+        RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id=run.workflow_execution_id),
     )
     if link is None:
         return ""

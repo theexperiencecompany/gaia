@@ -10,7 +10,7 @@ a keyed hash of the slug as short_link.slug_hash.
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_optional_user
 from app.api.v1.middleware.rate_limiter import limiter, viewer_ip
@@ -136,24 +136,26 @@ async def create_short_link_route(
     """
     log.set(
         user={"id": user.user_id},
-        short_link={"operation": "create", "target_type": body.target_type.value},
+        short_link={"operation": "create", "target_type": body.target.type.value},
     )
-    link = await share(user.user_id, body.target_type, body.target_id, body.settings)
+    link = await share(user.user_id, body.target, body.settings)
     return link_response(link)
 
 
 # Registered before /{slug}, which would otherwise capture "state" as a slug.
-@router.get(SHORT_LINK_SHARE_STATE_PATH)
+@router.post(SHORT_LINK_SHARE_STATE_PATH)
 async def get_share_state_route(
-    target: Annotated[ShortLinkTargetRequest, Query()],
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    body: ShortLinkTargetRequest, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> ShortLinkShareState:
-    """Say whether one of your artifacts is shared, with its live link and settings. Never mints one."""
+    """Say whether one of your artifacts is shared, with its live link and settings. Never mints one.
+
+    A POST only because a target is a structured reference, which a query string cannot carry.
+    """
     log.set(
         user={"id": user.user_id},
-        short_link={"operation": "share_state", "target_type": target.target_type.value},
+        short_link={"operation": "share_state", "target_type": body.target.type.value},
     )
-    link = await live_share_link(user.user_id, target.target_type, target.target_id)
+    link = await live_share_link(user.user_id, body.target)
     log.set(short_link={"shared": link is not None})
     return ShortLinkShareState(link=link_response(link) if link else None)
 
@@ -166,9 +168,9 @@ async def stop_sharing_route(
     attaches no new one until you share it again. Idempotent; says whether a link died."""
     log.set(
         user={"id": user.user_id},
-        short_link={"operation": "stop_sharing", "target_type": body.target_type.value},
+        short_link={"operation": "stop_sharing", "target_type": body.target.type.value},
     )
-    revoked = await stop_sharing(user.user_id, body.target_type, body.target_id)
+    revoked = await stop_sharing(user.user_id, body.target)
     log.set(short_link={"revoked": revoked})
     return StopSharingResult(revoked=revoked)
 
@@ -318,8 +320,8 @@ async def get_short_link_pdf_route(
     """What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for."""
     log.set(operation="pdf", short_link={"slug_hash": hash_short_link_slug(slug)})
     link = await openable_link(await get_link(slug), _viewer(request, user))
-    export = REGISTRY[link.target_type].export
+    export = REGISTRY[link.target.type].export
     if export is None:
         raise LinkDeniedError.for_denial(LinkDenial.NOT_FOUND)
-    exported = await export(link.user_id, link.target_id)
+    exported = await export(link.user_id, link.target)
     return Response(exported.body, media_type=exported.media_type, headers=exported.headers)

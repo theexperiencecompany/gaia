@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config.settings import settings
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import ShortLink, ShortLinkTargetType, WorkspaceFileTarget
 from app.services.links.placeholders import (
     PLACEHOLDER_PREFIX,
     link_placeholder,
@@ -20,20 +20,19 @@ from app.services.links.placeholders import (
 )
 
 OWNER = "507f1f77bcf86cd799439011"
-FILE = ShortLinkTargetType.SESSION_ARTIFACT
-FILE_ID = "conv-1/reports/Q3 plan (final).html"
-TOKEN = link_placeholder(FILE, FILE_ID)
+FILE = WorkspaceFileTarget(
+    type=ShortLinkTargetType.WORKSPACE_FILE,
+    conversation_id="conv-1",
+    path="reports/Q3 plan (final).html",
+)
+TOKEN = link_placeholder(FILE)
 
 
 @pytest.fixture
 def live() -> Iterator[AsyncMock]:
     with patch(
         "app.services.links.placeholders.short_link_repository.get_live_for_target",
-        AsyncMock(
-            return_value=ShortLink(
-                slug="abcdefghijk", user_id=OWNER, target_type=FILE, target_id=FILE_ID
-            )
-        ),
+        AsyncMock(return_value=ShortLink(slug="abcdefghijk", user_id=OWNER, target=FILE)),
     ) as read:
         yield read
 
@@ -43,7 +42,7 @@ def _url() -> str:
 
 
 class TestPlaceholder:
-    def test_a_placeholder_names_no_url_and_survives_any_target_id(self) -> None:
+    def test_a_placeholder_names_no_url_and_survives_any_path(self) -> None:
         assert TOKEN.startswith(PLACEHOLDER_PREFIX)
         assert settings.SHORTLINK_BASE_URL not in TOKEN
         assert " " not in TOKEN and "/" not in TOKEN
@@ -52,7 +51,7 @@ class TestPlaceholder:
         self, live: AsyncMock
     ) -> None:
         assert await resolve_link_placeholders(OWNER, f"Here: {TOKEN}.") == f"Here: {_url()}."
-        live.assert_awaited_once_with(OWNER, FILE, FILE_ID)
+        live.assert_awaited_once_with(OWNER, FILE)
 
     async def test_a_markdown_link_keeps_its_label(self, live: AsyncMock) -> None:
         text = f"[the report]({TOKEN})"
@@ -65,7 +64,15 @@ class TestPlaceholder:
         text = f"Open [the report]({TOKEN}) or {TOKEN}."
         assert await resolve_link_placeholders(OWNER, text) == "Open the report or ."
 
-    @pytest.mark.parametrize("token", [f"{PLACEHOLDER_PREFIX}!!!", f"{PLACEHOLDER_PREFIX}bm9wZQ"])
+    @pytest.mark.parametrize(
+        "token",
+        [
+            f"{PLACEHOLDER_PREFIX}!!!",
+            f"{PLACEHOLDER_PREFIX}bm9wZQ",
+            # {"type":"workspace_file","conversation_id":"conv-1"}: a file with no path.
+            f"{PLACEHOLDER_PREFIX}eyJ0eXBlIjoid29ya3NwYWNlX2ZpbGUiLCJjb252ZXJzYXRpb25faWQiOiJjb252LTEifQ",
+        ],
+    )
     async def test_a_token_naming_no_target_reads_nothing(
         self, live: AsyncMock, token: str
     ) -> None:
@@ -111,19 +118,25 @@ def _token(raw: str) -> str:
     return PLACEHOLDER_PREFIX + base64.urlsafe_b64encode(raw.encode()).rstrip(b"=").decode()
 
 
-@pytest.mark.parametrize("target_id", ["t1", "t12", "t123"])
+@pytest.mark.parametrize("path", ["a", "ab", "abc"])
 async def test_a_placeholder_carries_no_padding_and_resolves_whole(
-    live: AsyncMock, target_id: str
+    live: AsyncMock, path: str
 ) -> None:
-    token = link_placeholder(FILE, target_id)
+    target = FILE.model_copy(update={"path": path})
+    token = link_placeholder(target)
     assert "=" not in token
     assert await resolve_link_placeholders(OWNER, f"({token})") == f"({_url()})"
-    live.assert_awaited_once_with(OWNER, FILE, target_id)
+    live.assert_awaited_once_with(OWNER, target)
 
 
 @pytest.mark.parametrize(
     "raw",
-    [f"{FILE.value}:", "nope:t1", f"{FILE.value}t1", ":t1"],
+    [
+        '{"type": "workspace_file", "conversation_id": "conv-1"}',
+        '{"type": "nope", "id": "t1"}',
+        '{"type": "todo_deliverable"}',
+        "not json",
+    ],
 )
 async def test_a_token_naming_no_known_target_reads_nothing(live: AsyncMock, raw: str) -> None:
     await resolve_link_placeholders(OWNER, f"x {_token(raw)}")

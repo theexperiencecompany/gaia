@@ -85,7 +85,7 @@ async def _email_support(subject: str, opening: str, link: ShortLink) -> None:
         return
     html = (
         f"<p>{build_url(link.slug)} {opening}</p>"
-        f"<p>Owner: {link.user_id}. Type: {link.target_type.value}.</p>"
+        f"<p>Owner: {link.user_id}. Type: {link.target.type.value}.</p>"
         "<p>Restore it with <code>apps/api/scripts/link_takedown.py --slug SLUG --restore</code>, "
         "or take it down with <code>--reason admin</code>.</p>"
     )
@@ -111,12 +111,12 @@ async def _suspend(link: ShortLink, reporters: int) -> None:
     )
     capture(
         UserId(link.user_id),
-        ShortLinkTakenDown(target_type=link.target_type.value, reason="reports_threshold"),
+        ShortLinkTakenDown(target_type=link.target.type.value, reason="reports_threshold"),
     )
     log.error(
         "short_link.suspended",
         user_id=link.user_id,
-        target_type=link.target_type.value,
+        target_type=link.target.type.value,
         slug_hash=hash_short_link_slug(link.slug),
         reporters=reporters,
     )
@@ -129,7 +129,7 @@ async def _queue_review(link: ShortLink, reporters: int) -> None:
     log.warning(
         "short_link.review_requested",
         user_id=link.user_id,
-        target_type=link.target_type.value,
+        target_type=link.target.type.value,
         slug_hash=hash_short_link_slug(link.slug),
         reporters=reporters,
     )
@@ -165,7 +165,7 @@ async def report(
     capture(
         UserId(link.user_id),
         ShortLinkReported(
-            target_type=link.target_type.value, reason=reason.value, reporter_signed_in=signed_in
+            target_type=link.target.type.value, reason=reason.value, reporter_signed_in=signed_in
         ),
     )
     if link.suspended or not signed_in:
@@ -187,7 +187,7 @@ async def take_down(link: ShortLink) -> None:
         await delete_snapshot(link.user_id, link.snapshot)
     capture(
         UserId(link.user_id),
-        ShortLinkTakenDown(target_type=link.target_type.value, reason="admin"),
+        ShortLinkTakenDown(target_type=link.target.type.value, reason="admin"),
     )
 
 

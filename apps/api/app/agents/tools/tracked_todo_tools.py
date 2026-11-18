@@ -45,7 +45,7 @@ from app.constants.todos import (
 from app.constants.trigger_gates import GateAuthor
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import get_user_id, read_agent_configurable
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -538,12 +538,14 @@ async def complete_tracked_todo(
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
     # Linked here, not in the service: this is the one completion path that hands
     # the result to the user. Sweeps, sub-todo cascades and the UI share nothing.
-    link = await attach_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
+    link = await attach_link(
+        user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+    )
     if link is None:
         return f"Tracked todo {todo_id} completed and archived."
     return (
         f"Tracked todo {todo_id} completed and archived. {LINK_NOTE} Link to the result: "
-        f"{link_placeholder(link.target_type, link.target_id)}"
+        f"{link_placeholder(link.target)}"
     )
 
 

@@ -44,7 +44,7 @@ async function openSettings(link: ShortLinkResponse | null) {
   api.fetchShareState.mockResolvedValue(link);
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <ShareLinkControls targetType="briefing" targetId="b1" />
+      <ShareLinkControls target={{ type: "briefing", id: "b1" }} />
     </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Share" }));
@@ -103,8 +103,7 @@ describe("share settings", () => {
 
     await waitFor(() =>
       expect(api.createShortLink).toHaveBeenCalledWith(
-        "briefing",
-        "b1",
+        { type: "briefing", id: "b1" },
         expect.objectContaining({ access: "owner" }),
       ),
     );

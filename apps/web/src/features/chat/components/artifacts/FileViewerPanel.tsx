@@ -25,7 +25,6 @@ import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import { useFileText } from "@/features/chat/hooks/useFileText";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
-import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { useCloseRightSidebar } from "@/stores/layoutStore";
@@ -170,11 +169,11 @@ export default function FileViewerPanel({
           {source.kind === "artifact" && (
             <ShareLinkControls
               iconOnly
-              targetType="session_artifact"
-              targetId={sessionArtifactTargetId(
-                source.conversationId,
-                source.path,
-              )}
+              target={{
+                type: "workspace_file",
+                conversation_id: source.conversationId,
+                path: source.path,
+              }}
             />
           )}
           <GaiaButton

@@ -8,15 +8,16 @@ must, however the stream splits it. The live-link read is mocked at the reposito
 from collections.abc import Iterator
 from itertools import pairwise
 import json
-from typing import Any
+from typing import Any, Final, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.config.settings import settings
 from app.helpers.agent_helpers import execute_graph_silent, execute_graph_streaming
-from app.models.short_link_models import ShortLink, ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.links.placeholders import PLACEHOLDER_PREFIX, link_placeholder
 from tests.helpers import (
     GraphStreamEvent,
@@ -26,8 +27,8 @@ from tests.helpers import (
 )
 
 OWNER = "u1"
-TODO = ShortLinkTargetType.TODO_DELIVERABLE
-TOKEN = link_placeholder(TODO, "t1")
+TODO: Final = ShortLinkTargetType.TODO_DELIVERABLE
+TOKEN = link_placeholder(RecordTarget(type=TODO, id="t1"))
 _CONFIG: Any = {"agent_name": "comms_agent", "configurable": {"user_id": OWNER}}
 
 
@@ -37,7 +38,7 @@ def live() -> Iterator[AsyncMock]:
         "app.services.links.placeholders.short_link_repository.get_live_for_target",
         AsyncMock(
             return_value=ShortLink(
-                slug="abcdefghijk", user_id=OWNER, target_type=TODO, target_id="t1"
+                slug="abcdefghijk", user_id=OWNER, target=RecordTarget(type=TODO, id="t1")
             )
         ),
     ) as read:
@@ -73,6 +74,11 @@ def _streamed(frames: list[str]) -> tuple[str, str]:
 REPLY = f"Done. [Open the plan]({TOKEN}) when you like."
 
 
+def _graph(*cuts: int) -> CompiledAgentGraph:
+    """Script a graph streaming the reply, cut at the given offsets."""
+    return cast(CompiledAgentGraph, ScriptedGraph(_reply_in_pieces(REPLY, *cuts)))
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "cuts",
@@ -86,12 +92,7 @@ REPLY = f"Done. [Open the plan]({TOKEN}) when you like."
 async def test_a_streamed_reply_carries_the_link_never_the_placeholder(
     cuts: tuple[int, ...],
 ) -> None:
-    frames = [
-        f
-        async for f in execute_graph_streaming(
-            ScriptedGraph(_reply_in_pieces(REPLY, *cuts)), {}, _CONFIG
-        )
-    ]
+    frames = [f async for f in execute_graph_streaming(_graph(*cuts), {}, _CONFIG)]
 
     sent, stored = _streamed(frames)
     expected = f"Done. [Open the plan]({_url()}) when you like."
@@ -102,21 +103,16 @@ async def test_a_streamed_reply_carries_the_link_never_the_placeholder(
 
 @pytest.mark.unit
 async def test_a_silent_reply_carries_the_link(live: AsyncMock) -> None:
-    message, _ = await execute_graph_silent(ScriptedGraph(_reply_in_pieces(REPLY, 12)), {}, _CONFIG)
+    message, _ = await execute_graph_silent(_graph(12), {}, _CONFIG)
 
     assert message == f"Done. [Open the plan]({_url()}) when you like."
-    live.assert_awaited_with(OWNER, TODO, "t1")
+    live.assert_awaited_with(OWNER, RecordTarget(type=TODO, id="t1"))
 
 
 @pytest.mark.unit
 async def test_a_link_no_longer_live_leaves_its_label(live: AsyncMock) -> None:
     live.return_value = None
-    frames = [
-        f
-        async for f in execute_graph_streaming(
-            ScriptedGraph(_reply_in_pieces(REPLY, 25)), {}, _CONFIG
-        )
-    ]
+    frames = [f async for f in execute_graph_streaming(_graph(25), {}, _CONFIG)]
 
     assert _streamed(frames) == ("Done. Open the plan when you like.",) * 2
 

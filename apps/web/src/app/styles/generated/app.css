@@ -869,9 +869,9 @@
 @source "../../../features/short-links/components/PublicBriefingView.tsx";
 @source "../../../features/short-links/components/PublicLinkView.tsx";
 @source "../../../features/short-links/components/PublicOpenUIArtifactView.tsx";
-@source "../../../features/short-links/components/PublicSessionArtifactView.tsx";
 @source "../../../features/short-links/components/PublicTodoDeliverableView.tsx";
 @source "../../../features/short-links/components/PublicWorkflowRunView.tsx";
+@source "../../../features/short-links/components/PublicWorkspaceFileView.tsx";
 @source "../../../features/short-links/components/ReportLinkButton.tsx";
 @source "../../../features/short-links/components/ShareLinkControls.tsx";
 @source "../../../features/short-links/components/shareLinkMenuItems.tsx";
@@ -882,7 +882,7 @@
 @source "../../../features/short-links/utils/copyShortLink.ts";
 @source "../../../features/short-links/utils/isUnfurlBot.ts";
 @source "../../../features/short-links/utils/linkDenial.ts";
-@source "../../../features/short-links/utils/sessionArtifactTargetId.ts";
+@source "../../../features/short-links/utils/linkServerApi.ts";
 @source "../../../features/skills/api/skillsApi.ts";
 @source "../../../features/skills/components/BuiltinSkillsList.tsx";
 @source "../../../features/skills/components/SkillEditorModal.tsx";

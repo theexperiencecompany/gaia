@@ -19,16 +19,16 @@ vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
 }));
 vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
   ShareLinkControls: ({
-    targetType,
-    targetId,
+    target,
     stopWarning,
   }: {
-    targetType: string;
-    targetId: string;
+    target: LinkTarget;
     stopWarning?: string;
   }) => (
     <span data-testid="share" data-warning={stopWarning ?? ""}>
-      {`${targetType}:${targetId}`}
+      {"id" in target
+        ? `${target.type}:${target.id}`
+        : `${target.type}:${target.conversation_id}:${target.path}`}
     </span>
   ),
 }));
@@ -36,7 +36,7 @@ vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
 import { BRIEF_STOP_WARNING } from "@/features/briefing";
 import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
 import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
-import type { LinkEnvelope } from "@/types/features/shortLinkTypes";
+import type { LinkEnvelope, LinkTarget } from "@/types/features/shortLinkTypes";
 
 function envelope(isOwner: boolean): LinkEnvelope {
   return {
@@ -51,7 +51,7 @@ function envelope(isOwner: boolean): LinkEnvelope {
     content: null,
     downloadable: false,
     is_owner: isOwner,
-    owner_target_id: isOwner ? "todo-123" : null,
+    owner_target: isOwner ? { type: "todo_deliverable", id: "todo-123" } : null,
   };
 }
 
@@ -68,7 +68,7 @@ describe("PublicLinkView chrome", () => {
     const brief: LinkEnvelope = {
       ...envelope(true),
       target_type: "briefing",
-      owner_target_id: "brief-1",
+      owner_target: { type: "briefing", id: "brief-1" },
       view: {
         target_type: "briefing",
         kind: "daily",

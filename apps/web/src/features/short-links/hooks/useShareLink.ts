@@ -14,15 +14,15 @@ import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import { toast } from "@/lib/toast";
 import type {
   LinkSettings,
+  LinkTarget,
   ShortLinkResponse,
-  ShortLinkTargetType,
 } from "@/types/features/shortLinkTypes";
 
 const STOPPED_NOTE =
   "The link no longer opens, and GAIA won't share this again unless you copy a new link.";
 
-const shareStateKey = (targetType: ShortLinkTargetType, targetId: string) =>
-  ["short-links", "share-state", targetType, targetId] as const;
+const shareStateKey = (target: LinkTarget) =>
+  ["short-links", "share-state", target] as const;
 
 export interface ShareLink {
   /** The live link, null when not shared, undefined while the state is unknown. */
@@ -51,26 +51,24 @@ export interface ShareLink {
  * sharing" is never offered for something that was never shared.
  */
 export function useShareLink(
-  targetType: ShortLinkTargetType,
-  targetId: string,
+  target: LinkTarget,
   stopWarning?: string,
 ): ShareLink {
   const queryClient = useQueryClient();
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
-  const key = shareStateKey(targetType, targetId);
+  const key = shareStateKey(target);
   const remember = (link: ShortLinkResponse | null) =>
     queryClient.setQueryData(key, link);
 
   const { data: link } = useQuery({
     queryKey: key,
-    queryFn: () => fetchShareState(targetType, targetId),
+    queryFn: () => fetchShareState(target),
     enabled: isMenuOpen || isSettingsOpen,
   });
 
   const copy = useMutation({
-    mutationFn: async () =>
-      link ?? (await createShortLink(targetType, targetId)),
+    mutationFn: async () => link ?? (await createShortLink(target)),
     onSuccess: async (copied) => {
       remember(copied);
       await copyShortLink(copied);
@@ -78,7 +76,7 @@ export function useShareLink(
   });
 
   const stop = useMutation({
-    mutationFn: () => stopSharingShortLink(targetType, targetId),
+    mutationFn: () => stopSharingShortLink(target),
     onSuccess: (revoked) => {
       remember(null);
       if (!revoked) return;
@@ -94,7 +92,7 @@ export function useShareLink(
     mutationFn: (settings: LinkSettings) =>
       link
         ? updateLinkSettings(link.slug, settings)
-        : createShortLink(targetType, targetId, settings),
+        : createShortLink(target, settings),
     onSuccess: (saved) => {
       remember(saved);
       setSettingsOpen(false);
