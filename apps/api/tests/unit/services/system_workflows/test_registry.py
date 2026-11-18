@@ -53,8 +53,11 @@ async def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cr
     )
 
     assert cron_for is not None
-    with patch.object(briefing_state_repository, "state_for", AsyncMock(return_value=stored)):
+    with patch.object(
+        briefing_state_repository, "state_for", AsyncMock(return_value=stored)
+    ) as state_for:
         assert await cron_for(UserDocument(id="u1")) == spread_cron(cron, "u1")
+    state_for.assert_awaited_once_with("u1")
 
 
 def test_the_key_sets_the_engine_filters_by_are_the_briefs() -> None:

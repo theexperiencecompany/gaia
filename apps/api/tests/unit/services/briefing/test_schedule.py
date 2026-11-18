@@ -427,6 +427,16 @@ class TestSetBriefingSchedule:
             frequency=BriefingFrequency.WEEKDAYS, hour=6
         )
 
+    async def test_the_inbox_desk_follows_the_brief_from_its_old_hour_to_its_new(
+        self, seams: Seams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        follow = AsyncMock()
+        monkeypatch.setattr(schedule, "follow_the_brief", follow)
+
+        await schedule.set_briefing_schedule(USER_ID, BriefingFrequency.DAILY, "settings", hour=10)
+
+        follow.assert_awaited_once_with(USER_ID, "0 7 * * *", "0 9 * * *")
+
     async def test_an_unknown_user_fails_loud_and_reports_nothing(
         self, seams: Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:

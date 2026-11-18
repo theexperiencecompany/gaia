@@ -103,7 +103,7 @@ class TestQuietHours:
             patch(
                 "app.services.user_quiet_hours.briefing_state_repository.state_for",
                 AsyncMock(return_value=BriefingStateDocument(user_id=FAKE_USER_ID)),
-            ),
+            ) as state_for,
             patch("app.services.user_quiet_hours.follow_the_brief") as desk,
             patch("app.services.user_quiet_hours.capture") as capture,
         ):
@@ -121,6 +121,7 @@ class TestQuietHours:
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
         resync.assert_awaited_once_with(stored)
+        state_for.assert_awaited_once_with(FAKE_USER_ID)
         desk.assert_awaited_once_with(FAKE_USER_ID, "0 7 * * *", "0 7 * * *")
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),

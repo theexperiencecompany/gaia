@@ -210,6 +210,20 @@ class TestTheGoalQuestion:
 
         assert (ladder.idle_days, ladder.wind_down) == (0, None)
 
+    async def test_the_goodbye_puts_the_loop_to_sleep(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        enter = AsyncMock()
+        monkeypatch.setattr(briefing_state_repository, "record_goal_question", AsyncMock())
+        monkeypatch.setattr(briefing_state_repository, "enter_dormancy", enter)
+        goodbye = wind_down.IdleLadder(
+            first_week=False, idle_days=IDLE_DORMANT_DAYS, wind_down=WindDown.FINAL
+        )
+
+        await wind_down.leave_idle_ladder("u1", goodbye)
+
+        enter.assert_awaited_once_with("u1")
+
     async def test_the_goal_question_is_recorded_only_when_it_goes_out(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

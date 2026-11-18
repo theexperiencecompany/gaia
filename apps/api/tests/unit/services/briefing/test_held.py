@@ -74,9 +74,12 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
     monkeypatch.setattr(workflow_repository, "find_system_workflow", find_system_workflow)
     monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=lambda _uid: s.user))
     monkeypatch.setattr(user_repository, "get_activity_dates", activity)
-    monkeypatch.setattr(
-        briefing_state_repository, "state_for", AsyncMock(side_effect=lambda _uid: s.state)
-    )
+
+    async def state_for(uid: str) -> BriefingStateDocument:
+        # Anyone else's row is empty: a read for the wrong user finds no hold or dormancy.
+        return s.state if uid == s.user.id else BriefingStateDocument(user_id=uid)
+
+    monkeypatch.setattr(briefing_state_repository, "state_for", state_for)
     monkeypatch.setattr(briefing_repository, "list_recent", recent)
     monkeypatch.setattr(
         pending_brief_items_repository,

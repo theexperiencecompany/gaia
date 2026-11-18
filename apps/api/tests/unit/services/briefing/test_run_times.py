@@ -183,3 +183,8 @@ class TestTheInboxDesksRecurrence:
         schedule = BriefingSchedule(frequency=frequency, hour=hour)
 
         assert run_times.inbox_desk_recurrence(schedule, DEFAULT_QUIET_HOURS) == recurrence
+
+    def test_a_brief_at_midnight_sweeps_the_hour_before_it(self) -> None:
+        quiet_off = QuietHours(enabled=False, start_hour=22, end_hour=8)
+
+        assert run_times.inbox_desk_recurrence(BriefingSchedule(hour=0), quiet_off) == "0 23 * * *"

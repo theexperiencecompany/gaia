@@ -15,6 +15,7 @@ from app.services.briefing.editions.artworks import (
     artworks_for,
 )
 from app.services.briefing.editions.capabilities import edition_capabilities
+from app.services.briefing.editions.stamps import hosted_stamp_weights
 
 USER_ID = make_user_id()
 
@@ -97,3 +98,20 @@ class TestDrawEdition:
         [drawn] = edition.draws
         assert edition.artwork_id == drawn.member
         assert drawn.member in artworks_for(family)
+
+    def test_an_air_mail_edition_continues_the_users_stamp_bag(self) -> None:
+        cities = sorted(hosted_stamp_weights())
+        state = BriefingStateDocument(
+            user_id=USER_ID,
+            shuffle_bags={BriefingBag.STAMP_CITY: ShuffleBag(order=cities, index=1)},
+        )
+
+        edition = draw_edition(state, [], EditionFamily.POSTAL)
+
+        [drawn] = edition.draws
+        assert (drawn.bag, drawn.member, edition.stamp_city) == (
+            BriefingBag.STAMP_CITY,
+            cities[1],
+            cities[1],
+        )
+        assert drawn.next_state == ShuffleBag(order=cities, index=2)

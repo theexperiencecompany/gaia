@@ -151,6 +151,7 @@ class TestGuards:
         assert await seams.send() == f"skip {_USER}: day-zero hello already sent"
 
         assert seams.event["skipped"] == "already_sent"
+        seams.state.assert_awaited_once_with(_USER)
         seams.assert_nothing_sent()
 
     @pytest.mark.parametrize(

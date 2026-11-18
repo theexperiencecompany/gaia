@@ -135,6 +135,5 @@ def _slots_running(
 
 def inbox_desk_recurrence(schedule: BriefingSchedule, quiet_hours: QuietHours) -> str:
     """Return the Inbox desk's daily cron: INBOX_DESK_LEAD_HOURS before the daily brief."""
-    daily = _slots_running(DAILY_BRIEFING_WORKFLOW_KEY, schedule, quiet_hours)
-    hour = (daily[DAILY_BRIEFING_WORKFLOW_KEY].hour - INBOX_DESK_LEAD_HOURS) % 24
+    hour = (_past_quiet_hours(schedule.hour, quiet_hours) - INBOX_DESK_LEAD_HOURS) % 24
     return f"0 {hour} * * *"
