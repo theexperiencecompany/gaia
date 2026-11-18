@@ -31,6 +31,7 @@ from tests.briefing_run_world import (
 from app.agents.prompts.brief_fact_prompts import UNNAMED_READER
 from app.constants.briefing import (
     BriefForm,
+    BriefingBag,
     BriefingKind,
     BriefingRunOutcome,
     EditionChoice,
@@ -308,33 +309,36 @@ class TestTheEdition:
         self, world: World
     ) -> None:
         world.family_first(EditionFamily.POSTAL)
-        seeded = world.bags["edition_family"].order
+        seeded = world.bags[BriefingBag.EDITION_FAMILY].order
 
         await run_brief(USER, BriefingKind.DAILY)
 
         payload = world.stored()
         assert payload.template_family == "postal"
         # The stored pass was read and advanced, not reshuffled from scratch.
-        assert world.bags["edition_family"] == ShuffleBag(order=seeded, index=1)
+        assert world.bags[BriefingBag.EDITION_FAMILY] == ShuffleBag(order=seeded, index=1)
         assert payload.stamp_city in stamp_weights()
-        assert world.bags["stamp_city"].order[0] == payload.stamp_city
+        assert world.bags[BriefingBag.STAMP_CITY].order[0] == payload.stamp_city
 
     @pytest.mark.parametrize(
         ("family", "bag"),
-        [(EditionFamily.POSTAL, "stamp_city"), (EditionFamily.ALMANAC, "artwork")],
+        [
+            (EditionFamily.POSTAL, BriefingBag.STAMP_CITY),
+            (EditionFamily.ALMANAC, BriefingBag.ARTWORK),
+        ],
     )
     async def test_a_brief_that_fails_to_deliver_spends_no_draw(
-        self, world: World, family: EditionFamily, bag: str
+        self, world: World, family: EditionFamily, bag: BriefingBag
     ) -> None:
         """A draw is spent only by a brief that went out: a failed run burns no member."""
         world.family_first(family)
-        family_before = world.bags["edition_family"]
+        family_before = world.bags[BriefingBag.EDITION_FAMILY]
         world.notify.side_effect = RuntimeError("orchestrator down")
 
         with pytest.raises(RuntimeError, match="orchestrator down"):
             await run_brief(USER, BriefingKind.DAILY)
 
-        assert world.bags["edition_family"] == family_before
+        assert world.bags[BriefingBag.EDITION_FAMILY] == family_before
         assert bag not in world.bags
 
     async def test_a_first_stamp_is_announced_on_every_channel(self, world: World) -> None:
@@ -373,12 +377,12 @@ class TestTheEdition:
     ) -> None:
         world.family_first(EditionFamily.EXHIBITION)
         order = sorted(artwork_weights())
-        world.bags["artwork"] = ShuffleBag(order=order, index=3)
+        world.bags[BriefingBag.ARTWORK] = ShuffleBag(order=order, index=3)
 
         await run_brief(USER, BriefingKind.DAILY)
 
         assert world.stored().artwork_id == order[3]
-        assert world.bags["artwork"] == ShuffleBag(order=order, index=4)
+        assert world.bags[BriefingBag.ARTWORK] == ShuffleBag(order=order, index=4)
 
     async def test_a_block_the_drawn_edition_cannot_draw_moves_to_the_briefs_page(
         self, world: World

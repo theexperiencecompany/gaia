@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 import inspect
+from operator import attrgetter
 from typing import Any
 from unittest.mock import _Call, call
 
@@ -307,7 +308,7 @@ class InMemoryPendingBriefItems(Store):
     ) -> list[PendingBriefItemDocument]:
         mine = [r for r in self.rows if r.user_id == user_id]
         for field, direction in reversed(sort or []):
-            mine.sort(key=lambda r, f=field: getattr(r, f), reverse=direction < 0)
+            mine.sort(key=attrgetter(field), reverse=direction < 0)
         return [r.model_copy(deep=True) for r in _limited(mine[skip:], limit)]
 
     async def consume(self, user_id: str, item_ids: list[str]) -> int:

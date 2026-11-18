@@ -44,8 +44,8 @@ from app.constants.briefing import (
     EditionFamily,
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.memory import MemoryKind
-from app.constants.notifications import NotificationKind
+from app.constants.memory import MemoryEntityType, MemoryKind
+from app.constants.notifications import BriefNotificationKind, NotificationKind
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoCompleter, WaitingOn
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -74,7 +74,6 @@ from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalend
 from app.models.chat_models import ConversationSource
 from app.models.memory_models import (
     MemoryEntityRef,
-    MemoryEntityType,
     MemoryEntry,
     MemorySearchResult,
 )
@@ -519,7 +518,9 @@ def remembered(external_id: str, last_state: str) -> SignalMemoryDocument:
     )
 
 
-def delivered_plan(kind: NotificationKind = NotificationKind.BRIEFING_DAILY) -> BriefDelivery:
+def delivered_plan(
+    kind: BriefNotificationKind = NotificationKind.BRIEFING_DAILY,
+) -> BriefDelivery:
     """Return the delivery of a brief that went out on every step."""
     return BriefDelivery(
         push=True, notification_kind=kind, done=list(DeliveryStep), completed_at=JUST_NOW

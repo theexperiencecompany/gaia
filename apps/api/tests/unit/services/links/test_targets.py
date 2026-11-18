@@ -1,8 +1,8 @@
 """The link target specs' projections — what a recipient of a heygaia.link can see.
 
 Each test feeds a stored document carrying the private fields a capability URL
-must never serve (canvas Key Details, thread ids, addresses, todo ids, chat
-bubbles) and asserts they are absent from the serialized public response.
+must never serve (canvas Key Details, thread ids, addresses, todo ids, the chat
+message) and asserts they are absent from the serialized public response.
 Repositories are mocked at the seam; the projection logic is real.
 """
 
@@ -203,7 +203,7 @@ class TestBriefing:
                         ],
                     )
                 ],
-                mood="clear",
+                mood=BriefingMood.CLEAR,
                 caption="See you tomorrow",
                 calendar=[
                     BriefingEvent(
@@ -211,7 +211,6 @@ class TestBriefing:
                     )
                 ],
                 message=f"hey, I emailed {PRIVATE_EMAIL}",
-                bubbles=[f"hey, I emailed {PRIVATE_EMAIL}"],
             ),
         )
         with patch("app.services.links.targets.briefing.briefing_repository") as repo:
