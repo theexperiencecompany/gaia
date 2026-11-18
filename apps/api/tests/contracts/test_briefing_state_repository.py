@@ -13,9 +13,9 @@ from app.db.mongodb import indexes
 from app.db.repositories.briefing_state import BriefingStateRepository
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import (
-    BriefingDormancy,
     BriefingStateDocument,
     BriefingStateUpdate,
+    BriefingWindDown,
     ShuffleBag,
 )
 
@@ -53,7 +53,7 @@ class TestAUserWithNoRow:
         self, repo: BriefingStateRepository, raw_collection: AsyncIOMotorCollection
     ) -> None:
         await repo.clear_bootstrap(USER)
-        await repo.clear_dormancy(USER)
+        await repo.clear_wind_down(USER)
 
         assert await raw_collection.count_documents({}) == 0
 
@@ -82,7 +82,7 @@ class TestOneRowPerUser:
             {BriefingBag.EDITION_FAMILY: bag},
         )
         assert stored.bootstrap is not None
-        assert stored.dormancy == BriefingDormancy(idle_days=1, date="2026-11-18")
+        assert stored.wind_down == BriefingWindDown(idle_days=1, date="2026-11-18")
         assert stored.day_zero_hello is not None
         assert (await repo.state_for(OTHER)).schedule == BriefingSchedule(hour=9)
 
@@ -176,22 +176,22 @@ class TestTheIdleLadder:
         self, repo: BriefingStateRepository, local_time_offset_from_utc: None
     ) -> None:
         await repo.set_idle_day(USER, idle_days=3, date_str="2026-10-14")
-        counted = (await repo.state_for(USER)).dormancy
-        assert counted == BriefingDormancy(idle_days=3, date="2026-10-14")
+        counted = (await repo.state_for(USER)).wind_down
+        assert counted == BriefingWindDown(idle_days=3, date="2026-10-14")
 
         before = _just_before()
         await repo.record_goal_question(USER)
-        asked = (await repo.state_for(USER)).dormancy
+        asked = (await repo.state_for(USER)).wind_down
         assert asked is not None and (asked.idle_days, asked.date) == (3, "2026-10-14")
         assert _stamped_now(asked.goal_asked_at, before)
 
-        await repo.enter_dormancy(USER)
-        dormant = (await repo.state_for(USER)).dormancy
+        await repo.enter_wind_down(USER)
+        dormant = (await repo.state_for(USER)).wind_down
         assert dormant is not None and (dormant.idle_days, dormant.date) == (3, "2026-10-14")
-        assert _stamped_now(dormant.dormant_since, before)
+        assert _stamped_now(dormant.wound_down_since, before)
 
-        await repo.clear_dormancy(USER)
-        assert (await repo.state_for(USER)).dormancy == BriefingDormancy(
+        await repo.clear_wind_down(USER)
+        assert (await repo.state_for(USER)).wind_down == BriefingWindDown(
             goal_asked_at=asked.goal_asked_at
         )
 

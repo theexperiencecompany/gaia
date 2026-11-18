@@ -34,7 +34,6 @@ from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
-from app.services.briefing.held import brief_will_carry, release_held_items
 from app.services.briefing.run_times import (
     BriefSlot,
     brief_slots,
@@ -250,7 +249,8 @@ async def set_briefing_schedule(
 
     A schedule with no daily brief first moves each brief-delivery workflow off the brief:
     to its delivery in workflow_deliveries, else brief_workflows_to, else (weekly-only) Tell
-    me now, raising BriefDeliveryWorkflowsError while any has none. It releases what was held.
+    me now, raising BriefDeliveryWorkflowsError while any has none. Switching the daily brief
+    off releases what it held.
     """
     user = await require_user(user_id)
     before = (await briefing_state_repository.state_for(user_id)).schedule
@@ -266,8 +266,6 @@ async def set_briefing_schedule(
         inbox_desk_recurrence(before, quiet_hours),
         inbox_desk_recurrence(schedule, quiet_hours),
     )
-    if not await brief_will_carry(user_id):
-        await release_held_items(user_id)
     log.audit(
         "briefing schedule updated",
         actor=user_id,

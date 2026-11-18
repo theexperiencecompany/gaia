@@ -50,7 +50,6 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
-from app.constants.comms import BRIEF_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
@@ -61,11 +60,6 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
 from app.models.message_models import TodoRunWake
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
-from app.models.trigger_subscription_models import (
-    SubscriptionAction,
-    SubscriptionResolution,
-    TriggerSubscription,
-)
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
@@ -243,7 +237,6 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
                 None,
                 runs_once=True,
                 run_history=(),
-                may_wait=False,
             )
         }
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
@@ -321,21 +314,6 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             await run_todo_on_executor(_request())
 
         assert seams.send.await_args.kwargs["notification_text"] == NARRATED
-
-    async def test_a_result_comms_would_hold_for_the_brief_goes_now_when_it_cannot_wait(
-        self,
-    ) -> None:
-        recorder = WideEventRecorder()
-        with (
-            _seams(todo=_todo(), narrated="<BRIEF>Deploy finished</BRIEF>") as seams,
-            patch("shared.py.wide_events._loguru", recorder),
-        ):
-            await run_todo_on_executor(_request())
-
-        [held] = recorder.event("executor_run")["warnings"]
-        assert held["msg"] == f"{LogTag.AGENT} comms held a result that must go now; it is sent"
-        assert held["todo_id"] == TODO_ID
-        seams.send.assert_awaited_once()
 
     async def test_the_executor_runs_the_brief_itself_in_background_mode(self) -> None:
         with _seams(todo=_todo()) as seams:
@@ -748,13 +726,6 @@ class TestTheInboxDeskFeedsTheMorningBrief:
         seams.send.assert_awaited_once()
         seams.hold.assert_not_awaited()
 
-    async def test_a_watch_the_user_asked_for_still_alerts_at_once(self) -> None:
-        with _seams(todo=_desk(), narrated=EXECUTOR_REPORT, daily_brief=_LIVE_BRIEF) as seams:
-            await run_todo_on_executor(_desk_request(TriggerType.INTEGRATION))
-
-        seams.send.assert_awaited_once()
-        seams.hold.assert_not_awaited()
-
     async def test_another_todos_scheduled_run_is_unaffected(self) -> None:
         with _seams(todo=_todo()) as seams:
             await run_todo_on_executor(_request())
@@ -782,10 +753,6 @@ class TestTheInboxDeskFeedsTheMorningBrief:
         seams.hold.assert_not_awaited()
 
 
-_BRIEF_LINE = "Staging is green again after Tuesday's rollback"
-_BRIEFED = f"<BRIEF>{_BRIEF_LINE}</BRIEF>"
-
-
 def _recurring(**update: object) -> TodoDocument:
     return _todo().model_copy(update={"recurrence": "0 9 * * *", **update})
 
@@ -800,102 +767,39 @@ def _woken(
     )
 
 
-def _offered_the_brief(seams: _Seams) -> bool:
-    return BRIEF_DIRECTIVE in seams.narrate.await_args.kwargs["preamble"]
+class TestOnlyTheTodosDeliveryHoldsItsResult:
+    """The todo's stored delivery alone decides whether a result waits for the brief."""
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "trigger_type",
+        [TriggerType.TODO_TRIGGER, TriggerType.INTEGRATION],
+        ids=["watch", "integration"],
+    )
+    async def test_a_brief_todos_result_is_held_however_its_run_was_woken(
+        self, trigger_type: TriggerType
+    ) -> None:
+        with _seams(
+            todo=_todo(delivery=WorkflowDelivery.BRIEF),
+            narrated=_DESK_FINDINGS,
+            daily_brief=_LIVE_BRIEF,
+        ) as seams:
+            await run_todo_on_executor(_woken(trigger_type, ProactiveMessageClass.ROUTINE))
 
-class TestWhatCanWaitGoesIntoTheMorningBrief:
-    """A tracked todo's result goes now only when it cannot wait until tomorrow morning."""
-
-    async def test_a_routine_recurring_update_is_held_as_one_brief_item(self) -> None:
-        with _seams(todo=_recurring(), narrated=_BRIEFED, daily_brief=_LIVE_BRIEF) as seams:
-            await run_todo_on_executor(_request(runs_once=False))
-
-        assert _offered_the_brief(seams)
         seams.send.assert_not_awaited()
-        (item,) = [call.args[0] for call in seams.hold.await_args_list]
-        assert (item.source, item.source_id, item.source_title, item.text) == (
-            BriefItemSource.TODO,
-            TODO_ID,
-            "Watch the staging deploy",
-            _BRIEF_LINE,
-        )
+        assert [call.args[0].text for call in seams.hold.await_args_list] == [
+            'Arjun call Tue 4pm · say "add Arjun call" to add it',
+            "3 product updates · Linear, Vercel pricing, Notion AI",
+        ]
         assert seams.capture.call_args.args[1].outcome == "held_for_brief"
 
-    async def test_a_thread_alert_that_cannot_wait_goes_now(self) -> None:
-        thread = _recurring(
-            external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="th-1"),
-            parent_todo_id="desk-1",
-        )
-        with _seams(todo=thread, narrated=NARRATED, daily_brief=_LIVE_BRIEF) as seams:
-            await run_todo_on_executor(
-                _woken(TriggerType.TODO_TRIGGER, ProactiveMessageClass.ROUTINE)
-            )
-
-        assert _offered_the_brief(seams)
-        seams.send.assert_awaited_once()
-        seams.hold.assert_not_awaited()
-
-    @pytest.mark.parametrize(
-        ("todo", "request_"),
-        [
-            pytest.param(
-                _todo(),
-                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.ROUTINE, runs_once=True),
-                id="one-time-answer",
-            ),
-            pytest.param(
-                _todo().model_copy(
-                    update={
-                        "trigger_subscriptions": [
-                            TriggerSubscription(
-                                trigger_name="gmail_new_message",
-                                action=SubscriptionAction.EXECUTE,
-                                resolution=SubscriptionResolution.ACCOUNT,
-                            )
-                        ]
-                    }
-                ),
-                _woken(TriggerType.TODO_TRIGGER, ProactiveMessageClass.ROUTINE),
-                id="watch-the-user-asked-for",
-            ),
-            pytest.param(
-                _recurring(),
-                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.USER_TIMED),
-                id="user-timed",
-            ),
-            pytest.param(
-                _recurring(),
-                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.USER_TRIGGERED),
-                id="user-triggered",
-            ),
-            pytest.param(
-                _recurring(),
-                _woken(TriggerType.SCHEDULED_TODO, ProactiveMessageClass.URGENT),
-                id="urgent",
-            ),
-        ],
-    )
-    async def test_what_must_go_now_is_never_held_whatever_comms_writes(
-        self, todo: TodoDocument, request_: TodoRunRequest
+    @pytest.mark.regression
+    async def test_a_now_todos_routine_update_is_never_offered_or_held_for_the_brief(
+        self,
     ) -> None:
-        with _seams(todo=todo, narrated=_BRIEFED, daily_brief=_LIVE_BRIEF) as seams:
-            await run_todo_on_executor(request_)
-
-        assert not _offered_the_brief(seams)
-        seams.hold.assert_not_awaited()
-        assert seams.send.await_args.kwargs["notification_text"] == _BRIEF_LINE
-
-    @pytest.mark.parametrize(
-        "daily_brief", [None, SimpleNamespace(activated=False)], ids=["no-brief", "brief-off"]
-    )
-    async def test_without_a_live_daily_brief_nothing_is_held(
-        self, daily_brief: SimpleNamespace | None
-    ) -> None:
-        """Holding for a brief that never runs would mean nobody sees the result."""
-        with _seams(todo=_recurring(), narrated=_BRIEFED, daily_brief=daily_brief) as seams:
+        with _seams(todo=_recurring(), narrated=NARRATED, daily_brief=_LIVE_BRIEF) as seams:
             await run_todo_on_executor(_request(runs_once=False))
 
-        assert not _offered_the_brief(seams)
+        assert "tomorrow morning" not in seams.narrate.await_args.kwargs["preamble"]
         seams.hold.assert_not_awaited()
-        seams.send.assert_awaited_once()
+        assert seams.send.await_args.kwargs["notification_text"] == NARRATED

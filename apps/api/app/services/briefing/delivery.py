@@ -3,7 +3,8 @@
 The steps are the notification (in-app, plus email when wanted), GAIA's message in the Briefings
 conversation, and, when pushed, the edition in the user's chat app. A run that dies mid-delivery
 leaves the done steps recorded, so the retry sends only what is left; the step that completes the
-delivery consumes the held results the brief carries.
+delivery settles what the run owes, fresh or resumed: the held results, the draws, the items shown
+and the reader's briefing state.
 """
 
 from datetime import UTC, datetime
@@ -21,6 +22,7 @@ from app.constants.notifications import (
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, DeliveryStep
 from app.models.brief_view_models import (
     BriefCard,
@@ -41,7 +43,9 @@ from app.models.notification.notification_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.conversation import post_brief_message
+from app.services.briefing.edition_draws import persist_draws
 from app.services.briefing.edition_image import edition_url
+from app.services.briefing.lifecycle import settle_brief
 from app.services.briefing.message import (
     brief_path,
     chat_text,
@@ -173,5 +177,8 @@ async def deliver_brief(user: UserDocument, brief: BriefingModel) -> list[str]:
         reached += platform
     if plan.held_ids:
         await pending_brief_items_repository.consume(user.id, plan.held_ids)
+    await persist_draws(user.id, plan.draws)
+    await signal_memory_repository.mark_shown(user.id, plan.shown, datetime.now(UTC))
+    await settle_brief(user.id, plan.settlement)
     await briefing_repository.complete_delivery(user.id, brief.id)
     return reached

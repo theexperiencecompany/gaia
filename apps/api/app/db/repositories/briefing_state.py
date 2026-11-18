@@ -69,19 +69,21 @@ class BriefingStateRepository(MongoRepository[BriefingStateDocument, BriefingSta
 
     async def set_idle_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
         """Persist today's idle/active outcome on the idle ladder."""
-        await self._set(user_id, {"dormancy.idle_days": idle_days, "dormancy.date": date_str})
+        await self._set(user_id, {"wind_down.idle_days": idle_days, "wind_down.date": date_str})
 
-    async def enter_dormancy(self, user_id: str) -> None:
-        """Stamp now as when the brief loop went dormant."""
-        await self._set(user_id, {"dormancy.dormant_since": datetime.now(UTC)})
+    async def enter_wind_down(self, user_id: str) -> None:
+        """Stamp now as when the brief loop wound down."""
+        await self._set(user_id, {"wind_down.wound_down_since": datetime.now(UTC)})
 
     async def record_goal_question(self, user_id: str) -> None:
         """Stamp now as when a brief last asked whether the user's goal is still live."""
-        await self._set(user_id, {"dormancy.goal_asked_at": datetime.now(UTC)})
+        await self._set(user_id, {"wind_down.goal_asked_at": datetime.now(UTC)})
 
-    async def clear_dormancy(self, user_id: str) -> None:
-        """Wake the loop: clear the idle streak and dormancy, keeping when a goal was last asked about."""
-        await self._unset(user_id, "dormancy.dormant_since", "dormancy.idle_days", "dormancy.date")
+    async def clear_wind_down(self, user_id: str) -> None:
+        """Wake the loop: clear the idle streak and the wind-down, keeping when a goal was last asked about."""
+        await self._unset(
+            user_id, "wind_down.wound_down_since", "wind_down.idle_days", "wind_down.date"
+        )
 
     async def mark_day_zero_hello_sent(self, user_id: str, platform: str) -> None:
         """Record that GAIA's first text after a platform link went out, and where."""

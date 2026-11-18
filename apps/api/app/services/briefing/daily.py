@@ -10,12 +10,13 @@ from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
 )
-from app.constants.briefing import BriefingKind, BriefingRunOutcome
+from app.constants.briefing import BriefingKind, BriefingRunOutcome, WindDown
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
+from app.models.brief_document_models import BriefSettlement
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
+from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
 from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, wind_down
 from app.services.briefing.calendar_read import CalendarRead
@@ -23,7 +24,7 @@ from app.services.briefing.candidates.pool import GatheredCandidates
 from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.goals import StatedGoal, format_goal_block, stated_goals
-from app.services.briefing.lifecycle import bootstrap_should_skip, clear_bootstrap, wake_or_skip
+from app.services.briefing.lifecycle import bootstrap_should_skip, wake_or_skip
 from app.services.briefing.lookback import (
     Lookback,
     WinbackState,
@@ -58,7 +59,7 @@ class DailyStanding(Standing):
     winback: WinbackState
     is_first: bool
     #: Where the idle ladder stood before today.
-    prior: BriefingDormancy
+    prior: BriefingWindDown
     ladder: wind_down.IdleLadder | None = None
 
     @override
@@ -77,7 +78,7 @@ class DailyStanding(Standing):
         """Climb the idle ladder now the run knows whether it has news.
 
         Nothing to report and no goal (or an ignored goal question) escalates to a plain
-        warning, one goodbye, then dormancy; the ladder also says whether today asks about
+        warning, one goodbye, then the loop winds down; the ladder also says whether today asks about
         the goal. A new account's first week never climbs it.
         """
         ladder = await wind_down.climb_idle_ladder(
@@ -177,10 +178,14 @@ class DailyStanding(Standing):
         return not empty or self._ladder.wind_down is not None or self.winback.is_winback
 
     @override
-    async def settle(self) -> None:
-        """Clear the bootstrap and the ladder's rung."""
-        await clear_bootstrap(self.state)
-        await wind_down.leave_idle_ladder(self.user.id, self._ladder)
+    def settlement(self) -> BriefSettlement:
+        """Clear the bootstrap, record a goal question that went out, and wind down after the goodbye."""
+        ladder = self._ladder
+        return BriefSettlement(
+            clears_bootstrap=self.state.bootstrap is not None,
+            asked_goal=ladder.goal_question is not wind_down.GoalQuestion.ASKED,
+            winds_down=ladder.wind_down is WindDown.FINAL,
+        )
 
 
 async def stand_daily(

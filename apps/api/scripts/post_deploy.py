@@ -29,6 +29,7 @@ from scripts.migrate_short_link_targets import migrate as migrate_short_link_tar
 from scripts.migrate_todo_delivery import migrate as migrate_todo_delivery
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
 from scripts.provision_daily_briefings import rollout as provision_daily_briefings
+from scripts.rename_brief_wind_down import migrate as rename_brief_wind_down
 from scripts.resync_brief_schedules import resync as resync_brief_schedules
 from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
@@ -39,6 +40,7 @@ POST_DEPLOY_STEPS: tuple[tuple[str, Callable[..., Awaitable[object]]], ...] = (
     ("migrate_short_link_targets", migrate_short_link_targets),
     ("migrate_brief_storage", migrate_brief_storage),
     ("migrate_briefing_state", migrate_briefing_state),
+    ("rename_brief_wind_down", rename_brief_wind_down),
     ("retire_legacy_triggers", retire_legacy_triggers),
     ("backfill_last_active_at", backfill_last_active_at),
     ("provision_daily_briefings", provision_daily_briefings),

@@ -52,10 +52,3 @@ async def remember_candidates(
         remembered.append(candidate.model_copy(update={"memory": memory, "moved": moved}))
     await signal_memory_repository.record_seen(user_id, list(keyed.values()), now)
     return remembered
-
-
-async def mark_placed_shown(user_id: str, placed: Sequence[BriefCandidate], now: datetime) -> None:
-    """Record that the brief showed every placed candidate memory keys, named in its message or not."""
-    await signal_memory_repository.mark_shown(
-        user_id, [seen for c in placed if (seen := sighting(c)) is not None], now
-    )

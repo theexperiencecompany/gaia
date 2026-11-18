@@ -16,8 +16,8 @@ from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import (
     BriefingBootstrap,
-    BriefingDormancy,
     BriefingStateDocument,
+    BriefingWindDown,
     DayZeroHello,
     ShuffleBag,
 )
@@ -60,7 +60,12 @@ _EVERY_FIELD: dict[str, object] = {
     "briefing_schedule": {"frequency": "weekdays", "hour": 7},
     "briefing_editions": {"menu": "off", "swiss": "favourite"},
     "briefing_bootstrap": {"pending": True, "since": _SINCE},
-    "briefing_dormancy": {"idle_days": 2, "date": "2026-11-12", "goal_asked_at": _ASKED},
+    "briefing_dormancy": {
+        "idle_days": 2,
+        "date": "2026-11-12",
+        "dormant_since": _SINCE,
+        "goal_asked_at": _ASKED,
+    },
     "day_zero_hello": {"sent_at": _SINCE, "platform": "telegram"},
     "briefing_shuffle_bags": {"edition_family": _FAMILY_BAG, "stamp_city": _CITY_BAG},
 }
@@ -88,7 +93,9 @@ async def test_every_field_is_copied_to_the_users_row_and_stays_on_the_user_docu
         schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7),
         editions={"menu": EditionChoice.OFF, "swiss": EditionChoice.FAVOURITE},
         bootstrap=BriefingBootstrap(pending=True, since=_SINCE),
-        dormancy=BriefingDormancy(idle_days=2, date="2026-11-12", goal_asked_at=_ASKED),
+        wind_down=BriefingWindDown(
+            idle_days=2, date="2026-11-12", wound_down_since=_SINCE, goal_asked_at=_ASKED
+        ),
         day_zero_hello=DayZeroHello(sent_at=_SINCE, platform="telegram"),
         shuffle_bags={
             BriefingBag.EDITION_FAMILY: ShuffleBag.model_validate(_FAMILY_BAG),
@@ -127,7 +134,9 @@ async def test_what_the_new_code_already_wrote_wins_key_by_key(store: _Store) ->
         BriefingBag.EDITION_FAMILY: fresh_bag,
         BriefingBag.STAMP_CITY: ShuffleBag.model_validate(_CITY_BAG),
     }
-    assert state.dormancy == BriefingDormancy(idle_days=0, date="2026-11-18", goal_asked_at=_ASKED)
+    assert state.wind_down == BriefingWindDown(
+        idle_days=0, date="2026-11-18", wound_down_since=_SINCE, goal_asked_at=_ASKED
+    )
     assert state.schedule == BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
 
 

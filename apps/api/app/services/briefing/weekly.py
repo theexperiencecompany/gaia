@@ -7,8 +7,9 @@ from typing_extensions import override
 
 from app.agents.prompts.briefing_prompts import VoicePromptBlocks, build_weekly_voice_prompt
 from app.constants.briefing import BriefingRunOutcome
+from app.models.brief_document_models import BriefSettlement
 from app.models.brief_payload_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.briefing_state_models import BriefingDormancy, BriefingStateDocument
+from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
 from app.models.user_models import UserDocument
 from app.services.briefing import wind_down
 from app.services.briefing.calendar_read import CalendarRead
@@ -33,7 +34,7 @@ class WeeklyStanding(Standing):
     clock: UserClock
     goals: list[StatedGoal]
     #: Where the idle ladder stood before this digest.
-    prior: BriefingDormancy
+    prior: BriefingWindDown
 
     @override
     @property
@@ -103,16 +104,16 @@ class WeeklyStanding(Standing):
         return True
 
     @override
-    async def settle(self) -> None:
-        return None
+    def settlement(self) -> BriefSettlement:
+        return BriefSettlement()
 
 
 async def stand_weekly(
     user: UserDocument, state: BriefingStateDocument, clock: UserClock
 ) -> WeeklyStanding | BriefingRunOutcome:
-    """Read the digest's standing; a dormant loop has nothing to zoom out on.
+    """Read the digest's standing; a wound-down loop has nothing to zoom out on.
 
-    Activity since dormancy began wakes the loop here as on the daily.
+    Activity since the loop wound down wakes the loop here as on the daily.
     """
     dstate = await wake_or_skip(state)
     if dstate is None:

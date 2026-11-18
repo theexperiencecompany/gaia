@@ -26,8 +26,8 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.briefing_state_models import (
     BriefingBootstrap,
-    BriefingDormancy,
     BriefingStateDocument,
+    BriefingWindDown,
 )
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
@@ -131,7 +131,7 @@ class TestBriefWillCarry:
 
     @pytest.mark.regression
     async def test_a_dormant_loop_does_not(self, seams: _Seams) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
         seams.last_active_at = _NOW - timedelta(days=5)
 
         assert not await held.brief_will_carry(seams.user.id)
@@ -139,7 +139,7 @@ class TestBriefWillCarry:
     async def test_activity_since_dormancy_wakes_the_next_run_so_it_carries(
         self, seams: _Seams
     ) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
 
         assert await held.brief_will_carry(seams.user.id)
 
@@ -171,7 +171,7 @@ class TestReleaseAfterDailyRun:
     async def test_a_run_the_loop_stopped_releases_what_was_held(
         self, seams: _Seams, outcome: BriefingRunOutcome
     ) -> None:
-        seams.state.dormancy = BriefingDormancy(dormant_since=_NOW - timedelta(days=2))
+        seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
         seams.last_active_at = None
 
         await held.release_after_daily_run(seams.user.id, outcome)
@@ -184,6 +184,16 @@ class TestReleaseAfterDailyRun:
         await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.SILENT)
 
         seams.notify.assert_awaited_once()
+
+    async def test_a_first_brief_held_for_a_goal_releases_what_was_held(
+        self, seams: _Seams
+    ) -> None:
+        seams.state.bootstrap = BriefingBootstrap(pending=True, since=_NOW)
+
+        await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.BOOTSTRAP_PENDING)
+
+        seams.notify.assert_awaited_once()
+        seams.consume.assert_awaited_once()
 
     async def test_a_sent_brief_on_a_live_loop_leaves_the_rest_for_tomorrow(
         self, seams: _Seams

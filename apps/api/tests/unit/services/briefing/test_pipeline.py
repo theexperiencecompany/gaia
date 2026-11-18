@@ -103,8 +103,8 @@ from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_slot_models import CountName
 from app.models.briefing_state_models import (
     BriefingBootstrap,
-    BriefingDormancy,
     BriefingStateDocument,
+    BriefingWindDown,
     ShuffleBag,
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
@@ -126,6 +126,7 @@ from app.models.scout_models import (
 )
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import ExternalRefSource, TodoDocument
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services.analytics_service import AIFeature
@@ -162,6 +163,7 @@ from app.services.briefing.prose import Writing, reader_block
 from app.services.briefing.quiet_note import QuietFacts, quiet_note
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.slots import BriefFact
+from app.services.briefing.wind_down import latest_activity_since
 from app.services.briefing.work import BriefReads, OpenSubjects, OwnTodos, TrackedWork
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 from app.services.delivery.chat_channel import ChatChannel, InApp
@@ -171,6 +173,9 @@ from app.services.render.image import RenderedImage
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
+
+# The run reads and writes Redis (scout refresh claims, spend); give it a per-test one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 _USER = make_user_id()
 _TZ = "Asia/Kolkata"
@@ -197,6 +202,8 @@ _DIGEST_REPORT = "3 new papers on retrieval\nThe longest is 40 pages; two cite y
 #: When the default world's completions were finished: inside every window a run reads.
 _JUST_NOW = _NOW - timedelta(hours=1)
 _DORMANT_SINCE = datetime(2026, 10, 1, tzinfo=UTC)
+#: The real activity read, which the world fixture stands in for.
+_LATEST_ACTIVITY_SINCE = latest_activity_since
 
 # ---- The stand-in model ------------------------------------------------------------------
 
@@ -491,8 +498,8 @@ class World:
     clear_bootstrap: AsyncMock = field(default_factory=AsyncMock)
     #: The briefings collection: each stored brief by id, as the run left it.
     briefs: dict[str, BriefingModel] = field(default_factory=dict)
-    clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
-    enter_dormancy: AsyncMock = field(default_factory=AsyncMock)
+    clear_wind_down: AsyncMock = field(default_factory=AsyncMock)
+    enter_wind_down: AsyncMock = field(default_factory=AsyncMock)
     goal_asked: AsyncMock = field(default_factory=AsyncMock)
     activity: ActivityStatus = ActivityStatus.ACTIVE
     connected_apps: list[str] = field(default_factory=list)
@@ -777,8 +784,8 @@ def _store_briefing_state(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
 
     monkeypatch.setattr(briefing_state_repository, "state_for", state_for)
     monkeypatch.setattr(briefing_state_repository, "clear_bootstrap", w.clear_bootstrap)
-    monkeypatch.setattr(briefing_state_repository, "clear_dormancy", w.clear_dormancy)
-    monkeypatch.setattr(briefing_state_repository, "enter_dormancy", w.enter_dormancy)
+    monkeypatch.setattr(briefing_state_repository, "clear_wind_down", w.clear_wind_down)
+    monkeypatch.setattr(briefing_state_repository, "enter_wind_down", w.enter_wind_down)
     monkeypatch.setattr(briefing_state_repository, "record_goal_question", w.goal_asked)
     monkeypatch.setattr(briefing_state_repository, "set_bag", set_bag)
 
@@ -1817,7 +1824,7 @@ def _quiet_day(world: World) -> None:
     """Nothing to place, nothing on the calendar and the goal asked yesterday: the ladder says nothing."""
     world.work = TrackedWork()
     world.calendar = []
-    world.state.dormancy = BriefingDormancy(goal_asked_at=_NOW - timedelta(days=1))
+    world.state.wind_down = BriefingWindDown(goal_asked_at=_NOW - timedelta(days=1))
 
 
 def _shown_before(world: World, todo_id: str, times: int) -> None:
@@ -2278,23 +2285,27 @@ class TestAWeeklyDigest:
         assert payload.uncomposed == []
 
     @pytest.mark.parametrize("came_back", [False, True])
-    async def test_a_dormant_loop_recaps_only_once_the_user_came_back(
+    async def test_a_dormant_loop_wakes_only_on_the_users_own_activity_never_the_digest(
         self, world: World, monkeypatch: pytest.MonkeyPatch, came_back: bool
     ) -> None:
         _dormant(world)
         world.replies = [_weekly()]
-        _seam(
-            monkeypatch,
-            world,
-            wind_down,
-            "latest_activity_since",
-            AsyncMock(return_value=_NOW if came_back else None),
+        monkeypatch.setattr(wind_down, "latest_activity_since", _LATEST_ACTIVITY_SINCE)
+        last_active = _DORMANT_SINCE + (timedelta(days=1) if came_back else -timedelta(days=1))
+        monkeypatch.setattr(
+            user_repository,
+            "get_activity_dates",
+            AsyncMock(
+                side_effect=lambda user_id: UserActivityDates(last_active_at=last_active)
+                if user_id == _USER
+                else None
+            ),
         )
 
-        await run_brief(_USER, BriefingKind.WEEKLY)
+        outcome = await run_brief(_USER, BriefingKind.WEEKLY)
 
-        (user_id, since), _ = world.reads["latest_activity_since"].await_args
-        assert (user_id, since) == (_USER, _DORMANT_SINCE)
+        assert outcome is (BriefingRunOutcome.SENT if came_back else BriefingRunOutcome.DORMANT)
+        assert bool(world.clear_wind_down.await_count) is came_back
         assert bool(world.upsert.await_count) is came_back
 
 
@@ -2397,7 +2408,7 @@ class TestAQuietWeek:
 def _dormant(world: World) -> None:
     world.user = UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
     world.state = BriefingStateDocument(
-        user_id=_USER, dormancy=BriefingDormancy(idle_days=3, dormant_since=_DORMANT_SINCE)
+        user_id=_USER, wind_down=BriefingWindDown(idle_days=3, wound_down_since=_DORMANT_SINCE)
     )
 
 
@@ -2491,9 +2502,9 @@ class TestTheIdleLadder:
 
         (user_id, since), _ = world.reads["latest_activity_since"].await_args
         assert (user_id, since) == (_USER, _DORMANT_SINCE)
-        world.clear_dormancy.assert_awaited_once_with(_USER)
-        assert world.reads["record_idle_day"].await_args.args[1] == BriefingDormancy(
-            idle_days=0, date=None, dormant_since=None
+        world.clear_wind_down.assert_awaited_once_with(_USER)
+        assert world.reads["record_idle_day"].await_args.args[1] == BriefingWindDown(
+            idle_days=0, date=None, wound_down_since=None
         )
         world.upsert.assert_awaited()
 
@@ -2501,8 +2512,8 @@ class TestTheIdleLadder:
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _dormant(world)
-        assert world.state.dormancy is not None
-        world.state.dormancy.goal_asked_at = _NOW - timedelta(days=2)
+        assert world.state.wind_down is not None
+        world.state.wind_down.goal_asked_at = _NOW - timedelta(days=2)
         _goals_seam(monkeypatch, world, AsyncMock(return_value=[]))
         _seam(monkeypatch, world, wind_down, "latest_activity_since", AsyncMock(return_value=_NOW))
 
@@ -2567,7 +2578,7 @@ class TestTheIdleLadder:
         asked_at = None if asked_days_ago is None else _NOW - timedelta(days=asked_days_ago)
         world.user = UserDocument(id=_USER, timezone=_TZ, email="a@b.c")
         world.state = BriefingStateDocument(
-            user_id=_USER, dormancy=BriefingDormancy(goal_asked_at=asked_at)
+            user_id=_USER, wind_down=BriefingWindDown(goal_asked_at=asked_at)
         )
         goals = [StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if has_goal else []
         _goals_seam(monkeypatch, world, AsyncMock(return_value=goals))
@@ -2588,9 +2599,9 @@ class TestTheIdleLadder:
 
         assert _situation(world).wind_down == stage
         if stage is WindDown.FINAL:
-            world.enter_dormancy.assert_awaited_once_with(_USER)
+            world.enter_wind_down.assert_awaited_once_with(_USER)
         else:
-            world.enter_dormancy.assert_not_awaited()
+            world.enter_wind_down.assert_not_awaited()
 
     async def test_the_wind_down_message_is_pushed_even_on_an_empty_day(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -2612,7 +2623,7 @@ class TestTheIdleLadder:
         await run_brief(_USER, BriefingKind.DAILY)
 
         assert _situation(world).wind_down is None
-        world.enter_dormancy.assert_not_awaited()
+        world.enter_wind_down.assert_not_awaited()
 
     @pytest.mark.parametrize(("idle_days", "voiced_winback"), [(0, True), (3, False)])
     async def test_a_winback_is_voiced_unless_the_brief_is_winding_down(
@@ -2659,7 +2670,7 @@ class TestTheFirstWeek:
 
         assert world.reads["record_idle_day"].await_args.args[2] is False
         assert (_situation(world).wind_down, _situation(world).first_week) == (None, True)
-        world.enter_dormancy.assert_not_awaited()
+        world.enter_wind_down.assert_not_awaited()
 
     async def test_the_ladder_runs_once_the_first_week_is_over(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -2674,7 +2685,7 @@ class TestTheFirstWeek:
             WindDown.FINAL,
             False,
         )
-        world.enter_dormancy.assert_awaited_once_with(_USER)
+        world.enter_wind_down.assert_awaited_once_with(_USER)
 
     @pytest.mark.parametrize(
         ("apps", "line"),
@@ -2832,6 +2843,39 @@ class TestHowARunEnds:
         world.consume.assert_awaited_once_with(_USER, ["h1"])
         assert world.delivered_to() == [*_ORCHESTRATED, "telegram"]
         assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
+
+    @pytest.mark.regression
+    async def test_a_resumed_goodbye_still_puts_the_loop_to_sleep_and_spends_its_draw(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A goodbye whose delivery died was finished on the retry, but the loop never went dormant."""
+        _idle_day(monkeypatch, world, IDLE_DORMANT_DAYS)
+        world.post.side_effect = RuntimeError("worker killed")
+        with pytest.raises(RuntimeError, match="worker killed"):
+            await run_brief(_USER, BriefingKind.DAILY)
+        world.enter_wind_down.assert_not_awaited()
+        world.post.side_effect = None
+
+        assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        world.enter_wind_down.assert_awaited_once_with(_USER)
+        world.goal_asked.assert_awaited_once_with(_USER)
+        assert BriefingBag.EDITION_FAMILY.value in world.bags
+
+    @pytest.mark.regression
+    async def test_a_resumed_brief_marks_what_it_placed_shown(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN)
+        world.post.side_effect = RuntimeError("worker killed")
+        with pytest.raises(RuntimeError, match="worker killed"):
+            await run_brief(_USER, BriefingKind.DAILY)
+        world.shown.assert_not_awaited()
+        world.post.side_effect = None
+
+        await run_brief(_USER, BriefingKind.DAILY)
+
+        world.shown.assert_awaited_once_with(
+            _USER, [Sighting("linear", _LOGIN.external_id, _LOGIN.state)], _NOW
+        )
 
     async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
         await run_brief(_USER, BriefingKind.DAILY)

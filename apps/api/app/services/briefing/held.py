@@ -2,7 +2,7 @@
 
 A result waits only while a daily brief will run to carry it. The weekly digest zooms out
 on the week and carries no held items, so a user whose daily brief will not run (weekly
-only, briefs off, switched off, dormant, backing off a winback, or held for a goal) is
+only, briefs off, switched off, wound down, backing off a winback, or held for a goal) is
 sent each result now, and whatever was held when the loop stops is released at once, in
 the app.
 """
@@ -37,7 +37,7 @@ from shared.py.wide_events import log
 async def brief_will_carry(user_id: str) -> bool:
     """Whether a daily brief will run to carry a held result.
 
-    Not while its workflow is off, the loop is dormant, a winback is backing off or an
+    Not while its workflow is off, the loop is wound down, a winback is backing off or an
     existing user's first brief is held for a goal: each run skips before it reads the held.
     """
     workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
@@ -47,7 +47,7 @@ async def brief_will_carry(user_id: str) -> bool:
     if user is None:
         raise LookupError(f"Daily brief workflow {workflow.id} belongs to no user {user_id}")
     state = await briefing_state_repository.state_for(user_id)
-    if bootstrap_holds(state) or await wind_down.is_dormant(state):
+    if bootstrap_holds(state) or await wind_down.is_wound_down(state):
         return False
     return not (await compute_winback_state(user)).should_back_off
 

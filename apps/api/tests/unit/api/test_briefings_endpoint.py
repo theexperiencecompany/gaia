@@ -3,6 +3,7 @@
 The repository is faked; the route, its owner scoping and its analytics run for real.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +11,15 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 import pytest
 
-from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
+from app.api.v1.endpoints.briefings import (
+    get_briefing,
+    get_postmarks,
+    list_briefings,
+    read_briefing_editions,
+    read_briefing_schedule,
+    update_briefing_editions,
+    update_briefing_schedule,
+)
 from app.config.settings import settings
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
@@ -29,6 +38,7 @@ from app.models.brief_document_models import (
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.brief_settings_models import (
     BriefingEditions,
+    BriefingEditionsUpdate,
     BriefingSchedule,
     BriefingScheduleUpdate,
 )
@@ -283,12 +293,10 @@ class TestBriefingScheduleEndpoints:
                 return_value=UserDocument(id=FAKE_USER_ID),
             ) as get,
             patch(STATE_FOR, new_callable=AsyncMock, return_value=_state()),
-            patch(f"{MODULE}.log") as log,
         ):
             response = await client.get(f"{BASE}/schedule")
 
         get.assert_awaited_once_with(FAKE_USER_ID)
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_schedule")
         assert response.status_code == 200
         assert response.json() == {
             "frequency": "daily",
@@ -346,7 +354,6 @@ class TestBriefingScheduleEndpoints:
                 return_value=UserDocument(id=FAKE_USER_ID),
             ),
             patch(STATE_FOR, new_callable=AsyncMock, return_value=_state(schedule=wanted)),
-            patch(f"{MODULE}.log") as log,
         ):
             response = await client.put(
                 f"{BASE}/schedule",
@@ -369,7 +376,6 @@ class TestBriefingScheduleEndpoints:
             hour=7,
             workflow_deliveries={},
         )
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_schedule")
 
     async def test_new_deliveries_are_refused_unless_briefs_are_being_turned_off(
         self, client: AsyncClient
@@ -419,12 +425,10 @@ class TestBriefingEditionsEndpoints:
                 new_callable=AsyncMock,
                 return_value=_state(editions={"menu": EditionChoice.OFF}),
             ) as state_for,
-            patch(f"{MODULE}.log") as log,
         ):
             response = await client.get(f"{BASE}/editions")
 
         state_for.assert_awaited_once_with(FAKE_USER_ID)
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_editions")
         assert response.status_code == 200
         choices = {e["family"]: e["choice"] for e in response.json()["editions"]}
         assert choices["menu"] == "off"
@@ -439,7 +443,6 @@ class TestBriefingEditionsEndpoints:
                 new_callable=AsyncMock,
                 return_value=BriefingEditions(editions=[]),
             ) as setter,
-            patch(f"{MODULE}.log") as log,
         ):
             response = await client.put(
                 f"{BASE}/editions",
@@ -451,7 +454,6 @@ class TestBriefingEditionsEndpoints:
         setter.assert_awaited_once_with(
             FAKE_USER_ID, {"menu": EditionChoice.OFF, "swiss": EditionChoice.FAVOURITE}
         )
-        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_editions")
 
     async def test_an_unknown_choice_is_refused_before_anything_is_stored(
         self, client: AsyncClient
@@ -461,3 +463,37 @@ class TestBriefingEditionsEndpoints:
 
         assert response.status_code == 422
         setter.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("operation", "call"),
+    [
+        ("read_briefing_schedule", lambda: read_briefing_schedule(user=FAKE_USER)),
+        (
+            "update_briefing_schedule",
+            lambda: update_briefing_schedule(
+                BriefingScheduleUpdate(frequency=BriefingFrequency.DAILY, hour=7), user=FAKE_USER
+            ),
+        ),
+        ("read_briefing_editions", lambda: read_briefing_editions(user=FAKE_USER)),
+        (
+            "update_briefing_editions",
+            lambda: update_briefing_editions(
+                BriefingEditionsUpdate(choices={"menu": EditionChoice.OFF}), user=FAKE_USER
+            ),
+        ),
+    ],
+)
+async def test_each_settings_route_tags_the_wide_event_with_the_user_and_operation(
+    operation: str, call: Callable[[], Awaitable[object]]
+) -> None:
+    with (
+        patch(f"{MODULE}.briefing_schedule_state", new_callable=AsyncMock),
+        patch(f"{MODULE}.set_briefing_schedule", new_callable=AsyncMock),
+        patch(STATE_FOR, new_callable=AsyncMock, return_value=_state()),
+        patch(f"{MODULE}.set_edition_choices", new_callable=AsyncMock),
+    ):
+        async with captured_wide_event() as event:
+            await call()
+
+    assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, operation)

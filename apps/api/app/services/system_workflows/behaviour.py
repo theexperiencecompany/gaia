@@ -32,6 +32,8 @@ class SystemWorkflowBehaviour:
     queue: str | None = None
     #: Work each scheduled fire starts ahead of itself; None starts nothing.
     run_ahead: RunAhead | None = None
+    #: What follows switching it off, whatever switched it off, given its owner's id.
+    on_switched_off: Callable[[str], Awaitable[None]] | None = None
 
 
 #: A workflow with no declared behaviour: every user workflow, and the integration ones.

@@ -58,6 +58,9 @@ from app.services.mcp.mcp_errors import (
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.errors import AppError
 
+# Scout passes claim and tally in Redis; every test gets a per-test one, never the shared client.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 USER_ID = make_user_id()
 _NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 CRITERIA = ScoutCriteria(

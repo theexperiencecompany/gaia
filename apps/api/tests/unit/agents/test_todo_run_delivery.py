@@ -482,7 +482,6 @@ class TestTheDecisionSeesTheStandingRules:
             "- thread abc",
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -491,7 +490,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=()
         )
 
     @pytest.mark.regression
@@ -509,7 +508,6 @@ class TestTheDecisionSeesTheStandingRules:
             details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     @pytest.mark.regression
@@ -519,7 +517,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
     @pytest.mark.regression
@@ -534,7 +532,6 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -542,7 +539,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -550,7 +547,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
 

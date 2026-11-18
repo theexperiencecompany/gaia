@@ -13,22 +13,13 @@ from app.constants.briefing import (
 )
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.brief_composition_models import BriefBlock
-from app.models.briefing_state_models import BriefingStateDocument, ShuffleBag
+from app.models.briefing_state_models import BagDraw, BriefingStateDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.capabilities import families_drawing, split_drawable
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.shuffle_bag import draw
 from shared.py.wide_events import log
-
-
-@dataclass(frozen=True)
-class BagDraw:
-    """Today's member of one shuffle bag and the state that continues its pass."""
-
-    bag: BriefingBag
-    member: str
-    next_state: ShuffleBag
 
 
 def draw_from_bag(
@@ -40,8 +31,8 @@ def draw_from_bag(
 ) -> BagDraw:
     """Draw today's member from one of the user's shuffle bags, off their loaded state.
 
-    Nothing is persisted here: publish saves the draw only once a pushed brief went out,
-    so a failed run does not burn a member of the pass.
+    Nothing is persisted here: the brief's delivery spends the draw only once a pushed brief
+    went out, so a failed run does not burn a member of the pass.
     """
     member, next_state = draw(
         state.shuffle_bags.get(bag), weights, random.SystemRandom(), eligible=eligible

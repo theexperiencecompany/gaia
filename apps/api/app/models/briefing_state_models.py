@@ -16,13 +16,13 @@ class BriefingBootstrap(BaseModel):
     since: datetime
 
 
-class BriefingDormancy(BaseModel):
+class BriefingWindDown(BaseModel):
     """The idle ladder: consecutive idle days, the last day counted, when the brief
-    went dormant (None while it is still running), and when it last asked about a goal."""
+    wound down (None while it is still running), and when it last asked about a goal."""
 
     idle_days: int = Field(default=0, ge=0)
     date: str | None = None
-    dormant_since: datetime | None = None
+    wound_down_since: datetime | None = None
     #: When a brief last asked whether the user's remembered goal is still live.
     goal_asked_at: datetime | None = None
 
@@ -42,6 +42,16 @@ class ShuffleBag(BaseModel):
     index: int = Field(ge=0)
 
 
+class BagDraw(BaseModel):
+    """Today's member of one shuffle bag and the state that continues its pass."""
+
+    model_config = ConfigDict(frozen=True)
+
+    bag: BriefingBag
+    member: str
+    next_state: ShuffleBag
+
+
 class BriefingStateDocument(MongoDocument):
     """A user's briefing state as stored in briefing_state; a user with no row has every default.
 
@@ -54,7 +64,7 @@ class BriefingStateDocument(MongoDocument):
     #: Daily edition families taken out of the rotation or favourited; an absent family is on.
     editions: dict[str, EditionChoice] = Field(default_factory=dict)
     bootstrap: BriefingBootstrap | None = None
-    dormancy: BriefingDormancy | None = None
+    wind_down: BriefingWindDown | None = None
     day_zero_hello: DayZeroHello | None = None
     shuffle_bags: dict[BriefingBag, ShuffleBag] = Field(default_factory=dict)
 

@@ -2,10 +2,10 @@
 
 briefing_schedule, briefing_editions, briefing_bootstrap, briefing_dormancy, day_zero_hello and
 briefing_shuffle_bags are copied into the user's briefing_state row (schedule, editions,
-bootstrap, dormancy, day_zero_hello, shuffle_bags). The user document keeps them: the previous
-release serves while the release step runs and still reads them there. contract() drops them a
-release later. A value the row already holds wins, and dormancy and the shuffle bags merge key
-by key, as the new code writes them. Every value is validated first, so a malformed one stops
+bootstrap, wind_down, day_zero_hello, shuffle_bags; dormant_since becomes wound_down_since). The
+user document keeps them: the previous release serves while the release step runs and still
+reads them there. contract() drops them a release later. A value the row already holds wins, and
+the wind-down and the shuffle bags merge key by key, as the new code writes them. Every value is validated first, so a malformed one stops
 the run before anything is written. Re-running copies nothing.
 
     cd apps/api && uv run python -m scripts.migrate_briefing_state [--apply]
@@ -23,21 +23,32 @@ _MOVED: dict[str, str] = {
     "briefing_schedule": "schedule",
     "briefing_editions": "editions",
     "briefing_bootstrap": "bootstrap",
-    "briefing_dormancy": "dormancy",
+    "briefing_dormancy": "wind_down",
     "day_zero_hello": "day_zero_hello",
     "briefing_shuffle_bags": "shuffle_bags",
 }
 #: The fields the new code writes key by key, so they move key by key.
-_MERGED_BY_KEY = frozenset({"dormancy", "shuffle_bags"})
+_MERGED_BY_KEY = frozenset({"wind_down", "shuffle_bags"})
+#: The keys a user-document field held under another name.
+_RENAMED_KEYS: dict[str, dict[str, str]] = {"wind_down": {"dormant_since": "wound_down_since"}}
 _HAS_OLD_FIELD = {"$or": [{old: {"$exists": True}} for old in _MOVED]}
 
 users_collection = get_async_collection("users")
 briefing_state_collection = get_async_collection("briefing_state")
 
 
+def _renamed(field: str, value: object) -> object:
+    renames = _RENAMED_KEYS.get(field)
+    if renames is None or not isinstance(value, Mapping):
+        return value
+    return {renames.get(key, key): v for key, v in value.items()}
+
+
 def _moved_paths(user_id: str, doc: Mapping[str, object]) -> dict[str, object]:
     """Return the briefing_state path each of the user's set values moves to, validated."""
-    moved = {_MOVED[old]: doc[old] for old in _MOVED if doc.get(old) is not None}
+    moved = {
+        _MOVED[old]: _renamed(_MOVED[old], doc[old]) for old in _MOVED if doc.get(old) is not None
+    }
     BriefingStateDocument.model_validate({"user_id": user_id, **moved})
     paths: dict[str, object] = {}
     for field, value in moved.items():

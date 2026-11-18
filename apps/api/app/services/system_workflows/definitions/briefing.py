@@ -24,6 +24,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.services.briefing.held import release_held_items
 from app.services.briefing.run_times import brief_slots, briefing_cron
 from app.services.system_workflows.behaviour import RunAhead, SystemWorkflowBehaviour
 
@@ -117,6 +118,8 @@ BRIEFING_BEHAVIOURS: dict[str, SystemWorkflowBehaviour] = {
         cron_for=partial(_cron_on_their_schedule, key),
         queue=BRIEF_QUEUE,
         run_ahead=RunAhead(task=REFRESH_SCOUTS_TASK, queue=SCOUT_QUEUE, lead=SCOUT_REFRESH_LEAD),
+        # A daily brief switched off (briefs off, a lapsed plan, a removed member) carries nothing.
+        on_switched_off=release_held_items if key == DAILY_BRIEFING_WORKFLOW_KEY else None,
     )
     for key in (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
 }
