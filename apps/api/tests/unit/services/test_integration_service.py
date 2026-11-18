@@ -23,7 +23,7 @@ from typing import Any, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
 
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 import pytest
 
 from app.agents.core.integration_capabilities import (
@@ -32,6 +32,8 @@ from app.agents.core.integration_capabilities import (
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.db.repositories.scouts import scouts_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -651,11 +653,11 @@ class TestUpdateUserIntegrationStatus:
     """The service delegates to repo.set_status; the upsert shape is the repository's concern."""
 
     @pytest.fixture(autouse=True)
-    def _scout_learn_queue(self) -> Iterator[AsyncMock]:
+    def _connect_hooks(self) -> Iterator[AsyncMock]:
         with patch(
-            "app.services.integrations.user_integration_status.queue_scout_learn", AsyncMock()
-        ) as queue:
-            yield queue
+            "app.services.integrations.user_integration_status.emit_connected", AsyncMock()
+        ) as emit:
+            yield emit
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
@@ -3132,14 +3134,37 @@ class TestConnectSelfIntegration:
         assert "not implemented" in result.error.lower()
 
 
+def _composio_slack() -> ResolvedIntegration:
+    return ResolvedIntegration(
+        integration_id="slack",
+        name="Slack",
+        description="",
+        category="communication",
+        managed_by="composio",
+        source="platform",
+        requires_auth=True,
+        auth_type="oauth",
+        mcp_config=None,
+        platform_integration=_make_oauth_integration(
+            integration_id="slack",
+            managed_by="composio",
+            provider="slack",
+            composio_config=ComposioConfig(auth_config_id="cfg-slack", toolkit="slack"),
+        ),
+        custom_doc=None,
+    )
+
+
 class TestDisconnectIntegration:
     @pytest.fixture(autouse=True)
-    def forget(self) -> Iterator[AsyncMock]:
-        with patch(
-            "app.services.integrations.integration_connection_service.forget_integration",
-            new_callable=AsyncMock,
-        ) as forget:
-            yield forget
+    def forget(self) -> Iterator[MagicMock]:
+        """Stub the scout's store; the disconnect hooks run for real against it."""
+        drops = MagicMock(scout=AsyncMock(), memory=AsyncMock())
+        with (
+            patch.object(scouts_repository, "delete_for", drops.scout),
+            patch.object(signal_memory_repository, "delete_for_integration", drops.memory),
+        ):
+            yield drops
 
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",
@@ -3155,29 +3180,36 @@ class TestDisconnectIntegration:
     async def test_a_disconnect_drops_the_brief_scout_and_its_signal_memory(
         self, mock_resolve, mock_get_composio, mock_invalidate, forget
     ):
-        mock_resolve.return_value = ResolvedIntegration(
-            integration_id="slack",
-            name="Slack",
-            description="",
-            category="communication",
-            managed_by="composio",
-            source="platform",
-            requires_auth=True,
-            auth_type="oauth",
-            mcp_config=None,
-            platform_integration=_make_oauth_integration(
-                integration_id="slack",
-                managed_by="composio",
-                provider="slack",
-                composio_config=ComposioConfig(auth_config_id="cfg-slack", toolkit="slack"),
-            ),
-            custom_doc=None,
-        )
+        mock_resolve.return_value = _composio_slack()
         mock_get_composio.return_value = AsyncMock()
 
         await disconnect_integration(USER_ID, "slack")
 
-        forget.assert_awaited_once_with(USER_ID, "slack")
+        forget.scout.assert_awaited_once_with(USER_ID, "slack")
+        forget.memory.assert_awaited_once_with(USER_ID, "slack")
+
+    @patch(
+        "app.services.integrations.integration_connection_service._invalidate_caches",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.get_composio_service",
+    )
+    @patch(
+        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        new_callable=AsyncMock,
+    )
+    async def test_a_scout_that_cannot_be_dropped_fails_the_disconnect(
+        self, mock_resolve, mock_get_composio, mock_invalidate, forget
+    ):
+        mock_resolve.return_value = _composio_slack()
+        mock_get_composio.return_value = AsyncMock()
+        forget.scout.side_effect = PyMongoError("down")
+
+        with pytest.raises(PyMongoError, match="down"):
+            await disconnect_integration(USER_ID, "slack")
+
+        forget.memory.assert_not_awaited()
 
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",

@@ -25,6 +25,8 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION, AccountConnectOutcome
+from app.db.repositories.scouts import scouts_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.integration_models import (
     Integration,
     IntegrationAccount,
@@ -704,12 +706,12 @@ class TestDisconnectIntegration:
     """disconnect_integration: cleanup for different managed_by types."""
 
     @pytest.fixture(autouse=True)
-    def _forget_integration(self) -> Iterator[AsyncMock]:
-        with patch(
-            "app.services.integrations.integration_connection_service.forget_integration",
-            new_callable=AsyncMock,
-        ) as forget:
-            yield forget
+    def _scout_store(self) -> Iterator[None]:
+        with (
+            patch.object(scouts_repository, "delete_for", AsyncMock()),
+            patch.object(signal_memory_repository, "delete_for_integration", AsyncMock()),
+        ):
+            yield
 
     async def test_disconnect_composio_integration(self) -> None:
         """Disconnecting a Composio integration revokes every account the user holds on it."""
