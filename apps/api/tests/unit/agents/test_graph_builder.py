@@ -135,7 +135,7 @@ class TestCheckpointerManager:
         assert mgr.get_checkpointer() is fake_cp
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_setup_creates_pool_and_checkpointer(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
@@ -164,7 +164,7 @@ class TestCheckpointerManager:
         assert mgr.checkpointer is mock_saver
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_setup_returns_self(self, mock_pool_cls, mock_saver_cls, mock_store_cls):
         mock_pool_cls.return_value = _mock_pool()
@@ -179,7 +179,7 @@ class TestCheckpointerManager:
         assert result is mgr
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_setup_pool_connection_kwargs(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
@@ -252,7 +252,7 @@ class TestCheckpointerManager:
         return order
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_migrations_run_under_the_advisory_lock(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls
@@ -272,7 +272,7 @@ class TestCheckpointerManager:
         ]
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_a_starter_waits_for_the_lock_by_asking_again_never_inside_a_statement(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
@@ -295,7 +295,7 @@ class TestCheckpointerManager:
         ]
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.TurnTimedPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
     async def test_a_lock_never_released_fails_setup_loud_without_migrating(
         self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch

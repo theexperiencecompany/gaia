@@ -6,8 +6,10 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants.conversation import EVENTS_STREAM_START
 from app.models.conversation_frame_models import (
     EntryFrame,
+    StateFrame,
     StreamPayload,
     ToolDataEvent,
     WorkDeltaFrame,
@@ -25,7 +27,7 @@ from app.services.conversation.event_stream import (
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen import TOOL_CALL_CARD
 from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ToolDataEntry
-from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.log_helpers import opened, settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
@@ -119,6 +121,41 @@ async def test_a_follow_patches_running_work_and_passes_deltas_through(
     assert isinstance(patch.item, WorkItem)
     assert patch.item.tool_data == (_CARD,)
     assert (keepalive, passed) == (None, delta)
+
+
+async def test_a_reply_settling_as_a_follow_opens_is_replayed_before_the_state_it_settled_into(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A bot woken by a reply opens its follow while the reply settles; a state naming the settle
+    # before the settle was replayed ends the follow on idle with the reply never delivered.
+    settling = [settled("s3", ["u1"], 1)]
+
+    async def settle_between_the_reads(point: str) -> None:
+        if point == "state" and settling:
+            await runtime.log.append(CONVERSATION, USER, settling.pop())
+
+    async def no_frames(conversation_id: str, cursor: str) -> list[StreamedFrame]:
+        return []
+
+    async def stream_start(conversation_id: str) -> str:
+        return EVENTS_STREAM_START
+
+    runtime = Runtime()
+    await runtime.log.append(CONVERSATION, USER, user("u1"))
+    await runtime.log.append(CONVERSATION, USER, opened("e2", "r1"))
+    runtime.log.pause = settle_between_the_reads
+    monkeypatch.setattr(event_stream, "latest_frame_id", stream_start)
+    monkeypatch.setattr(event_stream, "read_frames", no_frames)
+
+    follower = event_stream.follow(runtime.log, CONVERSATION, USER, 2)
+    replayed = [await anext(follower) for _ in range(2)]
+    await follower.aclose()
+
+    frames = [item.frame for item in replayed if item is not None]
+    states = [frame for frame in frames if isinstance(frame, StateFrame)]
+    entries = [frame.seq for frame in frames if isinstance(frame, EntryFrame)]
+    assert states, frames
+    assert all(seq in entries for seq in range(3, states[0].head + 1)), frames
 
 
 def test_a_frame_the_log_carries_is_never_replayed_from_the_stream() -> None:

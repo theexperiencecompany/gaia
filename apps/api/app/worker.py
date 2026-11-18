@@ -9,7 +9,6 @@ import stackprinter
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
-from app.constants.conversation import SWEEP_SECONDS
 from app.constants.delivery_alerts import (
     RECORD_DELIVERY_FAILURE_TASK,
     REFRESH_DELIVERY_INCIDENT_TASK,
@@ -53,7 +52,10 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
-from app.workers.tasks.conversation_sweep_tasks import sweep_step_conversations
+from app.workers.tasks.conversation_sweep_tasks import (
+    conversation_sweep_cron,
+    sweep_step_conversations,
+)
 from app.workers.tasks.delivery_alert_tasks import (
     record_delivery_failure,
     refresh_delivery_incident_task,
@@ -205,7 +207,7 @@ WorkerSettings.functions = TASK_FUNCTIONS
 WorkerSettings.cron_jobs = [
     # Every minute: a reply whose turn died mid-stream reads as failed, not in progress forever.
     # Every 15s: a step-run conversation a dead process left is answered, and its lost work reported.
-    cron(_sweep_step_conversations, second=set(SWEEP_SECONDS)),
+    conversation_sweep_cron(),
     # Every few seconds: a browser job whose worker died is ended, and a result no
     # run was woken for is told, within moments rather than a lock's TTL.
     browser_reaper_cron(),

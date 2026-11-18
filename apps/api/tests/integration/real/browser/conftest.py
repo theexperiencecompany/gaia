@@ -52,9 +52,11 @@ async def stack(
 
 @pytest.fixture(autouse=True)
 def _scenario_errors(request: pytest.FixtureRequest) -> None:
-    """Give each scenario a fresh view of the fake models' errors: an earlier failure is not its own."""
+    """Give each scenario a fresh view of the fake models' errors and the site's posts: an earlier attempt's are not its own."""
     if "stack" in request.fixturenames:
-        request.getfixturevalue("stack").models.begin_scenario()
+        stack = request.getfixturevalue("stack")
+        stack.models.begin_scenario()
+        stack.site.begin_scenario()
 
 
 #: How much of a failure's message a progress line carries; a settle's message ends in every log.

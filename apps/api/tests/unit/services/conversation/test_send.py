@@ -27,7 +27,7 @@ from app.services.conversation.send import (
     submit_bot_message,
     submit_message,
 )
-from app.services.turn_timings import TurnPhase, begin_turn_timings, current_turn_timings
+from app.services.turn_timings import TurnPhase, begin_turn_timings
 from app.utils.errors import ConversationAlreadyExistsError, ConversationNotFoundError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -462,7 +462,7 @@ async def test_a_bot_message_starts_its_prep_only_once_charged(world: World) -> 
 
 async def test_the_accept_ends_ingress_and_reports_where_it_went(world: World) -> None:
     world.log.opened.add(CONVERSATION)
-    begin_turn_timings(started=0.0)
+    timings = begin_turn_timings(started=0.0)
 
     await submit_bot_message(_bot_request(), world.user)
 
@@ -470,6 +470,4 @@ async def test_the_accept_ends_ingress_and_reports_where_it_went(world: World) -
         c.kwargs["latency"] for c in world.wide.set.call_args_list if "latency" in c.kwargs
     ]
     assert list(latency["steps"]["ingress"]) == ["session", "charge", "accept", "other"]
-    timings = current_turn_timings()
-    assert timings is not None
     assert timings.phase is TurnPhase.CLOSED

@@ -470,6 +470,30 @@ describe("reload", () => {
     expect(view().drafts[0]?.content.bubbles).toEqual(["on it"]);
   });
 
+  it("leaves a send this tab is still delivering to that delivery when the chat opens", async () => {
+    const errors = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let answer: () => void = () => undefined;
+    sendResult.hold = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const sending = sendMessage("hello", { conversationId: CONVERSATION });
+    await flush();
+
+    release = openConversation(CONVERSATION);
+    await flush();
+    answer();
+    await sending;
+    const [{ id }] = view().pending;
+    lastStream().push(insertFrame(userItem(id, 1, "hello")));
+    await flush();
+
+    expect(sendResult.calls).toHaveLength(1);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("forgets a send once the server shows it, so a reload never calls a delivered message undelivered", async () => {
     sendResult.fail = new Error("timed out after the server took it");
     release = openConversation(CONVERSATION);

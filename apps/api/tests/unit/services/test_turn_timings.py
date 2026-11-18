@@ -16,7 +16,6 @@ from app.services.turn_timings import (
     TurnTimings,
     begin_turn_timings,
     close_ingress,
-    current_turn_timings,
     record_store_call,
     render_reports,
     turn_step,
@@ -140,7 +139,7 @@ def test_outside_a_request_nothing_is_recorded() -> None:
     with turn_step(TurnStep.ACCEPT):
         record_store_call(Store.MONGO, 0.01)
 
-    assert current_turn_timings() is None
+    assert turn_timings._turn.get() is None
 
 
 def test_the_accept_closes_ingress_and_renders_it_for_the_wide_event(

@@ -142,10 +142,6 @@ def begin_turn_timings(started: float | None = None) -> TurnTimings:
     return timings
 
 
-def current_turn_timings() -> TurnTimings | None:
-    return _turn.get()
-
-
 def close_ingress() -> dict[TurnStep, StepReport] | None:
     """End the current request's ingress at its turn's accept and return its steps; None outside one."""
     timings = _turn.get()

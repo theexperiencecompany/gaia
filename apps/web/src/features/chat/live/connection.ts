@@ -139,14 +139,21 @@ export const openConversation = follower.open;
 /** Each conversation's newest delivery: the server orders messages as they arrive, so the next waits on it. */
 const deliveries = new Map<string, Promise<void>>();
 
+/** The message ids this tab has a delivery queued or in flight for; a chat opening mid-send must not post them again. */
+const delivering = new Set<string>();
+
 /** POST a queued send after the conversation's earlier sends were answered; a failure marks its bubble failed, and the retry resends the same request. */
 export function deliverSend(
   conversationId: string,
   messageId: string,
 ): Promise<void> {
-  return afterEarlierDeliveries(conversationId, () =>
+  delivering.add(messageId);
+  const delivery = afterEarlierDeliveries(conversationId, () =>
     postSend(conversationId, messageId),
   );
+  const settle = () => delivering.delete(messageId);
+  delivery.then(settle, settle);
+  return delivery;
 }
 
 /** Ask the server to answer the user message target again, in order with this device's sends; it keeps the message's one bubble. */
@@ -200,11 +207,12 @@ async function postSend(
   follower.wake(conversationId);
 }
 
-/** Resend what this device queued and never saw accepted, as a reload finds it; failed sends wait for their retry. */
+/** Resend what this device queued and never saw accepted, as a reload finds it; failed sends wait for their retry, and sends this tab is delivering keep that one delivery. */
 function deliverOutstandingSends(conversationId: string): void {
   const { view, sends } = liveConversation(conversationId);
   for (const pending of view.pending) {
-    if (sends[pending.id]?.failed !== false) continue;
+    if (sends[pending.id]?.failed !== false || delivering.has(pending.id))
+      continue;
     deliverSend(conversationId, pending.id).catch((error: unknown) => {
       console.error("[sendMessage] resend failed:", error);
     });

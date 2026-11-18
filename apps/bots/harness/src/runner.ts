@@ -9,7 +9,7 @@
  * against.
  */
 
-import { allCommands, type PlatformName } from "@gaia/shared/bots";
+import { allCommands, type PlatformName, withTimeout } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
 import type {
@@ -23,6 +23,9 @@ import type { TranscriptEvent } from "./transcript.types";
 
 /** Default API port, matching `apps/api/project.json`'s `${API_PORT:-8000}`. */
 const DEFAULT_API_PORT = "8000";
+
+/** How long a restart turn waits for the reply to reach its restartAfterSends-th message. */
+const RESTART_TRIGGER_TIMEOUT_MS = 60_000;
 
 /**
  * Resolves the API base URL: explicit arg → `GAIA_API_URL` → `API_PORT` on
@@ -288,9 +291,16 @@ export async function runScenario(
       if (turn.outage) adapter.startOutage(turn.outage);
       await deliverTurnMessages(adapter, user.platformUserId, turn);
       let restartedAt: number | undefined;
-      if (turn.restartAfterMs !== undefined) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, turn.restartAfterMs),
+      const { restartAfterSends } = turn;
+      if (restartAfterSends !== undefined) {
+        await withTimeout(
+          transcript.until(
+            (events) =>
+              events.slice(before).filter((e) => e.type === "send").length >=
+              restartAfterSends,
+          ),
+          RESTART_TRIGGER_TIMEOUT_MS,
+          `the reply never sent ${restartAfterSends} messages to restart after`,
         );
         // As the bot process does on Ctrl-C: its follows stop where they are.
         await adapter.shutdown("restart");
@@ -548,7 +558,7 @@ function restartResumedABubble(
     .some((e) => e.type === "edit" && opened.has(e.messageId));
   return finishedInPlace
     ? null
-    : "the restart hit no open bubble: nothing the stopped bot sent was finished in place after it (restartAfterMs is too late for this reply)";
+    : "the restart hit no open bubble: nothing the stopped bot sent was finished in place after it (the bubble finished before the bot stopped)";
 }
 
 /**

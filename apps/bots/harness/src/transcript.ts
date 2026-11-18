@@ -22,6 +22,10 @@ export class TranscriptRecorder {
   private seq = 0;
   private lastMessageId = 0;
   private readonly startedAt = performance.now();
+  private readonly waiters = new Set<{
+    holds: (events: readonly TranscriptEvent[]) => boolean;
+    resolve: () => void;
+  }>();
 
   constructor(
     private readonly platform: PlatformName,
@@ -43,7 +47,21 @@ export class TranscriptRecorder {
     this.events.push(event);
     if (this.path)
       appendFileSync(this.path, `${JSON.stringify(event)}\n`, "utf8");
+    for (const waiter of [...this.waiters]) {
+      if (waiter.holds(this.events)) {
+        this.waiters.delete(waiter);
+        waiter.resolve();
+      }
+    }
     return event;
+  }
+
+  /** Resolves on the recorded event that makes holds() true, or at once if it already is. */
+  until(holds: (events: readonly TranscriptEvent[]) => boolean): Promise<void> {
+    if (holds(this.events)) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.waiters.add({ holds, resolve });
+    });
   }
 
   /**

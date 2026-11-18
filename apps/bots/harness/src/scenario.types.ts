@@ -79,10 +79,12 @@ export interface ScenarioTurn {
   /** The platform fails this turn's first sends and edits, as Telegram does in an outage. */
   outage?: PlatformOutage;
   /**
-   * Milliseconds after the turn's last message arrived at which the bot process
-   * restarts: the running bot stops mid-reply and a fresh one boots and resumes.
+   * The bot process restarts the moment it has sent this many messages in the
+   * turn: the running bot stops with that bubble still streaming, and a fresh
+   * one boots and resumes. Counted on the reply, not the clock, so a faster or
+   * slower start to the reply cannot move the restart outside a bubble.
    */
-  restartAfterMs?: number;
+  restartAfterSends?: number;
   /** Assertions on the transcript this turn generated. */
   expect?: ScenarioAssertion[];
   /**

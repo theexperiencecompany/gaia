@@ -1,6 +1,7 @@
-# The bot process restarts while a four-bubble reply streams. The fresh bot
-# resumes the conversation: the bubble that was being written is finished in
-# place, the rest arrive once each, and no stray partial or repeat is left.
+# The bot process restarts the moment a four-bubble reply opens its second
+# bubble. The fresh bot resumes the conversation: the bubble that was being
+# written is finished in place, the finished first one is not sent again, the
+# rest arrive once each, and no stray partial or repeat is left.
 #
 #   mise dev --sim
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bot-restart-mid-reply.yaml
@@ -9,7 +10,7 @@ emulate: telegram
 user: bot-restart-scenario@gaia.local
 turns:
   - send: "four parts [[pace:150]] [[say:Part one covers the gear you need before you start, from shoes to a water bottle.<NEW_MESSAGE_BREAK>Part two is the first week, three short runs with walking breaks between them.<NEW_MESSAGE_BREAK>Part three builds the distance slowly, never more than ten percent a week.<NEW_MESSAGE_BREAK>Part four is race day, when you start slow and finish strong.]]"
-    restartAfterMs: 2500
+    restartAfterSends: 2
     expect:
       - bubbles:
           - "Part one covers the gear you need before you start, from shoes to a water bottle."

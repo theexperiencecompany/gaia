@@ -170,10 +170,15 @@ async def latest_frame_id(conversation_id: str) -> str:
 async def _log_after(
     log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
 ) -> tuple[Sequence[LoggedEntry], ConversationState]:
-    return (
-        await log.read_after(conversation_id, user_id, after_seq),
-        await log.state(conversation_id, user_id),
-    )
+    """Return the entries after after_seq through the state's head, and that state: one consistent snapshot.
+
+    The state is read first: read second, it could name entries logged after the read, and a
+    follower ends on an idle state before ever seeing the reply that settled into it.
+    """
+    state = await log.state(conversation_id, user_id)
+    entries = await log.read_after(conversation_id, user_id, after_seq)
+    # Entries logged after the state read are followed live: their frames came after the cursor.
+    return [logged for logged in entries if logged.seq <= state.head], state
 
 
 def _log_frames(entries: Sequence[LoggedEntry], state: ConversationState) -> list[StreamedFrame]:
