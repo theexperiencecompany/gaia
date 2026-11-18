@@ -1,6 +1,5 @@
 """Switching the daily brief off, whatever switches it off, releases what it held."""
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 from unittest.mock import AsyncMock
 
@@ -62,7 +61,7 @@ def _brief_workflow(user_id: str, key: str) -> WorkflowDocument:
 
 
 @pytest.fixture
-def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
+def seams(monkeypatch: pytest.MonkeyPatch) -> _Seams:
     user_id = make_user_id()
     s = _Seams(
         user_id=user_id,
