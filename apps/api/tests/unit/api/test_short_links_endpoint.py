@@ -51,16 +51,13 @@ TODO_T = RecordTarget(type=TODO, id="t1")
 TODO_JSON = {"type": TODO.value, "id": "t1"}
 FILE_JSON = {"type": "workspace_file", "conversation_id": "conv-1", "path": "a/b.html"}
 _LINK = ShortLink(slug=SLUG, user_id="owner", target=TODO_T)
-_SIGNED_OUT = LinkViewer(user_id=None, email=None, ip="127.0.0.1", user_agent="Safari/605")
+_SIGNED_OUT = LinkViewer(user_id=None, ip="127.0.0.1", user_agent="Safari/605")
 _EXPIRES = datetime(2030, 1, 1, tzinfo=UTC)
-_SHARED = _LINK.model_copy(
-    update={"access": LinkAccess.PEOPLE, "grantees": ["a@example.com"], "expires_at": _EXPIRES}
-)
+_SHARED = _LINK.model_copy(update={"access": LinkAccess.OWNER, "expires_at": _EXPIRES})
 _SHARED_JSON = {
     "url": f"{settings.SHORTLINK_BASE_URL}/{SLUG}",
     "slug": SLUG,
-    "access": "people",
-    "grantees": ["a@example.com"],
+    "access": "owner",
     "expires_at": "2030-01-01T00:00:00Z",
     "content_max_access": None,
 }
@@ -129,7 +126,7 @@ class TestRecordOpen:
 
         assert response.status_code == 200
         ((_, viewer), _) = record.await_args
-        assert (viewer.user_id, viewer.email) == (FAKE_USER.user_id, FAKE_USER.email)
+        assert viewer.user_id == FAKE_USER.user_id
         assert viewer.signed_in_as == FAKE_USER.email
 
     async def test_a_denial_answers_with_its_code(
@@ -240,7 +237,7 @@ class TestShare:
                     BASE,
                     json={
                         "target": TODO_JSON,
-                        "settings": {"access": "people", "grantees": ["a@example.com"]},
+                        "settings": {"access": "owner"},
                     },
                 )
 
@@ -249,7 +246,7 @@ class TestShare:
         share.assert_awaited_once_with(
             FAKE_USER.user_id,
             TODO_T,
-            LinkSettings(access=LinkAccess.PEOPLE, grantees=["a@example.com"]),
+            LinkSettings(access=LinkAccess.OWNER),
         )
         assert event["user"] == {"id": FAKE_USER.user_id}
         assert event["short_link"] == {"operation": "create", "target_type": "todo_deliverable"}
@@ -297,10 +294,6 @@ class TestShare:
 
     async def test_a_naive_expiry_is_422(self, client: AsyncClient) -> None:
         response = await client.patch(f"{BASE}/{SLUG}", json={"expires_at": "2030-01-01T00:00:00"})
-        assert response.status_code == 422
-
-    async def test_a_grantee_that_is_no_email_is_422(self, client: AsyncClient) -> None:
-        response = await client.patch(f"{BASE}/{SLUG}", json={"grantees": ["not-an-email"]})
         assert response.status_code == 422
 
 

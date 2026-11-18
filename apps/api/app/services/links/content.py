@@ -158,9 +158,9 @@ async def _restriction(
     if render is not RenderMode.FRAME_ACTIVE:
         return None
     if _LOOKS_LIKE_CREDENTIAL_FORM.search(data):
-        return LinkAccess.PEOPLE, ContentRestriction.CREDENTIAL_FORM
+        return LinkAccess.OWNER, ContentRestriction.CREDENTIAL_FORM
     if await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS:
-        return LinkAccess.PEOPLE, ContentRestriction.REPEAT_TAKEDOWNS
+        return LinkAccess.OWNER, ContentRestriction.REPEAT_TAKEDOWNS
     return None
 
 

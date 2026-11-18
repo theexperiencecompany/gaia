@@ -11268,7 +11268,7 @@ export interface components {
          * @description Who a link opens for.
          * @enum {string}
          */
-        LinkAccess: "public" | "unlisted" | "people" | "owner";
+        LinkAccess: "public" | "unlisted" | "owner";
         /**
          * LinkContent
          * @description The bytes a link frames from the content origin; the page asks for a content token to load them.
@@ -11425,8 +11425,6 @@ export interface components {
             access?: components["schemas"]["LinkAccess"];
             /** Expires At */
             expires_at?: string | null;
-            /** Grantees */
-            grantees?: string[];
         };
         /**
          * LinkSettingsUpdate
@@ -11436,8 +11434,6 @@ export interface components {
             access?: components["schemas"]["LinkAccess"] | null;
             /** Expires At */
             expires_at?: string | null;
-            /** Grantees */
-            grantees?: string[] | null;
         };
         /**
          * LinkTokenInfoResponse
@@ -14016,77 +14012,23 @@ export interface components {
         };
         /**
          * PublicBriefing
-         * @description A persisted daily/weekly brief: its rendered edition image and payload,
-         *     shaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders.
+         * @description A brief's front page, all anyone but its owner sees: never an item, a calendar entry or the edition.
+         *
+         *     The edition image draws every item, so it stays with the owner (BriefingView) too.
          */
         PublicBriefing: {
-            /** Edition Image Url */
-            edition_image_url: string | null;
+            /** Date */
+            date: string;
+            /** Headline */
+            headline: string;
+            /** Kicker */
+            kicker: string;
             kind: components["schemas"]["BriefingKind"];
-            payload: components["schemas"]["PublicBriefingPayload"];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             target_type: "briefing";
-        };
-        /**
-         * PublicBriefingEvent
-         * @description A calendar entry on the brief: when and what, never where.
-         */
-        PublicBriefingEvent: {
-            /** Date */
-            date: string;
-            /** Start */
-            start: string | null;
-            /** Title */
-            title: string;
-        };
-        /**
-         * PublicBriefingItem
-         * @description An item as the brief page lists it. ``link`` is the item's own public
-         *     heygaia.link; the todo id it is bound to stays private.
-         */
-        PublicBriefingItem: {
-            kind: components["schemas"]["ItemState"];
-            /** Link */
-            link: string | null;
-            /** Text */
-            text: string;
-        };
-        /**
-         * PublicBriefingPayload
-         * @description The brief fields the standalone brief page reads (``BriefingEdition``).
-         */
-        PublicBriefingPayload: {
-            /** Calendar */
-            calendar: components["schemas"]["PublicBriefingEvent"][];
-            /** Caption */
-            caption: string;
-            /** Date */
-            date: string;
-            /** Headline */
-            headline: string;
-            /** Hue */
-            hue: number;
-            /** Kicker */
-            kicker: string;
-            /** Lede */
-            lede: string;
-            mood: components["schemas"]["BriefingMood"];
-            /** Sections */
-            sections: components["schemas"]["PublicBriefingSection"][];
-            /** Stats */
-            stats: components["schemas"]["BriefingStat"][];
-        };
-        /** PublicBriefingSection */
-        PublicBriefingSection: {
-            /** Items */
-            items: components["schemas"]["PublicBriefingItem"][];
-            /** Numeral */
-            numeral: string;
-            /** Title */
-            title: string;
         };
         /**
          * PublicHoloCardResponse
@@ -15359,8 +15301,6 @@ export interface components {
             content_max_access: components["schemas"]["LinkAccess"] | null;
             /** Expires At */
             expires_at: string | null;
-            /** Grantees */
-            grantees: string[];
             /** Slug */
             slug: string;
             /** Url */
@@ -18826,10 +18766,6 @@ export type ProviderPreset = components['schemas']['ProviderPreset'];
 export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
 export type PublicBriefing = components['schemas']['PublicBriefing'];
-export type PublicBriefingEvent = components['schemas']['PublicBriefingEvent'];
-export type PublicBriefingItem = components['schemas']['PublicBriefingItem'];
-export type PublicBriefingPayload = components['schemas']['PublicBriefingPayload'];
-export type PublicBriefingSection = components['schemas']['PublicBriefingSection'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
 export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];

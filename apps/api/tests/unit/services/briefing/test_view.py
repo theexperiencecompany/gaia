@@ -197,7 +197,7 @@ async def test_each_uncomposed_item_carries_the_words_for_its_state() -> None:
     ]
 
 
-async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar() -> None:
+def test_a_public_viewer_sees_the_front_page_never_an_item_the_calendar_or_the_edition() -> None:
     owned = _brief(
         template_family=EditionFamily.MEMO,
         sections=[
@@ -220,9 +220,8 @@ async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar
         }
     )
 
-    seen = (await public_view(owned)).model_dump_json()
+    seen = public_view(owned).model_dump_json()
 
     assert "Three things wait on you" in seen
-    assert "k1/png?t=" in seen
-    for private in ("Reply to Priya", "Waiting on you", "Therapy", USER_ID, "brief_1"):
+    for private in ("Reply to Priya", "Waiting on you", "Therapy", "k1", USER_ID, "brief_1"):
         assert private not in seen

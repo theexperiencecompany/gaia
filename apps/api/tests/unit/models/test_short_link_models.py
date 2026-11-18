@@ -18,10 +18,10 @@ def test_an_explicit_null_access_is_refused() -> None:
 
 
 def test_an_omitted_access_is_left_unset() -> None:
-    change = LinkSettingsUpdate.model_validate({"grantees": []})
+    change = LinkSettingsUpdate.model_validate({"expires_at": None})
 
-    assert (change.access, change.model_fields_set) == (None, {"grantees"})
+    assert (change.access, change.model_fields_set) == (None, {"expires_at"})
 
 
 def test_a_level_is_kept_as_given() -> None:
-    assert LinkSettingsUpdate.model_validate({"access": "people"}).access is LinkAccess.PEOPLE
+    assert LinkSettingsUpdate.model_validate({"access": "owner"}).access is LinkAccess.OWNER

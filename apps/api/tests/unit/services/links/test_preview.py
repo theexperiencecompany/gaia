@@ -91,10 +91,8 @@ async def test_a_link_that_expires_later_still_previews_its_file(previewer: Asyn
     previewer.assert_awaited_once_with("owner", RecordTarget(type=TODO, id="t1"), SNAPSHOT)
 
 
-@pytest.mark.parametrize("access", [LinkAccess.PEOPLE, LinkAccess.OWNER])
-async def test_a_gated_link_previews_only_its_kind(
-    previewer: AsyncMock, access: LinkAccess
-) -> None:
+async def test_a_gated_link_previews_only_its_kind(previewer: AsyncMock) -> None:
+    access = LinkAccess.OWNER
     assert await preview_meta(_link(access=access)) == LinkPreviewMeta(
         live=True,
         target_type=TODO,

@@ -11,7 +11,6 @@ from app.models.brief_document_models import EditionImage
 from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
-    BriefingMood,
     BriefingPayload,
     BriefPoolItem,
 )
@@ -92,26 +91,6 @@ class BriefingView(BaseModel):
     opened_at: datetime | None
     created_at: datetime
     left_out: EditionLeftOut
-
-
-class BriefingPublicView(BaseModel):
-    """What anyone holding a brief's link sees: its edition and its front page, never its items or calendar.
-
-    The owner sees the whole brief (BriefingView); a public viewer sees what the edition prints
-    on its face, so no item text, calendar title or link beyond the image reaches them.
-    """
-
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
-
-    kind: BriefingKind
-    kicker: str
-    date: str
-    headline: str
-    lede: str
-    caption: str
-    mood: BriefingMood
-    hue: int
-    edition: EditionImage | None
 
 
 class BriefingListResponse(BaseModel):

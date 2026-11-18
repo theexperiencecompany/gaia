@@ -235,7 +235,7 @@ class TestReport:
         [
             (_snapshot(RenderMode.FRAME_ACTIVE), LinkAccess.PUBLIC, 3),
             (_snapshot(RenderMode.DOWNLOAD), LinkAccess.UNLISTED, 3),
-            (_snapshot(RenderMode.FRAME_ACTIVE), LinkAccess.PEOPLE, 5),
+            (_snapshot(RenderMode.FRAME_ACTIVE), LinkAccess.OWNER, 5),
             (_snapshot(RenderMode.IMAGE), LinkAccess.PUBLIC, 5),
             (None, LinkAccess.PUBLIC, 5),
         ],

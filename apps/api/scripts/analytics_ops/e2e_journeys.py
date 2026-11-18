@@ -350,7 +350,7 @@ def artifact(stack: Stack) -> None:
 
 #: A chat-preview bot's user agent: its fetch builds an unfurl and never counts as an open.
 SLACKBOT_USER_AGENT = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
-#: A signed-in viewer the shared todo is not granted to.
+#: A signed-in viewer other than the shared todo's owner.
 LINK_STRANGER = "delivered+analytics-e2e-stranger@resend.dev"
 
 
@@ -383,7 +383,7 @@ def link_share(stack: Stack) -> None:
         _expect(
             api.patch(
                 f"/l/{slug}",
-                json={"access": "people", "grantees": [ARTIFACT_READER]},
+                json={"access": "owner"},
                 headers=stack.browser(),
             ),
             HTTPStatus.OK,
@@ -397,7 +397,7 @@ def link_share(stack: Stack) -> None:
             api.post(f"/l/{slug}/rotate", headers=stack.browser()), HTTPStatus.OK
         ).json()
         _expect(
-            api.get(f"/l/{rotated['slug']}", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            api.get(f"/l/{rotated['slug']}", headers=stack.browser()),
             HTTPStatus.OK,
         )
         _expect(api.post("/l/unshare", json=target, headers=stack.browser()), HTTPStatus.OK)

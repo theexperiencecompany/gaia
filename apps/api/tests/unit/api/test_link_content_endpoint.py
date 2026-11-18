@@ -251,7 +251,7 @@ class TestServeContent:
             LINK.model_copy(update={"snapshot": None}),
             LINK.model_copy(update={"snapshot": SNAPSHOT.model_copy(update={"content_id": None})}),
             LINK.model_copy(
-                update={"snapshot": SNAPSHOT.model_copy(update={"max_access": LinkAccess.PEOPLE})}
+                update={"snapshot": SNAPSHOT.model_copy(update={"max_access": LinkAccess.OWNER})}
             ),
         ],
     )
@@ -291,7 +291,6 @@ class TestServeThumbnail:
         [
             None,
             LINK.model_copy(update={"revoked": True, "revoked_reason": RevokeReason.OWNER}),
-            LINK.model_copy(update={"access": LinkAccess.PEOPLE}),
             LINK.model_copy(update={"access": LinkAccess.OWNER}),
             LINK.model_copy(update={"snapshot": None}),
             LINK.model_copy(

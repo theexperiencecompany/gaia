@@ -16,7 +16,7 @@ from app.models.short_link_models import (
 )
 
 #: Every level by who it opens for, widest first; a snapshot capped at one level serves at it and narrower.
-ACCESS_WIDEST_FIRST = (LinkAccess.PUBLIC, LinkAccess.UNLISTED, LinkAccess.PEOPLE, LinkAccess.OWNER)
+ACCESS_WIDEST_FIRST = (LinkAccess.PUBLIC, LinkAccess.UNLISTED, LinkAccess.OWNER)
 
 _REVOKED_STATE: dict[RevokeReason, LinkState] = {
     RevokeReason.OWNER: LinkState.STOPPED,
@@ -108,21 +108,12 @@ def dead_state(link: ShortLink, now: datetime) -> LinkDenial | None:
     return _DENIAL.get(link_state(link, now))
 
 
-def _is_grantee(link: ShortLink, viewer: LinkViewer) -> bool:
-    by_email = viewer.email is not None and viewer.email.lower() in {
-        grantee.lower() for grantee in link.grantees
-    }
-    return by_email or viewer.user_id in link.grantee_ids
-
-
 def _may_open(link: ShortLink, viewer: LinkViewer) -> LinkDenial | None:
     """Why viewer may not open a live link they do not own, or None when they may."""
     if is_open(link.access):
         return None
     if viewer.user_id is None:
         return LinkDenial.SIGN_IN_REQUIRED
-    if link.access is LinkAccess.PEOPLE and _is_grantee(link, viewer):
-        return None
     return LinkDenial.FORBIDDEN
 
 

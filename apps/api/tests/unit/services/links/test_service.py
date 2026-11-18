@@ -41,7 +41,6 @@ from app.models.short_link_models import (
     ShortLinkUpdate,
     WorkspaceFileTarget,
 )
-from app.models.user_models import UserDocument
 from app.services.analytics_service import analytics_day_start
 from app.services.links.errors import LinkDeniedError, LinkTargetNotFoundError
 from app.services.links.registry import REGISTRY
@@ -57,7 +56,6 @@ from app.services.links.service import (
     revoke_deleted_targets,
     rotate,
     share,
-    stop_sharing,
     update_settings,
 )
 from app.services.links.spec import PreviewFacts, SnapshotSource
@@ -264,8 +262,8 @@ VIEW = PublicTodoDeliverable(
     content="Ship it",
 )
 IP, UA = "203.0.113.9", "Mozilla/5.0"
-RECIPIENT = LinkViewer(user_id=None, email=None, ip=IP, user_agent=UA)
-AS_OWNER = LinkViewer(user_id=OWNER, email=None, ip=IP, user_agent=UA)
+RECIPIENT = LinkViewer(user_id=None, ip=IP, user_agent=UA)
+AS_OWNER = LinkViewer(user_id=OWNER, ip=IP, user_agent=UA)
 
 
 def _snap(content_id: str | None, **overrides: object) -> LinkSnapshot:
@@ -353,36 +351,6 @@ def frozen() -> Iterator[None]:
         yield
 
 
-@pytest.fixture
-def workos_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
-
-
-@pytest.fixture
-def local_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "ENV", "selfhost")
-    monkeypatch.setattr(settings, "AUTH_MODE", "local")
-
-
-@pytest.fixture
-def users() -> Iterator[AsyncMock]:
-    accounts = {
-        "ana@x.com": [UserDocument(id="u-ana", email="ana@x.com")],
-        "bo@x.com": [UserDocument(id="u-bo", email="bo@x.com")],
-        "twin@x.com": [
-            UserDocument(id="u-twin1", email="twin@x.com"),
-            UserDocument(id="u-twin2", email="TWIN@x.com"),
-        ],
-    }
-
-    async def _find(email: str) -> list[UserDocument]:
-        return accounts.get(email, [])
-
-    with patch(f"{_SVC}.user_repository") as repo:
-        repo.find_by_email_ignoring_case = AsyncMock(side_effect=_find)
-        yield repo.find_by_email_ignoring_case
-
-
 def _stored(store: Store) -> ShortLink:
     (stored,), _ = store.links.create.await_args
     assert isinstance(stored, ShortLink)
@@ -405,47 +373,6 @@ def _denied_dedupe(slug: str, viewer_key: str, reason: str) -> Dedupe:
         key=f"{hash_short_link_slug(slug)}:{viewer_key}:{reason}:2026-11-13",
         occurred_at=analytics_day_start(NOW),
     )
-
-
-class TestGrantees:
-    async def test_off_local_auth_grantees_stay_emails_and_are_never_looked_up(
-        self, store: Store, users: AsyncMock, workos_auth: None
-    ) -> None:
-        await share(OWNER, TODO_T, LinkSettings(access=LinkAccess.PEOPLE, grantees=["ana@x.com"]))
-
-        stored = _stored(store)
-        assert (stored.grantees, stored.grantee_ids) == (["ana@x.com"], [])
-        users.assert_not_awaited()
-
-    async def test_on_local_auth_each_grantee_resolves_to_their_one_account(
-        self, store: Store, users: AsyncMock, local_auth: None
-    ) -> None:
-        grantees = ["ana@x.com", "bo@x.com"]
-
-        await share(OWNER, TODO_T, LinkSettings(access=LinkAccess.PEOPLE, grantees=grantees))
-
-        stored = _stored(store)
-        assert (stored.grantees, stored.grantee_ids) == (grantees, ["u-ana", "u-bo"])
-        assert users.await_args_list == [call("ana@x.com"), call("bo@x.com")]
-
-    async def test_a_grantee_with_no_or_two_accounts_is_refused_before_anything_publishes(
-        self, store: Store, users: AsyncMock, local_auth: None
-    ) -> None:
-        grantees = ["ana@x.com", "nobody@x.com", "twin@x.com"]
-
-        with pytest.raises(AppError) as raised:
-            await share(OWNER, FILE_T, LinkSettings(grantees=grantees))
-
-        error = raised.value
-        assert (error.message, error.fix, error.status_code, error.code, error.public) == (
-            "Some of these people have no account on this GAIA",
-            "Add them after they have joined, or share with anyone who has the link",
-            422,
-            "link_grantee_not_a_member",
-            {"missing": ["nobody@x.com", "twin@x.com"]},
-        )
-        store.publish.assert_not_awaited()
-        store.links.create.assert_not_awaited()
 
 
 class TestMintSnapshot:
@@ -490,22 +417,16 @@ class TestMintSnapshot:
 
 class TestMint:
     async def test_the_link_stores_exactly_the_requested_settings(
-        self, store: Store, frozen: None, workos_auth: None
+        self, store: Store, frozen: None
     ) -> None:
         expiry = NOW + timedelta(days=1)
-        requested = LinkSettings(
-            access=LinkAccess.PUBLIC, grantees=["ana@x.com"], expires_at=expiry
-        )
+        requested = LinkSettings(access=LinkAccess.PUBLIC, expires_at=expiry)
 
         with patch(f"{_SVC}.capture") as capture:
             minted = await share(OWNER, TODO_T, requested)
 
         stored = _stored(store)
-        assert (stored.access, stored.grantees, stored.expires_at) == (
-            LinkAccess.PUBLIC,
-            ["ana@x.com"],
-            expiry,
-        )
+        assert (stored.access, stored.expires_at) == (LinkAccess.PUBLIC, expiry)
         assert minted == stored
         capture.assert_called_once_with(
             UserId(OWNER),
@@ -774,7 +695,7 @@ class TestUpdateSettings:
             result = await update_settings(OWNER, "s1", LinkSettingsUpdate(expires_at=expiry))
 
         assert result is updated
-        assert _written(store) == ("s1", {"expires_at": expiry, "gaia_attached": False})
+        assert _written(store) == ("s1", {"expires_at": expiry})
         capture.assert_not_called()
 
     async def test_widening_access_writes_only_access_and_is_counted(
@@ -787,50 +708,12 @@ class TestUpdateSettings:
         with patch(f"{_SVC}.capture") as capture:
             await update_settings(OWNER, "s1", LinkSettingsUpdate(access=LinkAccess.PUBLIC))
 
-        assert _written(store) == ("s1", {"access": LinkAccess.PUBLIC, "gaia_attached": False})
+        assert _written(store) == ("s1", {"access": LinkAccess.PUBLIC})
         capture.assert_called_once_with(
             UserId(OWNER),
             ShortLinkAccessChanged(
-                target_type=TODO.value, from_access="unlisted", to_access="public", grantee_count=0
+                target_type=TODO.value, from_access="unlisted", to_access="public"
             ),
-        )
-
-    async def test_new_grantees_resolve_to_accounts_and_are_counted(
-        self, store: Store, users: AsyncMock, local_auth: None, frozen: None
-    ) -> None:
-        link = _link("s1", access=LinkAccess.PEOPLE)
-        store.links.get_by_slug.return_value = link
-        store.links.update_live.return_value = link.model_copy(
-            update={"grantees": ["ana@x.com"], "grantee_ids": ["u-ana"]}
-        )
-
-        with patch(f"{_SVC}.capture") as capture:
-            await update_settings(OWNER, "s1", LinkSettingsUpdate(grantees=["ana@x.com"]))
-
-        store.links.update_live.assert_awaited_once_with(
-            OWNER,
-            "s1",
-            ShortLinkUpdate(grantees=["ana@x.com"], grantee_ids=["u-ana"], gaia_attached=False),
-        )
-        capture.assert_called_once_with(
-            UserId(OWNER),
-            ShortLinkAccessChanged(
-                target_type=TODO.value, from_access="people", to_access="people", grantee_count=1
-            ),
-        )
-
-    async def test_null_grantees_clears_them(
-        self, store: Store, workos_auth: None, frozen: None
-    ) -> None:
-        link = _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"])
-        store.links.get_by_slug.return_value = link
-        store.links.update_live.return_value = link.model_copy(update={"grantees": []})
-
-        with patch(f"{_SVC}.capture"):
-            await update_settings(OWNER, "s1", LinkSettingsUpdate(grantees=None))
-
-        store.links.update_live.assert_awaited_once_with(
-            OWNER, "s1", ShortLinkUpdate(grantees=[], grantee_ids=[], gaia_attached=False)
         )
 
     async def test_a_link_that_died_mid_change_is_not_found(
@@ -888,8 +771,7 @@ class TestRotate:
         read = _link(
             "s1",
             id="doc1",
-            access=LinkAccess.PEOPLE,
-            grantees=["ana@x.com"],
+            access=LinkAccess.OWNER,
             target=FILE_T,
             snapshot=OLD,
             created_at=NOW - timedelta(days=3),
@@ -924,7 +806,7 @@ class TestRotate:
             "revoked_reason": None,
         }
         capture.assert_called_once_with(
-            UserId(OWNER), ShortLinkRotated(target_type=FILE.value, access="people")
+            UserId(OWNER), ShortLinkRotated(target_type=FILE.value, access="owner")
         )
 
     async def test_a_link_revoked_before_the_rotation_is_not_found(
@@ -971,7 +853,7 @@ class TestResolve:
         self, specs: Specs, frozen: None
     ) -> None:
         link = _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER)
-        viewer = LinkViewer(user_id=None, email=None, ip=IP, user_agent=UA, signed_in_as="me@x.com")
+        viewer = LinkViewer(user_id=None, ip=IP, user_agent=UA, signed_in_as="me@x.com")
 
         with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
             await record_open(link, viewer)
@@ -984,13 +866,11 @@ class TestResolve:
         )
         specs.todo_project.assert_not_awaited()
 
-    async def test_a_signed_in_viewer_not_granted_is_told_who_they_are_signed_in_as(
+    async def test_a_signed_in_stranger_is_told_who_they_are_signed_in_as(
         self, frozen: None
     ) -> None:
-        link = _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"])
-        viewer = LinkViewer(
-            user_id="u-eve", email=None, ip=IP, user_agent=UA, signed_in_as="eve@x.com"
-        )
+        link = _link("s1", access=LinkAccess.OWNER)
+        viewer = LinkViewer(user_id="u-eve", ip=IP, user_agent=UA, signed_in_as="eve@x.com")
 
         with patch(f"{_SVC}.capture") as capture, pytest.raises(LinkDeniedError) as raised:
             await record_open(link, viewer)
@@ -1008,10 +888,8 @@ class TestResolve:
     async def test_a_server_side_forbidden_read_also_says_who_they_are_signed_in_as(
         self, frozen: None
     ) -> None:
-        link = _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"])
-        viewer = LinkViewer(
-            user_id="u-eve", email=None, ip=IP, user_agent=UA, signed_in_as="eve@x.com"
-        )
+        link = _link("s1", access=LinkAccess.OWNER)
+        viewer = LinkViewer(user_id="u-eve", ip=IP, user_agent=UA, signed_in_as="eve@x.com")
 
         with pytest.raises(LinkDeniedError) as raised:
             await resolve(link, viewer)
@@ -1038,7 +916,6 @@ class TestResolve:
         [
             _link("s1", revoked=True, revoked_reason=RevokeReason.OWNER),
             _link("s1", access=LinkAccess.OWNER),
-            _link("s1", access=LinkAccess.PEOPLE, grantees=["ana@x.com"]),
         ],
     )
     async def test_a_server_side_read_is_denied_but_counts_nothing(
@@ -1128,7 +1005,7 @@ class TestRecordOpen:
     async def test_a_recipients_browser_gets_the_view_and_one_open_a_day(
         self, specs: Specs, frozen: None
     ) -> None:
-        viewer = LinkViewer(user_id="u-ana", email=None, ip=IP, user_agent=UA)
+        viewer = LinkViewer(user_id="u-ana", ip=IP, user_agent=UA)
 
         with patch(f"{_SVC}.capture") as capture:
             async with captured_wide_event() as event:
@@ -1146,7 +1023,7 @@ class TestRecordOpen:
         ("viewer", "kind"),
         [
             (AS_OWNER, "owner"),
-            (LinkViewer(user_id=None, email=None, ip=IP, user_agent="Slackbot 1.0"), "unfurl_bot"),
+            (LinkViewer(user_id=None, ip=IP, user_agent="Slackbot 1.0"), "unfurl_bot"),
         ],
     )
     async def test_the_owner_and_unfurl_bots_are_never_counted(
@@ -1175,12 +1052,11 @@ class TestLinkResponse:
         expires = NOW + timedelta(days=1)
         link = _link(
             "abcdefghijk",
-            access=LinkAccess.PEOPLE,
-            grantees=["a@example.com"],
+            access=LinkAccess.OWNER,
             expires_at=expires,
             snapshot=_snap(
                 "c" * 26,
-                max_access=LinkAccess.PEOPLE,
+                max_access=LinkAccess.OWNER,
                 restricted_by=ContentRestriction.EXECUTABLE,
             ),
         )
@@ -1188,95 +1064,15 @@ class TestLinkResponse:
         assert link_response(link).model_dump() == {
             "url": f"{settings.SHORTLINK_BASE_URL}/abcdefghijk",
             "slug": "abcdefghijk",
-            "access": LinkAccess.PEOPLE,
-            "grantees": ["a@example.com"],
+            "access": LinkAccess.OWNER,
             "expires_at": expires,
-            "content_max_access": LinkAccess.PEOPLE,
+            "content_max_access": LinkAccess.OWNER,
         }
 
     @pytest.mark.parametrize(
-        "snapshot", [None, _snap("c" * 26, max_access=LinkAccess.PEOPLE)], ids=["none", "open"]
+        "snapshot", [None, _snap("c" * 26, max_access=LinkAccess.OWNER)], ids=["none", "open"]
     )
     def test_a_link_whose_file_nothing_narrowed_names_no_level(
         self, snapshot: LinkSnapshot | None
     ) -> None:
         assert link_response(_link("abcdefghijk", snapshot=snapshot)).content_max_access is None
-
-
-BRIEF: Final = ShortLinkTargetType.BRIEFING
-BRIEF_T = RecordTarget(type=BRIEF, id="b1")
-
-
-def _todo(todo_id: str) -> RecordTarget:
-    return RecordTarget(type=TODO, id=todo_id)
-
-
-class TestBriefItemsFollowTheBrief:
-    """A brief's GAIA-attached item links take the brief's access as it changes (L-bug2)."""
-
-    carries: AsyncMock
-
-    @pytest.fixture
-    def items(self, store: Store) -> Iterator[dict[str, ShortLink]]:
-        children = {
-            "attached": _link("item1", target=_todo("attached"), gaia_attached=True),
-            "owner_set": _link("item2", target=_todo("owner_set"), access=LinkAccess.PUBLIC),
-        }
-        self.carries = AsyncMock(return_value=[_todo(key) for key in children])
-        brief_spec = replace(REGISTRY[BRIEF], carries=self.carries)
-        store.links.get_live_for_target.side_effect = lambda _u, target: children.get(target.id)
-        with patch.dict(f"{_SVC}.REGISTRY", {BRIEF: brief_spec}):
-            yield children
-
-    def _writes(self, store: Store) -> dict[str, dict[str, object]]:
-        calls = store.links.update_live.await_args_list
-        assert {c.args[0] for c in calls} == {OWNER}
-        return {c.args[1]: c.args[2].model_dump(exclude_unset=True) for c in calls}
-
-    def _assert_read_under_the_owner(self, store: Store) -> None:
-        self.carries.assert_awaited_once_with(OWNER, BRIEF_T)
-        read = [c.args for c in store.links.get_live_for_target.await_args_list]
-        assert (OWNER, _todo("attached")) in read
-        assert {owner for owner, _ in read} == {OWNER}
-
-    async def test_changing_a_briefs_access_carries_it_to_its_attached_items_only(
-        self, store: Store, frozen: None, items: dict[str, ShortLink]
-    ) -> None:
-        brief = _link("brief1", target=BRIEF_T, access=LinkAccess.OWNER)
-        store.links.get_by_slug.return_value = brief
-        store.links.update_live.side_effect = lambda _u, slug, update: (
-            brief.model_copy(update=update.model_dump(exclude_unset=True))
-            if slug == "brief1"
-            else None
-        )
-
-        await update_settings(OWNER, "brief1", LinkSettingsUpdate(access=LinkAccess.UNLISTED))
-
-        self._assert_read_under_the_owner(store)
-
-        assert self._writes(store) == {
-            "brief1": {"access": LinkAccess.UNLISTED, "gaia_attached": False},
-            "item1": {"access": LinkAccess.UNLISTED, "grantees": [], "grantee_ids": []},
-        }
-
-    async def test_stopping_a_brief_narrows_its_attached_items_to_the_owner(
-        self, store: Store, items: dict[str, ShortLink]
-    ) -> None:
-        brief = _link("brief1", target=BRIEF_T, access=LinkAccess.UNLISTED)
-        store.links.get_live_for_target.side_effect = lambda _u, target: (
-            brief if target == BRIEF_T else items.get(target.id)
-        )
-        store.links.revoke.return_value = brief
-
-        assert await stop_sharing(OWNER, BRIEF_T)
-
-        self._assert_read_under_the_owner(store)
-
-        assert self._writes(store) == {
-            "item1": {"access": LinkAccess.OWNER, "grantees": [], "grantee_ids": []}
-        }
-
-    async def test_a_link_gaia_attaches_is_marked_so(self, store: Store) -> None:
-        await attach_link(OWNER, TODO_T)
-
-        assert _stored(store).gaia_attached is True

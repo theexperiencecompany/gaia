@@ -1,8 +1,8 @@
 """Short-link models (heygaia.link/<slug>).
 
 A short link is a high-entropy, globally unique slug pointing at exactly one
-artifact. Its access level says who may open it: anyone (public, unlisted),
-signed-in grantees (people) or only its owner. It stays open until the owner
+artifact. Its access level says who may open it: anyone (public, unlisted) or
+only its owner. It stays open until the owner
 revokes or rotates it, it expires, or GAIA takes it down.
 
 What a link serves is never the stored document. Each target type has a public
@@ -20,7 +20,6 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
-    EmailStr,
     Field,
     field_validator,
     model_validator,
@@ -28,8 +27,6 @@ from pydantic import (
 
 from app.constants.briefing import BriefingKind
 from app.db.repositories.base import MongoDocument, UserScopedDocument
-from app.models.brief_item_models import ItemState
-from app.models.brief_payload_models import BriefingMood, BriefingStat
 from app.models.message_models import SafePathId
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
@@ -100,8 +97,6 @@ class LinkAccess(StrEnum):
     PUBLIC = "public"
     # Anyone holding the URL; never indexed.
     UNLISTED = "unlisted"
-    # Signed-in GAIA users whose account email is one of the link's grantees.
-    PEOPLE = "people"
     # Only the owner, signed in.
     OWNER = "owner"
 
@@ -169,9 +164,9 @@ class ContentRestriction(StrEnum):
 
     # An installer or script: its owner only.
     EXECUTABLE = "executable"
-    # HTML that looks like it asks for a password or a card: named people only.
+    # HTML that looks like it asks for a password or a card: its owner only.
     CREDENTIAL_FORM = "credential_form"
-    # HTML from an owner GAIA has taken links down for before: named people only.
+    # HTML from an owner GAIA has taken links down for before: its owner only.
     REPEAT_TAKEDOWNS = "repeat_takedowns"
 
 
@@ -185,17 +180,12 @@ class ReportReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class LinkViewer:
-    """Whoever opened a link: their session user (None when signed out), address and browser.
-
-    email is set only where the deployment verifies account emails; elsewhere a
-    grant names accounts (ShortLink.grantee_ids), never an address anyone can register.
-    """
+    """Whoever opened a link: their session user (None when signed out), address and browser."""
 
     user_id: str | None
-    email: str | None
     ip: str
     user_agent: str
-    #: The account's email as the viewer sees it on a FORBIDDEN page; never matched against a grant.
+    #: The account's email as the viewer sees it on a FORBIDDEN page.
     signed_in_as: str | None = None
 
 
@@ -244,15 +234,10 @@ class ShortLink(UserScopedDocument):
     revoked_reason: RevokeReason | None = None
     #: Defaults carry a pre-access link as exactly what it was: unlisted, never expiring.
     access: LinkAccess = LinkAccess.UNLISTED
-    grantees: list[str] = Field(default_factory=list)
-    #: The grantees' accounts, resolved when granted, where account emails are unverified (local sign-in).
-    grantee_ids: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     #: Reports crossed the threshold; the link shows "removed" until an admin restores it.
     suspended: bool = False
-    #: GAIA attached it (the owner has not set it themselves), so a brief carrying it moves its access.
-    gaia_attached: bool = False
 
     @model_validator(mode="after")
     def _revoked_says_why(self) -> Self:
@@ -271,12 +256,9 @@ class ShortLinkUpdate(BaseModel):
     revoked_at: datetime | None = None
     revoked_reason: RevokeReason | None = None
     access: LinkAccess | None = None
-    grantees: list[str] | None = None
-    grantee_ids: list[str] | None = None
     expires_at: datetime | None = None
     snapshot: LinkSnapshot | None = None
     suspended: bool | None = None
-    gaia_attached: bool | None = None
 
 
 class _PublicView(BaseModel):
@@ -293,52 +275,17 @@ class PublicTodoDeliverable(_PublicView):
     content: str
 
 
-class PublicBriefingItem(_PublicView):
-    """An item as the brief page lists it. ``link`` is the item's own public
-    heygaia.link; the todo id it is bound to stays private."""
-
-    text: str
-    kind: ItemState
-    link: str | None
-
-
-class PublicBriefingSection(_PublicView):
-    numeral: str
-    title: str
-    items: list[PublicBriefingItem]
-
-
-class PublicBriefingEvent(_PublicView):
-    """A calendar entry on the brief: when and what, never where."""
-
-    date: str
-    start: str | None
-    title: str
-
-
-class PublicBriefingPayload(_PublicView):
-    """The brief fields the standalone brief page reads (``BriefingEdition``)."""
-
-    kicker: str
-    date: str
-    headline: str
-    lede: str
-    stats: list[BriefingStat]
-    sections: list[PublicBriefingSection]
-    mood: BriefingMood
-    caption: str
-    hue: int
-    calendar: list[PublicBriefingEvent]
-
-
 class PublicBriefing(_PublicView):
-    """A persisted daily/weekly brief: its rendered edition image and payload,
-    shaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders."""
+    """A brief's front page, all anyone but its owner sees: never an item, a calendar entry or the edition.
+
+    The edition image draws every item, so it stays with the owner (BriefingView) too.
+    """
 
     target_type: Literal[ShortLinkTargetType.BRIEFING]
     kind: BriefingKind
-    edition_image_url: str | None
-    payload: PublicBriefingPayload
+    kicker: str
+    date: str
+    headline: str
 
 
 class PublicWorkspaceFile(_PublicView):
@@ -439,16 +386,12 @@ class LinkPreviewMeta(ResponseModel):
     image_url: str | None
 
 
-MAX_GRANTEES = 50
-
-
 class LinkSettings(BaseModel):
     """Who a link opens for and until when."""
 
     model_config = ConfigDict(extra="forbid")
 
     access: LinkAccess = LinkAccess.UNLISTED
-    grantees: list[EmailStr] = Field(default_factory=list, max_length=MAX_GRANTEES)
     expires_at: AwareDatetime | None = None
 
 
@@ -458,7 +401,6 @@ class LinkSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     access: LinkAccess | None = None
-    grantees: list[EmailStr] | None = Field(default=None, max_length=MAX_GRANTEES)
     expires_at: AwareDatetime | None = None
 
     @field_validator("access")
@@ -494,7 +436,6 @@ class ShortLinkResponse(ResponseModel):
     url: str
     slug: str
     access: LinkAccess
-    grantees: list[str]
     expires_at: datetime | None
     content_max_access: LinkAccess | None
 
