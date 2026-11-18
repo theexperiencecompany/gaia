@@ -945,7 +945,9 @@ class TestBotRequestAnalyticsAttribution:
             seen["distinct_id"] = get_context_distinct_id()
             return {"ok": True}
 
-        with patch("app.api.v1.middleware.auth.record_activity", new_callable=AsyncMock) as record:
+        with patch(
+            "app.api.v1.middleware.activity.record_activity", new_callable=AsyncMock
+        ) as record:
             response = TestClient(app).post(
                 "/api/v1/bot/probe",
                 headers={
