@@ -36,12 +36,7 @@ function LinkPage<T extends ShortLinkTargetType>({
       width={entry.width}
       actions={
         <>
-          {ownerTarget && (
-            <ShareLinkControls
-              target={ownerTarget}
-              stopWarning={entry.stopWarning}
-            />
-          )}
+          {ownerTarget && <ShareLinkControls target={ownerTarget} />}
           {Actions && <Actions slug={slug} />}
           {!entry.reportInView && reportAction}
         </>

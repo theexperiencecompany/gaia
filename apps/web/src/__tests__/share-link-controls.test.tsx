@@ -26,7 +26,6 @@ const LIVE_LINK = {
   url: LIVE_URL,
   slug: "abcdefghijk",
   access: "unlisted",
-  grantees: [],
   expires_at: null,
   content_max_access: null,
 } as const;

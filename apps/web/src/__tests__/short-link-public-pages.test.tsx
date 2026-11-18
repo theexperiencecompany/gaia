@@ -136,7 +136,7 @@ describe("a heygaia.link that doesn't open", () => {
     ).toBe("/login?return_url=%2Fl%2Fabcdefghijk");
   });
 
-  it("tells a signed-in viewer who isn't a grantee which account they're using", () => {
+  it("tells a signed-in viewer who isn't the owner which account they're using", () => {
     render(
       <LinkUnavailable
         state={{

@@ -50,10 +50,7 @@ export interface ShareLink {
  * it, or change who it opens for, knowing whether a live link exists so "Stop
  * sharing" is never offered for something that was never shared.
  */
-export function useShareLink(
-  target: LinkTarget,
-  stopWarning?: string,
-): ShareLink {
+export function useShareLink(target: LinkTarget): ShareLink {
   const queryClient = useQueryClient();
   const [isMenuOpen, setMenuOpen] = useState(false);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
@@ -80,11 +77,7 @@ export function useShareLink(
     onSuccess: (revoked) => {
       remember(null);
       if (!revoked) return;
-      toast.success("Sharing stopped", {
-        description: stopWarning
-          ? `${STOPPED_NOTE} ${stopWarning}`
-          : STOPPED_NOTE,
-      });
+      toast.success("Sharing stopped", { description: STOPPED_NOTE });
     },
   });
 

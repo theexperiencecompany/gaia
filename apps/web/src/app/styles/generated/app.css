@@ -43,8 +43,6 @@
 @import "@heroui/styles/components/switch.css" layer(components);
 @import "@heroui/styles/components/table.css" layer(components);
 @import "@heroui/styles/components/tabs.css" layer(components);
-@import "@heroui/styles/components/tag.css" layer(components);
-@import "@heroui/styles/components/tag-group.css" layer(components);
 @import "@heroui/styles/components/textarea.css" layer(components);
 @import "@heroui/styles/components/textfield.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
@@ -873,7 +871,6 @@
 @source "../../../features/short-links/api/linkViewerApi.ts";
 @source "../../../features/short-links/api/shortLinksApi.ts";
 @source "../../../features/short-links/components/GatedLinkView.tsx";
-@source "../../../features/short-links/components/GranteeEmailsInput.tsx";
 @source "../../../features/short-links/components/LinkUnavailable.tsx";
 @source "../../../features/short-links/components/OpenLinkView.tsx";
 @source "../../../features/short-links/components/PublicBriefingView.tsx";

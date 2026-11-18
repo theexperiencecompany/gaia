@@ -55,7 +55,7 @@ export async function fetchLinkMeta(
 
 /**
  * Open the link as the server sees the viewer: never their session, so a
- * people or owner link answers a sign-in denial and is opened again from the browser.
+ * owner-only link answers a sign-in denial and is opened again from the browser.
  */
 export async function resolveLinkOnServer(
   slug: string,

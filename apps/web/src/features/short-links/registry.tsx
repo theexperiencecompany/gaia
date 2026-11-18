@@ -1,7 +1,5 @@
 import type { ComponentType } from "react";
 
-import { BRIEF_STOP_WARNING } from "@/features/briefing";
-
 import type { ShortLinkTargetType } from "@/types/features/shortLinkTypes";
 
 import { PublicBriefingView } from "./components/PublicBriefingView";
@@ -23,8 +21,6 @@ export interface LinkViewEntry<T extends ShortLinkTargetType> {
   actions?: ComponentType<{ slug: string }>;
   /** The view draws its own bar with Report in it, so the header does not. */
   reportInView?: true;
-  /** What stopping the link cannot take back, shown to the owner beside Stop sharing. */
-  stopWarning?: string;
 }
 
 /**
@@ -43,7 +39,6 @@ export const LINK_VIEWS: {
     component: PublicBriefingView,
     label: "brief",
     width: "reading",
-    stopWarning: BRIEF_STOP_WARNING,
   },
   workspace_file: {
     component: PublicWorkspaceFileView,

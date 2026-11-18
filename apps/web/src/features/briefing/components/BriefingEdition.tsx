@@ -27,9 +27,8 @@ type EditionItem = Pick<BriefingItem, "text" | "kind"> &
   Partial<Pick<BriefingItem, "todo_id" | "link">>;
 
 /**
- * The brief's fields this view reads, off the stored payload. A brief's public
- * link carries only its headline, sections and calendar, so the rest is
- * optional: GAIA's message and the blocks the edition could not draw (undrawn).
+ * The brief's fields this view reads, off the stored payload; GAIA's message,
+ * the calendar and the blocks the edition could not draw (undrawn) are optional.
  */
 export type BriefingEditionPayload = Pick<BriefingPayload, "headline"> & {
   sections: (Pick<BriefingSection, "numeral" | "title"> & {
@@ -47,10 +46,7 @@ export interface BriefingEditionProps {
   leftOut?: EditionLeftOut;
 }
 
-/**
- * The owner's copy carries todo_id and opens the in-app todo; the public copy
- * a heygaia.link serves has no todo_id, only the link the brief shared.
- */
+/** An item bound to a todo opens it in the app; any other opens the link the brief shows. */
 function itemHref(item: EditionItem): string | null {
   if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
   return item.link ?? null;

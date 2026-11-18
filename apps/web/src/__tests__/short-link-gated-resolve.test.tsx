@@ -65,9 +65,9 @@ describe("GatedLinkView", () => {
     ).toBeTruthy();
   });
 
-  it("opens the link for a grantee with the one call that counts the open", async () => {
+  it("opens a gated link once the browser's session gets past it, with the one call that counts the open", async () => {
     openLinkInBrowser.mockResolvedValue({
-      access: "people",
+      access: "owner",
       target_type: "todo_deliverable",
       view: {
         target_type: "todo_deliverable",
