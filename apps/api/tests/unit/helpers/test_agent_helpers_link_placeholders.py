@@ -119,3 +119,20 @@ async def test_a_link_no_longer_live_leaves_its_label(live: AsyncMock) -> None:
     ]
 
     assert _streamed(frames) == ("Done. Open the plan when you like.",) * 2
+
+
+ENDING_IN_LINK = f"Here it is: {TOKEN}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("closed", [True, False])
+async def test_a_reply_ending_in_a_placeholder_resolves_when_it_finishes(closed: bool) -> None:
+    """The held tail goes out at the node's close, or at the end of a run that never closed it."""
+    events = _reply_in_pieces(ENDING_IN_LINK, 5)
+    if not closed:
+        events = events[:-1]
+    frames = [f async for f in execute_graph_streaming(ScriptedGraph(events), {}, _CONFIG)]
+
+    sent, stored = _streamed(frames)
+    assert sent == f"Here it is: {_url()}"
+    assert stored == sent
