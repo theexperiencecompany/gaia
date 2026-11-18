@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from pydantic import ValidationError
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import user_clock
 
 from app.agents.llm.client import StructuredCallOptions
@@ -30,7 +31,7 @@ from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.kinds import KIND_SPECS
 from app.utils.errors import AppError
 
-USER = "64f1c0ffee0000000000abcd"
+USER = make_user_id()
 DAILY = KIND_SPECS[BriefingKind.DAILY]
 WEEKLY = KIND_SPECS[BriefingKind.WEEKLY]
 _CONTEXT = PoolContext(

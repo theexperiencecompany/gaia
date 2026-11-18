@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.tools import BaseTool, tool
 import pytest
+from tests.factories import make_user_id
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
@@ -30,7 +31,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 CUSTOM_MCP = "3f2c9a1e-custom-mcp"
 
 

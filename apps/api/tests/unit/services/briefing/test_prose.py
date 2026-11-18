@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -32,7 +33,7 @@ from app.services.briefing.work import TrackedWork
 
 pytestmark = pytest.mark.unit
 
-_USER_ID = "64f1c0ffee0000000000abcd"
+_USER_ID = make_user_id()
 _VALUES = SlotValues(facts={1: BriefFact(title="Reply to Dan")}, counts={})
 _TZ = ZoneInfo("Asia/Kolkata")
 _NOW = datetime(2026, 11, 9, 2, 30, tzinfo=UTC)

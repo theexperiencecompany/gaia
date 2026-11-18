@@ -435,7 +435,7 @@ class TestAnItemLine:
 
     def test_an_item_an_earlier_brief_showed_as_it_stands_is_marked_still_open(self) -> None:
         shown = SignalMemoryDocument(
-            user_id="u1",
+            user_id=USER_ID,
             integration_id="gaia",
             external_id="todo:t1",
             first_seen=datetime(2026, 11, 8, 3, tzinfo=UTC),

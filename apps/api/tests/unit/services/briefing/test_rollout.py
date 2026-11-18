@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from tests.factories import make_user_id
 
 from app.models.brief_pool_models import GoalOrigin
 from app.models.user_models import BriefingBootstrap, OnboardingSubdocument, UserDocument
@@ -17,7 +18,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingProvisioned
 from shared.py.wide_events import log, log_context
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 _ONBOARDED = OnboardingSubdocument(completed=True)
 
 
