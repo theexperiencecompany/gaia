@@ -9,7 +9,10 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
+ * - BotConversation: the conversation list row bots display
+ *
+ * Workflow and todo payloads are the generated API models
+ * (`@gaia/shared/api/generated`), never a hand-written copy.
  */
 
 /**
@@ -138,56 +141,6 @@ export interface RedeemedLinkCode {
   delivered: boolean;
   /** Ordered bubbles to send when `delivered` is false; empty otherwise. */
   firstContact: string[];
-}
-
-export interface BotWorkflow {
-  id: string;
-  name: string;
-  description: string;
-  status: "active" | "inactive" | "draft";
-  triggers?: Record<string, unknown>[];
-  steps?: Record<string, unknown>[];
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface BotWorkflowListResponse {
-  workflows: BotWorkflow[];
-}
-
-export interface BotWorkflowExecutionRequest {
-  workflow_id: string;
-  inputs?: Record<string, unknown>;
-}
-
-export interface BotWorkflowExecutionResponse {
-  execution_id: string;
-  status: string;
-  result?: unknown;
-}
-
-export interface BotTodo {
-  id: string;
-  title: string;
-  description?: string;
-  completed: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
-}
-
-export interface BotTodoListResponse {
-  todos: BotTodo[];
-  total: number;
-}
-
-export interface BotCreateTodoRequest {
-  title: string;
-  description?: string;
-  completed?: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
 }
 
 export interface BotConversation {
