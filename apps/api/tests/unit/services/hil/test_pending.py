@@ -1,13 +1,20 @@
 """The open approvals a typed reply names: the screen's order, each under the number it was asked with."""
 
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import time_machine
 
-from app.models.conversation_log_models import ConversationState, Entry, LoggedEntry, Transition
+from app.models.conversation_log_models import (
+    ApprovalRequested,
+    ConversationState,
+    Entry,
+    LoggedEntry,
+    Transition,
+)
 from app.models.conversation_screen_models import WorkItem
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.reducer import reduce, stamped
@@ -128,3 +135,45 @@ async def test_a_pending_approval_without_a_ledger_row_fails_instead_of_shifting
 
     with pytest.raises(ApprovalRequestNotFoundError):
         await pending_approvals("c1", "u1")
+
+
+def _requests_changed(
+    change: Callable[[ApprovalRequested], dict[str, object]],
+) -> Callable[..., Awaitable[list[LoggedEntry]]]:
+    """Serve the stored log with each approval request changed as change says."""
+
+    async def read(conversation_id: str, *, user_id: str, ids: list[str]) -> list[LoggedEntry]:
+        return [
+            item.model_copy(update={"entry": item.entry.model_copy(update=change(item.entry))})
+            if isinstance(item.entry, ApprovalRequested)
+            else item
+            for item in await _read_log(conversation_id, user_id=user_id, ids=ids)
+        ]
+
+    return read
+
+
+async def test_a_request_logged_before_approvals_were_numbered_takes_its_place(
+    ledger: dict[str, ApprovalLedgerDocument],
+) -> None:
+    unnumbered = _requests_changed(lambda _: {"number": None})
+    with patch(f"{MODULE}.conversation_log_repository.read_log", new=unnumbered):
+        pending = await pending_approvals("c1", "u1")
+
+    assert [(item.row.approval_id, item.number) for item in pending] == [("email", 1), ("pay", 2)]
+
+
+@time_machine.travel(NOW, tick=False)
+async def test_an_approval_past_its_time_is_the_sweeps_to_expire_not_a_replys_to_decide(
+    ledger: dict[str, ApprovalLedgerDocument],
+) -> None:
+    pay_lapsed = _requests_changed(
+        lambda request: {
+            "expires_at": NOW
+            + (timedelta(seconds=-1) if request.approval_id == "pay" else timedelta(minutes=1))
+        }
+    )
+    with patch(f"{MODULE}.conversation_log_repository.read_log", new=pay_lapsed):
+        pending = await pending_approvals("c1", "u1")
+
+    assert [(item.row.approval_id, item.number) for item in pending] == [("email", 2)]

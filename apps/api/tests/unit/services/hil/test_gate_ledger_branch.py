@@ -769,6 +769,16 @@ class TestLedgerAutoMode:
         assert isinstance(kwargs["judge"], JevIntentJudge)
         assert kwargs["user_messages"] == ["send it to b@x"]
 
+    async def test_a_tool_the_user_never_lets_auto_mode_run_reaches_the_judge_as_never_auto(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+
+        await gate.decide_tool_call(gated_request(name="DROP_TABLE"))
+
+        (context,) = gate_seams.judge.await_args.args
+        assert context.never_auto is True
+
     # 20:00 UTC on the 14th is already the 15th in Kolkata.
     @time_machine.travel(datetime(2026, 11, 14, 20, 0, tzinfo=UTC), tick=False)
     async def test_the_card_and_the_judge_name_a_date_on_the_users_own_calendar(

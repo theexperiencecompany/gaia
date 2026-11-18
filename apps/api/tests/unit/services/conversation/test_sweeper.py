@@ -13,8 +13,10 @@ from app.constants.conversation import (
     APPROVAL_REGISTER_GRACE,
     WORK_LOST_REPORT,
 )
+from app.constants.hil import DECISION_HANDOFF_LEASE
 from app.db.repositories.conversation_sweep import SweepHead
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, LoggedEntry, WorkOutcome
+from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.sweeper import SweepReport, sweep_conversations
 from app.services.conversation.work_log import WorkReport
 from shared.py.approvals import ApprovalOutcome
@@ -72,6 +74,8 @@ class Seams:
     expire: AsyncMock
     unledgered: AsyncMock
     log: MagicMock
+    ledger_repo: MagicMock
+    hand_off: AsyncMock
 
 
 @pytest.fixture
@@ -86,6 +90,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.approval_ledger_repository") as ledger_repo,
         patch(f"{MODULE}.expire_ledger_approval", AsyncMock(return_value=False)) as expire,
         patch(f"{MODULE}.end_unledgered_approval", AsyncMock(return_value=True)) as unledgered,
+        patch(f"{MODULE}.hand_off_stale_decision", AsyncMock(return_value=False)) as hand_off,
         patch(f"{MODULE}.log") as log,
     ):
         repo.list_heads_to_sweep = AsyncMock(return_value=[])
@@ -94,7 +99,16 @@ def seams() -> Iterator[Seams]:
         ledger_repo.get_by_approval_id = AsyncMock(return_value=None)
         ledger_repo.list_stale_deliveries = AsyncMock(return_value=[])
         yield Seams(
-            repo, kick, lost, finished, ledger_repo.get_by_approval_id, expire, unledgered, log
+            repo,
+            kick,
+            lost,
+            finished,
+            ledger_repo.get_by_approval_id,
+            expire,
+            unledgered,
+            log,
+            ledger_repo,
+            hand_off,
         )
 
 
@@ -240,6 +254,27 @@ async def test_a_request_whose_gate_is_still_registering_its_row_is_left_pending
     assert report == SweepReport()
 
 
+async def test_a_request_whose_register_grace_ran_out_without_a_row_is_withdrawn(
+    seams: Seams,
+) -> None:
+    work = _work("t1", frozenset({"a1"}))
+    asked = logged(3, _requested("a1", None))
+    seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
+    seams.repo.read_log.return_value = [asked]
+
+    with patch(f"{MODULE}.runtime_ports") as ports:
+        ports.return_value = SimpleNamespace(
+            clock=lambda: asked.at + APPROVAL_REGISTER_GRACE,
+            effects=SimpleNamespace(kick=seams.kick),
+        )
+        report = await sweep_conversations()
+
+    seams.unledgered.assert_awaited_once_with(
+        "c-a", "u-a", _requested("a1", None), ApprovalOutcome.WITHDRAWN
+    )
+    assert report == SweepReport(undecidable_approvals=1)
+
+
 async def test_an_unledgered_approval_a_decision_beat_is_not_counted(seams: Seams) -> None:
     work = _work("t1", frozenset({"orphan"}))
     seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
@@ -340,3 +375,78 @@ async def test_counts_add_up_across_heads_pages_and_work(seams: Seams) -> None:
     assert report == SweepReport(
         flushed=3, lost_work=3, undecidable_approvals=3, kicked=3, failed=2
     )
+
+
+def _handing_off(approval_id: str, since: datetime) -> ApprovalLedgerDocument:
+    return ApprovalLedgerDocument(
+        approval_id=approval_id,
+        conversation_id=f"c-{approval_id}",
+        user_id="u1",
+        fingerprint=f"fp-{approval_id}",
+        tool_name="GMAIL_SEND_EMAIL",
+        args={},
+        summary="Send it",
+        outcome=ApprovalOutcome.APPROVED,
+        delivering_since=since,
+    )
+
+
+def _ledger_holding(
+    *rows: ApprovalLedgerDocument,
+) -> Callable[..., Awaitable[list[ApprovalLedgerDocument]]]:
+    """Serve list_stale_deliveries as the repository does: hand-offs begun before the cutoff."""
+
+    async def stale(cutoff: datetime) -> list[ApprovalLedgerDocument]:
+        return [row for row in rows if row.delivering_since and row.delivering_since < cutoff]
+
+    return stale
+
+
+async def test_a_hand_off_older_than_its_lease_is_retried_and_a_newer_one_is_not(
+    seams: Seams,
+) -> None:
+    stale = [
+        _handing_off(name, NOW - DECISION_HANDOFF_LEASE - timedelta(seconds=1))
+        for name in ("ap-1", "ap-2", "ap-done")
+    ]
+    fresh = _handing_off("ap-fresh", NOW - DECISION_HANDOFF_LEASE + timedelta(seconds=1))
+    seams.ledger_repo.list_stale_deliveries.side_effect = _ledger_holding(*stale, fresh)
+    # ap-done's own decide finished the hand-off before the sweep's lease: none was due.
+    seams.hand_off.side_effect = lambda row, now: row.approval_id != "ap-done"
+
+    report = await sweep_conversations()
+
+    assert seams.hand_off.await_args_list == [call(row, NOW) for row in stale]
+    assert report == SweepReport(handed_off=2)
+    assert _report(seams)["handed_off"] == 2
+
+
+async def test_a_hand_off_that_fails_again_is_logged_and_the_rest_still_handed_off(
+    seams: Seams,
+) -> None:
+    rows = [
+        _handing_off(name, NOW - DECISION_HANDOFF_LEASE - timedelta(seconds=1))
+        for name in ("ap-1", "ap-2", "ap-3")
+    ]
+    seams.ledger_repo.list_stale_deliveries.side_effect = _ledger_holding(*rows)
+
+    async def hand_off(row: ApprovalLedgerDocument, now: datetime) -> bool:
+        if row.approval_id != "ap-2":
+            raise RuntimeError(f"executor down for {row.approval_id}")
+        return True
+
+    seams.hand_off.side_effect = hand_off
+
+    report = await sweep_conversations()
+
+    assert report == SweepReport(handed_off=1, failed=2)
+    assert seams.log.error.call_args_list == [
+        call(
+            "approval decision hand-off failed again",
+            approval_id=approval_id,
+            conversation_id=f"c-{approval_id}",
+            error_type="RuntimeError",
+            error=f"executor down for {approval_id}",
+        )
+        for approval_id in ("ap-1", "ap-3")
+    ]
