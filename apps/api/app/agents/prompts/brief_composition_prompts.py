@@ -146,13 +146,13 @@ done: Draft reply to Lena | outcome drafted · 8. [Gmail] note: Notion receipt �
 Calendar] calendar event: Weekly sync | at 10:00 AM · q1 | Lena Ortiz, in Slack, on item 2: "We go
 live at noon. Which hero line do you want?" · stripe_open_invoice_usd | open invoice, by category:
 INV-31 Hooli 2000 · INV-32 Pied Piper 350
-{{"blocks": [
-  {{"kind": "lead", "item": {{"id": 2, "action": "reply", "title": "Northwind hero line",
-    "detail": "Lena ships at noon and needs your pick"}}}},
-  {{"kind": "quote", "quote_id": "q1"}},
-  {{"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
-    {{"id": 5, "action": "review", "title": "Webhook retries bug", "detail": null}}]}}
-]}}
+{"blocks": [
+  {"kind": "lead", "item": {"id": 2, "action": "reply", "title": "Northwind hero line",
+    "detail": "Lena ships at noon and needs your pick"}},
+  {"kind": "quote", "quote_id": "q1"},
+  {"kind": "items", "state": "needs_you", "heading": "Due this week", "items": [
+    {"id": 5, "action": "review", "title": "Webhook retries bug", "detail": null}]}
+]}
 Why: Lena is waiting and live at noon, so she leads, in her own words; item 7, the reply GAIA
 drafted, is what her lead offers.
 The receipt is noise, the weekly sync is routine, and two invoices read fine without a chart.
@@ -161,13 +161,13 @@ The receipt is noise, the weekly sync is routine, and two invoices read fine wit
 feedback | outcome finished · 4. [Google Calendar] calendar event: Call with Ines | at 2:00 PM ·
 g1 | "Finish the novel's first draft by spring" (from memory) | linked todos: 4 finished in the
 window, 1 open: Chapter 7; Chapter 8; Chapter 9 outline; Research trip notes; Chapter 9 draft
-{{"blocks": [
-  {{"kind": "progress", "goal_id": "g1"}},
-  {{"kind": "items", "state": "needs_you", "heading": "Ready when you are", "items": [
-    {{"id": 3, "action": "read", "title": "Query letter feedback", "detail": null}}]}},
-  {{"kind": "note", "text": "Nothing needs you before [[fact:4]] at [[fact:4.time]]: a clear
-    morning for the chapter nine draft."}}
-]}}
+{"blocks": [
+  {"kind": "progress", "goal_id": "g1"},
+  {"kind": "items", "state": "needs_you", "heading": "Ready when you are", "items": [
+    {"id": 3, "action": "read", "title": "Query letter feedback", "detail": null}]},
+  {"kind": "note", "text": "Nothing needs you before [[fact:4]] at [[fact:4.time]]: a clear
+    morning for the chapter nine draft."}
+]}
 Why: on a quiet day the goal is the story. Short and calm beats padded.
 
 3. A spike for a shop owner. Pool, in part: zendesk_tickets | Support tickets, per day: Thu 4 ·
@@ -175,15 +175,15 @@ Fri 5 · Sat 3 · Sun 6 · Mon 4 · Tue 5 · Wed 19 (today) | figures: total 46,
 Wednesday, low 3, latest 19 · 6. [Shopify] waiting on you, important: Checkout errors on mobile
 | 31 failed orders since 6:00 | action review · 8. [Google Calendar] calendar event: Standup |
 at 9:30 AM · 11. [GAIA] in progress: Restock order for the linen line | outcome started
-{{"blocks": [
-  {{"kind": "lead", "item": {{"id": 6, "action": "review", "title": "Mobile checkout errors",
-    "detail": "Orders have been failing since early morning"}}}},
-  {{"kind": "chart", "series_ids": ["zendesk_tickets"], "chart": "line",
+{"blocks": [
+  {"kind": "lead", "item": {"id": 6, "action": "review", "title": "Mobile checkout errors",
+    "detail": "Orders have been failing since early morning"}},
+  {"kind": "chart", "series_ids": ["zendesk_tickets"], "chart": "line",
     "title": "Support tickets this week",
-    "takeaway": "[[series:zendesk_tickets.latest]] today against a usual handful: the checkout errors are reaching customers."}},
-  {{"kind": "items", "state": "in_progress", "heading": "Still moving", "items": [
-    {{"id": 11, "outcome": "started", "title": "Linen restock order", "detail": null}}]}}
-]}}
+    "takeaway": "[[series:zendesk_tickets.latest]] today against a usual handful: the checkout errors are reaching customers."},
+  {"kind": "items", "state": "in_progress", "heading": "Still moving", "items": [
+    {"id": 11, "outcome": "started", "title": "Linen restock order", "detail": null}]}
+]}
 Why: the spike and its cause are one story, so the cause leads and the chart shows its size.
 A standup never leads, and a heading names what its items are about."""
 

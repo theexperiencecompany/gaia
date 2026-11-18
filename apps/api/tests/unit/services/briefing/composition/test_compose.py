@@ -200,6 +200,15 @@ class TestOneCall:
         assert '"Maya is waiting on the term sheet."' in prompt
         assert "{" not in prompt.split("## The pool", 1)[1].split("## Three compositions", 1)[0]
 
+    async def test_the_example_compositions_reach_the_model_as_json(self, model: AsyncMock) -> None:
+        """Regression: the examples went out with every brace doubled, {{"blocks": [...]}}."""
+        await compose_brief(USER, POOL, DAILY)
+
+        examples = _prompt(model).split("## Three compositions", 1)[1]
+        answers = [line for line in examples.splitlines() if line.startswith('{"blocks"')]
+        assert len(answers) == 3
+        assert "{{" not in examples
+
     async def test_a_weekly_composition_is_framed_as_the_week(self, model: AsyncMock) -> None:
         await compose_brief(USER, POOL, WEEKLY)
 
