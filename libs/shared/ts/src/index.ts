@@ -228,25 +228,19 @@ export {
 export type {
   IntegrationStatusDisplay,
   NotificationFilter,
-  TodoFilterState,
   WorkflowFilterState,
 } from "./hooks";
 export {
   categorizeIntegrations,
   filterIntegrations,
   filterNotifications,
-  filterTodos,
   filterWorkflows,
   getIntegrationDisplayStatus,
   getNotificationIcon,
   groupNotificationsByDate,
-  groupTodosByDate,
-  groupTodosByProject,
   IntegrationQueryKeys,
   NotificationQueryKeys,
-  sortTodos,
   sortWorkflows,
-  TodoQueryKeys,
   WorkflowQueryKeys,
 } from "./hooks";
 export type {
