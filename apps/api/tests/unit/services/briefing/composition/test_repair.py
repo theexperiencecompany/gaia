@@ -6,7 +6,7 @@ import pytest
 from tests.helpers import user_clock
 
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
@@ -45,7 +45,14 @@ NOTE = ComposedNote(kind="note", text="A light day.")
 
 def _candidate(title: str, **fields: object) -> BriefCandidate:
     return BriefCandidate.model_validate(
-        {"source": "gaia", "app": "GAIA", "state": "you", "title": title, "gaia_acts": True}
+        {
+            "origin": CandidateOrigin.TRACKED,
+            "source": "gaia",
+            "app": "GAIA",
+            "state": "you",
+            "title": title,
+            "gaia_acts": True,
+        }
         | fields
     )
 
@@ -231,7 +238,7 @@ class TestThePoolsOwnBrief:
             _candidate("Board deck", state="lookback"),
             _candidate("Weekly update", state="lookback", outcome=BriefOutcome.SENT),
             _candidate("Inbox triage", state="gaia"),
-            _candidate("Standup", state="note", is_event=True),
+            _candidate("Standup", state="note", origin=CandidateOrigin.EVENT),
         )
 
         assert pool_composition(pool, pool_values(pool)) == _of(

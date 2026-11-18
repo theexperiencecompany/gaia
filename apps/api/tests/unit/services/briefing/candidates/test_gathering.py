@@ -19,7 +19,7 @@ from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
 from app.models.briefing_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
@@ -70,8 +70,6 @@ def quiet_stores(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
     )
-    monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=[]))
-    monkeypatch.setattr(todo_repository, "list_undated_user_todos", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         candidates_pool, "get_connected_integration_ids", AsyncMock(return_value=[])
     )
@@ -112,10 +110,11 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
     )
 
 
-async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidates:
-    return await gather_candidates(
-        USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, [], CLOCK.day_start(days_ago=-1))
-    )
+async def _gathered(
+    work: TrackedWork, scouts: ScoutSignals, open_own: list[TodoDocument] | None = None
+) -> GatheredCandidates:
+    sources = CandidateSources(work, scouts, [], CLOCK.day_start(days_ago=-1), open_own or [])
+    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
 
 def _found(
@@ -127,11 +126,12 @@ def _found(
     held_id: str | None = None,
 ) -> BriefCandidate:
     return BriefCandidate(
+        origin=CandidateOrigin.APP_SIGNAL,
         source="gmail",
         app="Gmail",
         state="you",
         title=title,
-        ref="gmail:t1",
+        ref=OutsideRef(integration_id="gmail", external_id="t1"),
         detail=detail,
         due_at=due_at,
         todo_id=todo_id,
@@ -182,7 +182,13 @@ class TestFoldingTwoFindsOfOneThing:
         )
 
     def test_a_repeat_does_not_end_the_folding_of_what_follows(self) -> None:
-        other = BriefCandidate(source="gmail", app="Gmail", state="you", title="Offsite")
+        other = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gmail",
+            app="Gmail",
+            state="you",
+            title="Offsite",
+        )
 
         kept = _one_per_thing([_found("a"), _found("b"), other])
 
@@ -192,7 +198,9 @@ class TestFoldingTwoFindsOfOneThing:
 class TestTheCalendarJoinsThePool:
     async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
-        sources = CandidateSources(TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1))
+        sources = CandidateSources(
+            TrackedWork(), _scouts(), events, CLOCK.day_start(days_ago=-1), []
+        )
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
@@ -202,13 +210,13 @@ class TestTheCalendarJoinsThePool:
 
 class TestOwnTodosJoinThePool:
     async def test_the_users_own_todos_due_by_their_next_local_midnight_wait_on_them(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
     ) -> None:
+        midnight = datetime(2026, 11, 11, 18, 30, tzinfo=UTC)
         own = TodoDocument(id="own-1", user_id=USER_ID, title="File the VAT return", due_date=NOW)
-        listing = AsyncMock(return_value=[own])
-        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
+        tomorrow = TodoDocument(id="own-3", user_id=USER_ID, title="Pay rent", due_date=midnight)
 
-        gathered = await _gathered(TrackedWork(), _scouts())
+        gathered = await _gathered(TrackedWork(), _scouts(), [own, tomorrow])
 
         [item] = gathered.pool.values()
         assert (item.title, item.todo_id, item.state, item.action) == (
@@ -217,17 +225,11 @@ class TestOwnTodosJoinThePool:
             "you",
             BriefAction.ATTEND,
         )
-        assert listing.await_args.kwargs["due_before"] == datetime(2026, 11, 11, 18, 30, tzinfo=UTC)
 
-    async def test_an_undated_own_todo_is_offered_with_no_due_date(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_an_undated_own_todo_is_offered_with_no_due_date(self) -> None:
         undated = TodoDocument(id="own-2", user_id=USER_ID, title="Sort the garage")
-        monkeypatch.setattr(
-            todo_repository, "list_undated_user_todos", AsyncMock(return_value=[undated])
-        )
 
-        gathered = await _gathered(TrackedWork(), _scouts())
+        gathered = await _gathered(TrackedWork(), _scouts(), [undated])
 
         [item] = gathered.pool.values()
         assert (item.todo_id, item.due_at, item.state, item.action) == (
@@ -288,16 +290,10 @@ class TestWhatEarlierBriefsShowedIsNotNews:
         assert candidate.moved and not candidate.is_repeat
         assert gathered.has_news
 
-    async def test_an_undated_own_todo_alone_is_no_news(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            todo_repository,
-            "list_undated_user_todos",
-            AsyncMock(return_value=[TodoDocument(id="u1", user_id=USER_ID, title="Plan Q1")]),
-        )
+    async def test_an_undated_own_todo_alone_is_no_news(self) -> None:
+        undated = TodoDocument(id="u1", user_id=USER_ID, title="Plan Q1")
 
-        gathered = await _gathered(TrackedWork(), _scouts())
+        gathered = await _gathered(TrackedWork(), _scouts(), [undated])
 
         (candidate,) = gathered.pool.values()
         assert candidate.backlog
@@ -342,7 +338,7 @@ class TestWhereGaiaCanAct:
             CLOCK,
             NOW,
             NOW,
-            CandidateSources(work, scouts, events, CLOCK.day_start(days_ago=-1)),
+            CandidateSources(work, scouts, events, CLOCK.day_start(days_ago=-1), []),
         )
 
         assert [(c.source, c.gaia_acts) for c in gathered.pool.values()] == [

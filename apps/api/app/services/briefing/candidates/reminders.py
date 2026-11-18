@@ -4,7 +4,12 @@ from datetime import datetime
 
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction
 from app.db.repositories.reminders import reminder_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import (
+    BriefCandidate,
+    CandidateOrigin,
+    GaiaRef,
+    GaiaRefKind,
+)
 from app.models.brief_item_models import ItemState
 from app.models.reminder_models import StaticReminderPayload
 
@@ -15,9 +20,10 @@ async def reminder_candidates(
     """Return each armed reminder firing between the user's local day start and end."""
     return [
         BriefCandidate(
+            origin=CandidateOrigin.REMINDER,
             source=GAIA_SOURCE,
             app=GAIA_APP_NAME,
-            seen_as=f"reminder:{reminder.id}",
+            seen_as=GaiaRef(kind=GaiaRefKind.REMINDER, id=reminder.id),
             state=ItemState.YOU,
             title=reminder.payload.title,
             detail=reminder.payload.body or None,

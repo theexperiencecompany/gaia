@@ -36,6 +36,7 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_candidate_models import CandidateOrigin, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
@@ -166,7 +167,7 @@ class TestTrackedTodos:
         found = waiting_candidates(work)
 
         assert [(c.todo_id, c.ref) for c in found] == [
-            ("t1", "gmail:18c2f"),
+            ("t1", OutsideRef(integration_id="gmail", external_id="18c2f")),
             ("t2", None),
             ("t3", None),
         ]
@@ -291,94 +292,90 @@ def _own_todo(todo_id: str, title: str, **fields: Any) -> TodoDocument:
     return TodoDocument(id=todo_id, user_id=USER_ID, title=title, **fields)
 
 
-def _listings(
-    monkeypatch: pytest.MonkeyPatch, due: list[TodoDocument], undated: list[TodoDocument]
-) -> tuple[AsyncMock, AsyncMock]:
-    due_listing, undated_listing = AsyncMock(return_value=due), AsyncMock(return_value=undated)
-    monkeypatch.setattr(todo_repository, "list_open_user_todos", due_listing)
-    monkeypatch.setattr(todo_repository, "list_undated_user_todos", undated_listing)
-    return due_listing, undated_listing
-
-
 class TestOwnTodos:
-    async def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to_most_overdue_first(
+        self,
     ) -> None:
         overdue = NOW - timedelta(days=3)
-        due = [
-            _own_todo("o1", "File the VAT return", description="Q3", due_date=overdue),
+        open_own = [
             _own_todo("o2", "Renew the passport", due_date=NOW),
+            _own_todo("o1", "File the VAT return", description="Q3", due_date=overdue),
+            _own_todo("late", "Book the dentist", due_date=NOW + timedelta(days=2)),
         ]
-        listing, _ = _listings(monkeypatch, due, [])
-        cutoff = NOW + timedelta(hours=20)
 
-        found = await own_todo_candidates(USER_ID, cutoff, TrackedWork())
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=20), TrackedWork())
 
-        assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
-            ("File the VAT return", None, overdue, "o1"),
-            ("Renew the passport", None, NOW, "o2"),
+        assert [(c.title, c.detail, c.due_at, c.todo_id, c.origin) for c in found] == [
+            ("File the VAT return", None, overdue, "o1", CandidateOrigin.OWN_TODO),
+            ("Renew the passport", None, NOW, "o2", CandidateOrigin.OWN_TODO),
         ]
         assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
-        assert listing.await_args.args == (USER_ID,)
-        assert listing.await_args.kwargs == {
-            "limit": DUE_TODO_CANDIDATES_LIMIT,
-            "due_before": cutoff,
-        }
 
-    async def test_the_oldest_undated_todos_follow_the_due_ones_with_no_due_date(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        due = [_own_todo("o1", "File the VAT return", due_date=NOW)]
-        undated = [_own_todo("n1", "Sort the garage"), _own_todo("n2", "Call grandma")]
-        _, listing = _listings(monkeypatch, due, undated)
+    def test_a_todo_due_exactly_at_the_cutoff_is_not_the_briefs(self) -> None:
+        open_own = [_own_todo("o1", "File the VAT return", due_date=NOW)]
 
-        found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
+        assert own_todo_candidates(open_own, NOW, TrackedWork()) == []
 
-        assert [(c.todo_id, c.due_at, c.backlog) for c in found] == [
-            ("o1", NOW, False),
-            ("n1", None, True),
-            ("n2", None, True),
+    def test_a_naive_due_date_is_read_as_utc(self) -> None:
+        naive = (NOW - timedelta(minutes=1)).replace(tzinfo=None)
+        open_own = [_own_todo("o1", "File the VAT return", due_date=naive)]
+
+        assert [c.todo_id for c in own_todo_candidates(open_own, NOW, TrackedWork())] == ["o1"]
+
+    def test_only_the_most_overdue_are_offered_and_ties_keep_creation_order(self) -> None:
+        open_own = [
+            _own_todo(f"o{n:02d}", f"Errand {n}", due_date=NOW - timedelta(days=n % 3))
+            for n in reversed(range(DUE_TODO_CANDIDATES_LIMIT + 5))
+        ]
+
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
+
+        ordered = sorted(open_own, key=lambda d: (d.due_date, d.id))[:DUE_TODO_CANDIDATES_LIMIT]
+        assert [c.todo_id for c in found] == [d.id for d in ordered]
+
+    def test_the_oldest_undated_todos_follow_the_due_ones_as_backlog(self) -> None:
+        open_own = [
+            _own_todo(f"n{n}", f"Someday {n}", created_at=NOW - timedelta(days=n))
+            for n in range(UNDATED_TODO_CANDIDATES_LIMIT + 2)
+        ] + [_own_todo("o1", "File the VAT return", due_date=NOW)]
+
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
+
+        oldest = [f"n{n}" for n in reversed(range(2, UNDATED_TODO_CANDIDATES_LIMIT + 2))]
+        assert [(c.todo_id, c.backlog) for c in found] == [
+            ("o1", False),
+            *((todo_id, True) for todo_id in oldest),
         ]
         assert {(c.state, c.action) for c in found} == {("you", BriefAction.ATTEND)}
-        listing.assert_awaited_once_with(USER_ID, limit=UNDATED_TODO_CANDIDATES_LIMIT)
 
-    async def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
+        self,
     ) -> None:
-        _listings(
-            monkeypatch,
-            [
-                _own_todo("b1", "Approve the Priya reply", due_date=NOW),
-                _own_todo("u9", "draft the  MEMO", due_date=NOW),
-                _own_todo("u1", "Call the bank", due_date=NOW),
-            ],
-            [
-                _own_todo("b1", "Approve the Priya reply"),
-                _own_todo("n9", "Draft the memo"),
-                _own_todo("n1", "Sort the garage"),
-            ],
-        )
+        open_own = [
+            _own_todo("b1", "Approve the Priya reply", due_date=NOW),
+            _own_todo("u9", "draft the  MEMO", due_date=NOW),
+            _own_todo("u1", "Call the bank", due_date=NOW),
+            _own_todo("n9", "Draft the memo"),
+            _own_todo("n1", "Sort the garage"),
+        ]
         work = TrackedWork(
             blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
             running=[_todo("r1", "Draft the memo")],
         )
 
-        found = await own_todo_candidates(USER_ID, NOW, work)
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), work)
 
         assert [c.todo_id for c in found] == ["u1", "n1"]
 
-    async def test_an_undated_todo_on_a_due_ones_subject_is_counted_into_it(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _listings(
-            monkeypatch,
-            [_own_todo("o1", "Call the bank", due_date=NOW)],
-            [_own_todo("n1", "call the  BANK")],
-        )
+    def test_an_undated_todo_on_a_due_ones_subject_is_counted_into_it(self) -> None:
+        open_own = [
+            _own_todo("n1", "call the  BANK"),
+            _own_todo("o1", "Call the bank", due_date=NOW),
+        ]
 
-        found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
 
-        assert [(c.todo_id, c.count) for c in found] == [("o1", 2)]
+        assert [(c.todo_id, c.count, c.backlog) for c in found] == [("o1", 2, False)]
 
 
 def _held(
@@ -663,7 +660,11 @@ class TestApprovals:
             ("Slack", "Message #launch on Slack", "you"),
         ]
         assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
-        assert [c.seen_as for c in found] == ["approval:ap_1", "approval:ap_3", "approval:appr-1"]
+        assert [str(c.seen_as) for c in found] == [
+            "approval:ap_1",
+            "approval:ap_3",
+            "approval:appr-1",
+        ]
         assert {c.action for c in found} == {BriefAction.APPROVE}
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)

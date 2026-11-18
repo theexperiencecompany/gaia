@@ -1,6 +1,6 @@
 """Todos as candidates: what waits on the user, their own open todos, GAIA's work, what got done."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from app.constants.briefing import (
@@ -18,8 +18,7 @@ from app.constants.todos import (
     WAITING_FOR_REPLY_LABEL,
     WaitingOn,
 )
-from app.db.repositories.todos import todo_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
 from app.models.brief_item_models import ItemState
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument
@@ -27,6 +26,7 @@ from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.clock import UserClock, due_on
 from app.services.briefing.work import TrackedWork, finished_by
+from app.utils.timezone import as_utc
 
 
 def _source(doc: TodoDocument) -> tuple[str, str]:
@@ -61,7 +61,8 @@ def _attended(_doc: TodoDocument) -> BriefAction:
 
 
 def _grouped(
-    docs: list[TodoDocument],
+    docs: Sequence[TodoDocument],
+    origin: CandidateOrigin,
     state: ItemState,
     *,
     action: Callable[[TodoDocument], BriefAction] | None = None,
@@ -78,9 +79,12 @@ def _grouped(
         source, app = _source(doc)
         ref = doc.external_ref
         by_subject[key] = BriefCandidate(
+            origin=origin,
             source=source,
             app=app,
-            ref=f"{source}:{ref.id}" if ref is not None and source != GAIA_SOURCE else None,
+            ref=OutsideRef(integration_id=source, external_id=ref.id)
+            if ref is not None and source != GAIA_SOURCE
+            else None,
             state=state,
             title=doc.title,
             # Of a todo the brief says only what is meant for the user: the question GAIA asks
@@ -98,35 +102,38 @@ def _grouped(
 
 def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return the tracked todos waiting on the user, then the ones that failed."""
-    return _grouped(work.blocked, ItemState.YOU, action=_asked) + _grouped(
-        work.failed, ItemState.FAILED, action=_retried
+    tracked = CandidateOrigin.TRACKED
+    return _grouped(work.blocked, tracked, ItemState.YOU, action=_asked) + _grouped(
+        work.failed, tracked, ItemState.FAILED, action=_retried
     )
 
 
-async def own_todo_candidates(
-    user_id: str, due_before: datetime, work: TrackedWork
+def own_todo_candidates(
+    open_own: Sequence[TodoDocument], due_before: datetime, work: TrackedWork
 ) -> list[BriefCandidate]:
-    """Return the user's own open todos due before the cutoff, then their oldest undated ones.
+    """Return the user's own open todos due before the cutoff, most overdue first, then their oldest undated ones.
 
     An undated one is backlog: on their list, never the brief's news. A todo a tracked
-    candidate already covers, by id or subject, is left to it.
+    candidate already covers, by id or subject, is left to it. Ties keep creation order.
     """
     tracked = [*work.completed, *work.running, *work.blocked, *work.failed]
     tracked_ids = {doc.id for doc in tracked}
     tracked_subjects = {subject_key(doc) for doc in tracked}
-
-    docs = [
-        *await todo_repository.list_open_user_todos(
-            user_id, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=due_before
-        ),
-        *await todo_repository.list_undated_user_todos(
-            user_id, limit=UNDATED_TODO_CANDIDATES_LIMIT
-        ),
+    due = sorted(
+        (d for d in open_own if d.due_date is not None and as_utc(d.due_date) < due_before),
+        key=lambda d: (as_utc(d.due_date), d.id),
+    )[:DUE_TODO_CANDIDATES_LIMIT]
+    undated = sorted(
+        (d for d in open_own if d.due_date is None), key=lambda d: (as_utc(d.created_at), d.id)
+    )[:UNDATED_TODO_CANDIDATES_LIMIT]
+    own = [
+        d
+        for d in [*due, *undated]
+        if d.id not in tracked_ids and subject_key(d) not in tracked_subjects
     ]
-    own = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
     return [
-        c.model_copy(update={"backlog": c.due_at is None})
-        for c in _grouped(own, ItemState.YOU, action=_attended)
+        c if c.due_at is not None else c.model_copy(update={"origin": CandidateOrigin.BACKLOG})
+        for c in _grouped(own, CandidateOrigin.OWN_TODO, ItemState.YOU, action=_attended)
     ]
 
 
@@ -169,11 +176,16 @@ def _finished(_doc: TodoDocument) -> BriefOutcome:
 
 def gaia_work_candidates(work: TrackedWork, clock: UserClock) -> list[BriefCandidate]:
     """Return what was done of GAIA's tracked work since the last brief, then what is still open."""
-    return _grouped(work.completed, ItemState.LOOKBACK, outcome=_finished) + _grouped(
-        work.running, ItemState.GAIA, outcome=_started, standing=lambda doc: standing(doc, clock)
+    tracked = CandidateOrigin.TRACKED
+    return _grouped(work.completed, tracked, ItemState.LOOKBACK, outcome=_finished) + _grouped(
+        work.running,
+        tracked,
+        ItemState.GAIA,
+        outcome=_started,
+        standing=lambda doc: standing(doc, clock),
     )
 
 
 def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
     """Return what the user finished themselves, one candidate per subject."""
-    return _grouped(docs, ItemState.LOOKBACK, outcome=_finished)
+    return _grouped(docs, CandidateOrigin.USER_DONE, ItemState.LOOKBACK, outcome=_finished)

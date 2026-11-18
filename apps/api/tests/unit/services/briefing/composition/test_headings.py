@@ -10,7 +10,7 @@ import pytest
 from tests.helpers import unfenced, user_clock
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
 from app.services.briefing.composition import headings
 from app.services.briefing.composition.headings import (
@@ -24,8 +24,20 @@ from app.utils.errors import AppError
 USER = "64f1c0ffee0000000000abcd"
 POOL = FactPool(
     items={
-        1: BriefCandidate(source="gaia", app="GAIA", state="you", title="Priya's offsite venues"),
-        2: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Investor update"),
+        1: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Priya's offsite venues",
+        ),
+        2: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state="lookback",
+            title="Investor update",
+        ),
     },
     series=[],
     quotes=[],

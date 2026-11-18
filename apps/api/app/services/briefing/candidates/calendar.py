@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from app.constants.briefing import BriefAction
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.briefing_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
@@ -52,9 +52,9 @@ def calendar_candidates(events: list[BriefingEvent], today: str) -> list[BriefCa
     app = integration_name(GOOGLE_CALENDAR_INTEGRATION_ID)
     return [
         BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source=GOOGLE_CALENDAR_INTEGRATION_ID,
             app=app,
-            is_event=True,
             state=ItemState.NOTE,
             title=event.title,
             detail=" | ".join(

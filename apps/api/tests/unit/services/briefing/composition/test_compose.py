@@ -13,7 +13,7 @@ from tests.helpers import user_clock
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.constants.briefing import BRIEF_COMPOSITION_LABEL, BriefAction, BriefingKind, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
@@ -55,6 +55,7 @@ _MEETINGS = DataSeries(
 POOL = FactPool(
     items={
         1: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
             state="you",
@@ -63,7 +64,12 @@ POOL = FactPool(
             gaia_acts=True,
         ),
         2: BriefCandidate(
-            source="gaia", app="GAIA", state="lookback", title="Board deck numbers", gaia_acts=True
+            origin=CandidateOrigin.TRACKED,
+            source="gaia",
+            app="GAIA",
+            state="lookback",
+            title="Board deck numbers",
+            gaia_acts=True,
         ),
     },
     series=[_MEETINGS],
@@ -204,11 +210,11 @@ class TestOneCall:
         only_event = FactPool(
             items={
                 1: BriefCandidate(
+                    origin=CandidateOrigin.EVENT,
                     source="googlecalendar",
                     app="Google Calendar",
                     state="note",
                     title="Board call",
-                    is_event=True,
                 )
             },
             series=[],
@@ -468,6 +474,7 @@ class TestWhatSlotsRender:
         pool = FactPool(
             items={
                 1: BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
                     state="you",
@@ -476,6 +483,7 @@ class TestWhatSlotsRender:
                     count=3,
                 ),
                 2: BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
                     state="you",
@@ -483,7 +491,13 @@ class TestWhatSlotsRender:
                     time="11:00 AM",
                     due_at=datetime(2026, 11, 3, 9, tzinfo=UTC),
                 ),
-                3: BriefCandidate(source="gmail", app="Gmail", state="you", title="Open"),
+                3: BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
+                    source="gmail",
+                    app="Gmail",
+                    state="you",
+                    title="Open",
+                ),
             },
             series=[],
             quotes=[],
@@ -576,11 +590,11 @@ class TestTheCallItself:
         only_event = FactPool(
             items={
                 1: BriefCandidate(
+                    origin=CandidateOrigin.EVENT,
                     source="googlecalendar",
                     app="Google Calendar",
                     state="note",
                     title="Board call",
-                    is_event=True,
                     time="9:00 AM",
                 )
             },

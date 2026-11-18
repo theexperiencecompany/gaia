@@ -12,7 +12,12 @@ from app.config.oauth_config import get_integration_by_id, get_integration_by_to
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import (
+    BriefCandidate,
+    CandidateOrigin,
+    GaiaRef,
+    GaiaRefKind,
+)
 from app.models.brief_item_models import ItemState
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.tool_key import parse_hil_tool_key
@@ -35,9 +40,10 @@ def _candidate(
     source: str, app: str, summary: str, tool_name: str, approval_id: str
 ) -> BriefCandidate:
     return BriefCandidate(
+        origin=CandidateOrigin.APPROVAL,
         source=source,
         app=app,
-        seen_as=f"approval:{approval_id}",
+        seen_as=GaiaRef(kind=GaiaRefKind.APPROVAL, id=approval_id),
         state=ItemState.YOU,
         title=summary.strip() or f"Approve {tool_name}",
         detail="waiting for your approval",

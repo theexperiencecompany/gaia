@@ -7,7 +7,7 @@ import pytest
 from tests.helpers import user_clock
 
 from app.constants.briefing import LEAD_OFFERS, BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartBlock,
@@ -59,6 +59,7 @@ _GOAL = GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2
 POOL = FactPool(
     items={
         1: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gmail",
             app="Gmail",
             state="you",
@@ -67,6 +68,7 @@ POOL = FactPool(
             people=["Maya"],
         ),
         2: BriefCandidate(
+            origin=CandidateOrigin.HELD,
             source="gaia",
             app="GAIA",
             state="failed",
@@ -75,6 +77,7 @@ POOL = FactPool(
             held_id="h2",
         ),
         3: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="lookback",
@@ -82,6 +85,7 @@ POOL = FactPool(
             outcome=BriefOutcome.SENT,
         ),
         4: BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source="linear",
             app="Linear",
             state="you",
@@ -91,14 +95,19 @@ POOL = FactPool(
             signal=_SIGNAL,
         ),
         5: BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
             state="note",
             title="Board call",
-            is_event=True,
         ),
         6: BriefCandidate(
-            source="gaia", app="GAIA", state="note", title="Digest: three papers", held_id="h6"
+            origin=CandidateOrigin.HELD,
+            source="gaia",
+            app="GAIA",
+            state="note",
+            title="Digest: three papers",
+            held_id="h6",
         ),
     },
     series=[_SERIES],
@@ -230,6 +239,7 @@ class TestLayOut:
             items={
                 **POOL.items,
                 7: BriefCandidate(
+                    origin=CandidateOrigin.TRACKED,
                     source="gmail",
                     app="Gmail",
                     state="you",
@@ -293,7 +303,12 @@ class TestLayOut:
             POOL,
             items={
                 7: BriefCandidate(
-                    source="gaia", app="GAIA", state="note", title="Left", todo_id="t7"
+                    origin=CandidateOrigin.TRACKED,
+                    source="gaia",
+                    app="GAIA",
+                    state="note",
+                    title="Left",
+                    todo_id="t7",
                 )
             },
         )

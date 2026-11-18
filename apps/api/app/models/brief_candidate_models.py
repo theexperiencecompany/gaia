@@ -6,8 +6,9 @@ candidates; they are the fact pool's items, which the composition places by id.
 """
 
 from datetime import datetime
+from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.constants.todos import TodoCompleter
@@ -15,14 +16,64 @@ from app.models.brief_item_models import ItemState
 from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
 
 
+class CandidateOrigin(StrEnum):
+    """The producer that found a candidate, which decides where the brief may use it."""
+
+    #: GAIA's tracked work: waiting on the user, failed, running or done since the last brief.
+    TRACKED = "tracked"
+    #: A dated todo of the user's own, due before the brief's span ends.
+    OWN_TODO = "own_todo"
+    #: An undated todo of the user's own: on their list, not news, so it never leads.
+    BACKLOG = "backlog"
+    #: A todo the user finished themselves, which only the weekly recaps.
+    USER_DONE = "user_done"
+    APPROVAL = "approval"
+    REMINDER = "reminder"
+    FAILED_RUN = "failed_run"
+    APP_SIGNAL = "app_signal"
+    #: A result a workflow or todo run held for the brief.
+    HELD = "held"
+    #: A calendar event: the edition draws the day's calendar itself, so it can only lead.
+    EVENT = "event"
+
+
+class OutsideRef(BaseModel):
+    """The outside thing a candidate is about, which another source may find too."""
+
+    model_config = ConfigDict(frozen=True)
+
+    integration_id: str
+    external_id: str
+
+
+class GaiaRefKind(StrEnum):
+    """What GAIA's own id names, when a candidate is no todo and no outside thing."""
+
+    TODO = "todo"
+    APPROVAL = "approval"
+    WORKFLOW = "workflow"
+    REMINDER = "reminder"
+
+
+class GaiaRef(BaseModel):
+    """GAIA's own id for what a candidate is; it prints as the key signal memory stores it under."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: GaiaRefKind
+    id: str
+
+    def __str__(self) -> str:
+        return f"{self.kind.value}:{self.id}"
+
+
 class BriefCandidate(BaseModel):
     """One thing the brief could tell the user, with the references its run writes back to."""
 
+    origin: CandidateOrigin
     #: An integration id, or GAIA_SOURCE for GAIA's own work.
     source: str
     app: str = Field(description="Display name: GitHub, Gmail, GAIA")
-    #: A calendar event: the edition draws the day's calendar itself, so it can only lead.
-    is_event: bool = False
     #: How the item reads in an edition when it is kept (waiting on you, failed, done...).
     state: ItemState
     #: The source's own words; the composition writes the brief's short title from them.
@@ -48,20 +99,28 @@ class BriefCandidate(BaseModel):
     held_id: str | None = None
     #: The app signal it is, marked shown when the message speaks of it.
     signal: Signal | None = None
-    #: The outside thing it is about, as integration:id, which another source may find too.
-    ref: str | None = None
+    #: The outside thing it is about, which another source may find too.
+    ref: OutsideRef | None = None
     #: The other sources that found the same thing, folded into this one item.
     also_in: list[str] = Field(default_factory=list)
-    #: GAIA's own id for what it is when it is no todo or outside thing ("approval:<id>").
-    seen_as: str | None = None
-    #: An undated todo of the user's own: on their list, not news, so it never leads.
-    backlog: bool = False
+    #: GAIA's own id for what it is when it is no todo or outside thing.
+    seen_as: GaiaRef | None = None
     #: Whether GAIA can act on it (it has tools that change its app), so an offer about it is real.
     gaia_acts: bool = False
     #: What earlier briefs remember of it, as it stood before today; None the first time.
     memory: SignalMemoryDocument | None = None
     #: Whether its state changed since an earlier brief saw it.
     moved: bool = False
+
+    @property
+    def is_event(self) -> bool:
+        """Whether it is a calendar event, which can only lead."""
+        return self.origin is CandidateOrigin.EVENT
+
+    @property
+    def backlog(self) -> bool:
+        """Whether it is an undated todo of the user's own, which never leads."""
+        return self.origin is CandidateOrigin.BACKLOG
 
     @property
     def is_repeat(self) -> bool:

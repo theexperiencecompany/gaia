@@ -15,7 +15,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
 from app.models.brief_item_models import ItemState
 from app.services.briefing.composition.headings import heading_problems
@@ -40,7 +40,9 @@ _ITEMS: dict[int, tuple[str, ItemState, _Side]] = {
 }
 _POOL = FactPool(
     items={
-        i: BriefCandidate(source="gaia", app="GAIA", state=state, title=title)
+        i: BriefCandidate(
+            origin=CandidateOrigin.TRACKED, source="gaia", app="GAIA", state=state, title=title
+        )
         for i, (title, state, _) in _ITEMS.items()
     },
     series=[],

@@ -7,7 +7,7 @@ claimed from.
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.todos import todo_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.brief_models import PendingBriefItemDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -32,6 +32,7 @@ async def held_candidates(
             # The desk writes each finding as one self-contained line.
             candidates.append(
                 BriefCandidate(
+                    origin=CandidateOrigin.HELD,
                     source=GMAIL_INTEGRATION_ID,
                     app=integration_name(GMAIL_INTEGRATION_ID),
                     state=ItemState.NOTE,
@@ -42,6 +43,7 @@ async def held_candidates(
             continue
         candidates.append(
             BriefCandidate(
+                origin=CandidateOrigin.HELD,
                 source=GAIA_SOURCE,
                 app=GAIA_APP_NAME,
                 state=ItemState.NOTE,

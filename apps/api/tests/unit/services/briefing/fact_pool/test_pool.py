@@ -26,7 +26,7 @@ from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_pool_models import (
     DataSeries,
     GoalOrigin,
@@ -162,6 +162,7 @@ def stores(monkeypatch: pytest.MonkeyPatch) -> Stores:
 async def _reads() -> PoolReads:
     items = {
         1: BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source="gmail",
             app="Gmail",
             state="you",
@@ -169,13 +170,19 @@ async def _reads() -> PoolReads:
             people=["Maya Chen"],
             signal=_MAYA,
         ),
-        2: BriefCandidate(source="stripe", app="Stripe", state="you", title=_INVOICE.title),
+        2: BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="stripe",
+            app="Stripe",
+            state="you",
+            title=_INVOICE.title,
+        ),
         3: BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
             state="note",
             title="Board call",
-            is_event=True,
         ),
     }
     meeting = GoogleCalendarEventResource(
@@ -404,6 +411,7 @@ class TestAnItemLine:
     def test_a_due_date_is_the_users_own_day_not_utcs(self) -> None:
         """Regression: a todo due 1 AM in Kolkata read as due the day before, its UTC date."""
         item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="you",
@@ -419,7 +427,12 @@ class TestAnItemLine:
 
     def test_an_undated_own_todo_reads_as_on_their_list_not_waiting(self) -> None:
         item = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True, gaia_acts=True
+            origin=CandidateOrigin.BACKLOG,
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Plan Q1",
+            gaia_acts=True,
         )
 
         assert item_line(4, item, CONTEXT.clock) == (
@@ -437,6 +450,7 @@ class TestAnItemLine:
             last_state="you",
         )
         item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="you",
@@ -455,6 +469,7 @@ class TestAnItemLine:
 
     def test_an_item_says_every_fact_its_producer_knows_in_order(self) -> None:
         item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="github",
             app="GitHub",
             state="failed",
@@ -489,6 +504,7 @@ class TestAnItemLine:
             people_you=["Aryan"],
         )
         item = BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source="github",
             app="GitHub",
             state="you",
@@ -514,6 +530,7 @@ class TestAnItemLine:
         self, finished_by: TodoCompleter | None, state: str
     ) -> None:
         item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="lookback",
@@ -528,7 +545,13 @@ class TestAnItemLine:
         )
 
     def test_a_done_item_that_is_no_todo_reads_as_done(self) -> None:
-        item = BriefCandidate(source="github", app="GitHub", state="lookback", title="PR merged")
+        item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="github",
+            app="GitHub",
+            state="lookback",
+            title="PR merged",
+        )
 
         assert item_line(1, item, CONTEXT.clock) == (
             "1. [GitHub] done: PR merged | GAIA can only read GitHub: no offer on it"
@@ -536,6 +559,7 @@ class TestAnItemLine:
 
     def test_gaias_work_not_being_worked_on_reads_open_and_says_where_it_stands(self) -> None:
         item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="gaia",
@@ -563,6 +587,7 @@ class TestAnItemLine:
             people_role=PeopleRole.REVIEWER,
         )
         item = BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source="github",
             app="GitHub",
             state="you",
@@ -582,7 +607,13 @@ class TestAnItemLine:
         )
 
     def test_a_plain_item_is_only_its_head(self) -> None:
-        item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout sent")
+        item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="stripe",
+            app="Stripe",
+            state="note",
+            title="Payout sent",
+        )
 
         assert (
             item_line(2, item, CONTEXT.clock)
@@ -590,7 +621,14 @@ class TestAnItemLine:
         )
 
     def test_one_request_is_not_called_a_group(self) -> None:
-        item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout", count=1)
+        item = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
+            source="stripe",
+            app="Stripe",
+            state="note",
+            title="Payout",
+            count=1,
+        )
         grouped = item.model_copy(update={"count": 2})
 
         assert item_line(1, item, CONTEXT.clock) == (
@@ -603,7 +641,13 @@ class TestAnItemLine:
         self, url: str | None, todo_id: str | None
     ) -> None:
         item = BriefCandidate(
-            source="gmail", app="Gmail", state="you", title="Reply", url=url, todo_id=todo_id
+            origin=CandidateOrigin.TRACKED,
+            source="gmail",
+            app="Gmail",
+            state="you",
+            title="Reply",
+            url=url,
+            todo_id=todo_id,
         )
 
         assert item_line(1, item, CONTEXT.clock) == (
@@ -612,11 +656,11 @@ class TestAnItemLine:
 
     def test_a_calendar_event_is_not_named_by_its_state(self) -> None:
         item = BriefCandidate(
+            origin=CandidateOrigin.EVENT,
             source="googlecalendar",
             app="Google Calendar",
             state="note",
             title="Board call",
-            is_event=True,
         )
 
         assert (
@@ -628,6 +672,7 @@ class TestAnItemLine:
 class TestAnEmptyPool:
     def test_the_pool_says_each_due_date_on_the_users_own_day(self) -> None:
         rent = BriefCandidate(
+            origin=CandidateOrigin.TRACKED,
             source="gaia",
             app="GAIA",
             state="you",

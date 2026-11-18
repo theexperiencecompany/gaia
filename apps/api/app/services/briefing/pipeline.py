@@ -161,6 +161,7 @@ async def _read(
             # The held results wait for the daily brief, which a digest never carries.
             held=[] if spec.recaps_week else await held_items(user.id),
             due_before=span.end,
+            open_own=reads.open_own,
             user_done=reads.completed.since(since).user if spec.recaps_week else [],
         ),
     )

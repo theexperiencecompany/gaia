@@ -37,7 +37,6 @@ from app.config.settings import settings
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
     CALENDAR_UNAVAILABLE,
-    DUE_TODO_CANDIDATES_LIMIT,
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     LEAD_OFFERS,
@@ -726,7 +725,6 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         (approval_ledger_repository, "list_pending_for_user"),
         (hil_approval_repository, "list_pending_for_user"),
         (reminder_repository, "find_scheduled_between"),
-        (todo_repository, "list_undated_user_todos"),
     ):
         _seam(monkeypatch, w, owner, name, AsyncMock(return_value=[]))
     _seam(monkeypatch, w, workflow_executions_repository, "list_since", AsyncMock(return_value=[]))
@@ -2071,9 +2069,7 @@ class TestTheWeeklyAnswersTheWeek:
         stuck = TodoDocument(
             id="a2", user_id=_USER, title="Atlas pricing", updated_at=_NOW - timedelta(days=9)
         )
-        world.reads["list_open_user_todos"].side_effect = lambda *_a, due_before=None, **_k: (
-            [stuck] if due_before is None else []
-        )
+        world.reads["list_open_user_todos"].return_value = [stuck]
         world.composer.side_effect = lambda schema, _prompt, **_k: schema.model_validate(
             {"blocks": [{"kind": "progress", "goal_id": "g1"}]}
         )
@@ -2243,9 +2239,7 @@ class TestTheWeeklyReadsThisUsersWeek:
         due = TodoDocument(
             id="o1", user_id=_USER, title="File the VAT return", due_date=_NOW + timedelta(days=1)
         )
-        world.reads["list_open_user_todos"].side_effect = lambda *_a, due_before=None, **_k: (
-            [due] if due_before is not None else []
-        )
+        world.reads["list_open_user_todos"].return_value = [due]
         world.agent.return_value = _weekly_voiced(
             message="[The deck](fact:<fact of Investor deck>) is done. [[fact:<fact of Investor deck>]]"
             " shipped, [Priya](fact:<fact of Fix the login redirect>) waits."
@@ -2260,10 +2254,7 @@ class TestTheWeeklyReadsThisUsersWeek:
         world.reads["find_scheduled_between"].assert_awaited_once_with(
             _USER, _TODAY_START, _WEEK_AHEAD_END
         )
-        assert (
-            call(_USER, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=_WEEK_AHEAD_END)
-            in world.reads["list_open_user_todos"].await_args_list
-        )
+        world.reads["list_open_user_todos"].assert_awaited_once_with(_USER, limit=0)
         assert world.week.call_args.args[2] == [_FRIDAY_PITCH]
         assert all(c.args[0] == _USER and c.args[2] == _NOW for c in world.seen.await_args_list)
         assert "Recent briefs opened on" in world.composer.await_args.args[1]
@@ -2292,7 +2283,7 @@ class TestTheWeeklyReadsThisUsersWeek:
         world.calendar = CalendarGap.UNAVAILABLE
         world.reads["list_completed_since"].return_value = []
         _seam(monkeypatch, world, BriefReads, "own_todos", _own_todos(3, 3))
-        world.reads["list_undated_user_todos"].return_value = [
+        world.reads["list_open_user_todos"].return_value = [
             TodoDocument(id="u9", user_id=_USER, title="Sort the garage")
         ]
 
