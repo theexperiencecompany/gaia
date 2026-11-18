@@ -57,14 +57,27 @@ async def decide_handoff_by_button(
         and resolved is HANDOFF_DECISION_STATUS[decision]
         and pending.conversation_id
     ):
-        note = (message or "").strip()
-        words = f"{decision.value}: {note}" if note else decision.value
-        await record_exchange_in_thread(
-            pending.conversation_id,
-            BROWSER_HANDOFF_CARD_DECISION.format(decision=words),
-            _ACKS[decision],
-        )
+        await _record_decision(pending.conversation_id, decision, message)
     return resolved
+
+
+async def _record_decision(
+    conversation_id: str, decision: HandoffDecision, message: str | None
+) -> None:
+    """Write the decision into the agent's thread; a failure is reported, the decision stands."""
+    note = (message or "").strip()
+    words = f"{decision.value}: {note}" if note else decision.value
+    try:
+        await record_exchange_in_thread(
+            conversation_id, BROWSER_HANDOFF_CARD_DECISION.format(decision=words), _ACKS[decision]
+        )
+    except Exception as exc:  # the handoff is already settled: the tap's outcome is still that
+        log.error(
+            f"{LogTag.BROWSER} Recording a handoff decision in the thread failed",
+            conversation_id=conversation_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 async def _stop_from_card(
