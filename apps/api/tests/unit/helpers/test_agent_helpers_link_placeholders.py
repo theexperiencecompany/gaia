@@ -1,8 +1,10 @@
-"""Both graph drivers deliver a reply with its link placeholders swapped for the live links.
+"""The streaming driver delivers a reply with its link placeholders swapped for the live links.
 
 A model only ever holds a placeholder (app/services/links/placeholders.py); the
 URL must appear in what the user is sent and stored, and the placeholder never
-must, however the stream splits it. The live-link read is mocked at the repository seam.
+must, however the stream splits it. The silent driver's reply is not delivered
+yet, so it keeps its placeholders for the caller that delivers it. The live-link
+read is mocked at the repository seam.
 """
 
 from collections.abc import Iterator
@@ -102,11 +104,14 @@ async def test_a_streamed_reply_carries_the_link_never_the_placeholder(
 
 
 @pytest.mark.unit
-async def test_a_silent_reply_carries_the_link(live: AsyncMock) -> None:
+async def test_a_silent_reply_keeps_its_placeholder_for_the_caller_that_delivers_it(
+    live: AsyncMock,
+) -> None:
+    """Narration hands this text to the follow-up model before delivery: it must carry no URL."""
     message, _ = await execute_graph_silent(_graph(12), {}, _CONFIG)
 
-    assert message == f"Done. [Open the plan]({_url()}) when you like."
-    live.assert_awaited_with(OWNER, RecordTarget(type=TODO, id="t1"))
+    assert message == REPLY
+    live.assert_not_awaited()
 
 
 @pytest.mark.unit

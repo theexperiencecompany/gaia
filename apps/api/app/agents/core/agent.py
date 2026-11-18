@@ -68,6 +68,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.services.delivery.presence import read_presence
+from app.services.links.placeholders import resolve_link_placeholders
 from app.services.quiet_hours import message_class
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
@@ -436,7 +437,7 @@ async def call_agent_silent(
                 )
 
             return SilentRunResult(
-                message=complete_message,
+                message=await resolve_link_placeholders(user.user_id, complete_message),
                 tool_data=tool_data,
                 stream_id=stream_id,
             )
