@@ -27,6 +27,7 @@ from app.models.workflow_models import (
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.system_workflows.runs import SYSTEM_RUNS
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.workflow_tasks"
 RUNS = "app.services.system_workflows.definitions.briefing_runs"
@@ -91,12 +92,12 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
-            log = stack.enter_context(patch(f"{RUNS}.log"))
-            summary = await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](workflow)
+            async with captured_wide_event() as event:
+                summary = await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](workflow)
 
         pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.DAILY)
         assert summary == BRIEFING_SUMMARY
-        log.set_ns.assert_called_once_with("workflow", briefing_outcome="sent")
+        assert event["workflow"] == {"briefing_outcome": "sent"}
 
     @pytest.mark.regression
     async def test_a_daily_run_hands_its_outcome_to_the_held_release(

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 from app.constants.briefing import EditionChoice
 from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
@@ -22,7 +23,6 @@ USER_ID = make_user_id()
 class _Seams:
     store: AsyncMock
     capture: MagicMock
-    log: MagicMock
 
 
 @pytest.fixture
@@ -33,9 +33,8 @@ def seams() -> Iterator[_Seams]:
             new_callable=AsyncMock,
         ) as store,
         patch("app.services.briefing.edition_choices.capture") as capture,
-        patch("app.services.briefing.edition_choices.log") as log,
     ):
-        yield _Seams(store=store, capture=capture, log=log)
+        yield _Seams(store=store, capture=capture)
 
 
 @pytest.mark.unit
@@ -64,15 +63,16 @@ class TestSetEditionChoices:
     async def test_only_off_and_favourite_are_stored_and_the_counts_are_captured(
         self, seams: _Seams
     ) -> None:
-        view = await set_edition_choices(
-            USER_ID,
-            {
-                "menu": EditionChoice.OFF,
-                "memo": EditionChoice.OFF,
-                "swiss": EditionChoice.FAVOURITE,
-                "postal": EditionChoice.ON,
-            },
-        )
+        async with captured_wide_event() as event:
+            view = await set_edition_choices(
+                USER_ID,
+                {
+                    "menu": EditionChoice.OFF,
+                    "memo": EditionChoice.OFF,
+                    "swiss": EditionChoice.FAVOURITE,
+                    "postal": EditionChoice.ON,
+                },
+            )
 
         seams.store.assert_awaited_once_with(
             USER_ID,
@@ -88,9 +88,9 @@ class TestSetEditionChoices:
                 editions_off=2, editions_favourited=1, editions_total=len(DAILY_FAMILY_WEIGHTS)
             ),
         )
-        seams.log.audit.assert_called_once_with(
-            "briefing editions updated", actor=USER_ID, off=2, favourites=1
-        )
+        assert event["audit"] == [
+            {"msg": "briefing editions updated", "actor": USER_ID, "off": 2, "favourites": 1}
+        ]
         assert {e.family: e.choice for e in view.editions}["swiss"] == EditionChoice.FAVOURITE
 
     async def test_one_edition_left_on_is_accepted(self, seams: _Seams) -> None:

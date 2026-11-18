@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 from app.models.brief_pool_models import GoalOrigin
 from app.models.user_models import BriefingBootstrap, OnboardingSubdocument, UserDocument
@@ -16,7 +17,6 @@ from app.services.briefing.goals import StatedGoal
 from app.services.briefing.rollout import provision_existing_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingProvisioned
-from shared.py.wide_events import log, log_context
 
 USER_ID = make_user_id()
 _ONBOARDED = OnboardingSubdocument(completed=True)
@@ -213,9 +213,8 @@ class TestWideEvent:
     """
 
     async def test_stamps_the_component_operation_and_user(self, harness: Harness) -> None:
-        async with log_context("briefing_rollout_test"):
+        async with captured_wide_event() as event:
             await provision_existing_user(USER_ID)
-            event = dict(log.get())
 
         assert event["component"] == "briefing_rollout"
         assert event["operation"] == "provision_existing_user"
@@ -226,8 +225,7 @@ class TestWideEvent:
     ) -> None:
         harness.users.user = None
 
-        async with log_context("briefing_rollout_test"):
+        async with captured_wide_event() as event:
             assert await provision_existing_user(USER_ID) == "skipped"
-            event = dict(log.get())
 
         assert event["warnings"] == [{"msg": "briefing_rollout.unknown_user", "user_id": USER_ID}]

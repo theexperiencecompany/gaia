@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 import time_machine
 
 from app.constants.briefing import (
@@ -368,24 +369,25 @@ class TestSetBriefingSchedule:
         monkeypatch.setattr(user_repository, "get", get)
         capture = MagicMock()
         monkeypatch.setattr(schedule, "capture", capture)
-        log = MagicMock()
-        monkeypatch.setattr(schedule, "log", log)
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY, hour=9)
 
-        result = await schedule.set_briefing_schedule(
-            USER_ID, BriefingFrequency.WEEKLY_ONLY, "agent", hour=9
-        )
+        async with captured_wide_event() as event:
+            result = await schedule.set_briefing_schedule(
+                USER_ID, BriefingFrequency.WEEKLY_ONLY, "agent", hour=9
+            )
 
         assert result is stored
         store.assert_awaited_once_with(USER_ID, wanted)
         get.assert_awaited_with(USER_ID)
-        log.audit.assert_called_once_with(
-            "briefing schedule updated",
-            actor=USER_ID,
-            frequency=BriefingFrequency.WEEKLY_ONLY,
-            hour=9,
-            via="agent",
-        )
+        assert event["audit"] == [
+            {
+                "msg": "briefing schedule updated",
+                "actor": USER_ID,
+                "frequency": BriefingFrequency.WEEKLY_ONLY,
+                "hour": 9,
+                "via": "agent",
+            }
+        ]
         assert _switched(seams.deactivate) == ["wf-daily_briefing"]
         capture.assert_called_once_with(
             UserId(USER_ID),
