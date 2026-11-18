@@ -127,6 +127,24 @@ export function makeGaiaSharedMock(
     // adapter's own wiring; real implementations are covered by shared tests.
 
     private readonly _welcomed = new Set<string>();
+    /** Mirrors the real base: asked fresh each time, a failed check is `unknown`. */
+    protected async linkState(
+      userId: string,
+    ): Promise<"linked" | "unlinked" | "unknown"> {
+      try {
+        const status = await (
+          this.gaia as unknown as {
+            checkAuthStatus: (
+              platform: string,
+              id: string,
+            ) => Promise<{ authenticated: boolean }>;
+          }
+        ).checkAuthStatus(this.platform, userId);
+        return status.authenticated ? "linked" : "unlinked";
+      } catch {
+        return "unknown";
+      }
+    }
     protected shouldSendWelcome(userId: string): boolean {
       if (this._welcomed.has(userId)) return false;
       this._welcomed.add(userId);

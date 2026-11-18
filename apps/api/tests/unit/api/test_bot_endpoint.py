@@ -26,6 +26,7 @@ from app.models.payment_models import (
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.work_cancel_models import ConversationStopResponse, WorkCancelled
 from app.services.audio_transcription_service import AudioTooLargeError
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused
@@ -383,6 +384,39 @@ class TestBotSendMessageWideEvent:
         assert event["platform"] == "discord"
         assert event["user"] == {"id": USER_ID}
         assert event["conversation"] == {"id": "conv-1", "seq": 7}
+
+    async def test_the_admission_checks_are_timed_as_ingress_steps(self) -> None:
+        timings = begin_turn_timings()
+        accepted = BotMessageAccepted(
+            conversation_id="conv-1", message_id="m-1", seq=7, session_token="tok", after_seq=6
+        )
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.bot._require_linked_bot_caller",
+                new_callable=AsyncMock,
+                return_value=AuthenticatedUser(user_id=USER_ID),
+            ),
+            patch(
+                "app.api.v1.endpoints.bot._bot_turn_refused",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.api.v1.endpoints.bot.submit_bot_message",
+                new_callable=AsyncMock,
+                return_value=accepted,
+            ),
+        ):
+            await bot_send_message(
+                _make_request(), BotChatRequest.model_validate(_CHAT_BODY("discord"))
+            )
+
+        assert list(timings.steps) == [
+            (TurnPhase.INGRESS, step)
+            for step in (TurnStep.RATE_LIMIT, TurnStep.RESOLVE_USER, TurnStep.PAYWALL)
+        ]
 
     async def test_a_refused_turn_says_its_plan_does_not_cover_the_platform(self) -> None:
         with (

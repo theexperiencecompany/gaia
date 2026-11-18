@@ -22,6 +22,7 @@ from app.agents.context.fetchers import (
     build_connected_devices_manifest,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -45,7 +46,9 @@ from app.agents.prompts.user_instructions_prompts import render_user_instruction
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
 from app.agents.workspace.system_docs import integration_skills_block
+from app.constants.context import CONTEXT_SECTION_BUDGET_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.memory import FAST_RECALL_BUDGET_SECONDS, MEMORY_RECALL_BUDGET_SECONDS
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
@@ -73,6 +76,7 @@ class SectionId(StrEnum):
     CORE_MEMORY = "core_memory"
     AGENDA_ACTIVITY = "agenda_activity"
     MEMORY_RECALL = "memory_recall"
+    FAST_MEMORY_RECALL = "fast_memory_recall"
     GAIA_KNOWLEDGE = "gaia_knowledge"
     TRACKED_TODOS = "tracked_todos"
     EXECUTOR_STATUS = "executor_status"
@@ -92,6 +96,9 @@ class Section:
     #: existing ones without renumbering the table.
     order: int
     fetch: SectionFetch
+    #: Longest the assembly waits on fetch; past it the section renders empty,
+    #: counted and logged, and the turn goes on without it.
+    budget_seconds: float = CONTEXT_SECTION_BUDGET_SECONDS
 
     def applies(self, tier: AgentTier) -> bool:
         return tier in self.applies_to
@@ -323,8 +330,23 @@ SECTIONS: tuple[Section, ...] = (
         10,
         build_agenda_and_activity_block,
     ),
+    # Comms answers the user, so its memories come from the fast lane and never
+    # hold up the reply; the worker tiers run off that path and keep deep recall.
     Section(
-        SectionId.MEMORY_RECALL, PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block
+        SectionId.FAST_MEMORY_RECALL,
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        20,
+        build_fast_recall_block,
+        budget_seconds=FAST_RECALL_BUDGET_SECONDS,
+    ),
+    Section(
+        SectionId.MEMORY_RECALL,
+        PromptSlot.MEMORY_RECALL,
+        WORKER_TIERS,
+        20,
+        build_memory_recall_block,
+        budget_seconds=MEMORY_RECALL_BUDGET_SECONDS,
     ),
     Section(
         SectionId.GAIA_KNOWLEDGE,

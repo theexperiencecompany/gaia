@@ -107,6 +107,12 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         enter(patch("app.memory.engine.memory_engine.recall", AsyncMock(return_value=recalled)))
         enter(
             patch(
+                "app.memory.fast_recall.fast_recall",
+                AsyncMock(return_value=list(sources.memories)),
+            )
+        )
+        enter(
+            patch(
                 "app.memory.engine.memory_engine.get_core_context",
                 AsyncMock(return_value=sources.core_memory),
             )

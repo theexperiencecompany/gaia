@@ -27,6 +27,7 @@ from app.services.conversation.send import (
     submit_bot_message,
     submit_message,
 )
+from app.services.turn_timings import TurnPhase, begin_turn_timings, current_turn_timings
 from app.utils.errors import ConversationAlreadyExistsError, ConversationNotFoundError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
@@ -95,6 +96,7 @@ class World:
     bots: MagicMock
     charge: AsyncMock
     token: MagicMock
+    prep: MagicMock
 
     async def entries(self) -> list[Entry]:
         return [logged.entry for logged in await self.log.read_after(CONVERSATION, USER, 0)]
@@ -132,6 +134,7 @@ def _world(effects: RecordingEffects) -> Iterator[World]:
         bots=bots,
         charge=AsyncMock(),
         token=MagicMock(return_value="session-token"),
+        prep=MagicMock(),
     )
     with (
         patch(f"{SEND}.runtime_ports", return_value=runtime.ports),
@@ -145,6 +148,7 @@ def _world(effects: RecordingEffects) -> Iterator[World]:
         patch(f"{SEND}.BotService", bots),
         patch(f"{SEND}.charge_bot_turn", world.charge),
         patch(f"{SEND}.create_bot_session_token", world.token),
+        patch(f"{SEND}.start_turn_prep", world.prep),
         patch(
             "app.services.conversation.bot_followers.bot_session_repository.get_by_conversation_id",
             AsyncMock(return_value=None),
@@ -413,3 +417,59 @@ async def test_a_barge_in_is_logged_against_its_reply_and_a_resend_keeps_its_seq
         {"seq": 1, "duplicate": True},
     ]
     assert world.wide.set_ns.call_args.args == ("conversation",)
+
+
+async def test_an_admitted_send_starts_its_prep_once_the_budget_allows_it(world: World) -> None:
+    world.log.opened.add(CONVERSATION)
+    order: list[str] = []
+    world.budget.side_effect = lambda *_args, **_kwargs: order.append("budget")
+    world.prep.side_effect = lambda text: order.append(f"prep:{text}")
+
+    await submit_message(
+        CONVERSATION,
+        world.user,
+        SendMessageRequest(message_id="m1", text="who am I dating"),
+        ConversationSource.WEB,
+    )
+
+    assert order == ["budget", "prep:who am I dating"]
+
+
+async def test_a_refused_send_starts_no_prep(world: World) -> None:
+    world.budget.side_effect = RuntimeError("over budget")
+
+    with pytest.raises(RuntimeError):
+        await submit_message(
+            CONVERSATION,
+            world.user,
+            SendMessageRequest(message_id="m1", text="hi"),
+            ConversationSource.WEB,
+        )
+
+    world.prep.assert_not_called()
+
+
+async def test_a_bot_message_starts_its_prep_only_once_charged(world: World) -> None:
+    world.log.opened.add(CONVERSATION)
+    order: list[str] = []
+    world.charge.side_effect = lambda *_args: order.append("charge")
+    world.prep.side_effect = lambda text: order.append(f"prep:{text}")
+
+    await submit_bot_message(_bot_request(), world.user)
+
+    assert order == ["charge", "prep:hi from telegram"]
+
+
+async def test_the_accept_ends_ingress_and_reports_where_it_went(world: World) -> None:
+    world.log.opened.add(CONVERSATION)
+    begin_turn_timings(started=0.0)
+
+    await submit_bot_message(_bot_request(), world.user)
+
+    [latency] = [
+        c.kwargs["latency"] for c in world.wide.set.call_args_list if "latency" in c.kwargs
+    ]
+    assert list(latency["steps"]["ingress"]) == ["session", "charge", "accept", "other"]
+    timings = current_turn_timings()
+    assert timings is not None
+    assert timings.phase is TurnPhase.CLOSED

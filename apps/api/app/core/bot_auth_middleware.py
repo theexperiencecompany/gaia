@@ -25,6 +25,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.log_identifiers import hash_platform_user_id
 from shared.py.wide_events import log
@@ -66,8 +67,9 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         if getattr(request.state, "authenticated", False):
             return await call_next(request)
 
-        authenticated = await self._authenticate_bearer(request)
-        await self._authenticate_api_key(request, authenticated=authenticated)
+        with turn_step(TurnStep.BOT_AUTH):
+            authenticated = await self._authenticate_bearer(request)
+            await self._authenticate_api_key(request, authenticated=authenticated)
         return await call_next(request)
 
     async def _authenticate_bearer(self, request: Request) -> bool:

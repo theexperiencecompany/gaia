@@ -270,6 +270,8 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const RECEIVED_AT = 1_700_000_000_000;
+
 /** Returns a minimal ChatInputCommandInteraction mock. */
 function makeChatInteraction(overrides: {
   commandName?: string;
@@ -404,9 +406,12 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     // handleInteraction is private; invoke via cast (registerEvents() wires it internally).
     await (
       adapter as unknown as {
-        handleInteraction: (i: typeof interaction) => Promise<void>;
+        handleInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleInteraction(interaction);
+    ).handleInteraction(interaction, RECEIVED_AT);
 
     expect(interaction.deferReply).toHaveBeenCalledOnce();
     expect(interaction.deferReply).toHaveBeenCalledWith({
@@ -423,9 +428,12 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
 
     await (
       adapter as unknown as {
-        handleInteraction: (i: typeof interaction) => Promise<void>;
+        handleInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleInteraction(interaction);
+    ).handleInteraction(interaction, RECEIVED_AT);
 
     // Already deferred — adapter must not double-defer.
     expect(interaction.deferReply).not.toHaveBeenCalled();
@@ -439,9 +447,12 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
 
     await (
       adapter as unknown as {
-        handleInteraction: (i: typeof interaction) => Promise<void>;
+        handleInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleInteraction(interaction);
+    ).handleInteraction(interaction, RECEIVED_AT);
 
     // The /gaia path must defer and then post the message and follow its reply.
     expect(interaction.deferReply).toHaveBeenCalled();
@@ -466,9 +477,12 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
 
     await (
       adapter as unknown as {
-        handleInteraction: (i: typeof interaction) => Promise<void>;
+        handleInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleInteraction(interaction);
+    ).handleInteraction(interaction, RECEIVED_AT);
 
     expect(dispatchSpy).toHaveBeenCalledWith(
       "todo",
@@ -512,9 +526,12 @@ describe("DiscordAdapter - ephemeral replies", () => {
 
     await (
       adapter as unknown as {
-        handleInteraction: (i: typeof interaction) => Promise<void>;
+        handleInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleInteraction(interaction);
+    ).handleInteraction(interaction, RECEIVED_AT);
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: 64 });
   });
@@ -669,12 +686,16 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         handleMentionMessage: (
           m: typeof message,
           botId: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleMentionMessage(message, BOT_ID);
+    ).handleMentionMessage(message, BOT_ID, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "remind me to call dentist" }),
+      expect.objectContaining({
+        message: "remind me to call dentist",
+        receivedAt: RECEIVED_AT,
+      }),
       expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
     );
@@ -691,9 +712,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         handleMentionMessage: (
           m: typeof message,
           botId: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleMentionMessage(message, BOT_ID);
+    ).handleMentionMessage(message, BOT_ID, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: "what time is it?" }),
@@ -713,9 +735,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         handleMentionMessage: (
           m: typeof message,
           botId: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleMentionMessage(message, BOT_ID);
+    ).handleMentionMessage(message, BOT_ID, RECEIVED_AT);
 
     expect(message.reply).toHaveBeenCalledWith("How can I help you?");
     expect(postAndFollowSpy).not.toHaveBeenCalled();
@@ -732,9 +755,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
         handleMentionMessage: (
           m: typeof message,
           botId: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleMentionMessage(message, BOT_ID);
+    ).handleMentionMessage(message, BOT_ID, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: "remind me about something" }),
@@ -764,9 +788,10 @@ describe("DiscordAdapter - mention with empty content", () => {
         handleMentionMessage: (
           m: typeof message,
           botId: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleMentionMessage(message, "bot-id");
+    ).handleMentionMessage(message, "bot-id", RECEIVED_AT);
 
     expect(message.reply).toHaveBeenCalledWith("How can I help you?");
     expect(postAndFollowSpy).not.toHaveBeenCalled();
@@ -800,9 +825,12 @@ describe("DiscordAdapter - DM welcome flow", () => {
 
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
 
     expect(sendDMWelcomeSpy).toHaveBeenCalledOnce();
 
@@ -810,9 +838,12 @@ describe("DiscordAdapter - DM welcome flow", () => {
     vi.clearAllMocks();
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
 
     expect(sendDMWelcomeSpy).not.toHaveBeenCalled();
   });
@@ -835,9 +866,12 @@ describe("DiscordAdapter - DM welcome flow", () => {
 
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -867,9 +901,12 @@ describe("DiscordAdapter - DM welcome flow", () => {
     const handleDM = (m: ReturnType<typeof makeBlankMessage>) =>
       (
         adapter as unknown as {
-          handleDMMessage: (mParam: typeof m) => Promise<void>;
+          handleDMMessage: (
+            mParam: typeof m,
+            receivedAt: number,
+          ) => Promise<void>;
         }
-      ).handleDMMessage(m);
+      ).handleDMMessage(m, RECEIVED_AT);
 
     // First blank DM also triggers the one-time welcome — consume it here so the
     // second call isolates the blank-content reply.
@@ -908,9 +945,12 @@ describe("DiscordAdapter - context menu interaction", () => {
 
     await (
       adapter as unknown as {
-        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+        handleContextMenuInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleContextMenuInteraction(interaction);
+    ).handleContextMenuInteraction(interaction, RECEIVED_AT);
 
     expect(interaction.deferReply).toHaveBeenCalledWith({ flags: 64 });
     expect(interaction.editReply).toHaveBeenCalledWith({
@@ -945,9 +985,12 @@ describe("DiscordAdapter - context menu interaction", () => {
 
     await (
       adapter as unknown as {
-        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+        handleContextMenuInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleContextMenuInteraction(interaction);
+    ).handleContextMenuInteraction(interaction, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -969,9 +1012,12 @@ describe("DiscordAdapter - context menu interaction", () => {
 
     await (
       adapter as unknown as {
-        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+        handleContextMenuInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleContextMenuInteraction(interaction);
+    ).handleContextMenuInteraction(interaction, RECEIVED_AT);
 
     const request = postAndFollowSpy.mock.calls[0][0];
     expect(request).not.toHaveProperty("platformMessageId");
@@ -988,9 +1034,12 @@ describe("DiscordAdapter - context menu interaction", () => {
 
     await (
       adapter as unknown as {
-        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+        handleContextMenuInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleContextMenuInteraction(interaction);
+    ).handleContextMenuInteraction(interaction, RECEIVED_AT);
 
     expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1515,9 +1564,13 @@ describe("DiscordAdapter - live turn reactions", () => {
 
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, b: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          b: string,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleMentionMessage(message, "bot-id");
+    ).handleMentionMessage(message, "bot-id", RECEIVED_AT);
 
     await expect(lastSurface().react("msg-in", "👍", null)).resolves.toBe(
       "attached",
@@ -1538,9 +1591,12 @@ describe("DiscordAdapter - live turn reactions", () => {
 
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
 
     await expect(lastSurface().react("dm-msg", "👍", "🔎")).resolves.toBe(
       "attached",
@@ -1577,9 +1633,12 @@ describe("DiscordAdapter - channel surface", () => {
     const message = makeDmMessage(content);
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
     message.channel.send.mockClear();
     return message;
   }
@@ -1650,9 +1709,12 @@ describe("DiscordAdapter - channel surface", () => {
 
     await (
       adapter as unknown as {
-        handleDMMessage: (m: typeof message) => Promise<void>;
+        handleDMMessage: (
+          m: typeof message,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleDMMessage(message);
+    ).handleDMMessage(message, RECEIVED_AT);
 
     expect(message.channel.send).toHaveBeenCalledWith("Error: refused");
   });
@@ -1672,9 +1734,13 @@ describe("DiscordAdapter - mention auth prompt", () => {
     };
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, b: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          b: string,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleMentionMessage(message, "bot-id");
+    ).handleMentionMessage(message, "bot-id", RECEIVED_AT);
     return message;
   }
 
@@ -1768,9 +1834,12 @@ describe("DiscordAdapter - interaction surface", () => {
     };
     await (
       adapter as unknown as {
-        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+        handleContextMenuInteraction: (
+          i: typeof interaction,
+          receivedAt: number,
+        ) => Promise<void>;
       }
-    ).handleContextMenuInteraction(interaction);
+    ).handleContextMenuInteraction(interaction, RECEIVED_AT);
 
     await lastSurface().send("summary text", null);
 

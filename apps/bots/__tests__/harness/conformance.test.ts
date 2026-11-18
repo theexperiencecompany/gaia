@@ -109,6 +109,7 @@ interface ApiScript {
 
 const AUTH_URL = "https://gaia.example.com/auth?token=conf123";
 const PRICING_URL = "https://gaia.example.com/pricing";
+const RECEIVED_AT = 1_700_000_000_000;
 
 /** The frames of one answered turn: the posted message, then the script's reply or reaction. */
 function turnFrames(
@@ -308,9 +309,10 @@ async function driveTelegram(script: ApiScript): Promise<Canonical> {
         ctx: unknown,
         userId: string,
         message: string,
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).postTelegramMessage(ctx, "dev-user-1", "please respond");
+  ).postTelegramMessage(ctx, "dev-user-1", "please respond", RECEIVED_AT);
   await adapter.conversationsIdle();
   return reduce(ops);
 }
@@ -374,6 +376,7 @@ async function driveSlack(script: ApiScript): Promise<Canonical> {
         userId: string,
         message: string,
         isDm: boolean,
+        receivedAt: number,
         inboundTs: string,
       ) => Promise<void>;
     }
@@ -385,6 +388,7 @@ async function driveSlack(script: ApiScript): Promise<Canonical> {
       "U999",
       "please respond",
       false,
+      RECEIVED_AT,
       "111.1",
     );
   await adapter.conversationsIdle();
@@ -427,9 +431,12 @@ async function driveDiscord(script: ApiScript): Promise<Canonical> {
 
   await (
     adapter as unknown as {
-      handleGaiaInteraction: (interaction: unknown) => Promise<void>;
+      handleGaiaInteraction: (
+        interaction: unknown,
+        receivedAt: number,
+      ) => Promise<void>;
     }
-  ).handleGaiaInteraction(interaction);
+  ).handleGaiaInteraction(interaction, RECEIVED_AT);
   await adapter.conversationsIdle();
   return reduce(ops);
 }
@@ -474,9 +481,10 @@ async function driveWhatsApp(script: ApiScript): Promise<Canonical> {
         waId: string,
         text: string,
         messageId: string,
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).postWhatsAppMessage("dev-user-1", "please respond", "wamid.1");
+  ).postWhatsAppMessage("dev-user-1", "please respond", "wamid.1", RECEIVED_AT);
   await adapter.conversationsIdle();
   return reduce(ops);
 }
@@ -529,9 +537,10 @@ async function driveDiscordMention(script: ApiScript): Promise<Canonical> {
         s: typeof reply,
         content: string,
         attachments: unknown[],
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).streamMentionReply(message, reply, "please respond", []);
+  ).streamMentionReply(message, reply, "please respond", [], RECEIVED_AT);
   await adapter.conversationsIdle();
   return reduce(ops);
 }

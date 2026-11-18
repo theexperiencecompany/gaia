@@ -49,6 +49,7 @@ from pydantic import Field
 import pytest
 from redis.asyncio.client import PubSub
 import respx
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.types import ASGIApp
@@ -140,6 +141,12 @@ def effective_limit(config: RateLimitConfig, period: str) -> float:
         return 0.0
     value = getattr(config, period)
     return math.inf if value <= 0 else float(value)
+
+
+def rate_limit_detail(exc: HTTPException) -> dict[str, str]:
+    """Return a 429's detail, which the rate-limit exceptions always build as a dict."""
+    assert isinstance(exc.detail, dict)
+    return exc.detail
 
 
 def pick_free_port() -> int:

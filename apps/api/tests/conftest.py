@@ -254,7 +254,7 @@ _infra_patches = (
             return_value=MagicMock(),
         ),
         patch(
-            "app.db.redis.redis.from_url",
+            "app.db.redis.TimedRedis.from_url",
             return_value=_fence_redis_client,
         ),
     ]

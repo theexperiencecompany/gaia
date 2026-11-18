@@ -36,6 +36,7 @@ const mockBotCommand = vi.fn();
 const mockBotCatch = vi.fn();
 const mockBotStart = vi.fn();
 const mockBotStop = vi.fn().mockResolvedValue(undefined);
+const mockDeleteWebhook = vi.fn().mockResolvedValue(true);
 const mockSetMyCommands = vi.fn().mockResolvedValue(undefined);
 const mockGetMe = vi.fn().mockResolvedValue({ username: "gaiabot" });
 const mockGetFile = vi
@@ -52,6 +53,7 @@ const mockBotInstance = {
   start: mockBotStart,
   stop: mockBotStop,
   api: {
+    deleteWebhook: mockDeleteWebhook,
     getMe: mockGetMe,
     getFile: mockGetFile,
     setMyCommands: mockSetMyCommands,
@@ -63,7 +65,10 @@ const mockBotInstance = {
 };
 
 vi.mock("grammy", () => ({
-  Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  // A function, not an arrow: initialize() constructs it with `new`.
+  Bot: vi.fn(function Bot() {
+    return mockBotInstance;
+  }),
   GrammyError: class GrammyError extends Error {
     constructor(
       message: string,
@@ -77,6 +82,27 @@ vi.mock("grammy", () => ({
 }));
 
 vi.mock("@grammyjs/types", () => ({}));
+
+// The update runner: `run` hands back a handle whose task settles when polling
+// ends, and `sequentialize` builds the per-chat ordering middleware.
+const { mockRunnerStop, mockRun, sequentialMiddleware, mockSequentialize } =
+  vi.hoisted(() => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const middleware = vi.fn();
+    return {
+      mockRunnerStop: stop,
+      mockRun: vi.fn(() => ({
+        stop,
+        task: () => new Promise<void>(() => undefined),
+      })),
+      sequentialMiddleware: middleware,
+      mockSequentialize: vi.fn(() => middleware),
+    };
+  });
+vi.mock("@grammyjs/runner", () => ({
+  run: mockRun,
+  sequentialize: mockSequentialize,
+}));
 
 // Mocks @gaia/shared via the shared factory (BaseBotAdapter stub + common
 // helpers), layering Telegram-specific exports (HTML converter, htmlToPlainText,
@@ -161,6 +187,7 @@ import {
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
+const RECEIVED_AT = 1_700_000_000_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -238,6 +265,7 @@ type TelegramPoster = {
     ctx: unknown,
     userId: string,
     message: string,
+    receivedAt: number,
   ) => Promise<void>;
 };
 
@@ -556,6 +584,7 @@ describe("TelegramAdapter - postTelegramMessage", () => {
       ctx,
       "555",
       "what is 2+2?",
+      RECEIVED_AT,
     );
 
     expectPosted({
@@ -565,6 +594,7 @@ describe("TelegramAdapter - postTelegramMessage", () => {
       channelId: "77777",
       isDm: true,
       platformMessageId: "10",
+      receivedAt: RECEIVED_AT,
     });
     expect(replyFn).not.toHaveBeenCalled();
     expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
@@ -578,6 +608,7 @@ describe("TelegramAdapter - postTelegramMessage", () => {
       ctx,
       "999",
       "hello",
+      RECEIVED_AT,
     );
 
     expect(replyFn).not.toHaveBeenCalled();
@@ -608,6 +639,7 @@ describe("TelegramAdapter - conversation surface", () => {
       makeCtx({ chatId: 100, chatType }),
       "999",
       "hi",
+      RECEIVED_AT,
     );
     return lastSurface();
   }
@@ -1108,6 +1140,7 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
       makeCtx({ chatId: 500, chatType }),
       "999",
       "do something",
+      RECEIVED_AT,
     );
     return lastAuthHandler();
   }
@@ -1668,5 +1701,79 @@ describe("TelegramAdapter - reactToMessage", () => {
 
     expect(attached).toBe("attach_failed");
     expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
+  });
+});
+describe("TelegramAdapter - update runner", () => {
+  type Lifecycle = {
+    initialize: () => Promise<void>;
+    start: () => Promise<void>;
+    stop: () => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  });
+
+  it("consumes updates through the grammY runner, not one-at-a-time bot.start()", async () => {
+    // bot.start() handles one update at a time across ALL users, so one user's
+    // slow turn held every other user's message in the queue.
+    const adapter = makeAdapter() as unknown as Lifecycle;
+
+    await adapter.start();
+
+    expect(mockDeleteWebhook).toHaveBeenCalledWith({
+      drop_pending_updates: true,
+    });
+    await vi.waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith(mockBotInstance, expect.anything()),
+    );
+    expect(mockBotStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps each chat's updates in order by sequentializing on the chat id", async () => {
+    const adapter = new TelegramAdapter() as unknown as Lifecycle;
+
+    await adapter.initialize();
+
+    // initialize() runs before boot() registers any handler, so every handler
+    // sits behind the ordering middleware.
+    expect(mockBotUse).toHaveBeenCalledWith(sequentialMiddleware);
+    const [constraint] = mockSequentialize.mock.calls[0] as unknown as [
+      (ctx: { chat?: { id: number } }) => string | undefined,
+    ];
+    expect(constraint({ chat: { id: 42 } })).toBe("42");
+    expect(constraint({ chat: { id: -100123 } })).toBe("-100123");
+    expect(constraint({})).toBeUndefined();
+  });
+
+  it("restarts polling after a 409 Conflict from a lingering getUpdates session", async () => {
+    vi.useFakeTimers();
+    try {
+      mockRun.mockReturnValueOnce({
+        stop: mockRunnerStop,
+        task: () => Promise.reject({ error_code: 409 }),
+      });
+      const adapter = makeAdapter() as unknown as Lifecycle;
+
+      await adapter.start();
+      await vi.advanceTimersByTimeAsync(34_000);
+      expect(mockRun).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mockRun).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the runner on shutdown", async () => {
+    const adapter = makeAdapter() as unknown as Lifecycle;
+    await adapter.start();
+    await vi.waitFor(() => expect(mockRun).toHaveBeenCalled());
+
+    await adapter.stop();
+
+    expect(mockRunnerStop).toHaveBeenCalledOnce();
   });
 });

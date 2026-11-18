@@ -476,6 +476,26 @@ def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     assert re.search(rf"^MUTATION_WAVE = {MUTATION_WAVE}$", runner, re.MULTILINE)
 
 
+def test_a_shard_uploads_only_files_its_own_job_wrote() -> None:
+    # The home runner keeps its checkout (clean: false): a shard that failed in
+    # setup uploaded the previous job's shard.durations.json as its own.
+    steps = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())["jobs"][
+        "test-mutation"
+    ]["steps"]
+    shard = next(s for s in steps if s.get("run") == "python3 scripts/ci/mutation.py shard")
+    uploaded = [
+        line.strip()
+        for s in steps
+        if s.get("uses", "").startswith("actions/upload-artifact@")
+        for line in s["with"]["path"].splitlines()
+        if line.strip()
+    ]
+
+    assert shard["env"]["SHARD_LOG"] == "${{ runner.temp }}/shard.log"
+    assert uploaded
+    assert all(path.startswith("${{ runner.temp }}/shard.") for path in uploaded)
+
+
 # ---------------------------------------------------------------------------
 # Cost — shards are balanced by estimated work, not by module count.
 #
@@ -559,6 +579,17 @@ class TestAModuleMeasuredOnAnEarlierRunIsPlannedAtThatCost:
         assert int(outputs["count"]) == len(self.SLOW)
         assert all(len(group) == 1 for group in _groups(outputs))
         assert all(group[0]["seconds"] == "500.0" for group in _groups(outputs))
+
+    def test_one_module_alone_over_the_budget_adds_no_shards(self, harness: PlanRun) -> None:
+        # More shards cannot split a single module, so a 673 s module must not
+        # push 39 cheap ones from one wave out to MAX_SHARDS.
+        entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [1]) for i in range(40)]
+
+        process, outputs = harness(entries, {"101": {"app/m0.py": 673.0}})
+
+        assert process.returncode == 0, process.stderr
+        assert int(outputs["count"]) == MUTATION_WAVE
+        assert _shard_of(outputs, "app/m0.py") == ["app/m0.py"]
 
     def test_the_newest_runs_measurement_wins(self, harness: PlanRun) -> None:
         _, outputs = harness(

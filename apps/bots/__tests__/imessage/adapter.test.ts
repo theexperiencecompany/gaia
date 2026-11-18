@@ -95,6 +95,7 @@ function makeSpace(overrides: Partial<FakeSpace> = {}): FakeSpace {
 
 const ATTACHMENT_CHUNK = 256;
 const CAP = 1000;
+const RECEIVED_AT = 1_700_000_000_000;
 
 function makeAttachment(overrides: { size?: number } = {}) {
   const content = {
@@ -178,11 +179,13 @@ type PrivateAdapter = {
   handleIncomingMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
   ) => Promise<void>;
   postImessageMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
     messageId?: string,
   ) => Promise<void>;
@@ -718,14 +721,19 @@ describe("handleIncomingMessage commands", () => {
   it("/gaia with text posts the rest", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia hello there");
-    expectPosted({ message: "hello there" });
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/gaia hello there",
+    );
+    expectPosted({ message: "hello there", receivedAt: RECEIVED_AT });
   });
 
   it("/gaia without text sends a usage hint", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "/gaia");
     expect(space.send).toHaveBeenCalledWith("Usage: /gaia <your message>");
     expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
@@ -733,16 +741,58 @@ describe("handleIncomingMessage commands", () => {
   it("unknown slash command replies via dispatchCommand", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/nosuchcmd");
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/nosuchcmd",
+    );
     expect(space.send).toHaveBeenCalledWith("Unknown command: /nosuchcmd");
   });
 
   it("starts and stops the typing indicator", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "hello");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
     expect(space.startTyping).toHaveBeenCalled();
     expect(space.stopTyping).toHaveBeenCalled();
+  });
+
+  it("does not hold the turn until the typing indicator is acknowledged", async () => {
+    // startTyping is a Photon round-trip; awaiting it put that round-trip ahead
+    // of the chat request on every message.
+    const { priv } = makeAdapter();
+    const space = makeSpace({
+      startTyping: vi.fn(() => new Promise<void>(() => undefined)),
+    });
+
+    // Not awaited: stopTyping still waits for the indicator to have started.
+    void priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    await vi.waitFor(() => expect(postAndFollowSpy).toHaveBeenCalled());
+  });
+
+  it("logs a typing indicator that fails, without failing the turn", async () => {
+    const { priv } = makeAdapter();
+    const error = vi.fn();
+    (
+      priv as unknown as { adapterLogger: { error: typeof error } }
+    ).adapterLogger.error = error;
+    const space = makeSpace({
+      startTyping: vi.fn(async () => {
+        throw new Error("typing rejected");
+      }),
+    });
+
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    expect(postAndFollowSpy).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        "typing_indicator_failed",
+        expect.objectContaining({ error: "typing rejected" }),
+      ),
+    );
   });
 });
 
@@ -892,7 +942,13 @@ describe("postImessageMessage", () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
 
-    await priv.postImessageMessage("+15550100", space, "   ", "msg-in");
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "   ",
+      "msg-in",
+    );
 
     expect(space.send).toHaveBeenCalledWith(
       expect.stringContaining("Hi! Send me a message"),
@@ -903,7 +959,13 @@ describe("postImessageMessage", () => {
   it("the auth handler sends the shared auth-link message into the space", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.postImessageMessage("+15550100", space, "hi", "msg-in");
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "hi",
+      "msg-in",
+    );
 
     await lastAuthHandler()("https://auth.example.com/link");
 
@@ -922,7 +984,13 @@ describe("conversation surface", () => {
       space: { create: vi.fn(async () => space), get: vi.fn() },
       user: vi.fn(),
     };
-    await priv.postImessageMessage("+15550100", space, "hi", "msg-in");
+    await priv.postImessageMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "hi",
+      "msg-in",
+    );
     return { priv, surface: lastSurface() };
   }
 
@@ -1011,15 +1079,23 @@ describe("inbound order", () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
     let releaseFirst = (): void => undefined;
-    const checkAuthStatus = vi.fn().mockReturnValueOnce(
-      new Promise((resolve) => {
-        releaseFirst = () => resolve({ authenticated: true });
-      }),
-    );
     (priv as unknown as { gaia: unknown }).gaia = {
-      checkAuthStatus,
       getPricingUrl: () => "https://gaia.test/pricing",
     };
+    // The base adapter's welcome gate: the first message's check is held open.
+    const welcomeCheck = vi
+      .spyOn(
+        priv as unknown as {
+          shouldSendWelcome: (handle: string) => Promise<boolean>;
+        },
+        "shouldSendWelcome",
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          releaseFirst = () => resolve(false);
+        }),
+      )
+      .mockResolvedValue(false);
     const deliver = (text: string) =>
       priv.handleInboundMessage(
         space,
@@ -1028,16 +1104,16 @@ describe("inbound order", () => {
     return {
       priv,
       deliver,
-      checkAuthStatus,
+      welcomeCheck,
       releaseFirst: () => releaseFirst(),
     };
   }
 
   it("posts a sender's messages in arrival order when the first is held in its welcome check", async () => {
-    const { deliver, checkAuthStatus, releaseFirst } = heldInWelcome();
+    const { deliver, welcomeCheck, releaseFirst } = heldInWelcome();
 
     deliver("do the work");
-    await vi.waitFor(() => expect(checkAuthStatus).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
     deliver("and then");
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -1053,12 +1129,12 @@ describe("inbound order", () => {
   });
 
   it("dispatches a /stop behind a held message without waiting for it", async () => {
-    const { priv, deliver, checkAuthStatus, releaseFirst } = heldInWelcome();
+    const { priv, deliver, welcomeCheck, releaseFirst } = heldInWelcome();
     const stopExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("stop", { execute: stopExecute });
 
     deliver("do the work");
-    await vi.waitFor(() => expect(checkAuthStatus).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
     deliver("/stop");
 
     await vi.waitFor(() => expect(stopExecute).toHaveBeenCalledTimes(1));

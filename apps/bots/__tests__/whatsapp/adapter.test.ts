@@ -148,6 +148,8 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const RECEIVED_AT = 1_700_000_000_000;
+
 const MOCK_CONFIG = {
   kapsoApiKey: "test-api-key", // pragma: allowlist secret
   kapsoPhoneNumberId: "test-phone-id",
@@ -203,14 +205,15 @@ type PrivateAdapter = {
     waId: string,
     text: string,
     messageId: string,
+    receivedAt: number,
   ) => Promise<void>;
   postWhatsAppMessage: (
     waId: string,
     text: string,
     messageId: string,
+    receivedAt: number,
   ) => Promise<void>;
   sendWelcome: (waId: string) => Promise<void>;
-  welcomeSent: Set<string>;
   dispatchCommand: (
     name: string,
     target: {
@@ -404,7 +407,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("shows typing indicator via markRead for every incoming message", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockMarkRead).toHaveBeenCalledWith({
       phoneNumberId: "test-phone-id",
@@ -429,6 +437,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `${LINK_FIRST_MESSAGE} #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(redeemLinkCode).toHaveBeenCalledWith(
@@ -464,6 +473,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `${LINK_FIRST_MESSAGE} #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     // The only thing a refused code may produce is the explanation of why.
@@ -487,6 +497,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       `remind me tomorrow #${LINK_CODE}`,
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(redeemLinkCode).not.toHaveBeenCalled();
@@ -503,6 +514,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "post this #launch",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expect(postAndFollowSpy.mock.calls[0][0]).toMatchObject({
@@ -517,6 +529,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "/gaia hello world",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expectPosted({
@@ -530,7 +543,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("/gaia with no text sends usage hint and does NOT post", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "/gaia", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/gaia",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Usage: /gaia <your message>" }),
@@ -543,7 +561,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     const todoExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("todo", { execute: todoExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/todo list", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/todo list",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(todoExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -558,7 +581,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     const helpExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("help", { execute: helpExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/help", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/help",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expect(helpExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -574,6 +602,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       "15551234567",
       "what is the weather?",
       "wamid.001",
+      RECEIVED_AT,
     );
 
     expectPosted({
@@ -587,7 +616,12 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   it("/GAIA hello (uppercase command) still posts (command name is lowercased)", async () => {
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "/GAIA hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/GAIA hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     expectPosted({
       message: "hello",
@@ -620,12 +654,12 @@ describe("WhatsAppAdapter - postWhatsAppMessage", () => {
 
   /** Posts one message answering wamid.in and returns the surface handed to postAndFollow. */
   async function surfaceFor(): Promise<ReturnType<typeof lastSurface>> {
-    await priv.postWhatsAppMessage(WA_ID, "hello", "wamid.in");
+    await priv.postWhatsAppMessage(WA_ID, "hello", "wamid.in", RECEIVED_AT);
     return lastSurface();
   }
 
   it("empty string sends help text and does NOT post", async () => {
-    await priv.postWhatsAppMessage(WA_ID, "", "wamid.in");
+    await priv.postWhatsAppMessage(WA_ID, "", "wamid.in", RECEIVED_AT);
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -636,7 +670,7 @@ describe("WhatsAppAdapter - postWhatsAppMessage", () => {
   });
 
   it("whitespace-only string sends help text and does NOT post", async () => {
-    await priv.postWhatsAppMessage(WA_ID, "   ", "wamid.in");
+    await priv.postWhatsAppMessage(WA_ID, "   ", "wamid.in", RECEIVED_AT);
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -647,7 +681,12 @@ describe("WhatsAppAdapter - postWhatsAppMessage", () => {
   });
 
   it("posts the request as a DM carrying the inbound wamid, sending nothing itself", async () => {
-    await priv.postWhatsAppMessage(WA_ID, "remind me to exercise", "wamid.in");
+    await priv.postWhatsAppMessage(
+      WA_ID,
+      "remind me to exercise",
+      "wamid.in",
+      RECEIVED_AT,
+    );
 
     expectPosted({
       message: "remind me to exercise",
@@ -661,7 +700,7 @@ describe("WhatsAppAdapter - postWhatsAppMessage", () => {
   });
 
   it("the auth handler sends the shared canonical auth-link message with the URL", async () => {
-    await priv.postWhatsAppMessage(WA_ID, "hello", "wamid.in");
+    await priv.postWhatsAppMessage(WA_ID, "hello", "wamid.in", RECEIVED_AT);
 
     await lastAuthHandler()("https://auth.example.com/link");
 
@@ -819,7 +858,12 @@ describe("WhatsAppAdapter - welcome message", () => {
   });
 
   it("sends welcome on first message from a user", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
 
     // First call should be the welcome message
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
@@ -827,24 +871,44 @@ describe("WhatsAppAdapter - welcome message", () => {
   });
 
   it("does NOT send welcome on second message from the same user", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-456" }] });
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("15551234567", "again", "wamid.002");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "again",
+      "wamid.002",
+      RECEIVED_AT,
+    );
 
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(false);
   });
 
   it("sends welcome to different users independently", async () => {
-    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "hello",
+      "wamid.001",
+      RECEIVED_AT,
+    );
     vi.clearAllMocks();
     mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-789" }] });
     mockMarkRead.mockResolvedValue({});
 
-    await priv.handleIncomingMessage("14441234567", "hi", "wamid.003");
+    await priv.handleIncomingMessage(
+      "14441234567",
+      "hi",
+      "wamid.003",
+      RECEIVED_AT,
+    );
 
     const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(true);
@@ -957,27 +1021,35 @@ describe("WhatsAppAdapter - inbound order", () => {
       (event) => event.message.text?.body ?? null,
     );
     let releaseFirst = (): void => undefined;
-    const checkAuthStatus = vi.fn().mockReturnValueOnce(
-      new Promise((resolve) => {
-        releaseFirst = () => resolve({ authenticated: true });
-      }),
-    );
     const adapter = makeAdapter();
     (adapter as unknown as { gaia: unknown }).gaia = {
-      checkAuthStatus,
       getPricingUrl: () => "https://gaia.test/pricing",
     };
+    // The base adapter's welcome gate: the first message's check is held open.
+    const welcomeCheck = vi
+      .spyOn(
+        adapter as unknown as {
+          shouldSendWelcome: (waId: string) => Promise<boolean>;
+        },
+        "shouldSendWelcome",
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          releaseFirst = () => resolve(false);
+        }),
+      )
+      .mockResolvedValue(false);
     const priv = adapter as unknown as PrivateAdapter & {
       handleWebhookEvent: (event: unknown) => void;
     };
-    return { priv, checkAuthStatus, releaseFirst: () => releaseFirst() };
+    return { priv, welcomeCheck, releaseFirst: () => releaseFirst() };
   }
 
   it("posts a sender's messages in arrival order when the first is held in its welcome check", async () => {
-    const { priv, checkAuthStatus, releaseFirst } = await heldInWelcome();
+    const { priv, welcomeCheck, releaseFirst } = await heldInWelcome();
 
     priv.handleWebhookEvent(textEvent("m0", "do the work"));
-    await vi.waitFor(() => expect(checkAuthStatus).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
     priv.handleWebhookEvent(textEvent("m1", "and then"));
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -994,12 +1066,12 @@ describe("WhatsAppAdapter - inbound order", () => {
   });
 
   it("dispatches a /stop behind a held message without waiting for it", async () => {
-    const { priv, checkAuthStatus, releaseFirst } = await heldInWelcome();
+    const { priv, welcomeCheck, releaseFirst } = await heldInWelcome();
     const stopExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("stop", { execute: stopExecute });
 
     priv.handleWebhookEvent(textEvent("m0", "do the work"));
-    await vi.waitFor(() => expect(checkAuthStatus).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(welcomeCheck).toHaveBeenCalledTimes(1));
     priv.handleWebhookEvent(textEvent("m1", "/stop"));
 
     await vi.waitFor(() => expect(stopExecute).toHaveBeenCalledTimes(1));

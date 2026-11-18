@@ -69,6 +69,38 @@ def test_a_module_the_deadline_has_no_room_for_is_not_started(tmp_path: Path) ->
     assert not (tmp_path / "shard.log").exists()
 
 
+def test_preparation_time_comes_out_of_mutmuts_cap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # run_module kills the module at cap + wrap-up from launch, and mutmut runs in
+    # its own session: a cap counted from mutmut's launch outlived that kill.
+    clock = [1000.0]
+    remaining: list[float] = []
+
+    def slow_copy(_request: mutation.ModuleRequest, _workdir: Path) -> None:
+        clock[0] += 200
+
+    def fake_mutmut(
+        _request: mutation.ModuleRequest, _venv: Path, _workdir: Path, deadline: float
+    ) -> tuple[int, str]:
+        remaining.append(deadline - clock[0])
+        return mutation.MUTMUT_TIMED_OUT, ""
+
+    monkeypatch.setenv(mutation.MUTMUT_CAP_ENV, "300")
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(mutation, "copy_workdir", slow_copy)
+    monkeypatch.setattr(mutation, "configure_mutmut", lambda _request, _workdir: None)
+    monkeypatch.setattr(mutation, "run_mutmut", fake_mutmut)
+
+    request = mutation.ModuleRequest(
+        module="app/x.py", testfiles=("tests/unit/test_x.py",), ranges=""
+    )
+    outcome = mutation.mutate(request, tmp_path / "python", tmp_path / "work")
+
+    assert remaining == [100]
+    assert outcome.status is mutation.Status.TIMED_OUT
+
+
 def test_the_shard_deadline_ends_before_the_step_timeout() -> None:
     # Past the step timeout the runner kills the shard and every verdict after
     # the cut is lost; the deadline must leave room for the tail and the report.
@@ -91,12 +123,24 @@ def test_mutmut_and_its_workers_split_the_memory_share(monkeypatch: pytest.Monke
 def test_a_mutant_that_outgrows_the_cap_gets_memory_error_not_the_oom_killer() -> None:
     # conversation/step.py on #1799: one looping mutant took a runner from 1.1 GB to 8 GB in
     # 50 s, and the OOM killer took the whole VM ("the runner received a shutdown signal").
+    # The hog waits for stdin so the cap is on before it allocates, set from the
+    # parent the way run_mutmut sets it.
     hog = subprocess.Popen(
-        [sys.executable, "-c", "chunks = []\nwhile True: chunks.append(bytearray(1 << 26))"],
+        [
+            sys.executable,
+            "-c",
+            "import sys\nsys.stdin.read()\nchunks = []\n"
+            "while True: chunks.append(bytearray(1 << 26))",
+        ],
+        stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    resource.prlimit(hog.pid, resource.RLIMIT_DATA, (GIB, GIB))
-    _, stderr = hog.communicate(timeout=60)
+    try:
+        resource.prlimit(hog.pid, resource.RLIMIT_DATA, (GIB, GIB))
+        _, stderr = hog.communicate(input=b"", timeout=60)
+    finally:
+        hog.kill()
+        hog.wait()
 
     assert hog.returncode == 1
     assert b"MemoryError" in stderr

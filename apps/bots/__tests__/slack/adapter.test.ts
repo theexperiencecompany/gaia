@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock @slack/bolt
 // ---------------------------------------------------------------------------
 
+const RECEIVED_AT = 1_700_000_000_000;
 const mockApp = {
   command: vi.fn(),
   event: vi.fn(),
@@ -338,6 +339,7 @@ type SlackPoster = {
     userId: string,
     message: string,
     isDm: boolean,
+    receivedAt: number,
     inboundTs?: string,
   ) => Promise<void>;
 };
@@ -362,6 +364,7 @@ describe("SlackAdapter - postSlackMessage", () => {
       "U456",
       "Plan my day",
       true,
+      RECEIVED_AT,
       "111.222",
     );
 
@@ -373,6 +376,7 @@ describe("SlackAdapter - postSlackMessage", () => {
         channelId: "D123",
         isDm: true,
         platformMessageId: "111.222",
+        receivedAt: RECEIVED_AT,
       },
       expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
@@ -380,7 +384,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("posts an unquoted message without threading it", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     await lastSurface().send("the answer", null);
 
@@ -391,7 +402,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("posts a quoted reply in the thread and broadcasts it to the channel", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     await lastSurface().send("the answer", "111.222");
 
@@ -404,7 +422,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("edits the message it posted by its ts", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     const sent = await lastSurface().send("draft", null);
     await sent.edit("final");
@@ -418,7 +443,14 @@ describe("SlackAdapter - postSlackMessage", () => {
 
   it("fails the send when Slack returns no ts", async () => {
     appClient.chat.postMessage.mockResolvedValueOnce({});
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     await expect(lastSurface().send("the answer", null)).rejects.toThrow(
       "chat.postMessage returned no ts",
@@ -426,7 +458,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("marks the user's message with eyes while a reply is prepared, and takes the mark off once GAIA stops", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     const stopTyping = lastSurface().startTyping("111.222");
     stopTyping();
@@ -448,7 +487,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("shows no typing mark when there is no user message to put it on", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     lastSurface().startTyping(null)();
 
@@ -460,7 +506,14 @@ describe("SlackAdapter - postSlackMessage", () => {
     const react = vi
       .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
       .mockResolvedValue("attached");
-    await adapter.postSlackMessage(eventClient, "D123", "U456", "hi", true);
+    await adapter.postSlackMessage(
+      eventClient,
+      "D123",
+      "U456",
+      "hi",
+      true,
+      RECEIVED_AT,
+    );
 
     await expect(lastSurface().react("111.222", "👍", "🔎")).resolves.toBe(
       "attached",
@@ -469,7 +522,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("sends the account link straight into a DM", async () => {
-    await adapter.postSlackMessage(eventClient, "D123", "U456", "hi", true);
+    await adapter.postSlackMessage(
+      eventClient,
+      "D123",
+      "U456",
+      "hi",
+      true,
+      RECEIVED_AT,
+    );
 
     await lastAuthHandler()("https://gaia.test/link");
 
@@ -481,7 +541,14 @@ describe("SlackAdapter - postSlackMessage", () => {
   });
 
   it("sends the account link as an ephemeral in a public channel", async () => {
-    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
 
     await lastAuthHandler()("https://gaia.test/link");
 

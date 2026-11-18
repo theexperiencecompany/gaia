@@ -51,6 +51,7 @@ import {
   sanitizeErrorForLog,
   withWideEvent,
 } from "@gaia/shared/bots";
+import { type RunnerHandle, run, sequentialize } from "@grammyjs/runner";
 import type { Message, ReactionType } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
@@ -189,6 +190,8 @@ export class TelegramAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "telegram";
   protected readonly defaultServerPort = 3202;
   private bot!: Bot;
+  /** The running update loop, once long polling has started. */
+  private runner: RunnerHandle | undefined;
   private token!: string;
   private botUsername: string | undefined;
   private readonly adapterLogger = createBotLogger("telegram", "adapter");
@@ -206,6 +209,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
+    // The runner handles updates concurrently, so one user's slow turn no longer holds every
+    // other user's message; within a chat they still run in arrival order. Installed first,
+    // ahead of every handler registered after this.
+    this.bot.use(sequentialize((ctx: Context) => ctx.chat?.id.toString()));
     this.registerErrorHandler();
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
@@ -320,6 +327,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.bot.on("message:text", async (ctx) => {
+      const receivedAt = Date.now();
       if (ctx.message.text.startsWith("/")) return;
 
       const userId = ctx.from?.id.toString();
@@ -334,7 +342,12 @@ export class TelegramAdapter extends BaseBotAdapter {
       });
 
       if (isPrivate) {
-        await this.postTelegramMessage(ctx, userId, ctx.message.text);
+        await this.postTelegramMessage(
+          ctx,
+          userId,
+          ctx.message.text,
+          receivedAt,
+        );
         return;
       }
 
@@ -349,7 +362,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.postTelegramMessage(ctx, userId, content);
+      await this.postTelegramMessage(ctx, userId, content, receivedAt);
     });
 
     // Inbound media (photos, documents, voice notes, audio, …). Routed through
@@ -369,7 +382,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     );
   }
 
-  /** Starts long polling, retrying after 35 s on 409 Conflict. */
+  /** Starts long polling through the grammY runner, retrying after 35 s on 409 Conflict. */
   protected async start(): Promise<void> {
     // Remove any webhook that may have been set during development.
     // A webhook prevents long polling and immediately returns 409.
@@ -386,9 +399,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         });
         await new Promise<void>((r) => setTimeout(r, retryDelayMs));
       }
-      await this.bot.start({
-        onStart: () => this.adapterLogger.info("long_polling_started"),
-      });
+      // `silent`: the runner would otherwise print each transient getUpdates failure raw on
+      // stderr, outside the NDJSON log stream. It retries those itself, as bot.start() did;
+      // a 401/409 still ends the task and lands below.
+      this.runner = run(this.bot, { runner: { silent: true } });
+      this.adapterLogger.info("long_polling_started");
+      await this.runner.task();
     };
 
     const startWithRetry = (retryDelayMs = 0): void => {
@@ -419,9 +435,12 @@ export class TelegramAdapter extends BaseBotAdapter {
     startWithRetry();
   }
 
-  /** Stops the bot. */
+  /**
+   * Stops fetching updates. The runner's promise settles once polling ends, not once the
+   * updates already being handled finish, so a turn in flight at shutdown is cut short.
+   */
   protected async stop(): Promise<void> {
-    await this.bot.stop();
+    await this.runner?.stop();
   }
 
   // ---------------------------------------------------------------------------
@@ -567,6 +586,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.bot.command("gaia", async (ctx) => {
+      const receivedAt = Date.now();
       const message = ctx.match;
       const userId = ctx.from?.id.toString();
 
@@ -577,7 +597,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.postTelegramMessage(ctx, userId, message);
+      await this.postTelegramMessage(ctx, userId, message, receivedAt);
     });
   }
 
@@ -589,6 +609,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     ctx: Context,
     userId: string,
     message: string,
+    receivedAt: number,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     const chatId = ctx.chat?.id;
@@ -603,6 +624,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         channelId: chatId.toString(),
         isDm: !isGroup,
         platformMessageId: ctx.msg?.message_id?.toString(),
+        receivedAt,
         ...(attachments.length > 0
           ? {
               fileIds: attachments.map((a) => a.fileId),
@@ -749,6 +771,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    * WhatsApp stay byte-for-byte consistent.
    */
   private async handleTelegramMediaMessage(ctx: Context): Promise<void> {
+    const receivedAt = Date.now();
     const userId = ctx.from?.id.toString();
     const msg = ctx.message;
     if (!userId || !msg) return;
@@ -774,7 +797,13 @@ export class TelegramAdapter extends BaseBotAdapter {
       sizeBytes: extracted.sizeBytes,
       caption,
     };
-    await this.handleTelegramMedia(ctx, userId, media, extracted.fileId);
+    await this.handleTelegramMedia(
+      ctx,
+      userId,
+      media,
+      extracted.fileId,
+      receivedAt,
+    );
   }
 
   /** Downloads, routes, and replies for a single inbound media message. */
@@ -783,6 +812,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     userId: string,
     media: IncomingMedia,
     fileId: string,
+    receivedAt: number,
   ): Promise<void> {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
@@ -807,6 +837,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           ctx,
           userId,
           outcome.text,
+          receivedAt,
           outcome.attachments,
         );
       }

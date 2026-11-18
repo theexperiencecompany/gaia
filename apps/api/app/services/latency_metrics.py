@@ -13,7 +13,7 @@ never the per-call row uuid.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 import contextlib
 import time
 from typing import Final
@@ -21,9 +21,51 @@ from typing import Final
 from prometheus_client import Counter, Histogram
 
 from app.services.storage.metrics import _register_once
+from app.services.turn_timings import StepReport, Store, StoreTally, TurnPhase, TurnStep
 from shared.py.wide_events import log
 
-_TTFT_BUCKETS: Final[tuple[float, ...]] = (0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30)
+#: Sub-second steps where the overhead work moves things, edges at the 5s and
+#: 10s alert thresholds, and a 60s top so the p99 is not clamped at 30s.
+_TTFT_BUCKETS: Final[tuple[float, ...]] = (
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    15,
+    20,
+    30,
+    60,
+)
+
+#: Overhead is budgeted at 120ms p50 / 200ms p90, so resolution sits there.
+#: Round trips per turn phase: a handful when cached, dozens when a step fans out.
+_STORE_CALL_BUCKETS: Final[tuple[float, ...]] = (0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89)
+
+_OVERHEAD_BUCKETS: Final[tuple[float, ...]] = (
+    0.01,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12,
+    0.15,
+    0.2,
+    0.3,
+    0.5,
+    1,
+    2,
+    5,
+)
 
 _TURN_BUCKETS: Final[tuple[float, ...]] = (
     0.05,
@@ -68,6 +110,39 @@ _CHAT_E2E_FULL_SECONDS = _register_once(
         documentation="Request accepted to stream DONE per chat turn in seconds",
         labelnames=("source", "delegated", "status"),
         buckets=_TURN_BUCKETS,
+    ),
+)
+
+_TURN_STEP_SECONDS = _register_once(
+    "turn_step_seconds",
+    lambda: Histogram(
+        name="turn_step_seconds",
+        documentation=(
+            "Chat turn ingress/prep time by named step; step=other is the phase's "
+            "time no named step covers, so a phase's steps sum to it"
+        ),
+        labelnames=("source", "phase", "step"),
+        buckets=_OVERHEAD_BUCKETS,
+    ),
+)
+
+_TURN_STORE_CALLS = _register_once(
+    "turn_store_calls",
+    lambda: Histogram(
+        name="turn_store_calls",
+        documentation="Store round trips one chat turn made in a phase, by store",
+        labelnames=("source", "phase", "store"),
+        buckets=_STORE_CALL_BUCKETS,
+    ),
+)
+
+_TURN_STORE_SECONDS = _register_once(
+    "turn_store_seconds",
+    lambda: Histogram(
+        name="turn_store_seconds",
+        documentation="Wall time one chat turn spent on store round trips in a phase, by store",
+        labelnames=("source", "phase", "store"),
+        buckets=_OVERHEAD_BUCKETS,
     ),
 )
 
@@ -230,6 +305,23 @@ _CHAT_TURN_TOTAL = _register_once(
     ),
 )
 
+_CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
+    "context_section_budget_exceeded",
+    lambda: Counter(
+        name="context_section_budget_exceeded",
+        documentation="Context sections that ran past their budget and rendered empty, by section",
+        labelnames=("section",),
+    ),
+)
+
+_MEMORY_FAST_RECALL_SEMANTIC_MISSED = _register_once(
+    "memory_fast_recall_semantic_missed",
+    lambda: Counter(
+        name="memory_fast_recall_semantic_missed",
+        documentation="Comms fast-lane turns answered without semantic hits: the embedding was late",
+    ),
+)
+
 _EXECUTOR_RUN_TOTAL = _register_once(
     "executor_run_total",
     lambda: Counter(
@@ -295,6 +387,8 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _LLM_TTFT_SECONDS,
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
+    _CONTEXT_SECTION_BUDGET_EXCEEDED,
+    _MEMORY_FAST_RECALL_SEMANTIC_MISSED,
     _EXECUTOR_QUEUE_WAIT_SECONDS,
     _EXECUTOR_TTFT_SECONDS,
     _EXECUTOR_ACTIVE_SECONDS,
@@ -393,6 +487,46 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
         delegated=_bool_label(delegated),
         status=status,
     )
+
+
+def observe_context_section_budget_exceeded(*, section: str) -> None:
+    """Count a context section that rendered empty because it ran past its budget."""
+    _inc(_CONTEXT_SECTION_BUDGET_EXCEEDED, section=section)
+
+
+def observe_fast_recall_semantic_missed() -> None:
+    """Count a fast-lane turn that answered without semantic hits because the embedding was late."""
+    _inc(_MEMORY_FAST_RECALL_SEMANTIC_MISSED)
+
+
+def observe_turn_steps(
+    reports: Mapping[TurnPhase, Mapping[TurnStep, StepReport]], *, source: str
+) -> None:
+    """Record each phase's step times, and its round trips and time per store (zero included)."""
+    for phase, steps in reports.items():
+        totals = {store: StoreTally() for store in Store}
+        for step, report in steps.items():
+            _observe(
+                _TURN_STEP_SECONDS,
+                report.seconds,
+                source=source,
+                phase=phase.value,
+                step=step.value,
+            )
+            for store, tally in report.stores.items():
+                totals[store].calls += tally.calls
+                totals[store].seconds += tally.seconds
+        for store, tally in totals.items():
+            _observe(
+                _TURN_STORE_CALLS, tally.calls, source=source, phase=phase.value, store=store.value
+            )
+            _observe(
+                _TURN_STORE_SECONDS,
+                tally.seconds,
+                source=source,
+                phase=phase.value,
+                store=store.value,
+            )
 
 
 def observe_llm_ttft(seconds: float, *, model: str, lane: str, agent: str) -> None:
@@ -504,6 +638,8 @@ __all__ = [
     "observe_chat_turn_total",
     "observe_comms_graph",
     "observe_context_assemble",
+    "observe_context_section_budget_exceeded",
+    "observe_fast_recall_semantic_missed",
     "observe_executor_active",
     "observe_executor_e2e",
     "observe_executor_queue_wait",
@@ -519,6 +655,7 @@ __all__ = [
     "observe_sse_delivery",
     "observe_subagent_run",
     "observe_tool_call",
+    "observe_turn_steps",
     "observe_trigger_gate_decision",
     "observe_transport_redis_publish",
     "span",

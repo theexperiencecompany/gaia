@@ -277,6 +277,10 @@ class AgentTurn:
     """Where the user is, as captured by the interactive turn that started this tree.
     Inherited from the parent when omitted; a root run without one reads it."""
 
+    stream_id: str | None = None
+    """The stream a root run publishes to (cancellation, executor capture, the turn
+    clock). Read only at a root; a child always takes its parent's."""
+
 
 @dataclass(frozen=True)
 class AgentTracing:
@@ -416,6 +420,7 @@ async def build_agent_config(
         writing_style=writing_style,
         execution_mode=execution_mode,
         presence=presence,
+        stream_id=turn.stream_id,
     )
     resolved = _inherit_from_parent_configurable(parent, current)
 
@@ -528,6 +533,8 @@ async def build_agent_config(
             llm_label=identity.agent_name,
         ),
     }
+    if resolved.stream_id:
+        metadata["stream_id"] = resolved.stream_id
     _stamp_langfuse(
         configurable,
         metadata,

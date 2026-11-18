@@ -187,6 +187,39 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
     expect(request.message).toBe("remind me to water the plants tomorrow");
   });
 
+  it("asks a linked sender's auth status once, not on every message", async () => {
+    // The welcome gate re-checked a LINKED user over HTTP on every message, with
+    // no timeout, ahead of the chat request — a round-trip on each turn.
+    (h.adapter as unknown as { analytics: unknown }).analytics = {
+      capture: vi.fn(),
+      alias: vi.fn(),
+    };
+    h.gaia.checkAuthStatus.mockResolvedValue({
+      authenticated: true,
+      platform: "whatsapp",
+      platform_user_id: "15550000001",
+      user_id: "68f0a1b2c3d4e5f6a7b8c9d0",
+    });
+    const send = async (messageId: string): Promise<void> => {
+      const event = freshen(loadFixture("text-message.json"));
+      event.message.id = messageId;
+      const body = JSON.stringify(event);
+      const res = await post(h.app, body, {
+        "x-webhook-signature": sign(body),
+      });
+      expect(res.status).toBe(200);
+    };
+
+    await send("wamid.SYNTHETIC-linked-1");
+    await vi.waitFor(() => expect(h.gaia.postMessage).toHaveBeenCalledTimes(1));
+    const checksForFirstMessage = h.gaia.checkAuthStatus.mock.calls.length;
+    await send("wamid.SYNTHETIC-linked-2");
+    await vi.waitFor(() => expect(h.gaia.postMessage).toHaveBeenCalledTimes(2));
+
+    expect(checksForFirstMessage).toBeGreaterThan(0);
+    expect(h.gaia.checkAuthStatus).toHaveBeenCalledTimes(checksForFirstMessage);
+  });
+
   it("rejects a tampered signature with 401 and dispatches nothing", async () => {
     const body = JSON.stringify(freshen(loadFixture("text-message.json")));
     const res = await post(h.app, body, {

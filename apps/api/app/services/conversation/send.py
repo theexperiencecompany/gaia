@@ -30,8 +30,17 @@ from app.services.conversation.bot_followers import follow_start
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.title import title_conversation
+from app.services.conversation.turn_prep import start_turn_prep
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
+from app.services.latency_metrics import observe_turn_steps
+from app.services.turn_timings import (
+    TurnPhase,
+    TurnStep,
+    close_ingress,
+    render_reports,
+    turn_step,
+)
 from app.utils.background_tasks import spawn_background_task
 from app.utils.errors import (
     ConversationAlreadyExistsError,
@@ -110,7 +119,9 @@ async def send_message(
 async def _accept_message(
     conversation_id: str, user: AuthenticatedUser, message: UserMessage
 ) -> Sent:
-    accepted = await accept(runtime_ports(), conversation_id, user.user_id, message)
+    with turn_step(TurnStep.ACCEPT):
+        accepted = await accept(runtime_ports(), conversation_id, user.user_id, message)
+    _report_ingress(message.surface)
     seq = accepted.appended.logged.seq
     if accepted.kick_failed:
         # The message is durable and unsettled, so the sweeper starts its step.
@@ -128,6 +139,16 @@ async def _accept_message(
     )
 
 
+def _report_ingress(surface: ConversationSource) -> None:
+    """Report where the request's ingress went, now that its message is in the log."""
+    ingress = close_ingress()
+    if ingress is None:
+        return
+    reports = {TurnPhase.INGRESS: ingress}
+    log.set(latency={"steps": render_reports(reports)})
+    observe_turn_steps(reports, source=surface.value)
+
+
 async def submit_message(
     conversation_id: str,
     user: AuthenticatedUser,
@@ -136,6 +157,8 @@ async def submit_message(
 ) -> MessageAccepted:
     """Charge the day's budget, open the conversation on the step, accept the message and count it."""
     await enforce_cost_budget(user.user_id, feature_key="chat_messages")
+    # Only once admitted: prep spends provider calls, and overlaps the accept below.
+    start_turn_prep(body.text)
     # The accept's own head read is the existence check, so only a first send creates.
     try:
         sent = await send_message(conversation_id, user, body, surface)
@@ -181,6 +204,8 @@ async def submit_retry(
             message=f"no user message {body.target} in conversation {conversation_id}",
             meta={"conversation_id": conversation_id, "entry_id": body.target},
         )
+    # Only once admitted: prep spends provider calls, and overlaps the accept below.
+    start_turn_prep(target.text)
     retry = target.model_copy(
         update={
             "id": body.message_id,
@@ -210,13 +235,17 @@ async def submit_retry(
 async def submit_bot_message(body: BotChatRequest, user: AuthenticatedUser) -> BotMessageAccepted:
     """Accept a bot user's message into their session's conversation, which keeps its history."""
     platform, user_id = body.platform, user.user_id
-    conversation_id = await BotService.get_or_create_session(
-        platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
-    )
+    with turn_step(TurnStep.SESSION):
+        conversation_id = await BotService.get_or_create_session(
+            platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
+        )
     message_id = (
         f"{platform}:{body.platform_message_id}" if body.platform_message_id else uuid4().hex
     )
-    await charge_bot_turn(user_id)
+    with turn_step(TurnStep.CHARGE):
+        await charge_bot_turn(user_id)
+    # Only once admitted: prep spends provider calls, and overlaps the accept below.
+    start_turn_prep(body.message)
     sent = await send_message(
         conversation_id,
         user,

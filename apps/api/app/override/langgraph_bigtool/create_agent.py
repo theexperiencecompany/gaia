@@ -62,7 +62,7 @@ from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import COMMS_AGENT_NAME, FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
@@ -295,7 +295,7 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
 
 
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
-    if agent_name == "comms_agent" and isinstance(response.content, str):
+    if agent_name == COMMS_AGENT_NAME and isinstance(response.content, str):
         response.content = normalize_message_breaks(response.content)
 
     if not response.tool_calls and not response.content:

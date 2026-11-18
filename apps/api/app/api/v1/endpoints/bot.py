@@ -50,6 +50,7 @@ from app.services.platform_link_service import (
     PlatformLinkService,
     platform_requires_upgrade,
 )
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import resolve_bot_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
@@ -153,10 +154,14 @@ async def bot_send_message(request: Request, body: BotChatRequest) -> BotMessage
     """Accept a linked bot user's message on the conversation step and return its seq at once."""
     await require_bot_api_key(request)
     log.set(operation="bot_send_message", platform=body.platform)
-    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
-    user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RATE_LIMIT):
+        await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RESOLVE_USER):
+        user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
     log.set(user={"id": user.user_id})
-    if await _bot_turn_refused(user.user_id, body.platform):
+    with turn_step(TurnStep.PAYWALL):
+        refused = await _bot_turn_refused(user.user_id, body.platform)
+    if refused:
         raise _bot_request_refused(
             402,
             BotRequestFailure.SUBSCRIPTION_REQUIRED,

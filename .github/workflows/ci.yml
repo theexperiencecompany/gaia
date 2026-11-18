@@ -65,6 +65,10 @@ on:
 # listener's 5-minute cancellation timeout (#1131). select-runner cancels the
 # superseded runs through the API instead (`runner.py cancel-superseded`), so a
 # new push starts at once. A merge group's ref is unique to that group.
+# One push can still start two runs on one SHA: a push that moves a stacked
+# PR's base and head together gets two pull_request events from GitHub, with
+# the same before/after. This group cancels the older run, whose gate then
+# fails on lanes that never ran; `mise ci:remote` reads each workflow's newest run only.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -595,7 +599,8 @@ jobs:
 
   # ── repo-policy: the checks that hold for the whole tree, not one language ─
   # The secret scan runs on every change (a key can land in a README), so the
-  # job always starts; it needs a checkout and python3, nothing installed.
+  # job always starts; it needs a checkout, node for bot-handles and uv for
+  # tool-pins, which parses the prek configs as YAML.
   repo-policy:
     name: repo-policy
     needs: [select-runner, detect]
@@ -624,6 +629,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/task-files
+      - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and
@@ -1406,6 +1412,9 @@ jobs:
         env:
           GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
           SHARD_LANE: mutation/shard-${{ strategy.job-index }}
+          # Under the job's own temp dir: the home runner keeps the checkout, so
+          # a shard file there could be an earlier job's.
+          SHARD_LOG: ${{ runner.temp }}/shard.log
         run: python3 scripts/ci/mutation.py shard
       - name: Upload the verdicts so far (a module failed)
         if: always() && env.GAIA_VERDICT_PENDING == '1'
@@ -1432,8 +1441,8 @@ jobs:
           # shard.verdict.json is the replay artifact every failing mutation
           # verdict's advice points at.
           path: |
-            shard.log
-            shard.verdict.json
+            ${{ runner.temp }}/shard.log
+            ${{ runner.temp }}/shard.verdict.json
           retention-days: 3
           if-no-files-found: ignore
       - name: Upload the module durations
@@ -1442,7 +1451,7 @@ jobs:
         with:
           # mutation.py history reads these on the PR's next run; tiny, unlike the log.
           name: mutation-durations-${{ strategy.job-index }}
-          path: shard.durations.json
+          path: ${{ runner.temp }}/shard.durations.json
           retention-days: 14
           if-no-files-found: ignore
       - name: Upload the verdict

@@ -15,27 +15,6 @@ from tests.conftest import FAKE_USER
 USER_ID = FAKE_USER.user_id
 
 
-@pytest.fixture(autouse=True)
-def _bypass_rate_limiter():
-    """Bypass the tiered rate limiter's Redis/payment calls for these tests.
-
-    The todo endpoints are wrapped in @tiered_rate_limit; patching the
-    limiter's increment and the subscription lookup avoids any real Redis/DB.
-    """
-    with (
-        patch(
-            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch(
-            "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-            new_callable=AsyncMock,
-        ),
-    ):
-        yield
-
-
 def _todo_response(todo_id: str) -> TodoResponse:
     doc = TodoDocument.model_validate(
         {
