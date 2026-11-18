@@ -5,6 +5,7 @@ The repository is faked; the real stamp catalogue (cities.json) is read.
 
 from unittest.mock import AsyncMock, patch
 
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.config.settings import settings
@@ -20,7 +21,7 @@ from app.models.brief_view_models import BriefCard, Postmark
 from app.services.briefing.postmarks import collected_postmarks
 
 MODULE = "app.services.briefing.postmarks"
-USER_ID = "user-1"
+USER_ID = make_user_id()
 _EDITION_URL = f"{settings.HOST}/api/v1/briefings/editions/"
 _PAPER = [0.1, 0.05, 0.9, 0.95]
 

@@ -3,6 +3,8 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
+from tests.factories import make_user_id
+
 from app.config.settings import settings
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome, EditionFamily
 from app.models.brief_composition_models import BriefBlock, SectionBlock
@@ -18,6 +20,8 @@ from app.models.brief_payload_models import (
 )
 from app.services.briefing.view import briefing_card, briefing_view, public_view
 
+USER_ID = make_user_id()
+
 
 def _brief(
     *,
@@ -27,7 +31,7 @@ def _brief(
 ) -> BriefingModel:
     return BriefingModel(
         id="brief_1",
-        user_id="user-1",
+        user_id=USER_ID,
         date="2026-10-21",
         payload=BriefingPayload(
             kicker="THE MORNING BRIEF",
@@ -210,5 +214,5 @@ async def test_a_public_viewer_sees_the_front_page_never_an_item_or_the_calendar
 
     assert "Three things wait on you" in seen
     assert "k1/png?t=" in seen
-    for private in ("Reply to Priya", "Waiting on you", "Therapy", "user-1", "brief_1"):
+    for private in ("Reply to Priya", "Waiting on you", "Therapy", USER_ID, "brief_1"):
         assert private not in seen
