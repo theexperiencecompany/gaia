@@ -87,6 +87,37 @@ describe("ApprovalRequestSection ledger UX", () => {
     ).toBeNull();
   });
 
+  it("says the server's re-ask sentence on a card asked again after a yes with a change", () => {
+    const question = "Updated subject to “Q4 numbers” — still OK to send it?";
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            ...card().description,
+            question,
+            change_note: "Updated subject to “Q4 numbers”",
+            changes: [{ label: "Subject", value: "“Q4 numbers”" }],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(question)).toBeDefined();
+  });
+
+  it("does not repeat the plain question on a first ask", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            ...card().description,
+            question: "OK to send an email to b@x?",
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByText("OK to send an email to b@x?")).toBeNull();
+  });
+
   it("names the action it will stop asking about", () => {
     render(<ApprovalRequestSection data={card()} />);
     fireEvent.click(

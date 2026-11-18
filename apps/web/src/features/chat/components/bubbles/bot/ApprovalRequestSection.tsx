@@ -204,6 +204,12 @@ export default function ApprovalRequestSection({
           <div className="text-sm leading-snug text-zinc-100">
             {description.headline}
           </div>
+          {/* A re-ask after a yes with a change: the server's question leads with that change. */}
+          {description.change_note && description.question && (
+            <div className="mt-1 text-xs leading-snug text-zinc-300">
+              {description.question}
+            </div>
+          )}
           {ageSeconds != null && (
             <div className="mt-0.5 text-[11px] text-zinc-500">
               {formatApprovalAge(ageSeconds)}
