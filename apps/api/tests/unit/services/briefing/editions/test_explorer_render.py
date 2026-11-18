@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from tests.factories import make_briefing_payload
 
 from app.constants.briefing import EditionFamily
 from app.models.brief_payload_models import BriefingPayload
@@ -75,20 +76,13 @@ EXPECTED_FAMILIES = (
 EXPECTED_ASSET_KEYS = {"BAND", "TEC_MARK"}
 
 
-def _payload(**overrides: Any) -> BriefingPayload:
-    payload: dict[str, Any] = {
-        "kicker": "Daily brief",
-        "template_family": "swiss",
-        "date": "2026-07-05",
-        "headline": "A quiet Sunday",
-        "lede": "Two approvals and one flight.",
-        "tallies": {"done_by_you": 1, "done_by_gaia": 2},
-        "calendar": [{"date": "2026-07-05", "start": "09:00", "title": "Standup"}],
-        "mood": "clear",
-        "caption": "Made by GAIA",
-    }
-    payload.update(overrides)
-    return BriefingPayload.model_validate(payload)
+_STANDUP = {"date": "2026-07-05", "start": "09:00", "title": "Standup"}
+_SUNDAY = make_briefing_payload(
+    date="2026-07-05",
+    headline="A quiet Sunday",
+    tallies={"done_by_you": 1, "done_by_gaia": 2},
+    calendar=[_STANDUP],
+)
 
 
 def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
@@ -99,7 +93,7 @@ def _render(payload: BriefingPayload | None = None, **overrides: Any) -> str:
         "generated_local": "6:02 AM",
     }
     kwargs.update(overrides)
-    return render_explorer_edition(payload or _payload(), **kwargs)
+    return render_explorer_edition(payload or _SUNDAY, **kwargs)
 
 
 def _embedded_const(html: str, name: str) -> Any:
@@ -204,7 +198,8 @@ class TestDocumentShell:
 
     def test_only_the_marks_of_the_apps_the_brief_prints_are_embedded(self) -> None:
         item = {"text": "PR #12", "kind": "you", "action": "review", "source": "github"}
-        payload = _payload(
+        payload = make_briefing_payload(
+            calendar=[_STANDUP],
             sections=[{"numeral": "I", "title": "Needs you", "items": [item]}],
             blocks=[{"kind": "items", "section": 0}],
         )
@@ -229,7 +224,9 @@ class TestDocumentShell:
             "days": [{"you": 0, "gaia": 0}] * 7,
             "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
         }
-        payload = _payload(template_family=EditionFamily.WEEKLY, calendar=[], week=week)
+        payload = make_briefing_payload(
+            template_family=EditionFamily.WEEKLY, calendar=[], week=week
+        )
 
         html = _render(payload, family="weekly")
 
@@ -272,7 +269,7 @@ class TestTransparentDesk:
     def test_a_paper_on_a_desk_is_rendered_without_its_desk(
         self, family: EditionFamily, transparent: bool
     ) -> None:
-        html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
+        html = EXPLORER_RENDERER[family](_SUNDAY, edition_no=12, generated_local="")
 
         assert ("#root > article { background: none; }" in html) is transparent
         assert edition_frame(family).transparent_desk is transparent
@@ -281,7 +278,7 @@ class TestTransparentDesk:
     def test_nothing_but_the_family_rules_follows_the_body_width(
         self, family: EditionFamily
     ) -> None:
-        html = EXPLORER_RENDERER[family](_payload(), edition_no=12, generated_local="")
+        html = EXPLORER_RENDERER[family](_SUNDAY, edition_no=12, generated_local="")
 
         style = html.split("<style>")[1].split("</style>")[0]
         after_body_width = style.split(f"body {{ width: {EXPLORER_CANVAS_PX}px; }}")[1]
@@ -320,7 +317,9 @@ class TestEmbeddedLiterals:
     def test_a_framed_family_hangs_the_drawn_artwork_by_its_hosted_url(self, family: str) -> None:
         artwork = artwork_catalogue()["oxbow"]
 
-        art = _embedded_const(_render(_payload(artwork_id="oxbow"), family=family), "ed")["art"]
+        art = _embedded_const(
+            _render(make_briefing_payload(artwork_id="oxbow"), family=family), "ed"
+        )["art"]
 
         assert art == {
             "src": artwork.url,
@@ -332,7 +331,7 @@ class TestEmbeddedLiterals:
         assert art["src"].startswith("https://res.cloudinary.com/")
 
     def test_a_re_render_hangs_the_same_artwork_whatever_the_edition_number(self) -> None:
-        payload = _payload(artwork_id="kambara")
+        payload = make_briefing_payload(artwork_id="kambara")
 
         hung = {
             _embedded_const(_render(payload, family="exhibition", edition_no=n), "ed")["art"][
@@ -348,7 +347,9 @@ class TestEmbeddedLiterals:
             _render(family="exhibition")
 
     def test_a_family_with_no_frame_hangs_nothing(self) -> None:
-        ed = _embedded_const(_render(_payload(artwork_id="oxbow"), family="memo"), "ed")
+        ed = _embedded_const(
+            _render(make_briefing_payload(artwork_id="oxbow"), family="memo"), "ed"
+        )
 
         assert ed["art"] is None
 
@@ -376,7 +377,7 @@ class TestEmbeddedLiterals:
 @pytest.mark.unit
 class TestPostalStamp:
     def test_postal_loads_the_drawn_citys_hosted_art_as_the_stamp_asset(self) -> None:
-        html = _render(_payload(stamp_city="paris"), family="postal")
+        html = _render(make_briefing_payload(stamp_city="paris"), family="postal")
         ed = _embedded_const(html, "ed")
 
         assert set(ed["assets"]) == EXPECTED_ASSET_KEYS | {"CITY_PARIS"}
@@ -406,38 +407,40 @@ class TestPostalStamp:
         assert cities[0] == stamp_for(cities[0]["id"])
 
     def test_other_families_ignore_the_stamp_city(self) -> None:
-        ed = _embedded_const(_render(_payload(stamp_city="paris"), family="swiss"), "ed")
+        ed = _embedded_const(
+            _render(make_briefing_payload(stamp_city="paris"), family="swiss"), "ed"
+        )
 
         assert set(ed["assets"]) == EXPECTED_ASSET_KEYS
         assert ed["stamp"] is None
 
     def test_a_postal_city_without_hosted_art_fails_loud(self) -> None:
         with pytest.raises(KeyError, match="atlantis"):
-            _render(_payload(stamp_city="atlantis"), family="postal")
+            _render(make_briefing_payload(stamp_city="atlantis"), family="postal")
 
 
 @pytest.mark.unit
 class TestScriptEscaping:
     def test_payload_text_cannot_close_the_inline_script_tag(self) -> None:
-        html = _render(_payload(headline="</script><img src=x>"))
+        html = _render(make_briefing_payload(headline="</script><img src=x>"))
 
         assert "</script><img src=x>" not in html
         assert '"deck": "<\\/script><img src=x>"' in html
 
     def test_payload_text_cannot_open_an_html_comment(self) -> None:
-        html = _render(_payload(headline="<!--hide"))
+        html = _render(make_briefing_payload(headline="<!--hide"))
 
         assert "<!--hide" not in html
         assert "<\\!--hide" in html
 
     def test_escaped_payload_still_decodes_to_the_original_text(self) -> None:
-        ed = _embedded_const(_render(_payload(headline="</script><!--boom")), "ed")
+        ed = _embedded_const(_render(make_briefing_payload(headline="</script><!--boom")), "ed")
 
         assert ed["deck"] == "</script><!--boom"
 
     def test_item_text_is_escaped_for_the_script_context_as_well(self) -> None:
         html = _render(
-            _payload(
+            make_briefing_payload(
                 sections=[
                     {
                         "numeral": "I",
