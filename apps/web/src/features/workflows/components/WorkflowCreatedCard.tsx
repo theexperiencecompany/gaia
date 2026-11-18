@@ -14,7 +14,7 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
 import type { Workflow } from "../api/workflowApi";
 import { workflowApi } from "../api/workflowApi";
-import { getScheduleDescription } from "../utils/cronUtils";
+import { describeCron } from "../utils/cronUtils";
 import WorkflowModal from "./WorkflowModal";
 
 interface WorkflowCreatedCardProps {
@@ -44,7 +44,8 @@ export default function WorkflowCreatedCard({
         };
       case "schedule": {
         const cronLabel = workflow.trigger_config.cron_expression
-          ? getScheduleDescription(workflow.trigger_config.cron_expression)
+          ? (describeCron(workflow.trigger_config.cron_expression) ??
+            workflow.trigger_config.cron_expression)
           : "Scheduled";
         return {
           label: cronLabel,
