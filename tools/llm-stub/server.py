@@ -118,8 +118,9 @@ def _log_request(parsed: ChatRequest) -> None:
     )
 
 
-def _directive_error(exc: DirectiveError) -> JSONResponse:
-    # Fail loud: a malformed directive is an authoring bug, never a silent default.
+@app.exception_handler(DirectiveError)
+async def _directive_error(_request: Request, exc: DirectiveError) -> JSONResponse:
+    """Fail loud: a malformed directive is an authoring bug, never a silent default."""
     return JSONResponse(
         status_code=500,
         content={"error": {"message": str(exc), "type": "directive_error"}},
@@ -156,10 +157,7 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     parsed = parse_request(await request.json())
     _log_request(parsed)
     await _think()
-    try:
-        response = resolve_response(parsed.messages, parsed.available_tools)
-    except DirectiveError as exc:
-        return _directive_error(exc)
+    response = resolve_response(parsed.messages, parsed.available_tools)
     fault = _unstreamable_fault(response, parsed.stream)
     if fault is not None:
         return fault
@@ -175,13 +173,10 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
 
 # evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
 async def _respond(request: Request) -> JSONResponse | StreamingResponse:
-    try:
-        parsed = parse_responses_request(await request.json())
-        _log_request(parsed)
-        await _think()
-        response = resolve_text_response(parsed.messages, parsed.available_tools)
-    except DirectiveError as exc:
-        return _directive_error(exc)
+    parsed = parse_responses_request(await request.json())
+    _log_request(parsed)
+    await _think()
+    response = resolve_text_response(parsed.messages, parsed.available_tools)
     fault = _unstreamable_fault(response, parsed.stream)
     if fault is not None:
         return fault
