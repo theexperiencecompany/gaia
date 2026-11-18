@@ -4113,7 +4113,15 @@ def _approved_ledger_row() -> Iterator[None]:
             f"{MODULE}.approval_ledger_repository.get_by_approval_id",
             AsyncMock(side_effect=lambda approval_id: row if approval_id == "ap_1" else None),
         ),
-        patch(f"{MODULE}.logged_decision", AsyncMock(return_value=approved)),
+        patch(
+            f"{MODULE}.logged_decision",
+            # The log is read under the approval's own conversation and user, or holds nothing.
+            AsyncMock(
+                side_effect=lambda conversation_id, user_id, approval_id: approved
+                if (conversation_id, user_id, approval_id) == ("conv-parked", "user-7", "ap_1")
+                else None
+            ),
+        ),
     ):
         yield
 

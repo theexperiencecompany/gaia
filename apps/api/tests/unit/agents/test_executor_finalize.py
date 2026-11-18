@@ -71,7 +71,7 @@ from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.tool_cards import FoldedCards
-from app.services.conversation.work_log import WorkReport
+from app.services.conversation.work_log import Continuing, WorkReport
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder
@@ -1213,3 +1213,21 @@ class TestStartingACarryRun:
         release.assert_awaited_once_with("conv-1", "s9", task_id)
         teardown.assert_called_once_with("s9")
         spawn.assert_not_called()
+
+    async def test_a_run_carrying_on_ended_work_is_logged_as_continuing_it(self) -> None:
+        prepared = SimpleNamespace(run=SimpleNamespace(stream_id="s9"))
+        with (
+            patch.object(
+                er, "_prepare_executor_run", new=AsyncMock(return_value=prepared)
+            ) as prepare,
+            patch.object(er, "record_work_carried", new=AsyncMock(return_value=True)) as carried,
+            patch.object(er, "_spawn_detached_run") as spawn,
+        ):
+            started = await er._start_executor_run(
+                "conv-1", AuthenticatedUser(user_id=USER_ID), TASK, continues="t-asked"
+            )
+
+        assert started is True
+        task_id = prepare.await_args.args[3]
+        carried.assert_awaited_once_with("conv-1", USER_ID, task_id, Continuing("t-asked"))
+        spawn.assert_called_once_with(prepared, "conv-1")

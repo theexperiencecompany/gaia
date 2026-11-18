@@ -518,18 +518,17 @@ async def _decide(
         feedback=feedback if let_go is None else None,
     )
     if leased is not None:
-        await _carry_out(leased, taken.stands)
+        await _carry_out(leased, taken.stands, now)
     return DecisionTaken(stands=taken.stands, taken=taken.taken and taken.stands.outcome is outcome)
 
 
-async def _carry_out(leased: ApprovalLedgerDocument, stands: ApprovalDecided) -> None:
-    """Bring the leased row to the decision the log holds, hand that decision to the work, end the lease.
+async def _carry_out(
+    leased: ApprovalLedgerDocument, stands: ApprovalDecided, since: datetime
+) -> None:
+    """Bring the row leased at since to the decision the log holds, hand that decision to the work, end the lease.
 
     The ledger follows the log: a row holding another outcome has drifted from it, a bug said loudly.
     """
-    since = leased.delivering_since
-    if since is None:
-        raise LedgerDriftError(leased.approval_id, stands.outcome)
     if leased.outcome is None:
         decided_by = leased.user_id if stands.decider is ApprovalDecider.USER else None
         if not await approval_ledger_repository.settle(
@@ -545,7 +544,10 @@ async def _carry_out(leased: ApprovalLedgerDocument, stands: ApprovalDecided) ->
 
 
 async def _hand_off(row: ApprovalLedgerDocument, stands: ApprovalDecided) -> None:
-    """Tell the work waiting on the approval how it was decided; a failed hand-off raises and is retried."""
+    """Tell the work waiting on the approval how it was decided; a failed hand-off raises and is retried.
+
+    A withdrawn or cancelled approval has nothing waiting on it: the agent withdrew it, or the user stopped the work.
+    """
     match stands.outcome:
         case ApprovalOutcome.APPROVED if row.owner_run_type:
             # A background owner has no live run: its resume carries the ticket.
@@ -563,9 +565,6 @@ async def _hand_off(row: ApprovalLedgerDocument, stands: ApprovalDecided) -> Non
             await record_owner_deny(row, stands.feedback)
         case ApprovalOutcome.EXPIRED:
             await _deliver_verdict(row, ApprovalOutcome.EXPIRED, None)
-        case ApprovalOutcome.WITHDRAWN | ApprovalOutcome.CANCELLED:
-            # The agent withdrew it, or the user stopped the work: nothing waits on it.
-            pass
 
 
 async def hand_off_stale_decision(row: ApprovalLedgerDocument, now: datetime) -> bool:
@@ -576,15 +575,13 @@ async def hand_off_stale_decision(row: ApprovalLedgerDocument, now: datetime) ->
     leased = await approval_ledger_repository.claim_delivery(
         row.approval_id, now, DECISION_HANDOFF_LEASE
     )
-    if leased is None or leased.delivering_since is None:
+    if leased is None:
         return False
     stands = await logged_decision(leased.conversation_id, leased.user_id, leased.approval_id)
     if stands is None:
-        await approval_ledger_repository.finish_delivery(
-            leased.approval_id, leased.delivering_since
-        )
+        await approval_ledger_repository.finish_delivery(leased.approval_id, now)
         return False
-    await _carry_out(leased, stands)
+    await _carry_out(leased, stands, now)
     return True
 
 

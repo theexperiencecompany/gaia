@@ -28,7 +28,6 @@ from app.db.repositories.conversation_sweep import SweepHead, conversation_sweep
 from app.models.conversation_log_models import (
     ApprovalRequested,
     LiveWork,
-    LoggedEntry,
     WorkOutcome,
 )
 from app.services.conversation.ports import RuntimePorts
@@ -143,28 +142,26 @@ async def _settle_undecidable(
         conversation_id, user_id=user_id, ids=[f"approval:{a}" for a in work.pending_approvals]
     )
     requested = {
-        entry.entry.approval_id: entry
+        entry.entry.approval_id: (entry.entry, entry.at)
         for entry in logged or ()
         if isinstance(entry.entry, ApprovalRequested)
     }
     for approval_id in sorted(work.pending_approvals):
-        if await _end_undecidable(conversation_id, user_id, requested[approval_id], clock):
+        if await _end_undecidable(conversation_id, user_id, *requested[approval_id], clock):
             report.undecidable_approvals += 1
 
 
 async def _end_undecidable(
     conversation_id: str,
     user_id: str,
-    logged: LoggedEntry,
+    requested: ApprovalRequested,
+    asked_at: datetime,
     clock: Callable[[], datetime],
 ) -> bool:
     """End an approval nobody can decide and resume its work; False while one still can, or a decision beat this one.
 
     Expired when it ran out of time; withdrawn when the ledger never got its envelope.
     """
-    requested = logged.entry
-    if not isinstance(requested, ApprovalRequested):
-        raise TypeError(f"entry {requested.id} holds a {requested.kind}, not an approval request")
     now = clock()
     # The grace lets a decision made at the deadline land before the sweep expires it.
     expired = (
@@ -174,7 +171,7 @@ async def _end_undecidable(
     row = await approval_ledger_repository.get_by_approval_id(requested.approval_id)
     if row is not None:
         return expired and await expire_ledger_approval(row)
-    if not expired and logged.at + APPROVAL_REGISTER_GRACE > now:
+    if not expired and asked_at + APPROVAL_REGISTER_GRACE > now:
         # Its gate may still be registering the row.
         return False
     return await end_unledgered_approval(

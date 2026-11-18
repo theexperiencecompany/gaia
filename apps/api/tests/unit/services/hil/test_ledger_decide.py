@@ -4,12 +4,13 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 import pytest
+import time_machine
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import hold_run_alive
@@ -20,7 +21,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
-from app.constants.hil import ApprovalDecision
+from app.constants.hil import DECISION_HANDOFF_LEASE, ApprovalDecision
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import ApprovalDecided, ApprovalRequested
 from app.models.execute_models import DispatchError, DispatchErrorKind
@@ -52,6 +53,7 @@ from app.services.hil.ledger_decide import (
     decide_ledger,
     decide_ledger_batch,
     end_unledgered_approval,
+    hand_off_stale_decision,
     reconcile_conversation_ledger,
     redeem_approved,
     revoke_ticket,
@@ -2113,6 +2115,8 @@ async def test_an_unledgered_approval_is_decided_once_and_resumes_its_work(
         assert await end_unledgered_approval("c1", "u1", _UNLEDGERED, outcome) is True
 
     decided.assert_awaited_once_with("c1", "u1", "ap-gone", outcome, None)
+    # The verdict resumes the work that asked, not a new run of its own.
+    assert deliver.await_args.kwargs == {"continues": "t1"}
     conversation_id, user, task = deliver.await_args.args
     assert (conversation_id, user) == ("c1", AuthenticatedUser(user_id="u1"))
     assert task == wrap_agent_payload(
@@ -2136,3 +2140,111 @@ async def test_an_unledgered_approval_a_decision_beat_resumes_nothing() -> None:
         )
 
     deliver.assert_not_awaited()
+
+
+TAPPED_AT = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+
+
+@time_machine.travel(TAPPED_AT, tick=False)
+async def test_a_tap_leases_its_hand_off_settles_the_row_and_ends_the_lease_it_took() -> None:
+    repo = _repo(_row())
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
+    ):
+        await ledger_decide.decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
+        status_read = vars(ledger_decide)["logged_status"].await_args
+
+    assert repo.claim_delivery.await_args == call("ap_abc", TAPPED_AT, DECISION_HANDOFF_LEASE)
+    assert status_read == call("conv-1", USER_ID, "ap_abc", TAPPED_AT)
+    repo.settle.assert_awaited_once_with(
+        "ap_abc", ApprovalOutcome.APPROVED, decided_by=USER_ID, feedback=None
+    )
+    deliver.assert_awaited_once()
+    repo.finish_delivery.assert_awaited_once_with("ap_abc", TAPPED_AT)
+
+
+def _stale_hand_off(outcome: ApprovalOutcome) -> tuple[MagicMock, MagicMock]:
+    """Build a row the log decided whose hand-off never finished, and a repo that leases it to the sweep."""
+    row = _row(outcome=outcome)
+    repo = _repo(row)
+    repo.claim_delivery = AsyncMock(return_value=row)
+    return row, repo
+
+
+@pytest.mark.parametrize(
+    ("outcome", "delivered_by"),
+    [(ApprovalOutcome.APPROVED, "_deliver_ticket"), (ApprovalOutcome.EXPIRED, "_deliver_verdict")],
+)
+async def test_the_sweep_hands_a_stale_decision_to_its_work_and_ends_the_lease(
+    outcome: ApprovalOutcome, delivered_by: str
+) -> None:
+    row, repo = _stale_hand_off(outcome)
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as ticket,
+        patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()) as verdict,
+    ):
+        assert await hand_off_stale_decision(row, TAPPED_AT) is True
+
+    repo.claim_delivery.assert_awaited_once_with("ap_abc", TAPPED_AT, DECISION_HANDOFF_LEASE)
+    repo.settle.assert_not_awaited()
+    delivered = {"_deliver_ticket": ticket, "_deliver_verdict": verdict}
+    assert delivered.pop(delivered_by).await_args.args[0] is row
+    (untouched,) = delivered.values()
+    untouched.assert_not_awaited()
+    if outcome is ApprovalOutcome.EXPIRED:
+        verdict.assert_awaited_once_with(row, ApprovalOutcome.EXPIRED, None)
+    repo.finish_delivery.assert_awaited_once_with("ap_abc", TAPPED_AT)
+
+
+async def test_a_stale_hand_off_whose_row_drifted_from_the_log_is_raised_not_delivered(
+    logged_decisions: dict[str, ApprovalDecided],
+) -> None:
+    row, repo = _stale_hand_off(ApprovalOutcome.DENIED)
+    logged_decisions["ap_abc"] = ApprovalDecided(
+        id="approval:ap_abc:decided",
+        approval_id="ap_abc",
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+    )
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as ticket,
+        pytest.raises(
+            LedgerDriftError,
+            match="ledger row ap_abc was not pending when the log decided it approved",
+        ),
+    ):
+        await hand_off_stale_decision(row, TAPPED_AT)
+
+    ticket.assert_not_awaited()
+    repo.finish_delivery.assert_not_awaited()
+
+
+async def test_a_hand_off_another_sweep_or_tap_holds_is_left_to_it() -> None:
+    row, repo = _stale_hand_off(ApprovalOutcome.APPROVED)
+    repo.claim_delivery = AsyncMock(return_value=None)
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as ticket,
+    ):
+        assert await hand_off_stale_decision(row, TAPPED_AT) is False
+
+    ticket.assert_not_awaited()
+    repo.finish_delivery.assert_not_awaited()
+
+
+async def test_a_lease_whose_decide_never_reached_the_log_is_ended_with_nothing_handed_off() -> (
+    None
+):
+    row, repo = _stale_hand_off(ApprovalOutcome.APPROVED)
+    with (
+        patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+        patch.object(ledger_decide, "logged_decision", new=AsyncMock(return_value=None)),
+        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as ticket,
+    ):
+        assert await hand_off_stale_decision(row, TAPPED_AT) is False
+
+    ticket.assert_not_awaited()
+    repo.finish_delivery.assert_awaited_once_with("ap_abc", TAPPED_AT)

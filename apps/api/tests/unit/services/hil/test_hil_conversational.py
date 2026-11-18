@@ -190,6 +190,29 @@ class TestBatch:
         assert (outcome.action, outcome.decided, outcome.amended) == ("approve", (older, newer), ())
         assert _decided(decide) == [("ap_1", "approve", None), ("ap_2", "deny", "yes to A, not B")]
 
+    async def test_an_item_another_tap_already_decided_does_not_stop_the_rest(
+        self, decide: AsyncMock
+    ) -> None:
+        rows = [_row(f"ap_{n}", f"Send {n}", age_minutes=10 - n) for n in (1, 2, 3)]
+        committed = decide.side_effect
+
+        async def _first_already_decided(approval_id: str, **kwargs: Any) -> LedgerDecision:
+            if approval_id == "ap_1":
+                return LedgerDecision(
+                    committed=False,
+                    approval_id=approval_id,
+                    outcome=ApprovalOutcome.DENIED,
+                    action=None,
+                )
+            return await committed(approval_id, **kwargs)
+
+        decide.side_effect = _first_already_decided
+        with _pending(*rows), serve_jev(httpx.HTTPError("402")):
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert outcome is not None
+        assert (outcome.action, outcome.decided) == ("approve", (rows[1], rows[2]))
+
     async def test_a_yes_with_a_change_to_one_item_approves_it_carrying_the_change(
         self, decide: AsyncMock
     ) -> None:
