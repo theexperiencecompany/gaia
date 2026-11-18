@@ -455,10 +455,14 @@ def _spread(work: Sequence[ModuleWork], count: int) -> list[tuple[ModuleWork, ..
 
 
 def _shards_to_fit(work: Sequence[ModuleWork]) -> int:
-    """Return the fewest shards whose packing keeps each within SHARD_BUDGET_SECONDS."""
+    """Return the fewest shards whose packing keeps each within SHARD_BUDGET_SECONDS.
+
+    A module over the budget on its own is left over: no shard count can split it.
+    """
     count = max(math.ceil(sum(w.cost for w in work) / SHARD_BUDGET_SECONDS), 1)
     while count < len(work) and any(
-        sum(w.cost for w in group) > SHARD_BUDGET_SECONDS for group in _spread(work, count)
+        len(group) > 1 and sum(w.cost for w in group) > SHARD_BUDGET_SECONDS
+        for group in _spread(work, count)
     ):
         count += 1
     return min(count, len(work))
@@ -1107,8 +1111,10 @@ def _tee(source: IO[bytes], log: IO[bytes]) -> None:
         sys.stderr.buffer.flush()
 
 
-def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, str]:
-    """Run mutmut in its own session, teed into mutmut.log; return its exit code and output."""
+def run_mutmut(
+    request: ModuleRequest, venv: Path, workdir: Path, deadline: float
+) -> tuple[int, str]:
+    """Run mutmut in its own session until `deadline` (monotonic), teed into mutmut.log."""
     children = os.environ.get("MUTMUT_MAX_CHILDREN") or str(mutant_workers())
     # Contract tests flush a Redis DB keyed on PYTEST_XDIST_WORKER, which mutmut
     # never sets: parallel mutants would flush each other's keys (a false kill).
@@ -1159,7 +1165,7 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
         tee = threading.Thread(target=_tee, args=(proc.stdout, log), daemon=True)
         tee.start()
         try:
-            rc = proc.wait(timeout=mutmut_cap_seconds())
+            rc = proc.wait(timeout=max(deadline - time.monotonic(), 0))
         except subprocess.TimeoutExpired:
             rc = MUTMUT_TIMED_OUT
         finally:
@@ -1535,13 +1541,16 @@ def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_t
 
 
 def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
+    # The cap runs from module launch, as run_module's kill does: that kill cannot
+    # reach mutmut's own session, so preparation must not push mutmut past it.
+    deadline = time.monotonic() + mutmut_cap_seconds()
     phase = Phases()
     phase("copy workdir")
     copy_workdir(request, workdir)
     configure_mutmut(request, workdir)
     phase("mutmut run")
     _say(f"mutating {request.module} (tests: {' '.join(request.testfiles)}) ...")
-    rc, log = run_mutmut(request, venv, workdir)
+    rc, log = run_mutmut(request, venv, workdir, deadline)
     if rc == MUTMUT_TIMED_OUT:
         return Outcome(
             Status.TIMED_OUT,
