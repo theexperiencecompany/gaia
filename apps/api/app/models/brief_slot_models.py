@@ -25,8 +25,9 @@ class CountName(StrEnum):
     DONE = GroupState.DONE.value
     IN_PROGRESS = GroupState.IN_PROGRESS.value
     WHILE_AWAY = "while_away"
-    OPEN_TODOS = "open_todos"
-    OVERDUE_TODOS = "overdue_todos"
+    #: The user's own todos in GAIA, never another app's tasks: the name says which list.
+    OPEN_TODOS = "gaia_todos"
+    OVERDUE_TODOS = "overdue_gaia_todos"
     #: GAIA's open tracked work, each subject once, however much the brief places.
     OPEN_TRACKED = "open_tracked"
     EVENTS = "events"

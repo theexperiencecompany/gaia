@@ -160,9 +160,11 @@ OWN_TODOS_COUNTED = (
     f"The user's own open todos are counted in {COUNTS_HEADER}; never voice that list as clear or "
     "empty."
 )
+_OVERDUE_TODOS = CountSlot(CountName.OVERDUE_TODOS)
 OWN_TODOS_OVERDUE = (
-    f" {CountSlot(CountName.OVERDUE_TODOS)} of them are past due: say that count in one plain "
-    "line, never list them."
+    f" {_OVERDUE_TODOS} of them are past due: say that count in one plain line that names them "
+    f'as the user\'s GAIA todos ("{_OVERDUE_TODOS} of your GAIA todos are overdue"), never beside '
+    "another app's items, and never list them."
 )
 
 #: What a weekly digest that places nothing is sent back with: it recaps the week.

@@ -163,7 +163,7 @@ class TestTheFactLines:
             words="Re: term sheet needs sign-off",
         )
         assert facts.block.splitlines()[:3] == [
-            "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
+            "[COUNTS] [[count:needs_you]] (1) · [[count:gaia_todos]] (4)",
             "[Waiting]",
             "1. [Gmail] waiting on you: Reply to Maya | needs sign-off | due [[fact:1.time]] "
             "(Fri Nov 13) | [[fact:1.count]] (3) todos on this one subject",
@@ -873,8 +873,10 @@ class TestTheOwnTodosNote:
     def test_overdue_todos_are_counted_by_their_slot_and_never_listed(self) -> None:
         assert user_todos_note(80, 70) == (
             "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
-            " empty. [[count:overdue_todos]] of them are past due: say that count in one plain"
-            " line, never list them."
+            " empty. [[count:overdue_gaia_todos]] of them are past due: say that count in one"
+            " plain line that names them as the user's GAIA todos (\"[[count:overdue_gaia_todos]]"
+            " of your GAIA todos are overdue\"), never beside another app's items, and never"
+            " list them."
         )
 
     def test_with_none_past_due_the_note_says_nothing_of_it(self) -> None:

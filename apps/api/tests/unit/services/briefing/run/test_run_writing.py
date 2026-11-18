@@ -152,7 +152,7 @@ class TestTheVoice:
         """Regression: 5 open todos were shown to the model, then rejected when it said 5."""
         world.todos.add(*own_open(5))
         world.calendar = []
-        world.replies = [{**VOICE, "headline": "[[count:open_todos]] open todos, a quiet morning"}]
+        world.replies = [{**VOICE, "headline": "[[count:gaia_todos]] open todos, a quiet morning"}]
 
         await run_brief(USER, BriefingKind.DAILY)
 
