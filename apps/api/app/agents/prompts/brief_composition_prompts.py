@@ -111,10 +111,9 @@ open; never lead with it when anything new needs the user.
   stand, with no slots.
 - Nothing you write says more than its facts say: no person, deadline or outcome they do not hold.
 
-## Nothing is mandatory but a new approval
-No source and no kind of item must appear, save one: a pending approval no brief has shown yet
-always goes in, as something {reader} acts on (code places it when you do not). Failures, GAIA's
-work and approvals already shown go in when they matter to {reader} today, not because they exist. Everything you leave out stays on the brief's
+## Nothing is mandatory
+No source and no kind of item must appear. Approvals, failures and GAIA's work go in when they
+matter to {reader} today, not because they exist. Everything you leave out stays on the brief's
 full page, so leaving something out loses nothing.
 
 ## How each app's scout tells what matters there
