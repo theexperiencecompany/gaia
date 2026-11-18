@@ -33,7 +33,7 @@ class Rejected(Generic[S]):
 
     problems: list[str]
     note: str
-    #: The answer as code repaired it, which a salvage keeps what holds of; None for none.
+    #: What holds of the answer, which a salvage keeps; None when the salvage needs none.
     kept: S | None = None
 
 
@@ -92,7 +92,6 @@ async def checked_structured_call(user_id: str, prompt: str, call: CheckedCall[S
     """
     note = ""
     rejections: list[str] = []
-    kept: S | None = None
     for attempt in range(1, call.attempts + 1):
         answer = await _asked(user_id, f"{prompt}\n\n{note}" if note else prompt, call)
         if isinstance(answer, _Unreadable):

@@ -1066,17 +1066,19 @@ class TestWeekEdges:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         tz = ZoneInfo("Pacific/Kiritimati")
-        # Newest first: the walk is oldest first, so the skipped rows come first.
-        completed = _by_owner(
+        # Each skipped row comes before a counted one, so a skip that stopped the walk shows.
+        closed = _done("Closed by an event", datetime(2026, 10, 12, 9, tzinfo=tz))
+        counted = _by_owner(
             [
+                _done("Next week", datetime(2026, 10, 19, 1, tzinfo=tz)),
                 _done("Memo", datetime(2026, 10, 13, 2, tzinfo=tz), GAIA_TRACKED_LABEL),
+                _done("Never", None),
                 _done("Brief", datetime(2026, 10, 12, 23, tzinfo=tz), GAIA_TRACKED_LABEL),
                 _done("Gym", datetime(2026, 10, 12, 20, tzinfo=tz)),
                 _done("Run", datetime(2026, 10, 12, 10)),
-                _done("Next week", datetime(2026, 10, 19, 1, tzinfo=tz)),
-                _done("Never", None),
             ]
         )
+        completed = CompletedWork([Finish(closed, TodoCompleter.TRIGGER), *counted.finished])
         clock = _clock("2026-10-14T12:00:00", "Pacific/Kiritimati")
 
         # Mongo's naive "Run" is UTC whatever zone the server itself runs in.

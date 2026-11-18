@@ -20,7 +20,7 @@ from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.tracked import gaia_work_candidates
 from app.services.briefing.clock import UserClock
-from app.services.briefing.facts import TODAY, FactSources, build_facts
+from app.services.briefing.facts import TODAY, Facts, FactSources, build_facts
 from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots
@@ -400,3 +400,26 @@ class TestThePlainVoice:
         voice = prose.plain_voice(Writing(values=values, lead=None))
 
         assert voice.message == "- [[fact:1]]\n- [[fact:2]]"
+
+
+class TestTheLinksAMessageMakes:
+    async def test_only_each_deliverable_the_message_links_is_minted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mint = AsyncMock(
+            side_effect=lambda _user, _kind, todo_id: f"https://heygaia.link/{todo_id}"
+        )
+        monkeypatch.setattr(prose, "optional_short_link", mint)
+        facts = Facts(
+            sections=[],
+            block="",
+            values=_VALUES,
+            deliverables={1: "t1", 2: "t2"},
+            addresses={3: "https://linear.app/i/3", 4: "https://linear.app/i/4"},
+            lead=None,
+        )
+
+        links = await prose.links_in(_USER_ID, "[The memo](fact:2) and [the issue](fact:4).", facts)
+
+        assert links == {4: "https://linear.app/i/4", 2: "https://heygaia.link/t2"}
+        mint.assert_awaited_once()

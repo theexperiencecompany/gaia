@@ -272,8 +272,6 @@ async def _publish_edition(run: Run, pool: FactPool, laid: Laid) -> None:
     remembered = chosen_signals(laid.chosen, reads.scouts.remembered)
     voicing = await standing.voice(
         VoiceInputs(
-            user=user,
-            clock=clock,
             reads=reads.reads,
             facts=facts,
             signals=signals_block(remembered, clock),

@@ -1023,6 +1023,20 @@ class TestDailyBrief:
         world.work = TrackedWork()
         world.user.briefing_dormancy = BriefingDormancy(goal_asked_at=_NOW - timedelta(days=1))
 
+    async def test_a_quiet_note_accounts_for_the_held_results_it_carries(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.held = [_held("h1", "Paper digest", _DIGEST_REPORT)]
+        world.composer.side_effect = None
+        world.composer.return_value = BriefComposition(blocks=[])
+
+        assert await run_brief(_USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        assert _stored_payload(world).form is BriefForm.QUIET_NOTE
+        world.consume.assert_awaited_once_with(_USER, ["h1"])
+
     async def test_a_quiet_day_sends_a_two_line_note_and_no_edition(self, world: World) -> None:
         """Founder decision: a day with nothing placed and nothing on the calendar sends a plain note."""
         self._quiet(world)
@@ -1726,9 +1740,16 @@ class TestDailyBrief:
         world.consume.assert_not_awaited()
         world.post.side_effect = None
 
-        outcome = await run_brief(_USER, BriefingKind.DAILY)
+        async with captured_wide_event() as event:
+            outcome = await run_brief(_USER, BriefingKind.DAILY)
 
         assert outcome is BriefingRunOutcome.SENT
+        assert {k: event["briefing"][k] for k in ("kind", "resumed", "channels", "pushed")} == {
+            "kind": "daily",
+            "resumed": True,
+            "channels": [*_ORCHESTRATED, "telegram"],
+            "pushed": True,
+        }
         world.render.assert_awaited_once()
         world.notify.assert_awaited_once()
         world.brief_message.assert_awaited_once()
@@ -2985,7 +3006,7 @@ class TestTheDailyRunWiring:
 
         assert event["briefing"]["channels"] == [*_ORCHESTRATED, "telegram"]
         assert (event["briefing"]["pushed"], event["briefing"]["form"]) == (True, "edition")
-        assert event["briefing"]["outcome"] == "sent"
+        assert (event["briefing"]["kind"], event["briefing"]["outcome"]) == ("daily", "sent")
 
     async def test_an_email_wanted_and_not_sent_is_a_warning(self, world: World) -> None:
         world.notify.return_value = SimpleNamespace(
@@ -3057,6 +3078,8 @@ class TestTheDailyRunWiring:
         )
         lookback = world.reads["format_lookback_block"].await_args.args
         assert (lookback[0], lookback[2]) == (_USER, Lookback(None, _DAY_START))
+        # The look-back reads the run's own read of what got done: the user's Gym.
+        assert [d.title for d in lookback[1].completed.docs] == ["Gym"]
         assert (lookback[3].date_str, lookback[3].tz.key) == (_DATE, _TZ)
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)

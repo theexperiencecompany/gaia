@@ -103,9 +103,7 @@ def _record_sent(
             source_count=len(payload.sources_read),
         ),
     )
-    log.set_ns(
-        "briefing", kind=stored.kind, form=payload.form, channels=channels, pushed=sending.push
-    )
+    log.set_ns("briefing", form=payload.form, channels=channels, pushed=sending.push)
 
 
 async def finish_started_delivery(user: UserDocument, clock: UserClock, kind: BriefingKind) -> bool:
@@ -116,8 +114,8 @@ async def finish_started_delivery(user: UserDocument, clock: UserClock, kind: Br
     """
     stored = await briefing_repository.find_for_date(user.id, clock.date_str, kind)
     plan = stored.delivery if stored is not None else None
-    if stored is None or plan is None or not plan.done or plan.completed_at is not None:
+    if plan is None or not plan.done or plan.completed_at is not None:
         return False
     channels = await deliver_brief(user, stored)
-    log.set_ns("briefing", kind=kind, resumed=True, channels=channels, pushed=plan.push)
+    log.set_ns("briefing", resumed=True, channels=channels, pushed=plan.push)
     return True

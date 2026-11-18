@@ -10,10 +10,8 @@ from typing import Protocol
 
 from app.agents.prompts.briefing_prompts import RecentLines
 from app.models.briefing_models import BriefingMood, BriefingPayload, BriefVoice
-from app.models.user_models import UserDocument
 from app.services.briefing.calendar_read import CalendarRead
 from app.services.briefing.candidates.pool import GatheredCandidates
-from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.facts import Facts
 from app.services.briefing.goals import StatedGoal
@@ -24,10 +22,8 @@ from app.services.briefing.work import BriefReads
 
 @dataclass(frozen=True)
 class VoiceInputs:
-    """What the voice prompt is written from."""
+    """What the voice prompt is written from, beside what the standing holds itself."""
 
-    user: UserDocument
-    clock: UserClock
     reads: BriefReads
     facts: Facts
     #: The app signals the brief placed, as the voice reads them.

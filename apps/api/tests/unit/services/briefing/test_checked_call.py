@@ -27,6 +27,8 @@ def _call(attempts: int = 2) -> CheckedCall[_Answer, str]:
     async def check(answer: _Answer) -> str | Rejected[_Answer]:
         if answer.word == "good":
             return f"held {answer.count}"
+        if answer.word == "hopeless":
+            return Rejected(["hopeless keeps nothing"], "NOTE hopeless")
         return Rejected([f"{answer.word} is not good"], f"NOTE {answer.word}", answer)
 
     return CheckedCall(
@@ -123,5 +125,46 @@ class TestTheCheckedCall:
     ) -> None:
         asked = AsyncMock(side_effect=[_Answer(word="bad", count=1), _malformed_by_fields()])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        assert await checked_structured_call(_USER_ID, "PROMPT", _call()) == "salvaged from None"
+
+    async def test_an_unreadable_reply_is_a_warning_naming_its_call_and_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        asked = AsyncMock(side_effect=[_malformed_by_fields(), _Answer(word="good", count=2)])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        async with captured_wide_event() as event:
+            await checked_structured_call(_USER_ID, "PROMPT", _call())
+
+        assert {
+            "msg": "briefing.checked_call_unreadable",
+            "call": "probe",
+            "problems": ["count: Field required"],
+        } in event["warnings"]
+
+    async def test_the_salvage_is_logged_with_the_last_answers_problems(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        answers = [_Answer(word=w, count=1) for w in ("bad", "worse", "worst")]
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=answers))
+
+        async with captured_wide_event() as event:
+            result = await checked_structured_call(_USER_ID, "PROMPT", _call(attempts=3))
+
+        assert result == "salvaged from worst"
+        (salvaged,) = [e for e in event["errors"] if e["msg"] == "briefing.checked_call_salvaged"]
+        assert salvaged["problems"] == "worst is not good"
+        assert event["brief_probe"]["rejections"] == [
+            "bad is not good",
+            "worse is not good",
+            "worst is not good",
+        ]
+
+    async def test_a_rejection_that_keeps_nothing_salvages_from_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        answers = [_Answer(word="bad", count=1), _Answer(word="hopeless", count=1)]
+        monkeypatch.setattr(checked_call, "ainvoke_structured", AsyncMock(side_effect=answers))
 
         assert await checked_structured_call(_USER_ID, "PROMPT", _call()) == "salvaged from None"

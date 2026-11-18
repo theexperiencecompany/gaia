@@ -1,4 +1,4 @@
-"""Composing a brief: one call over the pool, sent back once with its problems named, then failing loud.
+"""Composing a brief: one call over the pool, sent back once with its problems named, then salvaged.
 
 Faked seams: the structured model call and the heading check.
 """
@@ -6,6 +6,7 @@ Faked seams: the structured model call and the heading check.
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+from pydantic import ValidationError
 import pytest
 from tests.helpers import user_clock
 
@@ -17,6 +18,7 @@ from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
     ComposedChart,
+    ComposedItem,
     ComposedItems,
 )
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
@@ -634,6 +636,23 @@ class TestWhatARejectionSays:
             "was sent back: the answer was not a whole BriefComposition tool call "
             "(cut off at the cap).\n"
             "This was your last composition:\n(no whole composition)\n"
+        ) in _prompt(model, 1)
+
+    async def test_a_reply_off_the_schema_is_retried_naming_every_field_it_got_wrong(
+        self, model: AsyncMock
+    ) -> None:
+        with pytest.raises(ValidationError) as invalid:
+            ComposedItem.model_validate({"id": 1})
+        off_schema = MalformedStructuredOutputError("BriefComposition: does not fit the schema")
+        off_schema.__cause__ = invalid.value
+        model.side_effect = [off_schema, _GOOD]
+
+        await compose_brief(USER, POOL, DAILY)
+
+        assert (
+            "the answer was not a whole BriefComposition tool call "
+            "(action: Field required; outcome: Field required; title: Field required; "
+            "detail: Field required)"
         ) in _prompt(model, 1)
 
 
