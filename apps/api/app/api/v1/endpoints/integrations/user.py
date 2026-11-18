@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.schemas.integrations.requests import AddUserIntegrationRequest
@@ -52,7 +53,7 @@ async def add_integration_to_workspace(
         raise HTTPException(status_code=500, detail="Failed to add integration") from e
     # No-auth integrations land directly in `connected` (the service stamps the
     # status); OAuth/bearer-managed ones capture IntegrationConnected at their callback.
-    if user_integration.status == "connected":
+    if user_integration.status == IntegrationStatus.CONNECTED:
         capture(
             UserId(user_id),
             IntegrationConnected(

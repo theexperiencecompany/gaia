@@ -8,8 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 from langchain_core.tools import BaseTool, tool
 import pytest
 from tests.factories import make_user_id
+from tests.integration_account_factories import make_integration_record
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import ToolReadOnlyVerdict
@@ -210,17 +212,22 @@ class TestWhichIntegrations:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         records = [
-            {"integration_id": "linear", "status": "connected"},
-            {"integration_id": "github", "status": "expired"},
-            {"integration_id": "slack", "status": "created"},
-            {"integration_id": "googlecalendar", "status": "expired"},
+            make_integration_record(user_id=USER_ID, integration_id=iid, status=status)
+            for iid, status in (
+                ("linear", IntegrationStatus.CONNECTED),
+                ("github", IntegrationStatus.EXPIRED),
+                ("slack", IntegrationStatus.CREATED),
+                ("googlecalendar", IntegrationStatus.EXPIRED),
+            )
         ]
         read = AsyncMock(return_value=records)
         monkeypatch.setattr(user_integrations_module, "get_user_integration_records", read)
 
         assert await scout_integrations(USER_ID) == [
             ScoutIntegration(integration_id="linear", name="Linear"),
-            ScoutIntegration(integration_id="github", name="GitHub", signed_out=True),
+            ScoutIntegration(
+                integration_id="github", name="GitHub", status=IntegrationStatus.EXPIRED
+            ),
         ]
         assert [c.args for c in read.await_args_list] == [(USER_ID,), (USER_ID,)]
 

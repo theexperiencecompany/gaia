@@ -18,6 +18,7 @@ from app.agents.tools.discovery_tools import (
     find_integration,
     search_public_workflows,
 )
+from app.constants.integrations import IntegrationStatus
 from app.models.workflow_models import PublicWorkflowRow
 from app.schemas.integrations.responses import CommunityIntegrationItem, MyIntegrationItem
 
@@ -41,7 +42,7 @@ def _mine(
         category="productivity",
         source=source,
         managed_by="composio",
-        status="connected" if connected else "not_connected",
+        status=IntegrationStatus.CONNECTED if connected else "not_connected",
     )
 
 

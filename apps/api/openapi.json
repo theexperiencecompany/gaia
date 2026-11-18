@@ -222,13 +222,7 @@
       "AddUserIntegrationResponse": {
         "properties": {
           "connectionStatus": {
-            "enum": [
-              "created",
-              "connected",
-              "expired"
-            ],
-            "title": "Connectionstatus",
-            "type": "string"
+            "$ref": "#/components/schemas/IntegrationStatus"
           },
           "integrationId": {
             "title": "Integrationid",
@@ -10271,9 +10265,8 @@
             "type": "string"
           },
           "status": {
-            "description": "Integration status: 'created' or 'connected'",
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/IntegrationStatus",
+            "description": "Integration connection status"
           }
         },
         "required": [
@@ -10470,6 +10463,16 @@
         ],
         "title": "IntegrationResponse",
         "type": "object"
+      },
+      "IntegrationStatus": {
+        "description": "Connection state of a user's integration, as stored and sent to clients.",
+        "enum": [
+          "created",
+          "connected",
+          "expired"
+        ],
+        "title": "IntegrationStatus",
+        "type": "string"
       },
       "IntegrationStatusesResponse": {
         "description": "Current connection status map, fetched independently of the catalog.",
@@ -13877,14 +13880,16 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "connected",
-              "created",
-              "expired",
-              "not_connected"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationStatus"
+              },
+              {
+                "const": "not_connected",
+                "type": "string"
+              }
             ],
-            "title": "Status",
-            "type": "string"
+            "title": "Status"
           },
           "toolCount": {
             "default": 0,

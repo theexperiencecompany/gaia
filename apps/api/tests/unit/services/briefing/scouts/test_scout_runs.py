@@ -20,6 +20,7 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 import time_machine
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import (
     SCOUT_DAILY_COST_CEILING_USD,
     SCOUT_LEARN_RESERVATION_USD,
@@ -468,7 +469,7 @@ class TestTypedSkips:
         assert event["scouts"]["skip_reasons"] == {"github": "signed_out"}
 
     async def test_a_signed_out_app_is_reported_without_calling_it(self, scouts: Scouts) -> None:
-        scouts.integrations = [ScoutIntegration("github", "GitHub", signed_out=True)]
+        scouts.integrations = [ScoutIntegration("github", "GitHub", IntegrationStatus.EXPIRED)]
         scouts.broken_tools = {"github": AssertionError("a signed-out app was called")}
 
         [result] = await service.run_scouts(USER)

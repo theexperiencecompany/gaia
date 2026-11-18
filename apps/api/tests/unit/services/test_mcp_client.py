@@ -39,6 +39,7 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
 from app.db.repositories.integrations import IntegrationsRepository
@@ -50,7 +51,6 @@ from app.models.integration_models import (
     IntegrationToolsRecord,
     StoredIntegrationTool,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp import mcp_client, mcp_oauth, server_routing, tool_naming
@@ -203,9 +203,7 @@ def _custom_doc(name: str, description: str) -> dict[str, object]:
     ).model_dump()
 
 
-def _user_integration(
-    integration_id: str, status: UserIntegrationStatus
-) -> UserIntegrationDocument:
+def _user_integration(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
     return UserIntegrationDocument(user_id=USER_ID, integration_id=integration_id, status=status)
 
 
@@ -841,7 +839,7 @@ class TestMCPClientDisconnect:
 class TestTearingDownADeadIntegration:
     @pytest.mark.parametrize(("given", "status"), [(None, "created"), ("expired", "expired")])
     async def test_the_record_reads_never_set_up_unless_the_sign_in_expired(
-        self, given: UserIntegrationStatus | None, status: UserIntegrationStatus
+        self, given: IntegrationStatus | None, status: IntegrationStatus
     ) -> None:
         """A disconnect reads as never set up; a dead sign-in reads expired, so settings offers Reconnect."""
         client = MCPClient(user_id=USER_ID)

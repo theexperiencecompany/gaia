@@ -12,6 +12,7 @@ from tests.integration_account_factories import (
 )
 
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
+from app.constants.integrations import IntegrationStatus
 from app.services.integrations.integration_accounts import (
     derive_status,
     event_account,
@@ -44,14 +45,22 @@ def repo() -> Iterator[MagicMock]:
 class TestDeriveStatus:
     def test_one_live_account_keeps_the_integration_connected(self) -> None:
         assert (
-            derive_status([make_integration_account("a", "expired"), make_integration_account("b")])
+            derive_status(
+                [
+                    make_integration_account("a", IntegrationStatus.EXPIRED),
+                    make_integration_account("b"),
+                ]
+            )
             == "connected"
         )
 
     def test_every_account_dead_expires_the_integration(self) -> None:
         assert (
             derive_status(
-                [make_integration_account("a", "expired"), make_integration_account("b", "expired")]
+                [
+                    make_integration_account("a", IntegrationStatus.EXPIRED),
+                    make_integration_account("b", IntegrationStatus.EXPIRED),
+                ]
             )
             == "expired"
         )
@@ -68,7 +77,7 @@ class TestPickPrimary:
 
     def test_a_gone_primary_falls_to_the_oldest_live_account(self) -> None:
         accounts = [
-            make_integration_account("a", "expired"),
+            make_integration_account("a", IntegrationStatus.EXPIRED),
             make_integration_account("b"),
             make_integration_account("c"),
         ]
@@ -80,8 +89,8 @@ class TestPickPrimary:
         assert (
             pick_primary(
                 [
-                    make_integration_account("a", "expired"),
-                    make_integration_account("b", "expired"),
+                    make_integration_account("a", IntegrationStatus.EXPIRED),
+                    make_integration_account("b", IntegrationStatus.EXPIRED),
                 ],
                 None,
             )
@@ -142,7 +151,8 @@ class TestPrimaryConnectedAccountId:
     ) -> None:
         """Another account may still work, but the default cannot quietly switch to it."""
         repo.get_for_user.return_value = _record(
-            make_integration_account("ca_1", "expired"), make_integration_account("ca_2")
+            make_integration_account("ca_1", IntegrationStatus.EXPIRED),
+            make_integration_account("ca_2"),
         )
 
         with pytest.raises(AppError) as exc:

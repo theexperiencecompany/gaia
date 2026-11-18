@@ -17,6 +17,7 @@ from tests.integration_account_factories import (
     with_nickname,
 )
 
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
@@ -169,7 +170,8 @@ class TestUpdateAccount:
 
     async def test_an_expired_account_cannot_become_primary(self, seams: Seams) -> None:
         seams.get_record.return_value = _record(
-            make_integration_account("ca_1"), make_integration_account("ca_2", "expired")
+            make_integration_account("ca_1"),
+            make_integration_account("ca_2", IntegrationStatus.EXPIRED),
         )
 
         with pytest.raises(AppError) as exc:

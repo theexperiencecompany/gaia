@@ -282,12 +282,11 @@ class TestTheReadCache:
         return UserIntegrationsRepository()
 
     @staticmethod
-    def _account(account_id: str, **fields: object) -> IntegrationAccount:
+    def _account(account_id: str) -> IntegrationAccount:
         return IntegrationAccount(
             id=account_id,
             connected_account_id=f"composio_{account_id}",
             label=f"{account_id}@acme.com",
-            **fields,
         )
 
     async def test_a_read_is_served_from_redis_once_cached(self, repo, raw_collection):

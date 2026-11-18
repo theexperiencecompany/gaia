@@ -13,6 +13,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.constants.integrations import IntegrationStatus
 from app.constants.workflows import WorkflowDelivery
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
@@ -450,7 +451,7 @@ class TestConnectionExpiryDelivery:
         record = UserIntegrationDocument(
             user_id=USER_ID,
             integration_id="googlecalendar",
-            status="connected",
+            status=IntegrationStatus.CONNECTED,
             accounts=[
                 IntegrationAccount(
                     id="acct_work",

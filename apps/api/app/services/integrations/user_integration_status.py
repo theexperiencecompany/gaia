@@ -10,32 +10,22 @@ from collections.abc import Awaitable
 from pymongo.errors import PyMongoError
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
-from app.models.integration_models import UserIntegrationStatus
-from app.services.briefing.scouts.lifecycle import queue_scout_learn
+from app.services.integrations.hook_registry import emit_connected
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.wait_service import report_wait_met
 from shared.py.wide_events import log
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a new connection in the workspace VFS, on any open page, in the brief and to its waiters."""
+    """Reflect a new connection in the workspace VFS, its hook subscribers, any open page and its waiters."""
     schedule_user_integrations_sync(user_id)
-    # Best-effort too: a scout with no learn queued is learned by the next brief instead.
-    try:
-        await queue_scout_learn(user_id, integration_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.INTEGRATION} Failed to queue the brief scout's learn",
-            integration_id=integration_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    await emit_connected(user_id, integration_id)
     # Best-effort: a missed push catches up on the next catalog read, so a
     # broadcast failure (Redis down) must not fail the connect.
     try:
@@ -43,7 +33,7 @@ async def publish_connected(user_id: str, integration_id: str) -> None:
             user_id=user_id,
             message={
                 "type": INTEGRATION_STATUS_UPDATE_EVENT,
-                "data": {"integration_id": integration_id, "status": "connected"},
+                "data": {"integration_id": integration_id, "status": IntegrationStatus.CONNECTED},
             },
         )
     except Exception as e:
@@ -60,7 +50,7 @@ async def publish_connected(user_id: str, integration_id: str) -> None:
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,
-    status: UserIntegrationStatus,
+    status: IntegrationStatus,
     expired_reason: str | None = None,
 ) -> bool:
     """Upsert user integration status; creates the record if it doesn't exist.
@@ -85,7 +75,7 @@ async def update_user_integration_status(
         integration_id=integration_id,
         status=status,
     )
-    if status == "connected":
+    if status == IntegrationStatus.CONNECTED:
         await publish_connected(user_id, integration_id)
     return True
 

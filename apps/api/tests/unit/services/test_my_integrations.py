@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config.settings import settings
+from app.constants.integrations import IntegrationStatus
 from app.models.integration_models import (
     IntegrationResponse,
     StoredIntegrationTool,
@@ -249,7 +250,7 @@ class TestGetMyIntegrations:
                     category="business",
                     source="platform",
                     managed_by="mcp",
-                    status="connected",
+                    status=IntegrationStatus.CONNECTED,
                     requires_auth=True,
                     auth_type="oauth",
                     tool_count=1,
