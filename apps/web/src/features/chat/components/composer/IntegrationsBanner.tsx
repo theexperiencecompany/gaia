@@ -40,11 +40,11 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
 
   return (
     // No z-index here — z-auto means DOM order, so indicators rendered after paint on top.
-    // pointer-events-none so the pb-10 overlap doesn't block the searchbar below.
-    <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
+    // pointer-events-none so only the pill itself catches clicks, never the composer below.
+    <div className="pointer-events-none absolute -top-9 flex w-full justify-center">
       <button
         type="button"
-        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-zinc-600 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
+        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 px-8 py-2 text-xs text-zinc-600 transition hover:bg-zinc-800/70 hover:text-zinc-400 pointer-events-auto cursor-pointer"
         onClick={onToggleSlashCommand}
       >
         <span className="text-xs whitespace-nowrap shrink-0">
