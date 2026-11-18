@@ -34,9 +34,16 @@ const TOKYO: Postmark = {
   lat: 35.68,
   lng: 139.69,
   stamp_url: "https://cdn.example/tokyo.webp",
-  date: "2026-09-01",
-  briefing_id: "brief_tokyo",
-  edition: null,
+  card: {
+    briefing_id: "brief_tokyo",
+    date: "2026-09-01",
+    kind: "daily",
+    headline: "A quiet Tuesday from Tokyo",
+    edition: null,
+    edition_name: "Air Mail",
+    stamp_city_name: "Tokyo",
+    needs_you_count: 0,
+  },
 };
 
 describe("PostmarksGlobe", () => {

@@ -20,6 +20,7 @@ import {
   BriefingFold,
   briefPath,
   FoldedBriefCard,
+  foldedBrief,
   notificationBrief,
 } from "@/features/briefing";
 import { MarkdownRenderer } from "@/features/chat";
@@ -87,9 +88,9 @@ export const NotificationCard = ({
   });
 
   const { title, body } = notification.content;
-  const brief = notificationBrief(notification);
+  const card = notificationBrief(notification);
   const actions = (notification.content.actions ?? []).filter(
-    (action) => !brief || !opensBrief(action, brief.briefingId),
+    (action) => !card || !opensBrief(action, card.briefing_id),
   );
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
@@ -117,7 +118,7 @@ export const NotificationCard = ({
               isUnread ? "text-zinc-100" : "text-zinc-400",
             )}
           >
-            {brief ? BRIEF_LABEL : title}
+            {card ? BRIEF_LABEL : title}
           </h3>
           {isUnread && (
             <span className="size-1.5 shrink-0 rounded-full bg-accent" />
@@ -131,12 +132,15 @@ export const NotificationCard = ({
             })}
           </span>
         </div>
-        {brief ? (
+        {card ? (
           <div className="mt-2 w-full max-w-56">
-            <BriefingFold brief={brief.summary} briefingId={brief.briefingId}>
+            <BriefingFold
+              brief={foldedBrief(card)}
+              briefingId={card.briefing_id}
+            >
               {(trigger) => (
                 <FoldedBriefCard
-                  brief={brief.summary}
+                  brief={foldedBrief(card)}
                   tone={NESTED_TONE[tone]}
                   trigger={trigger}
                 />

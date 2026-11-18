@@ -2039,6 +2039,80 @@
         "title": "BriefAction",
         "type": "string"
       },
+      "BriefCard": {
+        "description": "A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show.",
+        "properties": {
+          "briefing_id": {
+            "title": "Briefing Id",
+            "type": "string"
+          },
+          "date": {
+            "description": "User-local YYYY-MM-DD.",
+            "title": "Date",
+            "type": "string"
+          },
+          "edition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditionImage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The edition image; None for a quiet note."
+          },
+          "edition_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
+            "title": "Edition Name"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BriefingKind"
+          },
+          "needs_you_count": {
+            "description": "Items in the brief's Needs you section, as its edition lists them.",
+            "minimum": 0.0,
+            "title": "Needs You Count",
+            "type": "integer"
+          },
+          "stamp_city_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Air Mail only: the stamp city's name.",
+            "title": "Stamp City Name"
+          }
+        },
+        "required": [
+          "briefing_id",
+          "date",
+          "kind",
+          "headline",
+          "edition",
+          "edition_name",
+          "stamp_city_name",
+          "needs_you_count"
+        ],
+        "title": "BriefCard",
+        "type": "object"
+      },
       "BriefDeliveryWorkflow": {
         "description": "A workflow whose results wait for the brief.",
         "properties": {
@@ -2247,8 +2321,7 @@
             "$ref": "#/components/schemas/EditionChoice"
           },
           "family": {
-            "title": "Family",
-            "type": "string"
+            "$ref": "#/components/schemas/EditionFamily"
           },
           "name": {
             "title": "Name",
@@ -2549,7 +2622,7 @@
         "properties": {
           "briefings": {
             "items": {
-              "$ref": "#/components/schemas/BriefingView"
+              "$ref": "#/components/schemas/BriefCard"
             },
             "title": "Briefings",
             "type": "array"
@@ -3053,16 +3126,14 @@
         "type": "object"
       },
       "BriefingView": {
-        "description": "A brief as the archive and its folded card show it: the stored brief plus its edition's names.",
+        "description": "A brief as its owner opens it: its card, the stored brief, and what its edition left out.",
         "properties": {
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
-            "type": "string"
-          },
-          "date": {
-            "description": "User-local YYYY-MM-DD.",
-            "title": "Date",
             "type": "string"
           },
           "delivered_channels": {
@@ -3072,41 +3143,8 @@
             "title": "Delivered Channels",
             "type": "array"
           },
-          "edition": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EditionImage"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The edition image; None for a quiet note."
-          },
-          "edition_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
-            "title": "Edition Name"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/BriefingKind"
-          },
-          "needs_you_count": {
-            "description": "Items in the brief's Needs you section, as its edition lists them.",
-            "minimum": 0.0,
-            "title": "Needs You Count",
-            "type": "integer"
+          "left_out": {
+            "$ref": "#/components/schemas/EditionLeftOut"
           },
           "opened_at": {
             "anyOf": [
@@ -3122,32 +3160,15 @@
           },
           "payload": {
             "$ref": "#/components/schemas/BriefingPayload"
-          },
-          "stamp_city_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Air Mail only: the stamp city's name.",
-            "title": "Stamp City Name"
           }
         },
         "required": [
-          "id",
-          "date",
-          "kind",
+          "card",
           "payload",
           "delivered_channels",
           "opened_at",
           "created_at",
-          "edition",
-          "edition_name",
-          "stamp_city_name",
-          "needs_you_count"
+          "left_out"
         ],
         "title": "BriefingView",
         "type": "object"
@@ -7494,6 +7515,41 @@
           "image_url"
         ],
         "title": "EditionImage",
+        "type": "object"
+      },
+      "EditionLeftOut": {
+        "description": "What the rendered edition left to the brief's page, listed under it.",
+        "properties": {
+          "events": {
+            "description": "The day's events past the rows it prints.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "items": {
+            "description": "The sections the edition could not draw, then the rows past its own.",
+            "items": {
+              "$ref": "#/components/schemas/BriefingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "uncomposed": {
+            "items": {
+              "$ref": "#/components/schemas/UncomposedItem"
+            },
+            "title": "Uncomposed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "events",
+          "uncomposed"
+        ],
+        "title": "EditionLeftOut",
         "type": "object"
       },
       "EditionVariant": {
@@ -16069,12 +16125,10 @@
         "type": "object"
       },
       "Postmark": {
-        "description": "One collected Air Mail stamp: its city, where it sits, and the brief it came on.\n\nIt carries that brief's edition, so the page can ready the letter before the\nstamp is pressed without fetching the brief, which would mark it opened.",
+        "description": "One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.\n\nThe card carries that brief's edition, so the page can ready the letter before the\nstamp is pressed without fetching the brief, which would mark it opened.",
         "properties": {
-          "briefing_id": {
-            "description": "The brief that first carried the stamp.",
-            "title": "Briefing Id",
-            "type": "string"
+          "card": {
+            "$ref": "#/components/schemas/BriefCard"
           },
           "city": {
             "title": "City",
@@ -16087,22 +16141,6 @@
           "country": {
             "title": "Country",
             "type": "string"
-          },
-          "date": {
-            "description": "User-local YYYY-MM-DD the stamp first arrived.",
-            "title": "Date",
-            "type": "string"
-          },
-          "edition": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EditionImage"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "That brief's edition image."
           },
           "lat": {
             "title": "Lat",
@@ -16124,9 +16162,7 @@
           "lat",
           "lng",
           "stamp_url",
-          "date",
-          "briefing_id",
-          "edition"
+          "card"
         ],
         "title": "Postmark",
         "type": "object"
@@ -22998,6 +23034,72 @@
         "title": "URLResponse",
         "type": "object"
       },
+      "UncomposedItem": {
+        "description": "What GAIA read but the composition left out, with the words for where it stands.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemState"
+          },
+          "state_label": {
+            "description": "The item's state in a few words, as the brief page shows it.",
+            "title": "State Label",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "todo_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "title",
+          "detail",
+          "kind",
+          "app",
+          "url",
+          "todo_id",
+          "state_label"
+        ],
+        "title": "UncomposedItem",
+        "type": "object"
+      },
       "UnlinkAccountResponse": {
         "description": "Response model for unlinking a platform account.",
         "properties": {
@@ -27150,7 +27252,7 @@
     },
     "/api/v1/briefings": {
       "get": {
-        "description": "One page of the user's briefings archive (daily + weekly), newest first.",
+        "description": "One page of the user's briefings archive (daily + weekly) as their cards, newest first.",
         "operationId": "briefings_list_briefings",
         "parameters": [
           {

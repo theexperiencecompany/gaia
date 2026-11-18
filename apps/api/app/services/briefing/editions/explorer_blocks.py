@@ -289,6 +289,27 @@ def build_blocks(
     return [*drawn[:after], _calendar(calendar, today), *drawn[after:]]
 
 
+def left_out_items(
+    blocks: list[BriefBlock], undrawn: list[BriefBlock], sections: list[BriefingSection]
+) -> list[BriefingItem]:
+    """Return every item the edition leaves to the brief's page: the sections it could not draw, then the rows past its own."""
+    not_drawn = [
+        item for b in undrawn if isinstance(b, SectionBlock) for item in sections[b.section].items
+    ]
+    past_rows = [
+        item
+        for b in blocks
+        if isinstance(b, SectionBlock) and b.kind == "items"
+        for item in sections[b.section].items[EDITION_ROWS_SHOWN:]
+    ]
+    return not_drawn + past_rows
+
+
+def events_past_rows(events: list[BriefingEvent]) -> list[BriefingEvent]:
+    """Return the events past the rows the edition's calendar prints."""
+    return events[EDITION_ROWS_SHOWN:]
+
+
 def printed_logos(
     blocks: list[BriefBlock],
     sections: list[BriefingSection],

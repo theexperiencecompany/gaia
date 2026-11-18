@@ -7,15 +7,10 @@ import { ShareLinkControls } from "@/features/short-links/components/ShareLinkCo
 
 import { BACK_TO_BRIEFINGS, BRIEF_STOP_WARNING } from "../constants";
 
-import {
-  BriefingEdition,
-  type BriefingEditionPayload,
-} from "./BriefingEdition";
+import { BriefingEdition } from "./BriefingEdition";
 
 export interface StandaloneBriefingProps {
-  briefing: Pick<BriefingView, "edition"> & {
-    payload: BriefingEditionPayload;
-  };
+  briefing: BriefingView;
   /** Set on the owner's own page, which can share the brief or stop sharing it. */
   ownedBriefingId?: string;
 }
@@ -43,7 +38,8 @@ export function StandaloneBriefing({
     >
       <BriefingEdition
         payload={briefing.payload}
-        imageUrl={briefing.edition?.image_url}
+        imageUrl={briefing.card.edition?.image_url}
+        leftOut={briefing.left_out}
       />
     </StandalonePage>
   );

@@ -17,8 +17,23 @@ vi.mock("@/features/briefing/components/EditionUnfold", () => ({
 }));
 
 import { BriefLetter } from "@/features/briefing/components/BriefLetter";
+import type { FoldedBriefSummary } from "@/features/briefing/utils/briefCard";
 
 const HEADLINE = "Three decisions are waiting on you";
+
+function brief(imageUrl: string | null): FoldedBriefSummary {
+  return {
+    headline: HEADLINE,
+    date: "2026-10-22",
+    kind: "daily",
+    imageUrl,
+    editionFold: 0.3,
+    editionPaper: null,
+    editionName: null,
+    stampCityName: null,
+    needsYouCount: 0,
+  };
+}
 
 function trigger(open: (origin?: DOMRect) => void) {
   return { open, warm: vi.fn(), isBusy: false, isLifted: false };
@@ -27,12 +42,7 @@ function trigger(open: (origin?: DOMRect) => void) {
 describe("BriefLetter without a usable edition image", () => {
   it("opens the brief from a plain headline button when the brief has no image", () => {
     const onOpen = vi.fn();
-    render(
-      <BriefLetter
-        brief={{ headline: HEADLINE, imageUrl: null, editionFold: 0.3 }}
-        trigger={trigger(onOpen)}
-      />,
-    );
+    render(<BriefLetter brief={brief(null)} trigger={trigger(onOpen)} />);
 
     fireEvent.click(screen.getByRole("button", { name: HEADLINE }));
 
@@ -46,11 +56,7 @@ describe("BriefLetter without a usable edition image", () => {
     const onOpen = vi.fn();
     render(
       <BriefLetter
-        brief={{
-          headline: HEADLINE,
-          imageUrl: "https://cdn/edition.png",
-          editionFold: 0.3,
-        }}
+        brief={brief("https://cdn/edition.png")}
         trigger={trigger(onOpen)}
       />,
     );

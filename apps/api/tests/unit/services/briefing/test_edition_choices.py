@@ -8,7 +8,7 @@ import pytest
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
-from app.constants.briefing import EditionChoice
+from app.constants.briefing import EditionChoice, EditionFamily
 from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names
@@ -91,7 +91,9 @@ class TestSetEditionChoices:
         assert event["audit"] == [
             {"msg": "briefing editions updated", "actor": USER_ID, "off": 2, "favourites": 1}
         ]
-        assert {e.family: e.choice for e in view.editions}["swiss"] == EditionChoice.FAVOURITE
+        assert {e.family: e.choice for e in view.editions}[
+            EditionFamily.SWISS
+        ] == EditionChoice.FAVOURITE
 
     async def test_one_edition_left_on_is_accepted(self, seams: _Seams) -> None:
         choices: dict[str, EditionChoice] = {

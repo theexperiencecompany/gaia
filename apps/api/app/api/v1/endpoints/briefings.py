@@ -23,7 +23,7 @@ from app.services.briefing.edition_choices import briefing_editions, set_edition
 from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
-from app.services.briefing.view import briefing_view
+from app.services.briefing.view import briefing_card, briefing_view
 from app.services.user_service import require_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
@@ -40,22 +40,19 @@ async def list_briefings(
         str | None, Query(description="The previous page's next_cursor; omit for the first page.")
     ] = None,
 ) -> BriefingListResponse:
-    """One page of the user's briefings archive (daily + weekly), newest first."""
+    """One page of the user's briefings archive (daily + weekly) as their cards, newest first."""
     user_id = user.user_id
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
     anchor = None
     if before is not None:
-        anchor = await briefing_repository.get(before, user_id=user_id)
+        anchor = await briefing_repository.get_card(before, user_id=user_id)
         if anchor is None:
             raise HTTPException(status_code=404, detail="Briefing not found")
-    # A quiet day's note has no edition: it was a message, not a brief to look back on.
     # One past the page says whether another follows.
-    found = await briefing_repository.list_recent(
-        user_id, limit=limit + 1, editions_only=True, before=anchor
-    )
+    found = await briefing_repository.list_cards(user_id, limit=limit + 1, before=anchor)
     page = found[:limit]
     return BriefingListResponse(
-        briefings=[await briefing_view(b) for b in page],
+        briefings=[await briefing_card(b) for b in page],
         next_cursor=page[-1].id if len(found) > limit else None,
     )
 

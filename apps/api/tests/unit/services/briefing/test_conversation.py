@@ -9,7 +9,7 @@ import time_machine
 
 from app.constants.briefing import BriefingKind
 from app.models.brief_document_models import EditionImage
-from app.models.brief_view_models import BriefingCardData
+from app.models.brief_view_models import BriefCard
 from app.models.chat_models import SystemPurpose
 from app.services.briefing.conversation import (
     BRIEFING_CONVERSATION_MAX_MESSAGES,
@@ -17,7 +17,7 @@ from app.services.briefing.conversation import (
 )
 
 MODULE = "app.services.briefing.conversation"
-CARD = BriefingCardData(
+CARD = BriefCard(
     briefing_id="brief_1",
     date="2026-10-23",
     kind=BriefingKind.DAILY,

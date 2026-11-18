@@ -9,6 +9,7 @@ from app.constants.briefing import (
     DAILY_BRIEFING_HOUR,
     BriefingFrequency,
     EditionChoice,
+    EditionFamily,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.schemas.errors import ErrorEnvelope
@@ -59,7 +60,7 @@ class BriefingScheduleUpdate(BriefingSchedule):
 class BriefingEdition(BaseModel):
     """One daily edition family, and where the user put it."""
 
-    family: str
+    family: EditionFamily
     name: str
     choice: EditionChoice
 

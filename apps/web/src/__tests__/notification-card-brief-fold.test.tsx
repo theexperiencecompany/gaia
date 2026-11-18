@@ -49,12 +49,11 @@ const OPEN_BRIEFING = {
   },
 };
 
-/** A briefing notification's metadata: the brief's card, under the notification's own kind. */
-function briefMetadata(
+function briefCard(
   briefingId: string,
   card: Partial<BriefCard> = {},
-): Record<string, unknown> {
-  const full: BriefCard = {
+): BriefCard {
+  return {
     briefing_id: briefingId,
     headline: HEADLINE,
     date: "2026-10-22",
@@ -65,7 +64,41 @@ function briefMetadata(
     needs_you_count: 0,
     ...card,
   };
-  return { ...full, kind: "briefing_daily" };
+}
+
+/** A briefing notification's metadata: its kind, its link and the brief's card. */
+function briefMetadata(
+  briefingId: string,
+  card: Partial<BriefCard> = {},
+): Record<string, unknown> {
+  return {
+    kind: "briefing_daily",
+    brief_url: "https://heygaia.link/b",
+    card: briefCard(briefingId, card),
+  };
+}
+
+/** The brief as GET /briefings/{id} returns it: its card, its payload and nothing left out. */
+function storedBrief(
+  briefingId: string,
+  payload: Record<string, unknown>,
+  card: Partial<BriefCard> = {},
+) {
+  return {
+    card: briefCard(briefingId, card),
+    payload: {
+      kicker: "THE MORNING BRIEF",
+      date: "2026-10-22",
+      headline: HEADLINE,
+      lede: "",
+      caption: "",
+      message: MESSAGE,
+      stats: [],
+      sections: [],
+      ...payload,
+    },
+    left_out: { items: [], events: [], uncomposed: [] },
+  };
 }
 
 function notification(
@@ -106,18 +139,8 @@ describe("briefing notification", () => {
   });
 
   it("folds the brief and opens it, loaded by id, as a letter", async () => {
-    fetchBriefing.mockResolvedValue({
-      id: "brief_1",
-      date: "2026-10-22",
-      edition: null,
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
+    fetchBriefing.mockResolvedValue(
+      storedBrief("brief_1", {
         sections: [
           {
             numeral: "I",
@@ -125,8 +148,8 @@ describe("briefing notification", () => {
             items: [{ text: "Approve the Acme MSA" }],
           },
         ],
-      },
-    });
+      }),
+    );
     renderCard(notification(briefMetadata("brief_1")));
 
     expect(screen.queryByText(MESSAGE)).toBeNull();
@@ -168,25 +191,19 @@ describe("briefing notification", () => {
       "naturalHeight",
       "get",
     ).mockReturnValue(4500);
-    fetchBriefing.mockResolvedValue({
-      id: "brief_2",
-      date: "2026-10-22",
-      edition: {
-        image_url: "https://cdn.example/edition.png",
-        fold: null,
-        paper: null,
-      },
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
-        sections: [],
-      },
-    });
+    fetchBriefing.mockResolvedValue(
+      storedBrief(
+        "brief_2",
+        {},
+        {
+          edition: {
+            image_url: "https://cdn.example/edition.png",
+            fold: null,
+            paper: null,
+          },
+        },
+      ),
+    );
     renderCard(
       notification(
         briefMetadata("brief_2", {
@@ -220,21 +237,7 @@ describe("briefing notification", () => {
   });
 
   it("closes the opened brief from its close button", async () => {
-    fetchBriefing.mockResolvedValue({
-      id: "brief_1",
-      date: "2026-10-22",
-      edition: null,
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
-        sections: [],
-      },
-    });
+    fetchBriefing.mockResolvedValue(storedBrief("brief_1", {}));
     renderCard(notification(briefMetadata("brief_1")));
 
     fireEvent.click(
@@ -285,21 +288,7 @@ describe("briefing notification", () => {
   it("offers a retry, not a missing brief, when the brief could not be loaded", async () => {
     fetchBriefing
       .mockRejectedValueOnce(new ApiError("Service unavailable", 503))
-      .mockResolvedValue({
-        id: "brief_1",
-        date: "2026-10-22",
-        edition: null,
-        payload: {
-          kicker: "THE MORNING BRIEF",
-          date: "2026-10-22",
-          headline: HEADLINE,
-          lede: "",
-          caption: "",
-          message: MESSAGE,
-          stats: [],
-          sections: [],
-        },
-      });
+      .mockResolvedValue(storedBrief("brief_1", {}));
     renderCard(notification(briefMetadata("brief_1")));
 
     fireEvent.click(

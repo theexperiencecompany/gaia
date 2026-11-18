@@ -6,8 +6,9 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.briefing import BriefingKind
+from app.constants.briefing import BriefingKind, EditionFamily
 from app.db.repositories.base import UserScopedDocument
+from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingPayload
 
 
@@ -104,3 +105,30 @@ class BriefingUpdate(BaseModel):
     payload: BriefingPayload | None = None
     delivered_channels: list[str] | None = None
     opened_at: datetime | None = None
+
+
+class _CardItem(BaseModel):
+    kind: ItemState = ItemState.NOTE
+
+
+class _CardSection(BaseModel):
+    items: list[_CardItem] = Field(default_factory=list)
+
+
+class BriefCardPayload(BaseModel):
+    """The payload fields a brief's card reads: its headline, edition, stamp and item states."""
+
+    headline: str
+    template_family: EditionFamily | None = None
+    stamp_city: str | None = None
+    sections: list[_CardSection] = Field(default_factory=list)
+
+
+class BriefCardRecord(BaseModel):
+    """A stored brief read for its card alone, never its whole payload: what the archive and Postmarks list."""
+
+    id: str
+    date: str
+    kind: BriefingKind
+    edition: EditionRender | None = None
+    payload: BriefCardPayload

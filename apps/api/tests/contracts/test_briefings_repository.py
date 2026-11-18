@@ -19,12 +19,14 @@ from app.constants.briefing import (
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
 from app.models.brief_document_models import (
+    BriefCardRecord,
     BriefDelivery,
     BriefingModel,
     DeliveryStep,
     EditionRender,
 )
-from app.models.brief_payload_models import BriefingPayload
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import BriefingItem, BriefingPayload, BriefingSection
 from tests.helpers import local_timezone
 
 
@@ -304,8 +306,31 @@ class TestBriefingsReads:
         assert [b.id for b in await repo.list_recent(user_id, limit=10, editions_only=True)] == [
             edition.id
         ]
+        assert [b.id for b in await repo.list_cards(user_id, limit=10)] == [edition.id]
         assert [b.id for b in await repo.list_recent(user_id, limit=10)] == [note.id, edition.id]
         assert note.edition is None
+
+    async def test_a_card_reads_the_fields_it_shows_off_the_stored_brief(self, repo):
+        """The projection carries every field a card is built from, so it folds as the whole brief does."""
+        user_id = "u-card"
+        section = BriefingSection(
+            numeral="I",
+            title="Needs you",
+            items=[BriefingItem(text="Sign", action="approve", kind=ItemState.YOU)],
+        )
+        stored = await _upsert(
+            repo,
+            user_id,
+            "2026-08-06",
+            BriefingKind.DAILY,
+            _payload(template_family="postal", stamp_city="tokyo", sections=[section]),
+            edition=EditionRender(key="k", fold=0.3, paper=[0.1, 0.1, 0.9, 0.9]),
+        )
+        whole = BriefCardRecord.model_validate(stored, from_attributes=True)
+
+        assert await repo.list_cards(user_id, limit=10) == [whole]
+        assert await repo.get_card(stored.id, user_id=user_id) == whole
+        assert await repo.get_card(stored.id, user_id="attacker") is None
 
     async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
         """A backfilled brief is written after newer days but still lists by its own date."""
@@ -328,7 +353,7 @@ class TestBriefingsReads:
 
         assert [b.id for b in recent] == [weekly_same_day.id, later_day.id, earlier_day.id]
 
-    async def test_list_recent_before_a_brief_continues_the_listing_after_it(self, repo):
+    async def test_list_cards_before_a_brief_continues_the_listing_after_it(self, repo):
         """The archive's next page starts right after the last brief of the one before it."""
         user_id = "u-paged"
         older = await _upsert(
@@ -347,15 +372,15 @@ class TestBriefingsReads:
             repo, "other-user", "2026-08-04", BriefingKind.DAILY, _payload(), edition=_EDITION
         )
 
-        first = await repo.list_recent(user_id, limit=2)
-        second = await repo.list_recent(user_id, limit=2, before=first[-1])
-        last = await repo.list_recent(user_id, limit=2, before=second[-1])
+        first = await repo.list_cards(user_id, limit=2)
+        second = await repo.list_cards(user_id, limit=2, before=first[-1])
+        last = await repo.list_cards(user_id, limit=2, before=second[-1])
 
         assert [b.id for b in first] == [newest.id, weekly.id]
         assert [b.id for b in second] == [same_day.id, older.id]
         assert last == []
 
-    async def test_list_stamped_reads_only_the_users_delivered_stamped_briefs_oldest_first(
+    async def test_list_stamped_reads_each_citys_first_delivered_brief_of_the_users_oldest_first(
         self, repo
     ):
         user_id = "u-stamped"
@@ -368,6 +393,15 @@ class TestBriefingsReads:
             edition=_EDITION,
         )
         await _upsert(repo, user_id, "2026-08-06", BriefingKind.DAILY, _payload(), edition=_EDITION)
+        # Tokyo again, after it first arrived: the city counts once, on its first day.
+        await _upsert(
+            repo,
+            user_id,
+            "2026-08-09",
+            BriefingKind.DAILY,
+            _payload(stamp_city="tokyo"),
+            edition=_EDITION,
+        )
         earlier = await _upsert(
             repo,
             user_id,
@@ -397,6 +431,7 @@ class TestBriefingsReads:
             (user_id, "2026-08-05"),
             (user_id, "2026-08-06"),
             (user_id, "2026-08-07"),
+            (user_id, "2026-08-09"),
             ("other-user", "2026-08-04"),
         ]:
             await _deliver(repo, owner, date, BriefingKind.DAILY, ["inapp"])

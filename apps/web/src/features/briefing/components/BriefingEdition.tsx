@@ -5,7 +5,8 @@ import type {
   BriefingItem,
   BriefingPayload,
   BriefingSection,
-  BriefPoolItem,
+  EditionLeftOut,
+  UncomposedItem,
 } from "@shared/api/generated";
 import { formatClockTime } from "@shared/utils";
 import Image from "next/image";
@@ -20,32 +21,21 @@ import {
   EDITION_RENDER_WIDTH_PX,
   EDITION_TYPICAL_HEIGHT_PX,
 } from "../letterTokens";
-import {
-  BRIEF_ITEM_STATES,
-  hiddenEvents,
-  leftOutItems,
-} from "../utils/editionLeftOut";
 
 /** An item as this view reads it: its words, its state and where it opens. */
 type EditionItem = Pick<BriefingItem, "text" | "kind"> &
   Partial<Pick<BriefingItem, "todo_id" | "link">>;
 
 /**
- * The brief's fields this view reads, off the stored payload. GAIA's OpenUI
- * Briefing component carries only the headline and sections, so the rest is
- * optional: the calendar, GAIA's message, what the composition left out
- * (uncomposed), the blocks the edition drew and those it could not (undrawn).
+ * The brief's fields this view reads, off the stored payload. A brief's public
+ * link carries only its headline, sections and calendar, so the rest is
+ * optional: GAIA's message and the blocks the edition could not draw (undrawn).
  */
 export type BriefingEditionPayload = Pick<BriefingPayload, "headline"> & {
   sections: (Pick<BriefingSection, "numeral" | "title"> & {
     items: EditionItem[];
   })[];
-} & Partial<
-    Pick<
-      BriefingPayload,
-      "calendar" | "message" | "uncomposed" | "blocks" | "undrawn"
-    >
-  >;
+} & Partial<Pick<BriefingPayload, "calendar" | "message" | "undrawn">>;
 
 type UndrawnBlock = BriefingPayload["undrawn"][number];
 
@@ -53,6 +43,8 @@ export interface BriefingEditionProps {
   payload: BriefingEditionPayload;
   /** The day's rendered edition, when the brief was rendered. */
   imageUrl?: string | null;
+  /** What the edition left to the page, as the owner's view of the brief lists it. */
+  leftOut?: EditionLeftOut;
 }
 
 /**
@@ -64,7 +56,7 @@ function itemHref(item: EditionItem): string | null {
   return item.link ?? null;
 }
 
-function poolItemHref(item: BriefPoolItem): string | null {
+function poolItemHref(item: UncomposedItem): string | null {
   if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
   return item.url;
 }
@@ -122,6 +114,8 @@ function ItemGroup({
 
 interface BriefingTextProps {
   payload: BriefingEditionPayload;
+  /** What GAIA read but left out of the brief, as the owner's view lists it. */
+  uncomposed?: UncomposedItem[];
   /** Only the letter the edition draws, for a page that lists what it left out below it. */
   letterOnly?: boolean;
 }
@@ -129,10 +123,11 @@ interface BriefingTextProps {
 /** A brief read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
 export function BriefingText({
   payload,
+  uncomposed: pool = [],
   letterOnly = false,
 }: BriefingTextProps) {
   const calendar = payload.calendar ?? [];
-  const uncomposed = letterOnly ? [] : (payload.uncomposed ?? []);
+  const uncomposed = letterOnly ? [] : pool;
   const undrawn = letterOnly ? [] : undrawnLines(payload);
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
@@ -224,8 +219,8 @@ function BelowEdition({
 }
 
 /** Where a left-out item came from and where it stands: its app, its state, then its own detail. */
-function PoolItemContext({ item }: { item: BriefPoolItem }) {
-  const parts = [item.app, BRIEF_ITEM_STATES[item.kind], item.detail].filter(
+function PoolItemContext({ item }: { item: UncomposedItem }) {
+  const parts = [item.app, item.state_label, item.detail].filter(
     (part): part is string => Boolean(part),
   );
   return (
@@ -247,7 +242,7 @@ function PoolItemRow({
   item,
   className,
 }: {
-  item: BriefPoolItem;
+  item: UncomposedItem;
   className: string;
 }) {
   const href = poolItemHref(item);
@@ -280,7 +275,7 @@ const ON_YOUR_RADAR_NOTE =
  * The pool the composition left out, set apart from the brief as a quiet aside
  * so it reads as more to know about, not as part of the day's letter.
  */
-function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
+function OnYourRadar({ items }: { items: UncomposedItem[] }) {
   return (
     <section
       aria-labelledby="brief-on-your-radar"
@@ -318,12 +313,17 @@ function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
  * stands on the page alone with only what it could not draw or left out listed
  * under it; a brief stored before editions were rendered reads as text.
  */
-export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
-  if (!imageUrl) return <BriefingText payload={payload} />;
-  const uncomposed = payload.uncomposed ?? [];
+export function BriefingEdition({
+  payload,
+  imageUrl,
+  leftOut,
+}: BriefingEditionProps) {
+  if (!imageUrl)
+    return <BriefingText payload={payload} uncomposed={leftOut?.uncomposed} />;
+  const uncomposed = leftOut?.uncomposed ?? [];
   const undrawn = undrawnLines(payload);
-  const leftOut = leftOutItems(payload);
-  const pastRows = hiddenEvents(payload.calendar);
+  const leftOutItems = leftOut?.items ?? [];
+  const pastRows = leftOut?.events ?? [];
   return (
     <div className="w-full space-y-8">
       <Image
@@ -340,7 +340,9 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
       <div className="sr-only">
         <BriefingText payload={payload} letterOnly />
       </div>
-      {(undrawn.length > 0 || leftOut.length > 0 || pastRows.length > 0) && (
+      {(undrawn.length > 0 ||
+        leftOutItems.length > 0 ||
+        pastRows.length > 0) && (
         <BelowEdition id="brief-more-from-gaia" title="More from GAIA">
           {undrawn.map((line) => (
             <li key={line} className="py-3 text-sm text-zinc-300">
@@ -356,7 +358,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
               {event.title}
             </li>
           ))}
-          {leftOut.map((item) => (
+          {leftOutItems.map((item) => (
             <li key={item.todo_id ?? item.text} className="py-3">
               <ItemRow text={item.text} href={itemHref(item)} />
             </li>

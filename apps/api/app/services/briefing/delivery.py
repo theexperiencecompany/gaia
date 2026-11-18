@@ -21,7 +21,7 @@ from app.constants.notifications import (
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, DeliveryStep
-from app.models.brief_view_models import BriefingCardData
+from app.models.brief_view_models import BriefCard, BriefNotificationMetadata
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -41,7 +41,7 @@ from app.services.briefing.message import (
     chat_text,
     delivered_message,
 )
-from app.services.briefing.view import briefing_card, briefing_view
+from app.services.briefing.view import briefing_card
 from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -57,7 +57,7 @@ def _wants_email(user: UserDocument) -> bool:
 
 
 async def _notify(
-    user: UserDocument, brief: BriefingModel, plan: BriefDelivery, card: BriefingCardData | None
+    user: UserDocument, brief: BriefingModel, plan: BriefDelivery, card: BriefCard | None
 ) -> list[str]:
     """Notify in-app and, when pushed and wanted, by email; return the channels it reached."""
     payload = brief.payload
@@ -73,7 +73,6 @@ async def _notify(
             content=NotificationContent(
                 title=payload.headline,
                 body=delivered_message(payload),
-                rich_content=payload.model_dump() if card is not None else None,
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,
@@ -89,11 +88,9 @@ async def _notify(
                     )
                 ],
             ),
-            metadata={
-                **(card.model_dump() if card is not None else {}),
-                "kind": plan.notification_kind,
-                "brief_url": payload.link,
-            },
+            metadata=BriefNotificationMetadata(
+                kind=plan.notification_kind, brief_url=payload.link, card=card
+            ).model_dump(),
         )
     )
     reached = [c.channel_type for c in record.channels if c.reached_user]
@@ -139,7 +136,7 @@ async def deliver_brief(user: UserDocument, brief: BriefingModel) -> list[str]:
     if plan is None:
         raise ValueError(f"brief {brief.id} was stored without a delivery plan")
     reached = list(brief.delivered_channels)
-    card = briefing_card(await briefing_view(brief)) if brief.edition is not None else None
+    card = await briefing_card(brief) if brief.edition is not None else None
     if DeliveryStep.NOTIFICATION not in plan.done:
         notified = await _notify(user, brief, plan, card)
         await briefing_repository.record_step(

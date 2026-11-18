@@ -142,7 +142,7 @@ def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[st
 CHAT_CAPTION_MAX_CHARS = 1024
 
 # Daily brief / weekly recap notifications: the email channel renders the
-# edition from content.rich_content when metadata.kind names one of these.
+# edition from the card in their metadata when metadata.kind names one of these.
 NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
 NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
 # A quiet day's plain note: no edition, so every channel renders it as a plain notification.

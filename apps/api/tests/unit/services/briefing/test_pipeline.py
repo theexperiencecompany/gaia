@@ -1008,7 +1008,7 @@ class TestADailyBrief:
         )
         world.store_edition.assert_awaited_once_with(_USER, _BRIEF_ID, _RENDERED.image)
         request = world.notify.await_args.args[0]
-        assert request.metadata["edition"]["image_url"].startswith(_EDITION_URL)
+        assert request.metadata["card"]["edition"]["image_url"].startswith(_EDITION_URL)
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
         assert world.render.await_args.args[0].link == _BRIEF_LINK
@@ -1021,9 +1021,9 @@ class TestADailyBrief:
         assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
         assert card.needs_you_count == 1
         assert card.edition is not None and card.edition.image_url.startswith(_EDITION_URL)
-        assert request.metadata["needs_you_count"] == card.needs_you_count
+        assert request.metadata["card"] == card.model_dump()
         assert request.content.body == message
-        assert request.content.rich_content == payload.model_dump()
+        assert request.content.rich_content is None
         world.render.assert_awaited_once()
         post = world.post.await_args.kwargs
         assert post["channel"] == _CHAT
@@ -1153,7 +1153,8 @@ class TestADailyBrief:
         assert (action.label, action.style) == ("Open briefing", "primary")
         redirect = action.config.redirect
         assert (redirect.open_in_new_tab, redirect.close_notification) == (False, True)
-        assert (request.metadata["briefing_id"], request.metadata["date"]) == (_BRIEF_ID, _DATE)
+        card = request.metadata["card"]
+        assert (card["briefing_id"], card["date"]) == (_BRIEF_ID, _DATE)
         post = world.post.await_args.kwargs
         assert post["user"].user_id == _USER
         assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.jpg")

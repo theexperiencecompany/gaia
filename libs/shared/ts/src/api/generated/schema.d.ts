@@ -568,7 +568,7 @@ export interface paths {
         };
         /**
          * List Briefings
-         * @description One page of the user's briefings archive (daily + weekly), newest first.
+         * @description One page of the user's briefings archive (daily + weekly) as their cards, newest first.
          */
         get: operations["briefings_list_briefings"];
         put?: never;
@@ -7116,6 +7116,39 @@ export interface components {
          */
         BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
         /**
+         * BriefCard
+         * @description A brief folded to its card: what the archive, a postmark, the notification and GAIA's chat message show.
+         */
+        BriefCard: {
+            /** Briefing Id */
+            briefing_id: string;
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD.
+             */
+            date: string;
+            /** @description The edition image; None for a quiet note. */
+            edition: components["schemas"]["EditionImage"] | null;
+            /**
+             * Edition Name
+             * @description The daily edition family's name; None for the weekly recap and a quiet note.
+             */
+            edition_name: string | null;
+            /** Headline */
+            headline: string;
+            kind: components["schemas"]["BriefingKind"];
+            /**
+             * Needs You Count
+             * @description Items in the brief's Needs you section, as its edition lists them.
+             */
+            needs_you_count: number;
+            /**
+             * Stamp City Name
+             * @description Air Mail only: the stamp city's name.
+             */
+            stamp_city_name: string | null;
+        };
+        /**
          * BriefDeliveryWorkflow
          * @description A workflow whose results wait for the brief.
          */
@@ -7176,8 +7209,7 @@ export interface components {
          */
         BriefingEdition: {
             choice: components["schemas"]["EditionChoice"];
-            /** Family */
-            family: string;
+            family: components["schemas"]["EditionFamily"];
             /** Name */
             name: string;
         };
@@ -7280,7 +7312,7 @@ export interface components {
          */
         BriefingListResponse: {
             /** Briefings */
-            briefings: components["schemas"]["BriefingView"][];
+            briefings: components["schemas"]["BriefCard"][];
             /**
              * Next Cursor
              * @description Pass as before to read the next page; None on the last page.
@@ -7474,44 +7506,21 @@ export interface components {
         };
         /**
          * BriefingView
-         * @description A brief as the archive and its folded card show it: the stored brief plus its edition's names.
+         * @description A brief as its owner opens it: its card, the stored brief, and what its edition left out.
          */
         BriefingView: {
+            card: components["schemas"]["BriefCard"];
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
-            /**
-             * Date
-             * @description User-local YYYY-MM-DD.
-             */
-            date: string;
             /** Delivered Channels */
             delivered_channels: string[];
-            /** @description The edition image; None for a quiet note. */
-            edition: components["schemas"]["EditionImage"] | null;
-            /**
-             * Edition Name
-             * @description The daily edition family's name; None for the weekly recap and a quiet note.
-             */
-            edition_name: string | null;
-            /** Id */
-            id: string;
-            kind: components["schemas"]["BriefingKind"];
-            /**
-             * Needs You Count
-             * @description Items in the brief's Needs you section, as its edition lists them.
-             */
-            needs_you_count: number;
+            left_out: components["schemas"]["EditionLeftOut"];
             /** Opened At */
             opened_at: string | null;
             payload: components["schemas"]["BriefingPayload"];
-            /**
-             * Stamp City Name
-             * @description Air Mail only: the stamp city's name.
-             */
-            stamp_city_name: string | null;
         };
         /**
          * BriefingWeek
@@ -9601,6 +9610,24 @@ export interface components {
              * @description The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.
              */
             paper: number[] | null;
+        };
+        /**
+         * EditionLeftOut
+         * @description What the rendered edition left to the brief's page, listed under it.
+         */
+        EditionLeftOut: {
+            /**
+             * Events
+             * @description The day's events past the rows it prints.
+             */
+            events: components["schemas"]["BriefingEvent"][];
+            /**
+             * Items
+             * @description The sections the edition could not draw, then the rows past its own.
+             */
+            items: components["schemas"]["BriefingItem"][];
+            /** Uncomposed */
+            uncomposed: components["schemas"]["UncomposedItem"][];
         };
         /**
          * EditionVariant
@@ -13602,30 +13629,19 @@ export interface components {
         };
         /**
          * Postmark
-         * @description One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+         * @description One collected Air Mail stamp: its city, where it sits, and the card of the brief it first came on.
          *
-         *     It carries that brief's edition, so the page can ready the letter before the
+         *     The card carries that brief's edition, so the page can ready the letter before the
          *     stamp is pressed without fetching the brief, which would mark it opened.
          */
         Postmark: {
-            /**
-             * Briefing Id
-             * @description The brief that first carried the stamp.
-             */
-            briefing_id: string;
+            card: components["schemas"]["BriefCard"];
             /** City */
             city: string;
             /** City Slug */
             city_slug: string;
             /** Country */
             country: string;
-            /**
-             * Date
-             * @description User-local YYYY-MM-DD the stamp first arrived.
-             */
-            date: string;
-            /** @description That brief's edition image. */
-            edition: components["schemas"]["EditionImage"] | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -16936,6 +16952,28 @@ export interface components {
          */
         TriggerType: "manual" | "schedule" | "integration" | "scheduled_todo" | "todo_trigger";
         /**
+         * UncomposedItem
+         * @description What GAIA read but the composition left out, with the words for where it stands.
+         */
+        UncomposedItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            kind: components["schemas"]["ItemState"];
+            /**
+             * State Label
+             * @description The item's state in a few words, as the brief page shows it.
+             */
+            state_label: string;
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * UnlinkAccountResponse
          * @description Response model for unlinking a platform account.
          */
@@ -18218,6 +18256,7 @@ export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefAction = components['schemas']['BriefAction'];
+export type BriefCard = components['schemas']['BriefCard'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
 export type BriefForm = components['schemas']['BriefForm'];
@@ -18356,6 +18395,7 @@ export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckRespon
 export type EditionChoice = components['schemas']['EditionChoice'];
 export type EditionFamily = components['schemas']['EditionFamily'];
 export type EditionImage = components['schemas']['EditionImage'];
+export type EditionLeftOut = components['schemas']['EditionLeftOut'];
 export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
@@ -18750,6 +18790,7 @@ export type TriggerOptionsResponse = components['schemas']['TriggerOptionsRespon
 export type TriggerSubscriptionStatus = components['schemas']['TriggerSubscriptionStatus'];
 export type TriggerSubscriptionView = components['schemas']['TriggerSubscriptionView'];
 export type TriggerType = components['schemas']['TriggerType'];
+export type UncomposedItem = components['schemas']['UncomposedItem'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
 export type UnreadSource = components['schemas']['UnreadSource'];

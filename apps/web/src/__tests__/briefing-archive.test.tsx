@@ -4,6 +4,7 @@
  * its folded cards by week with the weekly recap leading, and pages back.
  */
 
+import type { BriefCard } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -29,36 +30,15 @@ function renderArchive(children: ReactNode = <BriefingArchive />) {
   );
 }
 
-const brief = {
-  id: "brief_1",
-  user_id: "u1",
+const brief: BriefCard = {
+  briefing_id: "brief_1",
   date: "2026-10-14",
   kind: "daily",
-  delivered_channels: ["inapp"],
+  headline: "Your morning, sorted",
   edition: null,
-  opened_at: null,
-  created_at: "2026-10-14T02:30:00Z",
-  updated_at: null,
   edition_name: "Air Mail",
   stamp_city_name: "Bogotá",
   needs_you_count: 1,
-  payload: {
-    kicker: "THE MORNING BRIEF",
-    date: "2026-10-14",
-    headline: "Your morning, sorted",
-    lede: "",
-    caption: "",
-    mood: "packed",
-    stats: [],
-    calendar: [],
-    sections: [
-      {
-        numeral: "I",
-        title: "GAIA's work",
-        items: [{ text: "Investor update", kind: "lookback", todo_id: null }],
-      },
-    ],
-  },
 };
 
 describe("BriefingArchive", () => {
@@ -95,21 +75,17 @@ describe("BriefingArchive", () => {
   });
 
   it("groups briefs by week, leads with the weekly recap and titles each card alone", async () => {
-    const weekly = {
+    const weekly: BriefCard = {
       ...brief,
-      id: "brief_w",
+      briefing_id: "brief_w",
       kind: "weekly",
       date: "2026-10-18",
+      headline: "A steady week",
       edition_name: "The Week",
       stamp_city_name: null,
       needs_you_count: 4,
-      payload: {
-        ...brief.payload,
-        headline: "A steady week",
-        lede: "Five briefs, two launches.",
-      },
     };
-    const lastWeek = { ...brief, id: "brief_old", date: "2026-10-07" };
+    const lastWeek = { ...brief, briefing_id: "brief_old", date: "2026-10-07" };
     fetchBriefings.mockResolvedValueOnce({
       briefings: [brief, weekly, lastWeek],
       next_cursor: null,
@@ -132,17 +108,16 @@ describe("BriefingArchive", () => {
     expect(screen.getByText("The Week")).toBeTruthy();
     expect(screen.queryByText("Weekly recap")).toBeNull();
     expect(screen.getAllByText("Air Mail, Bogotá")).toHaveLength(2);
-    expect(screen.queryByText("Five briefs, two launches.")).toBeNull();
     expect(screen.queryByText(/waiting/)).toBeNull();
     expect(screen.queryByText(/\d+ briefs?$/)).toBeNull();
   });
 
   it("reads the next page from where the last one ended, until there is none", async () => {
-    const lastWeek = {
+    const lastWeek: BriefCard = {
       ...brief,
-      id: "brief_old",
+      briefing_id: "brief_old",
       date: "2026-10-07",
-      payload: { ...brief.payload, headline: "An older morning" },
+      headline: "An older morning",
     };
     fetchBriefings
       .mockResolvedValueOnce({ briefings: [brief], next_cursor: "brief_1" })
