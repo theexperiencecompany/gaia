@@ -71,7 +71,7 @@ from scripts.migrate_conversation_entries.legacy import (
     entry_at,
     legacy_message,
 )
-from scripts.migrate_conversation_entries.oracle import legacy_messages
+from scripts.migrate_conversation_entries.oracle import imported_messages, is_imported
 from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 #: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
@@ -700,14 +700,16 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
 
         heads = await self._read_heads(_of(ref))
         [(_, entries)] = await self._union_for(heads, EntryWindow())
-        history = shown(legacy_messages([logged_of(entry) for entry in entries]))
+        # A merged log also holds what a live build wrote: only the array's messages are compared.
+        history = shown(imported_messages([logged_of(entry) for entry in entries]))
         if history != expected:
             report.mismatches.append(_difference("history", history, expected))
         for name, match, wanted in (
             ("search", {"kind": {"$in": sorted(TEXT_KINDS)}, "text": {"$ne": ""}}, "response"),
             ("pinned", {"kind": {"$in": sorted(PINNABLE_KINDS)}, "pinned": True}, "pinned"),
         ):
-            rows = await self._find_entries(ref.user_id, {**_of(ref), **match})
+            found = await self._find_entries(ref.user_id, {**_of(ref), **match})
+            rows = [row for row in found if is_imported(row.logged.entry)]
             hits = sorted(hit.item.id for hit in await self._hits(ref.user_id, rows))
             want = sorted(_by_id(m) for m in expected if m.get(wanted))
             if hits != want:
@@ -738,6 +740,8 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
                 through = seq_of.get(item.settles_after or "", 0)
                 entry = entry.model_copy(update={"through": through})
             prior = existing.get(entry.id)
+            if prior is not None and not is_imported(logged_of(prior).entry):
+                raise MigrationRefused(f"message {entry.id} is a live entry the log already holds")
             seq = prior.seq if prior else item.seq
             if seq is None:
                 next_seq += 1
@@ -788,7 +792,7 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             update["$unset"] = {"messages": ""}
         try:
             with store_errors("migration write"):  # pragma: no mutate — error label only
-                await self._write_entries(ref, head, plan)
+                await self._write_plan(ref, head, plan)
                 if archived is not None:
                     await self._archive(ref, head.fingerprint, archived)
                 result = await self._raw_collection().update_one(expected, update)
@@ -799,7 +803,7 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             await self._undo(ref, head)
         return result.matched_count > 0
 
-    async def _write_entries(self, ref: HeadRef, head: EmbeddedHead, plan: _Plan) -> None:
+    async def _write_plan(self, ref: HeadRef, head: EmbeddedHead, plan: _Plan) -> None:
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         await entries.delete_many({**_of(ref), "seq": {"$gt": head.log_head or 0}})
         for seq, document in plan.replaces:

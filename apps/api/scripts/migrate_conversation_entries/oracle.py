@@ -10,6 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from app.models.conversation_log_models import (
+    Entry,
     LoggedEntry,
     Notice,
     Reply,
@@ -67,6 +68,21 @@ def legacy_messages(log: Sequence[LoggedEntry]) -> list[ConversationEntry]:
     """Read the whole log back, in order, as the embedded array's messages."""
     beside = _Beside.of(log)
     return [message for logged in log if (message := _message(logged, beside)) is not None]
+
+
+def imported_messages(log: Sequence[LoggedEntry]) -> list[ConversationEntry]:
+    """Read back, in log order, only the messages the migration wrote; a live build's are its own."""
+    beside = _Beside.of(log)
+    return [
+        message
+        for logged in log
+        if is_imported(logged.entry) and (message := _message(logged, beside)) is not None
+    ]
+
+
+def is_imported(entry: Entry) -> bool:
+    """Whether the migration wrote this entry from an old message, not a build appending live."""
+    return isinstance(entry, UserMessage | Reply | ReplySettled) and entry.imported
 
 
 def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:

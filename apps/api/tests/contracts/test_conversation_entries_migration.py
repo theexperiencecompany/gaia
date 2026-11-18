@@ -20,12 +20,14 @@ from scripts.migrate_conversation_entries.migration import (
 )
 from scripts.migrate_conversation_entries.oracle import legacy_messages
 
+from app.constants.chat import ConversationSource
 from app.db.mongodb.indexes import (
     CONVERSATION_SOURCE_KEYS,
     CONVERSATION_SOURCE_OPTIONS,
     UNMIGRATED_HEAD_KEYS,
     UNMIGRATED_HEAD_OPTIONS,
 )
+from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversation_migration_guard import (
     MESSAGE_SHAPED,
     NEVER_MIGRATED_HEADS,
@@ -33,11 +35,15 @@ from app.db.repositories.conversation_migration_guard import (
     refuse_unmigrated_conversations,
 )
 from app.db.repositories.conversations import ConversationRepository
-from app.models.conversation_log_models import LoggedEntry
+from app.models.conversation_log_models import LoggedEntry, UserMessage
 from app.models.conversation_models import LogPage
+from app.services.conversation.mongo_log_append import LogAppends
 from app.services.conversation.reply_files import reply_files
 from app.utils.errors import UnmigratedConversationError
 from shared.py.conversation_wire import ReplyFile
+from tests.contracts.conftest import HeldFlushes
+from tests.unit.services.conversation.log_helpers import notice, replied
+from tests.unit.services.conversation.runtime_doubles import FakeClock
 
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
@@ -271,6 +277,79 @@ async def test_messages_the_old_build_appends_later_land_after_the_tail_settles(
     settle = (await _entries(entries_collection, ref))[-1]
     assert (settle["answers"], settle["through"]) == (["m3"], 4)
     assert (await migration.verify(ref)).ok
+
+
+async def test_a_log_the_new_build_wrote_merges_the_old_builds_later_messages_and_verifies(
+    migration: ConversationEntriesMigration,
+    raw_collection: Any,
+    entries_collection: Any,
+    held: HeldFlushes,
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _message(2, "bot", pinned=True)])
+    await migration.migrate(ref, apply=True)
+    appends = LogAppends(ConversationLogRepository(), FakeClock())
+    live = UserMessage(id="live-u", text="live words", surface=ConversationSource.WEB, pinned=True)
+    for entry in [live, *replied("live-settled", ["live-u"], 4), notice("live-n")]:
+        await appends.append(ref.conversation_id, USER, entry)
+    # The live entries are still staged in the head's outbox, as on a running stack.
+    held.drop_all()
+    # A rollback's old build appends to the array the log already holds.
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)},
+        {"$push": {"messages": {"$each": [_message(3), _message(4, "bot", pinned=True)]}}},
+    )
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert (outcome.action, outcome.written) == (MigrationAction.MERGED, 3)
+    ids = [e["id"] for e in await _entries(entries_collection, ref)]
+    assert ids == [
+        "m1",
+        "m2",
+        "m2:settled",
+        "live-u",
+        "live-settled-open",
+        "live-settled",
+        "live-n",
+        "m3",
+        "m4",
+        "m4:settled",
+    ]
+    assert [m for _, m, _ in await _history(ref)] == [
+        "m1",
+        "m2",
+        "live-u",
+        "r1",
+        "live-n",
+        "m3",
+        "m4",
+    ]
+    assert (await migration.verify(ref)).mismatches == []
+
+    entry_of = {"user_id": USER, "conversation_id": ref.conversation_id}
+    await entries_collection.update_one({**entry_of, "id": "m3"}, {"$set": {"text": "lost"}})
+    report = await migration.verify(ref)
+    assert report.mismatches[0].startswith("history differs at message 2")
+
+
+async def test_an_old_message_holding_the_id_of_a_live_entry_refuses_and_leaves_it_whole(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    await migration.migrate(ref, apply=True)
+    await LogAppends(ConversationLogRepository(), FakeClock()).append(
+        ref.conversation_id, USER, notice("m3")
+    )
+    await raw_collection.update_one(
+        {"_id": ObjectId(ref.head_id)}, {"$push": {"messages": _message(3)}}
+    )
+    before = await _entries(entries_collection, ref)
+
+    outcome = await migration.migrate(ref, apply=True)
+
+    assert outcome.action is MigrationAction.REFUSED
+    assert "m3" in outcome.reason
+    assert await _entries(entries_collection, ref) == before
 
 
 async def test_a_write_landing_mid_migration_is_raced_and_never_lost(
