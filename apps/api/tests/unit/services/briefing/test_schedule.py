@@ -27,7 +27,7 @@ from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.briefing import schedule
+from app.services.briefing import run_times, schedule
 from app.services.notification_service import notification_service
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
@@ -154,7 +154,7 @@ class TestBriefsAreSpreadAcrossTheirHour:
     def test_two_users_with_one_hour_fire_at_their_own_minutes(self) -> None:
         """Every brief fired at minute 0 of its hour, the whole hour's users in one second."""
         crons = {
-            schedule.briefing_cron(
+            run_times.briefing_cron(
                 DAILY_BRIEFING_WORKFLOW_KEY, _user(DEFAULT_QUIET_HOURS).model_copy(update={"id": u})
             )
             for u in ("user-a", "user-b", "user-c", "user-d")

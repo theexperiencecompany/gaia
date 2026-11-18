@@ -110,11 +110,9 @@ export function useOpenBrief(brief: FoldedBriefSummary, source: BriefSource) {
         return { kind: isNotFound(read.error) ? "missing" : "failed" };
       const { briefing } = read;
       payload = briefing.payload;
-      src = briefing.edition?.image_url ?? null;
-      editionLayout = {
-        fold: briefing.edition?.fold ?? null,
-        paper: briefing.edition?.paper ?? null,
-      };
+      // A note has no edition, so there is no src and its layout is never read.
+      src = briefing.edition?.image_url;
+      editionLayout = briefing.edition ?? editionLayout;
     }
     if (!payload) return { kind: "missing" };
     if (src) {

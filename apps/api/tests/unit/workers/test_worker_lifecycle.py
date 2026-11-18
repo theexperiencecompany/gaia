@@ -204,7 +204,7 @@ class TestWorkerShutdown:
         async def _stop(ctx: dict) -> None:
             stopped.append(ctx)
 
-        ctx = {"startup_time": 0}
+        ctx: dict[str, object] = {"startup_time": 0}
         with (
             patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
             patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),

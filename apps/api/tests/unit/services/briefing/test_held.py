@@ -14,6 +14,7 @@ from app.constants.briefing import (
     WINBACK_THRESHOLD,
     BriefingRunOutcome,
     BriefItemSource,
+    EditionFamily,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
@@ -94,7 +95,7 @@ def _brief(mood: BriefingMood, sent_at: datetime) -> BriefingModel:
         date=sent_at.date().isoformat(),
         payload=BriefingPayload(
             kicker="K",
-            template_family="swiss",
+            template_family=EditionFamily.SWISS,
             date=sent_at.date().isoformat(),
             headline="H",
             lede="L",
@@ -132,7 +133,10 @@ class TestBriefWillCarry:
     async def test_a_winback_backing_off_does_not(self, seams: _Seams) -> None:
         seams.last_active_at = _NOW - timedelta(days=30)
         seams.briefs = [
-            _brief("winback" if day == 0 else "clear", _NOW - timedelta(days=day + 1))
+            _brief(
+                BriefingMood.WINBACK if day == 0 else BriefingMood.CLEAR,
+                _NOW - timedelta(days=day + 1),
+            )
             for day in range(WINBACK_THRESHOLD)
         ]
 

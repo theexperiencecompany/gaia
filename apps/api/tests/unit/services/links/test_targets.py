@@ -23,6 +23,7 @@ from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import (
     BriefingEvent,
     BriefingItem,
+    BriefingMood,
     BriefingPayload,
     BriefingSection,
 )
@@ -164,7 +165,7 @@ def _brief_with_items(*todo_ids: str) -> BriefingModel:
         date="2026-10-14",
         payload=BriefingPayload(
             kicker="Tuesday",
-            template_family="swiss",
+            template_family=EditionFamily.SWISS,
             date="Oct 14",
             headline="A clear day",
             lede="Two things moved.",
@@ -183,7 +184,7 @@ def _brief_with_items(*todo_ids: str) -> BriefingModel:
                     ],
                 )
             ],
-            mood="clear",
+            mood=BriefingMood.CLEAR,
             caption="See you tomorrow",
         ),
     )

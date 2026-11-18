@@ -160,7 +160,7 @@ def _prompt(
     *,
     winback: bool = False,
     is_first_briefing: bool = False,
-    wind_down: str | None = None,
+    wind_down: WindDown | None = None,
     first_week: bool = False,
     offer_lighter_cadence: bool = False,
     recent: RecentLines | None = None,
@@ -316,10 +316,6 @@ def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens(
     assert (
         "Never invent a fact number, and never paste an artifact's contents into the message."
     ) in prompt
-
-
-def test_an_unknown_wind_down_stage_adds_nothing() -> None:
-    assert _prompt(wind_down="paused") == _prompt()
 
 
 def test_the_correction_note_shows_the_last_brief_and_asks_to_fix_only_its_problems() -> None:

@@ -257,7 +257,7 @@ class TestEmailChannelAdapterContract:
 def _make_request(
     kind: str | None = None,
     rich_content: dict[str, Any] | None = None,
-    **briefing_metadata: str | None,
+    **briefing_metadata: object,
 ) -> NotificationRequest:
     return NotificationRequest(
         id="notif-1",

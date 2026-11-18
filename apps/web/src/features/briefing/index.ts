@@ -1,10 +1,8 @@
 export {
-  type BriefsOffBlock,
   briefingApi,
   briefingEditionsQuery,
   briefingScheduleQuery,
   postmarksQuery,
-  readBriefsOffBlock,
 } from "./api/briefingApi";
 export { briefingKeys } from "./api/queryKeys";
 export { BriefingArchive } from "./components/BriefingArchive";
@@ -26,3 +24,7 @@ export {
   payloadBrief,
 } from "./utils/briefCard";
 export { quietHoursLanding } from "./utils/briefSchedule";
+export {
+  type BriefsOffBlock,
+  readBriefsOffBlock,
+} from "./utils/briefsOffBlock";
