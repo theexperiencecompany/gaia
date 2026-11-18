@@ -18,6 +18,14 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
+from app.models.brief_slot_models import (
+    FACT_PLACEHOLDER,
+    SERIES_PLACEHOLDER,
+    FactField,
+    SeriesField,
+    SlotKind,
+    value_slot_text,
+)
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import context_block
 from app.services.hil.utils import untrusted_fence
@@ -40,6 +48,10 @@ def composition_prompt(pool: FactPool, frame: str, facts: str) -> str:
         context=context_block(context),
         pool=facts,
         examples=COMPOSITION_EXAMPLES,
+        fact_slot=value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER),
+        fact_time_slot=value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER, FactField.TIME.value),
+        series_slot=value_slot_text(SlotKind.SERIES, SERIES_PLACEHOLDER, "FIELD"),
+        series_fields=", ".join(SeriesField),
         items_per_block=MAX_ITEMS_PER_BLOCK,
         heading_max=BRIEF_HEADING_MAX_CHARS,
         actions=", ".join(BriefAction),

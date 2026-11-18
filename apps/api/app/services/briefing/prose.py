@@ -27,6 +27,7 @@ from app.constants.briefing import (
 )
 from app.models.brief_document_models import BriefingModel
 from app.models.brief_payload_models import BriefingMood, BriefVoice
+from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
@@ -168,7 +169,7 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         problems.append(
             f"the message never refers to the lead, fact {lead} "
             f"({writing.values.facts[lead].title}); say it in your own words as "
-            f"[your phrase](fact:{lead})"
+            f"{LinkSlot('your phrase', lead)}"
         )
     if problems:
         return problems
@@ -221,7 +222,8 @@ def plain_voice(writing: Writing) -> BriefVoice:
     order = [writing.lead] if writing.lead is not None else []
     order += [fact_id for fact_id in facts if fact_id != writing.lead]
     lines = [
-        f"- [[fact:{fact_id}]]" + (f" ([[fact:{fact_id}.time]])" if facts[fact_id].time else "")
+        f"- {FactSlot(fact_id)}"
+        + (f" ({FactSlot(fact_id, FactField.TIME)})" if facts[fact_id].time else "")
         for fact_id in order
     ]
     message = "\n".join(lines) or PLAIN_BRIEF_EMPTY

@@ -16,6 +16,20 @@ from app.constants.briefing import (
     MAX_BRIEF_LEDE_CHARS,
     MAX_BRIEF_MESSAGE_CHARS,
 )
+from app.models.brief_slot_models import (
+    FACT_PLACEHOLDER,
+    PHRASE_PLACEHOLDER,
+    SERIES_PLACEHOLDER,
+    CountName,
+    CountSlot,
+    FactField,
+    FactSlot,
+    LinkSlot,
+    SeriesField,
+    SlotKind,
+    link_slot_text,
+    value_slot_text,
+)
 
 #: Said once in every brief prompt that carries what the user's apps hold, above its first fence.
 UNTRUSTED_DATA_NOTE = (
@@ -76,26 +90,36 @@ useful specific thing, named: the person, the decision, the time.
   and an item is linked only by its link slot, at most once per item.
 """.strip()
 
+
+def _fact_form(field: FactField | None = None) -> str:
+    return value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER, None if field is None else field.value)
+
+
+_SERIES_EXAMPLE = value_slot_text(SlotKind.SERIES, SERIES_PLACEHOLDER, SeriesField.PEAK.value)
+_SERIES_OTHER_FIELDS = ", ".join(
+    f"``.{f.value}``"
+    for f in (SeriesField.TOTAL, SeriesField.LATEST, SeriesField.LOW, SeriesField.PEAK_AT)
+)
 _SLOTS = f"""
 ## SLOTS (how every count, time and link gets into your prose)
 You never type a count, a time, a date or a web address. Where one goes, write a slot; the
 system fills it in from the facts:
-- ``[[count:needs_you]]``: a count from [COUNTS], by its name there. Every figure the facts
-  carry is listed beside the slot that writes it, as ``[[fact:9.time]] (11:00 AM)``: write
+- ``{CountSlot(CountName.NEEDS_YOU)}``: a count from [COUNTS], by its name there. Every figure the facts
+  carry is listed beside the slot that writes it, as ``{FactSlot(9, FactField.TIME)} (11:00 AM)``: write
   the slot, never the figure in brackets.
-- ``[[fact:N.time]]``: fact N's time or date, when its line has one ("Sequoia at
-  [[fact:9.time]]").
-- ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
-- ``[[series:ID.peak]]`` (or ``.total``, ``.latest``, ``.low``, ``.peak_at``): a figure of a
+- ``{_fact_form(FactField.TIME)}``: fact N's time or date, when its line has one ("Sequoia at
+  {FactSlot(9, FactField.TIME)}").
+- ``{_fact_form(FactField.COUNT)}``: how many requests fact N stands for, when its line says so.
+- ``{_SERIES_EXAMPLE}`` (or {_SERIES_OTHER_FIELDS}): a figure of a
   series a chart in [ALSO IN THE BRIEF] draws, or a total [THE WEEK IN NUMBERS] lists, by the
   series id listed there.
-- ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
+- ``{link_slot_text(PHRASE_PLACEHOLDER, FACT_PLACEHOLDER)}``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
-- ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
-  ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
+- ``{_fact_form()}``: fact N's title exactly as listed. Titles are written as to-dos
+  ("Approve the Acme MSA renewal"), so "approve the {FactSlot(3)}" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
-  "[approve the Acme renewal](fact:3)". It already says the title: never name the item in
-  words in the same sentence too ("the invoice is past due: [[fact:3]]" says it twice).
+  "{LinkSlot("approve the Acme renewal", 3)}". It already says the title: never name the item in
+  words in the same sentence too ("the invoice is past due: {FactSlot(3)}" says it twice).
 The message must refer to the lead (the item under [{LEAD_HEADING}]) through
 one of its slots, usually its phrase; a brief that leaves it out is sent back. Everything else
 the edition already shows, so what else the message says is your call.
@@ -144,6 +168,7 @@ them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its 
 """.strip()
 
 # How every brief's prose reads, past what its headline and lede are written from.
+_LINK_TAIL = f"({SlotKind.FACT.value}:{FACT_PLACEHOLDER})"
 _VOICE_CRAFT = f"""
 Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
 them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
@@ -189,9 +214,9 @@ there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
 When you do link, write the item's natural phrase in square brackets, then
-``(fact:N)`` with its fact's number, nothing in between. For fact 4, marked
+``{_LINK_TAIL}`` with its fact's number, nothing in between. For fact 4, marked
 ``linkable``: "I vetted twelve investors (Elad Gil, Nat Friedman, Daniel Gross and
-more), the [full list](fact:4) is ready". The phrase becomes the
+more), the {LinkSlot("full list", 4)} is ready". The phrase becomes the
 tappable link on every surface, and only the items you link get one. One link per
 item, once: never a link on its own, never a "here:" followed by links, never two
 links for one thing. Never invent a fact number, and never paste an artifact's contents
@@ -528,6 +553,9 @@ _WEEKLY_VOICE_CONTRACT = f"""
 """.strip()
 
 
+_SERIES_TOTAL = value_slot_text(SlotKind.SERIES, SERIES_PLACEHOLDER, SeriesField.TOTAL.value)
+
+
 def build_weekly_voice_prompt(
     *, date_local: str, blocks: VoicePromptBlocks, recent: RecentLines, fence: str
 ) -> str:
@@ -557,8 +585,8 @@ This is a zoom-out, not a to-do list: the week since Monday, and the seven days 
 Answer, in this order and only from THIS WEEK'S FACTS:
 1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week or
    more, named. A goal with nothing moved is said plainly in one line.
-2. What GAIA did this week, grouped by what it was ("handled [[series:ID.total]] mail threads,
-   finished [[series:ID.total]] tasks"), from [THE WEEK IN NUMBERS]: totals in a line, never a
+2. What GAIA did this week, grouped by what it was ("handled {_SERIES_TOTAL} mail threads,
+   finished {_SERIES_TOTAL} tasks"), from [THE WEEK IN NUMBERS]: totals in a line, never a
    list of every item.
 3. What is waiting on them: the approvals, replies owed and todos due that the facts hold,
    and how many of their own todos are past due when the facts count them.

@@ -3,10 +3,9 @@
 import pytest
 
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_slot_models import CountName, SeriesField
 from app.services.briefing.slots import (
     BriefFact,
-    CountSlot,
-    SeriesField,
     SlotError,
     SlotValues,
     figures_in,
@@ -25,7 +24,7 @@ _VALUES = SlotValues(
         7: BriefFact(title="Q4 board deck"),
         9: BriefFact(title="Sequoia partner meeting", time="11:00 AM"),
     },
-    counts={CountSlot.NEEDS_YOU: 2, CountSlot.EVENTS: 1},
+    counts={CountName.NEEDS_YOU: 2, CountName.EVENTS: 1},
 )
 _DECK = "https://heygaia.link/deck"
 _OFFERED = "(offered: needs_you, events)"
@@ -95,7 +94,7 @@ class TestProblems:
         )
 
     def test_a_day_with_no_counts_says_none_were_offered(self) -> None:
-        values = SlotValues(facts={}, counts={CountSlot.DONE: 0})
+        values = SlotValues(facts={}, counts={CountName.DONE: 0})
 
         assert slot_problems("message", "[[count:done]] done", values) == [
             "the message: [[count:done]] is not a count the facts list (offered: none today)"

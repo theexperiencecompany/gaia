@@ -101,9 +101,9 @@ open; never lead with it when anything new needs the user.
   two or more series of one unit that share their days or categories.
 - At most {max_blocks} blocks, {max_items} items in all and {max_charts} charts.
 - In headings, chart titles, takeaways and notes you never type a figure, a time or a
-  date. Write a slot and code fills it: [[fact:N]] is item N's title, [[fact:N.time]] its time
-  (only on an item whose line shows "at" or "due"), [[series:ID.FIELD]] one of the figures
-  listed on series ID (total, latest, peak, peak_at, low). Counting in words what you placed
+  date. Write a slot and code fills it: {fact_slot} is item N's title, {fact_time_slot} its time
+  (only on an item whose line shows "at" or "due"), {series_slot} one of the figures
+  listed on series ID ({series_fields}). Counting in words what you placed
   ("two replies") is fine. An item's title and detail write its own line's figures as they
   stand, with no slots.
 - Nothing you write says more than its facts say: no person, deadline or outcome they do not hold.

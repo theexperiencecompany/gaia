@@ -26,6 +26,7 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
+from app.models.brief_slot_models import CountName, SeriesField
 from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
@@ -40,7 +41,7 @@ from app.services.briefing.facts import (
     user_todos_note,
 )
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
+from app.services.briefing.slots import BriefFact
 
 pytestmark = pytest.mark.unit
 
@@ -105,7 +106,7 @@ class TestTheFactLines:
 
         facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
+        assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.OPEN_TODOS: 4}
         assert facts.values.facts[1] == BriefFact(
             title="Reply to Maya",
             time="Fri Nov 13",
@@ -382,7 +383,7 @@ class TestEachCountClaimsOnlyItsOwn:
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.WHILE_AWAY: 1}
+        assert facts.values.counts == {CountName.NEEDS_YOU: 1, CountName.WHILE_AWAY: 1}
         assert "- fact 4 | On their list, undated: Plan Q1" in facts.block
 
     def test_done_and_in_progress_count_one_each_of_their_own_kind(self) -> None:
@@ -411,7 +412,7 @@ class TestEachCountClaimsOnlyItsOwn:
 
         facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
 
-        assert facts.values.counts == {CountSlot.DONE: 1, CountSlot.IN_PROGRESS: 2}
+        assert facts.values.counts == {CountName.DONE: 1, CountName.IN_PROGRESS: 2}
 
     def test_the_spans_events_are_counted(self) -> None:
         events = [
@@ -423,7 +424,7 @@ class TestEachCountClaimsOnlyItsOwn:
             Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]), _CLOCK
         )
 
-        assert facts.values.counts == {CountSlot.EVENTS: 2}
+        assert facts.values.counts == {CountName.EVENTS: 2}
 
 
 class TestARepeatIsSaidAsStillOpen:

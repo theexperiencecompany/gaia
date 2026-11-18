@@ -15,13 +15,13 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
+from app.models.brief_slot_models import SeriesField
 from app.services.briefing.composition.voiced_blocks import (
     BLOCKS_HEADER,
     block_words,
     charted_figures,
     voiced_block_lines,
 )
-from app.services.briefing.slots import SeriesField
 
 
 def _series(series_id: str, ys: list[float]) -> DataSeries:

@@ -1,47 +1,32 @@
 """The brief's slots: every count, time and link its prose voices is filled in by code.
 
-The model writes a slot where a figure or a link goes and code renders it from the facts:
-- [[count:needs_you]]: one of the non-zero counts the facts list (CountSlot);
-- [[fact:12]]: fact 12's title; [[fact:12.time]]: its time or date; [[fact:12.count]]:
-  how many requests it stands for;
-- [[series:meeting_hours.peak]]: a figure of a series: its total, latest, peak, low, or
-  peak_at (the day or category the peak fell on);
-- [the phrase](fact:12): the phrase, linked to what fact 12 opens when it opens anything.
-Outside its slots the prose holds no web address, no time, and no figure that is not as it
-stands in a fact's title, its own words (a detail, a quote) or a count a slot renders, so it
-cannot invent a count, a time or a link; a typed time is sent back naming its slot.
+The model writes a slot where a figure or a link goes (the grammar is brief_slot_models) and
+code parses it into a typed slot and renders it from the facts. Outside its slots the prose
+holds no web address, no time, and no figure that is not as it stands in a fact's title, its
+own words (a detail, a quote) or a count a slot renders, so it cannot invent a count, a time
+or a link; a typed time is sent back naming its slot.
 """
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from enum import StrEnum
 import re
 
-from app.models.brief_item_models import GroupState, ItemState
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesShape
-
-
-class CountSlot(StrEnum):
-    """The counts a [[count:...]] slot can voice."""
-
-    NEEDS_YOU = GroupState.NEEDS_YOU.value
-    DONE = GroupState.DONE.value
-    IN_PROGRESS = GroupState.IN_PROGRESS.value
-    WHILE_AWAY = "while_away"
-    OPEN_TODOS = "open_todos"
-    OVERDUE_TODOS = "overdue_todos"
-    #: GAIA's open tracked work, each subject once, however much the brief places.
-    OPEN_TRACKED = "open_tracked"
-    EVENTS = "events"
-
-
-class FactField(StrEnum):
-    """What a [[fact:N.field]] slot voices besides the fact's title."""
-
-    TIME = "time"
-    COUNT = "count"
+from app.models.brief_slot_models import (
+    SLOT_FORMS,
+    CountName,
+    CountSlot,
+    FactField,
+    FactSlot,
+    SeriesField,
+    SeriesSlot,
+    SlotKind,
+    ValueSlot,
+    value_slot_text,
+)
 
 
 @dataclass(frozen=True)
@@ -57,16 +42,6 @@ class BriefFact:
     count: int = 1
     kind: ItemState | None = None
     words: str | None = None
-
-
-class SeriesField(StrEnum):
-    """What a [[series:ID.field]] slot voices."""
-
-    TOTAL = "total"
-    LATEST = "latest"
-    PEAK = "peak"
-    PEAK_AT = "peak_at"
-    LOW = "low"
 
 
 def figure(value: float) -> str:
@@ -95,7 +70,7 @@ class SlotValues:
     """Everything a slot can render: the facts by id, the counts (zeros left out) and series figures."""
 
     facts: Mapping[int, BriefFact]
-    counts: Mapping[CountSlot, int]
+    counts: Mapping[CountName, int]
     series: Mapping[str, Mapping[SeriesField, str]] = field(default_factory=dict)
     #: Figures the facts' own words carry ("1x" in a quoted ask), which prose may quote as they stand.
     quoted: frozenset[str] = frozenset()
@@ -105,68 +80,104 @@ class SlotError(ValueError):
     """A slot names no count or fact the brief offered."""
 
 
-_VALUE_SLOT_RE = re.compile(r"\[\[(count|fact|series):(\w+)(?:\.(\w+))?\]\]")
-LINK_SLOT_RE = re.compile(r"\[([^\[\]\n]+)\]\(fact:(\d+)\)")
+_KINDS = "|".join(re.escape(kind.value) for kind in SlotKind)
+_FACT = re.escape(SlotKind.FACT.value)
+_VALUE_SLOT_RE = re.compile(rf"\[\[({_KINDS}):(\w+)(?:\.(\w+))?\]\]")
+LINK_SLOT_RE = re.compile(rf"\[([^\[\]\n]+)\]\({_FACT}:(\d+)\)")
 # What is left of a slot the model mangled once every well-formed one is taken out.
+_KIND_PREFIXES = "|".join(rf"\b{re.escape(kind.value)}:" for kind in SlotKind)
 _SLOT_RESIDUE_RE = re.compile(
-    r"\[[^\[\]\n]*\]\([^)\n]*\)|\S*(?:[\[\]]|\(fact:|\bfact:|\bcount:|\bseries:)\S*"
+    rf"\[[^\[\]\n]*\]\([^)\n]*\)|\S*(?:[\[\]]|\({_FACT}:|{_KIND_PREFIXES})\S*"
 )
 _WEB_ADDRESS_RE = re.compile(r"\S*(?:://|www\.)\S*")
-_TITLE_SLOT_RE = re.compile(r"\[\[fact:(\d+)\]\]")
-_ANY_SLOT_RE = re.compile(r"\[\[(?:count|fact|series):\w+(?:\.\w+)?\]\]")
+_TITLE_SLOT_RE = re.compile(rf"\[\[{_FACT}:(\d+)\]\]")
+_ANY_SLOT_RE = re.compile(rf"\[\[(?:{_KINDS}):\w+(?:\.\w+)?\]\]")
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
 # What a sentence wraps around a word it quotes from a title ("the Q3 interviews,").
 _WORD_EDGES = "()\"'.,;:!?"
+#: The forms a fact slot takes: its title, and each field.
+_FACT_FORMS = SLOT_FORMS[1 : 2 + len(FactField)]
 
 
-def _count(key: str, values: SlotValues) -> int:
-    offered = {slot.value: n for slot, n in values.counts.items() if n}
-    if key not in offered:
-        listed = ", ".join(offered) or "none today"
-        raise SlotError(f"[[count:{key}]] is not a count the facts list (offered: {listed})")
-    return offered[key]
+def _either(forms: Iterable[str]) -> str:
+    listed = list(forms)
+    return f"{', '.join(listed[:-1])} or {listed[-1]}"
 
 
 def _fact(key: str, values: SlotValues) -> BriefFact:
     fact = values.facts.get(int(key)) if key.isdigit() else None
     if fact is None:
-        raise SlotError(f"fact:{key} is no fact shown today")
+        raise SlotError(f"{SlotKind.FACT.value}:{key} is no fact shown today")
     return fact
 
 
-def _series_value(slot: str, key: str, field_name: str | None, values: SlotValues) -> str:
+def _count_slot(written: str, key: str, field_name: str | None, values: SlotValues) -> CountSlot:
+    if field_name is not None:
+        raise SlotError(f"{written}: a count slot has no field")
+    offered = {slot.value: slot for slot, n in values.counts.items() if n}
+    if key not in offered:
+        listed = ", ".join(offered) or "none today"
+        raise SlotError(
+            f"{value_slot_text(SlotKind.COUNT, key)} is not a count the facts list (offered: {listed})"
+        )
+    return CountSlot(offered[key])
+
+
+def _series_slot(written: str, key: str, field_name: str | None, values: SlotValues) -> SeriesSlot:
     figures = values.series.get(key)
     if figures is None:
-        raise SlotError(f"{slot}: {key} is no series shown today")
-    offered = {f.value: text for f, text in figures.items()}
+        raise SlotError(f"{written}: {key} is no series shown today")
+    offered = {f.value: f for f in figures}
     if field_name not in offered:
         raise SlotError(
-            f"{slot}: series {key} offers {', '.join(offered)}, as [[series:{key}.field]]"
+            f"{written}: series {key} offers {', '.join(offered)}, as "
+            f"{value_slot_text(SlotKind.SERIES, key, 'field')}"
         )
-    return offered[field_name]
+    return SeriesSlot(key, offered[field_name])
+
+
+def _fact_slot(written: str, key: str, field_name: str | None, values: SlotValues) -> FactSlot:
+    fact = _fact(key, values)
+    if field_name is None:
+        return FactSlot(int(key))
+    if field_name == FactField.TIME and fact.time is not None:
+        return FactSlot(int(key), FactField.TIME)
+    if field_name == FactField.COUNT and fact.count > 1:
+        return FactSlot(int(key), FactField.COUNT)
+    if field_name in {f.value for f in FactField}:
+        raise SlotError(f"{written}: fact {key} has no {field_name}")
+    raise SlotError(f"{written}: a fact slot is {_either(_FACT_FORMS)}")
+
+
+_PARSERS: Mapping[SlotKind, Callable[[str, str, str | None, SlotValues], ValueSlot]] = {
+    SlotKind.COUNT: _count_slot,
+    SlotKind.FACT: _fact_slot,
+    SlotKind.SERIES: _series_slot,
+}
+
+
+def _parsed(match: re.Match[str], values: SlotValues) -> ValueSlot:
+    """Parse a written value slot into the slot it names; raises SlotError when the facts hold none."""
+    kind, key, field_name = match.groups()
+    return _PARSERS[SlotKind(kind)](match.group(0), key, field_name, values)
+
+
+def _rendered(slot: ValueSlot, values: SlotValues) -> str:
+    """Return what a parsed slot renders."""
+    if isinstance(slot, CountSlot):
+        return str(values.counts[slot.name])
+    if isinstance(slot, SeriesSlot):
+        return values.series[slot.series_id][slot.field]
+    fact = values.facts[slot.fact_id]
+    if slot.field is FactField.TIME and fact.time is not None:
+        return fact.time
+    return str(fact.count) if slot.field is FactField.COUNT else fact.title
 
 
 def _value(match: re.Match[str], values: SlotValues) -> str:
-    kind, key, field = match.groups()
-    slot = match.group(0)
-    if kind == "count":
-        if field is not None:
-            raise SlotError(f"{slot}: a count slot has no field")
-        return str(_count(key, values))
-    if kind == "series":
-        return _series_value(slot, key, field, values)
-    fact = _fact(key, values)
-    if field is None:
-        return fact.title
-    if field == FactField.TIME and fact.time is not None:
-        return fact.time
-    if field == FactField.COUNT and fact.count > 1:
-        return str(fact.count)
-    if field in {f.value for f in FactField}:
-        raise SlotError(f"{slot}: fact {key} has no {field}")
-    raise SlotError(f"{slot}: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]")
+    return _rendered(_parsed(match, values), values)
 
 
 def figures_in(texts: Iterable[str]) -> frozenset[str]:
@@ -185,12 +196,12 @@ def _rendered_by_slot(values: SlotValues) -> list[tuple[str, str]]:
     A count slot is left out: its figure is in _counted, so prose that types it is never flagged.
     """
     slots = [
-        (f"[[fact:{fact_id}.time]]", fact.time)
+        (str(FactSlot(fact_id, FactField.TIME)), fact.time)
         for fact_id, fact in values.facts.items()
         if fact.time is not None
     ]
     slots += [
-        (f"[[series:{series_id}.{figure_field.value}]]", text)
+        (str(SeriesSlot(series_id, figure_field)), text)
         for series_id, figures in values.series.items()
         for figure_field, text in figures.items()
     ]
@@ -227,7 +238,7 @@ def _typed_figures(text: str, values: SlotValues) -> list[str]:
     ]
 
 
-def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
+def _typed_figure_problem(field_name: str, word: str, values: SlotValues) -> str:
     """Name the slot that renders a typed figure, so the retry writes it; else ask for words."""
     # Any word of what a slot renders: the "13" of "Fri Nov 13", the "11" of "11:00 AM".
     slots = [
@@ -236,9 +247,9 @@ def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
         if word == value or any(word in (part, part.split(":")[0]) for part in value.split())
     ]
     if slots:
-        return f"the {field} types {word!r} itself; write {' or '.join(slots)} where it says {word}"
+        return f"the {field_name} types {word!r} itself; write {' or '.join(slots)} where it says {word}"
     return (
-        f"the {field} types {word!r}, a figure no fact carries; say it in words, from the "
+        f"the {field_name} types {word!r}, a figure no fact carries; say it in words, from the "
         "facts, or leave it out"
     )
 
@@ -252,7 +263,7 @@ def _echo(text: str, match: re.Match[str], value: str) -> re.Match[str] | None:
     return meridiem if meridiem is not None and _MERIDIEM_RE.search(value) else None
 
 
-def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str], str]:
+def _echo_problems(field_name: str, text: str, values: SlotValues) -> tuple[list[str], str]:
     """Name each figure written after a slot that renders it; return them and the text without them."""
     problems: list[str] = []
     spans: list[tuple[int, int]] = []
@@ -264,7 +275,7 @@ def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str]
         echoed = _echo(text, match, value)
         if echoed is not None:
             problems.append(
-                f"the {field} writes {echoed.group(1)!r} after {match.group(0)}, which already "
+                f"the {field_name} writes {echoed.group(1)!r} after {match.group(0)}, which already "
                 f"renders {value!r}; drop it"
             )
             spans.append(echoed.span(1))
@@ -288,7 +299,7 @@ def _names_in_words(title: str, sentence: str) -> bool:
     return any(title.casefold() in words.casefold() for words in _ANY_SLOT_RE.split(sentence))
 
 
-def _title_echo_problems(field: str, text: str, values: SlotValues) -> list[str]:
+def _title_echo_problems(field_name: str, text: str, values: SlotValues) -> list[str]:
     """Name each title slot whose sentence already names its fact in words.
 
     A title several facts share (two 1:1s) is said once per fact, so it is never an echo.
@@ -302,14 +313,14 @@ def _title_echo_problems(field: str, text: str, values: SlotValues) -> list[str]
                 continue
             if _names_in_words(fact.title, sentence):
                 problems.append(
-                    f"the {field} names {fact.title!r} in words and again with "
+                    f"the {field_name} names {fact.title!r} in words and again with "
                     f"{match.group(0)}; keep one"
                 )
     return list(dict.fromkeys(problems))
 
 
 def slot_problems(
-    field: str, text: str, values: SlotValues, *, may_quote_figures: bool = False
+    field_name: str, text: str, values: SlotValues, *, may_quote_figures: bool = False
 ) -> list[str]:
     """Name every slot in one prose field that is malformed or unknown, and every figure it typed.
 
@@ -321,24 +332,24 @@ def slot_problems(
             if match.re is LINK_SLOT_RE:
                 _fact(match.group(2), values)
             else:
-                _value(match, values)
+                _parsed(match, values)
         except SlotError as exc:
-            problems.append(f"the {field}: {exc}")
-    problems += _title_echo_problems(field, text, values)
-    echoes, text = _echo_problems(field, text, values)
+            problems.append(f"the {field_name}: {exc}")
+    problems += _title_echo_problems(field_name, text, values)
+    echoes, text = _echo_problems(field_name, text, values)
     problems += echoes
     bare = unslotted(text)
     problems += [
-        f"the {field} has a malformed slot {match.group(0)!r}; write [[count:name]], "
-        "[[fact:N]], [[fact:N.time]], [[fact:N.count]], [[series:ID.field]] or "
-        "[the phrase](fact:N) exactly"
+        f"the {field_name} has a malformed slot {match.group(0)!r}; write {_either(SLOT_FORMS)} "
+        "exactly"
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
     bare = _SLOT_RESIDUE_RE.sub(" ", bare)  # pragma: no mutate — digit-free either way
     typed = [] if may_quote_figures else _typed_figures(bare, values)
-    problems += [_typed_figure_problem(field, word, values) for word in dict.fromkeys(typed)]
+    problems += [_typed_figure_problem(field_name, word, values) for word in dict.fromkeys(typed)]
     problems += [
-        f"the {field} writes the address {match.group(0)!r}; link a phrase with (fact:N)"
+        f"the {field_name} writes the address {match.group(0)!r}; link a phrase with "
+        f"({SlotKind.FACT.value}:N)"
         for match in _WEB_ADDRESS_RE.finditer(bare)
     ]
     return problems
@@ -368,6 +379,6 @@ def referenced_facts(text: str) -> set[int]:
     named = {
         int(m.group(2))
         for m in _VALUE_SLOT_RE.finditer(text)
-        if m.group(1) == "fact" and m.group(2).isdigit()
+        if SlotKind(m.group(1)) is SlotKind.FACT and m.group(2).isdigit()
     }
     return named | {int(m.group(2)) for m in LINK_SLOT_RE.finditer(text)}

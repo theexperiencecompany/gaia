@@ -22,6 +22,14 @@ from app.models.brief_payload_models import (
     UnreadSource,
 )
 from app.models.brief_pool_models import DataSeries, GoalState
+from app.models.brief_slot_models import (
+    CountName,
+    CountSlot,
+    FactField,
+    FactSlot,
+    SeriesField,
+    SeriesSlot,
+)
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import event_detail, start_time
@@ -40,14 +48,7 @@ from app.services.briefing.fact_pool.render import (
     unread_note,
 )
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import (
-    BriefFact,
-    CountSlot,
-    SeriesField,
-    SlotValues,
-    figures_in,
-    series_figures,
-)
+from app.services.briefing.slots import BriefFact, SlotValues, figures_in, series_figures
 from app.services.briefing.work import TrackedWork
 
 
@@ -62,11 +63,11 @@ def _fact_line(
     if candidate.standing is not None:
         line += f" | stands: {candidate.standing}"
     if fact.time:
-        line += f" | time: [[fact:{fact_id}.time]] ({fact.time})"
+        line += f" | time: {FactSlot(fact_id, FactField.TIME)} ({fact.time})"
     if candidate.detail:
         line += f" | detail: {candidate.detail}"
     if fact.count > 1:
-        line += f" | [[fact:{fact_id}.count]] ({fact.count}) {ON_ONE_SUBJECT}"
+        line += f" | {FactSlot(fact_id, FactField.COUNT)} ({fact.count}) {ON_ONE_SUBJECT}"
     if (repeat := repeat_note(candidate, clock)) is not None:
         line += f" | {repeat}"
     return line
@@ -190,25 +191,25 @@ class FactSources:
 
 def _counts(
     placed: list[tuple[BriefingItem, BriefCandidate]], sources: FactSources, events: int
-) -> dict[CountSlot, int]:
-    """Return the counts a [[count:...]] slot voices, each counting only what its name claims, zeros left out.
+) -> dict[CountName, int]:
+    """Return the counts a count slot voices, each counting only what its name claims, zeros left out.
 
     Waiting on you leaves out a calendar event and backlog; while away is what came in to be
     held for the brief.
     """
     counts = {
-        CountSlot.NEEDS_YOU: sum(
+        CountName.NEEDS_YOU: sum(
             1 for it, c in placed if it.kind.needs_you and not (c.is_event or c.backlog)
         ),
-        CountSlot.DONE: sum(1 for it, _ in placed if it.kind.group is GroupState.DONE),
-        CountSlot.IN_PROGRESS: sum(
+        CountName.DONE: sum(1 for it, _ in placed if it.kind.group is GroupState.DONE),
+        CountName.IN_PROGRESS: sum(
             1 for it, _ in placed if it.kind.group is GroupState.IN_PROGRESS
         ),
-        CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
-        CountSlot.OPEN_TODOS: sources.open_todos,
-        CountSlot.OVERDUE_TODOS: sources.overdue_todos,
-        CountSlot.OPEN_TRACKED: sources.open_tracked,
-        CountSlot.EVENTS: events,
+        CountName.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
+        CountName.OPEN_TODOS: sources.open_todos,
+        CountName.OVERDUE_TODOS: sources.overdue_todos,
+        CountName.OPEN_TRACKED: sources.open_tracked,
+        CountName.EVENTS: events,
     }
     return {slot: n for slot, n in counts.items() if n}
 
@@ -256,7 +257,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             fact_lines.append(f"{line} | linkable" if linkable else line)
     calendar = sources.calendar.events
     counts = _counts(placed, sources, len(calendar))
-    voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
+    voiced = " · ".join(f"{CountSlot(name)} ({n})" for name, n in counts.items())
     if voiced:
         fact_lines.insert(0, f"[COUNTS] {voiced}")
     events = list(zip(sources.event_ids, calendar, strict=True))
@@ -325,7 +326,7 @@ def _own_words(
 
 
 def _event_slot(fact_id: int, time: str | None) -> str:
-    return f"[[fact:{fact_id}.time]] ({time})" if time else "all day"
+    return f"{FactSlot(fact_id, FactField.TIME)} ({time})" if time else "all day"
 
 
 def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
@@ -376,7 +377,7 @@ def _recap_lines(recap: WeekRecap) -> list[str]:
             "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
         )
         lines += [
-            f"- {s.label}: [[series:{s.id}.total]] ({series_figures(s)[SeriesField.TOTAL]}"
+            f"- {s.label}: {SeriesSlot(s.id, SeriesField.TOTAL)} ({series_figures(s)[SeriesField.TOTAL]}"
             f"{f' {s.unit}' if s.unit else ''})"
             for s in recap.series
         ]
@@ -402,7 +403,7 @@ def _goal_week_line(goal: GoalState) -> str:
 def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) -> str:
     """Say what the user's todo list holds: their own todos, and beside them GAIA's open tracked ones."""
     tracked = (
-        f" GAIA's tracked work holds [[count:{CountSlot.OPEN_TRACKED.value}]] open beside them."
+        f" GAIA's tracked work holds {CountSlot(CountName.OPEN_TRACKED)} open beside them."
         if tracked_open
         else ""
     )
@@ -410,7 +411,7 @@ def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) ->
         if tracked_open:
             return (
                 "The user has no todos of their own outside GAIA's tracked work, which holds "
-                f"[[count:{CountSlot.OPEN_TRACKED.value}]] open: never call their todo list "
+                f"{CountSlot(CountName.OPEN_TRACKED)} open: never call their todo list "
                 "empty or clear."
             )
         return "The user's own todo list is empty."
@@ -420,7 +421,7 @@ def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) ->
     )
     if overdue:
         note += (
-            " [[count:overdue_todos]] of them are past due: say that count in one plain line,"
+            f" {CountSlot(CountName.OVERDUE_TODOS)} of them are past due: say that count in one plain line,"
             " never list them."
         )
     return note + tracked
