@@ -14,7 +14,7 @@ from app.models.brief_document_models import BriefDelivery, BriefingModel, Editi
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.briefing import store
-from app.services.briefing.render import RenderedImage
+from app.services.render.image import RenderedImage
 
 _USER = "64f1c0ffee0000000000abcd"
 _DATE = "2026-10-14"

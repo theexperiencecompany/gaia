@@ -47,10 +47,10 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.blob_store import LocalVolumeBlobStore
 from app.services.briefing import store as brief_store
-from app.services.briefing.render import RenderedImage
 from app.services.links import abuse, content as link_content
 from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
 from app.services.links.service import attach_link, revoke_all_links_for_user, share
+from app.services.render.image import RenderedImage
 from app.services.storage import ArtifactInfo
 from shared.py.analytics import UserId
 from tests.conftest import FAKE_USER

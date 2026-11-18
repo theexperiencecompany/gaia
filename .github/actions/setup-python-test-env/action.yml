@@ -33,7 +33,7 @@ inputs:
   chromium:
     description: >
       Install Playwright's headless Chromium shell at the version uv.lock pins.
-      The briefing edition render tests (tests/integration/test_edition_*_render.py)
+      The Chromium render tests (tests/integration/render/)
       rasterize through it, and the browser is not part of the uv environment.
       Cached per Playwright version on GitHub-hosted runners; the box keeps it on disk.
     required: false

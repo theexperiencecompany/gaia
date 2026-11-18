@@ -29,7 +29,7 @@ from app.services.briefing.message import (
     delivered_message,
     preheader,
 )
-from app.services.briefing.render import ImageRenderOptions, RenderedImage, render_html_to_image
+from app.services.render.image import ImageRenderOptions, RenderedImage, render_html_to_image
 
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
 # number is stable and monotonic across days without any stored counter.

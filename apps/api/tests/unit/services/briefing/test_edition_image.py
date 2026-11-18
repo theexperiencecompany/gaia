@@ -30,8 +30,8 @@ from app.models.brief_document_models import BriefDelivery, BriefingModel
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.services.briefing import edition_email, store
 from app.services.briefing.edition_image import delete_edition, edition_url
-from app.services.briefing.render import RenderedImage
 from app.services.briefing.view import briefing_view
+from app.services.render.image import RenderedImage
 
 _USER = "64f1c0ffee0000000000abcd"
 _DATE = "2026-10-14"

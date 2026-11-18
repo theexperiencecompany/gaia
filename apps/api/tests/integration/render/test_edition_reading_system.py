@@ -11,13 +11,10 @@ quote, goal and note on the page with the facts it must print.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from playwright.async_api import Browser, async_playwright
 import pytest
-import pytest_asyncio
 
 from app.constants.briefing import EXPLORER_SCALE, ArtFamily, BriefAction, EditionFamily
 from app.models.brief_composition_models import ChartBlock, NoteBlock, ProgressBlock, QuoteBlock
@@ -26,8 +23,9 @@ from app.services.briefing.editions import EXPLORER_RENDERER
 from app.services.briefing.editions.explorer_blocks import build_blocks
 from app.services.briefing.editions.explorer_render import EXPLORER_CANVAS_PX
 from app.services.dev_brief_compositions import COMPOSITIONS, composed_payload
+from app.services.render.chromium import chromium_page
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
+pytestmark = pytest.mark.asyncio(loop_scope="package")
 
 _RULES_JS = (Path(__file__).parent / "edition_reading_rules.js").read_text()
 _ARTWORK = "wheat-field-cypresses"
@@ -80,43 +78,29 @@ def expectations(payload: BriefingPayload) -> dict[str, Any]:
     }
 
 
-async def reading_problems(browser: Browser, payload: BriefingPayload) -> list[str]:
+async def reading_problems(payload: BriefingPayload) -> list[str]:
     """Render the payload's family at the export scale and return every broken reading rule."""
     html = EXPLORER_RENDERER[payload.template_family](
         payload, edition_no=42, generated_local="6:02 AM"
     )
-    context = await browser.new_context(
-        viewport={"width": EXPLORER_CANVAS_PX, "height": 900}, device_scale_factor=EXPLORER_SCALE
-    )
-    try:
-        page = await context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(f"page error: {error}"))
+    async with chromium_page(
+        {"width": EXPLORER_CANVAS_PX, "height": 900}, EXPLORER_SCALE
+    ) as rendering:
+        page = rendering.page
         await page.set_content(html, wait_until="networkidle")
         await page.evaluate("document.fonts.ready")
         await page.wait_for_timeout(_SETTLE_MS)
         result = await page.evaluate(_RULES_JS, expectations(payload))
-        return errors + list(result["fails"])
-    finally:
-        await context.close()
-
-
-@pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def browser() -> AsyncIterator[Browser]:
-    async with async_playwright() as p:
-        launched = await p.chromium.launch(args=["--font-render-hinting=none"])
-        try:
-            yield launched
-        finally:
-            await launched.close()
+    errors = [f"page error: {error}" for error in rendering.script_errors]
+    return errors + list(result["fails"])
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("composition", sorted(COMPOSITIONS))
 @pytest.mark.parametrize("family", sorted(EXPLORER_RENDERER))
 async def test_family_draws_the_composition_by_the_reading_rules(
-    browser: Browser, family: EditionFamily, composition: str
+    family: EditionFamily, composition: str
 ) -> None:
     payload = composed_payload(composition, family, _ARTWORK if family in ArtFamily else None)
 
-    assert await reading_problems(browser, payload) == []
+    assert await reading_problems(payload) == []

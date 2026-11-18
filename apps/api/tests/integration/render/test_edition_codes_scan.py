@@ -17,7 +17,9 @@ import zxingcpp
 from app.constants.briefing import EDITION_DELIVERY_MAX_WIDTH_PX
 from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
-from tests.integration.test_edition_families_render import _DAILY
+from tests.integration.render.test_edition_families_render import _DAILY
+
+pytestmark = pytest.mark.asyncio(loop_scope="package")
 
 _SHORT_LINK = "https://heygaia.link/aB3dE5gH7jK"
 # The fallback when minting fails: the brief's page URL, the longest link a code carries.

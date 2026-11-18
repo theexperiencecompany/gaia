@@ -28,8 +28,8 @@ from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artworks_for
-from app.services.briefing.render import RenderedImage
 from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
+from app.services.render.image import RenderedImage
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
