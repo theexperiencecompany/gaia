@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock
 import uuid
 
 import pytest
-from scripts.retire_legacy_triggers import UnknownTriggerTypeError
+from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
+from scripts.retire_legacy_triggers import (
+    UnknownTriggerTypeError,
+    migrate as retire_legacy_triggers,
+)
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
@@ -149,9 +153,32 @@ class TestLegacyEmailTrigger:
         assert workflow.trigger_config.trigger_name == "gmail_new_message"
         assert workflow.trigger_config.trigger_data == GmailNewMessageConfig()
         assert workflow.trigger_config.enabled is False
+        assert workflow.trigger_config.composio_trigger_ids == []
         assert workflow.activated is False
         assert workflow.deactivated_reason is DeactivationReason.TRIGGER_RETIRED
         assert workflow.delivery is WorkflowDelivery.SILENT
+
+    async def test_only_the_legacy_workflow_is_counted_and_a_current_one_is_left_as_stored(
+        self, raw_collection
+    ) -> None:
+        legacy = _legacy_email_workflow(activated=True)
+        await raw_collection.insert_one(legacy)
+        current = {
+            **_legacy_email_workflow(activated=True),
+            "trigger_config": {"type": "manual", "enabled": True},
+            "delivery": "brief",
+        }
+        del current["notify_on_completion"]
+        await raw_collection.insert_one(current)
+
+        assert await retire_legacy_triggers(apply=False) == 1
+        assert await migrate_workflow_delivery(apply=False) == 1
+        await post_deploy.run_post_deploy(apply=True)
+
+        assert await raw_collection.find_one({"_id": current["_id"]}) == current
+        stored = await raw_collection.find_one({"_id": legacy["_id"]})
+        assert stored is not None
+        assert (stored["delivery"], "notify_on_completion" in stored) == ("silent", False)
 
     async def test_one_its_owner_had_switched_off_moves_without_a_system_reason(
         self, raw_collection

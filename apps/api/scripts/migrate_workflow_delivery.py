@@ -19,8 +19,8 @@ from app.db.repositories.workflows import workflow_repository
 from scripts._cli import apply_requested
 
 
-async def migrate(apply: bool) -> None:
-    """Store delivery on every workflow that lacks it, from its legacy flag."""
+async def migrate(apply: bool) -> int:
+    """Store delivery on every workflow that lacks it, from its legacy flag; return how many."""
     mode = "APPLY" if apply else "DRY RUN"
     print(f"[{mode}] Mapping notify_on_completion to delivery...\n")
 
@@ -35,6 +35,7 @@ async def migrate(apply: bool) -> None:
     print(f"\n[{mode}] Done. {summary}")
     if not apply:
         print("Re-run with --apply to write these changes.")
+    return sum(counts.values())
 
 
 if __name__ == "__main__":

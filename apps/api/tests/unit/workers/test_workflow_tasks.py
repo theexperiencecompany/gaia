@@ -20,7 +20,10 @@ from app.constants.notifications import NotificationChannel, NotificationKind
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import SilentRunResult
-from app.models.notification.details_models import WorkflowCompletedNotification
+from app.models.notification.details_models import (
+    WorkflowCompletedNotification,
+    WorkflowFailedNotification,
+)
 from app.models.notification.notification_models import (
     ActionType,
     NotificationSourceEnum,
@@ -1560,6 +1563,9 @@ class TestExecuteWorkflowByIdNotifications:
         assert "encountered an error" in notif_req.content.body
         # No upgrade action for generic errors
         assert notif_req.content.actions is None
+        assert notif_req.details == WorkflowFailedNotification(
+            kind=NotificationKind.WORKFLOW_FAILED, workflow_id=workflow.id, error_type="ValueError"
+        )
 
     async def test_notification_failure_during_error_is_swallowed(self, ctx):
         """If notification_service.create_notification fails during error handling, the exception is swallowed and the error result is still returned."""

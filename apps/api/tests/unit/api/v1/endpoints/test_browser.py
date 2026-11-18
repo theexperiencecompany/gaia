@@ -38,6 +38,7 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
+from app.constants.log_tags import LogTag
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -216,7 +217,14 @@ class TestDecideBrowserHandoff:
         record = await get_handoff("h1")
         assert record is not None
         assert record.status is HandoffStatus.COMPLETED
-        assert [error["error_type"] for error in event["errors"]] == ["RuntimeError"]
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.BROWSER} Recording a handoff decision in the thread failed",
+                "conversation_id": "c1",
+                "error": "checkpointer down",
+                "error_type": "RuntimeError",
+            }
+        ]
 
     async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
         self, button_world: list[tuple[str, str, str]]
