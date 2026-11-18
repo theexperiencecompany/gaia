@@ -4,7 +4,8 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from prometheus_client import REGISTRY
@@ -57,8 +58,24 @@ class _Lane:
     semantic: AsyncMock
     pinned: AsyncMock
     candidates: AsyncMock
+    build: AsyncMock
     log: MagicMock
     steps: list[asyncio.Task[list[str]]]
+
+
+def _row(memory_id: str) -> tuple[SimpleNamespace, float]:
+    return SimpleNamespace(id=memory_id), 0.0
+
+
+#: What the store returns: the semantic hits by id, else the pinned and word matches.
+_SEMANTIC_ROWS = [_row("s1")]
+_WORD_ROWS = [_row("p1"), _row("s1"), _row("w1")]
+
+
+async def _store(
+    _user_id: str, _tokens: list[str], _pinned: list[str], _limit: int, *, semantic_ids: list[str]
+) -> list[tuple[SimpleNamespace, float]]:
+    return _SEMANTIC_ROWS if semantic_ids else _WORD_ROWS
 
 
 @asynccontextmanager
@@ -74,21 +91,24 @@ async def _lane(semantic: AsyncMock, *, budget: float) -> AsyncIterator[_Lane]:
     with (
         patch.object(fast_recall, "_semantic_ids", new=semantic),
         patch.object(fast_recall, "_pinned_ids", new=AsyncMock(return_value=["p1"])) as pinned,
-        patch.object(
-            pg_store, "fast_candidates", new=AsyncMock(return_value=[MagicMock()])
-        ) as candidates,
+        patch.object(pg_store, "fast_candidates", new=AsyncMock(side_effect=_store)) as candidates,
         patch.object(
             fast_recall,
             "build_entries",
             new=AsyncMock(return_value=[MemoryEntry(content="Lives in Berlin.")]),
-        ),
+        ) as build,
         patch.object(fast_recall, "FAST_RECALL_SEMANTIC_BUDGET_SECONDS", budget),
         patch.object(fast_recall, "spawn_background_task", side_effect=spawn),
         patch.object(fast_recall, "log") as log,
     ):
         try:
             yield _Lane(
-                semantic=semantic, pinned=pinned, candidates=candidates, log=log, steps=steps
+                semantic=semantic,
+                pinned=pinned,
+                candidates=candidates,
+                build=build,
+                log=log,
+                steps=steps,
             )
         finally:
             for step in steps:
@@ -122,10 +142,55 @@ async def test_an_embedding_in_time_ranks_its_hits_first() -> None:
 
     lane.semantic.assert_awaited_once_with("u1", QUERY)
     lane.pinned.assert_awaited_once_with("u1", "c1")
-    lane.candidates.assert_awaited_once_with(
-        "u1", fast_recall.fts_tokens(QUERY), ["p1"], MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=["s1"]
+    assert lane.candidates.await_count == 2
+    lane.candidates.assert_has_awaits(
+        [
+            call("u1", [], [], 1, semantic_ids=["s1"]),
+            call(
+                "u1",
+                fast_recall.fts_tokens(QUERY),
+                ["p1"],
+                MEMORY_RECALL_BLOCK_LIMIT,
+                semantic_ids=[],
+            ),
+        ],
+        any_order=True,
     )
+    lane.build.assert_awaited_once_with([_row("s1"), _row("p1"), _row("w1")])
     lane.log.set_ns.assert_not_called()
+
+
+async def test_the_word_search_runs_while_the_embedding_is_still_pending() -> None:
+    release, searched = asyncio.Event(), asyncio.Event()
+
+    async def store(*args: object, semantic_ids: list[str]) -> list[tuple[SimpleNamespace, float]]:
+        searched.set()
+        return _SEMANTIC_ROWS if semantic_ids else _WORD_ROWS
+
+    async with _lane(_late(release, ["s1"]), budget=_IN_TIME) as lane:
+        lane.candidates.side_effect = store
+        lane_answer = asyncio.create_task(_answer())
+        # Bounded: a lane that searches only after the embedding never reads here.
+        await asyncio.wait_for(searched.wait(), timeout=1)
+        searched_before_the_embedding = lane.candidates.await_args_list.copy()
+        release.set()
+        await lane_answer
+
+    assert searched_before_the_embedding == [
+        call(
+            "u1", fast_recall.fts_tokens(QUERY), ["p1"], MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=[]
+        )
+    ]
+
+
+async def test_the_block_is_capped_after_the_semantic_hits_are_merged() -> None:
+    hits = [f"s{i}" for i in range(MEMORY_RECALL_BLOCK_LIMIT)]
+    many = [_row(memory_id) for memory_id in hits]
+    async with _lane(AsyncMock(return_value=hits), budget=_IN_TIME) as lane:
+        lane.candidates.side_effect = lambda *_a, semantic_ids: many if semantic_ids else _WORD_ROWS
+        await _answer()
+
+    lane.build.assert_awaited_once_with(many)
 
 
 async def test_a_late_embedding_still_returns_pinned_and_word_matches() -> None:
@@ -135,6 +200,17 @@ async def test_a_late_embedding_still_returns_pinned_and_word_matches() -> None:
     assert entries == [MemoryEntry(content="Lives in Berlin.")]
     lane.candidates.assert_awaited_once_with(
         "u1", fast_recall.fts_tokens(QUERY), ["p1"], MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=[]
+    )
+    lane.build.assert_awaited_once_with(_WORD_ROWS)
+
+
+async def test_words_alone_still_search_when_nothing_is_pinned() -> None:
+    async with _lane(_late(asyncio.Event(), []), budget=_ALREADY_LATE) as lane:
+        lane.pinned.return_value = []
+        await _answer()
+
+    lane.candidates.assert_awaited_once_with(
+        "u1", fast_recall.fts_tokens(QUERY), [], MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=[]
     )
 
 
