@@ -256,67 +256,82 @@ def test_a_messages_opening_is_its_first_non_blank_line(message: str, opening: s
     assert opening_line(message) == opening
 
 
-class TestAFigureTheFactsShow:
-    """Replay of Dhruv's 2026-11-09: "another look set for Tue Nov 17" fell back to the plain voice."""
+def _pitch_research_facts() -> Facts:
+    """Return the facts of one placed item of GAIA's, set to look at the work again Tue Nov 17."""
+    doc = TodoDocument(
+        id="t1",
+        user_id=_USER_ID,
+        title="Pitch prep research",
+        labels=[GAIA_TRACKED_LABEL],
+        waiting_on=WaitingOn.TIME,
+        scheduled_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
+    )
+    [candidate] = gaia_work_candidates(TrackedWork(running=[doc]))
+    item = BriefingItem(
+        text="Pitch prep research",
+        kind=ItemState.GAIA,
+        todo_id="t1",
+        outcome=BriefOutcome.STARTED,
+    )
+    chosen = Chosen(
+        sections=[BriefingSection(numeral="I", title="Open", items=[item])],
+        picked=[[(1, candidate)]],
+    )
+    return build_facts(
+        chosen,
+        FactSources(
+            artifacts=gather_artifacts(TrackedWork(running=[doc])),
+            open_todos=0,
+            calendar=CalendarRead(),
+            event_items={},
+            span=TODAY,
+            todos_note=None,
+        ),
+        pool_values(
+            FactPool(
+                items={1: candidate},
+                series=[],
+                quotes=[],
+                goals=[],
+                context=PoolContext(
+                    reader="Ada",
+                    clock=_CLOCK,
+                    calendar=0,
+                    calendar_span="today",
+                    done_since=_NOW,
+                ),
+                criteria={},
+            )
+        ),
+        _CLOCK,
+    )
 
-    async def test_a_date_an_items_standing_says_may_be_voiced_as_it_stands(
-        self, monkeypatch: pytest.MonkeyPatch
+
+class TestAFigureTheFactsShow:
+    """Replays of Dhruv's 2026-11-06 and 11-09: the day GAIA looks again sent the voice back."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "[The pitch research](fact:1) gets another look Tue Nov 17.",
+            "[The pitch research](fact:1) gets another look [[fact:1.time]].",
+        ],
+        ids=["typed-as-it-stands", "by-its-time-slot"],
+    )
+    async def test_the_day_an_items_standing_says_may_be_voiced(
+        self, monkeypatch: pytest.MonkeyPatch, message: str
     ) -> None:
-        doc = TodoDocument(
-            id="t1",
-            user_id=_USER_ID,
-            title="Pitch prep research",
-            labels=[GAIA_TRACKED_LABEL],
-            waiting_on=WaitingOn.TIME,
-            scheduled_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
-        )
-        [candidate] = gaia_work_candidates(TrackedWork(running=[doc]), _CLOCK)
-        item = BriefingItem(
-            text="Pitch prep research",
-            kind=ItemState.GAIA,
-            todo_id="t1",
-            outcome=BriefOutcome.STARTED,
-        )
-        chosen = Chosen(
-            sections=[BriefingSection(numeral="I", title="Open", items=[item])],
-            picked=[[(1, candidate)]],
-        )
-        facts = build_facts(
-            chosen,
-            FactSources(
-                artifacts=gather_artifacts(TrackedWork(running=[doc])),
-                open_todos=0,
-                calendar=CalendarRead(),
-                event_items={},
-                span=TODAY,
-                todos_note=None,
-            ),
-            pool_values(
-                FactPool(
-                    items={1: candidate},
-                    series=[],
-                    quotes=[],
-                    goals=[],
-                    context=PoolContext(
-                        reader="Ada",
-                        clock=_CLOCK,
-                        calendar=0,
-                        calendar_span="today",
-                        done_since=_NOW,
-                    ),
-                    criteria={},
-                )
-            ),
-            _CLOCK,
-        )
-        quoted = _voice(message="[The pitch research](fact:1) gets another look Tue Nov 17.")
-        asked = AsyncMock(side_effect=[quoted, _voice()])
+        facts = _pitch_research_facts()
+        drafted = _voice(message=message)
+        asked = AsyncMock(side_effect=[drafted, _voice()])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
 
-        assert "stands: GAIA looks at it again Tue Nov 17" in facts.block
-        assert voice == quoted
+        assert "stands: GAIA looks at it again [[fact:1.time]] (Tue Nov 17)" in facts.block
+        assert render_slots(voice.message, facts.values, {}) == (
+            "The pitch research gets another look Tue Nov 17."
+        )
         asked.assert_awaited_once()
 
 

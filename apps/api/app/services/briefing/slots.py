@@ -56,11 +56,12 @@ def candidate_fact(
     kind: ItemState | None = None,
     words: str | None = None,
 ) -> BriefFact:
-    """Return what a pool item's slots render: its title or the brief's words for it, its time or due day, its count."""
+    """Return what a pool item's slots render: its title or the brief's words for it, its time, due or back day, its count."""
     due = due_on(candidate.due_at, clock) if candidate.due_at is not None else None
+    back = due_on(candidate.back_at, clock) if candidate.back_at is not None else None
     return BriefFact(
         title=candidate.title if title is None else title,
-        time=candidate.time or due,
+        time=candidate.time or due or back,
         count=candidate.count,
         kind=kind,
         words=words,

@@ -50,7 +50,7 @@ from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead
 from app.services.briefing.candidates.calendar import start_time
 from app.services.briefing.candidates.subjects import subject_key
-from app.services.briefing.clock import DayWindow, UserClock
+from app.services.briefing.clock import DayWindow, UserClock, due_on
 from app.services.briefing.composition.voiced_blocks import block_words, voiced_block_lines
 from app.services.briefing.fact_pool.render import (
     Voiced,
@@ -211,7 +211,7 @@ def build_facts(
                 deliverables[fact_id] = it.todo_id
             elif candidate.url:
                 addresses[fact_id] = candidate.url
-            words = _own_words(candidate, it, art)
+            words = _own_words(candidate, it, art, clock)
             facts[fact_id] = replace(
                 pooled.facts[fact_id], title=it.text, kind=it.kind, words=" ".join(words)
             )
@@ -288,13 +288,14 @@ def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
 
 
 def _own_words(
-    candidate: BriefCandidate, item: BriefingItem, art: ArtifactFact | None
+    candidate: BriefCandidate, item: BriefingItem, art: ArtifactFact | None, clock: UserClock
 ) -> list[str]:
     """Return the words an item's fact line shows beside its title, which prose may quote."""
     signal = candidate.signal
     words = [
         candidate.title,
         candidate.standing,
+        due_on(candidate.back_at, clock) if candidate.back_at is not None else None,
         candidate.detail,
         item.detail,
         art.snippet if art else None,

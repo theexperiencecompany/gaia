@@ -69,11 +69,6 @@ def repeat_note(item: BriefCandidate, clock: UserClock) -> str | None:
     return f"{REPEAT_MARK} ({seen_note(item.memory, clock)})"
 
 
-def stands_part(item: BriefCandidate) -> str | None:
-    """Say where open tracked work stands, on any line that names the item; None when GAIA is simply on it."""
-    return None if item.standing is None else f"stands: {item.standing}"
-
-
 def count_part(count: int, slot: FactSlot | None = None) -> str | None:
     """Say how many tracked todos one item stands for, by the slot that writes it when there is one."""
     if count <= 1:
@@ -95,6 +90,23 @@ class Voiced:
     artifact: ArtifactFact | None = None
 
 
+def stands_part(
+    item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced | None = None
+) -> str | None:
+    """Say where open tracked work stands, and the day GAIA is back on it; None when GAIA is simply on it.
+
+    To the voice, the item's time slot writes that day when the item has no other time.
+    """
+    if item.standing is None:
+        return None
+    if item.back_at is None:
+        return f"stands: {item.standing}"
+    back = due_on(item.back_at, clock)
+    if voiced is not None and item.time is None and item.due_at is None:
+        back = f"{FactSlot(item_id, FactField.TIME)} ({back})"
+    return f"stands: {item.standing} {back}"
+
+
 def item_line(
     item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced | None = None
 ) -> str:
@@ -107,7 +119,7 @@ def item_line(
     if item.importance is SignalImportance.HIGH:
         head += ", important"
     parts = [f"{head}: {item.title if voiced is None else voiced.fact.title}"]
-    if (stands := stands_part(item)) is not None:
+    if (stands := stands_part(item_id, item, clock, voiced)) is not None:
         parts.append(stands)
     if item.detail:
         parts.append(item.detail)
@@ -132,7 +144,7 @@ def _when(item_id: int, item: BriefCandidate, clock: UserClock, voiced: Voiced |
     if voiced is not None:
         slot = FactSlot(item_id, FactField.TIME)
         said = voiced.fact.time
-        if said is None:
+        if said is None or (item.time is None and item.due_at is None):
             return []
         return [f"at {slot} ({said})" if item.time is not None else f"due {slot} ({said})"]
     return [

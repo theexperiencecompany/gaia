@@ -49,6 +49,7 @@ from app.services.briefing.candidates.pool import (
     gather_candidates,
 )
 from app.services.briefing.clock import UserClock
+from app.services.briefing.fact_pool.render import stands_part
 from app.services.briefing.scouts.service import ScoutSignals
 from app.services.briefing.work import TrackedWork
 
@@ -388,7 +389,7 @@ class TestGaiasOpenWorkJoinsThePool:
         gathered = await _gathered(TrackedWork(running=[later]), _scouts())
 
         [item] = gathered.pool.values()
-        assert item.standing == "GAIA looks at it again Thu Nov 12"
+        assert stands_part(1, item, CLOCK) == "stands: GAIA looks at it again Thu Nov 12"
 
 
 class TestOneItemPerThing:

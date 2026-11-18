@@ -93,6 +93,8 @@ class BriefCandidate(BaseModel):
     finished_by: TodoCompleter | None = None
     #: Where open tracked work stands when GAIA is not simply working on it ("paused: ...").
     standing: str | None = None
+    #: When GAIA comes back to work whose standing waits on a time; its line says the day after it.
+    back_at: datetime | None = None
     people: list[str] = Field(default_factory=list)
     due_at: datetime | None = None
     #: When it happens on the user's clock, as the brief says it ("4:00 PM"): an event's start.

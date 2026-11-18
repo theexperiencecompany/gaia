@@ -66,6 +66,7 @@ from app.services.briefing.candidates.tracked import (
     waiting_candidates,
 )
 from app.services.briefing.clock import UserClock
+from app.services.briefing.fact_pool.render import stands_part
 from app.services.briefing.work import TrackedWork
 from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.todos.inbox_desk import INBOX_DESK_REF
@@ -89,7 +90,7 @@ class TestTrackedTodos:
         )
 
         [waiting] = waiting_candidates(work)
-        [running] = gaia_work_candidates(work, CLOCK)
+        [running] = gaia_work_candidates(work)
 
         assert (waiting.detail, waiting.due_at) == (None, due)
         assert (running.detail, running.due_at) == (None, None)
@@ -181,7 +182,7 @@ class TestTrackedTodos:
             running=[make_todo("Vet the Q4 leads")],
         )
 
-        found = gaia_work_candidates(work, CLOCK)
+        found = gaia_work_candidates(work)
 
         assert [(c.title, c.state, c.outcome, c.finished_by) for c in found] == [
             ("Investor update", "lookback", BriefOutcome.FINISHED, TodoCompleter.GAIA),
@@ -241,9 +242,9 @@ class TestTrackedTodos:
         """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
         doc = make_todo("Chase the venue", GAIA_TRACKED_LABEL, **fields)
 
-        [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
 
-        assert (found.standing, found.outcome) == (stands, outcome)
+        assert (stands_part(1, found, CLOCK), found.outcome) == (f"stands: {stands}", outcome)
 
     def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
         asked = make_todo(

@@ -30,7 +30,6 @@ from app.models.brief_item_models import ItemState
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.subjects import subject_key
-from app.services.briefing.clock import UserClock, due_on
 from app.services.briefing.work import TrackedWork, finished_by
 from app.utils.timezone import as_utc
 
@@ -73,7 +72,7 @@ def _grouped(
     *,
     action: Callable[[TodoDocument], BriefAction] | None = None,
     outcome: Callable[[TodoDocument], BriefOutcome | None] | None = None,
-    standing: Callable[[TodoDocument], str | None] | None = None,
+    stands: bool = False,
 ) -> list[BriefCandidate]:
     """One candidate per subject, counting the todos it stands for, in first-seen order."""
     by_subject: dict[str, BriefCandidate] = {}
@@ -101,7 +100,8 @@ def _grouped(
             action=action(doc) if action is not None else None,
             outcome=outcome(doc) if outcome is not None else None,
             finished_by=finished_by(doc) if doc.completed else None,
-            standing=standing(doc) if standing is not None else None,
+            standing=standing(doc) if stands else None,
+            back_at=back_at(doc) if stands else None,
         )
     return list(by_subject.values())
 
@@ -143,17 +143,23 @@ def own_todo_candidates(
     ]
 
 
-def standing(doc: TodoDocument, clock: UserClock) -> str | None:
+def standing(doc: TodoDocument) -> str | None:
     """Say where open tracked work stands when it is not simply GAIA working: paused, waiting, unplanned."""
-    when = due_on(doc.scheduled_at, clock) if doc.scheduled_at is not None else None
     if doc.pause_reason is not None:
         return STANDING_PAUSED.format(why=PAUSED_BECAUSE[doc.pause_reason])
     if WAITING_FOR_REPLY_LABEL in doc.labels:
         return STANDING_WAITING_ON_OTHERS
-    said = STANDING_WAITS.get(doc.waiting_on) if doc.waiting_on is not None else None
-    if said is not None and when and doc.waiting_on in STANDING_TIMED_WAITS:
-        return f"{said} {when}"
-    return said
+    return STANDING_WAITS.get(doc.waiting_on) if doc.waiting_on is not None else None
+
+
+def back_at(doc: TodoDocument) -> datetime | None:
+    """Return when GAIA comes back to open work whose standing waits on a time; None for any other."""
+    timed = (
+        doc.waiting_on in STANDING_TIMED_WAITS
+        and doc.pause_reason is None
+        and WAITING_FOR_REPLY_LABEL not in doc.labels
+    )
+    return doc.scheduled_at if timed else None
 
 
 def _started(doc: TodoDocument) -> BriefOutcome | None:
@@ -167,7 +173,7 @@ def _finished(_doc: TodoDocument) -> BriefOutcome:
     return BriefOutcome.FINISHED
 
 
-def gaia_work_candidates(work: TrackedWork, clock: UserClock) -> list[BriefCandidate]:
+def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:
     """Return what was done of GAIA's tracked work since the last brief, then what is still open."""
     tracked = CandidateOrigin.TRACKED
     return _grouped(work.completed, tracked, ItemState.LOOKBACK, outcome=_finished) + _grouped(
@@ -175,7 +181,7 @@ def gaia_work_candidates(work: TrackedWork, clock: UserClock) -> list[BriefCandi
         tracked,
         ItemState.GAIA,
         outcome=_started,
-        standing=lambda doc: standing(doc, clock),
+        stands=True,
     )
 
 

@@ -192,7 +192,7 @@ async def gather_candidates(
         *app_signal_candidates(sources.scouts.remembered, clock),
         *await held_candidates(user_id, sources.held),
         *user_done_candidates(sources.user_done),
-        *gaia_work_candidates(work, clock),
+        *gaia_work_candidates(work),
         *calendar_candidates(sources.calendar, clock.date_str),
     ]
     acting = await _acting_sources(user_id, sources.scouts)
