@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.constants.briefing import BRIEF_POOL_PER_SOURCE, GAIA_SOURCE
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
-from app.models.brief_candidate_models import BriefCandidate, OutsideRef
+from app.models.brief_candidate_models import BriefCandidate, HeldResult, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingEvent, UnreadSource
 from app.models.scout_models import SignalImportance
@@ -85,7 +85,6 @@ def _merged(first: BriefCandidate, again: BriefCandidate) -> BriefCandidate:
             "url": first.url or again.url,
             "importance": SignalImportance.HIGH if high else first.importance,
             "todo_id": first.todo_id or again.todo_id,
-            "held_id": first.held_id or again.held_id,
             "signal": first.signal or again.signal,
             "also_in": [*first.also_in, _found_by(again), *again.also_in],
         }
@@ -109,16 +108,17 @@ def _one_per_thing(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
 
 def _deduplicated(candidates: list[BriefCandidate]) -> tuple[list[BriefCandidate], list[str]]:
     """Fold a held result into any candidate with its title; return what is left and the folded ids."""
-    seen = {same_text_key(c.title) for c in candidates if c.held_id is None}
+    seen = {same_text_key(c.title) for c in candidates if not isinstance(c.origin, HeldResult)}
     kept: list[BriefCandidate] = []
     duplicates: list[str] = []
     for candidate in candidates:
-        if candidate.held_id is not None:
-            key = same_text_key(candidate.title)
-            if key in seen:
-                duplicates.append(candidate.held_id)
-                continue
-            seen.add(key)
+        match candidate.origin:
+            case HeldResult(id=held_id):
+                key = same_text_key(candidate.title)
+                if key in seen:
+                    duplicates.append(held_id)
+                    continue
+                seen.add(key)
         kept.append(candidate)
     return kept, duplicates
 

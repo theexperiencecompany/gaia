@@ -14,9 +14,3 @@ def slot_minute(user_id: str) -> int:
     """Return the user's stable minute past the hour, in [0, BRIEF_SLOT_SPREAD_MINUTES)."""
     digest = hashlib.sha256(user_id.encode()).digest()
     return int.from_bytes(digest[:4], "big") % BRIEF_SLOT_SPREAD_MINUTES
-
-
-def spread_cron(cron: str, user_id: str) -> str:
-    """Return cron with its minute field set to the user's slot minute."""
-    _minute, rest = cron.split(" ", 1)
-    return f"{slot_minute(user_id)} {rest}"

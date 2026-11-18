@@ -14,16 +14,17 @@ from app.models.brief_settings_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
 from app.services.briefing import run_times
-from app.workers.brief_slots import spread_cron
+from app.workers.brief_slots import slot_minute
 
 _KOLKATA = ZoneInfo("Asia/Kolkata")
+_MINUTE = 12
 
 
 def _slots(
     frequency: BriefingFrequency = BriefingFrequency.DAILY, hour: int = 8
 ) -> dict[str, run_times.BriefSlot]:
     return run_times.brief_slots(
-        BriefingSchedule(frequency=frequency, hour=hour), DEFAULT_QUIET_HOURS
+        BriefingSchedule(frequency=frequency, hour=hour), DEFAULT_QUIET_HOURS, _MINUTE
     )
 
 
@@ -31,13 +32,13 @@ class TestTheDailyBriefsCron:
     @pytest.mark.parametrize(
         ("quiet_hours", "cron"),
         [
-            (DEFAULT_QUIET_HOURS, "0 8 * * *"),
-            (QuietHours(enabled=True, start_hour=22, end_hour=8), "0 8 * * *"),
-            (QuietHours(enabled=True, start_hour=13, end_hour=17), "0 8 * * *"),
-            (QuietHours(enabled=True, start_hour=0, end_hour=10), "0 10 * * *"),
-            (QuietHours(enabled=True, start_hour=23, end_hour=9), "0 9 * * *"),
-            (QuietHours(enabled=True, start_hour=8, end_hour=11), "0 11 * * *"),
-            (QuietHours(enabled=False, start_hour=0, end_hour=10), "0 8 * * *"),
+            (DEFAULT_QUIET_HOURS, "8 * * *"),
+            (QuietHours(enabled=True, start_hour=22, end_hour=8), "8 * * *"),
+            (QuietHours(enabled=True, start_hour=13, end_hour=17), "8 * * *"),
+            (QuietHours(enabled=True, start_hour=0, end_hour=10), "10 * * *"),
+            (QuietHours(enabled=True, start_hour=23, end_hour=9), "9 * * *"),
+            (QuietHours(enabled=True, start_hour=8, end_hour=11), "11 * * *"),
+            (QuietHours(enabled=False, start_hour=0, end_hour=10), "8 * * *"),
         ],
         ids=[
             "default",
@@ -54,18 +55,19 @@ class TestTheDailyBriefsCron:
     ) -> None:
         user = UserDocument(quiet_hours=quiet_hours)
 
-        assert run_times.briefing_cron(
-            DAILY_BRIEFING_WORKFLOW_KEY, user, BriefingSchedule()
-        ) == spread_cron(cron, user.id)
+        assert (
+            run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user, BriefingSchedule())
+            == f"{slot_minute(user.id)} {cron}"
+        )
 
     @pytest.mark.parametrize(
         ("frequency", "hour", "cron"),
         [
-            (BriefingFrequency.WEEKDAYS, 8, "0 8 * * 1-5"),
-            (BriefingFrequency.DAILY, 6, "0 8 * * *"),
-            (BriefingFrequency.DAILY, 9, "0 9 * * *"),
-            (BriefingFrequency.WEEKDAYS, 23, "0 8 * * 1-5"),
-            (BriefingFrequency.OFF, 9, "0 9 * * *"),
+            (BriefingFrequency.WEEKDAYS, 8, "8 * * 1-5"),
+            (BriefingFrequency.DAILY, 6, "8 * * *"),
+            (BriefingFrequency.DAILY, 9, "9 * * *"),
+            (BriefingFrequency.WEEKDAYS, 23, "8 * * 1-5"),
+            (BriefingFrequency.OFF, 9, "9 * * *"),
         ],
         ids=["weekdays", "inside-quiet-hours", "own-hour", "weekdays-late", "off-keeps-every-day"],
     )
@@ -75,8 +77,9 @@ class TestTheDailyBriefsCron:
         user = UserDocument()
         schedule = BriefingSchedule(frequency=frequency, hour=hour)
 
-        assert run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user, schedule) == spread_cron(
-            cron, user.id
+        assert (
+            run_times.briefing_cron(DAILY_BRIEFING_WORKFLOW_KEY, user, schedule)
+            == f"{slot_minute(user.id)} {cron}"
         )
 
 
@@ -84,16 +87,18 @@ class TestTheWeeklyDigestsCron:
     def test_it_runs_on_sunday_at_five(self) -> None:
         user = UserDocument()
 
-        assert run_times.briefing_cron(
-            WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule()
-        ) == spread_cron("0 17 * * 0", user.id)
+        assert (
+            run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule())
+            == f"{slot_minute(user.id)} 17 * * 0"
+        )
 
     def test_quiet_hours_covering_it_push_it_to_when_they_end(self) -> None:
         user = UserDocument(quiet_hours=QuietHours(enabled=True, start_hour=16, end_hour=19))
 
-        assert run_times.briefing_cron(
-            WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule()
-        ) == spread_cron("0 19 * * 0", user.id)
+        assert (
+            run_times.briefing_cron(WEEKLY_DIGEST_WORKFLOW_KEY, user, BriefingSchedule())
+            == f"{slot_minute(user.id)} 19 * * 0"
+        )
 
 
 class TestBriefSlots:
@@ -119,17 +124,17 @@ class TestDescribeBriefingSchedule:
             (
                 BriefingFrequency.DAILY,
                 9,
-                "a daily brief every day at 09:00, plus the weekly digest on Sunday at 17:00",
+                "a daily brief every day at 9:12 AM, plus the weekly digest on Sunday at 5:12 PM",
             ),
             (
                 BriefingFrequency.WEEKDAYS,
                 6,
-                "a daily brief Monday to Friday at 08:00, plus the weekly digest on Sunday at 17:00",
+                "a daily brief Monday to Friday at 8:12 AM, plus the weekly digest on Sunday at 5:12 PM",
             ),
             (
                 BriefingFrequency.WEEKLY_ONLY,
                 9,
-                "only the weekly digest on Sunday at 17:00, no daily brief",
+                "only the weekly digest on Sunday at 5:12 PM, no daily brief",
             ),
             (BriefingFrequency.OFF, 9, "no briefs at all"),
         ],
@@ -145,13 +150,23 @@ class TestNextBriefLands:
         ("frequency", "now", "lands"),
         [
             # Wednesday 14 Oct, 07:00: today's daily is still ahead.
-            (BriefingFrequency.DAILY, datetime(2026, 10, 14, 7), "today at 9 AM"),
+            (BriefingFrequency.DAILY, datetime(2026, 10, 14, 7), "today at 9:12 AM"),
             # Friday evening on weekdays: Sunday's digest comes before Monday's daily.
-            (BriefingFrequency.WEEKDAYS, datetime(2026, 10, 16, 20), "Sunday at 5 PM"),
-            (BriefingFrequency.WEEKDAYS, datetime(2026, 10, 18, 18), "tomorrow at 9 AM"),
-            (BriefingFrequency.WEEKLY_ONLY, datetime(2026, 10, 14, 7), "Sunday at 5 PM"),
+            (BriefingFrequency.WEEKDAYS, datetime(2026, 10, 16, 20), "Sunday at 5:12 PM"),
+            (BriefingFrequency.WEEKDAYS, datetime(2026, 10, 18, 18), "tomorrow at 9:12 AM"),
+            (BriefingFrequency.WEEKLY_ONLY, datetime(2026, 10, 14, 7), "Sunday at 5:12 PM"),
+            # 09:05: the hour has struck, but today's daily lands at its minute, still ahead.
+            (BriefingFrequency.DAILY, datetime(2026, 10, 14, 9, 5), "today at 9:12 AM"),
+            (BriefingFrequency.DAILY, datetime(2026, 10, 14, 9, 12), "tomorrow at 9:12 AM"),
         ],
-        ids=["daily-today", "weekdays-friday", "weekdays-sunday-evening", "weekly-only"],
+        ids=[
+            "daily-today",
+            "weekdays-friday",
+            "weekdays-sunday-evening",
+            "weekly-only",
+            "before-the-minute",
+            "at-the-minute",
+        ],
     )
     def test_it_is_the_soonest_brief_of_any_kind(
         self, frequency: BriefingFrequency, now: datetime, lands: str

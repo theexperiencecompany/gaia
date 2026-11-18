@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_briefing_payload, make_user_id
 import time_machine
 
 from app.constants.briefing import (
@@ -14,7 +14,6 @@ from app.constants.briefing import (
     WINBACK_THRESHOLD,
     BriefingRunOutcome,
     BriefItemSource,
-    EditionFamily,
 )
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
@@ -23,7 +22,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_document_models import BriefingModel
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.brief_payload_models import BriefingMood
 from app.models.briefing_state_models import (
     BriefingBootstrap,
     BriefingStateDocument,
@@ -105,17 +104,9 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
 
 def _brief(mood: BriefingMood, sent_at: datetime) -> BriefingModel:
     return BriefingModel(
-        user_id="u",
+        user_id=make_user_id(),
         date=sent_at.date().isoformat(),
-        payload=BriefingPayload(
-            kicker="K",
-            template_family=EditionFamily.SWISS,
-            date=sent_at.date().isoformat(),
-            headline="H",
-            lede="L",
-            mood=mood,
-            caption="C",
-        ),
+        payload=make_briefing_payload(date=sent_at.date().isoformat(), mood=mood),
         created_at=sent_at,
     )
 

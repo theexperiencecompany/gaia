@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date
 import re
 
+from app.agents.prompts import brief_check_prompts as says
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesShape
@@ -131,18 +132,20 @@ def _either(forms: Iterable[str]) -> str:
 def _fact(key: str, values: SlotValues) -> BriefFact:
     fact = values.facts.get(int(key)) if key.isdigit() else None
     if fact is None:
-        raise SlotError(f"{SlotKind.FACT.value}:{key} is no fact shown today")
+        raise SlotError(says.NO_SUCH_FACT.format(slot=f"{SlotKind.FACT.value}:{key}"))
     return fact
 
 
 def _count_slot(written: str, key: str, field_name: str | None, values: SlotValues) -> CountSlot:
     if field_name is not None:
-        raise SlotError(f"{written}: a count slot has no field")
+        raise SlotError(says.COUNT_HAS_NO_FIELD.format(written=written))
     offered = {slot.value: slot for slot, n in values.counts.items() if n}
     if key not in offered:
-        listed = ", ".join(offered) or "none today"
         raise SlotError(
-            f"{value_slot_text(SlotKind.COUNT, key)} is not a count the facts list (offered: {listed})"
+            says.NO_SUCH_COUNT.format(
+                slot=value_slot_text(SlotKind.COUNT, key),
+                offered=", ".join(offered) or says.NO_COUNTS_OFFERED,
+            )
         )
     return CountSlot(offered[key])
 
@@ -150,12 +153,16 @@ def _count_slot(written: str, key: str, field_name: str | None, values: SlotValu
 def _series_slot(written: str, key: str, field_name: str | None, values: SlotValues) -> SeriesSlot:
     figures = values.series.get(key)
     if figures is None:
-        raise SlotError(f"{written}: {key} is no series shown today")
+        raise SlotError(says.NO_SUCH_SERIES.format(written=written, id=key))
     offered = {f.value: f for f in figures}
     if field_name not in offered:
         raise SlotError(
-            f"{written}: series {key} offers {', '.join(offered)}, as "
-            f"{value_slot_text(SlotKind.SERIES, key, 'field')}"
+            says.SERIES_FIELDS.format(
+                written=written,
+                id=key,
+                fields=", ".join(offered),
+                form=value_slot_text(SlotKind.SERIES, key, "field"),
+            )
         )
     return SeriesSlot(key, offered[field_name])
 
@@ -169,8 +176,8 @@ def _fact_slot(written: str, key: str, field_name: str | None, values: SlotValue
     if field_name == FactField.COUNT and fact.count > 1:
         return FactSlot(int(key), FactField.COUNT)
     if field_name in {f.value for f in FactField}:
-        raise SlotError(f"{written}: fact {key} has no {field_name}")
-    raise SlotError(f"{written}: a fact slot is {_either(_FACT_FORMS)}")
+        raise SlotError(says.FACT_HAS_NO_FIELD.format(written=written, id=key, field=field_name))
+    raise SlotError(says.FACT_SLOT_FORMS.format(written=written, forms=_either(_FACT_FORMS)))
 
 
 _PARSERS: Mapping[SlotKind, Callable[[str, str, str | None, SlotValues], ValueSlot]] = {
@@ -271,11 +278,8 @@ def _typed_figure_problem(field_name: str, word: str, values: SlotValues) -> str
         if word == value or any(word in (part, part.split(":")[0]) for part in value.split())
     ]
     if slots:
-        return f"the {field_name} types {word!r} itself; write {' or '.join(slots)} where it says {word}"
-    return (
-        f"the {field_name} types {word!r}, a figure no fact carries; say it in words, from the "
-        "facts, or leave it out"
-    )
+        return says.TYPED_SLOT_FIGURE.format(field=field_name, word=word, slots=" or ".join(slots))
+    return says.TYPED_LOOSE_FIGURE.format(field=field_name, word=word)
 
 
 def _echo(text: str, match: re.Match[str], value: str) -> re.Match[str] | None:
@@ -299,8 +303,9 @@ def _echo_problems(field_name: str, text: str, values: SlotValues) -> tuple[list
         echoed = _echo(text, match, value)
         if echoed is not None:
             problems.append(
-                f"the {field_name} writes {echoed.group(1)!r} after {match.group(0)}, which already "
-                f"renders {value!r}; drop it"
+                says.ECHOED_FIGURE.format(
+                    field=field_name, echoed=echoed.group(1), slot=match.group(0), value=value
+                )
             )
             spans.append(echoed.span(1))
     for start, end in reversed(spans):
@@ -337,8 +342,9 @@ def _title_echo_problems(field_name: str, text: str, values: SlotValues) -> list
                 continue
             if _names_in_words(fact.title, sentence):
                 problems.append(
-                    f"the {field_name} names {fact.title!r} in words and again with "
-                    f"{match.group(0)}; keep one"
+                    says.ECHOED_TITLE.format(
+                        field=field_name, title=fact.title, slot=match.group(0)
+                    )
                 )
     return list(dict.fromkeys(problems))
 
@@ -358,22 +364,24 @@ def slot_problems(
             else:
                 _parsed(match, values)
         except SlotError as exc:
-            problems.append(f"the {field_name}: {exc}")
+            problems.append(says.SLOT_PROBLEM.format(field=field_name, problem=exc))
     problems += _title_echo_problems(field_name, text, values)
     echoes, text = _echo_problems(field_name, text, values)
     problems += echoes
     bare = unslotted(text)
     problems += [
-        f"the {field_name} has a malformed slot {match.group(0)!r}; write {_either(SLOT_FORMS)} "
-        "exactly"
+        says.MALFORMED_SLOT.format(
+            field=field_name, written=match.group(0), forms=_either(SLOT_FORMS)
+        )
         for match in _SLOT_RESIDUE_RE.finditer(bare)
     ]
     bare = _SLOT_RESIDUE_RE.sub(" ", bare)  # pragma: no mutate — digit-free either way
     typed = [] if may_quote_figures else _typed_figures(bare, values)
     problems += [_typed_figure_problem(field_name, word, values) for word in dict.fromkeys(typed)]
     problems += [
-        f"the {field_name} writes the address {match.group(0)!r}; link a phrase with "
-        f"({SlotKind.FACT.value}:N)"
+        says.TYPED_ADDRESS.format(
+            field=field_name, address=match.group(0), fact=SlotKind.FACT.value
+        )
         for match in _WEB_ADDRESS_RE.finditer(bare)
     ]
     return problems

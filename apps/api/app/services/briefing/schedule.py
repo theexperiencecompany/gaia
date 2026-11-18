@@ -36,9 +36,9 @@ from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.run_times import (
     BriefSlot,
-    brief_slots,
     briefing_cron,
     inbox_desk_recurrence,
+    user_brief_slots,
 )
 from app.services.todos.inbox_desk import follow_the_brief
 from app.services.user_service import require_user
@@ -86,13 +86,13 @@ async def briefing_schedule_state(user_id: str) -> BriefingScheduleState:
     user = await require_user(user_id)
     schedule = (await briefing_state_repository.state_for(user_id)).schedule
     paused = await briefs_paused_for_plan(user_id, schedule)
-    daily = brief_slots(schedule, user.effective_quiet_hours).get(DAILY_BRIEFING_WORKFLOW_KEY)
+    daily = user_brief_slots(user, schedule).get(DAILY_BRIEFING_WORKFLOW_KEY)
     return BriefingScheduleState(
         **schedule.model_dump(),
         paused_for_plan=paused,
         next_daily_brief_at=None if paused else await _next_daily_brief_at(user_id, daily),
         has_daily_brief=daily is not None,
-        daily_brief_hour=daily.hour if daily is not None else None,
+        daily_brief_lands_at=daily.at if daily is not None else None,
     )
 
 

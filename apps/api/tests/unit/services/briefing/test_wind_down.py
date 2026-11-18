@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.factories import make_user_id
 import time_machine
 
 from app.constants.briefing import (
@@ -22,16 +23,18 @@ from app.models.user_models import UserDocument
 from app.services.briefing import wind_down
 from app.services.briefing.wind_down import ladder_state
 
+USER_ID = make_user_id()
+
 
 class TestLadderState:
     def test_a_user_without_a_marker_is_awake_with_no_idle_days(self) -> None:
-        assert ladder_state(BriefingStateDocument(user_id="u1")) == BriefingWindDown(
+        assert ladder_state(BriefingStateDocument(user_id=USER_ID)) == BriefingWindDown(
             idle_days=0, date=None, wound_down_since=None
         )
 
     def test_the_marker_is_read_whole_and_mongos_naive_time_is_utc(self) -> None:
         state = BriefingStateDocument(
-            user_id="u1",
+            user_id=USER_ID,
             wind_down=BriefingWindDown(
                 idle_days=5, date="2026-10-13", wound_down_since=datetime(2026, 10, 13, 8)
             ),
@@ -44,7 +47,7 @@ class TestLadderState:
     def test_an_aware_dormant_since_keeps_its_offset(self) -> None:
         since = datetime.fromisoformat("2026-10-13T08:00:00+05:30")
         stored = BriefingStateDocument(
-            user_id="u1", wind_down=BriefingWindDown(idle_days=5, wound_down_since=since)
+            user_id=USER_ID, wind_down=BriefingWindDown(idle_days=5, wound_down_since=since)
         )
 
         marker = ladder_state(stored)
@@ -70,25 +73,25 @@ class TestLatestActivitySince:
     ) -> None:
         read = self._dates(monkeypatch, _SINCE + timedelta(hours=3))
 
-        assert await wind_down.latest_activity_since("u1", _SINCE) == _SINCE + timedelta(hours=3)
-        read.assert_awaited_once_with("u1")
+        assert await wind_down.latest_activity_since(USER_ID, _SINCE) == _SINCE + timedelta(hours=3)
+        read.assert_awaited_once_with(USER_ID)
 
     async def test_activity_before_the_cutoff_is_none(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._dates(monkeypatch, _SINCE - timedelta(seconds=1))
 
-        assert await wind_down.latest_activity_since("u1", _SINCE) is None
+        assert await wind_down.latest_activity_since(USER_ID, _SINCE) is None
 
     async def test_activity_at_the_cutoff_counts(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._dates(monkeypatch, _SINCE)
 
-        assert await wind_down.latest_activity_since("u1", _SINCE) == _SINCE
+        assert await wind_down.latest_activity_since(USER_ID, _SINCE) == _SINCE
 
     async def test_a_naive_mongo_stamp_reads_as_utc(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._dates(monkeypatch, datetime(2026, 10, 13, 11))
 
-        assert await wind_down.latest_activity_since("u1", _SINCE) == datetime(
+        assert await wind_down.latest_activity_since(USER_ID, _SINCE) == datetime(
             2026, 10, 13, 11, tzinfo=UTC
         )
 
@@ -98,7 +101,7 @@ class TestLatestActivitySince:
         """Regression: workflow runs write type=user messages, which used to count as the user."""
         self._dates(monkeypatch, None)
 
-        assert await wind_down.latest_activity_since("u1", _SINCE) is None
+        assert await wind_down.latest_activity_since(USER_ID, _SINCE) is None
 
 
 class TestClimbIdleLadder:
@@ -107,7 +110,7 @@ class TestClimbIdleLadder:
     ) -> None:
         set_day = AsyncMock()
         monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
-        user = UserDocument(id="u1", created_at=datetime.now(UTC) - timedelta(days=90))
+        user = UserDocument(id=USER_ID, created_at=datetime.now(UTC) - timedelta(days=90))
         prior = BriefingWindDown(idle_days=1, date="2026-10-13", wound_down_since=None)
 
         ladder = await wind_down.climb_idle_ladder(
@@ -117,11 +120,11 @@ class TestClimbIdleLadder:
         assert ladder == wind_down.IdleLadder(
             first_week=False, idle_days=2, wind_down=WindDown.WARN
         )
-        set_day.assert_awaited_once_with("u1", idle_days=2, date_str="2026-10-14")
+        set_day.assert_awaited_once_with(USER_ID, idle_days=2, date_str="2026-10-14")
 
 
 _NOW = datetime(2026, 11, 12, 2, 30, tzinfo=UTC)
-_VETERAN = UserDocument(id="u1", created_at=_NOW - timedelta(days=300))
+_VETERAN = UserDocument(id=USER_ID, created_at=_NOW - timedelta(days=300))
 
 
 def _asked(days_ago: float, *, idle_days: int = 0) -> BriefingWindDown:
@@ -195,8 +198,8 @@ class TestTheGoalQuestion:
             wind_down=WindDown.WARN,
             goal_question=wind_down.GoalQuestion.ASKED,
         )
-        _frozen.assert_awaited_once_with("u1", idle_days=2, date_str="2026-11-12")
-        read.assert_awaited_once_with("u1")
+        _frozen.assert_awaited_once_with(USER_ID, idle_days=2, date_str="2026-11-12")
+        read.assert_awaited_once_with(USER_ID)
 
     async def test_news_keeps_an_ignored_goal_day_active(
         self, monkeypatch: pytest.MonkeyPatch
@@ -211,7 +214,7 @@ class TestTheGoalQuestion:
 
     def test_the_marker_carries_when_the_goal_was_last_asked_about(self) -> None:
         state = BriefingStateDocument(
-            user_id="u1", wind_down=BriefingWindDown(goal_asked_at=datetime(2026, 11, 8, 2, 30))
+            user_id=USER_ID, wind_down=BriefingWindDown(goal_asked_at=datetime(2026, 11, 8, 2, 30))
         )
 
         assert ladder_state(state).goal_asked_at == datetime(2026, 11, 8, 2, 30, tzinfo=UTC)
@@ -248,8 +251,10 @@ class TestTheWeeklyLadder:
             has_goal=False,
         )
 
-        set_day.assert_awaited_once_with("u1", idle_days=IDLE_DORMANT_DAYS, date_str="2026-11-08")
-        enter.assert_awaited_once_with("u1")
+        set_day.assert_awaited_once_with(
+            USER_ID, idle_days=IDLE_DORMANT_DAYS, date_str="2026-11-08"
+        )
+        enter.assert_awaited_once_with(USER_ID)
 
     async def test_a_digest_with_news_resets_the_count(
         self, monkeypatch: pytest.MonkeyPatch
@@ -265,7 +270,7 @@ class TestTheWeeklyLadder:
             has_goal=False,
         )
 
-        set_day.assert_awaited_once_with("u1", idle_days=0, date_str="2026-11-08")
+        set_day.assert_awaited_once_with(USER_ID, idle_days=0, date_str="2026-11-08")
         enter.assert_not_awaited()
 
     async def test_a_user_with_a_daily_brief_climbs_on_the_daily_instead(

@@ -28,7 +28,7 @@ from app.services.briefing.held import release_held_items
 from app.services.briefing.run_times import brief_slots, briefing_cron
 from app.services.system_workflows.behaviour import RunAhead, SystemWorkflowBehaviour
 
-_DEFAULT_SLOTS = brief_slots(BriefingSchedule(), DEFAULT_QUIET_HOURS)
+_DEFAULT_SLOTS = brief_slots(BriefingSchedule(), DEFAULT_QUIET_HOURS, minute=0)
 
 
 def _daily_briefing() -> CreateWorkflowRequest:

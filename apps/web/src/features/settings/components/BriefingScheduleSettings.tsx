@@ -2,7 +2,7 @@
 
 import type { BriefingFrequency } from "@gaia/shared/types";
 import { ListBox, Select } from "@heroui/react";
-import { formatDate, formatHour } from "@shared/utils";
+import { formatClockTime, formatDate, formatHour } from "@shared/utils";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
@@ -113,7 +113,7 @@ export function BriefingScheduleSettings() {
           [
             landsAt === null
               ? null
-              : `Lands at ${formatHour(landsAt)}, when your quiet hours end.`,
+              : `Lands at ${formatClockTime(landsAt)}, when your quiet hours end.`,
             schedule?.next_daily_brief_at
               ? `Next one ${formatDate(schedule.next_daily_brief_at, "dayTime")}.`
               : null,

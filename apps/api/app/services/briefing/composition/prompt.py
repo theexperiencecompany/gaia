@@ -1,6 +1,11 @@
 """Fill the composition prompt from the pool, the page budget and the day's context."""
 
-from app.agents.prompts.brief_composition_prompts import COMPOSITION_EXAMPLES, COMPOSITION_PROMPT
+from app.agents.prompts.brief_composition_prompts import (
+    COMPOSITION_EXAMPLES,
+    COMPOSITION_PROMPT,
+    CRITERIA_LINE,
+    NO_CRITERIA,
+)
 from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.constants.briefing import (
     BRIEF_CHART_TITLE_MAX_CHARS,
@@ -43,8 +48,10 @@ def composition_prompt(pool: FactPool, frame: str, facts: str) -> str:
         fence=fence,
         frame=frame.format(reader=context.reader, today=context.clock.date_str),
         reader=context.reader,
-        criteria="\n".join(f"- {app}: {text}" for app, text in pool.criteria.items())
-        or "- (no app wrote criteria)",
+        criteria="\n".join(
+            CRITERIA_LINE.format(app=app, text=text) for app, text in pool.criteria.items()
+        )
+        or NO_CRITERIA,
         context=context_block(context),
         pool=facts,
         examples=COMPOSITION_EXAMPLES,

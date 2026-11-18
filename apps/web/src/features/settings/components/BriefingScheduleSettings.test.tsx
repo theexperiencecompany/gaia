@@ -51,8 +51,13 @@ type RunState = Pick<
   | "paused_for_plan"
   | "next_daily_brief_at"
   | "has_daily_brief"
-  | "daily_brief_hour"
+  | "daily_brief_lands_at"
 >;
+
+/** The local "HH:MM:SS" the API reports a daily brief lands at: the hour, at the user's slot minute. */
+function landsAt(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:17:00`;
+}
 
 function stored(
   schedule: Omit<BriefingScheduleState, keyof RunState>,
@@ -63,7 +68,7 @@ function stored(
     paused_for_plan: false,
     next_daily_brief_at: null,
     has_daily_brief: true,
-    daily_brief_hour: schedule.hour ?? null,
+    daily_brief_lands_at: landsAt(schedule.hour ?? 8),
     ...runs,
   };
 }
@@ -76,7 +81,7 @@ function renderSchedule(
   return renderWithQueryClient(<BriefingScheduleSettings />);
 }
 
-const QUIET_NOTE = "Lands at 8 AM, when your quiet hours end.";
+const QUIET_NOTE = "Lands at 8:17 AM, when your quiet hours end.";
 
 describe("the daily brief hour quiet hours hold it to", () => {
   beforeEach(() => {
@@ -84,13 +89,19 @@ describe("the daily brief hour quiet hours hold it to", () => {
   });
 
   it("says the brief lands when quiet hours end for an hour inside them", async () => {
-    renderSchedule({ frequency: "daily", hour: 6 }, { daily_brief_hour: 8 });
+    renderSchedule(
+      { frequency: "daily", hour: 6 },
+      { daily_brief_lands_at: landsAt(8) },
+    );
 
     expect(await screen.findByText(QUIET_NOTE)).toBeTruthy();
   });
 
   it("counts the hour quiet hours start as inside them", async () => {
-    renderSchedule({ frequency: "daily", hour: 22 }, { daily_brief_hour: 8 });
+    renderSchedule(
+      { frequency: "daily", hour: 22 },
+      { daily_brief_lands_at: landsAt(8) },
+    );
 
     expect(await screen.findByText(QUIET_NOTE)).toBeTruthy();
   });
@@ -103,7 +114,10 @@ describe("the daily brief hour quiet hours hold it to", () => {
   });
 
   it("stays quiet when quiet hours are off", async () => {
-    renderSchedule({ frequency: "daily", hour: 6 }, { daily_brief_hour: 6 });
+    renderSchedule(
+      { frequency: "daily", hour: 6 },
+      { daily_brief_lands_at: landsAt(6) },
+    );
 
     await screen.findAllByText("6 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
@@ -112,7 +126,7 @@ describe("the daily brief hour quiet hours hold it to", () => {
   it("stays quiet when there is no daily brief", async () => {
     renderSchedule(
       { frequency: "weekly_only", hour: 6 },
-      { has_daily_brief: false, daily_brief_hour: null },
+      { has_daily_brief: false, daily_brief_lands_at: null },
     );
 
     await screen.findAllByText("6 AM");

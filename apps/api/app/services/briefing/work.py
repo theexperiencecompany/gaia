@@ -6,7 +6,7 @@ classified once.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS, WEEK_LIST_LIMIT
 from app.constants.todos import (
@@ -215,18 +215,18 @@ def count_week(
     clock: UserClock, completed: CompletedWork, ahead: list[BriefingEvent]
 ) -> BriefingWeek:
     """Count this week's completions by owner and day, beside the week ahead's first events."""
-    monday = clock.today - timedelta(days=clock.today.weekday())
-    days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
+    week = clock.whole_week()
+    days = {on: BriefingWeekDay(you=0, gaia=0) for on in week.dates}
     for finish in completed.finished:
         if finish.by not in (TodoCompleter.GAIA, TodoCompleter.USER):
             continue
         if finish.doc.completed_at is None:
             continue
-        index = (clock.day_of(finish.doc.completed_at) - monday).days
-        if not 0 <= index < len(days):
+        on = week.day_of(finish.doc.completed_at)
+        if on is None:
             continue
         if finish.by is TodoCompleter.GAIA:
-            days[index].gaia += 1
+            days[on].gaia += 1
         else:
-            days[index].you += 1
-    return BriefingWeek(days=days, ahead=ahead[:WEEK_LIST_LIMIT])
+            days[on].you += 1
+    return BriefingWeek(days=list(days.values()), ahead=ahead[:WEEK_LIST_LIMIT])

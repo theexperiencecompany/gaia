@@ -46,6 +46,7 @@ from app.models.brief_view_models import BriefCard, Postmark, PostmarksResponse
 from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
 from app.services.briefing.view import briefing_card
+from app.workers.brief_slots import slot_minute
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from tests.conftest import FAKE_USER
@@ -304,7 +305,7 @@ class TestBriefingScheduleEndpoints:
             "paused_for_plan": False,
             "next_daily_brief_at": "2026-10-15T02:30:00Z",
             "has_daily_brief": True,
-            "daily_brief_hour": 8,
+            "daily_brief_lands_at": f"08:{slot_minute(FAKE_USER_ID):02d}:00",
         }
 
     async def test_a_free_users_schedule_reads_as_paused_for_the_plan(
@@ -327,7 +328,7 @@ class TestBriefingScheduleEndpoints:
             "paused_for_plan": True,
             "next_daily_brief_at": None,
             "has_daily_brief": True,
-            "daily_brief_hour": 8,
+            "daily_brief_lands_at": f"08:{slot_minute(FAKE_USER_ID):02d}:00",
         }
 
     async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
@@ -367,7 +368,7 @@ class TestBriefingScheduleEndpoints:
             "paused_for_plan": True,
             "next_daily_brief_at": None,
             "has_daily_brief": True,
-            "daily_brief_hour": 8,
+            "daily_brief_lands_at": f"08:{slot_minute(FAKE_USER_ID):02d}:00",
         }
         setter.assert_awaited_once_with(
             FAKE_USER_ID,

@@ -5,6 +5,7 @@ from itertools import pairwise
 from typing import Any
 
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.constants.briefing import BriefingBag, EditionChoice, EditionFamily
@@ -131,7 +132,7 @@ class TestCapabilities:
 
 def _user(order: list[str], index: int = 0) -> BriefingStateDocument:
     return BriefingStateDocument(
-        user_id="u1",
+        user_id=make_user_id(),
         shuffle_bags={BriefingBag.EDITION_FAMILY: ShuffleBag(order=order, index=index)},
     )
 
@@ -173,7 +174,7 @@ class TestDrawEdition:
 
 
 def _user_choosing(choices: dict[str, EditionChoice]) -> BriefingStateDocument:
-    return BriefingStateDocument(user_id="u1", editions=choices)
+    return BriefingStateDocument(user_id=make_user_id(), editions=choices)
 
 
 def _only_on(*families: str) -> dict[str, EditionChoice]:

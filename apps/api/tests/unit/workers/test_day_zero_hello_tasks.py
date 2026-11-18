@@ -30,12 +30,15 @@ from app.services.briefing import silent_turn
 from app.services.briefing.goals import StatedGoal
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.workers.brief_slots import slot_minute
 from app.workers.tasks import day_zero_hello_tasks as hello
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
+from tests.factories import make_user_id
 from tests.helpers import WideEventRecorder
 
-_USER = "64f1c0ffee0000000000abcd"
+_USER = make_user_id()
+_MINUTE = f"{slot_minute(_USER):02d}"
 _NOW = datetime(2026, 10, 14, 9, tzinfo=UTC)
 _TASK = "send_day_zero_hello"
 
@@ -233,14 +236,14 @@ class TestDelivery:
         ("schedule", "promised"),
         [
             # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
-            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9 AM."),
-            (BriefingSchedule(hour=18), "their first brief lands today at 6 PM."),
+            (BriefingSchedule(hour=9), f"their first brief lands tomorrow at 9:{_MINUTE} AM."),
+            (BriefingSchedule(hour=18), f"their first brief lands today at 6:{_MINUTE} PM."),
             # Noon is still ahead at 09:00 UTC but already past in Kolkata.
-            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12 PM."),
+            (BriefingSchedule(hour=12), f"their first brief lands tomorrow at 12:{_MINUTE} PM."),
             # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
             (
                 BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
-                "their first brief lands Sunday at 5 PM.",
+                f"their first brief lands Sunday at 5:{_MINUTE} PM.",
             ),
         ],
     )
@@ -271,7 +274,7 @@ class TestDelivery:
             await seams.send()
 
         prompt = seams.agent.await_args.kwargs["request"].message
-        assert "their first brief lands tomorrow at 5 PM." in prompt
+        assert f"their first brief lands tomorrow at 5:{_MINUTE} PM." in prompt
 
     async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
         seams.state.return_value = BriefingStateDocument(

@@ -7,6 +7,7 @@ an empty list is a composition the brief can be built from.
 from collections import Counter
 from collections.abc import Callable, Iterator
 
+from app.agents.prompts import brief_check_prompts as says
 from app.constants.briefing import (
     BRIEF_CHART_TITLE_MAX_CHARS,
     BRIEF_HEADING_MAX_CHARS,
@@ -51,7 +52,7 @@ WRITTEN_FIELDS: dict[BriefBlockKind, tuple[str, ...]] = {
 
 
 def _where(index: int, block: ComposedBlock) -> str:
-    return f"block {index + 1} ({block.kind})"
+    return says.BLOCK_AT.format(number=index + 1, kind=block.kind)
 
 
 def _shown(text: str, values: SlotValues) -> str:
@@ -67,38 +68,32 @@ def _text_problems(
 ) -> list[str]:
     stripped = _shown(text or "", values).strip()
     if not stripped:
-        return [f"{where}: no {name}"]
+        return [says.NO_TEXT.format(where=where, name=name)]
     if len(stripped) > limit:
-        return [f"{where}: a {name} of {len(stripped)} characters, over {limit}"]
+        return [
+            says.TEXT_TOO_LONG.format(where=where, name=name, length=len(stripped), limit=limit)
+        ]
     return []
 
 
 def _item_problems(
     where: str, item: ComposedItem, pool: FactPool, values: SlotValues, *, leads: bool
 ) -> list[str]:
-    at = f"{where}, item {item.id}"
+    at = says.ITEM_AT.format(where=where, id=item.id)
     candidate = pool.items.get(item.id)
     if candidate is None:
-        return [f"{at}: no item {item.id} in the pool"]
+        return [says.NO_POOL_ITEM.format(at=at, id=item.id)]
     problems = _text_problems(at, "title", item.title, BRIEF_ITEM_TITLE_MAX_CHARS, values)
     if len(_shown(item.detail or "", values).strip()) > BRIEF_ITEM_DETAIL_MAX_CHARS:
-        problems.append(f"{at}: a detail over {BRIEF_ITEM_DETAIL_MAX_CHARS} characters")
+        problems.append(says.DETAIL_TOO_LONG.format(at=at, limit=BRIEF_ITEM_DETAIL_MAX_CHARS))
     if (item.action is None) == (item.outcome is None):
-        problems.append(
-            f"{at}: give exactly one of action (it needs the user) or outcome (it got somewhere)"
-        )
+        problems.append(says.ACTION_OR_OUTCOME.format(at=at))
     if candidate.outcome is not None and item.outcome is None:
-        problems.append(
-            f"{at}: its line gives outcome {candidate.outcome.value}, so it is placed as that outcome"
-        )
+        problems.append(says.LINE_GIVES_OUTCOME.format(at=at, outcome=candidate.outcome.value))
     if candidate.action is not None and item.action is None:
-        problems.append(
-            f"{at}: its line gives action {candidate.action.value}, so it is placed as that action"
-        )
+        problems.append(says.LINE_GIVES_ACTION.format(at=at, action=candidate.action.value))
     if candidate.is_event and not leads:
-        problems.append(
-            f"{at}: a calendar event can only lead; the edition draws the day's calendar"
-        )
+        problems.append(says.EVENT_ONLY_LEADS.format(at=at))
     return problems
 
 
@@ -110,14 +105,14 @@ def _trend_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
     """Name why a line or spark cannot draw the series: too few days, too many lines, unshared days."""
     timed = all(s.shape is SeriesShape.TIME_SERIES for s in series)
     if not timed or min(len(s.points) for s in series) < MIN_TREND_POINTS:
-        return f"a {chart} needs a time series of at least {MIN_TREND_POINTS} days"
+        return says.TREND_TOO_SHORT.format(chart=chart, days=MIN_TREND_POINTS)
     if chart is ChartKind.SPARK and len(series) > 1:
-        return "a spark draws one series"
+        return says.SPARK_ONE_SERIES
     if len(series) > MAX_LINE_SERIES:
-        return f"a line draws at most {MAX_LINE_SERIES} series"
+        return says.LINE_TOO_MANY_SERIES.format(limit=MAX_LINE_SERIES)
     if not _shared_x(series):
-        return "a line over several series needs them to share their days"
-    return _single_unit_misfit("a line draws one unit", series)
+        return says.LINE_UNSHARED_DAYS
+    return _single_unit_misfit(says.LINE_ONE_UNIT, series)
 
 
 def _single_unit_misfit(subject: str, series: list[DataSeries]) -> str | None:
@@ -125,19 +120,20 @@ def _single_unit_misfit(subject: str, series: list[DataSeries]) -> str | None:
     units = {s.unit for s in series}
     if len(units) == 1:
         return None
-    return f"{subject}, not {', '.join(sorted(unit or 'no unit' for unit in units))}"
+    named = ", ".join(sorted(unit or says.NO_UNIT for unit in units))
+    return says.MIXED_UNITS.format(subject=subject, units=named)
 
 
 def _bar_misfit(chart: ChartKind, series: list[DataSeries]) -> str | None:
     """Name why a bar or a stack cannot draw the series: too many bars, or series that do not stack."""
     longest = max(len(s.points) for s in series)
     if longest > MAX_BAR_CATEGORIES:
-        return f"a {chart} draws at most {MAX_BAR_CATEGORIES} bars, not {longest}"
+        return says.TOO_MANY_BARS.format(chart=chart, limit=MAX_BAR_CATEGORIES, bars=longest)
     if chart is ChartKind.BAR:
-        return None if len(series) == 1 else "a bar draws one series; stack several"
+        return None if len(series) == 1 else says.BAR_ONE_SERIES
     if len(series) < 2 or not _shared_x(series):
-        return "a stacked_bar needs two or more series sharing their days or categories"
-    return _single_unit_misfit("a stacked_bar stacks one unit", series)
+        return says.STACK_NEEDS_SHARED_SERIES
+    return _single_unit_misfit(says.STACK_ONE_UNIT, series)
 
 
 _CHART_MISFITS: dict[ChartKind, Callable[[ChartKind, list[DataSeries]], str | None]] = {
@@ -156,30 +152,26 @@ def _chart_problems(
     by_id = pool.series_by_id
     unknown = [i for i in block.series_ids if i not in by_id]
     if unknown:
-        problems.append(f"{where}: no series {', '.join(unknown)} in the pool")
+        problems.append(says.NO_POOL_SERIES.format(where=where, ids=", ".join(unknown)))
     if not block.series_ids:
-        problems.append(f"{where}: no series_ids")
+        problems.append(says.NO_SERIES_IDS.format(where=where))
     elif not unknown:
         misfit = _CHART_MISFITS[block.chart](block.chart, [by_id[i] for i in block.series_ids])
-        problems += [f"{where}: {misfit}"] if misfit else []
+        problems += [says.CHART_MISFIT.format(where=where, misfit=misfit)] if misfit else []
     return problems
 
 
 def _lead_problems(where: str, index: int, block: ComposedLead, pool: FactPool) -> list[str]:
-    problems = [] if index == 0 else [f"{where}: a lead opens the brief, so it is block 1"]
+    problems = [] if index == 0 else [says.LEAD_NOT_FIRST.format(where=where)]
     if block.item.action is None:
-        problems.append(f"{where}: a lead is something to act on, so its item has an action")
+        problems.append(says.LEAD_WITHOUT_ACTION.format(where=where))
     candidate = pool.items.get(block.item.id)
     if candidate is not None and not candidate.gaia_acts:
         problems.append(
-            f"{where}: GAIA can only read {candidate.app}, so it cannot help with item "
-            f"{block.item.id}; lead with something GAIA can act on, or with nothing"
+            says.LEAD_GAIA_CANNOT_ACT.format(where=where, app=candidate.app, id=block.item.id)
         )
     if candidate is not None and candidate.backlog:
-        problems.append(
-            f"{where}: item {block.item.id} is an undated todo on their list, background "
-            "that never leads; lead with something that needs them today, or with nothing"
-        )
+        problems.append(says.LEAD_IS_BACKLOG.format(where=where, id=block.item.id))
     return problems
 
 
@@ -205,18 +197,27 @@ def _state_problems(where: str, block: ComposedItems) -> list[str]:
         belongs = _state_of(item)
         if side is None or belongs is block.state:
             continue
-        said = f"{'action' if item.action else 'outcome'} {side.value}"
-        article = "an" if block.state is GroupState.IN_PROGRESS else "a"
+        said = says.ITEM_SIDE.format(side="action" if item.action else "outcome", value=side.value)
         home = (
-            f"move it to {'an' if belongs is GroupState.IN_PROGRESS else 'a'} {belongs.value} group"
+            says.MOVE_TO_GROUP.format(group=_a_group(belongs))
             if belongs is not None
-            else "a failed item needs the user: give it action retry in a needs_you group"
+            else says.FAILED_NEEDS_RETRY
         )
         problems.append(
-            f"{where}, item {item.id} has {said}, which {article} {block.state.value} group "
-            f"does not hold; {home}"
+            says.ITEM_IN_WRONG_GROUP.format(
+                at=says.ITEM_AT.format(where=where, id=item.id),
+                said=said,
+                group=_a_group(block.state),
+                home=home,
+            )
         )
     return problems
+
+
+def _a_group(state: GroupState) -> str:
+    """Name a group state with its article, as a problem says it."""
+    named = says.AN_STATE if state is GroupState.IN_PROGRESS else says.A_STATE
+    return named.format(state=state.value)
 
 
 def _own_problems(
@@ -233,10 +234,10 @@ def _own_problems(
         return _chart_problems(where, block, pool, values)
     if isinstance(block, ComposedQuote):
         known = block.quote_id in pool.quotes_by_id
-        return [] if known else [f"{where}: no quote {block.quote_id} in the pool"]
+        return [] if known else [says.NO_POOL_QUOTE.format(where=where, id=block.quote_id)]
     if isinstance(block, ComposedProgress):
         known = block.goal_id in pool.goals_by_id
-        return [] if known else [f"{where}: no goal {block.goal_id} in the pool"]
+        return [] if known else [says.NO_POOL_GOAL.format(where=where, id=block.goal_id)]
     return _text_problems(where, "text", block.text, BRIEF_NOTE_MAX_CHARS, values)
 
 
@@ -263,13 +264,13 @@ def block_problems(
 def _placed_ids(composition: BriefComposition) -> Iterator[str]:
     """Yield every id a block places, named by its kind, so a repeat is caught across kinds of block."""
     for block in composition.blocks:
-        yield from (f"item {item.id}" for item in placed_items(block))
+        yield from (says.PLACED_ITEM.format(id=item.id) for item in placed_items(block))
         if isinstance(block, ComposedChart):
-            yield from (f"series {s}" for s in block.series_ids)
+            yield from (says.PLACED_SERIES.format(id=s) for s in block.series_ids)
         if isinstance(block, ComposedQuote):
-            yield f"quote {block.quote_id}"
+            yield says.PLACED_QUOTE.format(id=block.quote_id)
         if isinstance(block, ComposedProgress):
-            yield f"goal {block.goal_id}"
+            yield says.PLACED_GOAL.format(id=block.goal_id)
 
 
 def _budget_problems(composition: BriefComposition) -> list[str]:
@@ -277,13 +278,13 @@ def _budget_problems(composition: BriefComposition) -> list[str]:
     problems: list[str] = []
     items = sum(len(placed_items(b)) for b in blocks)
     if items > MAX_BRIEF_ITEMS:
-        problems.append(f"{items} items in all; a brief holds at most {MAX_BRIEF_ITEMS}")
+        problems.append(says.TOO_MANY_ITEMS.format(count=items, limit=MAX_BRIEF_ITEMS))
     charts = sum(1 for b in blocks if b.kind == "chart")
     if charts > MAX_BRIEF_CHARTS:
-        problems.append(f"{charts} charts; a brief holds at most {MAX_BRIEF_CHARTS}")
+        problems.append(says.TOO_MANY_CHARTS.format(count=charts, limit=MAX_BRIEF_CHARTS))
     leads = sum(1 for b in blocks if b.kind == "lead")
     if leads > 1:
-        problems.append(f"{leads} leads; a brief has at most one")
+        problems.append(says.TOO_MANY_LEADS.format(count=leads))
     return problems
 
 
@@ -294,12 +295,17 @@ def _slot_problems(composition: BriefComposition, values: SlotValues) -> list[st
         for name in WRITTEN_FIELDS[block.kind]:
             text = getattr(block, name)
             if text:
-                problems += slot_problems(f"{where} {name}", text, values)
+                problems += slot_problems(
+                    says.BLOCK_FIELD.format(where=where, name=name), text, values
+                )
         for item in placed_items(block):
             for name, text in (("title", item.title), ("detail", item.detail)):
                 if text:
                     problems += slot_problems(
-                        f"{where} item {item.id} {name}", text, values, may_quote_figures=True
+                        says.ITEM_FIELD.format(where=where, id=item.id, name=name),
+                        text,
+                        values,
+                        may_quote_figures=True,
                     )
     return problems
 
@@ -315,5 +321,5 @@ def composition_problems(
     ]
     repeated = sorted(i for i, n in Counter(_placed_ids(composition)).items() if n > 1)
     if repeated:
-        problems.append(f"placed more than once: {', '.join(repeated)}")
+        problems.append(says.PLACED_TWICE.format(ids=", ".join(repeated)))
     return problems + _budget_problems(composition) + _slot_problems(composition, values)

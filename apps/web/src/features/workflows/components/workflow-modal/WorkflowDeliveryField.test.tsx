@@ -30,7 +30,7 @@ function schedule(
     paused_for_plan: false,
     next_daily_brief_at: null,
     has_daily_brief: daily,
-    daily_brief_hour: daily ? 8 : null,
+    daily_brief_lands_at: daily ? "08:17:00" : null,
   };
 }
 

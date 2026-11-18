@@ -13,6 +13,13 @@ from tests.helpers import captured_wide_event, user_clock
 
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
+from app.agents.prompts import brief_check_prompts as says
+from app.agents.prompts.brief_composition_prompts import (
+    COMPOSITION_RETRY_NOTE,
+    DAILY_FRAME,
+    WEEKLY_FRAME,
+)
+from app.agents.prompts.brief_fact_prompts import UNREADABLE_COMPOSITION
 from app.constants.briefing import BRIEF_COMPOSITION_LABEL, BriefAction, BriefingKind, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
@@ -188,7 +195,7 @@ class TestOneCall:
         await compose_brief(USER, POOL, DAILY)
 
         prompt = _prompt(model)
-        assert "Ada's morning brief for 2026-11-11" in prompt
+        assert DAILY_FRAME.format(reader="Ada", today="2026-11-11") in prompt
         assert (
             "1. [Gmail] waiting on you: Re: Series A term sheet | names Maya Chen"
             " (the app does not say their part in it) | GAIA can act on it"
@@ -214,7 +221,7 @@ class TestOneCall:
     async def test_a_weekly_composition_is_framed_as_the_week(self, model: AsyncMock) -> None:
         await compose_brief(USER, POOL, WEEKLY)
 
-        assert "Ada's weekly digest for the week ending 2026-11-11" in _prompt(model)
+        assert WEEKLY_FRAME.format(reader="Ada", today="2026-11-11") in _prompt(model)
 
     async def test_a_pool_with_nothing_to_compose_makes_no_call(self, model: AsyncMock) -> None:
         only_event = FactPool(
@@ -327,9 +334,11 @@ class TestItemWording:
 
         await compose_brief(USER, POOL, DAILY)
 
-        assert "the block 1 (items) item 1 detail: [[fact:1.time]]: fact 1 has no time" in _prompt(
-            model, 1
+        field = says.ITEM_FIELD.format(
+            where=says.BLOCK_AT.format(number=1, kind="items"), id=1, name="detail"
         )
+        problem = says.FACT_HAS_NO_FIELD.format(written="[[fact:1.time]]", id=1, field="time")
+        assert says.SLOT_PROBLEM.format(field=field, problem=problem) in _prompt(model, 1)
 
 
 class TestRetryThenFailLoud:
@@ -374,7 +383,10 @@ class TestRetryThenFailLoud:
         composed = await compose_brief(USER, POOL, DAILY)
 
         assert composed.written == _GOOD
-        assert "the answer was not a whole BriefComposition tool call" in _prompt(model, 1)
+        unreadable = UNREADABLE_COMPOSITION.format(
+            problems="BriefComposition: reply made no BriefComposition tool call"
+        )
+        assert unreadable in _prompt(model, 1)
 
     async def test_no_composition_twice_builds_the_brief_from_the_pool(
         self, model: AsyncMock
@@ -593,7 +605,7 @@ class TestTheCallItself:
         await compose_brief(USER, POOL, DAILY)
 
         assert not _prompt(model).endswith("\n\n")
-        assert "Your last composition was sent back" not in _prompt(model)
+        assert COMPOSITION_RETRY_NOTE.partition("{problems}")[0] not in _prompt(model)
 
     async def test_a_pool_with_nothing_to_compose_returns_the_empty_composition_and_its_values(
         self, model: AsyncMock

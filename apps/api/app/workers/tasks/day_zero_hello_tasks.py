@@ -22,7 +22,7 @@ from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.goals import format_goal_block, stated_goals
-from app.services.briefing.run_times import brief_slots, next_brief_lands
+from app.services.briefing.run_times import next_brief_lands, user_brief_slots
 from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import channel_for
 from app.services.outbound_delivery import OutboundResult
@@ -101,7 +101,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             goal_block=format_goal_block(goals),
             has_goal=has_goal,
             first_brief=next_brief_lands(
-                brief_slots(state.schedule, user.effective_quiet_hours),
+                user_brief_slots(user, state.schedule),
                 resolve_clock(user.timezone).now_local,
             ),
         )

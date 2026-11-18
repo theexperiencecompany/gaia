@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -31,7 +31,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing import run_times, schedule
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
-from app.workers.brief_slots import spread_cron
+from app.workers.brief_slots import slot_minute
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
     SettingsBriefingScheduleUpdated,
@@ -48,9 +48,9 @@ _TOMORROW_START = datetime(2026, 10, 14, 18, 30, tzinfo=UTC)
 _WEEKLY_CRON = "0 17 * * 0"
 
 
-def _slot(cron: str) -> str:
-    """Return cron at the user's slot minute, as every stored brief cron is."""
-    return spread_cron(cron, USER_ID)
+def _slot(hour_and_days: str) -> str:
+    """Return the cron at the user's slot minute, as every stored brief cron is."""
+    return f"{slot_minute(USER_ID)} {hour_and_days}"
 
 
 def _workflow(
@@ -101,8 +101,8 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     s = Seams(
         find=AsyncMock(
             return_value=[
-                _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("0 8 * * *")),
-                _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot(_WEEKLY_CRON)),
+                _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("8 * * *")),
+                _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot("17 * * 0")),
             ]
         ),
         update=AsyncMock(return_value=MagicMock()),
@@ -186,9 +186,7 @@ class TestResyncBriefingSchedules:
         seams.find.assert_awaited_once_with(
             USER_ID, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
         )
-        assert _moves(seams.update) == {
-            "wf-daily_briefing": (_slot("0 10 * * *"), _TZ, _TODAY_START)
-        }
+        assert _moves(seams.update) == {"wf-daily_briefing": (_slot("10 * * *"), _TZ, _TODAY_START)}
         assert seams.update.await_args.args[2] == USER_ID
 
     async def test_a_new_timezone_moves_both_briefs_onto_it(self, seams: Seams) -> None:
@@ -199,8 +197,8 @@ class TestResyncBriefingSchedules:
         # 21:35 on the 13th in New York: that day, on that clock, is "today".
         new_york_today = datetime(2026, 10, 13, 4, 0, tzinfo=UTC)
         assert _moves(seams.update) == {
-            "wf-daily_briefing": (_slot("0 8 * * *"), "America/New_York", new_york_today),
-            "wf-weekly_digest": (_slot(_WEEKLY_CRON), "America/New_York", new_york_today),
+            "wf-daily_briefing": (_slot("8 * * *"), "America/New_York", new_york_today),
+            "wf-weekly_digest": (_slot("17 * * 0"), "America/New_York", new_york_today),
         }
 
     async def test_a_brief_already_delivered_today_is_counted_from_tomorrow(
@@ -220,8 +218,8 @@ class TestResyncBriefingSchedules:
         self, seams: Seams
     ) -> None:
         seams.find.return_value = [
-            _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("0 8 * * *"), timezone="America/New_York"),
-            _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot(_WEEKLY_CRON)),
+            _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("8 * * *"), timezone="America/New_York"),
+            _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot("17 * * 0")),
         ]
 
         await schedule.resync_briefing_schedules(
@@ -277,7 +275,7 @@ class TestTheFrequencySwitchesTheBriefs:
         )
 
         assert _moves(seams.update) == {
-            "wf-daily_briefing": (_slot("0 8 * * 1-5"), _TZ, _TODAY_START)
+            "wf-daily_briefing": (_slot("8 * * 1-5"), _TZ, _TODAY_START)
         }
         seams.activate.assert_not_awaited()
         seams.deactivate.assert_not_awaited()
@@ -454,7 +452,7 @@ class TestBriefingScheduleState:
         ("frequency", "has_daily", "hour"),
         [(BriefingFrequency.WEEKDAYS, True, 10), (BriefingFrequency.WEEKLY_ONLY, False, None)],
     )
-    async def test_it_says_whether_a_daily_runs_and_the_hour_it_really_lands(
+    async def test_it_says_whether_a_daily_runs_and_the_time_it_really_lands(
         self, seams: Seams, frequency: BriefingFrequency, has_daily: bool, hour: int | None
     ) -> None:
         user = _user(
@@ -463,7 +461,8 @@ class TestBriefingScheduleState:
 
         state = await schedule.briefing_schedule_state(user.id)
 
-        assert (state.has_daily_brief, state.daily_brief_hour) == (has_daily, hour)
+        lands_at = None if hour is None else time(hour, slot_minute(user.id))
+        assert (state.has_daily_brief, state.daily_brief_lands_at) == (has_daily, lands_at)
 
     async def test_a_paying_users_briefs_run(self, seams: Seams) -> None:
         state = await schedule.briefing_schedule_state(_user(seams, DEFAULT_QUIET_HOURS).id)

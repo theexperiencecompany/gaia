@@ -25,7 +25,7 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
-from app.workers.brief_slots import spread_cron
+from app.workers.brief_slots import slot_minute
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -1368,8 +1368,8 @@ class TestTheDailyBriefFollowsQuietHours:
     @pytest.mark.parametrize(
         ("quiet_hours", "cron"),
         [
-            (QuietHours(enabled=True, start_hour=22, end_hour=8), "0 8 * * *"),
-            (QuietHours(enabled=True, start_hour=0, end_hour=10), "0 10 * * *"),
+            (QuietHours(enabled=True, start_hour=22, end_hour=8), "8 * * *"),
+            (QuietHours(enabled=True, start_hour=0, end_hour=10), "10 * * *"),
         ],
         ids=["default", "quiet-until-10"],
     )
@@ -1413,11 +1413,10 @@ class TestTheDailyBriefFollowsQuietHours:
             call.args[0].system_workflow_key: call.args[0].trigger_config
             for call in mock_service.create_workflow.await_args_list
         }
-        assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == spread_cron(cron, user.id)
+        minute = slot_minute(user.id)
+        assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == f"{minute} {cron}"
         assert created[DAILY_BRIEFING_WORKFLOW_KEY].timezone == "Asia/Kolkata"
-        assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == spread_cron(
-            "0 17 * * 0", user.id
-        )
+        assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == f"{minute} 17 * * 0"
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.get_profile_timezone", new_callable=AsyncMock)
@@ -1446,7 +1445,7 @@ class TestTheDailyBriefFollowsQuietHours:
         assert await reset_system_workflow_to_default("wf-1", "user-1") is True
 
         definition = mock_repo.reset_system_workflow.await_args.args[1]
-        assert definition.trigger_config.cron_expression == spread_cron("0 10 * * *", user.id)
+        assert definition.trigger_config.cron_expression == f"{slot_minute(user.id)} 10 * * *"
 
     @pytest.mark.asyncio
     async def test_a_user_gone_before_the_briefs_are_fitted_fails_loud_naming_them(

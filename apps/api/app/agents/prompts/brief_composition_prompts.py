@@ -193,6 +193,10 @@ at 9:30 AM · 11. [GAIA] in progress: Restock order for the linen line | outcome
 Why: the spike and its cause are one story, so the cause leads and the chart shows its size.
 A standup never leads, and a heading names what its items are about."""
 
+#: One app scout's criteria for what is worth a brief, and the line when no scout wrote any.
+CRITERIA_LINE = "- {app}: {text}"
+NO_CRITERIA = "- (no app wrote criteria)"
+
 COMPOSITION_RETRY_NOTE = """Your last composition was sent back: {problems}.
 This was your last composition:
 {last}

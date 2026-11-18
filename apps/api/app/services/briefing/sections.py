@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, LEAD_OFFERS, SECTION_NUMERALS
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
 from app.models.brief_composition_models import (
     BriefBlock,
     BriefComposition,
@@ -163,7 +163,7 @@ def sources_shown(laid: Laid, items: Mapping[int, BriefCandidate]) -> list[str]:
 
 def carried_ids(items: Mapping[int, BriefCandidate], duplicates: list[str]) -> list[str]:
     """Return every held result the brief accounts for: each is on its page, composed or not."""
-    return [held for c in items.values() if (held := c.held_id) is not None] + duplicates
+    return [c.origin.id for c in items.values() if isinstance(c.origin, HeldResult)] + duplicates
 
 
 def log_composition(pool: FactPool, laid: Laid) -> None:
