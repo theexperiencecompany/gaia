@@ -1,9 +1,10 @@
 """Gather every producer's candidates for one brief, daily or weekly, numbered once and deduplicated."""
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.constants.briefing import GAIA_SOURCE
+from app.constants.briefing import BRIEF_POOL_PER_SOURCE, GAIA_SOURCE
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
@@ -28,6 +29,7 @@ from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.service import ScoutSignals
 from app.services.briefing.work import TrackedWork
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from shared.py.wide_events import log
 
 
 @dataclass(frozen=True)
@@ -105,10 +107,10 @@ def _one_per_thing(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
     return kept
 
 
-def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidate], list[str]]:
-    """Give each candidate its id from 1, folding a held result into any candidate with its title."""
+def _deduplicated(candidates: list[BriefCandidate]) -> tuple[list[BriefCandidate], list[str]]:
+    """Fold a held result into any candidate with its title; return what is left and the folded ids."""
     seen = {same_text_key(c.title) for c in candidates if c.held_id is None}
-    pool: dict[int, BriefCandidate] = {}
+    kept: list[BriefCandidate] = []
     duplicates: list[str] = []
     for candidate in candidates:
         if candidate.held_id is not None:
@@ -117,8 +119,35 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
                 duplicates.append(candidate.held_id)
                 continue
             seen.add(key)
-        pool[len(pool) + 1] = candidate
-    return pool, duplicates
+        kept.append(candidate)
+    return kept, duplicates
+
+
+def _rank(candidate: BriefCandidate) -> tuple[bool, bool, bool]:
+    """Order a source's candidates by what most needs telling: needs-you, then important, then news."""
+    return (
+        not candidate.state.needs_you,
+        candidate.importance is not SignalImportance.HIGH,
+        not candidate.is_news,
+    )
+
+
+def _capped(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
+    """Keep each source's BRIEF_POOL_PER_SOURCE best-ranked candidates, in the order they were found.
+
+    A held result left out stays held for a later brief.
+    """
+    ranked = sorted(range(len(candidates)), key=lambda i: (_rank(candidates[i]), i))
+    taken: Counter[str] = Counter()
+    kept: set[int] = set()
+    for i in ranked:
+        source = candidates[i].source
+        if taken[source] < BRIEF_POOL_PER_SOURCE:
+            taken[source] += 1
+            kept.add(i)
+    if dropped := len(candidates) - len(kept):
+        log.set_ns("briefing", pool_capped=dropped)
+    return [c for i, c in enumerate(candidates) if i in kept]
 
 
 #: GAIA's built-in surfaces it writes to once connected: its own work, mail drafts, calendar events.
@@ -146,7 +175,7 @@ def _unavailable(scouts: ScoutSignals) -> list[UnreadSource]:
 async def gather_candidates(
     user_id: str, clock: UserClock, since: datetime, now: datetime, sources: CandidateSources
 ) -> GatheredCandidates:
-    """Run every producer, needs-you sources first, remember each find, and number them."""
+    """Run every producer, needs-you sources first, remember each find, cap each source and number them."""
     work = sources.work
     day_start = clock.day_start()
     day_end = sources.due_before
@@ -166,5 +195,6 @@ async def gather_candidates(
     acting = await _acting_sources(user_id, sources.scouts)
     candidates = [c.model_copy(update={"gaia_acts": c.source in acting}) for c in candidates]
     remembered = await remember_candidates(user_id, _one_per_thing(candidates), now)
-    pool, duplicates = _numbered(remembered)
+    deduplicated, duplicates = _deduplicated(remembered)
+    pool = dict(enumerate(_capped(deduplicated), start=1))
     return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))

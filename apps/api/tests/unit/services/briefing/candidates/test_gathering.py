@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from tests.factories import make_user_id
 
-from app.constants.briefing import BriefAction
+from app.constants.briefing import BRIEF_POOL_PER_SOURCE, BriefAction
 from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL, WaitingOn
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
@@ -445,3 +445,31 @@ class TestOneItemPerThing:
         gathered = await _gathered(work, _scouts(slack))
 
         assert len(gathered.pool) == 2
+
+
+class TestEachSourceIsCappedByRank:
+    async def test_a_flooded_source_keeps_its_most_important_finds_and_others_keep_theirs(
+        self,
+    ) -> None:
+        def signal(n: int, importance: SignalImportance) -> RememberedSignal:
+            found = _gmail_signal(f"t{n}", f"Thread {n}")
+            return RememberedSignal(
+                signal=found.signal.model_copy(update={"importance": importance})
+            )
+
+        normal = [signal(n, SignalImportance.NORMAL) for n in range(BRIEF_POOL_PER_SOURCE)]
+        high = [signal(n, SignalImportance.HIGH) for n in range(100, 102)]
+        events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
+        sources = CandidateSources(
+            TrackedWork(), _scouts(*normal, *high), events, CLOCK.day_start(days_ago=-1), []
+        )
+
+        gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+        assert list(gathered.pool) == list(range(1, BRIEF_POOL_PER_SOURCE + 2))
+        assert [c.title for c in gathered.pool.values() if c.source == "gmail"] == [
+            *(f"Thread {n}" for n in range(BRIEF_POOL_PER_SOURCE - 2)),
+            "Thread 100",
+            "Thread 101",
+        ]
+        assert [c.title for c in gathered.pool.values() if c.is_event] == ["Board call"]
