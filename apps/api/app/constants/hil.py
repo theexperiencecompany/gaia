@@ -60,6 +60,8 @@ HIL_LLM_TIMEOUT_SECONDS = 30
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
+#: The name auto mode's one Decisions question goes by, in the request and its answer.
+JEV_DECISION_QUESTION_KEY = "decision"
 
 
 class JevFailure(StrEnum):

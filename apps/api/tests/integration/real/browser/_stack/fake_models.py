@@ -26,6 +26,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from app.constants.hil import JEV_DECISION_QUESTION_KEY, JevChoice
+from app.constants.reactions import (
+    REACTION_EMOJI_QUESTION_KEY,
+    REACTION_KIND_QUESTION_KEY,
+    REACTION_UPSET_QUESTION_KEY,
+    ReactionKind,
+)
 from tests.helpers import load_llm_stub_module, pick_free_port
 from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
@@ -126,6 +133,34 @@ class ModelCall:
 
     kind: str
     marker: str | None
+
+
+def _answered(answers: dict[str, Any]) -> JSONResponse:
+    return JSONResponse(
+        content={"answers": answers, "usage": {"inputTokens": 0, "outputTokens": 0}}
+    )
+
+
+def _approval_judge_answer() -> dict[str, Any]:
+    """Authorize every gated call: the user's scripted message names the run it starts."""
+    choices = [choice.value for choice in JevChoice]
+    return {
+        JEV_DECISION_QUESTION_KEY: {
+            **_choice(choices, JevChoice.AUTHORIZED),
+            "confidence": 1.0,
+        }
+    }
+
+
+def _no_reaction_answer(questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Decline the instant reaction: a scripted message needs words."""
+    kinds = [kind.value for kind in ReactionKind]
+    emoji = list(questions[REACTION_EMOJI_QUESTION_KEY]["criteria"])
+    return {
+        REACTION_UPSET_QUESTION_KEY: {"type": "noul", "noul": 0.0},
+        REACTION_KIND_QUESTION_KEY: _choice(kinds, ReactionKind.NEEDS_WORDS),
+        REACTION_EMOJI_QUESTION_KEY: _choice(emoji, emoji[0]),
+    }
 
 
 def _one_hot(ids: list[str], chosen: str) -> dict[str, float]:
@@ -413,6 +448,10 @@ class FakeModels:
     async def _decisions(self, request: Request) -> Response:
         body = await request.json()
         questions: dict[str, dict[str, Any]] = body.get("questions") or {}
+        if JEV_DECISION_QUESTION_KEY in questions:
+            return _answered(_approval_judge_answer())
+        if REACTION_KIND_QUESTION_KEY in questions:
+            return _answered(_no_reaction_answer(questions))
         goals = " ".join(
             json.dumps(question.get("instructions")) for question in questions.values()
         )
@@ -430,9 +469,7 @@ class FakeModels:
             answers = {"option": self._option(run, questions["option"])}
         else:
             self._fail(run, f"a Jev question nothing here answers: {list(questions)}")
-        return JSONResponse(
-            content={"answers": answers, "usage": {"inputTokens": 0, "outputTokens": 0}}
-        )
+        return _answered(answers)
 
     def _operation(self, run: RunScript, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
         operations = list(questions["operation"]["criteria"])

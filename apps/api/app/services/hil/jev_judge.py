@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
 
-from app.constants.hil import HIL_JEV_ACCEPT_LINE, JevChoice
+from app.constants.hil import HIL_JEV_ACCEPT_LINE, JEV_DECISION_QUESTION_KEY, JevChoice
 from app.constants.log_tags import LogTag
 from app.services.hil.intent import (
     AutoHistory,
@@ -129,8 +129,10 @@ async def ask_jev(
     }
     if assistant_turns:
         state["assistant_turns"] = list(assistant_turns)
-    body = await post_decisions(state, {"decision": JEV_QUESTION})
-    answer = body.choice("decision", (JevChoice.AUTHORIZED, JevChoice.FORBIDDEN, JevChoice.UNCLEAR))
+    body = await post_decisions(state, {JEV_DECISION_QUESTION_KEY: JEV_QUESTION})
+    answer = body.choice(
+        JEV_DECISION_QUESTION_KEY, (JevChoice.AUTHORIZED, JevChoice.FORBIDDEN, JevChoice.UNCLEAR)
+    )
     return (
         answer.choice,
         float(answer.confidence or 0.0),
