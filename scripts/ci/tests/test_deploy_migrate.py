@@ -78,7 +78,13 @@ esac
 @pytest.fixture
 def yq() -> str:
     path = shutil.which("yq")
-    if path is None:
+    # A version manager's shim can be on PATH with no yq behind it.
+    version = (
+        subprocess.run([path, "--version"], capture_output=True, text=True, check=False)
+        if path
+        else None
+    )
+    if path is None or version is None or "mikefarah" not in version.stdout:
         pytest.skip("yq (mikefarah, as on GitHub's runners) is not installed")
     return path
 

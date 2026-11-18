@@ -78,10 +78,6 @@ class UserClock:
         """Return this week from Monday to today."""
         return self.days_ending_today(self.today.weekday() + 1)
 
-    def days_ahead(self, days: int) -> DayWindow:
-        """Return the days local days starting tomorrow."""
-        return self.days(self.today + timedelta(days=1), days)
-
 
 def resolve_clock(user_timezone: str | None) -> UserClock:
     """Return the user's clock on their stored zone: an IANA name or a ±HH:MM offset."""
