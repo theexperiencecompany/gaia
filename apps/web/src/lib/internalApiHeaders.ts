@@ -7,20 +7,20 @@ const INTERNAL_CALLER_HEADER = "X-Gaia-Internal";
 const VIEWER_IP_HEADER = "X-Gaia-Viewer-IP";
 
 /**
- * Headers for a request this server makes to the API. INTERNAL_API_TOKEN counts
- * it against the web server's own ceiling instead of one shared Cloudflare
- * address; the API reads it for rate limiting only, never for auth. Given the
- * incoming request, it also names the viewer the page is rendered for:
- * Cloudflare's verified CF-Connecting-IP, else the first X-Forwarded-For hop the
- * instance's proxy wrote. Empty without the token: the API's normal limits apply.
+ * Headers for a request this server makes to the API: INTERNAL_API_TOKEN (rate
+ * limiting only, never auth) and the viewer the page is rendered for. GAIA
+ * Cloud names Cloudflare's CF-Connecting-IP; a self-host, whose proxy passes a
+ * client's own CF-Connecting-IP through, the X-Forwarded-For hop it wrote.
+ * Empty without the token: the API's normal limits apply.
  */
 export function internalApiHeaders(viewer?: Headers): Record<string, string> {
   const token = process.env.INTERNAL_API_TOKEN;
   if (!token) return {};
   const headers: Record<string, string> = { [INTERNAL_CALLER_HEADER]: token };
-  const viewerIp =
-    viewer?.get("cf-connecting-ip") ??
-    viewer?.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwardedFor = viewer?.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const viewerIp = isSelfhostWeb()
+    ? forwardedFor
+    : (viewer?.get("cf-connecting-ip") ?? forwardedFor);
   if (viewerIp) headers[VIEWER_IP_HEADER] = viewerIp;
   return headers;
 }

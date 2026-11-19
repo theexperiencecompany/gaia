@@ -134,6 +134,14 @@
         "files": ["src/config/openui/components/VideoBlockView.tsx"],
         "rules": ["react-doctor/iframe-missing-sandbox"]
       },
+      // A shared PDF frames its content-origin URL (<content_id>.heygaia.link):
+      // browsers refuse to render a PDF in a sandboxed frame, so the isolation is
+      // that cookieless per-file origin and the API's PDF CSP (frame-ancestors
+      // the app). The other frame in this file (HTML and SVG) keeps its sandbox.
+      {
+        "files": ["src/features/short-links/components/PublicSessionArtifactView.tsx"],
+        "rules": ["react-doctor/iframe-missing-sandbox"]
+      },
       // timezoneSearchText() returns a string; .includes(query) is substring
       // matching, not array membership (verified against utils/timezoneUtils.ts
       // and reproduced with an out-of-repo fixture).

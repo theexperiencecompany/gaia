@@ -9,6 +9,7 @@ app/config/capability_requirements.py.
 from functools import lru_cache
 import time
 from typing import Literal, Self, TypedDict, cast
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from pydantic import Field, ValidationInfo, computed_field, field_validator, model_validator
@@ -44,6 +45,7 @@ from shared.py.wide_events import log
 
 # The web app route a heygaia.link slug rewrites to.
 SHORTLINK_WEB_ROUTE = "/l"
+MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()
 
@@ -98,6 +100,15 @@ class Settings(BrowserHostSettings):
     # Unset signs requests for us-east-1, which MinIO and most S3-compatible services accept.
     S3_REGION: str | None = None
     S3_ADDRESSING_STYLE: S3AddressingStyle = S3AddressingStyle.VIRTUAL
+    # Shared-link file snapshots. Under BLOB_STORE=local or s3 they share the
+    # blob store; under cloudinary they go to this R2 bucket (R2_ACCOUNT_ID's keys).
+    LINK_CONTENT_BUCKET: str | None = None
+    # The content origin that serves snapshot bytes, with a {content_id}
+    # placeholder: https://{content_id}.heygaia.link on GAIA Cloud. Unset, HTML
+    # shows as source and other files as downloads (no active link content).
+    LINK_CONTENT_URL_TEMPLATE: str | None = None
+    # Signs the short-lived content tokens that origin checks (min 32 chars).
+    LINK_CONTENT_SIGNING_KEY: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -677,6 +688,45 @@ class Settings(BrowserHostSettings):
             and "SHORTLINK_BASE_URL" not in self.model_fields_set
         ):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
+        return self
+
+    @field_validator("LINK_CONTENT_URL_TEMPLATE", "LINK_CONTENT_SIGNING_KEY", mode="after")
+    @classmethod
+    def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
+        # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.
+        return v or None
+
+    @model_validator(mode="after")
+    def _link_content_origin_is_complete(self) -> Self:
+        """Turn off a content origin that cannot name a snapshot's host or sign its tokens.
+
+        A self-host refuses to boot (its .env is CLI-written); GAIA Cloud logs the
+        error and serves shared files as text or downloads until it is fixed.
+        """
+        template = self.LINK_CONTENT_URL_TEMPLATE
+        if template is None:
+            return self
+        key = self.LINK_CONTENT_SIGNING_KEY
+        problem = None
+        if "{content_id}" not in template:
+            problem = "LINK_CONTENT_URL_TEMPLATE must contain {content_id}"
+        elif urlsplit(template).netloc.lower() in {
+            urlsplit(self.HOST).netloc.lower(),
+            urlsplit(self.FRONTEND_URL).netloc.lower(),
+        }:
+            # The API and app hosts carry the session; user bytes there are the stored XSS this origin exists to stop.
+            problem = "LINK_CONTENT_URL_TEMPLATE must name a host other than HOST and FRONTEND_URL"
+        elif key is None or len(key) < MIN_LINK_CONTENT_SIGNING_KEY_LENGTH:
+            problem = (
+                "LINK_CONTENT_URL_TEMPLATE is set but LINK_CONTENT_SIGNING_KEY is missing or "
+                f"shorter than {MIN_LINK_CONTENT_SIGNING_KEY_LENGTH} characters"
+            )
+        if problem is None:
+            return self
+        if self.deployment.requires_complete_config:
+            raise RuntimeError(problem)
+        log.error(f"{LogTag.STARTUP} link content origin turned off", problem=problem)
+        self.LINK_CONTENT_URL_TEMPLATE = None
         return self
 
     @model_validator(mode="before")

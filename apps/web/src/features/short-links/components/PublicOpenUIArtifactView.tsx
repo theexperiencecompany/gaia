@@ -3,8 +3,10 @@
 import { Download01Icon } from "@icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
-import { shortLinkPdfDownloadUrl } from "@/features/short-links/api/shortLinksApi";
+import { shortLinkPdfDownloadUrl } from "@/features/short-links/api/linkViewerApi";
 import type { PublicOpenUIArtifact } from "@/types/features/shortLinkTypes";
+
+import { useReaderDateLabel } from "../hooks/useReaderDateLabel";
 
 /** Download the shared artifact as a PDF; sits in the page header. */
 export function ArtifactPdfDownload({ slug }: { slug: string }) {
@@ -20,17 +22,21 @@ export function ArtifactPdfDownload({ slug }: { slug: string }) {
   );
 }
 
-/** A shared artifact: who shared it, then its program rendered by the artifact library. */
+/** A shared artifact: who shared it and when, then its program rendered by the artifact library. */
 export function PublicOpenUIArtifactView({
   view,
 }: {
   view: PublicOpenUIArtifact;
 }) {
+  const createdLabel = useReaderDateLabel(view.created_at);
   return (
     <div className="space-y-2">
-      {view.shared_by ? (
-        <p className="text-sm text-zinc-400">Shared by {view.shared_by}</p>
-      ) : null}
+      <div className="flex items-center gap-2 text-sm text-zinc-400">
+        {view.shared_by ? <p>Shared by {view.shared_by}</p> : null}
+        <time dateTime={view.created_at} className="text-xs text-zinc-500">
+          {createdLabel}
+        </time>
+      </div>
       <div className="rounded-2xl bg-zinc-900">
         <LazyArtifactRenderer program={view.program} />
       </div>

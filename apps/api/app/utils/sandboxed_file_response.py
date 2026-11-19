@@ -1,10 +1,10 @@
 """Serve an agent-written file over HTTP without letting it run on our origin.
 
 Agent-generated artifacts are untrusted content served from the API origin,
-which holds the session cookie. Every route that streams one goes through this
-module so the stored-XSS fence lives in one place: sandboxed_file_response for
-the owner's session-file endpoints, public_link_file_response for the public
-heygaia.link file route, which anyone holding a link reaches.
+which holds the session cookie. The owner's session-file endpoints stream them
+through here so the stored-XSS fence lives in one place. A shared link's bytes
+never come from this origin: app/services/links/serving.py serves them from the
+content origin.
 """
 
 from pathlib import Path
@@ -24,22 +24,9 @@ _ACTIVE_CONTENT_TYPES = (
     "application/xml",
 )
 _SANDBOX_CSP = {"Content-Security-Policy": "sandbox"}
-_INLINE_IMAGE_TYPES = (
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-)
 # The owner's inline types; the rest download. HTML previews in a srcDoc iframe instead,
 # and a PDF carries no sandbox CSP, which would block the browser's viewer.
-_SAFE_INLINE_TYPES = (*_INLINE_IMAGE_TYPES, "application/pdf")
-# A public link's bytes reach anyone, still from the cookie origin: nothing they
-# load or run, raster images the only inline type, and no referrer or index entry.
-_PUBLIC_LINK_HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; sandbox",
-    "Referrer-Policy": "no-referrer",
-    "X-Robots-Tag": "noindex, nofollow",
-}
+_SAFE_INLINE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf")
 
 
 def _file_response(
@@ -74,16 +61,4 @@ def sandboxed_file_response(host_path: Path, *, cache_control: str) -> FileRespo
         inline=content_type in _SAFE_INLINE_TYPES,
         cache_control=cache_control,
         headers=_SANDBOX_CSP if content_type in _ACTIVE_CONTENT_TYPES else {},
-    )
-
-
-def public_link_file_response(host_path: Path, *, cache_control: str) -> FileResponse:
-    """Serve a shared link's file: raster images inline, everything else a download."""
-    content_type = _content_type(host_path)
-    return _file_response(
-        host_path,
-        content_type,
-        inline=content_type in _INLINE_IMAGE_TYPES,
-        cache_control=cache_control,
-        headers=_PUBLIC_LINK_HEADERS,
     )

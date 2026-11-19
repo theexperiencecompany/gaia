@@ -12,6 +12,7 @@ from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -35,6 +36,7 @@ from app.models.conversation_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.links.service import revoke_conversation_links
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -219,7 +221,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
         raise HTTPException(status_code=404, detail="No conversations found for the user")
 
     for conversation_id in conversation_ids:
-        await _cleanup_checkpoint_threads(conversation_id)
+        await _cleanup_conversation_storage(user_id, conversation_id)
 
     capture(UserId(user_id), ChatConversationDeleted(count=len(conversation_ids)))
     return DeleteAllConversationsResponse(message="All conversations deleted successfully")
@@ -248,9 +250,12 @@ async def delete_conversation(
 
 
 async def _cleanup_conversation_storage(user_id: str, conversation_id: str) -> None:
-    """Clean up what outlives a deleted conversation's document, best-effort.
+    """Delete what outlives a deleted conversation's document, its shared links first.
 
-    The ARQ prune task and the nightly checkpoint sweep are the backstops if a step fails."""
+    The links and artifacts go in Mongo and fail loud; the files and checkpoints are
+    best-effort, with the ARQ prune task and the nightly checkpoint sweep as backstops."""
+    await revoke_conversation_links(user_id, conversation_id)
+    await openui_artifact_repository.delete_for_conversation(user_id, conversation_id)
     if user_id:
         try:
             await delete_session_dir(user_id, conversation_id)

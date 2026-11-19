@@ -1,33 +1,13 @@
 "use client";
 
-import { useLocale } from "next-intl";
-import { useMemo, useSyncExternalStore } from "react";
-
 import { RichContentRenderer } from "@/features/chat/components/interface/RichContentRenderer";
 import { ExecutionStatusBadge } from "@/features/workflows/components/ExecutionStatusBadge";
 import type { PublicWorkflowRun } from "@/types/features/shortLinkTypes";
 
-const subscribeNever = () => () => undefined;
+import { useReaderDateLabel } from "../hooks/useReaderDateLabel";
 
 export function PublicWorkflowRunView({ view }: { view: PublicWorkflowRun }) {
-  const locale = useLocale();
-  const [localFormat, serverFormat] = useMemo(
-    () => [
-      new Intl.DateTimeFormat(locale, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
-      new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }),
-    ],
-    [locale],
-  );
-  // The reader's time zone exists only in the browser: the server sends the date
-  // alone, and hydration adds the reader-local time.
-  const startedLabel = useSyncExternalStore(
-    subscribeNever,
-    () => localFormat.format(new Date(view.started_at)),
-    () => serverFormat.format(new Date(view.started_at)),
-  );
+  const startedLabel = useReaderDateLabel(view.started_at);
 
   return (
     <article className="flex flex-col gap-4">

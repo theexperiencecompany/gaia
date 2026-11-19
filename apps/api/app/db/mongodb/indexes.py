@@ -16,9 +16,11 @@ from app.constants.payments import CLAIMED_STATUS
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.link_reports import REPORTER_UNIQUE_INDEX
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.openui_artifacts import ARTIFACT_USER_CREATED_INDEX
 from app.db.repositories.short_links import (
+    CONTENT_ID_INDEX,
     LIVE_TARGET_UNIQUE_INDEX,
     SLUG_UNIQUE_INDEX,
     TARGET_HISTORY_INDEX,
@@ -1691,12 +1693,12 @@ async def create_openui_artifact_indexes() -> None:
 
 
 async def create_short_link_indexes() -> None:
-    """Create the short_links indexes: one slug namespace, one live link per owned target.
+    """Create the short_links and link_reports indexes: one slug namespace, one live link per owned target.
 
     The live-target index is partial on revoked: False, so a revoked link never
     blocks the next mint and the idempotency read is served by it. The history
     index serves the newest-link read that tells whether the owner turned
-    sharing off.
+    sharing off. The content-id index serves the content origin's lookup.
     """
     short_links_collection = get_async_collection("short_links")
     try:
@@ -1711,6 +1713,14 @@ async def create_short_link_indexes() -> None:
             short_links_collection.create_index(
                 [("user_id", 1), ("target_type", 1), ("target_id", 1), ("created_at", -1)],
                 name=TARGET_HISTORY_INDEX,
+            ),
+            short_links_collection.create_index(
+                [("snapshot.content_id", 1)],
+                partialFilterExpression={"snapshot.content_id": {"$type": "string"}},
+                name=CONTENT_ID_INDEX,
+            ),
+            get_async_collection("link_reports").create_index(
+                [("slug", 1), ("reporter_key", 1)], unique=True, name=REPORTER_UNIQUE_INDEX
             ),
         )
     except Exception as e:

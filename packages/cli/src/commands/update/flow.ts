@@ -20,6 +20,7 @@ import {
 } from "../../lib/env-writer.js";
 import type { ReleaseImageGap } from "../../lib/image-availability.js";
 import { detectSetupMode } from "../../lib/install-root.js";
+import { ensureWebServerSecrets } from "../../lib/machine-secrets.js";
 import { pinReleaseImages, releaseGitTag } from "../../lib/release.js";
 import {
   checkoutOwnedFiles,
@@ -169,6 +170,8 @@ export async function applyReleaseUpdate(
     await detectSetupMode(plan.repoPath),
   );
   pinReleaseImages(plan.repoPath, plan.toVersion);
+  // The release's compose may read a secret an older `gaia up` never wrote.
+  ensureWebServerSecrets(plan.repoPath);
 
   report.onStage("start");
   const { startedServices } = await startServices(

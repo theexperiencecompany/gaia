@@ -54,6 +54,13 @@
         "files": ["**/commands/bots/handler.ts"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
+      // `gaia up` asks for each unset share domain in turn on the terminal, and
+      // each answer is checked against the domains already chosen this run, so
+      // the next prompt depends on the previous answer as well as on stdin.
+      {
+        "files": ["**/src/lib/share-domains.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // deliverSources MUST await each send before the next: the bubbles of one
       // logical message have to arrive in published order, so fanning them out
       // with Promise.all (what async-await-in-loop suggests) would reorder the

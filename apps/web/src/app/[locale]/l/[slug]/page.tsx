@@ -4,90 +4,116 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
-import { LinkOpenBeacon } from "@/features/short-links/components/LinkOpenBeacon";
-import { PublicLinkView } from "@/features/short-links/components/PublicLinkView";
+import { GatedLinkView } from "@/features/short-links/components/GatedLinkView";
+import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
+import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
+import { BROWSER_RESOLVED_DENIALS } from "@/features/short-links/constants";
+import type { LinkResolution } from "@/features/short-links/types";
+import { isUnfurlBot } from "@/features/short-links/utils/isUnfurlBot";
+import { linkUnavailableState } from "@/features/short-links/utils/linkDenial";
 import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import type {
-  PublicShortLinkView,
-  ShortLinkTargetType,
+  ErrorEnvelope,
+  LinkEnvelope,
+  LinkPreviewMeta,
 } from "@/types/features/shortLinkTypes";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-// Link previews (Telegram, iMessage, Slack unfurls) are cached by third parties
-// and shown to whoever sees the message, so they carry only the artifact's
-// kind — never its title, contents or owner.
-const PREVIEW_COPY: Record<
-  ShortLinkTargetType,
-  { title: string; description: string }
-> = {
-  todo_deliverable: {
-    title: "Shared from GAIA",
-    description: "Something GAIA worked on, shared with you.",
-  },
-  briefing: {
-    title: "A GAIA brief",
-    description: "A daily brief from GAIA, the proactive personal assistant.",
-  },
-  session_artifact: {
-    title: "A file from GAIA",
-    description: "A file GAIA made, shared with you.",
-  },
-  workflow_run: {
-    title: "A GAIA workflow run",
-    description: "What a GAIA workflow did, shared with you.",
-  },
-  openui_artifact: {
-    title: "Shared from GAIA",
-    description: "A report or dashboard GAIA made, shared with you.",
-  },
-};
+const OG_SITE_NAME = "GAIA";
+const OG_IMAGE_WIDTH = 1200;
+const OG_IMAGE_HEIGHT = 630;
+const HTTP_TOO_MANY_REQUESTS = 429;
+
+async function linkApiFetch(path: string): Promise<Response> {
+  const apiBaseUrl = getServerApiBaseUrl();
+  if (!apiBaseUrl) {
+    throw new Error("API base URL is not configured for server rendering");
+  }
+  // No caching: the owner can revoke or narrow a link at any moment. The
+  // headers name the viewer, so the API rate-limits each viewer, not this server.
+  return fetch(`${apiBaseUrl}${path}`, {
+    cache: "no-store",
+    headers: internalApiHeaders(await headers()),
+  });
+}
 
 /**
- * The public view behind a slug, fetched on the server with no caching —
- * the owner can revoke a link at any moment. `null` means unknown, revoked or
- * deleted (the API answers 404 for all three); any other failure throws.
- * `cache` dedupes the call between `generateMetadata` and the page. It names
- * the viewer, so the API rate-limits each viewer rather than this server.
+ * What a preview may show for the link, by its access level and state; `cache`
+ * dedupes it per render. Null when the viewer is refused for opening too many
+ * links: the page itself says so, from the resolve's own refusal.
  */
-const fetchPublicView = cache(
-  async (slug: string): Promise<PublicShortLinkView | null> => {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) {
-      throw new Error("API base URL is not configured for server rendering");
-    }
-    const response = await fetch(
-      `${apiBaseUrl}/l/${encodeURIComponent(slug)}`,
-      {
-        cache: "no-store",
-        headers: internalApiHeaders(await headers()),
-      },
-    );
-    if (response.status === 404) return null;
+const fetchLinkMeta = cache(
+  async (slug: string): Promise<LinkPreviewMeta | null> => {
+    const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}/meta`);
+    if (response.status === HTTP_TOO_MANY_REQUESTS) return null;
     if (!response.ok) {
       // Never the slug: it is a working link, and this message reaches Sentry.
-      throw new Error(`Short link resolve failed with ${response.status}`);
+      throw new Error(`Short link meta failed with ${response.status}`);
     }
-    return (await response.json()) as PublicShortLinkView;
+    return (await response.json()) as LinkPreviewMeta;
   },
 );
+
+/**
+ * Open the link as an anonymous viewer: this server never sees the viewer's
+ * session, so a people or owner link answers a sign-in denial here and is
+ * opened again from the browser.
+ */
+async function resolveLinkOnServer(slug: string): Promise<LinkResolution> {
+  const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}`);
+  if (response.ok) {
+    return { kind: "open", envelope: (await response.json()) as LinkEnvelope };
+  }
+  const envelope = (await response.json().catch(() => undefined)) as
+    | ErrorEnvelope
+    | undefined;
+  const state = linkUnavailableState(slug, envelope);
+  if (!state) {
+    throw new Error(`Short link resolve failed with ${response.status}`);
+  }
+  return { kind: "unavailable", state };
+}
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const view = await fetchPublicView(slug);
-  if (!view) notFound();
-  const copy = PREVIEW_COPY[view.target_type];
+  const meta = await fetchLinkMeta(slug);
+  if (!meta) {
+    return { title: OG_SITE_NAME, robots: { index: false, follow: false } };
+  }
+  // The generated card lives on whichever host served this page: the site-wide
+  // metadataBase is GAIA Cloud's, which would point a self-host's previews there.
+  const requestHeaders = await headers();
+  const host =
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
+  const card = `/api/og/link?slug=${encodeURIComponent(slug)}`;
+  const image = {
+    url: meta.image_url ?? (host ? `${proto}://${host}${card}` : card),
+    width: OG_IMAGE_WIDTH,
+    height: OG_IMAGE_HEIGHT,
+  };
   return {
-    title: copy.title,
-    description: copy.description,
-    robots: { index: false, follow: false },
-    openGraph: { title: copy.title, description: copy.description },
-    twitter: { title: copy.title, description: copy.description },
+    title: meta.title,
+    description: meta.description,
+    robots: { index: meta.indexable, follow: meta.indexable },
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+      siteName: OG_SITE_NAME,
+      images: [image],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: meta.title,
+      description: meta.description,
+      images: [image.url],
+    },
   };
 }
 
@@ -96,12 +122,18 @@ export async function generateMetadata({
 // mounts the authed app shell or its onboarding/auth guards.
 export default async function ShortLinkPage({ params }: PageProps) {
   const { slug } = await params;
-  const view = await fetchPublicView(slug);
-  if (!view) notFound();
-  return (
-    <>
-      <LinkOpenBeacon slug={slug} />
-      <PublicLinkView slug={slug} view={view} />
-    </>
-  );
+  // A chat-preview bot reads only the metadata; it never resolves the link.
+  if (isUnfurlBot((await headers()).get("user-agent"))) return null;
+
+  const resolution = await resolveLinkOnServer(slug);
+  if (resolution.kind === "open") {
+    return <OpenLinkView slug={slug} envelope={resolution.envelope} />;
+  }
+  const { state } = resolution;
+  if (state.denial === "link_not_found") notFound();
+  if (BROWSER_RESOLVED_DENIALS.has(state.denial)) {
+    return <GatedLinkView slug={slug} />;
+  }
+  // The App Router answers 200 here; only notFound() can set a status.
+  return <LinkUnavailable state={state} />;
 }

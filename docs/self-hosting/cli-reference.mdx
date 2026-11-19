@@ -47,6 +47,10 @@ Before anything downloads, `gaia up` checks the machine: enough memory and disk 
 | `--web-port <port>`      | Host port GAIA is served on (default 3000)                         |
 | `--domain <domain>`      | Serve GAIA at `https://<domain>` with an automatic certificate (uses ports 80 and 443) |
 | `--no-domain`            | Stop serving the domain an earlier run set: GAIA goes back to port 3000 (or the next free port) and `gaia.local` |
+| `--link-domain <domain>` | Also serve short share links at `https://<domain>/<code>`. Needs `--domain`; see [Share links and file previews](#share-links-and-file-previews) |
+| `--no-link-domain`       | Stop serving the short-link domain an earlier run set              |
+| `--usercontent-domain <domain>` | Serve shared files from `https://<domain>`, so shared HTML and PDFs open in the page. Needs `--domain` |
+| `--no-usercontent-domain` | Stop serving shared files from the domain an earlier run set     |
 | `-b, --build`            | Build images from source before starting. Needs a source checkout: on a fresh machine it clones the source; on a bundle install it refuses and points at `gaia init` |
 | `--code-sandbox`         | Run agent code in local containers through the host Docker socket (root-equivalent; saved for later starts and updates) — see [Running code](/self-hosting/ai-models-and-tools#running-code) |
 | `--no-code-sandbox`      | Turn the local code sandbox off again                              |
@@ -81,6 +85,23 @@ Without `--domain`, `gaia up` also names GAIA `http://gaia.local`, so phones and
 
   If the name can't be set up (port 80 taken, avahi not running, old Node.js), `gaia up` still finishes and says why. With `--domain` there is no `gaia.local`, because Caddy needs port 80.
 </Accordion>
+
+### Share links and file previews
+
+With `--domain`, GAIA can use two more domains for what you share. Both are optional. When you set `--domain` in a terminal, `gaia up` asks for each one, and Enter skips it. Later runs keep what you chose.
+
+| Domain | What it does | Without it |
+| --- | --- | --- |
+| Short-link domain (`--link-domain`) | Links you share read `https://go.example.com/<code>`. Each one redirects to `https://gaia.example.com/l/<code>` | Links read `https://gaia.example.com/l/<code>` |
+| Shared-files domain (`--usercontent-domain`) | Serves the bytes of shared files. Shared HTML pages run in a locked-down frame, and PDFs open in the browser's viewer | Shared HTML shows as source code, and other files download |
+
+Use a separate name for the shared-files domain, never a path on GAIA's own domain. It carries no GAIA cookie, and every page it serves runs in a sandbox with no access to your account. Give each domain a DNS record that points at the server, as you did for `--domain`. For example, an `A` record for `go.example.com` and one for `files.example.com`, each with the server's IP address. Caddy gets a certificate for each.
+
+```bash
+gaia up --yes --domain gaia.example.com --link-domain go.example.com --usercontent-domain files.example.com
+```
+
+`gaia up` writes the settings for you: `GAIA_LINK_DOMAIN` and `GAIA_USERCONTENT_DOMAIN` in `packages/cli/selfhost/.env`, and `SHORTLINK_BASE_URL`, `LINK_CONTENT_URL_TEMPLATE` and `LINK_CONTENT_SIGNING_KEY` in `apps/api/.env`. It owns those three API settings, so it removes them when you drop a domain.
 
 ### A local domain with HTTPS
 

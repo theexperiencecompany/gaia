@@ -67,3 +67,11 @@ def test_a_path_outside_short_links_logs_unchanged() -> None:
     client.get("/api/v1/plain/42")
 
     assert logged == ["/api/v1/plain/42"]
+
+
+def test_a_content_origin_request_logs_the_content_id_masked() -> None:
+    client, logged = _logged_paths()
+
+    client.get("/api/v1/usercontent/c0ffee1234/thumb.jpg")
+
+    assert logged == ["/api/v1/usercontent/{content_id}/thumb.jpg"]

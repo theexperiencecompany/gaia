@@ -7,6 +7,8 @@ const api = vi.hoisted(() => ({
   createShortLink: vi.fn(),
   fetchShareState: vi.fn(),
   stopSharingShortLink: vi.fn(),
+  updateLinkSettings: vi.fn(),
+  rotateLink: vi.fn(),
 }));
 const toastSuccess = vi.hoisted(() => vi.fn());
 const copyShortLink = vi.hoisted(() => vi.fn());
@@ -20,6 +22,14 @@ vi.mock("@/lib/toast", () => ({ toast: { success: toastSuccess } }));
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
 const LIVE_URL = "https://heygaia.link/abcdefghijk";
+const LIVE_LINK = {
+  url: LIVE_URL,
+  slug: "abcdefghijk",
+  access: "unlisted",
+  grantees: [],
+  expires_at: null,
+  content_max_access: null,
+} as const;
 
 function renderControls() {
   render(
@@ -62,7 +72,7 @@ describe("ShareLinkControls", () => {
   });
 
   it("offers Stop sharing once a live link exists and confirms the revoke", async () => {
-    api.fetchShareState.mockResolvedValue(LIVE_URL);
+    api.fetchShareState.mockResolvedValue(LIVE_LINK);
     api.stopSharingShortLink.mockResolvedValue(true);
     renderControls();
 
@@ -80,7 +90,7 @@ describe("ShareLinkControls", () => {
   });
 
   it("says nothing when the link was already gone", async () => {
-    api.fetchShareState.mockResolvedValue(LIVE_URL);
+    api.fetchShareState.mockResolvedValue(LIVE_LINK);
     api.stopSharingShortLink.mockResolvedValue(false);
     renderControls();
 
@@ -94,14 +104,28 @@ describe("ShareLinkControls", () => {
   });
 
   it("copies the live link without minting a new one", async () => {
-    api.fetchShareState.mockResolvedValue(LIVE_URL);
+    api.fetchShareState.mockResolvedValue(LIVE_LINK);
     renderControls();
 
     await openMenu();
     await screen.findByRole("menuitem", { name: /Stop sharing/ });
     fireEvent.click(screen.getByRole("menuitem", { name: /Copy link/ }));
 
-    await waitFor(() => expect(copyShortLink).toHaveBeenCalledWith(LIVE_URL));
+    await waitFor(() => expect(copyShortLink).toHaveBeenCalledWith(LIVE_LINK));
     expect(api.createShortLink).not.toHaveBeenCalled();
+  });
+
+  it("offers share settings whether or not the artifact is shared yet", async () => {
+    api.fetchShareState.mockResolvedValue(null);
+    renderControls();
+
+    await openMenu();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /Share settings/ }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: /Share settings/ }),
+    ).toBeTruthy();
   });
 });
