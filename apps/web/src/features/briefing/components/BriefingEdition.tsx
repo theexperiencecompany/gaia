@@ -11,7 +11,7 @@ import type {
 import { formatClockTime } from "@shared/utils";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { MarkdownRenderer } from "@/features/chat";
 import { cn } from "@/lib/utils";
@@ -314,8 +314,21 @@ export function BriefingEdition({
   imageUrl,
   leftOut,
 }: BriefingEditionProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!imageUrl)
     return <BriefingText payload={payload} uncomposed={leftOut?.uncomposed} />;
+  if (failedUrl === imageUrl)
+    return (
+      <div className="w-full space-y-4">
+        <p
+          role="status"
+          className="rounded-2xl bg-zinc-800 p-4 text-sm text-zinc-400"
+        >
+          This edition's picture didn't load, so here is the brief as text.
+        </p>
+        <BriefingText payload={payload} uncomposed={leftOut?.uncomposed} />
+      </div>
+    );
   const uncomposed = leftOut?.uncomposed ?? [];
   const undrawn = undrawnLines(payload);
   const leftOutItems = leftOut?.items ?? [];
@@ -328,6 +341,9 @@ export function BriefingEdition({
         width={EDITION_RENDER_WIDTH_PX}
         height={EDITION_TYPICAL_HEIGHT_PX}
         sizes="(max-width: 640px) 100vw, 572px"
+        // A signed, per-reader URL: served as is, never through the shared image optimizer.
+        unoptimized
+        onError={() => setFailedUrl(imageUrl)}
         // On a phone the image's own transparent margin stands in for StandalonePage's
         // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
         className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"

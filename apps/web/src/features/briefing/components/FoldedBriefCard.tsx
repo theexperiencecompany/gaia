@@ -5,7 +5,7 @@ import { NewsIcon } from "@icons";
 import { formatDate, formatDay, TODAY } from "@shared/utils";
 import { parseISO } from "date-fns";
 import Image from "next/image";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 import {
   NESTED_TONE,
@@ -52,6 +52,7 @@ function Preview({
   imageUrl?: string | null;
   tone: SurfaceTone;
 }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   // The preview sits one step off the card it is in, so the edition reads as its own sheet.
   return (
     <div
@@ -61,13 +62,16 @@ function Preview({
       })}
     >
       <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-hover:brightness-110">
-        {imageUrl ? (
+        {imageUrl && failedUrl !== imageUrl ? (
+          // A signed, per-reader URL: served as is, never through the shared image optimizer.
           <Image
             src={imageUrl}
             alt=""
             fill
+            unoptimized
             sizes="(max-width: 640px) 50vw, 240px"
             className="object-cover object-top"
+            onError={() => setFailedUrl(imageUrl)}
           />
         ) : (
           <span className="absolute inset-0 flex items-center justify-center">
