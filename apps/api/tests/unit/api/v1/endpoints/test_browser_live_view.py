@@ -342,7 +342,9 @@ async def test_a_session_with_no_host_stream_closes_as_gone(
 
     assert (viewer.accepted, viewer.close_code) == (False, 4404)
     assert event["browser"] == {"operation": "live_view_ws", "session_id": "sess-1"}
-    assert "host stream" in event["warnings"][-1]["msg"]
+    (gone,) = event["warnings"]
+    assert gone["msg"].endswith("browser live view has no host stream")
+    assert gone["reason"] == "no_host_stream"
 
 
 async def test_a_bot_link_socket_closes_the_moment_its_handoff_settles(
