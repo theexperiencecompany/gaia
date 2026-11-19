@@ -18,7 +18,9 @@ from briefsim.world.model import App, CalendarEvent
 PAGE_SIZES = frozenset({10, 20, 25, 30, 50, 100})
 _COUNT = re.compile(
     r"(?<![#\d-])\b(\d{1,4})\s+(?:new\s+|open\s+|assigned\s+|overdue\s+|unread\s+|pending\s+)*"
-    r"(issues?|prs?|pull requests?|tasks?|todos?|to-dos?|meetings?|events?|reviews?)\b",
+    r"(issues?|prs?|pull requests?|tasks?|todos?|to-dos?|meetings?|events?|reviews?)\b"
+    # "2 meeting hours" is a duration, not a count of meetings.
+    r"(?!\s+(?:hours?|hrs?|minutes?|mins?)\b)",
     re.IGNORECASE,
 )
 _EMPTY_CALENDAR = re.compile(
