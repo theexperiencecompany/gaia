@@ -90,12 +90,9 @@ function startRecording(read: () => ScreenItem[]): void {
 const pageErrors = new WeakMap<Page, string[]>();
 
 /**
- * Console errors from what the sim stack does not run, not from the chat
- * failing: PostHog (a placeholder key behind /ingest), the desktop bridge the
- * web probes on :4747, the notifications socket, the events stream a new chat
- * opens before its first message creates the conversation, and the dev-only
- * stream recorder's POST a reload cuts off. Anything else,
- * React's and the stream renderer's errors included, fails the flow.
+ * Console errors from what the sim stack does not run, not from the chat failing:
+ * PostHog, the :4747 desktop bridge, the notifications socket, a new chat's early
+ * events stream, the dev stream recorder, and the GitHub desktop-release lookup.
  */
 const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: .*\((?:https?:\/\/[^/]+\/ingest\/|http:\/\/localhost:4747\/)/,
@@ -105,6 +102,9 @@ const TOLERATED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^Failed to load resource: the server responded with a status of 404 .*\/conversations\/[0-9a-f-]{36}\/events\)$/,
   /^\[stream:sse\] connection-error \{message: Conversation [0-9a-f-]{36} does not exist yet\}/,
   /^\[streamRecording\] sink unreachable: TypeError: Failed to fetch/,
+  /^Failed to load resource: the server responded with a status of 502 .*\/api\/v1\/desktop\/releases\/latest\)$/,
+  /^GET \/api\/v1\/desktop\/releases\/latest failed: ApiError: Could not reach GitHub/,
+  /^Failed to resolve latest desktop release ApiError: Could not reach GitHub/,
 ];
 
 /** Record every screen change on this page, across navigations and reloads (each document starts a fresh timeline), and every error the page raises. */
