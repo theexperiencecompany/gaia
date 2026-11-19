@@ -150,6 +150,11 @@ export function NestedMenuTooltip({
         {
           top: current.top,
           left: current.left,
+          maxHeight: "calc(100vh - 16px)",
+          maxWidth: "calc(100vw - 16px)",
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain",
           "--gaia-flyout-origin-y": `${current.originY}px`,
         } as CSSProperties
       }
