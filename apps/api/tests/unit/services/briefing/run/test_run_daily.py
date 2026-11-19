@@ -73,7 +73,6 @@ class TestADailyBrief:
         self, world: World
     ) -> None:
         world.track(brief_work())
-        world.family_first(EditionFamily.MEMO)
 
         assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
 

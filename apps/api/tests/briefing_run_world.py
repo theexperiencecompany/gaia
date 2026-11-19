@@ -753,7 +753,7 @@ class World:
         assert self.pending.consumed == []
 
     def family_first(self, family: EditionFamily) -> None:
-        """Pin today's edition family: the default draw is random, and Air Mail adds a stamp line."""
+        """Pin today's edition family; the default world pins Memo, as Air Mail adds a stamp line."""
         order = [f for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n)]
         order.remove(family)
         self.bags[BriefingBag.EDITION_FAMILY] = ShuffleBag(order=[family, *order], index=0)
@@ -995,6 +995,7 @@ def run_world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w.briefs[YESTERDAY.id] = YESTERDAY
     w.todos.add(*completions(user=[own("u1", "Gym")]))
     w.integrations.connect(USER, GMAIL_INTEGRATION_ID)
+    w.family_first(EditionFamily.MEMO)
     _install_stores(monkeypatch, w)
     _install_seams(monkeypatch, w)
     _records_what_the_run_built(monkeypatch, w)

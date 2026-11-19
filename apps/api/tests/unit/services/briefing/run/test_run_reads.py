@@ -30,7 +30,7 @@ from tests.briefing_run_world import (
 from tests.helpers import captured_wide_event
 
 from app.agents.prompts.briefing_prompts import VoiceSituation
-from app.constants.briefing import BriefForm, BriefingKind, EditionFamily
+from app.constants.briefing import BriefForm, BriefingKind
 from app.models.brief_payload_models import BriefingMood
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
@@ -211,7 +211,6 @@ class TestWhatARunRecords:
     ) -> None:
         world.todos.rows.clear()
         world.track(brief_work())
-        world.family_first(EditionFamily.MEMO)
 
         await run_brief(USER, BriefingKind.DAILY)
 

@@ -206,18 +206,19 @@ class TestHowARunEnds:
     ) -> None:
         """A goodbye whose delivery died was finished on the retry, but the loop never went dormant."""
         idle_day(world, IDLE_DORMANT_DAYS)
+        pinned = world.bags[BriefingBag.EDITION_FAMILY]
         world.post.side_effect = RuntimeError("worker killed")
         with pytest.raises(RuntimeError, match="worker killed"):
             await run_brief(USER, BriefingKind.DAILY)
         assert ladder_state(world.state).wound_down_since is None
-        assert BriefingBag.EDITION_FAMILY not in world.bags
+        assert world.bags[BriefingBag.EDITION_FAMILY] == pinned
         world.post.side_effect = None
 
         assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
 
         ladder = ladder_state(world.state)
         assert (ladder.wound_down_since, ladder.goal_asked_at) == (NOW, NOW)
-        assert BriefingBag.EDITION_FAMILY in world.bags
+        assert world.bags[BriefingBag.EDITION_FAMILY].index == pinned.index + 1
 
     @pytest.mark.regression
     async def test_a_resumed_brief_marks_what_it_placed_shown(self, world: World) -> None:
