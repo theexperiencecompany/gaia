@@ -92,9 +92,10 @@ class NxFailedError(RuntimeError):
     """Raised when an nx command fails, carrying what nx said and how to recover."""
 
 
-def _nx(*args: str) -> str:
+def _nx(*args: str, stdin: str | None = None) -> str:
     done = subprocess.run(
         ["pnpm", "exec", "nx", *args],
+        input=stdin,
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
         capture_output=True,
@@ -152,10 +153,10 @@ def tracked_files() -> list[str]:
     return [f for f in out.splitlines() if (REPO_ROOT / f).is_file()]
 
 
-def select(range_args: list[str]) -> Selection:
+def select(range_args: list[str], stdin: str | None = None) -> Selection:
     known = checks()
     targets = sorted({_target(task) for task in known} | {IMAGE_TARGET})
-    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args)
+    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args, stdin=stdin)
     explained = _json_after_banner(out, "{")
     assert isinstance(explained, dict)
     affected = explained["affected"]
