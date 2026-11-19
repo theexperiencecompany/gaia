@@ -6,7 +6,7 @@ export const LETTER_VIEWPORT_GUTTER_PX = 24;
 export const BRIEF_LETTER_WIDTH = `min(${BRIEF_LETTER_MAX_WIDTH_PX}px, calc(100vw - ${LETTER_VIEWPORT_GUTTER_PX}px))`;
 
 /** The folded letter in chat; its panels are cut wide enough for it too. */
-export const CHAT_LETTER_MAX_WIDTH_PX = 460;
+export const CHAT_LETTER_MAX_WIDTH_PX = 340;
 /** The chat letter lies tipped back this far; the open letter straightens from it. */
 export const LETTER_TILT_DEG = 12;
 /** The perspective the tipped letter is seen in. */
