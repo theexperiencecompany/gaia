@@ -21,6 +21,7 @@ from app.agents.core.nodes.memory_node import (
     _store_user_memory_background,
     memory_node,
 )
+from app.constants.briefing import SilentTurnSource
 from app.constants.memory import (
     MEMORY_DELTA_CONTEXT_MESSAGES,
     MEMORY_INGEST_MARK_KEY,
@@ -29,6 +30,7 @@ from app.constants.memory import (
 )
 from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
+from shared.py.wide_events import log, wide_task
 from tests.helpers import WideEventRecorder
 
 NODE = "app.agents.core.nodes.memory_node"
@@ -342,7 +344,7 @@ class TestExtractorInput:
     """What the extractor is shown: three roles, and only what is new."""
 
     @staticmethod
-    def _thread() -> list[AIMessage | HumanMessage | ToolMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             AIMessage(
@@ -464,6 +466,28 @@ class TestSystemGeneratedConversations:
         retain = await self._ingest(system_generated=False)
         retain.assert_awaited_once()
 
+    @pytest.mark.parametrize("source", list(SilentTurnSource))
+    async def test_a_turn_gaia_wrote_the_prompt_for_is_never_learned_from(
+        self, source: str
+    ) -> None:
+        """Live: a silent turn stored the facts GAIA wrote into its prompt as memories, then read them back as goals."""
+        state = State(messages=[HumanMessage(content="Figma team plan is awaiting approval")])
+        config: RunnableConfig = {
+            "configurable": {
+                "user_id": "u1",
+                "thread_id": "briefing-daily-u1",
+                "conversation_source": source,
+            }
+        }
+
+        async with wide_task("memory_node_test"):
+            with patch(f"{NODE}.spawn_background_task") as spawn:
+                await memory_node(state, config, MagicMock())
+            skipped = log.get()["memory_ingest"]
+
+        spawn.assert_not_called()
+        assert skipped == {"skipped": "silent_turn"}
+
     async def test_the_conversation_id_reaches_the_background_task(self) -> None:
         state = State(messages=[HumanMessage(content="my anniversary is October 19")])
         config: RunnableConfig = {
@@ -515,7 +539,7 @@ class TestTheFencedTranscript:
     """The context/delta fence is prose inside a transcript, so a wrong marker row is invisible to any type checker."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),
@@ -579,7 +603,7 @@ class TestTheHighWaterMarkRead:
     """_messages_to_ingest decides what the extraction is billed for; an off-by-one here re-pays or drops disclosures."""
 
     @staticmethod
-    def _thread(count: int) -> list[HumanMessage]:
+    def _thread(count: int) -> list[AnyMessage]:
         return [HumanMessage(content=f"message {i}", id=f"m{i}") for i in range(count)]
 
     async def test_a_threadless_run_ingests_everything_as_new(self) -> None:
@@ -688,7 +712,7 @@ class TestTheIngestionHandoff:
     """What the background task passes to each collaborator: swap an id or prompt and extraction still "succeeds" wrongly."""
 
     @staticmethod
-    def _thread() -> list[HumanMessage]:
+    def _thread() -> list[AnyMessage]:
         return [
             HumanMessage(content="my anniversary is October 19", id="m1"),
             HumanMessage(content="I moved to Bangalore last week", id="m2"),

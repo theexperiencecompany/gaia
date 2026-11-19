@@ -2,6 +2,7 @@
 
 import re
 
+from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import BaseModel, ConfigDict, JsonValue
 
 from app.constants.log_tags import LogTag
@@ -60,6 +61,14 @@ class MCPAuthorizationRequiredError(ValueError):
             f"No valid token for {integration_id}. "
             "OAuth authorization required - user must complete the OAuth flow."
         )
+
+
+#: The server refused GAIA's credential: the user has to sign in to the integration again.
+MCP_SIGN_IN_ERRORS: tuple[type[Exception], ...] = (
+    MCPAuthorizationRequiredError,
+    StepUpAuthRequiredError,
+    OAuthAuthenticationError,
+)
 
 
 # OAuth 2.0 error codes (RFC 6749 §5.2) that mean the grant is permanently dead.

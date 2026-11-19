@@ -6897,14 +6897,33 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * BriefForm
+         * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
+         * @enum {string}
+         */
+        BriefForm: "edition" | "quiet_note";
+        /**
          * BriefingEvent
          * @description One calendar event on the user's own clock, read from their calendar.
          */
         BriefingEvent: {
+            /** Calendar */
+            calendar?: string | null;
             /** Date */
             date: string;
+            /** End */
+            end?: string | null;
+            /**
+             * Guests
+             * @default 0
+             */
+            guests?: number;
             /** Location */
             location?: string | null;
+            /** Organizer */
+            organizer?: string | null;
+            /** @default own */
+            response?: components["schemas"]["CalendarResponse"];
             /** Start */
             start?: string | null;
             /** Title */
@@ -6947,6 +6966,8 @@ export interface components {
             outcome: components["schemas"]["BriefOutcome"] | null;
             /** People */
             people: string[];
+            /** Source */
+            source: string | null;
             /** Text */
             text: string;
             /** Todo Id */
@@ -6968,6 +6989,16 @@ export interface components {
          */
         BriefingPayload: {
             /**
+             * Artwork Id
+             * @description Exhibition, Broadsheet and Almanac editions only: the painting (an artworks/artworks.json slug) this brief hangs, so a re-render hangs it again.
+             */
+            artwork_id: string | null;
+            /**
+             * Blocks
+             * @description The brief as GAIA composed it, in reading order: each lead or items block names its section; charts, quotes, progress and notes carry their data. Empty on legacy rows.
+             */
+            blocks: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
+            /**
              * Calendar
              * @description Today's calendar events, in start order.
              */
@@ -6976,6 +7007,8 @@ export interface components {
             caption: string;
             /** Date */
             date: string;
+            /** @default edition */
+            form: components["schemas"]["BriefForm"];
             /**
              * Generated At
              * @description User-local generation time, e.g. "6:02 AM".
@@ -7036,6 +7069,16 @@ export interface components {
              * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.
              */
             template_family: string;
+            /**
+             * Uncomposed
+             * @description Everything the brief read that the composition left out, for its full page.
+             */
+            uncomposed: components["schemas"]["BriefPoolItem"][];
+            /**
+             * Undrawn
+             * @description Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), moved out of blocks onto the brief's full page.
+             */
+            undrawn: (components["schemas"]["SectionBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["QuoteBlock"] | components["schemas"]["ProgressBlock"] | components["schemas"]["NoteBlock"])[];
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**
@@ -7073,17 +7116,11 @@ export interface components {
         };
         /**
          * BriefingSection
-         * @description A Roman-numeraled section of the briefing.
+         * @description A group of items under the heading GAIA gave it, numbered in reading order.
          */
         BriefingSection: {
             /** Items */
             items: components["schemas"]["BriefingItem"][];
-            key: components["schemas"]["SectionKey"] | null;
-            /**
-             * More
-             * @default 0
-             */
-            more: number;
             /** Numeral */
             numeral: string;
             /** Title */
@@ -7165,19 +7202,14 @@ export interface components {
         };
         /**
          * BriefingWeek
-         * @description The real week the weekly edition draws: Monday-to-Sunday completions,
-         *     what shipped, what GAIA handled, and the calendar ahead. Every field is
-         *     counted or read, never estimated.
+         * @description The real week behind the weekly recap: Monday-to-Sunday completions and the
+         *     calendar ahead. Every field is counted or read, never estimated.
          */
         BriefingWeek: {
             /** Ahead */
             ahead?: components["schemas"]["BriefingEvent"][];
             /** Days */
             days: components["schemas"]["BriefingWeekDay"][];
-            /** Handled */
-            handled?: string[];
-            /** Shipped */
-            shipped?: string[];
         };
         /**
          * BriefingWeekDay
@@ -7195,6 +7227,27 @@ export interface components {
          * @enum {string}
          */
         BriefOutcome: "approved" | "landed" | "drafted" | "booked" | "sent" | "finished" | "started" | "changed" | "failed";
+        /**
+         * BriefPoolItem
+         * @description A pool item the composition left out, in its source's own words, for the full brief page.
+         */
+        BriefPoolItem: {
+            /** App */
+            app: string;
+            /** Detail */
+            detail: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** Title */
+            title: string;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Url */
+            url: string | null;
+        };
         /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
@@ -7495,6 +7548,8 @@ export interface components {
          *     ``GET /calendar/events``).
          */
         CalendarEventsResponse: {
+            /** Calendars Failed */
+            calendars_failed?: string[];
             /** Calendars Truncated */
             calendars_truncated: string[];
             /** Events */
@@ -7572,6 +7627,12 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * CalendarResponse
+         * @description How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.
+         * @enum {string}
+         */
+        CalendarResponse: "own" | "accepted" | "tentative" | "needs_action" | "declined";
         /**
          * CancelStreamResponse
          * @description Outcome of a stream-cancellation request.
@@ -7711,6 +7772,30 @@ export interface components {
             /** Priority */
             priority: ("whatsapp" | "telegram" | "discord" | "slack" | "imessage")[];
         };
+        /**
+         * ChartBlock
+         * @description A chart over real series, with the title and takeaway GAIA wrote for it.
+         */
+        ChartBlock: {
+            chart: components["schemas"]["ChartKind"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "chart";
+            /** Series */
+            series: components["schemas"]["DataSeries"][];
+            /** Takeaway */
+            takeaway: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ChartKind
+         * @description How a chart draws its series.
+         * @enum {string}
+         */
+        ChartKind: "bar" | "line" | "spark" | "stacked_bar";
         /**
          * CheckoutSource
          * @description Where in the product a checkout was started.
@@ -8643,6 +8728,39 @@ export interface components {
             status: "created" | "connected" | "requires_oauth" | "failed";
             /** Toolscount */
             toolsCount?: number | null;
+        };
+        /**
+         * DataSeries
+         * @description Numeric history from one real source, counted or summed by code.
+         */
+        DataSeries: {
+            /**
+             * App
+             * @description The source's display name
+             */
+            app: string;
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @description What is counted: "Emails handled", "Meeting hours"
+             */
+            label: string;
+            /** Points */
+            points: components["schemas"]["SeriesPoint"][];
+            shape: components["schemas"]["SeriesShape"];
+            /**
+             * Shown Not Total
+             * @default false
+             */
+            shown_not_total: boolean;
+            /** Source */
+            source: string;
+            /**
+             * Unit
+             * @description What one y counts: "emails", "hours", "USD"; None when the source gives none
+             */
+            unit: string | null;
         };
         /**
          * DeactivationReason
@@ -9803,6 +9921,43 @@ export interface components {
             trigger_name: "gmail_poll_inbox";
         };
         /**
+         * GoalOrigin
+         * @description Where GAIA learned the goal.
+         * @enum {string}
+         */
+        GoalOrigin: "onboarding" | "memory";
+        /**
+         * GoalState
+         * @description A goal the user stated, and the work linked to it, counted from their todos.
+         */
+        GoalState: {
+            /** Done */
+            done: number;
+            /**
+             * Done By Gaia
+             * @default 0
+             */
+            done_by_gaia: number;
+            /**
+             * Done By You
+             * @default 0
+             */
+            done_by_you: number;
+            /** Id */
+            id: string;
+            /** Linked */
+            linked: string[];
+            /** Open */
+            open: number;
+            origin: components["schemas"]["GoalOrigin"];
+            /** Since */
+            since: string | null;
+            /** Stalled */
+            stalled: string[];
+            /** Statement */
+            statement: string;
+        };
+        /**
          * GoogleCalendarEventDateTime
          * @description The ``start``/``end`` object of a Google Calendar ``events`` resource.
          *
@@ -9830,6 +9985,8 @@ export interface components {
          *     client reads.
          */
         GoogleCalendarEventResource: {
+            /** Attendees */
+            attendees?: components["schemas"]["GoogleCalendarPerson"][] | null;
             /** Calendarid */
             calendarId?: string | null;
             /** Calendartitle */
@@ -9845,6 +10002,7 @@ export interface components {
             id?: string | null;
             /** Location */
             location?: string | null;
+            organizer?: components["schemas"]["GoogleCalendarPerson"] | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -9873,6 +10031,30 @@ export interface components {
             primary?: boolean | null;
             /** Summary */
             summary?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * GoogleCalendarPerson
+         * @description An event's organizer or one of its attendees; Google marks the calendar's owner self.
+         */
+        GoogleCalendarPerson: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Resource
+             * @default false
+             */
+            resource?: boolean;
+            /** Responsestatus */
+            responseStatus?: string | null;
+            /**
+             * Self
+             * @default false
+             */
+            self?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -11883,6 +12065,19 @@ export interface components {
              */
             total: number;
         };
+        /**
+         * NoteBlock
+         * @description A pattern GAIA noticed, a heads-up or a suggestion, rendered from its slots.
+         */
+        NoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "note";
+            /** Text */
+            text: string;
+        };
         /** NoteModel */
         NoteModel: {
             /** Content */
@@ -12938,6 +13133,18 @@ export interface components {
          */
         ProactiveMessageClass: "routine" | "user_timed" | "user_triggered" | "urgent";
         /**
+         * ProgressBlock
+         * @description Where one of the user's goals stands.
+         */
+        ProgressBlock: {
+            goal: components["schemas"]["GoalState"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "progress";
+        };
+        /**
          * ProjectCreate
          * @description Model for creating projects
          */
@@ -13627,6 +13834,38 @@ export interface components {
             start_hour: number;
         };
         /**
+         * QuoteBlock
+         * @description Someone's own words, set apart.
+         */
+        QuoteBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "quote";
+            quote: components["schemas"]["QuoteSpan"];
+        };
+        /**
+         * QuoteSpan
+         * @description Someone's own words, verbatim as their app holds them, with who wrote them and where.
+         */
+        QuoteSpan: {
+            /** App */
+            app: string;
+            /** Author */
+            author: string;
+            /** Id */
+            id: string;
+            /** Item Id */
+            item_id: number;
+            /** Source */
+            source: string;
+            /** Text */
+            text: string;
+            /** Url */
+            url: string | null;
+        };
+        /**
          * ReadinessResponse
          * @description ``GET /health/ready``: whether every backing service answered a real request.
          */
@@ -14093,7 +14332,7 @@ export interface components {
          * @description Why a scout contributed nothing to this brief.
          * @enum {string}
          */
-        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration";
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration" | "signed_out";
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -14188,11 +14427,18 @@ export interface components {
             notes: components["schemas"]["NoteSearchResult"][];
         };
         /**
-         * SectionKey
-         * @description What one section of a brief holds; every surface reads the key, never the title or position.
-         * @enum {string}
+         * SectionBlock
+         * @description A lead or items block, stored as the payload section it became (sections[section]).
          */
-        SectionKey: "lead" | "needs_you" | "updates" | "gaia_did";
+        SectionBlock: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "items" | "lead";
+            /** Section */
+            section: number;
+        };
         /**
          * SelectedCalendarEventData
          * @description Calendar event the user attached to a message.
@@ -14342,6 +14588,22 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * SeriesPoint
+         * @description One computed point: a day or a category, and its value.
+         */
+        SeriesPoint: {
+            /** X */
+            x: string;
+            /** Y */
+            y: number;
+        };
+        /**
+         * SeriesShape
+         * @description How a series' points are laid out, which decides the charts that can draw it.
+         * @enum {string}
+         */
+        SeriesShape: "time_series" | "categorical";
         /**
          * SetToolOverrideRequest
          * @description Body for setting or clearing one tool's approval override.
@@ -17353,6 +17615,7 @@ export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefAction = components['schemas']['BriefAction'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefForm = components['schemas']['BriefForm'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
@@ -17367,6 +17630,7 @@ export type BriefingView = components['schemas']['BriefingView'];
 export type BriefingWeek = components['schemas']['BriefingWeek'];
 export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
 export type BriefOutcome = components['schemas']['BriefOutcome'];
+export type BriefPoolItem = components['schemas']['BriefPoolItem'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
@@ -17393,6 +17657,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
+export type CalendarResponse = components['schemas']['CalendarResponse'];
 export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
@@ -17400,6 +17665,8 @@ export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
 export type ChannelPreferencesUpdate = components['schemas']['ChannelPreferencesUpdate'];
 export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
+export type ChartBlock = components['schemas']['ChartBlock'];
+export type ChartKind = components['schemas']['ChartKind'];
 export type CheckoutSource = components['schemas']['CheckoutSource'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
@@ -17445,6 +17712,7 @@ export type CredentialProviderName = components['schemas']['CredentialProviderNa
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
+export type DataSeries = components['schemas']['DataSeries'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
@@ -17512,9 +17780,12 @@ export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
+export type GoalOrigin = components['schemas']['GoalOrigin'];
+export type GoalState = components['schemas']['GoalState'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
+export type GoogleCalendarPerson = components['schemas']['GoogleCalendarPerson'];
 export type GoogleDocsDocumentDeletedConfig = components['schemas']['GoogleDocsDocumentDeletedConfig'];
 export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsDocumentUpdatedConfig'];
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];
@@ -17623,6 +17894,7 @@ export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
 export type NewStamp = components['schemas']['NewStamp'];
+export type NoteBlock = components['schemas']['NoteBlock'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
@@ -17684,6 +17956,7 @@ export type Postmark = components['schemas']['Postmark'];
 export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
 export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
+export type ProgressBlock = components['schemas']['ProgressBlock'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
@@ -17714,6 +17987,8 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type QuoteBlock = components['schemas']['QuoteBlock'];
+export type QuoteSpan = components['schemas']['QuoteSpan'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
@@ -17747,7 +18022,7 @@ export type SearchIntegrationsResponse = components['schemas']['SearchIntegratio
 export type SearchMode = components['schemas']['SearchMode'];
 export type SearchResultItem = components['schemas']['SearchResultItem'];
 export type SearchResultsResponse = components['schemas']['SearchResultsResponse'];
-export type SectionKey = components['schemas']['SectionKey'];
+export type SectionBlock = components['schemas']['SectionBlock'];
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
@@ -17757,6 +18032,8 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SeriesPoint = components['schemas']['SeriesPoint'];
+export type SeriesShape = components['schemas']['SeriesShape'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];

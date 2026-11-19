@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from app.db.repositories.base import MongoRepository
 from app.models.workflow_execution_models import (
     RecordedCall,
+    RunMoment,
     WorkflowExecutionDocument,
     WorkflowExecutionStatus,
     WorkflowExecutionUpdate,
@@ -120,6 +121,24 @@ class WorkflowExecutionsRepository(
             filter_,
             sort=[("started_at", -1)],
             limit=limit,
+        )
+
+    async def list_run_moments_since(
+        self, user_id: str, since: datetime, *, exclude_workflow_ids: Sequence[str]
+    ) -> list[RunMoment]:
+        """Return when each of the user's executions since started, and how it ended; every one, no cap."""
+        return await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "started_at": {"$gte": since},
+                        "workflow_id": {"$nin": list(exclude_workflow_ids)},
+                    }
+                },
+                {"$project": {"started_at": 1, "status": 1}},
+            ],
+            RunMoment,
         )
 
 

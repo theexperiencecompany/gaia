@@ -6,8 +6,9 @@ class BriefingGenerationError(Exception):
 
 
 class VoiceUnreadableError(BriefingGenerationError):
-    """The daily run's reply held no voice JSON; problems name why, never its text."""
+    """The voice call's reply was no whole voice; problems name why, reply is what came back."""
 
-    def __init__(self, problems: list[str]) -> None:
-        super().__init__(f"No valid voice JSON in agent output: {'; '.join(problems)}")
+    def __init__(self, problems: list[str], reply: str | None = None) -> None:
+        super().__init__(f"The voice reply was no whole voice: {'; '.join(problems)}")
         self.problems = problems
+        self.reply = reply or "(no readable reply)"

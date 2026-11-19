@@ -46,7 +46,13 @@
   const grain = (id, freq) => `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
   const item = (label, val, cls) =>
     `<div class="it${cls ? " " + cls : ""}" data-role="body"><span class="lb">${caps(label)}</span><span class="ld" aria-hidden="true"></span><span class="vl">${caps(val)}</span></div>`;
-  const note = (t) => `<p class="nt">${caps(t)}</p>`;
+  // A note line; html=true passes text the caller already escaped.
+  const note = (t, html = false) => `<p class="nt">${html ? t : caps(t)}</p>`;
+  // The second thermal tone: a 2px checker of ink, for GAIA's share of a printed bar.
+  const DITHER = `<svg width="0" height="0" class="defs" aria-hidden="true"><defs><pattern id="rc-dither" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="var(--ink)"/><rect x="1" y="1" width="1" height="1" fill="var(--ink)"/></pattern></defs></svg>`;
+  const swatch = (fill) => `<svg class="sw" width="10" height="12" viewBox="0 0 10 12" aria-hidden="true"><rect width="10" height="12" fill="${fill}" shape-rendering="crispEdges"/></svg>`;
+  // The printed bar's width: the tape's measure less a 4ch label, a 4ch value and their gaps.
+  const HBAR_W = 290;
   const RULE = `<div class="rule" aria-hidden="true"></div>`;
   const RULE2 = `<div class="rule dbl" aria-hidden="true"></div>`;
 
@@ -71,7 +77,7 @@
     },
     css: `
 .t-receipt { box-sizing: border-box; isolation: isolate; width: 540px; padding: 56px 0 80px; display: flex; justify-content: center;
-  background: radial-gradient(120% 80% at 30% 0%, var(--hi) 0%, var(--a) 45%, var(--b) 100%); font-family: Menlo, 'SF Mono', ui-monospace, monospace; }
+  background: radial-gradient(120% 80% at 30% 0%, var(--hi) 0%, var(--a) 45%, var(--b) 100%); font-family: 'JetBrains Mono', monospace; }
 .t-receipt * { box-sizing: border-box; margin: 0; padding: 0; }
 .t-receipt .wrap { position: relative; transform: rotate(0.5deg); }
 .t-receipt .wrap::before, .t-receipt .wrap::after { content: ""; position: absolute; bottom: 14px; width: 46%; height: 30px; z-index: -1; box-shadow: 0 18px 14px rgba(8,10,14,.5); }
@@ -93,12 +99,11 @@
   background: linear-gradient(180deg, transparent 0, rgba(0,0,0,.025) 45%, rgba(0,0,0,.05) 50%, rgba(255,255,255,.4) 52%, rgba(255,255,255,.1) 62%, transparent 100%); }
 .t-receipt .store { text-align: center; font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: .32em; padding-left: .32em; }
 .t-receipt .meta { text-align: center; font-size: 15px; line-height: 1.6; letter-spacing: .06em; margin-top: 16px; }
-.t-receipt .rule { margin: 16px 0; overflow: hidden; white-space: nowrap; letter-spacing: 0; line-height: 1; }
+.t-receipt .rule { width: round(down, 100%, 1ch); margin: 16px 0; overflow: hidden; white-space: nowrap; letter-spacing: 0; line-height: 1; }
 .t-receipt .rule::before { content: "------------------------------------------------------------"; }
 .t-receipt .rule.dbl::before { content: "============================================================"; }
 .t-receipt .deck { text-align: center; font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: 0; padding: 4px 4px; }
-.t-receipt .sec { letter-spacing: .14em; margin-bottom: 10px; }
-.t-receipt .sec.red, .t-receipt .red .vl { color: var(--red); }
+.t-receipt .sec { font-weight: 700; letter-spacing: .14em; margin-bottom: 10px; }
 .t-receipt .it { display: flex; align-items: flex-end; margin-bottom: 4px; }
 .t-receipt .lb { flex: 0 1 auto; min-width: 0; overflow-wrap: break-word; }
 .t-receipt .ld { flex: 1 1 auto; min-width: 40px; height: 0; margin: 0 6px 5px; border-bottom: 2px dotted var(--soft); }
@@ -111,30 +116,78 @@
 .t-receipt .bars svg { display: block; width: 100%; height: 100%; }
 .t-receipt .barnum { text-align: center; letter-spacing: .3em; padding-left: .3em; margin-bottom: 14px; font-size: 15px; }
 .t-receipt .colo { text-align: center; font-size: 13px; letter-spacing: .06em; color: var(--soft); }
+.t-receipt .src { margin-top: 14px; text-wrap: balance; }
+.t-receipt .src .logos { display: flex; justify-content: center; gap: 14px; color: var(--soft); margin-bottom: 8px; }
+.t-receipt .src .xb-logo { width: 17px; height: 17px; }
+.t-receipt { --rs-font: 'JetBrains Mono', monospace; --rs-font-h: 'JetBrains Mono', monospace; --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--red); --rs-base: 14px; --rs-title-case: uppercase; --rs-verb-case: uppercase; --rs-h-case: uppercase; --rs-kick-track: .14em; --rs-detail-case: uppercase; --rs-title-track: 0; --rs-h-track: .04em; }
+.t-receipt .defs { position: absolute; }
+.t-receipt .hb { align-items: center; margin-bottom: 0; }
+.t-receipt .hb .lb { width: 4ch; flex: none; }
+.t-receipt .hb .hbar { flex: none; margin: 0 1ch; }
+.t-receipt .hb .vl { width: 4ch; text-align: right; }
+.t-receipt .key { margin: 8px 0 0; padding-left: 0; }
+.t-receipt .sw { display: inline-block; vertical-align: -1px; margin-right: .6ch; }
+.t-receipt .plot { margin: 8px 0 10px; }
+.t-receipt .cells { margin: 4px 0 6px; }
+.t-receipt .cells .xb-plot { width: 100%; }
+.t-receipt .say { margin: 8px 0 0; }
+.t-receipt .memo { text-align: center; letter-spacing: .04em; padding: 4px 1ch; }
+.t-receipt .grp[data-block] .sec { margin-bottom: 4px; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
-      const wd3 = ed.weekday.slice(0, 3).toUpperCase();
-      const parts = [];
-      if (needs.length)
-        parts.push(`<div class="grp"><p class="sec red">AWAITING PAYMENT &mdash; ${needs.length} ITEM${needs.length > 1 ? "S" : ""}</p>${needs.map((d) => item(d.label, d.verb, "red") + (d.note ? note(d.note) : "")).join("")}</div>`);
-      if (c.today.length)
-        parts.push(`<div class="grp"><p class="sec">TODAY</p>${c.today.map((e) => item(e.label, e.t24 || "EOD") + (e.note ? note(e.note) : "")).join("")}</div>`);
-      if (c.overnight.length)
-        parts.push(`<div class="grp"><p class="sec">OVERNIGHT &mdash; PREPAID BY GAIA</p>${c.overnight.map((e) => item(e.label, e.tag) + (e.note ? note(e.note) : "")).join("")}</div>`);
-      if (c.running.length)
-        parts.push(`<div class="grp"><p class="sec">STILL IN PROGRESS &mdash; GAIA</p>${c.running.map((e) => item(e.label, e.tag) + (e.note ? note(e.note) : "")).join("")}</div>`);
-      const s = c.stats;
+      const B = EXPLORER.blocks;
+      // Charts are printed rows: one row per day, its bar on the tape between label and value.
+      const hbars = (chart) => {
+        const sums = B.totals(chart);
+        const max = Math.max(...sums);
+        const rows = chart.x.map((lab, i) => {
+          let x = 0;
+          const segs = chart.series.map((s, k) => {
+            const w = (s.values[i] / max) * HBAR_W;
+            const seg = B.rect(x, 0, w, 13, k ? "url(#rc-dither)" : "var(--ink)");
+            x += w;
+            return seg;
+          });
+          return `<div class="it hb"><span class="lb">${caps(lab)}</span>${B.svg(HBAR_W, 13, segs.join(""), "hbar")}<span class="vl">${esc(B.fmt(sums[i]))}</span></div>`;
+        });
+        const key = chart.series.length > 1
+          ? `<p class="nt key">${chart.series.map((s, k) => `${swatch(k ? "url(#rc-dither)" : "var(--ink)")}${caps(s.name)} ${esc(s.total)}`).join("&nbsp;&nbsp; ")}</p>`
+          : "";
+        return rows.join("") + key;
+      };
+      const PLOT = { font: "JetBrains Mono", size: 13, ink: "var(--ink)", soft: "var(--soft)", rule: "rgba(0,0,0,.14)", base: "var(--ink)", upper: true, valueWeight: 700 };
+      const R = {
+        lead: (b) => `<div class="grp">${B.lead(b, { kicker: "Top line" })}</div>`,
+        items: (b) => `<div class="grp">${B.section(b.heading, B.items(b))}</div>`,
+        calendar: (b) => `<div class="grp">${B.section("Today", B.events(b, { clock: "t24", allDay: "All day" }))}</div>`,
+        chart: (c) => {
+          const facts = B.facts(c);
+          const plot = c.chart === "line"
+            ? `<div class="plot">${B.line(c, { ...PLOT, w: 400, h: 128, lines: [{ color: "var(--ink)", width: 2 }, { color: "var(--soft)", width: 2, dash: "4 3" }], gutter: 30 })}</div>${c.series.length > 1 ? `<p class="nt key">${c.series.map((s) => caps(s.name)).join(" / ")}</p>` : ""}`
+            : c.chart === "spark"
+              ? `<div class="plot">${B.spark(c, { ...PLOT, w: 400, h: 44, line: "var(--ink)" })}</div>`
+              : hbars(c);
+          const total = c.chart === "line" || c.chart === "spark"
+            ? c.series.map((s) => item(`${c.x.length}-day total`, `${s.total} ${c.unit || s.unit}`)).join("")
+            : "";
+          return `<div class="grp" data-block="chart"><p class="sec">${caps(c.title)}</p>${facts ? note(facts) : ""}${plot}${total}<p class="say">${caps(c.takeaway)}</p></div>`;
+        },
+        quote: (q) => `<div class="grp" data-block="quote"><p class="say">&ldquo;${caps(q.text)}&rdquo;</p>${note(`&mdash; ${caps(q.author)}, ${caps(q.app)}`, true)}</div>`,
+        progress: (p) => `<div class="grp" data-block="progress">${item(p.statement, `${p.done}/${p.total}`)}<div class="cells">${B.cells(p, { w: 400, h: 16, gap: 6, on: "var(--ink)", offStroke: "var(--soft)" })}</div>${note(`${p.done} of ${p.total} done`)}</div>`,
+        note: (n) => `<div class="grp" data-block="note"><p class="memo">${caps(n.text)}</p></div>`,
+      };
+      const parts = B.layout(ed, R);
+      const s = ed.stats;
       const totals = s
         ? `${RULE}${item("Done yesterday", s.done)}${s.you && s.gaia ? note(`You ${s.you} / GAIA ${s.gaia}`) : ""}${s.mail ? item("Emails handled", s.mail) : ""}${s.focus ? item("Focus time", s.focus) : ""}${RULE2}`
         : "";
-      const count = needs.length + c.today.length + c.overnight.length + c.running.length;
+      const rows = { lead: () => 1, items: (b) => b.items.length + b.more, calendar: (b) => b.events.length + b.more };
+      const count = ed.blocks.reduce((n, b) => n + (rows[b.kind] ? rows[b.kind](b) : 0), 0);
       const bars = ed.codes.code128;
       return `<article class="t-receipt" style="--hi:${skin.desk.hi}; --a:${skin.desk.a}; --b:${skin.desk.b}; --paper:${skin.stock.paper}; --edge:${skin.stock.edge}; --ink:${skin.density.ink}; --soft:${skin.density.soft}; --red:${skin.density.red}">
-<div class="wrap"><div class="tape">${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>
+<div class="wrap"><div class="tape">${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>${DITHER}
   <h1 class="store">GAIA</h1>
-  <p class="meta">DAILY BRIEF &mdash; REGISTER 1<br>${wd3} ${pad2(ed.day)} ${ed.monthShort.toUpperCase()} ${ed.year}&nbsp;&nbsp;${ed.time24}<br>EDITION #${ed.editionNo}<br>SERVED BY: GAIA &middot; TERMINAL 01</p>
+  <p class="meta">DAILY BRIEF &mdash; REGISTER 1<br>${ed.weekday.slice(0, 3).toUpperCase()} ${pad2(ed.day)} ${ed.monthShort.toUpperCase()} ${ed.year}&nbsp;&nbsp;${ed.time24}<br>EDITION #${ed.editionNo}<br>SERVED BY: GAIA &middot; TERMINAL 01</p>
   ${RULE}
   <p class="deck">${esc(ed.deck)}</p>
   ${RULE}
@@ -146,6 +199,7 @@
   <div class="bars" style="width:min(100%, ${bars.width}px)">${EXPLORER.code(bars, "code")}</div>
   <p class="barnum">ED${ed.editionNo}-${ed.time24.replace(":", "")}-GAIA</p>
   <p class="colo">EDITION No. ${ed.editionNo} &middot; GENERATED ${ed.time24} BY GAIA</p>
+  ${ed.sources.length ? `<div class="src" data-block="sources"><p class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { cls: "" })).join("")}</p><p class="colo">MADE FROM YOUR ${caps(EXPLORER.blocks.appList(ed.sources))}</p></div>` : ""}
 </div></div></article>`;
     },
   });

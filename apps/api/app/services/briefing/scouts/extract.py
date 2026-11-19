@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 from pydantic import TypeAdapter, ValidationError
 
-from app.constants.scouts import PERSON_NAME_KEYS, SCOUT_SIGNAL_CEILING
+from app.constants.scouts import PERSON_ID_KEYS, PERSON_NAME_KEYS, SCOUT_SIGNAL_CEILING
 from app.models.scout_models import Signal, SignalSource
 from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import (
@@ -83,6 +83,21 @@ class _Item:
             return None
         return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
+    def amount(self, path: str | None) -> float | None:
+        """Return a figure as a number; a numeric string reads as its number."""
+        raw = self.optional(path)
+        if raw is None:
+            return None
+        if isinstance(raw, int | float) and not isinstance(raw, bool):
+            return float(raw)
+        if isinstance(raw, str):
+            try:
+                return float(raw)
+            except ValueError:
+                pass
+        self.unread.append("amount")
+        return None
+
     def state(self, path: str | None) -> str | None:
         """Return a status as text; a flag reads as its field and value, e.g. checked: false."""
         raw = self.optional(path)
@@ -90,15 +105,27 @@ class _Item:
             return f"{path.split('.')[-1]}: {'true' if raw else 'false'}"
         return self.text(path, "state")
 
-    def people(self, path: str | None) -> list[str]:
-        """Return each person's name: the value itself, or an object's first name-like field."""
+    def people(self, path: str | None, handles: frozenset[str]) -> tuple[list[str], list[str]]:
+        """Return each person's name, and the names of those who are the user by their handles."""
         raw = self.optional(path)
         if raw is None:
-            return []
-        names = [_person(person) for person in (raw if isinstance(raw, list) else [raw])]
-        if None in names:
+            return [], []
+        named = [(person, _person(person)) for person in (raw if isinstance(raw, list) else [raw])]
+        if any(name is None for _, name in named):
             self.unread.append("people")
-        return [name for name in names if name is not None]
+        people = [name for _, name in named if name is not None]
+        you = [name for person, name in named if name is not None and is_the_user(person, handles)]
+        return people, you
+
+
+def is_the_user(person: object, handles: frozenset[str]) -> bool:
+    """Say whether an app's person, a name or an object, carries one of the user's own handles."""
+    if isinstance(person, Mapping):
+        return any(
+            isinstance(value, str) and value.casefold() in handles
+            for value in (person.get(key) for key in (*PERSON_NAME_KEYS, *PERSON_ID_KEYS))
+        )
+    return isinstance(person, str) and person.casefold() in handles
 
 
 def _person(value: object) -> str | None:
@@ -115,6 +142,8 @@ def _person(value: object) -> str | None:
 def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) -> Signal:
     fields = source.fields
     token = f"$steps.{source.step_id}"
+    amount = item.amount(fields.amount)
+    people, you = item.people(fields.people, integration.handles)
     return Signal(
         integration_id=integration.integration_id,
         app=integration.name,
@@ -122,9 +151,15 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
         kind=source.kind,
         title=item.required(token, fields.title, "title"),
         due_at=item.moment(fields.due_at, "due_at"),
-        people=item.people(fields.people),
+        people=people,
+        people_role=fields.people_role,
+        people_you=you,
         url=item.text(fields.url, "url"),
         state=item.state(fields.state),
+        amount=amount,
+        amount_unit=source.amount_unit if amount is not None else None,
+        text=item.text(fields.text, "text"),
+        author=_person(item.optional(fields.author)),
         created_at=item.moment(fields.created_at, "created_at"),
         updated_at=item.moment(fields.updated_at, "updated_at"),
     )

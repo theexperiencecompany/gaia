@@ -1,192 +1,434 @@
-"""The voiced brief: asked of the model, held to its facts, retried once with the problems named.
-
-Faked seams: the silent agent turn, the faithfulness model's claims and the short-link mint.
-"""
+"""The voice's reader, its unreadable replies and the way a rejected voice is sent back."""
 
 from datetime import UTC, datetime
-import json
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
 import pytest
 from tests.helpers import captured_wide_event
 
-from app.agents.prompts.briefing_prompts import voice_correction_note, voice_unreadable_note
-from app.constants.briefing import MAX_BRIEF_HEADLINE_CHARS
-from app.models.short_link_models import ShortLinkTargetType
-from app.models.user_models import UserDocument
+from app.agents.llm.exceptions import MalformedStructuredOutputError
+from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
+from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
+from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
+from app.models.briefing_models import BriefingItem, BriefingSection, BriefVoice
+from app.models.todo_models import TodoDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import prose
-from app.services.briefing.context import UserClock
-from app.services.briefing.errors import BriefingGenerationError, VoiceUnreadableError
-from app.services.briefing.facts import Facts
-from app.services.briefing.faithfulness import CheckedProse, UnsupportedClaim
-from app.services.briefing.prose import Writing, links_in, written_brief
-from app.services.briefing.slots import BriefFact, CountSlot, SlotValues
-from app.utils.auth_utils import build_user_context
+from app.services.briefing.artifacts import gather_artifacts
+from app.services.briefing.candidates.tracked import gaia_work_candidates
+from app.services.briefing.context import TrackedWork, UserClock
+from app.services.briefing.errors import VoiceUnreadableError
+from app.services.briefing.facts import TODAY, FactSources, build_facts
+from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
+from app.services.briefing.sections import Chosen
+from app.services.briefing.slots import BriefFact, SlotValues, render_slots
+
+pytestmark = pytest.mark.unit
 
 _USER_ID = "64f1c0ffee0000000000abcd"
+_VALUES = SlotValues(facts={1: BriefFact(title="Reply to Dan")}, counts={})
 _TZ = ZoneInfo("Asia/Kolkata")
-_NOW = datetime(2026, 10, 14, 1, 35, tzinfo=UTC)
-_CLOCK = UserClock(tz=_TZ, now_local=_NOW.astimezone(_TZ), date_str="2026-10-14", day_of_year=287)
-_USER = build_user_context(UserDocument(id=_USER_ID, timezone="Asia/Kolkata"), auth_provider=None)
-_PROMPT = "Write the brief."
-_VALUES = SlotValues(
-    facts={1: BriefFact(title="Reply to Dan"), 2: BriefFact(title="Approve the lease")},
-    counts={CountSlot.NEEDS_YOU: 2},
-)
-_VOICE = {
-    "headline": "[[count:needs_you]] things need you",
-    "lede": "Dan is waiting.",
-    "caption": "Reply first.",
-    "mood": "clear",
-    "message": "[Dan](fact:1) and [the lease](fact:2) wait on you.",
-}
+_NOW = datetime(2026, 11, 9, 2, 30, tzinfo=UTC)
+_CLOCK = UserClock(tz=_TZ, now_local=_NOW.astimezone(_TZ), date_str="2026-11-09", day_of_year=313)
 
 
-def _writing(
-    values: SlotValues = _VALUES, must_mention: frozenset[int] = frozenset({1, 2})
-) -> Writing:
-    return Writing(
-        values=values,
-        context="everything the model was shown",
-        must_mention=must_mention,
-        kind="daily",
+def _voice(**fields: str) -> BriefVoice:
+    return BriefVoice.model_validate(
+        {
+            "headline": "A day",
+            "lede": "It is a day.",
+            "caption": "Reply first.",
+            "mood": "packed",
+            "message": "[Reply to Dan](fact:1) first.",
+            **fields,
+        }
     )
 
 
-def _fenced(voice: dict[str, str]) -> str:
-    return f"```json\n{json.dumps(voice)}\n```"
-
-
-@pytest.fixture
-def turn(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    fake = AsyncMock(return_value=_fenced(_VOICE))
-    monkeypatch.setattr(prose, "run_briefing_turn", fake)
-    return fake
-
-
-@pytest.fixture
-def claims(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    fake = AsyncMock(return_value=[])
-    monkeypatch.setattr(prose, "unsupported_claims", fake)
-    return fake
-
-
-class TestLinksIn:
-    async def test_only_the_deliverables_the_message_links_are_minted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        mint = AsyncMock(
-            side_effect=lambda user_id, target_type, target_id: f"https://l/{target_id}"
-        )
-        monkeypatch.setattr(prose, "optional_short_link", mint)
-        facts = Facts(
-            sections=[],
-            block="",
-            values=_VALUES,
-            deliverables={1: "t1", 2: "t2"},
-            addresses={3: "https://app.example/x", 4: "https://app.example/y"},
-            must_mention=frozenset(),
-        )
-
-        links = await links_in(_USER_ID, "[b](fact:2) and [c](fact:3)", facts)
-
-        assert links == {2: "https://l/t2", 3: "https://app.example/x"}
-        mint.assert_awaited_once_with(_USER_ID, ShortLinkTargetType.TODO_DELIVERABLE, "t2")
-
-
-class TestWrittenBrief:
-    async def test_the_first_ask_is_the_bare_prompt_and_the_check_reads_the_filled_prose(
-        self, turn: AsyncMock, claims: AsyncMock
-    ) -> None:
-        voice, draft = await written_brief(_USER, _CLOCK, _PROMPT, _writing())
-
-        assert turn.await_args_list == [call(_USER, _CLOCK, _PROMPT, conversation_key="daily")]
-        assert voice.headline == "[[count:needs_you]] things need you"
-        assert draft.headline == "2 things need you"
-        claims.assert_awaited_once_with(
-            _USER_ID,
-            "everything the model was shown",
-            CheckedProse(
-                headline="⟦2⟧ things need you",
-                lede="Dan is waiting.",
-                caption="Reply first.",
-                message="Dan and the lease wait on you.",
+class TestReaderBlock:
+    def test_the_voice_is_told_the_readers_name_timezone_and_profession(self) -> None:
+        user = UserDocument(
+            id=_USER_ID,
+            name="Ada Lovelace",
+            timezone="Asia/Kolkata",
+            onboarding=OnboardingSubdocument.model_validate(
+                {"preferences": {"profession": "founder"}}
             ),
         )
 
-    async def test_an_unreadable_reply_is_logged_and_asked_again_with_why(
-        self, turn: AsyncMock, claims: AsyncMock
+        assert reader_block(user).splitlines() == [
+            "You're writing to Ada. Use their name at most once, only where a friend naturally "
+            "would, never as a greeting.",
+            "Their timezone: Asia/Kolkata.",
+            "User Profession: Founder",
+        ]
+
+    def test_a_reader_without_name_timezone_or_profile_is_told_so(self) -> None:
+        assert reader_block(UserDocument(id=_USER_ID)).splitlines() == [
+            "You don't know their name, so never address them by name.",
+            "Their timezone: UTC.",
+        ]
+
+
+class TestAnUnreadableReply:
+    async def test_each_field_the_reply_got_wrong_is_named_without_its_text(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        turn.side_effect = ["no json here", _fenced(_VOICE)]
-
-        async with captured_wide_event() as event:
-            await written_brief(_USER, _CLOCK, _PROMPT, _writing())
-
-        [warning] = [w for w in event["warnings"] if w["msg"] == "briefing.voice_unreadable"]
-        assert warning["raw_length"] == len("no json here")
-        retry_prompt = turn.await_args_list[1].args[2]
-        assert retry_prompt == f"{_PROMPT}\n\n{voice_unreadable_note(warning['problems'])}"
-
-    async def test_unreadable_twice_fails_with_why_and_never_the_text(
-        self, turn: AsyncMock, claims: AsyncMock
-    ) -> None:
-        turn.return_value = "no json here"
+        with pytest.raises(ValidationError) as invalid:
+            BriefVoice.model_validate({"headline": "x"})
+        malformed = MalformedStructuredOutputError("bad", llm_output="half")
+        malformed.__cause__ = invalid.value
+        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=malformed))
 
         with pytest.raises(VoiceUnreadableError) as raised:
-            await written_brief(_USER, _CLOCK, _PROMPT, _writing())
+            await prose._voice(_USER_ID, "prompt")
 
-        assert turn.await_count == 2
-        assert "no json here" not in str(raised.value)
-
-    async def test_prose_breaking_its_facts_is_sent_back_once_then_fails_naming_every_problem(
-        self, turn: AsyncMock, claims: AsyncMock
-    ) -> None:
-        turn.return_value = _fenced({**_VOICE, "message": "Nothing to say."})
-        problems = [
-            "the message never refers to fact 1 (Reply to Dan); "
-            "say it in your own words as [your phrase](fact:1)",
-            "the message never refers to fact 2 (Approve the lease); "
-            "say it in your own words as [your phrase](fact:2)",
+        assert raised.value.problems == [
+            "lede: Field required",
+            "caption: Field required",
+            "mood: Field required",
+            "message: Field required",
         ]
+        assert raised.value.reply == "half"
 
-        with pytest.raises(BriefingGenerationError) as raised:
-            await written_brief(_USER, _CLOCK, _PROMPT, _writing())
-
-        assert str(raised.value) == (
-            f"The brief's prose does not hold to its facts: {problems[0]}; {problems[1]}"
-        )
-        assert turn.await_count == 2
-        assert turn.await_args_list[1].args[2] == f"{_PROMPT}\n\n{voice_correction_note(problems)}"
-        claims.assert_not_awaited()
-
-    async def test_an_unsupported_claim_is_a_problem_and_is_logged_as_rejected(
-        self, turn: AsyncMock, claims: AsyncMock
+    async def test_a_reply_with_no_schema_error_is_told_why(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        claim = UnsupportedClaim(quote="Dan is waiting", fact="absent", truth="Dan wrote nothing")
-        claims.side_effect = [[claim], []]
+        malformed = MalformedStructuredOutputError("the reply was cut short", llm_output=None)
+        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=malformed))
+
+        with pytest.raises(VoiceUnreadableError) as raised:
+            await prose._voice(_USER_ID, "prompt")
+
+        assert raised.value.problems == ["the reply was cut short"]
+
+
+class TestAVoiceThatBreaksItsFacts:
+    async def test_it_is_sent_back_once_with_the_problems_and_its_own_words(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        broke = _voice(message="Nothing to say.")
+        mended = _voice()
+        asked = AsyncMock(side_effect=[broke, mended])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        problem = (
+            "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
+            "words as [your phrase](fact:1)"
+        )
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note([problem], broke.model_dump_json(indent=2))}"
+        )
+        assert (voice, draft.message) == (mended, "Reply to Dan first.")
+
+
+class TestAVoiceThatRepeatsOrOverclaims:
+    """A line a recent brief printed, or a claim of how often something happens, is sent back."""
+
+    @staticmethod
+    def _asked(monkeypatch: pytest.MonkeyPatch, *voices: BriefVoice) -> AsyncMock:
+        asked = AsyncMock(side_effect=list(voices))
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        return asked
+
+    async def test_a_headline_or_opening_a_recent_brief_printed_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stale = _voice(
+            headline="An open day, with room to reset",
+            message="[Reply to Dan](fact:1) before lunch.\n\nThen nothing.",
+        )
+        asked = self._asked(monkeypatch, stale, _voice())
+        recent = RecentLines(
+            headlines=["An open day with room to reset."],
+            openings=["Reply to Dan before lunch."],
+        )
+
+        voice, _ = await written_brief(
+            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent)
+        )
+
+        problems = [
+            "the headline repeats a recent brief's line ('An open day, with room to reset'); "
+            "write today's in fresh words",
+            "the message's opening repeats a recent brief's line ('Reply to Dan before lunch.'); "
+            "write today's in fresh words",
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, stale.model_dump_json(indent=2))}"
+        )
+        assert voice == _voice()
+
+    async def test_a_frequency_no_fact_states_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rare = _voice(caption="A rare blank square on the calendar.", lede="Clear, as usual.")
+        asked = self._asked(monkeypatch, rare, _voice())
+
+        await written_brief(
+            _USER_ID,
+            "PROMPT",
+            Writing(values=_VALUES, lead=1, grounds="The user's calendar has nothing today."),
+        )
+
+        problems = [
+            "the lede says how often something happens ('usual') and no fact says so; "
+            "say only what today's facts show",
+            "the caption says how often something happens ('rare') and no fact says so; "
+            "say only what today's facts show",
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, rare.model_dump_json(indent=2))}"
+        )
+
+    async def test_a_frequency_a_fact_states_may_be_voiced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        grounded = _voice(caption="Rarely this quiet.")
+        asked = self._asked(monkeypatch, grounded)
+
+        voice, _ = await written_brief(
+            _USER_ID,
+            "PROMPT",
+            Writing(values=_VALUES, lead=1, grounds="Calendar: rarely this quiet in a month."),
+        )
+
+        assert voice == grounded
+        asked.assert_awaited_once()
+
+
+class TestAVoiceThatSaysATitleTwice:
+    """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
+
+    _VALUES = SlotValues(facts={1: BriefFact(title="Northwind invoice")}, counts={})
+
+    async def test_a_title_written_and_slotted_in_one_sentence_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        echoed = _voice(message="The northwind invoice is still past due: [[fact:1]].")
+        asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is past due.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        problems = [
+            "the message names 'Northwind invoice' in words and again with [[fact:1]]; keep one"
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, echoed.model_dump_json(indent=2))}"
+        )
+        assert draft.message == "Northwind is past due."
+
+    async def test_a_title_said_again_in_the_next_sentence_stands(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        again = _voice(message="[[fact:1]] is past due. The Northwind invoice went out Monday.")
+        asked = AsyncMock(side_effect=[again])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        assert voice == again
+        asked.assert_awaited_once()
+
+    async def test_an_echo_after_a_shared_title_in_the_sentence_is_still_caught(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Northwind invoice"),
+                2: BriefFact(title="1:1"),
+                3: BriefFact(title="1:1"),
+            },
+            counts={},
+        )
+        echoed = _voice(message="After [[fact:2]], the Northwind invoice: [[fact:1]].")
+        asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is due.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        assert asked.await_count == 2
+
+    async def test_two_facts_sharing_a_title_may_each_be_named(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay: a day of 1:1s failed as "'1:1' twice in one sentence"."""
+        values = SlotValues(
+            facts={1: BriefFact(title="1:1", time="11:00 AM"), 2: BriefFact(title="1:1")},
+            counts={},
+        )
+        both = _voice(message="A 1:1 at [[fact:1.time]], then [[fact:2]] [the 1:1](fact:1).")
+        asked = AsyncMock(side_effect=[both])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        assert voice == both
+        asked.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("message", "opening"),
+    [("\n  Priya replied overnight.\nMore.", "Priya replied overnight."), (" \n\t\n", "")],
+    ids=["first-non-blank-line", "all-blank"],
+)
+def test_a_messages_opening_is_its_first_non_blank_line(message: str, opening: str) -> None:
+    assert opening_line(message) == opening
+
+
+class TestAFigureTheFactsShow:
+    """Replay of Dhruv's 2026-11-09: "another look set for Tue Nov 17" fell back to the plain voice."""
+
+    async def test_a_date_an_items_standing_says_may_be_voiced_as_it_stands(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        doc = TodoDocument(
+            id="t1",
+            user_id=_USER_ID,
+            title="Pitch prep research",
+            labels=[GAIA_TRACKED_LABEL],
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
+        )
+        [candidate] = gaia_work_candidates(TrackedWork(running=[doc]), _CLOCK)
+        item = BriefingItem(
+            text="Pitch prep research", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+        )
+        chosen = Chosen(
+            sections=[BriefingSection(numeral="I", title="Open", items=[item])],
+            picked=[[(1, candidate)]],
+        )
+        facts = build_facts(
+            chosen,
+            FactSources(
+                artifacts=gather_artifacts(TrackedWork(running=[doc])),
+                open_todos=0,
+                calendar=[],
+                event_ids=[],
+                span=TODAY,
+                todos_note=None,
+            ),
+            _CLOCK,
+        )
+        quoted = _voice(message="[The pitch research](fact:1) gets another look Tue Nov 17.")
+        asked = AsyncMock(side_effect=[quoted, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
+
+        assert "stands: GAIA looks at it again Tue Nov 17" in facts.block
+        assert voice == quoted
+        asked.assert_awaited_once()
+
+
+class TestTheBriefsWideEvent:
+    async def test_every_rejected_draft_and_the_plain_fallback_are_on_the_brief_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
+        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Still none.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
-            await written_brief(_USER, _CLOCK, _PROMPT, _writing())
+            voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
-        assert {"msg": "briefing.voice_rejected", "problems": [claim.problem()]} in event[
-            "warnings"
-        ]
-        assert claim.problem() in turn.await_args_list[1].args[2]
-
-    async def test_a_field_over_its_limit_once_filled_is_named_with_its_limit(
-        self, turn: AsyncMock, claims: AsyncMock
-    ) -> None:
-        long_title = "t" * (MAX_BRIEF_HEADLINE_CHARS + 1)
-        values = SlotValues(facts={3: BriefFact(title=long_title)}, counts={})
-        turn.return_value = _fenced({**_VOICE, "headline": "[[fact:3]]", "message": "[[fact:3]]"})
-
-        with pytest.raises(BriefingGenerationError) as raised:
-            await written_brief(
-                _USER, _CLOCK, _PROMPT, _writing(values=values, must_mention=frozenset())
-            )
-
-        assert str(raised.value) == (
-            "The brief's prose does not hold to its facts: the headline once its slots are "
-            f"filled: String should have at most {MAX_BRIEF_HEADLINE_CHARS} characters"
+        missed = (
+            "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
+            "words as [your phrase](fact:1)"
         )
+        assert voice == prose.plain_voice(Writing(values=_VALUES, lead=1))
+        assert event["brief_voice"] == {"attempts": 2, "plain": True, "rejections": [missed] * 2}
+
+    async def test_a_brief_voiced_first_time_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        assert event["brief_voice"] == {"attempts": 1, "plain": False, "rejections": []}
+
+    async def test_an_unreadable_reply_is_on_the_event_as_every_field_it_got_wrong(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with pytest.raises(ValidationError) as invalid:
+            BriefVoice.model_validate({"headline": "x", "lede": "y", "caption": "z"})
+        malformed = MalformedStructuredOutputError("bad", llm_output="half")
+        malformed.__cause__ = invalid.value
+        asked = AsyncMock(side_effect=[malformed, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        assert event["brief_voice"]["rejections"] == [
+            "mood: Field required; message: Field required"
+        ]
+
+    async def test_a_draft_broken_two_ways_is_on_the_event_as_both(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stale = _voice(headline="An open day", message="[Reply to Dan](fact:1) before lunch.")
+        asked = AsyncMock(side_effect=[stale, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        recent = RecentLines(headlines=["An open day"], openings=["Reply to Dan before lunch."])
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent))
+
+        assert event["brief_voice"]["rejections"] == [
+            "the headline repeats a recent brief's line ('An open day'); write today's in fresh "
+            "words; the message's opening repeats a recent brief's line "
+            "('Reply to Dan before lunch.'); write today's in fresh words"
+        ]
+
+
+class TestThePlainVoice:
+    def test_it_lists_the_lead_first_then_every_fact_by_its_slot_and_time(self) -> None:
+        values = SlotValues(
+            facts={1: BriefFact(title="Reply to Dan"), 2: BriefFact(title="Board", time="3 PM")},
+            counts={},
+        )
+
+        assert prose.plain_voice(Writing(values=values, lead=2)) == BriefVoice(
+            headline="Your brief",
+            lede="",
+            caption="",
+            mood="clear",
+            message="- [[fact:2]] ([[fact:2.time]])\n- [[fact:1]]",
+        )
+
+    def test_it_drops_the_last_lines_until_the_rendered_message_fits(self) -> None:
+        """The first two lines render to exactly the limit, so they stay and the third goes."""
+        first = "a" * 100
+        second = "b" * (MAX_BRIEF_MESSAGE_CHARS - len(f"- {first}\n- "))
+        values = SlotValues(
+            facts={1: BriefFact(title=first), 2: BriefFact(title=second), 3: BriefFact(title="c")},
+            counts={},
+        )
+
+        voice = prose.plain_voice(Writing(values=values, lead=None))
+
+        assert voice.message == "- [[fact:1]]\n- [[fact:2]]"
+        assert len(render_slots(voice.message, values, {})) == MAX_BRIEF_MESSAGE_CHARS
+
+    def test_a_dropped_line_goes_whole_its_time_with_it(self) -> None:
+        """Without its time the third line would fit exactly, so only a whole-line cut drops it."""
+        first = "a" * 100
+        second = "b" * (MAX_BRIEF_MESSAGE_CHARS - len(f"- {first}\n- \n- c"))
+        values = SlotValues(
+            facts={
+                1: BriefFact(title=first),
+                2: BriefFact(title=second),
+                3: BriefFact(title="c", time="9 AM"),
+            },
+            counts={},
+        )
+
+        voice = prose.plain_voice(Writing(values=values, lead=None))
+
+        assert voice.message == "- [[fact:1]]\n- [[fact:2]]"

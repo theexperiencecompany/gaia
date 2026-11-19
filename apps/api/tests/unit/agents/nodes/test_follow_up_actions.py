@@ -234,6 +234,35 @@ class TestFollowUpActionsNode:
         assert REGISTRY.get_sample_value("graph_node_seconds_sum", labels) == before + 0.25
 
     @pytest.mark.asyncio
+    async def test_a_background_turn_suggests_nothing_and_calls_no_model(self) -> None:
+        """Live: every silent brief voice turn paid for follow-ups no stream was there to show."""
+        state = _make_state(
+            [HumanMessage(content="Voice today's brief"), AIMessage(content='{"headline": "x"}')]
+        )
+        config = _make_config()
+        config["configurable"]["execution_mode"] = "background"
+        model = AsyncMock()
+        writer = MagicMock()
+
+        with (
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
+                return_value=writer,
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(
+                    return_value=integration_models.UserIntegrationCapabilities(tool_names=[])
+                ),
+            ),
+            patch("app.agents.core.nodes.follow_up_actions_node.ainvoke_structured", new=model),
+        ):
+            result = await follow_up_actions_node(state, config, _make_store())
+
+        assert result is state
+        model.assert_not_awaited()
+        writer.assert_not_called()
+
     async def test_happy_path_with_user_id_streams_actions(self):
         messages = [
             HumanMessage(content="Can you help me schedule a meeting?"),

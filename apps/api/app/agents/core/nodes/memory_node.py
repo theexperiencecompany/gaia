@@ -24,6 +24,7 @@ from app.agents.context.slots import (
     slot_of,
 )
 from app.config.oauth_config import get_memory_extraction_prompt
+from app.constants.briefing import SilentTurnSource
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
     MEMORY_DELTA_CONTEXT_MESSAGES,
@@ -308,6 +309,11 @@ async def memory_node(
         return state
 
     if not user_id:
+        return state
+    if configurable.get("conversation_source") in set(SilentTurnSource):
+        # GAIA wrote this turn's prompt (the day-zero hello): learning from it would
+        # store GAIA's own words as the user's, and read them back as goals tomorrow.
+        log.set(memory_ingest={"skipped": "silent_turn"})
         return state
 
     task = spawn_background_task(

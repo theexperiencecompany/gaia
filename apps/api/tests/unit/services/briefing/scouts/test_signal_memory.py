@@ -2,21 +2,25 @@
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.scout_models import (
+    PeopleRole,
     RememberedSignal,
     Signal,
     SignalImportance,
     SignalMemoryDocument,
 )
+from app.services.briefing.context import UserClock
 from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL, memory_note, signals_block
 from app.services.briefing.scouts.memory import remember
 
 USER_ID = "64f1c0ffee0000000000abcd"
 NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
+CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-10-22", day_of_year=295)
 
 
 def _signal(external_id: str, *, app: str = "Linear", state: str | None = "Todo") -> Signal:
@@ -101,7 +105,7 @@ class TestTheFactsBlock:
             ),
         ]
 
-        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines() == [
+        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines() == [
             f"[ACROSS THEIR APPS] 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
             "[Jira] 1 item(s) shown",
             "- fact 1 | other | issue: Issue 1 | state: Todo | first seen today, created date"
@@ -128,10 +132,35 @@ class TestTheFactsBlock:
             RememberedSignal(signal=signal, memory=_memory("5", times_shown=0, last_shown=NOW))
         ]
 
-        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | with Priya, Sam"
+        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | names Priya, Sam"
+            " (the app does not say their part in it)"
             " | linkable | why: blocks the release"
             " | first seen today, never mentioned"
+        )
+
+    def test_the_people_an_app_names_are_said_in_the_part_it_gives_them(self) -> None:
+        signal = _signal("7").model_copy(
+            update={"people": ["Priya", "Sam"], "people_role": PeopleRole.ASSIGNEE}
+        )
+
+        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 7 | state: Todo | assignee: Priya, Sam"
+            " | first seen today, created date unknown"
+        )
+
+    def test_the_person_who_is_the_user_is_marked_so_the_voice_says_you(self) -> None:
+        signal = _signal("7").model_copy(
+            update={
+                "people": ["Aryan", "Sam"],
+                "people_role": PeopleRole.REVIEWER,
+                "people_you": ["Aryan"],
+            }
+        )
+
+        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 7 | state: Todo | reviewer: Aryan (this is the"
+            " user: say you, never their name), Sam | first seen today, created date unknown"
         )
 
     def test_a_sighting_stamped_after_now_still_reads_as_today(self) -> None:
@@ -143,14 +172,34 @@ class TestTheFactsBlock:
             )
         ]
 
-        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines()[-1] == (
+        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines()[-1] == (
             "- fact 1 | other | issue: Issue 6 | state: Todo | first seen today, mentioned 1"
             " time(s),"
             " last today"
         )
 
     def test_no_signals_is_no_block(self) -> None:
-        assert signals_block([], NOW) == ""
+        assert signals_block([], CLOCK) == ""
+
+
+class TestDaysAreTheUsers:
+    def test_ago_and_due_dates_are_counted_on_the_users_own_days(self) -> None:
+        """Regression: a Kolkata user's item created at 1:30 AM local read as created yesterday."""
+        kolkata = ZoneInfo("Asia/Kolkata")
+        clock = UserClock(
+            tz=kolkata, now_local=NOW.astimezone(kolkata), date_str="2026-10-22", day_of_year=295
+        )
+        signal = _signal("11").model_copy(
+            update={
+                "created_at": datetime(2026, 10, 21, 20, 0, tzinfo=UTC),
+                "due_at": datetime(2026, 10, 22, 19, 0, tzinfo=UTC),
+            }
+        )
+
+        line = signals_block([(1, RememberedSignal(signal=signal))], clock).splitlines()[-1]
+
+        assert "due 2026-10-23" in line
+        assert line.endswith("new: created today")
 
 
 class TestWhatIsNew:
@@ -164,7 +213,7 @@ class TestWhatIsNew:
             }
         )
 
-        note = memory_note(RememberedSignal(signal=signal), NOW)
+        note = memory_note(RememberedSignal(signal=signal), CLOCK)
 
         assert note == (
             "first seen today, created 2025-06-18 (491 days ago), last updated 491 days ago"
@@ -173,17 +222,17 @@ class TestWhatIsNew:
     def test_an_item_created_within_the_day_is_new(self) -> None:
         signal = _signal("7").model_copy(update={"created_at": NOW - timedelta(hours=20)})
 
-        assert memory_note(RememberedSignal(signal=signal), NOW) == "new: created yesterday"
+        assert memory_note(RememberedSignal(signal=signal), CLOCK) == "new: created yesterday"
 
     def test_an_item_the_app_does_not_date_is_never_called_new(self) -> None:
         assert (
-            memory_note(RememberedSignal(signal=_signal("8")), NOW)
+            memory_note(RememberedSignal(signal=_signal("8")), CLOCK)
             == "first seen today, created date unknown"
         )
 
     def test_an_item_created_a_full_day_ago_is_not_new(self) -> None:
         signal = _signal("9").model_copy(update={"created_at": NOW - timedelta(days=1)})
 
-        assert memory_note(RememberedSignal(signal=signal), NOW) == (
+        assert memory_note(RememberedSignal(signal=signal), CLOCK) == (
             "first seen today, created 2026-10-21 (yesterday)"
         )

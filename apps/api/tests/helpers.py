@@ -12,7 +12,7 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import ExitStack, asynccontextmanager, contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import hashlib
 import hmac
 from http.cookies import Morsel, SimpleCookie
@@ -66,6 +66,7 @@ from app.constants.trigger_gates import GateKind
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.briefing.context import UserClock
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.auth_utils import session_hint_cookie_domain
@@ -353,6 +354,15 @@ def email_verdict_answers(
         "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
     }
     return {"answers": answers}
+
+
+def user_clock(tz_name: str, day: date, hour: int = 8) -> UserClock:
+    """Return the brief's clock for a user in tz_name at hour on their local day."""
+    tz = zoneinfo.ZoneInfo(tz_name)
+    now = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
+    return UserClock(
+        tz=tz, now_local=now, date_str=day.isoformat(), day_of_year=now.timetuple().tm_yday
+    )
 
 
 @contextmanager

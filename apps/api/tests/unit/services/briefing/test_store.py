@@ -67,19 +67,37 @@ class TestStoreBrief:
         assert payload.link == "https://heygaia.link/abc"
         assert seams["host_edition_image"].await_args.args == (payload,)
         assert seams["host_edition_image"].await_args.kwargs["owner_id"] == _USER
-        seams["upsert_briefing"].assert_awaited_once_with(
-            _USER,
-            _DATE,
-            "daily",
-            payload,
-            briefing_id=_BRIEF_ID,
-            edition=EditionRender(
+        assert seams["upsert_briefing"].await_args.args == (_USER, _DATE, "daily", payload)
+        assert seams["upsert_briefing"].await_args.kwargs == {
+            "briefing_id": _BRIEF_ID,
+            "edition": EditionRender(
                 image_url="https://cdn.example/f_auto/brief",
                 fold=0.4,
                 paper=[0.1, 0.2, 0.9, 0.8],
             ),
-        )
+        }
         assert (stored.briefing.id, stored.link) == (_BRIEF_ID, "https://heygaia.link/abc")
+
+    async def test_the_brief_exists_before_its_link_is_minted(
+        self, seams: dict[str, AsyncMock]
+    ) -> None:
+        """Simulator: the link was minted to a brief not yet stored ("Target not found"), so it fell back."""
+        order: list[str] = []
+
+        async def stored(*_a: object, edition: EditionRender | None, **_k: object) -> MagicMock:
+            order.append("stored" if edition is None else "stored with its edition")
+            return MagicMock(id=_BRIEF_ID)
+
+        async def minted(*_a: object) -> str:
+            order.append("minted")
+            return "https://heygaia.link/abc"
+
+        seams["upsert_briefing"].side_effect = stored
+        seams["optional_short_link"].side_effect = minted
+
+        await store.store_brief(_USER, _DATE, "daily", _payload())
+
+        assert order == ["stored", "minted", "stored with its edition"]
 
     async def test_without_a_short_link_the_link_is_the_briefs_own_page(
         self, seams: dict[str, AsyncMock], monkeypatch: pytest.MonkeyPatch
@@ -106,3 +124,24 @@ class TestStoreBrief:
         assert seams["upsert_briefing"].await_args.kwargs["edition"] == EditionRender(
             image_url="https://cdn.example/f_auto/brief", fold=None, paper=None
         )
+
+
+class TestStoreNote:
+    async def test_a_quiet_note_is_stored_under_its_briefs_id_with_no_edition_or_link(
+        self, seams: dict[str, AsyncMock]
+    ) -> None:
+        seams["briefing_id_for"].side_effect = lambda user_id, date, kind: (
+            _BRIEF_ID if (user_id, date, kind) == (_USER, _DATE, "weekly") else "brief-fresh"
+        )
+        payload = _payload()
+
+        stored = await store.store_note(_USER, _DATE, "weekly", payload)
+
+        assert seams["upsert_briefing"].await_args.args == (_USER, _DATE, "weekly", payload)
+        assert seams["upsert_briefing"].await_args.kwargs == {
+            "briefing_id": _BRIEF_ID,
+            "edition": None,
+        }
+        seams["optional_short_link"].assert_not_awaited()
+        seams["host_edition_image"].assert_not_awaited()
+        assert (stored.briefing.id, stored.image, stored.link) == (_BRIEF_ID, None, None)

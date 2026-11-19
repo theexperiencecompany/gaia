@@ -1,8 +1,7 @@
 /* ============================================================================
    tpl-tech.js (round 2) — The Blueprint and The Instrument on a 540 px
    portrait canvas (export at 3x). Body 17 px or larger.
-   Reading order: headline -> needs you -> today -> done overnight -> stats;
-   empty sections are omitted.
+   Reading order: headline -> the brief's blocks in GAIA's order -> figures.
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -13,8 +12,8 @@
     return h + m / 60;
   };
   const pad2 = (n) => String(n).padStart(2, "0");
-  /* Position on the 06:00-24:00 operating window, 0..1; untimed deadlines sit at 18:00. */
-  const pos = (e) => ((e.t24 ? hours(e.t24) : 18) - 6) / 18;
+  /* A timed event's position on the 06:00-24:00 operating window, 0..1. */
+  const pos = (e) => (hours(e.t24) - 6) / 18;
   /* Stagger callouts that would collide into alternating levels. */
   function levels(items, minGap) {
     let last = -1;
@@ -48,8 +47,7 @@
         { id: "diazo", label: "diazo whiteprint", stock: "#f1efe6", ink: "#1f3487", soft: "#3d4f99", line: "rgba(31,52,135,.55)", grid: "rgba(31,52,135,.08)", warn: "#a8321c" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-        { id: "condensed", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+        { id: "barlow", label: "Barlow Condensed", stack: "'Barlow Condensed', sans-serif" },
       ],
       folds: [
         { id: "folded", label: "folded sheet" },
@@ -70,19 +68,24 @@
 .t-flightplan .strip { display: flex; justify-content: space-between; color: var(--soft); }
 .t-flightplan h1 { font-size: 27px; line-height: 1.2; font-weight: 600; margin-top: 14px; }
 .t-flightplan h2 { display: flex; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid var(--line); margin: 36px 0 12px; }
-.t-flightplan .rev { display: grid; grid-template-columns: 34px 1fr; padding: 6px 0; }
-.t-flightplan .tri { width: 24px; height: 22px; color: var(--warn); }
-.t-flightplan .rev b { color: var(--warn); font-weight: 700; }
 .t-flightplan .soft { color: var(--soft); }
 .t-flightplan svg.elev { display: block; width: 100%; height: auto; overflow: visible; }
 .t-flightplan svg.elev text { font-family: inherit; fill: currentColor; }
-.t-flightplan .sched { display: grid; grid-template-columns: 30px 64px 1fr; padding: 6px 0; align-items: baseline; }
 .t-flightplan .ball { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1.3px solid currentColor; border-radius: 50%; font-size: 13px; font-weight: 700; }
-.t-flightplan .t { font-weight: 700; font-variant-numeric: tabular-nums; }
-.t-flightplan .section { display: grid; grid-template-columns: 36px 1fr; gap: 14px; }
-.t-flightplan .sched > span:last-child, .t-flightplan .ov > span:last-child, .t-flightplan .rev > span { text-wrap: pretty; }
-.t-flightplan .hatch { border: 1.3px solid var(--line); background: repeating-linear-gradient(45deg, var(--line) 0 1px, transparent 1px 9px); }
-.t-flightplan .ov { display: grid; grid-template-columns: 30px 56px 1fr; padding: 5px 0; align-items: baseline; }
+.t-flightplan { --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--warn); --rs-base: 16px; --rs-kick-track: 0; }
+.t-flightplan h1 { margin-bottom: 24px; }
+.t-flightplan .rs-h + svg.elev { margin: 4px 0 16px; }
+.t-flightplan .fdet { margin: 36px 0 24px; }
+.t-flightplan .fdet h2 { margin-top: 0; }
+.t-flightplan .fdet .xb-plot { margin-top: 6px; }
+.t-flightplan .fsay { margin-bottom: 10px; text-wrap: pretty; }
+.t-flightplan .flegend { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; margin-top: 10px; font-size: 15px; }
+.t-flightplan .fkey { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.t-flightplan .fsw { display: block; flex: none; }
+.t-flightplan .fnotes { list-style: none; }
+.t-flightplan .fq { font-size: 20px; line-height: 1.3; font-weight: 600; text-wrap: pretty; }
+.t-flightplan .fnotes li { display: grid; grid-template-columns: 34px 1fr; padding: 5px 0; align-items: baseline; text-wrap: pretty; }
+.t-flightplan .fnotes .ball { transform: translateY(-1px); }
 .t-flightplan .tb { margin-top: 26px; display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--line); }
 .t-flightplan .tb div { padding: 7px 10px; border-top: 1px solid var(--line); }
 .t-flightplan .tb div:nth-child(-n+2) { border-top: 0; }
@@ -91,37 +94,103 @@
 .t-flightplan .tb span { display: block; font-size: 14px; font-weight: 700; letter-spacing: 0; color: var(--soft); }
 .t-flightplan .tb b { display: block; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .t-flightplan .tb .nw { white-space: nowrap; }
+.t-flightplan .tb .refs b { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 16px; }
+.t-flightplan .tb .refs .nw { display: inline-flex; align-items: center; font-size: 16px; font-weight: 600; color: var(--ink); }
+.t-flightplan .tb .refs .rl { width: 16px; height: 16px; margin-right: 6px; color: var(--ink); }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
-      const W = 500;
-      const X = (p) => 10 + p * (W - 20);
-      const parts = [];
-      const tri = (n) => `<svg class="tri" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 1.5 L23 20.5 H1 Z" fill="none" stroke="currentColor" stroke-width="1.6"/><text x="12" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">${n}</text></svg>`;
-      if (needs.length) parts.push(`<h2 class="lbl"><span>Revisions · needs your call</span><span>${pad2(needs.length)}</span></h2>${needs.map((d, i) => `<div class="rev" data-role="body">${tri(i + 1)}<span><b>${esc(d.verb)}</b> — ${esc(d.label)}${d.note ? ` <span class="soft">(${esc(d.note)})</span>` : ""}</span></div>`).join("")}`);
-      if (c.today.length) {
-        const lv = levels(c.today, 0.1);
+      const B = EXPLORER.blocks;
+      const W = 446; // the sheet's drawing width inside its border and padding
+      const face = skin.face.stack;
+      const ink = "var(--ink)";
+      const h2 = (l, r = "") => `<h2 class="lbl"><span>${l}</span><span>${r}</span></h2>`;
+      const lc = (t) => esc(t.charAt(0).toLowerCase() + t.slice(1));
+      const HATCH = (id) => `<pattern id="${id}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="6" fill="${ink}"/></pattern>`;
+      const fills = ["var(--ink)", "url(#fp-h)", "none"];
+      const sw = (k) => `<svg class="fsw" width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><defs>${HATCH(`fp-s${k}`)}</defs><rect x=".65" y=".65" width="20.7" height="10.7" fill="${k === 1 ? `url(#fp-s${k})` : fills[k % 3]}" stroke="${ink}" stroke-width="1.3"/></svg>`;
+      // Lettered details: the lead is Detail A, every drawing after it takes the next letter.
+      let letter = "B".charCodeAt(0);
+      const detail = () => `Detail ${String.fromCharCode(letter++)}`;
+      // Bars drafted in outline: your share solid, GAIA's hatched like the base's overnight section.
+      const bars = (c) => {
+        const n = c.x.length;
+        const h = 150, top = 22, bottom = 26, ph = h - top - bottom;
+        const sums = B.totals(c);
+        const max = Math.max(...sums);
+        const slot = W / n, bw = Math.round(slot * 0.56);
+        let g = "";
+        c.x.forEach((lab, i) => {
+          const x = Math.round(i * slot + (slot - bw) / 2) + 0.65;
+          let y = top + ph;
+          c.series.forEach((sr, k) => {
+            const hh = (sr.values[i] / max) * ph;
+            if (hh) g += `<rect x="${x}" y="${(y - hh).toFixed(2)}" width="${bw - 1.3}" height="${hh.toFixed(2)}" fill="${fills[k % 3]}" stroke="${ink}" stroke-width="1.3"/>`;
+            y -= hh;
+          });
+          g += B.txt(x + bw / 2, y - 7, B.fmt(sums[i]), { font: face, size: 13, weight: 700, fill: ink });
+          g += B.txt(x + bw / 2, h - 6, lab, { font: face, size: 13, weight: 700, fill: "var(--soft)" });
+        });
+        g += `<rect x="0" y="${top + ph}" width="${W}" height="1.6" fill="${ink}"/>`;
+        return `<svg class="xb-plot" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" aria-hidden="true"><defs>${HATCH("fp-h")}</defs>${g}</svg>`;
+      };
+      const PLOT = { font: face, size: 13, weight: 700, ink, soft: "var(--soft)", rule: "var(--line)", base: ink, dot: 4, gutter: 26 };
+      const plot = (c) =>
+        c.chart === "line"
+          ? B.line(c, { ...PLOT, w: W, h: 140, lines: [{ color: ink, width: 1.8 }, { color: ink, width: 1.8, dash: "5 4" }, { color: "var(--warn)", width: 1.8 }] })
+          : c.chart === "spark"
+            ? B.spark(c, { ...PLOT, w: W, h: 56, line: ink, lineW: 1.8 })
+            : bars(c);
+      const lineKey = (k) => `<svg class="fsw" width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><line x1="1" y1="6" x2="21" y2="6" stroke="${k === 2 ? "var(--warn)" : ink}" stroke-width="1.8" ${k === 1 ? 'stroke-dasharray="5 4"' : ""}/></svg>`;
+      const key = (c) => {
+        const swatch = c.chart === "line" || c.chart === "spark" ? lineKey : sw;
+        const names = c.series.length > 1 ? c.series.map((sr, k) => `<span class="fkey">${swatch(k)}${esc(sr.name)}, ${esc(sr.total)}</span>`).join("") : "";
+        // The range heads the detail; the legend says what one unit is.
+        const unit = c.range ? (c.unit ? `${c.unit} per day` : "per day") : B.facts(c);
+        return `<p class="flegend">${names}<span class="soft">${esc(unit)}</span></p>`;
+      };
+      // The elevation: the day drawn along a dimensioned 06-24 axis, each event a leader to its time.
+      const elevation = (all) => {
+        const events = all.filter((e) => e.t24);
+        const EW = 446;
+        const X = (p) => 10 + p * (EW - 20);
+        const lv = levels(events, 0.1);
         const ticks = [6, 9, 12, 15, 18, 21, 24].map((h) => `<line x1="${X((h - 6) / 18)}" y1="112" x2="${X((h - 6) / 18)}" y2="122" stroke="currentColor" stroke-width="1"/><text x="${X((h - 6) / 18)}" y="140" text-anchor="middle" font-size="13" font-weight="700">${pad2(h)}</text>`).join("");
-        const marks = c.today.map((e, i) => {
+        const marks = events.map((e, i) => {
           const x = X(pos(e));
           const y = lv[i] ? 30 : 62;
-          if (!e.t24) return `<circle cx="${x}" cy="112" r="20" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/><line x1="${x}" y1="92" x2="${x}" y2="${y + 11}" stroke="currentColor" stroke-width=".8"/><circle cx="${x}" cy="${y}" r="11" fill="var(--stock)" stroke="currentColor" stroke-width="1.3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="700">${i + 1}</text>`;
+          const tag = `<rect x="${x - 21}" y="${y - 11}" width="42" height="20" fill="var(--stock)" stroke="currentColor" stroke-width="1.3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="700">${esc(e.t24)}</text>`;
           const x2 = X(Math.min(1, pos(e) + 0.5 / 18)); // a 30-minute span
-          return `<line x1="${x}" y1="${y + 11}" x2="${x}" y2="112" stroke="currentColor" stroke-width=".8"/><line x1="${x}" y1="104" x2="${x2}" y2="104" stroke="currentColor" stroke-width="1"/><path d="M${x} 104 l5 -3 v6 z M${x2} 104 l-5 -3 v6 z" fill="currentColor"/><circle cx="${x}" cy="${y}" r="11" fill="var(--stock)" stroke="currentColor" stroke-width="1.3"/><text x="${x}" y="${y + 4}" text-anchor="middle" font-size="12" font-weight="700">${i + 1}</text>`;
+          return `<line x1="${x}" y1="${y + 9}" x2="${x}" y2="112" stroke="currentColor" stroke-width=".8"/><line x1="${x}" y1="104" x2="${x2}" y2="104" stroke="currentColor" stroke-width="1"/><path d="M${x} 104 l5 -3 v6 z M${x2} 104 l-5 -3 v6 z" fill="currentColor"/>${tag}`;
         }).join("");
-        const lastT = Math.max(...c.today.map((e) => (e.t24 ? hours(e.t24) + 0.5 : 18)), 0);
+        const lastT = Math.max(...events.map((e) => hours(e.t24) + 0.5));
         const freeH = Math.ceil(lastT + 0.5);
         const free = lastT && freeH < 22 ? `<line x1="${X((freeH - 6) / 18)}" y1="160" x2="${X(1)}" y2="160" stroke="currentColor" stroke-width="1"/><path d="M${X((freeH - 6) / 18)} 160 l6 -3 v6 z M${X(1)} 160 l-6 -3 v6 z" fill="currentColor"/><text x="${(X((freeH - 6) / 18) + X(1)) / 2}" y="178" text-anchor="middle" font-size="13" font-weight="700">${pad2(freeH)}:00 – 24:00 · YOURS</text>` : "";
-        const svg = `<svg class="elev" viewBox="0 0 ${W} 186" aria-hidden="true"><line x1="${X(0)}" y1="117" x2="${X(1)}" y2="117" stroke="currentColor" stroke-width="1.6"/>${ticks}${marks}${free}</svg>`;
-        parts.push(`<h2 class="lbl"><span>Elevation · the day, 06–24</span><span>Scale 1:1</span></h2>${svg}${c.today.map((e, i) => `<div class="sched" data-role="body"><span class="ball">${i + 1}</span><span class="t">${e.t24 ? esc(e.t24) : "EOD"}</span><span>${esc(e.label)}${e.note ? ` <span class="soft">(${esc(e.note)})</span>` : ""}</span></div>`).join("")}`);
-      }
-      if (c.overnight.length)
-        parts.push(`<h2 class="lbl"><span>Section 00–06 · while you slept</span><span>${pad2(c.overnight.length)}</span></h2><div class="section"><div class="hatch" aria-hidden="true"></div><div>${c.overnight.map((e, i) => `<div class="ov" data-role="body"><span class="ball">${String.fromCharCode(65 + i)}</span><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="soft">(${esc(e.note)})</span>` : ""}</span></div>`).join("")}</div></div>`);
-      if (c.running.length)
-        parts.push(`<h2 class="lbl"><span>Section now · still in progress</span><span>${pad2(c.running.length)}</span></h2><div class="section"><div class="hatch" aria-hidden="true"></div><div>${c.running.map((e, i) => `<div class="ov" data-role="body"><span class="ball">${String.fromCharCode(65 + c.overnight.length + i)}</span><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? ` <span class="soft">(${esc(e.note)})</span>` : ""}</span></div>`).join("")}</div></div>`);
-      const s = c.stats;
-      const tb = `<div class="tb"><div><span>Project</span><b>${esc(ed.weekday)}</b></div><div><span>Sheet</span><b>${String(ed.editionNo).padStart(3, "0")}</b></div><div><span>Drawn by</span><b>GAIA · ${esc(ed.time24)}</b></div><div><span>Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())} ${ed.year}</b></div>${s ? `<div class="wide"><span>Yield</span><b><span class="nw">${s.done} done${s.you && s.gaia ? ` (${s.you} you · ${s.gaia} GAIA)` : ""}</span>${s.mail ? ` · <span class="nw">${s.mail} emails cleared</span>` : ""}${s.focus ? ` · <span class="nw">${esc(s.focus)} focus held</span>` : ""}</b></div>` : ""}</div>`;
+        return `<svg class="elev" viewBox="0 0 ${EW} 186" aria-hidden="true"><line x1="${X(0)}" y1="117" x2="${X(1)}" y2="117" stroke="currentColor" stroke-width="1.6"/>${ticks}${marks}${free}</svg>`;
+      };
+      const R = {
+        lead: (b) => B.lead(b, { kicker: "Detail A" }),
+        items: (b) => B.section(b.heading, B.items(b)),
+        calendar: (b) => B.section(b.events.some((e) => e.day) ? "The week ahead" : "Today", B.events(b, { clock: "t24", allDay: "All day" }), { extra: b.events.some((e) => e.day) || !b.events.some((e) => e.t24) ? "" : elevation(b.events) }),
+        chart: (c) => `<div class="fdet" data-block="chart">${h2(`${detail()} · ${lc(c.title)}`, esc(c.range || ""))}<p class="fsay">${esc(c.takeaway)}</p>${plot(c)}${key(c)}</div>`,
+        progress: (p) => {
+          const n = Math.min(p.total, 12);
+          const gap = 8, cw = (W - gap * (n - 1)) / n;
+          const on = p.total > 12 ? Math.round((p.done / p.total) * n) : p.done;
+          let cells = "";
+          for (let i = 0; i < n; i++) cells += `<rect x="${(i * (cw + gap) + 0.65).toFixed(2)}" y=".65" width="${(cw - 1.3).toFixed(2)}" height="24.7" fill="${i < on ? ink : "none"}" stroke="${ink}" stroke-width="1.3" ${i < on ? "" : 'stroke-dasharray="4 3"'}/>`;
+          const open = `<svg class="fsw" width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x=".65" y=".65" width="20.7" height="10.7" fill="none" stroke="${ink}" stroke-width="1.3" stroke-dasharray="4 3"/></svg>`;
+          return `<div class="fdet" data-block="progress">${h2(`${detail()} · ${lc(p.statement)}`, `${p.done} of ${p.total}`)}<svg class="xb-plot" width="${W}" height="26" viewBox="0 0 ${W} 26" aria-hidden="true">${cells}</svg><p class="flegend"><span class="fkey">${sw(0)}done, ${p.done}</span><span class="fkey">${open}open, ${p.total - p.done}</span></p></div>`;
+        },
+        quote: (q) => `<div class="fdet" data-block="quote">${h2(`${detail()} · in ${esc(q.author)}'s words`, esc(q.app))}<p class="fq">&ldquo;${esc(q.text)}&rdquo;</p></div>`,
+        note: (n) => `<div class="fdet" data-block="note">${h2("Notes")}<ol class="fnotes"><li><span class="ball">1</span><span>${esc(n.text)}</span></li></ol></div>`,
+      };
+      const parts = B.layout(ed, R);
+      const s = ed.stats;
+      // The sources a drawing was made from are its references, lettered in the title block.
+      const refs = ed.sources.length
+        ? `<div class="wide refs" data-block="sources"><span>References</span><b>${ed.sources.map((x) => `<span class="nw">${B.logo(x.logo, { cls: "rl" })}${esc(x.name)}</span>`).join("")}</b></div>`
+        : "";
+      const tb = `<div class="tb"><div><span>Project</span><b>${esc(ed.weekday)}</b></div><div><span>Sheet</span><b>${String(ed.editionNo).padStart(3, "0")}</b></div><div><span>Drawn by</span><b>GAIA · ${esc(ed.time24)}</b></div><div><span>Date</span><b>${pad2(ed.day)} ${esc(ed.monthShort.toUpperCase())} ${ed.year}</b></div>${s ? `<div class="wide"><span>Yield</span><b><span class="nw">${s.done} done${s.you && s.gaia ? ` (${s.you} you · ${s.gaia} GAIA)` : ""}</span>${s.mail ? ` · <span class="nw">${s.mail} emails cleared</span>` : ""}${s.focus ? ` · <span class="nw">${esc(s.focus)} focus held</span>` : ""}</b></div>` : ""}${refs}</div>`;
       const folds = skin.folds.id === "folded" ? `<i class="fold h"></i><i class="fold v"></i>` : "";
       return `<article class="t-flightplan" style="--stock:${skin.stock.stock}; --ink:${skin.stock.ink}; --soft:${skin.stock.soft}; --line:${skin.stock.line}; --grid:${skin.stock.grid}; --warn:${skin.stock.warn}; --face:${skin.face.stack}">
 ${grain("bp-g", 0.85)}${folds}
@@ -157,8 +226,7 @@ ${grain("bp-g", 0.85)}${folds}
         { id: "graphite", label: "graphite", panel: "#1d1e21", well: "#141517", plate: "#26282c", ink: "#eceae4", soft: "#a9a8a2", hair: "#36383d" },
       ],
       face: [
-        { id: "helvetica", label: "Helvetica Neue", stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-        { id: "din", label: "Avenir Condensed", stack: "'Avenir Next Condensed', 'Helvetica Neue', sans-serif" },
+        { id: "sofia", label: "Sofia Sans Condensed", stack: "'Sofia Sans Condensed', sans-serif" },
       ],
     },
     css: `
@@ -180,50 +248,86 @@ ${grain("bp-g", 0.85)}${folds}
 .t-instrument .row:first-of-type { border-top: 0; }
 .t-instrument .t { font-weight: 700; font-variant-numeric: tabular-nums; }
 .t-instrument .n { display: block; font-size: 15px; color: var(--soft); }
-.t-instrument .ann { display: grid; grid-template-columns: 96px 1fr; column-gap: 14px; align-items: start; padding: 8px 0; }
-.t-instrument .lamp { display: grid; place-items: center; height: 30px; border-radius: 3px; background: var(--sig); color: #16130c; font-size: 15px; font-weight: 800; letter-spacing: 0;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.2), 0 0 12px color-mix(in srgb, var(--sig) 45%, transparent); }
 .t-instrument .gauge { position: relative; height: 112px; margin: 6px 0 10px; background: var(--well); border-radius: 4px; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
 .t-instrument .gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .t-instrument .gauge text { font-family: inherit; }
-.t-instrument .read { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; margin-top: 10px; }
+.t-instrument .read { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
 .t-instrument .read div { background: var(--well); border-radius: 4px; padding: 10px 8px; box-shadow: inset 0 2px 5px rgba(0,0,0,.55); }
 .t-instrument .read .sub { display: block; margin-top: 2px; font-size: 15px; color: var(--soft); }
 .t-instrument .read b { display: block; font-size: 34px; line-height: 1; font-weight: 700; color: var(--sig); font-variant-numeric: tabular-nums; text-shadow: 0 0 10px color-mix(in srgb, var(--sig) 40%, transparent); }
 .t-instrument .read .lbl { display: block; margin-top: 6px; }
+.t-instrument { --rs-font: var(--face); --rs-font-h: var(--face); --rs-ink: var(--ink); --rs-muted: var(--soft); --rs-acc: var(--sig); --rs-base: 16px; }
+/* A module is its own frame: the reading block inside it keeps no outer air. */
+#root .t-instrument .mod > .rs-sec, #root .t-instrument .mod > .rs-lead { padding-block: 0; }
+.t-instrument .rs-h + .gauge { margin: 0 0 16px; }
+.t-instrument .isay { margin-bottom: 10px; text-wrap: pretty; }
+.t-instrument .iwell { background: var(--well); border-radius: 4px; padding: 12px 12px 10px; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
+.t-instrument .ileds { padding: 12px; }
+.t-instrument .iunit { display: block; margin-top: 6px; }
+.t-instrument .ilegend { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 10px; font-size: 15px; }
+.t-instrument .ilegend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 7px; vertical-align: -1px; }
+.t-instrument .isoft { color: var(--soft); }
+.t-instrument .irx { grid-template-columns: 60px 1fr; text-wrap: pretty; }
 .t-instrument .foot { display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.t-instrument .isrc { display: flex; gap: 14px; align-items: baseline; margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.t-instrument .iinputs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 15px; color: var(--soft); }
+.t-instrument .iinputs > span { display: inline-flex; align-items: center; white-space: nowrap; }
+.t-instrument .iinputs .il { width: 15px; height: 15px; margin-right: 6px; color: var(--ink); }
+.t-instrument .isrc + .foot { margin-top: 12px; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
+      const B = EXPLORER.blocks;
+      const face = skin.face.stack;
+      const W = 424; // a module's well, inside the plate's and the well's padding
       const screws = [["8px", "8px", "20deg"], ["8px", null, "70deg"], [null, "8px", "-35deg"], [null, null, "5deg"]]
         .map(([t, l, r]) => `<i class="screw" style="${t ? `top:${t}` : "bottom:8px"};${l ? `left:${l}` : "right:8px"};--r:${r}"></i>`).join("");
-      const mod = (title, count, body) => `<div class="mod">${screws}<div class="head"><span class="lbl">${title}</span><span class="lbl">${count}</span></div>${body}</div>`;
-      const mods = [];
-      if (needs.length) mods.push(mod("Annunciator · needs your call", `${needs.length} lit`, needs.map((d) => `<div class="ann" data-role="body"><span class="lamp">${esc(d.verb)}</span><span>${esc(d.label)}${d.note ? `<span class="n">${esc(d.note)}</span>` : ""}</span></div>`).join("")));
-      if (c.today.length) {
-        const W = 456;
-        const X = (p) => 14 + p * (W - 28);
-        const lv = levels(c.today, 0.12);
+      // A screwed-in module; a reading module's one label is its section heading, a display's is engraved.
+      const mod = (body, { title = "", count = "", kind = "" } = {}) =>
+        `<div class="mod"${kind ? ` data-block="${kind}"` : ""}>${screws}${title ? `<div class="head"><span class="lbl">${title}</span><span class="lbl">${count}</span></div>` : ""}${body}</div>`;
+      const ST = { font: face, size: 13, ink: "var(--ink)", soft: "var(--soft)", valueWeight: 700 };
+      const legend = (c, fills) =>
+        `<p class="ilegend">${c.series.length > 1 ? c.series.map((sr, k) => `<span><i style="background:${fills[k % fills.length]}"></i>${esc(sr.name)} ${esc(sr.total)}</span>`).join("") : ""}<span class="isoft">${esc(c.range ? (c.unit ? `${c.unit} per day` : "per day") : B.facts(c))}</span></p>`;
+      const plot = (c) => {
+        if (c.chart === "line") return B.line(c, { ...ST, w: W, h: 130, rule: "var(--hair)", base: "var(--soft)", lines: [{ color: "var(--sig)", width: 2 }, { color: "var(--ink)", width: 2 }, { color: "var(--soft)", width: 2, dash: "4 3" }], gutter: 26, dot: 4 });
+        if (c.chart === "spark") return B.spark(c, { ...ST, w: W, h: 52, line: "var(--sig)", lineW: 2 });
+        return B.bars(c, { ...ST, w: W, h: 150, rule: "var(--soft)", fills: c.series.length > 1 ? ["var(--ink)", "var(--sig)", "var(--soft)"] : ["var(--sig)"], weight: 400, gapRatio: 0.42 });
+      };
+      // The operating window: today's events pinned on a 06-24 scale, a NOW needle at the issue time.
+      const gauge = (all) => {
+        const events = all.filter((e) => e.t24);
+        const GW = 456;
+        const X = (p) => 14 + p * (GW - 28);
+        const lv = levels(events, 0.12);
         const ticks = Array.from({ length: 19 }, (_, i) => i + 6).map((h) => `<line x1="${X((h - 6) / 18)}" y1="${h % 3 ? 82 : 76}" x2="${X((h - 6) / 18)}" y2="90" stroke="var(--soft)" stroke-width="1"/>${h % 3 === 0 ? `<text x="${X((h - 6) / 18)}" y="106" text-anchor="middle" font-size="13" fill="var(--soft)">${pad2(h)}</text>` : ""}`).join("");
-        const pins = c.today.map((e, i) => {
+        const pins = events.map((e, i) => {
           const x = X(pos(e));
           const y = lv[i] ? 14 : 34;
-          return `<line x1="${x}" y1="${y + 6}" x2="${x}" y2="84" stroke="var(--sig)" stroke-width="1"/><circle cx="${x}" cy="84" r="4" fill="var(--sig)"/><text x="${x}" y="${y}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${e.t24 ? esc(e.t24) : "EOD"}</text>`;
+          return `<line x1="${x}" y1="${y + 6}" x2="${x}" y2="84" stroke="var(--sig)" stroke-width="1"/><circle cx="${x}" cy="84" r="4" fill="var(--sig)"/><text x="${x}" y="${y}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${esc(e.t24)}</text>`;
         }).join("");
         const now = X((hours(ed.time24) - 6) / 18);
-        const gauge = `<div class="gauge"><svg viewBox="0 0 ${W} 112" preserveAspectRatio="none" aria-hidden="true">${ticks}<line x1="${now}" y1="20" x2="${now}" y2="92" stroke="var(--ink)" stroke-width="2"/><text x="${now + 5}" y="16" font-size="13" font-weight="800" fill="var(--sig)">NOW</text>${pins}</svg></div>`;
-        mods.push(mod("Operating window · 06–24 local", `${c.today.length} scheduled`, gauge + c.today.map((e) => `<div class="row" data-role="body"><span class="t">${e.t24 ? esc(e.t24) : "EOD"}</span><span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")));
-      }
-      if (c.overnight.length) mods.push(mod("Overnight log · while you slept", `${c.overnight.length} entr${c.overnight.length === 1 ? "y" : "ies"}`, c.overnight.map((e) => `<div class="row" data-role="body"><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")));
-      if (c.running.length) mods.push(mod("In progress · still running", `${c.running.length} entr${c.running.length === 1 ? "y" : "ies"}`, c.running.map((e) => `<div class="row" data-role="body"><span class="t">${esc(e.t24)}</span><span>${esc(e.label)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ""}</span></div>`).join("")));
-      const s = c.stats;
-      if (s) mods.push(mod("Yesterday · readout", "", `<div class="read"><div><b>${s.done}</b><span class="lbl">done</span>${s.you && s.gaia ? `<span class="sub">you ${s.you} · GAIA ${s.gaia}</span>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus today</span></div>` : ""}</div>`));
+        return `<div class="gauge"><svg viewBox="0 0 ${GW} 112" preserveAspectRatio="none" aria-hidden="true">${ticks}<line x1="${now}" y1="20" x2="${now}" y2="92" stroke="var(--ink)" stroke-width="2"/><text x="${now + 5}" y="16" font-size="13" font-weight="800" fill="var(--sig)">NOW</text>${pins}</svg></div>`;
+      };
+      const R = {
+        lead: (b) => mod(B.lead(b, { kicker: "Master caution" })),
+        items: (b) => mod(B.section(b.heading, B.items(b))),
+        calendar: (b) => {
+          const week = b.events.some((e) => e.day);
+          return mod(B.section(week ? "The week ahead" : "Today", B.events(b, { clock: "t24", allDay: "All day" }), { extra: week || !b.events.some((e) => e.t24) ? "" : gauge(b.events) }));
+        },
+        chart: (c) => mod(`<p class="isay">${esc(c.takeaway)}</p><div class="iwell">${plot(c)}</div>${legend(c, c.series.length > 1 ? ["var(--ink)", "var(--sig)", "var(--soft)"] : ["var(--sig)"])}`, { title: esc(c.title), count: esc(c.range || ""), kind: "chart" }),
+        progress: (p) => mod(`<p class="isay">${esc(p.statement)}</p><div class="iwell ileds">${B.cells(p, { w: W, h: 18, gap: 6, on: "var(--sig)", off: "var(--hair)" })}</div><span class="lbl iunit">${p.total - p.done} open</span>`, { title: "Goal · progress", count: `${p.done} of ${p.total} done`, kind: "progress" }),
+        quote: (q) => mod(`<div class="row irx"><span class="t">Rx</span><span>&ldquo;${esc(q.text)}&rdquo;<span class="n">${esc(q.author)} · ${esc(q.app)}</span></span></div>`, { title: "Incoming · in their words", kind: "quote" }),
+        note: (n) => mod(`<div class="row irx"><span class="t">GAIA</span><span>${esc(n.text)}</span></div>`, { title: "Advisory", kind: "note" }),
+      };
+      const mods = B.layout(ed, R);
+      const s = ed.stats;
+      if (s) mods.push(mod(`<div class="read"><div><b>${s.done}</b><span class="lbl">done</span>${s.you && s.gaia ? `<span class="sub">you ${s.you} · GAIA ${s.gaia}</span>` : ""}</div>${s.mail ? `<div><b>${s.mail}</b><span class="lbl">emails</span></div>` : ""}${s.focus ? `<div><b>${esc(s.focus)}</b><span class="lbl">focus today</span></div>` : ""}</div>`, { title: "Yesterday · readout" }));
       return `<article class="t-instrument" style="--sig:${skin.signal.sig}; --panel:${skin.panel.panel}; --well:${skin.panel.well}; --plate:${skin.panel.plate}; --ink:${skin.panel.ink}; --soft:${skin.panel.soft}; --hair:${skin.panel.hair}; --face:${skin.face.stack}">
 <i class="brush" aria-hidden="true"></i>${grain("in-g", 0.9)}
 <div class="top"><span class="brand">GAIA</span><span class="serial lbl">GAIA RB-${ed.editionNo} · Daily briefing instrument<br>Serial ${esc(ed.weekday.slice(0, 3))} ${ed.day} ${esc(ed.monthShort)} ${ed.year} · issued ${esc(ed.time24)}</span></div>
 <p class="deck">${esc(ed.deck)}</p>
 ${EXPLORER.fold(mods).join("")}
+${ed.sources.length ? `<div class="isrc" data-block="sources"><span class="lbl">Inputs</span><span class="iinputs">${ed.sources.map((x) => `<span>${B.logo(x.logo, { cls: "il" })}${esc(x.name)}</span>`).join("")}</span></div>` : ""}
 <div class="foot"><span class="lbl">GAIA daily brief · edition No. ${ed.editionNo}</span><span class="lbl">Issued ${esc(ed.time24)}</span></div>
 </article>`;
     },

@@ -418,6 +418,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             sort=[("completed_at", -1)],
         )
 
+    async def list_external_ref_activity_since(
+        self, user_id: str, source: ExternalRefSource, *, since: datetime
+    ) -> list[TodoDocument]:
+        """Return the user's todos about one kind of outside object opened or completed since (UTC)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "external_ref.source": source.value,
+                "$or": [{"created_at": {"$gte": since}}, {"completed_at": {"$gte": since}}],
+            }
+        )
+
     async def list_open_user_todos(
         self, user_id: str, *, limit: int, due_before: datetime | None = None
     ) -> list[TodoDocument]:
@@ -444,9 +456,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             limit=limit,
         )
 
-    async def count_open_user_todos(self, user_id: str) -> int:
-        """Count every open todo of the user's own, however long the list."""
-        return await self._count(_own_open_query(user_id))
+    async def count_open_user_todos(
+        self, user_id: str, *, due_before: datetime | None = None
+    ) -> int:
+        """Count every open todo of the user's own, however long the list; due_before, only those due before it."""
+        query = _own_open_query(user_id)
+        if due_before is not None:
+            query["due_date"] = {"$lt": due_before}
+        return await self._count(query)
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.

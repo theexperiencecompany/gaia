@@ -26,7 +26,8 @@ async def list_briefings(
     """Archive of the user's briefings (daily + weekly), newest first."""
     user_id = user.user_id
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
-    briefings = await briefing_repository.list_recent(user_id, limit=limit)
+    # A quiet day's note has no edition: it was a message, not a brief to look back on.
+    briefings = await briefing_repository.list_recent(user_id, limit=limit, editions_only=True)
     return BriefingListResponse(briefings=[briefing_view(b) for b in briefings])
 
 

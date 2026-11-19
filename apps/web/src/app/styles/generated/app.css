@@ -201,6 +201,7 @@
 @source "../../../config/registries/toolRegistry.ts";
 @source "../../../features/auth/constants.ts";
 @source "../../../features/bots/constants.ts";
+@source "../../../features/briefing/constants.ts";
 @source "../../../features/briefing/index.ts";
 @source "../../../features/browser/constants.ts";
 @source "../../../features/browser/utils.ts";

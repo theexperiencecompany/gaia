@@ -67,6 +67,12 @@ PERSON_NAME_KEYS: Final[tuple[str, ...]] = (
     "emailAddress",
 )
 
+#: The identity keys of a connected account that name the person who connected it, never their
+#: workspace or team: a person on an item holding one of these values is the user.
+ACCOUNT_PERSON_KEYS: Final[frozenset[str]] = frozenset({"email", "username", "user_id"})
+#: Keys an app identifies a person object by, beyond its name: the user is matched on these too.
+PERSON_ID_KEYS: Final[tuple[str, ...]] = ("id", "user_id", "login", "username", "email")
+
 #: Stored as a scout playbook's result brief: a scout is never narrated.
 SCOUT_RESULT_BRIEF: Final[str] = "Replayed without narration; its items become brief signals."
 

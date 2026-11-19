@@ -44,15 +44,6 @@ DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
 WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
 
 
-class SectionKey(StrEnum):
-    """What one section of a brief holds; every surface reads the key, never the title or position."""
-
-    LEAD = "lead"
-    NEEDS_YOU = "needs_you"
-    UPDATES = "updates"
-    GAIA_DID = "gaia_did"
-
-
 class BriefAction(StrEnum):
     """What a brief item asks the reader to do; set only on items that need them."""
 
@@ -80,46 +71,66 @@ class BriefOutcome(StrEnum):
 
 # Title of the in-app note that releases what was held when no daily brief will carry it.
 HELD_RELEASE_TITLE: Final[str] = "While you were away"
-# Daily brief section heads, numbered in order. Display casing: every surface shows
-# these as written; an edition that sets its heads in capitals does so in its own CSS.
-SECTION_TITLES: Final[dict[SectionKey, str]] = {
-    SectionKey.LEAD: "First up",
-    SectionKey.NEEDS_YOU: "Needs you",
-    SectionKey.UPDATES: "From your apps",
-    SectionKey.GAIA_DID: "GAIA's work",
-}
-# The weekly digest's updates are what the user finished this week.
-WEEKLY_SECTION_TITLES: Final[dict[SectionKey, str]] = {
-    **SECTION_TITLES,
-    SectionKey.UPDATES: "You finished",
-}
-SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV")
-# Every brief's sections in reading order, and the most items the selection judge
-# may put in each: the brief reads in under a minute.
-SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
-    SectionKey.LEAD,
-    SectionKey.NEEDS_YOU,
-    SectionKey.UPDATES,
-    SectionKey.GAIA_DID,
-)
-SECTION_CAPS: Final[dict[SectionKey, int]] = {
-    SectionKey.LEAD: 1,
-    SectionKey.NEEDS_YOU: 4,
-    SectionKey.UPDATES: 3,
-    SectionKey.GAIA_DID: 3,
-}
-# The sections whose items ask something of the reader; every other section reports.
-ACTION_SECTIONS: Final[frozenset[SectionKey]] = frozenset({SectionKey.LEAD, SectionKey.NEEDS_YOU})
+#: What the lead's section is headed: the composition gives the lead no heading of its own.
+LEAD_HEADING: Final[str] = "First up"
+#: Section numerals, in reading order, for the editions that number their sections.
+SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII")
 # Every brief item is a short noun-phrase title and at most one muted detail line.
 BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
 BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
-#: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
-MAX_SELECTION_ATTEMPTS: Final[int] = 2
-#: The selection judge's metering label.
-BRIEF_SELECTION_LABEL: Final[str] = "brief_selection_judge"
+#: Composition calls per brief: one more when the answer breaks the contract, then the run fails.
+MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
+#: The composition call's metering label, and its heading check's.
+BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
+BRIEF_HEADING_CHECK_LABEL: Final[str] = "brief_heading_check"
+#: The voice call's metering label: the brief's headline, lede, caption and message.
+BRIEF_VOICE_LABEL: Final[str] = "brief_voice"
+#: The heading check judges, it does not write: the same groups get the same verdict.
+BRIEF_HEADING_CHECK_TEMPERATURE: Final[float] = 0.0
+# The page budget a composition is held to: what one edition image and a minute's read can carry.
+MAX_BRIEF_BLOCKS: Final[int] = 7
+MAX_BRIEF_ITEMS: Final[int] = 10
+MAX_ITEMS_PER_BLOCK: Final[int] = 5
+#: Rows an edition prints in one group or the calendar; the rest are "+N more in the full brief".
+EDITION_ROWS_SHOWN: Final[int] = 3
+MAX_BRIEF_CHARTS: Final[int] = 2
+# The model-written strings of a composition, each one line on the narrowest edition.
+BRIEF_HEADING_MAX_CHARS: Final[int] = 40
+BRIEF_CHART_TITLE_MAX_CHARS: Final[int] = 48
+BRIEF_TAKEAWAY_MAX_CHARS: Final[int] = 140
+BRIEF_NOTE_MAX_CHARS: Final[int] = 240
+BRIEF_OFFER_MAX_CHARS: Final[int] = 90
+# A line or spark chart reads a trend only over at least this many days; a bar reads at most this many bars.
+MIN_TREND_POINTS: Final[int] = 5
+#: Lines one chart may draw: every family's two line styles, then the same two dotted.
+MAX_LINE_SERIES: Final[int] = 4
+MAX_BAR_CATEGORIES: Final[int] = 12
+#: The days a series covers: the week ending today.
+SERIES_WINDOW_DAYS: Final[int] = 7
+# A quote is a whole sentence or two of someone's own words, short enough to set large.
+QUOTE_MIN_CHARS: Final[int] = 24
+QUOTE_MAX_CHARS: Final[int] = 200
 #: What a candidate's source is when GAIA itself, not a connected app, produced it.
 GAIA_SOURCE: Final[str] = "gaia"
 GAIA_APP_NAME: Final[str] = "GAIA"
+#: How the composition names a reader whose name GAIA does not know.
+UNNAMED_READER: Final[str] = "the user"
+# The span each kind of brief reads the calendar over, as its composition is told.
+TODAY_SPAN: Final[str] = "today"
+WEEK_AHEAD_SPAN: Final[str] = "in the week ahead"
+#: What the brief is told when no calendar is connected, so it never calls the user's day empty.
+NO_CALENDAR_CONNECTED: Final[str] = (
+    "No calendar is connected, so nothing is known about the user's schedule: "
+    "never say it is empty, open or clear."
+)
+#: How an undated todo of the user's own reads in the pool and the facts: background, not news.
+BACKLOG_STATE: Final[str] = "on their list, undated"
+#: How an item an earlier brief already showed, unchanged, is marked: still open, not news.
+REPEAT_MARK: Final[str] = "already shown, still open"
+CALENDAR_UNAVAILABLE: Final[str] = (
+    "The user's calendar could not be read this time, so nothing is known about their "
+    "schedule: never say it is empty, open or clear; say once that it could not be read."
+)
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
@@ -128,14 +139,28 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 # The message is a text, not a wall: about 20 short lines on the busiest day.
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
-RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per brief: one regeneration when its slots or its claims fail the
-# facts, then the run fails rather than ship it.
+RECENT_BRIEFS_RECALLED: Final[int] = 5
+#: Words that say how often something happens; the voice may use one only where a fact does.
+FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
+    "rare",
+    "rarely",
+    "seldom",
+    "unusual",
+    "unusually",
+    "usual",
+    "usually",
+    "typical",
+    "typically",
+    "for once",
+    "as always",
+    "once again",
+)
+# Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
+# mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
-#: The faithfulness check's metering label.
-BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
-#: The check judges, it does not write: the same draft gets the same verdict.
-BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
+#: The plain voice a brief gets when the model's never holds to its facts.
+PLAIN_BRIEF_HEADLINE: Final[str] = "Your brief"
+PLAIN_BRIEF_EMPTY: Final[str] = "Here is your brief."
 
 # The user's own todos due today or overdue the daily brief weighs as candidates.
 DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
@@ -146,12 +171,55 @@ UNDATED_TODO_CANDIDATES_LIMIT: Final[int] = 3
 # Days a daily brief looks back at most, however long ago the last one went out.
 LOOKBACK_MAX_DAYS: Final[int] = 7
 
-# Rows per list in the weekly edition (shipped, handled, the week ahead).
+# Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 
 # Consecutive unacknowledged briefings (no open, no activity) that flip a run into
 # winback mode. At/above this the run sends one adaptive winback then backs off.
 WINBACK_THRESHOLD: Final[int] = 3
+
+
+class BriefForm(StrEnum):
+    """What a stored brief is: a drawn edition, or the plain note a quiet day sends instead."""
+
+    EDITION = "edition"
+    QUIET_NOTE = "quiet_note"
+
+
+#: A quiet day's or week's note: nothing new and nothing on the calendar, so no edition, no
+#: filler. Its first line says what is new, then how the calendar stands; a quiet brief after
+#: a quiet brief says it is still quiet and since when, so a quiet streak never reads the same.
+QUIET_NOTE_HEADLINES: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: "Nothing needs you today",
+    BRIEFING_KIND_WEEKLY: "Nothing needs you this week",
+}
+QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: "Nothing new needs you today",
+    BRIEFING_KIND_WEEKLY: "Nothing moved this week",
+}
+QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
+QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new since your brief {when}"
+QUIET_NOTE_STILL_FOR: Final[str] = "Still nothing new: {days} days since your brief {when}"
+QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
+    BRIEFING_KIND_DAILY: ", and your calendar is clear.",
+    BRIEFING_KIND_WEEKLY: ", and next week's calendar is clear.",
+}
+QUIET_NOTE_NO_CALENDAR: Final[str] = "."
+QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
+    ". I couldn't read your calendar, so check it before you plan."
+)
+QUIET_NOTE_OVERDUE: Final[str] = "{count} of your own todos are past due."
+#: A quiet brief that could not read every app: its quiet is only of what it read.
+QUIET_NOTE_UNREAD_HEADLINE: Final[str] = "Nothing new in what I could read"
+QUIET_NOTE_UNREAD: Final[str] = "I couldn't read {apps} this time, so I can't say what they hold."
+QUIET_NOTE_SIGNED_OUT: Final[str] = (
+    "Your {apps} sign-in expired: reconnect it in Settings, Integrations and I'll read it again."
+)
+QUIET_NOTE_SIGNED_OUT_MANY: Final[str] = (
+    "Your {apps} sign-ins expired: reconnect them in Settings, Integrations and I'll read them "
+    "again."
+)
+QUIET_NOTE_WATCH: Final[str] = "I'll flag anything that comes in."
 
 
 class BriefingFrequency(StrEnum):
@@ -178,6 +246,8 @@ IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
 #: How long a goal question waits before a brief asks about the same goal again.
 GOAL_QUESTION_REASK: Final = timedelta(days=7)
+#: How long a goal's open todo sits untouched before the weekly calls it stuck.
+GOAL_WORK_STALLED_AFTER: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 
@@ -208,8 +278,28 @@ DESK_FAMILIES: Final[frozenset[str]] = frozenset(
 # Room around a desk family's root, in CSS px, so its widest shadow is captured whole
 # (Air Mail's envelope: 44px blur, 26px drop) before the trim cuts back to the paper.
 DESK_SHADOW_BLEED_PX: Final[int] = 48
+
+
+# The explorer families' export density: their 540px canvas rasterizes at 3x.
+EXPLORER_SCALE: Final[int] = 3
+
+
+class ArtFamily(StrEnum):
+    """The edition families that hang a painting (their template reads ed.art)."""
+
+    EXHIBITION = "exhibition"
+    BROADSHEET = "broadsheet"
+    ALMANAC = "almanac"
+
+
 # The web page that shows the user's collected Air Mail stamps.
 POSTMARKS_PATH: Final[str] = "/settings/postmarks"
+
+
+class SilentTurnSource(StrEnum):
+    """The silent agent turns whose prompt GAIA writes itself, so nothing in them is the user's."""
+
+    DAY_ZERO_HELLO = "day_zero_hello"
 
 
 class BriefItemSource(StrEnum):
@@ -224,6 +314,7 @@ class BriefingBag(StrEnum):
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"
+    ARTWORK = "artwork"
 
 
 class BriefingRunOutcome(StrEnum):
@@ -234,6 +325,8 @@ class BriefingRunOutcome(StrEnum):
     DORMANT = "dormant"
     BOOTSTRAP_PENDING = "bootstrap_pending"
     WINBACK_BACKOFF = "winback_backoff"
+    #: Another quiet day after a quiet note: nothing is sent until something real happens.
+    SILENT = "silent"
 
 
 # The workflow execution's summary for each outcome, shown in the run history.
@@ -243,6 +336,7 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
     BriefingRunOutcome.DORMANT: "Skipped: briefings are paused until the user is active again",
     BriefingRunOutcome.BOOTSTRAP_PENDING: "Skipped: held until the user's goal is known",
     BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
+    BriefingRunOutcome.SILENT: "Skipped: still quiet since the last quiet note",
 }
 
 # Every surface shows the edition at most 540 CSS px wide (email column, chat

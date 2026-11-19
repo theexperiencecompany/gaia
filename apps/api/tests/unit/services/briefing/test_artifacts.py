@@ -16,6 +16,31 @@ def _todo(todo_id: str, canvas: str | None = None) -> TodoDocument:
 
 
 class TestGatherArtifacts:
+    def test_open_works_canvas_never_reaches_the_voice(self) -> None:
+        """Replay of Dhruv's set: "their notes say not to resume the OAuth test" voiced a canvas."""
+        canvas = (
+            "## Standing rules\n- Do not resume the OAuth test.\n\n## Current State\n- Paused.\n"
+        )
+        work = TrackedWork(
+            running=[_todo("running", canvas)],
+            blocked=[_todo("blocked", canvas)],
+            failed=[_todo("failed", canvas)],
+        )
+
+        assert {fact.snippet for fact in gather_artifacts(work).values()} == {""}
+
+    def test_finished_works_summary_is_its_deliverable_without_gaias_working_notes(
+        self,
+    ) -> None:
+        canvas = (
+            "# Investors\n## Standing rules\n- Never email them.\n\n## Key Details\n- Thread 1a2b.\n"
+            "\n## Current State\n- Vetted twelve investors.\n"
+        )
+
+        facts = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)]))
+
+        assert facts["t1"].snippet == "- Vetted twelve investors."
+
     def test_a_summary_keeps_the_prose_and_drops_headings_comments_tables_and_rules(self) -> None:
         canvas = (
             "# Title\n<!-- note -->\n| a | b |\n---\nTen slides.\n\n  Covers the Q3 numbers.  \n"
@@ -37,13 +62,61 @@ class TestGatherArtifacts:
 
         assert list(gather_artifacts(work)) == ["t1", "t2"]
 
-    def test_a_summary_is_cut_at_the_preview_length_without_trailing_space(self) -> None:
+    def test_a_summary_ends_on_a_whole_sentence_never_mid_figure(self) -> None:
+        """Replay of Dhruv's Nov 4 brief: a summary cut at 240 chars ended "Friday, Nov 6, 2026, 1"."""
+        sent = (
+            "- Dhruv sent the confirmation reply on Nov 4, 2026 local time (Gmail message ID "
+            "1a1a2be682c927b4); the earlier draft r3126082176426667195 was sent."
+        )
+        booked = (
+            "- Boardy replied in the same thread that the intro call is booked for Friday, "
+            "Nov 6, 2026, 10:00-10:30 AM ET / 8:30-9:00 PM IST."
+        )
+        canvas = f"## Key Details\n- Thread 1a1a.\n\n## Current State\n{sent}\n{booked}\n"
+
+        [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
+
+        assert fact.snippet == sent
+
+    def test_whole_sentences_are_kept_while_they_fit(self) -> None:
+        exactly_full = "Ten slides. " + "Long. " * 37 + "x" * 5 + "."
+        canvas = exactly_full + " The next sentence."
+
+        [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
+
+        assert len(exactly_full) == 240
+        assert fact.snippet == exactly_full
+
+    def test_a_finished_item_with_no_deliverable_has_an_empty_summary(self) -> None:
+        canvas = "## Standing rules\n- Never email them.\n"
+
+        [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
+
+        assert fact.snippet == ""
+
+    def test_a_sub_heading_or_an_unclosed_comment_in_a_deliverable_is_dropped(self) -> None:
+        canvas = "## Current State\n  ### Sources\n<!-- draft notes\n- Vetted twelve investors.\n"
+
+        [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
+
+        assert fact.snippet == "- Vetted twelve investors."
+
+    def test_a_first_sentence_past_the_preview_length_is_cut_at_a_word_and_marked(
+        self,
+    ) -> None:
         canvas = ("word " * 100).strip()
 
         [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
 
-        assert fact.snippet == ("word " * 48).rstrip()
-        assert len(fact.snippet) == 239
+        assert fact.snippet == ("word " * 48).rstrip() + "\u2026"
+        assert len(fact.snippet) == 240
+
+    def test_a_word_that_would_leave_no_room_for_the_mark_is_dropped(self) -> None:
+        canvas = "x" * 235 + " yyyy" + " z" * 10
+
+        [fact] = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)])).values()
+
+        assert fact.snippet == "x" * 235 + "\u2026"
 
     def test_an_item_without_a_canvas_has_an_empty_summary_and_no_size(self) -> None:
         facts = gather_artifacts(TrackedWork(running=[_todo("t1")]))

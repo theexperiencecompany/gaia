@@ -1,12 +1,13 @@
 """Reading a replayed result into signals by the learned paths, and refusing a moved shape."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 from tests.helpers import captured_wide_event
 
 from app.constants.scouts import SCOUT_SIGNAL_CEILING
-from app.models.scout_models import SignalFields, SignalImportance, SignalSource
+from app.models.scout_models import PeopleRole, SignalFields, SignalImportance, SignalSource
 from app.services.briefing.scouts.extract import extract_signals
 from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import PlaceholderError
@@ -48,12 +49,124 @@ class TestReadingItems:
             "why": None,
             "importance": SignalImportance.NORMAL,
             "people": ["ana"],
+            "people_role": None,
+            "people_you": [],
             "url": "https://gh/7",
             "state": "open",
+            "amount": None,
+            "amount_unit": None,
+            "text": None,
+            "author": None,
             "created_at": None,
             "updated_at": None,
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
+
+    def test_the_user_is_told_apart_from_a_teammate_by_their_own_handle(self) -> None:
+        """Aryan's brief said "Aryan is waiting on your review" about Aryan himself."""
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}
+        )
+        pr = _pr(7, state="open", author="ana", due="2026-10-30")
+        pr["assignees"] = [
+            {"name": "Aryan Randeriya", "login": "Aryan-Randeriya"},
+            {"name": "Sam Lee", "login": "samlee"},
+            "ARYAN@HEYGAIA.IO",
+        ]
+        mine = replace(GITHUB, handles=frozenset({"aryan-randeriya", "aryan@heygaia.io"}))
+
+        [signal] = extract_signals(mine, [source], {"reviews": {"items": [pr]}})
+
+        assert signal.people == ["Aryan Randeriya", "Sam Lee", "ARYAN@HEYGAIA.IO"]
+        assert signal.people_you == ["Aryan Randeriya", "ARYAN@HEYGAIA.IO"]
+
+    def test_an_app_with_no_known_handle_marks_nobody_as_the_user(self) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}
+        )
+        pr = _pr(7, state="open", author="ana", due="2026-10-30")
+        pr["assignees"] = [{"name": "Aryan Randeriya", "login": "Aryan-Randeriya"}, 7]
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [pr]}})
+
+        assert (signal.people, signal.people_you) == (["Aryan Randeriya"], [])
+
+    def test_the_peoples_part_and_the_texts_author_are_read_as_the_scout_learned_them(
+        self,
+    ) -> None:
+        """Audit: people carried no role, and a quote's author was whoever came first."""
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(
+                    update={
+                        "people": "reviewers",
+                        "people_role": PeopleRole.REVIEWER,
+                        "text": "last_comment.body",
+                        "author": "last_comment.user",
+                    }
+                )
+            }
+        )
+        item = _pr(
+            7,
+            reviewers=[{"login": "sam"}],
+            last_comment={"body": "Can you rebase?", "user": {"login": "ana"}},
+        )
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [item]}})
+
+        assert (signal.people, signal.people_role, signal.text, signal.author) == (
+            ["sam"],
+            PeopleRole.REVIEWER,
+            "Can you rebase?",
+            "ana",
+        )
+
+    @pytest.mark.parametrize(("raw", "read"), [(1250, 1250.0), (99.5, 99.5), ("42.10", 42.1)])
+    def test_an_items_figure_reads_as_a_number_in_its_sources_unit(
+        self, raw: object, read: float
+    ) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total", "text": "body"}),
+                "amount_unit": "USD",
+            }
+        )
+        values = {"reviews": {"items": [_pr(1, total=raw, body="Can you look today?")]}}
+
+        [signal] = extract_signals(GITHUB, [source], values)
+
+        assert (signal.amount, signal.amount_unit, signal.text) == (
+            read,
+            "USD",
+            "Can you look today?",
+        )
+
+    def test_an_item_without_a_figure_carries_no_unit(self) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total"}),
+                "amount_unit": "USD",
+            }
+        )
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1)]}})
+
+        assert (signal.amount, signal.amount_unit) == (None, None)
+
+    def test_an_empty_figure_and_empty_text_read_as_absent(self) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total", "text": "body"}),
+                "amount_unit": "USD",
+            }
+        )
+
+        [signal] = extract_signals(
+            GITHUB, [source], {"reviews": {"items": [_pr(1, total="", body="")]}}
+        )
+
+        assert (signal.amount, signal.amount_unit, signal.text) == (None, None, None)
 
     def test_the_items_own_creation_and_update_times_are_carried(self) -> None:
         dated = SOURCE.model_copy(
@@ -208,6 +321,33 @@ class TestOneMalformedItem:
             [signal] = extract_signals(GITHUB, [SOURCE], values)
 
         assert (signal.external_id, signal.title, getattr(signal, field)) == ("1", "PR 1", empty)
+        [warning] = event["warnings"]
+        assert (warning["skipped"], warning["unread_fields"]) == (0, [field])
+
+    @pytest.mark.parametrize(
+        ("extra", "field"),
+        [
+            ({"total": True}, "amount"),
+            ({"total": "a lot"}, "amount"),
+            ({"total": {"value": 3}}, "amount"),
+            ({"body": {"x": 1}}, "text"),
+        ],
+        ids=["figure a flag", "figure not numeric", "figure an object", "text not text"],
+    )
+    async def test_a_figure_or_text_that_cannot_be_read_is_left_empty(
+        self, extra: dict[str, object], field: str
+    ) -> None:
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(update={"amount": "total", "text": "body"}),
+                "amount_unit": "USD",
+            }
+        )
+
+        async with captured_wide_event() as event:
+            [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [_pr(1, **extra)]}})
+
+        assert (signal.external_id, getattr(signal, field), signal.amount_unit) == ("1", None, None)
         [warning] = event["warnings"]
         assert (warning["skipped"], warning["unread_fields"]) == (0, [field])
 

@@ -6,6 +6,7 @@ from typing import Any, Literal, TypedDict, cast
 
 from app.config.oauth_config import canonical_integration_id, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
+from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
@@ -197,15 +198,30 @@ async def connected_tool_records(user_id: str) -> list[IntegrationToolsRecord]:
 
 
 async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegration]:
-    """Return connected integration ids paired with their display name.
+    """Return connected integration ids paired with their display name."""
+    return await _named(await get_connected_integration_ids(user_id))
+
+
+async def get_signed_out_integrations_named(user_id: str) -> list[ConnectedIntegration]:
+    """Return the integrations whose sign-in died, paired with their display name: each needs a reconnect."""
+    records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
+    return await _named(
+        {
+            str(record["integration_id"])
+            for record in records
+            if record.get("status") == INTEGRATION_STATUS_EXPIRED and record.get("integration_id")
+        }
+    )
+
+
+async def _named(integration_ids: set[str]) -> list[ConnectedIntegration]:
+    """Pair each integration id with its display name, in id order.
 
     Platform names resolve from the in-memory OAuth config; custom MCP names
     (UUIDs, absent from that config) come from a single batched catalog query. A retired id
     reads as the integration it was renamed to; one naming no integration is left out.
     """
-    connected = sorted(
-        {canonical_integration_id(iid) for iid in await get_connected_integration_ids(user_id)}
-    )
+    connected = sorted({canonical_integration_id(iid) for iid in integration_ids})
     if not connected:
         return []
 

@@ -143,6 +143,9 @@ async def _follow_up_actions(state: State, config: RunnableConfig) -> State:
 
     Follow-up actions are streamed, not stored in state.
     """
+    # A background turn (a workflow, the day-zero hello) has no one reading its stream.
+    if read_agent_configurable(config).execution_mode == "background":
+        return state
     # Send completion marker as soon as follow-up actions start
     writer = current_stream_writer()
     try:

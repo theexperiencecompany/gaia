@@ -11,7 +11,7 @@ be served by a single-id entity cache.
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from app.constants.briefing import BRIEFING_KIND_DAILY
+from app.constants.briefing import BRIEFING_KIND_DAILY, BriefForm
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.models.briefing_models import (
@@ -51,7 +51,12 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         )
 
     async def list_recent(
-        self, user_id: str, *, limit: int, kind: BriefingKind | None = None
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        kind: BriefingKind | None = None,
+        editions_only: bool = False,
     ) -> list[BriefingModel]:
         """Return briefings newest brief date first, a weekly ahead of the daily on its day.
 
@@ -62,6 +67,8 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         query: dict[str, object] = {"user_id": user_id}
         if kind is not None:
             query["kind"] = kind
+        if editions_only:
+            query["payload.form"] = {"$ne": BriefForm.QUIET_NOTE.value}
         return await self._find(query, sort=[("date", -1), ("kind", -1)], limit=limit)
 
     async def list_stamped(self, user_id: str) -> list[BriefingModel]:
@@ -97,7 +104,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         payload: BriefingPayload,
         *,
         briefing_id: str,
-        edition: EditionRender,
+        edition: EditionRender | None,
     ) -> BriefingModel:
         """Store the payload (one per user/date/kind) under briefing_id, from briefing_id_for.
 
@@ -111,9 +118,9 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {
                 "$set": {
                     "payload": payload.model_dump(),
-                    "edition_image_url": edition.image_url,
-                    "edition_fold": edition.fold,
-                    "edition_paper": edition.paper,
+                    "edition_image_url": edition.image_url if edition else None,
+                    "edition_fold": edition.fold if edition else None,
+                    "edition_paper": edition.paper if edition else None,
                 },
                 "$setOnInsert": {
                     "created_at": datetime.now(UTC),

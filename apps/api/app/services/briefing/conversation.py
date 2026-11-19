@@ -32,8 +32,11 @@ async def _briefing_conversation_id(user_id: str) -> str:
     return created.conversation_id
 
 
-async def post_brief_message(user_id: str, text: str, card: BriefingCardData) -> None:
-    """Append GAIA's brief message to the Briefings conversation: its text, with the folded edition attached."""
+async def post_brief_message(user_id: str, text: str, card: BriefingCardData | None) -> None:
+    """Append GAIA's brief message to the Briefings conversation: its text, with the folded edition attached.
+
+    A quiet day's note has no edition, so it is the text alone.
+    """
     now = datetime.now(UTC).isoformat()
     message = MessageModel(
         type="bot",
@@ -42,7 +45,9 @@ async def post_brief_message(user_id: str, text: str, card: BriefingCardData) ->
         message_id=str(uuid4()),
         tool_data=[
             ToolDataEntry(tool_name=BRIEFING_TOOL_NAME, data=card.model_dump(), timestamp=now)
-        ],
+        ]
+        if card is not None
+        else None,
     )
     await update_messages(
         UpdateMessagesRequest(

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.helpers import local_timezone
+from tests.helpers import captured_wide_event, local_timezone
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -20,6 +20,7 @@ from app.constants.briefing import (
     WINBACK_THRESHOLD,
     BriefOutcome,
 )
+from app.constants.memory import MemoryEntityType, MemoryKind
 from app.constants.todos import (
     ACTION_NEEDED_LABEL,
     BLOCKING_LABEL,
@@ -28,11 +29,13 @@ from app.constants.todos import (
     NEEDS_REPLY_LABEL,
     WAITING_FOR_APPROVAL_LABEL,
     WAITING_FOR_REPLY_LABEL,
+    TodoCompleter,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -41,17 +44,27 @@ from app.models.briefing_models import (
     BriefingPayload,
     BriefingSection,
 )
-from app.models.calendar_models import GoogleCalendarEventResource
+from app.models.calendar_models import CalendarEventsResponse, GoogleCalendarEventResource
+from app.models.memory_models import MemoryEntityRef, MemoryEntry, MemorySearchResult
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
+from app.services import calendar_service
 from app.services.briefing import context, dormancy
+from app.utils.errors import AppError, IntegrationNotConnectedError
 
 _USER = "user-1"
 
 
-def _todo(todo_id: str, title: str, *labels: str) -> TodoDocument:
-    return TodoDocument(id=todo_id, user_id=_USER, title=title, labels=list(labels))
+def _todo(todo_id: str, title: str, *labels: str, by: TodoCompleter | None = None) -> TodoDocument:
+    return TodoDocument(
+        id=todo_id,
+        user_id=_USER,
+        title=title,
+        labels=list(labels),
+        completed=by is not None,
+        completed_by=by,
+    )
 
 
 def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingModel:
@@ -107,34 +120,54 @@ def _user_with_focus(focus: str) -> UserDocument:
     return UserDocument(onboarding=OnboardingSubdocument(focus=focus))
 
 
+def _memory(note: str, *entities: str, kind: MemoryKind = MemoryKind.FACT) -> MemoryEntry:
+    """Return a recalled memory: its content and the names it is about."""
+    return MemoryEntry(
+        content=note,
+        kind=kind,
+        entities=[
+            MemoryEntityRef(id=e, name=e, entity_type=MemoryEntityType.PROJECT) for e in entities
+        ],
+    )
+
+
+def _recalled(*memories: MemoryEntry, confident: bool = True) -> MemorySearchResult:
+    return MemorySearchResult(memories=list(memories), has_confident_match=confident)
+
+
 class TestGoalBlock:
     @pytest.fixture
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-        recall = AsyncMock(return_value=SimpleNamespace(memories=[]))
+        recall = AsyncMock(return_value=_recalled())
         monkeypatch.setattr(context, "memory_engine", SimpleNamespace(recall=recall))
-        monkeypatch.setattr(context, "entry_to_note", str)
+        monkeypatch.setattr(context, "entry_to_note", lambda entry: entry.content)
         return recall
 
     @pytest.mark.parametrize("focus", ["", "  ", "nothing", "N/A", "idk"])
     async def test_junk_focus_and_no_memories_is_no_goal(
         self, recall: AsyncMock, focus: str
     ) -> None:
-        block, has_goal = await context.format_goal_block(_USER, _user_with_focus(focus))
+        goals = await context.stated_goals(_USER, _user_with_focus(focus))
+        block, has_goal = context.format_goal_block(goals)
 
+        assert goals == []
         assert has_goal is False
         assert "No stated goal" in block
 
     async def test_stated_focus_and_recalled_memories_are_both_shown(
         self, recall: AsyncMock
     ) -> None:
-        recall.return_value = SimpleNamespace(
-            memories=["Raising a seed round", "Raising a seed round"]
+        recall.return_value = _recalled(
+            _memory("Raising a seed round", "Accel"), _memory("Raising a seed round", "Accel")
         )
 
-        block, has_goal = await context.format_goal_block(
-            _USER, _user_with_focus("Close 10 customers")
-        )
+        goals = await context.stated_goals(_USER, _user_with_focus("Close 10 customers"))
+        block, has_goal = context.format_goal_block(goals)
 
+        assert goals == [
+            context.StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING),
+            context.StatedGoal("Raising a seed round", GoalOrigin.MEMORY, ("Accel",)),
+        ]
         assert has_goal is True
         assert block.splitlines() == ["Stated goal: Close 10 customers", "- Raising a seed round"]
 
@@ -143,7 +176,7 @@ class TestGoalBlock:
         recall.side_effect = RuntimeError("vector store down")
 
         with pytest.raises(RuntimeError, match="vector store down"):
-            await context.format_goal_block(_USER, _user_with_focus("Ship v2"))
+            await context.stated_goals(_USER, _user_with_focus("Ship v2"))
 
 
 class TestTrackedWork:
@@ -157,6 +190,7 @@ class TestTrackedWork:
                 return_value=[
                     _todo("c1", "Research", GAIA_TRACKED_LABEL),
                     _todo("c2", "Groceries"),
+                    _todo("c3", "Book flights", GAIA_TRACKED_LABEL, by=TodoCompleter.USER),
                 ]
             ),
         )
@@ -260,7 +294,12 @@ class TestLookback:
         monkeypatch.setattr(
             todo_repository,
             "list_completed_since",
-            AsyncMock(return_value=[_todo("c1", "Deck", GAIA_TRACKED_LABEL), _todo("c2", "Gym")]),
+            AsyncMock(
+                return_value=[
+                    _todo("c1", "Deck", GAIA_TRACKED_LABEL, by=TodoCompleter.GAIA),
+                    _todo("c2", "Gym"),
+                ]
+            ),
         )
         monkeypatch.setattr(
             workflow_executions_repository,
@@ -272,9 +311,9 @@ class TestLookback:
             _USER, _brief("clear", items=["Finish the deck"]), _SINCE_BRIEF, _CLOCK
         )
 
-        assert "- Finish the deck" in block
+        assert "- note: Finish the deck" in block
         assert "- GAIA finished: Deck" in block
-        assert "- You finished: Gym" in block
+        assert "- The user finished: Gym" in block
         assert "- Workflow [success]: 3 drafts" in block
 
 
@@ -383,6 +422,18 @@ def _event(
     return GoogleCalendarEventResource.model_validate(data)
 
 
+def _response(
+    events: list[GoogleCalendarEventResource], failed: list[str] | None = None
+) -> CalendarEventsResponse:
+    return CalendarEventsResponse(
+        events=events,
+        selected_calendars=["primary"],
+        has_more=False,
+        calendars_truncated=[],
+        calendars_failed=failed or [],
+    )
+
+
 class TestCalendar:
     @pytest.fixture
     def connected(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
@@ -397,14 +448,16 @@ class TestCalendar:
         fetch = AsyncMock()
         monkeypatch.setattr(context, "get_calendar_events", fetch)
 
-        assert await context.gather_calendar(_USER, _clock(), days=1) == []
+        assert await context.gather_calendar(_USER, _clock(), days=1) == context.CalendarUnread(
+            context.CalendarGap.NOT_CONNECTED
+        )
         fetch.assert_not_awaited()
 
     async def test_events_land_on_the_users_clock_in_start_order(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
     ) -> None:
         fetch = AsyncMock(
-            return_value=SimpleNamespace(
+            return_value=_response(
                 events=[
                     _event(
                         "Sequoia partner meeting",
@@ -420,6 +473,7 @@ class TestCalendar:
 
         events = await context.gather_calendar(_USER, _clock(), days=1)
 
+        assert isinstance(events, list)
         assert [(e.date, e.start, e.title, e.location) for e in events] == [
             ("2026-10-14", None, "Offsite", None),
             ("2026-10-14", "09:00", "Standup", None),
@@ -429,7 +483,7 @@ class TestCalendar:
         assert window["time_min"] == "2026-10-13T18:30:00+00:00"
         assert window["time_max"] == "2026-10-14T18:30:00+00:00"
 
-    async def test_a_calendar_failure_fails_the_read(
+    async def test_a_calendar_failure_the_read_cannot_name_still_fails_it(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
     ) -> None:
         monkeypatch.setattr(
@@ -438,6 +492,138 @@ class TestCalendar:
 
         with pytest.raises(RuntimeError, match="proxy down"):
             await context.gather_calendar(_USER, _clock(), days=1)
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            IntegrationNotConnectedError(
+                integration_id="googlecalendar",
+                integration_name="Google Calendar",
+                why="the token expired",
+                grant_died=True,
+            ),
+            AppError(message="Invalid Credentials", status_code=401),
+        ],
+    )
+    async def test_an_expired_calendar_is_unavailable_not_a_crash(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock, failure: AppError
+    ) -> None:
+        """Regression: an expired token on the calendar list failed the whole daily brief."""
+        monkeypatch.setattr(calendar_service, "proxy_request", AsyncMock(side_effect=failure))
+
+        assert await context.gather_calendar(_USER, _clock(), days=1) == context.CalendarUnread(
+            context.CalendarGap.UNAVAILABLE
+        )
+
+    async def test_a_calendar_that_failed_to_answer_is_unavailable_not_empty(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        """Regression: a calendar whose events failed to load read as a free day."""
+        listing = {"items": [{"id": "primary", "summary": "Ada"}]}
+        monkeypatch.setattr(
+            calendar_service,
+            "proxy_request",
+            AsyncMock(side_effect=[listing, AppError(message="Backend Error", status_code=503)]),
+        )
+        monkeypatch.setattr(
+            calendar_service,
+            "_resolve_selected_calendars",
+            AsyncMock(return_value=["primary"]),
+        )
+
+        assert await context.gather_calendar(_USER, _clock(), days=1) == context.CalendarUnread(
+            context.CalendarGap.UNAVAILABLE
+        )
+
+    async def test_an_unavailable_calendar_is_a_warning_on_the_runs_event(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        monkeypatch.setattr(
+            context,
+            "get_calendar_events",
+            AsyncMock(return_value=_response([], failed=["primary"])),
+        )
+
+        async with captured_wide_event() as event:
+            await context.gather_calendar(_USER, _clock(), days=1)
+
+        assert [w["msg"] for w in event["warnings"]] == ["briefing.calendar_unavailable"]
+        assert event["warnings"][0]["calendars_failed"] == 1
+
+    async def test_a_failed_calendar_list_is_a_warning_naming_the_error(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        failure = AppError(message="Invalid Credentials", status_code=401)
+        monkeypatch.setattr(calendar_service, "proxy_request", AsyncMock(side_effect=failure))
+
+        async with captured_wide_event() as event:
+            await context.gather_calendar(_USER, _clock(), days=1)
+
+        warning = event["warnings"][0]
+        assert (warning["msg"], warning["error_type"], warning["error"]) == (
+            "briefing.calendar_unavailable",
+            "HTTPException",
+            "401: Invalid Credentials",
+        )
+
+    async def test_the_week_ahead_holds_only_its_own_days(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        """Google answers for any event overlapping the window; the days are the brief's."""
+        events = [
+            _event("Today", {"date": "2026-10-14"}),
+            _event("Tomorrow", {"date": "2026-10-15"}),
+            _event("Last day", {"date": "2026-10-21"}),
+            _event("Past the week", {"date": "2026-10-22"}),
+            GoogleCalendarEventResource.model_validate({"summary": "No start"}),
+        ]
+        monkeypatch.setattr(
+            context, "get_calendar_events", AsyncMock(return_value=_response(events))
+        )
+
+        ahead = await context.gather_calendar(_USER, _clock(), days=7, days_ahead=1)
+
+        assert isinstance(ahead, list)
+        assert [e.title for e in ahead] == ["Tomorrow", "Last day"]
+
+    async def test_the_days_read_holds_today_and_keeps_the_whole_window(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        raw = [
+            _event("Standup", {"dateTime": "2026-10-14T03:30:00Z"}),
+            _event("Offsite", {"date": "2026-10-15"}),
+        ]
+        monkeypatch.setattr(context, "get_calendar_events", AsyncMock(return_value=_response(raw)))
+        clock = _clock()
+        start = context.day_start_utc(clock)
+
+        day = await context.read_day_calendar(_USER, clock, start, start + timedelta(days=7))
+
+        assert day.today == [BriefingEvent(date="2026-10-14", start="09:00", title="Standup")]
+        assert day.week == raw
+
+    async def test_an_event_the_user_declined_is_not_on_their_day(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        declined = GoogleCalendarEventResource.model_validate(
+            {
+                "summary": "Vendor pitch",
+                "start": {"dateTime": "2026-10-14T05:30:00Z"},
+                "attendees": [
+                    {"email": "ada@x.test", "self": True, "responseStatus": "declined"},
+                    {"email": "vendor@y.test", "responseStatus": "accepted"},
+                ],
+            }
+        )
+        kept = _event("Standup", {"dateTime": "2026-10-14T03:30:00Z"})
+        monkeypatch.setattr(
+            context, "get_calendar_events", AsyncMock(return_value=_response([declined, kept]))
+        )
+
+        events = await context.gather_calendar(_USER, _clock(), days=1)
+
+        assert isinstance(events, list)
+        assert [e.title for e in events] == ["Standup"]
 
 
 class TestWeek:
@@ -459,10 +645,9 @@ class TestWeek:
             ],
             user=[done("Gym", "2026-10-12T23:30")],
         )
-        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
         clock = _clock("2026-10-18T17:00:00")
 
-        week = await context.gather_week(_USER, clock, completed)
+        week = context.count_week(clock, completed, [])
 
         assert [(d.you, d.gaia) for d in week.days] == [
             (1, 1),
@@ -473,8 +658,6 @@ class TestWeek:
             (0, 0),
             (0, 1),
         ]
-        assert week.shipped == ["Gym"]
-        assert week.handled == ["Deck", "Memo"]
         assert context.week_start_utc(clock) == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 
 
@@ -489,14 +672,41 @@ class TestClockIsTheUsers:
     def test_day_start_is_expressed_in_utc(self) -> None:
         assert context.day_start_utc(_clock()).tzinfo is UTC
 
+    @pytest.mark.parametrize(
+        ("due_at", "said"),
+        [
+            (datetime(2026, 10, 14, 17, 0, tzinfo=UTC), "today"),
+            (datetime(2026, 10, 14, 19, 0, tzinfo=UTC), "Thu Oct 15"),
+        ],
+        ids=["late-on-the-users-day", "past-the-users-midnight"],
+    )
+    def test_a_due_date_is_said_on_the_users_own_day(self, due_at: datetime, said: str) -> None:
+        assert context.due_on(due_at, _clock()) == said
+
 
 class TestGoalBlockEdges:
     @pytest.fixture
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-        recall = AsyncMock(return_value=SimpleNamespace(memories=[]))
+        recall = AsyncMock(return_value=_recalled())
         monkeypatch.setattr(context, "memory_engine", SimpleNamespace(recall=recall))
-        monkeypatch.setattr(context, "entry_to_note", str)
+        monkeypatch.setattr(context, "entry_to_note", lambda entry: entry.content)
         return recall
+
+    async def test_a_weak_fallback_recall_is_no_goal(self, recall: AsyncMock) -> None:
+        """Regression: the top five nearest memories became goals however weakly they matched."""
+        recall.return_value = _recalled(_memory("Likes oat milk"), confident=False)
+
+        assert await context.stated_goals(_USER, UserDocument()) == []
+
+    async def test_something_that_happened_is_no_goal(self, recall: AsyncMock) -> None:
+        recall.return_value = _recalled(
+            _memory("Had a call with Priya", kind=MemoryKind.EXPERIENCE),
+            _memory("Shipping the v2 launch"),
+        )
+
+        goals = await context.stated_goals(_USER, UserDocument())
+
+        assert [g.statement for g in goals] == ["Shipping the v2 launch"]
 
     def test_a_missing_focus_is_not_a_goal(self) -> None:
         assert context.has_meaningful_focus(None) is False
@@ -504,22 +714,24 @@ class TestGoalBlockEdges:
     async def test_no_onboarding_and_no_memories_asks_for_goal_discovery(
         self, recall: AsyncMock
     ) -> None:
-        assert await context.format_goal_block(_USER, UserDocument()) == (
+        assert context.format_goal_block(await context.stated_goals(_USER, UserDocument())) == (
             "No stated goal on record yet — treat goal discovery as part of today's job.",
             False,
         )
 
     async def test_memory_is_asked_what_the_user_is_working_on(self, recall: AsyncMock) -> None:
-        await context.format_goal_block(_USER, UserDocument())
+        await context.stated_goals(_USER, UserDocument())
 
         recall.assert_awaited_once_with(
             _USER, "what is the user currently working on and their goals", limit=5
         )
 
     async def test_a_blank_memory_is_not_a_goal(self, recall: AsyncMock) -> None:
-        recall.return_value = SimpleNamespace(memories=["   ", "Hiring a designer"])
+        recall.return_value = _recalled(_memory("   "), _memory("Hiring a designer"))
 
-        block, has_goal = await context.format_goal_block(_USER, UserDocument())
+        block, has_goal = context.format_goal_block(
+            await context.stated_goals(_USER, UserDocument())
+        )
 
         assert (block, has_goal) == ("- Hiring a designer", True)
 
@@ -538,7 +750,26 @@ class TestReadsAreScopedToTheUser:
 
         assert work.is_empty
         completed.assert_awaited_once_with(_USER, since=since)
-        active.assert_awaited_once_with(_USER, limit=20)
+        active.assert_awaited_once_with(_USER, limit=0)
+
+    async def test_the_open_totals_count_past_the_read_limit_each_subject_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: 35 running todos were voiced as 20, the read's limit."""
+        running = [_todo(f"r{i}", f"Research {i}", GAIA_TRACKED_LABEL) for i in range(35)]
+        waiting = [
+            _todo("w1", "Approve the MSA", GAIA_TRACKED_LABEL, WAITING_FOR_APPROVAL_LABEL),
+            _todo("w2", "Approve the MSA", GAIA_TRACKED_LABEL, WAITING_FOR_APPROVAL_LABEL),
+        ]
+        monkeypatch.setattr(todo_repository, "list_completed_since", AsyncMock(return_value=[]))
+        monkeypatch.setattr(
+            todo_repository, "list_active_tracked", AsyncMock(return_value=[*running, *waiting])
+        )
+
+        work = await context.gather_tracked_work(_USER, datetime(2026, 10, 13, tzinfo=UTC))
+
+        assert len(work.running) == 20
+        assert work.open_subjects == context.OpenSubjects(running=35, blocked=1, failed=0)
 
     async def test_completed_work_reads_this_users_completions_since_the_cutoff(
         self, monkeypatch: pytest.MonkeyPatch
@@ -590,10 +821,14 @@ class TestLookbackBlock:
         self, reads: SimpleNamespace
     ) -> None:
         reads.completed.return_value = [
-            _todo("c1", "Deck", GAIA_TRACKED_LABEL),
+            _todo("c1", "Deck", GAIA_TRACKED_LABEL, by=TodoCompleter.GAIA),
             _untitled("c2", GAIA_TRACKED_LABEL),
             _todo("c3", "Gym"),
             _untitled("c4"),
+            # Audit: GAIA's tracked work the user closed, or an event closed, read "GAIA finished".
+            _todo("c5", "Pay Acme", GAIA_TRACKED_LABEL, by=TodoCompleter.USER),
+            _todo("c6", "Sam's yes", GAIA_TRACKED_LABEL, by=TodoCompleter.TRIGGER),
+            _todo("c7", "Old lead", GAIA_TRACKED_LABEL, by=TodoCompleter.SYSTEM),
         ]
         reads.executions.return_value = [
             _execution("success", "3 drafts"),
@@ -606,14 +841,17 @@ class TestLookbackBlock:
         block = await context.format_lookback_block(_USER, yesterday, since, _CLOCK)
 
         assert block == (
-            "Your last brief, yesterday, told the user you'd focus on:\n"
-            "- Finish the deck\n"
-            "- Book flights\n\n"
+            # Audit: it said the user was told GAIA would "focus on" every item, done or not.
+            "Your last brief, yesterday, told the user about:\n"
+            "- note: Finish the deck\n"
+            "- note: Book flights\n\n"
             "Actually completed since then:\n"
             "- GAIA finished: Deck\n"
-            "- GAIA finished: untitled\n"
-            "- You finished: Gym\n"
-            "- You finished: untitled\n\n"
+            "- The user finished: Gym\n"
+            "- The user finished: untitled\n"
+            "- The user finished: Pay Acme\n"
+            "- Closed (who closed it is not recorded): untitled\n"
+            "- Closed when an event it watched fired: Sam's yes\n\n"
             "Background workflow runs since then:\n"
             "- Workflow [success]: 3 drafts\n"
             "- Workflow [failed]"
@@ -644,7 +882,7 @@ class TestLookbackBlock:
 
         block = await context.format_lookback_block(_USER, None, datetime.now(UTC), _CLOCK)
 
-        assert block.endswith("Actually completed since then:\n- You finished: Gym")
+        assert block.endswith("Actually completed since then:\n- The user finished: Gym")
 
     async def test_a_brief_days_ago_is_named_by_its_day_not_as_yesterday(
         self, reads: SimpleNamespace
@@ -655,7 +893,7 @@ class TestLookbackBlock:
         block = await context.format_lookback_block(_USER, friday, friday.created_at, _CLOCK)
 
         assert block.startswith(
-            "Your last brief, on Friday Oct 9, told the user you'd focus on:\n- Finish the deck"
+            "Your last brief, on Friday Oct 9, told the user about:\n- note: Finish the deck"
         )
         assert "Yesterday" not in block
 
@@ -723,9 +961,7 @@ class TestCalendarEdges:
             {"start": {"dateTime": "2026-10-14T03:30:00Z"}}
         )
         fetch = AsyncMock(
-            return_value=SimpleNamespace(
-                events=[untitled, _event("   ", {"date": "2026-10-14"}, "Goa")]
-            )
+            return_value=_response(events=[untitled, _event("   ", {"date": "2026-10-14"}, "Goa")])
         )
         monkeypatch.setattr(context, "get_calendar_events", fetch)
 
@@ -742,7 +978,7 @@ class TestCalendarEdges:
     async def test_days_ahead_shifts_the_window_forward(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
     ) -> None:
-        fetch = AsyncMock(return_value=SimpleNamespace(events=[]))
+        fetch = AsyncMock(return_value=_response(events=[]))
         monkeypatch.setattr(context, "get_calendar_events", fetch)
 
         await context.gather_calendar(_USER, _clock(), days=7, days_ahead=1)
@@ -767,14 +1003,8 @@ def _by_owner(docs: list[TodoDocument]) -> context.CompletedWork:
 
 
 class TestWeekEdges:
-    @pytest.fixture
-    def ahead(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-        calendar = AsyncMock(return_value=[])
-        monkeypatch.setattr(context, "gather_calendar", calendar)
-        return calendar
-
     async def test_each_completion_counts_on_its_local_day_and_odd_rows_are_skipped(
-        self, monkeypatch: pytest.MonkeyPatch, ahead: AsyncMock
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         tz = ZoneInfo("Pacific/Kiritimati")
         # Newest first: the walk is oldest first, so the skipped rows come first.
@@ -792,16 +1022,12 @@ class TestWeekEdges:
 
         # Mongo's naive "Run" is UTC whatever zone the server itself runs in.
         with local_timezone("Asia/Kolkata"):
-            week = await context.gather_week(_USER, clock, completed)
+            week = context.count_week(clock, completed, [])
 
         assert [(d.you, d.gaia) for d in week.days][:2] == [(1, 1), (1, 1)]
-        assert week.shipped == ["Run", "Gym"]
-        assert week.handled == ["Brief", "Memo"]
         assert context.week_start_utc(clock).tzinfo is UTC
 
-    async def test_two_on_one_day_count_twice(
-        self, monkeypatch: pytest.MonkeyPatch, ahead: AsyncMock
-    ) -> None:
+    async def test_two_on_one_day_count_twice(self, monkeypatch: pytest.MonkeyPatch) -> None:
         at = datetime(2026, 10, 12, 10, tzinfo=ZoneInfo("Asia/Kolkata"))
         docs = [
             _done("a", at),
@@ -809,20 +1035,21 @@ class TestWeekEdges:
             _done("c", at, GAIA_TRACKED_LABEL),
             _done("d", at, GAIA_TRACKED_LABEL),
         ]
-        week = await context.gather_week(_USER, _clock(), _by_owner(docs))
+        week = context.count_week(_clock(), _by_owner(docs), [])
 
         assert (week.days[0].you, week.days[0].gaia) == (2, 2)
 
     async def test_the_week_ahead_is_the_next_seven_days_capped(
-        self, monkeypatch: pytest.MonkeyPatch, ahead: AsyncMock
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         events = [
             BriefingEvent(date="2026-10-15", title=f"E{i}") for i in range(WEEK_LIST_LIMIT + 1)
         ]
-        ahead.return_value = events
-        clock = _clock()
-
-        week = await context.gather_week(_USER, clock, context.CompletedWork())
+        week = context.count_week(_clock(), context.CompletedWork(), events)
 
         assert week.ahead == events[:WEEK_LIST_LIMIT]
-        ahead.assert_awaited_once_with(_USER, clock, days=7, days_ahead=1)
+
+    def test_an_unread_week_ahead_lists_nothing(self) -> None:
+        unread = context.CalendarUnread(context.CalendarGap.UNAVAILABLE)
+
+        assert context.count_week(_clock(), context.CompletedWork(), unread).ahead == []

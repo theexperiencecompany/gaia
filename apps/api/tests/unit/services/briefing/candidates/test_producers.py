@@ -6,6 +6,7 @@ Faked seams: the repository reads each reading producer makes.
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from tests.factories import make_user_id
@@ -19,10 +20,14 @@ from app.constants.briefing import (
     BriefOutcome,
 )
 from app.constants.todos import (
+    BLOCKING_LABEL,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
     NEEDS_REPLY_LABEL,
     WAITING_FOR_APPROVAL_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+    TodoCompleter,
+    WaitingOn,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -31,11 +36,12 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import CandidateKind
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
+from app.models.calendar_models import CalendarResponse
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument
+from app.models.scheduler_models import DeactivationReason
 from app.models.scout_models import (
     RememberedSignal,
     Signal,
@@ -58,12 +64,13 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork
+from app.services.briefing.context import TrackedWork, UserClock
 from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
+CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_of_year=314)
 DESK_ID = "desk-1"
 
 
@@ -74,17 +81,21 @@ def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument
 
 
 class TestTrackedTodos:
-    def test_a_todos_description_and_due_date_travel_with_its_candidate(self) -> None:
+    def test_a_todos_due_date_travels_with_its_candidate_and_its_description_never_does(
+        self,
+    ) -> None:
+        """Replay of Dhruv's set: GAIA's own instructions on a todo were voiced to the user."""
         due = NOW + timedelta(days=2)
+        rule = "Do not make a payment without explicit approval."
         work = TrackedWork(
-            blocked=[_todo("d1", "Pay the invoice", description="Acme, net 30", due_date=due)],
-            running=[_todo("d2", "Draft the memo")],
+            blocked=[_todo("d1", "Pay the invoice", description=rule, due_date=due)],
+            running=[_todo("d2", "Draft the memo", description=rule)],
         )
 
         [waiting] = waiting_candidates(work)
-        [running] = gaia_work_candidates(work)
+        [running] = gaia_work_candidates(work, CLOCK)
 
-        assert (waiting.detail, waiting.due_at) == ("Acme, net 30", due)
+        assert (waiting.detail, waiting.due_at) == (None, due)
         assert (running.detail, running.due_at) == (None, None)
 
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
@@ -95,18 +106,16 @@ class TestTrackedTodos:
 
         found = waiting_candidates(work)
 
-        assert [(c.title, c.kind, c.state, c.todo_id, c.app, c.action) for c in found] == [
+        assert [(c.title, c.state, c.todo_id, c.app, c.action) for c in found] == [
             (
                 "Approve the Priya reply",
-                CandidateKind.NEEDS_YOU,
                 "you",
                 "b1",
                 "GAIA",
-                BriefAction.REVIEW,
+                BriefAction.APPROVE,
             ),
             (
                 "Book the Lisbon flights",
-                CandidateKind.NEEDS_YOU,
                 "failed",
                 "f1",
                 "GAIA",
@@ -114,6 +123,20 @@ class TestTrackedTodos:
             ),
         ]
         assert all(c.outcome is None for c in found)
+
+    @pytest.mark.parametrize(
+        ("label", "action"),
+        [
+            (WAITING_FOR_APPROVAL_LABEL, BriefAction.APPROVE),
+            (NEEDS_REPLY_LABEL, BriefAction.REPLY),
+            (BLOCKING_LABEL, BriefAction.REVIEW),
+        ],
+    )
+    def test_a_waiting_todo_asks_what_its_label_says(self, label: str, action: BriefAction) -> None:
+        """Live brief: an approval read as "review", so "To approve" over it was refused."""
+        [found] = waiting_candidates(TrackedWork(blocked=[_todo("b1", "Priya's venues", label)]))
+
+        assert found.action is action
 
     def test_an_inbox_desk_thread_is_a_gmail_item_and_one_subject_counts_its_todos(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
@@ -128,31 +151,137 @@ class TestTrackedTodos:
 
         assert (found.app, found.source, found.count, found.todo_id) == ("Gmail", "gmail", 2, "t1")
 
-    def test_gaias_finished_work_then_its_running_work(self) -> None:
+    def test_only_a_gmail_todo_carries_a_ref_to_its_thread(self) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-9")
         work = TrackedWork(
-            completed=[_todo("c1", "Investor update")], running=[_todo("r1", "Vet the Q4 leads")]
+            blocked=[
+                _todo("t1", "Reply to Dan", external_ref=thread),
+                _todo("t2", "Triage the mailbox", external_ref=desk),
+                _todo("t3", "Plain todo"),
+            ]
         )
 
-        found = gaia_work_candidates(work)
+        found = waiting_candidates(work)
 
-        assert [(c.title, c.kind, c.state, c.outcome) for c in found] == [
-            ("Investor update", CandidateKind.GAIA_DID, "lookback", BriefOutcome.FINISHED),
-            ("Vet the Q4 leads", CandidateKind.GAIA_DID, "gaia", BriefOutcome.STARTED),
+        assert [(c.todo_id, c.ref) for c in found] == [
+            ("t1", "gmail:18c2f"),
+            ("t2", None),
+            ("t3", None),
+        ]
+
+    def test_gaias_finished_work_then_its_running_work(self) -> None:
+        work = TrackedWork(
+            completed=[
+                _todo("c1", "Investor update", completed=True, completed_by=TodoCompleter.GAIA),
+                _todo(
+                    "c2", "Wait for Sam's yes", completed=True, completed_by=TodoCompleter.TRIGGER
+                ),
+            ],
+            running=[_todo("r1", "Vet the Q4 leads")],
+        )
+
+        found = gaia_work_candidates(work, CLOCK)
+
+        assert [(c.title, c.state, c.outcome, c.finished_by) for c in found] == [
+            ("Investor update", "lookback", BriefOutcome.FINISHED, TodoCompleter.GAIA),
+            ("Wait for Sam's yes", "lookback", BriefOutcome.FINISHED, TodoCompleter.TRIGGER),
+            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED, None),
         ]
         assert all(c.action is None for c in found)
 
+    @pytest.mark.parametrize(
+        ("fields", "stands", "outcome"),
+        [
+            (
+                {"labels": [GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL]},
+                "waiting on someone else's reply, not the user's",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"pause_reason": DeactivationReason.INTEGRATION_EXPIRED},
+                "paused: its app's connection expired",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.UNPLANNED, "scheduled_at": NOW + timedelta(days=2)},
+                "captured, not started: GAIA plans it Thu Nov 12",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.UNPLANNED},
+                "captured, not started: GAIA plans it",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.TIME, "scheduled_at": NOW},
+                "GAIA looks at it again today",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"waiting_on": WaitingOn.TIME},
+                "GAIA looks at it again",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"waiting_on": WaitingOn.EVENT},
+                "waiting on an event it watches",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"waiting_on": WaitingOn.SUB_TODOS},
+                "its sub-todos are doing the work",
+                BriefOutcome.STARTED,
+            ),
+        ],
+    )
+    def test_open_work_gaia_is_not_running_says_where_it_stands(
+        self, fields: dict[str, Any], stands: str, outcome: BriefOutcome | None
+    ) -> None:
+        """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
+        doc = TodoDocument(
+            id="r1",
+            user_id=USER_ID,
+            title="Chase the venue",
+            **{"labels": [GAIA_TRACKED_LABEL], **fields},
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
+
+        assert (found.standing, found.outcome) == (stands, outcome)
+
+    def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
+        asked = _todo(
+            "q1",
+            "Pick the venue",
+            waiting_on=WaitingOn.USER,
+            question="Lisbon or Porto?",
+            description="Book only after the user picks.",
+        )
+
+        [found] = waiting_candidates(TrackedWork(blocked=[asked]))
+
+        assert (found.state, found.action, found.detail) == (
+            "you",
+            BriefAction.REPLY,
+            "Lisbon or Porto?",
+        )
+
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
-            _todo("u1", "Send the deck to Priya"),
-            _todo("u2", "send the  deck to priya"),
-            _todo("u3", "File the VAT return"),
+            _own_todo("u1", "Send the deck to Priya", completed=True),
+            _own_todo("u2", "send the  deck to priya", completed=True),
+            _own_todo("u3", "File the VAT return", completed=True),
         ]
 
         found = user_done_candidates(done)
 
-        assert [(c.title, c.kind, c.state, c.todo_id, c.count) for c in found] == [
-            ("Send the deck to Priya", CandidateKind.UPDATE, "lookback", "u1", 2),
-            ("File the VAT return", CandidateKind.UPDATE, "lookback", "u3", 1),
+        # Audit: the user's own finished todos read as GAIA's; they are the user's.
+        assert {c.finished_by for c in found} == {TodoCompleter.USER}
+
+        assert [(c.title, c.state, c.todo_id, c.count) for c in found] == [
+            ("Send the deck to Priya", "lookback", "u1", 2),
+            ("File the VAT return", "lookback", "u3", 1),
         ]
         assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
 
@@ -185,12 +314,10 @@ class TestOwnTodos:
         found = await own_todo_candidates(USER_ID, cutoff, TrackedWork())
 
         assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
-            ("File the VAT return", "Q3", overdue, "o1"),
+            ("File the VAT return", None, overdue, "o1"),
             ("Renew the passport", None, NOW, "o2"),
         ]
-        assert {(c.kind, c.state, c.action, c.app) for c in found} == {
-            (CandidateKind.NEEDS_YOU, "you", BriefAction.ATTEND, "GAIA")
-        }
+        assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
         assert listing.await_args.args == (USER_ID,)
         assert listing.await_args.kwargs == {
             "limit": DUE_TODO_CANDIDATES_LIMIT,
@@ -206,14 +333,12 @@ class TestOwnTodos:
 
         found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
 
-        assert [(c.todo_id, c.due_at) for c in found] == [
-            ("o1", NOW),
-            ("n1", None),
-            ("n2", None),
+        assert [(c.todo_id, c.due_at, c.backlog) for c in found] == [
+            ("o1", NOW, False),
+            ("n1", None, True),
+            ("n2", None, True),
         ]
-        assert {(c.kind, c.state, c.action) for c in found} == {
-            (CandidateKind.NEEDS_YOU, "you", BriefAction.ATTEND)
-        }
+        assert {(c.state, c.action) for c in found} == {("you", BriefAction.ATTEND)}
         listing.assert_awaited_once_with(USER_ID, limit=UNDATED_TODO_CANDIDATES_LIMIT)
 
     async def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
@@ -291,11 +416,10 @@ class TestHeldResults:
 
         found = await held_candidates(USER_ID, held)
 
-        assert [(c.app, c.kind, c.title, c.held_id, c.outcome) for c in found] == [
-            ("Gmail", CandidateKind.UPDATE, "Stripe payout of $2,400 landed", "h1", None),
+        assert [(c.app, c.title, c.held_id, c.outcome) for c in found] == [
+            ("Gmail", "Stripe payout of $2,400 landed", "h1", None),
             (
                 "GAIA",
-                CandidateKind.GAIA_DID,
                 "Research digest: 3 new papers on retrieval",
                 "h2",
                 BriefOutcome.FINISHED,
@@ -392,22 +516,45 @@ class TestAppSignals:
         )
 
         [found] = app_signal_candidates(
-            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], NOW
+            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK
         )
 
-        assert (found.app, found.source, found.kind, found.importance) == (
+        assert (found.app, found.source, found.importance) == (
             "Linear",
             "linear",
-            CandidateKind.NEEDS_YOU,
             SignalImportance.HIGH,
         )
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
         assert found.due_at == signal.due_at
         assert (found.action, found.outcome) == (None, None)
+        assert (found.moved, found.is_repeat) == (True, False)
         assert found.detail == (
             "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
         )
+
+    def test_a_signal_shown_before_in_the_same_state_has_not_moved_and_is_a_repeat(self) -> None:
+        signal = Signal(
+            integration_id="linear",
+            app="Linear",
+            external_id="ENG-42",
+            kind="issue assigned to you",
+            title="Fix the login redirect",
+            state="Todo",
+        )
+        memory = SignalMemoryDocument(
+            user_id=USER_ID,
+            integration_id="linear",
+            external_id="ENG-42",
+            first_seen=NOW - timedelta(days=2),
+            times_shown=1,
+            last_shown=NOW - timedelta(days=1),
+            last_state="Todo",
+        )
+
+        [found] = app_signal_candidates([RememberedSignal(signal=signal, memory=memory)], CLOCK)
+
+        assert (found.moved, found.is_repeat) == (False, True)
 
 
 class TestIntegrationName:
@@ -423,20 +570,46 @@ class TestCalendar:
         events = [
             BriefingEvent(date="2026-11-10", start="11:00", title="Sequoia", location="Zoom"),
             BriefingEvent(date="2026-11-10", title="Diwali"),
+            BriefingEvent(date="2026-11-13", start="15:00", title="Pitch to Accel"),
         ]
 
-        found = calendar_candidates(events)
+        found = calendar_candidates(events, "2026-11-10")
 
-        assert [(c.app, c.kind, c.title, c.detail, c.action) for c in found] == [
-            (
-                "Google Calendar",
-                CandidateKind.EVENT,
-                "Sequoia",
-                "at 11:00 | Zoom",
-                BriefAction.ATTEND,
-            ),
-            ("Google Calendar", CandidateKind.EVENT, "Diwali", "all day", BriefAction.ATTEND),
+        assert [(c.is_event, c.title, c.time, c.detail, c.action) for c in found] == [
+            (True, "Sequoia", "11:00 AM", "Zoom", BriefAction.ATTEND),
+            (True, "Diwali", None, "all day", BriefAction.ATTEND),
+            (True, "Pitch to Accel", "Fri 3:00 PM", None, BriefAction.ATTEND),
         ]
+        assert {c.app for c in found} == {"Google Calendar"}
+
+    @pytest.mark.parametrize(
+        ("response", "answer"),
+        [
+            (CalendarResponse.TENTATIVE, "the user answered tentative"),
+            (CalendarResponse.NEEDS_ACTION, "the user has not answered the invite"),
+        ],
+    )
+    def test_an_events_line_says_its_end_place_calendar_people_and_the_users_answer(
+        self, response: CalendarResponse, answer: str
+    ) -> None:
+        event = BriefingEvent(
+            date="2026-11-10",
+            start="11:00",
+            end="12:30",
+            title="Sequoia",
+            location="Zoom",
+            calendar="Work",
+            organizer="Priya",
+            guests=3,
+            response=response,
+        )
+
+        [found] = calendar_candidates([event], "2026-11-10")
+
+        assert found.detail == (
+            "until 12:30 PM | Zoom | on the Work calendar | organized by Priya"
+            f" | 3 other(s) invited | {answer}"
+        )
 
 
 def _ledger(approval_id: str, **fields: Any) -> ApprovalLedgerDocument:
@@ -483,12 +656,13 @@ class TestApprovals:
 
         found = await approval_candidates(USER_ID, NOW, {"b1"})
 
-        assert [(c.app, c.title, c.kind, c.state) for c in found] == [
-            ("Gmail", "Send the invoice to Acme", CandidateKind.NEEDS_YOU, "you"),
-            ("GAIA", "Approve create_reminder", CandidateKind.NEEDS_YOU, "you"),
-            ("Slack", "Message #launch on Slack", CandidateKind.NEEDS_YOU, "you"),
+        assert [(c.app, c.title, c.state) for c in found] == [
+            ("Gmail", "Send the invoice to Acme", "you"),
+            ("GAIA", "Approve create_reminder", "you"),
+            ("Slack", "Message #launch on Slack", "you"),
         ]
         assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
+        assert [c.seen_as for c in found] == ["approval:ap_1", "approval:ap_3", "approval:appr-1"]
         assert {c.action for c in found} == {BriefAction.APPROVE}
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)
@@ -570,11 +744,10 @@ class TestReminders:
 
         [found] = await reminder_candidates(USER_ID, start, end)
 
-        assert (found.title, found.detail, found.due_at, found.kind, found.action) == (
+        assert (found.title, found.detail, found.due_at, found.action) == (
             "Call the dentist",
             "Six-month cleaning appointment",
             due.scheduled_at,
-            CandidateKind.NEEDS_YOU,
             BriefAction.ATTEND,
         )
         assert read.await_args.args == (USER_ID, start, end)
