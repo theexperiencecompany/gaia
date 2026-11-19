@@ -125,7 +125,9 @@ describe("NotificationSettings", () => {
       await screen.findByRole("button", { name: "Try again" }),
     ).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Link / })).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Manage linked accounts" }),
+    ).toBeNull();
   });
 
   it("shows a retry instead of a guessed first channel when the stored order fails to load", async () => {
@@ -185,7 +187,7 @@ describe("NotificationSettings", () => {
     expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
   });
 
-  it("shows each chat app's link status and sends the rest to Linked Accounts", async () => {
+  it("shows each chat app's link status and groups the rest into one row to Linked Accounts", async () => {
     render(<NotificationSettings />);
 
     const channels = await findChannels();
@@ -194,16 +196,13 @@ describe("NotificationSettings", () => {
     });
     expect(channels.getByText("Connected")).toBeTruthy();
     expect(channels.getAllByRole("switch")).toHaveLength(2);
-    expect(channels.getAllByText("Not linked")).toHaveLength(4);
-    for (const label of ["WhatsApp", "iMessage", "Slack", "Discord"]) {
-      expect(
-        channels
-          .getByRole("link", { name: `Link ${label} in Linked Accounts` })
-          .getAttribute("href"),
-      ).toBe("/settings/linked-accounts");
-    }
     expect(
-      channels.getByRole("link", { name: "Manage" }).getAttribute("href"),
+      channels.getByText("WhatsApp, iMessage, Slack, Discord"),
+    ).toBeTruthy();
+    expect(
+      channels
+        .getByRole("link", { name: "Manage linked accounts" })
+        .getAttribute("href"),
     ).toBe("/settings/linked-accounts");
     expect(channels.queryByRole("button", { name: /^Connect/ })).toBeNull();
     expect(channels.queryByRole("button", { name: /^More for/ })).toBeNull();

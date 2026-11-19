@@ -8,7 +8,6 @@ import type { ReactNode } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
-import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 import { isBotPlatform } from "@/config/botPlatforms";
 import {
@@ -17,10 +16,10 @@ import {
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
+import { UnlinkedPlatformsRow } from "@/features/settings/components/UnlinkedPlatformsRow";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 import { useChannelPreferences } from "@/features/settings/hooks/useChannelPreferences";
 import { useChatChannelSettings } from "@/features/settings/hooks/useChatChannelSettings";
 import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
@@ -94,23 +93,7 @@ export default function NotificationSettings() {
               {channelSwitch(platform)}
             </ChannelRow>
           ))}
-          {unlinkedPlatforms.map((platform) => (
-            <ChannelRow
-              key={platform}
-              channel={platform}
-              description="Not linked"
-            >
-              <LinkButton
-                href={LINKED_ACCOUNTS_SETTINGS_PATH}
-                size="sm"
-                variant="default-soft"
-                aria-label={`Link ${NOTIFICATION_CHANNEL_LABELS[platform]} in Linked Accounts`}
-                className="text-xs"
-              >
-                Link
-              </LinkButton>
-            </ChannelRow>
-          ))}
+          <UnlinkedPlatformsRow platforms={unlinkedPlatforms} />
           {linkedOrder.length > 1 && (
             <SettingsRow
               label="Text me first on"
@@ -144,19 +127,6 @@ export default function NotificationSettings() {
               </Select>
             </SettingsRow>
           )}
-          <SettingsRow
-            label="Linked accounts"
-            description="Connect, disconnect or open a chat app."
-          >
-            <LinkButton
-              href={LINKED_ACCOUNTS_SETTINGS_PATH}
-              size="sm"
-              variant="default-soft"
-              className="text-xs"
-            >
-              Manage
-            </LinkButton>
-          </SettingsRow>
         </SettingsSection>
       )}
     </SettingsPage>
