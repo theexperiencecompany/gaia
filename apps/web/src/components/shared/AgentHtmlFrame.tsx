@@ -56,8 +56,11 @@ function framedDocument(html: string, trust: AgentHtmlTrust): string {
 
 type FrameProps = Omit<
   ComponentPropsWithRef<"iframe">,
-  "src" | "srcDoc" | "sandbox" | "referrerPolicy"
->;
+  "src" | "srcDoc" | "sandbox" | "referrerPolicy" | "title"
+> & {
+  /** What a screen reader announces the frame as. */
+  title: string;
+};
 
 type AgentHtmlFrameProps = FrameProps &
   (
@@ -71,20 +74,22 @@ type AgentHtmlFrameProps = FrameProps &
 /** The one frame agent-made HTML renders in, wherever it is shown and whoever opens it. */
 export function AgentHtmlFrame(props: AgentHtmlFrameProps) {
   if ("src" in props) {
-    const { trust, src, ...frame } = props;
+    const { trust, src, title, ...frame } = props;
     return (
       <iframe
         {...frame}
+        title={title}
         src={src}
         sandbox={SANDBOX[trust]}
         referrerPolicy="no-referrer"
       />
     );
   }
-  const { trust, html, ...frame } = props;
+  const { trust, html, title, ...frame } = props;
   return (
     <iframe
       {...frame}
+      title={title}
       srcDoc={framedDocument(html, trust)}
       sandbox={SANDBOX[trust]}
       referrerPolicy="no-referrer"
