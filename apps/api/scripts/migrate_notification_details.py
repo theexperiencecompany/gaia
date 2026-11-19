@@ -48,6 +48,12 @@ _KIND_BY_SOURCE_TAG: dict[object, NotificationKind] = {
     "memory_backfill": NotificationKind.MEMORY_READY,
     "gmail_personalization": NotificationKind.GMAIL_PERSONALIZED,
 }
+#: Key sets that mean a kind only beside one source: the executor's failure notice alone wrote a bare workflow_id.
+_KIND_BY_KEYS_AND_SOURCE: dict[tuple[frozenset[str], object], NotificationKind] = {
+    (frozenset({"workflow_id"}), NotificationSourceEnum.WORKFLOW_FAILED.value): (
+        NotificationKind.WORKFLOW_FAILED
+    ),
+}
 #: The reminder's own copy of the notification's created_at, which its details do not repeat.
 _DROPPED_KEYS = frozenset({"created_at"})
 
@@ -63,12 +69,9 @@ def _candidate(metadata: Mapping[str, object], source: object) -> dict[str, obje
         tagged = _KIND_BY_SOURCE_TAG.get(metadata["source"])
         return None if tagged is None else {"kind": tagged}
     keys = frozenset(metadata)
-    # The executor's failure notice alone wrote a bare workflow_id.
-    if (
-        keys == frozenset({"workflow_id"})
-        and source == NotificationSourceEnum.WORKFLOW_FAILED.value
-    ):
-        return {"kind": NotificationKind.WORKFLOW_FAILED, **metadata}
+    sourced = _KIND_BY_KEYS_AND_SOURCE.get((keys, source))
+    if sourced is not None:
+        return {"kind": sourced, **metadata}
     kind = _KIND_BY_KEYS.get(keys)
     if kind is None:
         return None
