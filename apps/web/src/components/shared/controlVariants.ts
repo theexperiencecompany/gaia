@@ -38,6 +38,8 @@ export const avatarVariants = tv({
 export const modalVariants = tv({
   variants: {
     inset: { none: "p-0" },
+    /** bare, on Backdrop, Container and Dialog alike: a dialog that is its own surface and animates itself (a letter): no body, chrome or built-in motion. */
+    surface: { bare: "gaia-modal-bare" },
     size: {
       xl: "gaia-modal-xl",
       "2xl": "gaia-modal-2xl",

@@ -1,51 +1,27 @@
-import { Card, Chip } from "@heroui/react";
-import { CodeIcon, Download01Icon, File01Icon } from "@icons";
-import { formatFileSize } from "@shared/utils";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownPopover,
+  Label,
+} from "@heroui/react";
+import { Download01Icon, MoreHorizontalIcon } from "@icons";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
-import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { useCallback, useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
-import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { FileCard } from "@/features/chat/components/files/FileCard";
+import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
 import { getExtension } from "@/features/chat/utils/fileExtension";
-import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
+import { useShareLink } from "@/features/short-links/hooks/useShareLink";
 import { sessionArtifactTargetId } from "@/features/short-links/utils/sessionArtifactTargetId";
-import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useConversationArtifacts } from "@/stores/chatStore";
-import type { RightSidebarMode } from "@/stores/layoutStore.types";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
 interface FileArtifactSectionProps {
   artifact_data: ArtifactData | ArtifactData[];
 }
-
-const FILE_TYPE_CONFIG: Record<
-  string,
-  {
-    label: string;
-    color: "accent" | "default" | "success" | "warning" | "danger";
-    icon: "code" | "file";
-  }
-> = {
-  md: { label: "Markdown", color: "default", icon: "file" },
-  html: { label: "HTML", color: "warning", icon: "code" },
-  htm: { label: "HTML", color: "warning", icon: "code" },
-  txt: { label: "Text", color: "default", icon: "file" },
-  json: { label: "JSON", color: "success", icon: "code" },
-  py: { label: "Python", color: "accent", icon: "code" },
-  js: { label: "JavaScript", color: "warning", icon: "code" },
-  ts: { label: "TypeScript", color: "accent", icon: "code" },
-  tsx: { label: "TSX", color: "accent", icon: "code" },
-  jsx: { label: "JSX", color: "warning", icon: "code" },
-  css: { label: "CSS", color: "default", icon: "code" },
-  csv: { label: "CSV", color: "success", icon: "file" },
-  tex: { label: "LaTeX", color: "danger", icon: "file" },
-  sql: { label: "SQL", color: "accent", icon: "code" },
-  yaml: { label: "YAML", color: "success", icon: "code" },
-  yml: { label: "YAML", color: "success", icon: "code" },
-  xml: { label: "XML", color: "warning", icon: "code" },
-  sh: { label: "Shell", color: "default", icon: "code" },
-};
 
 const EXT_CONTENT_TYPE: Record<string, string> = {
   html: "text/html",
@@ -67,17 +43,6 @@ const EXT_CONTENT_TYPE: Record<string, string> = {
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
-}
-
-function getFileConfig(filename: string) {
-  const ext = getExtension(filename);
-  return (
-    FILE_TYPE_CONFIG[ext] || {
-      label: ext.toUpperCase() || "File",
-      color: "default" as const,
-      icon: "file" as const,
-    }
-  );
 }
 
 function resolveContentType(artifact: ArtifactData, filename: string): string {
@@ -108,34 +73,20 @@ function normalize(
 }
 
 function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
-  const [openedMode, setOpenedMode] = useState<RightSidebarMode | null>(null);
-  const isMobile = useIsMobile();
-
   const conversationId = artifact.session_id;
   const filename = basename(artifact.path);
   const contentType = resolveContentType(artifact, filename);
-  const config = getFileConfig(filename);
-
-  const handleOpen = useCallback(() => {
-    const shouldUseSheet =
-      isMobile || (typeof window !== "undefined" && window.innerWidth < 768);
-    setOpenedMode(shouldUseSheet ? "sheet" : "artifact");
-  }, [isMobile]);
-
-  const closePanel = useCallback(() => setOpenedMode(null), []);
-
-  const panel = openedMode && (
-    <RightSidebarPanel mode={openedMode} onClose={closePanel}>
-      <FileViewerPanel
-        conversationId={conversationId}
-        path={artifact.path}
-        filename={filename}
-        contentType={contentType}
-        sizeBytes={artifact.size_bytes}
-        inlineBody={artifact.body}
-      />
-    </RightSidebarPanel>
-  );
+  const preview = useFilePreview({
+    source: {
+      kind: "artifact",
+      conversationId,
+      path: artifact.path,
+      inlineBody: artifact.body,
+    },
+    filename,
+    contentType,
+    sizeBytes: artifact.size_bytes,
+  });
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");
@@ -146,79 +97,49 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
     link.click();
     document.body.removeChild(link);
   }, [artifact.path, conversationId, filename]);
+  const share = useShareLink(
+    "session_artifact",
+    sessionArtifactTargetId(conversationId, artifact.path),
+  );
 
   return (
     <>
-      {panel}
-      <Card
-        className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-        onClick={handleOpen}
-      >
-        <Card.Content className="p-3.5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <div className="flex-shrink-0">
-                {config.icon === "code" ? (
-                  <CodeIcon className="h-5 w-5 text-accent" />
-                ) : (
-                  <File01Icon className="h-5 w-5 text-accent" />
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <div className="mb-1 flex items-center gap-2.5">
-                  <Chip
-                    size="sm"
-                    variant="soft"
-                    color={config.color}
-                    className="text-xs"
+      {preview.panel}
+      <FileCard
+        name={filename}
+        mimeType={contentType}
+        sizeBytes={artifact.size_bytes}
+        onPress={preview.open}
+        actions={
+          <Dropdown onOpenChange={share.onMenuOpenChange}>
+            <GaiaButton
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label={`Actions for ${filename}`}
+              isPending={share.pending !== null}
+            >
+              <MoreHorizontalIcon size={16} />
+            </GaiaButton>
+            <DropdownPopover placement="bottom end">
+              <DropdownMenu aria-label={`Actions for ${filename}`}>
+                {[
+                  <DropdownItem
+                    key="download"
+                    id="download"
+                    textValue="Download"
+                    onAction={handleDownload}
                   >
-                    {config.label}
-                  </Chip>
-                  <p className="truncate text-sm font-medium text-white">
-                    {filename}
-                  </p>
-                </div>
-
-                <p className="text-xs text-zinc-400/90">
-                  {formatFileSize(artifact.size_bytes)} · Click to open
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <ShareLinkControls
-                iconOnly
-                targetType="session_artifact"
-                targetId={sessionArtifactTargetId(
-                  conversationId,
-                  artifact.path,
-                )}
-              />
-              <GaiaButton
-                size="sm"
-                variant="default-soft"
-                tone="bright"
-                className="font-medium"
-                onPress={handleOpen}
-              >
-                Open
-              </GaiaButton>
-              <GaiaButton
-                isIconOnly
-                size="sm"
-                variant="ghost"
-                tone="dim"
-                className="group-hover:text-white"
-                onPress={handleDownload}
-                aria-label="Download artifact"
-              >
-                <Download01Icon size={16} />
-              </GaiaButton>
-            </div>
-          </div>
-        </Card.Content>
-      </Card>
+                    <Download01Icon size={16} />
+                    <Label>Download</Label>
+                  </DropdownItem>,
+                  ...shareLinkMenuItems(share),
+                ]}
+              </DropdownMenu>
+            </DropdownPopover>
+          </Dropdown>
+        }
+      />
     </>
   );
 }
@@ -239,7 +160,7 @@ const FileArtifactSection: React.FC<FileArtifactSectionProps> = ({
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="mt-3 flex flex-col gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
       {artifacts.map((artifact) => (
         <ArtifactCard key={artifact.path} artifact={artifact} />
       ))}

@@ -18,6 +18,8 @@ import cloudinary.utils
 from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
     EDITION_JPG_BACKGROUND,
+    FOLD_MARKER_SELECTOR,
+    PAPER_MARKER_SELECTOR,
     WEEKLY_FAMILY,
     EditionDeliveryFormat,
 )
@@ -29,8 +31,12 @@ from app.constants.notifications import (
 from app.models.briefing_models import BriefingPayload
 from app.services.blob_store import CloudinaryBlobStore
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
-from app.services.briefing.message import MESSAGE_LINK_RE, delivered_message, preheader
-from app.services.briefing.render import ImageRenderOptions, render_html_to_image
+from app.services.briefing.message import (
+    MESSAGE_LINK_RE,
+    delivered_message,
+    preheader,
+)
+from app.services.briefing.render import ImageRenderOptions, RenderedImage, render_html_to_image
 from shared.py.wide_events import log
 
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
@@ -122,8 +128,8 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str, wording: _Em
     )
 
 
-async def render_edition_png(payload: BriefingPayload) -> bytes:
-    """Render the edition as a PNG cropped tight to its paper (editions.edition_frame)."""
+async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
+    """Render the edition as a PNG cropped tight to its paper, with where its letter folds."""
     family = payload.template_family
     render = EXPLORER_RENDERER[family]
     edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
@@ -138,6 +144,8 @@ async def render_edition_png(payload: BriefingPayload) -> bytes:
             clip_selector=frame.clip_selector,
             clip_bleed_px=frame.clip_bleed_px,
             trim_margin_px=frame.trim_margin_px,
+            fold_selector=FOLD_MARKER_SELECTOR,
+            paper_selector=PAPER_MARKER_SELECTOR,
             omit_background=frame.transparent_desk,
         ),
     )
@@ -149,6 +157,10 @@ class HostedEditionImage:
 
     display_url: str
     chat_url: str
+    #: Share of the edition's height where its letter folds; None for a template without a marker.
+    fold: float | None = None
+    #: The paper's box as (left, top, right, bottom) shares of the edition; None when it fills it.
+    paper: tuple[float, float, float, float] | None = None
 
 
 def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) -> str:
@@ -175,21 +187,23 @@ async def host_edition_image(
     The URL goes out in emails and on public brief links, so its path is the caller's
     random key alone, never the user, kind or date.
     """
-    image = await render_edition_png(payload)
+    rendered = await render_edition_png(payload)
     public_id = f"briefing/editions/{render_key}"
     # The delivery URLs are Cloudinary transformations, so the edition lives there.
     original_url = await EDITION_IMAGE_STORE.put(
         owner_id,
         public_id,
-        image,
+        rendered.image,
         resource_type="image",
         kind=BlobKind.GENERATED_IMAGE,
         content_type="image/png",
     )
-    log.debug("briefing.edition_image.hosted", image_bytes=len(image), url=original_url)
+    log.debug("briefing.edition_image.hosted", image_bytes=len(rendered.image), url=original_url)
     return HostedEditionImage(
         display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),
         chat_url=edition_delivery_url(public_id, EditionDeliveryFormat.JPG),
+        fold=rendered.fold,
+        paper=rendered.paper,
     )
 
 

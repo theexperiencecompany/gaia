@@ -35,6 +35,8 @@ class FakePage:
         self.script_errors: list[Exception] = []
         self.boxes: dict[str, dict[str, float] | None] = {}
         self.scroll: list[float] = [0.0, 0.0]
+        self.fold_tops: dict[str, float | None] = {}
+        self.paper_boxes: dict[str, list[float] | None] = {}
 
     def on(self, event: str, handler: Any) -> None:
         self.handlers.setdefault(event, []).append(handler)
@@ -50,7 +52,13 @@ class FakePage:
     def locator(self, selector: str) -> "FakeLocator":
         return FakeLocator(self.boxes.get(selector))
 
-    async def evaluate(self, expression: str) -> list[float]:
+    async def evaluate(self, expression: str, selector: str | None = None) -> Any:
+        if expression == render_module._FOLD_TOP_SCRIPT:
+            assert selector is not None
+            return self.fold_tops[selector]
+        if expression == render_module._PAPER_BOX_SCRIPT:
+            assert selector is not None
+            return self.paper_boxes[selector]
         assert expression == "() => [window.scrollX, window.scrollY]"
         return self.scroll
 
@@ -172,7 +180,7 @@ class TestImageRenderOptions:
 @pytest.mark.unit
 class TestRenderHtmlToImage:
     async def test_returns_the_screenshot_bytes_unmodified(self, browser: Harness) -> None:
-        result = await render_html_to_image("<html>hi</html>")
+        result = (await render_html_to_image("<html>hi</html>")).image
 
         assert result == IMAGE_BYTES
 
@@ -250,7 +258,7 @@ class TestRenderHtmlToImage:
         ]
 
     async def test_empty_html_still_renders(self, browser: Harness) -> None:
-        result = await render_html_to_image("")
+        result = (await render_html_to_image("")).image
 
         assert result == IMAGE_BYTES
         assert browser.page.set_content_calls[0]["html"] == ""
@@ -410,7 +418,7 @@ class TestTrimToContent:
             "<html>hi</html>", ImageRenderOptions(device_scale_factor=2, trim_margin_px=5)
         )
 
-        assert _opened(image).size == (170, 280)
+        assert _opened(image.image).size == (170, 280)
 
     def test_every_side_already_inside_the_margin_keeps_the_whole_capture(self) -> None:
         png = _desk_with_paper((300, 400), (4, 3, 297, 398))
@@ -583,3 +591,172 @@ class TestJpegClip:
                 "clip": {"x": 10.0, "y": 20.0, "width": 30.0, "height": 40.0},
             }
         ]
+
+
+def _png(width: int, height: int, ink: tuple[int, int, int, int] | None = None) -> bytes:
+    """Return a white capture, with a black block at ink=(left, top, right, bottom) when given."""
+    image = Image.new("RGB", (width, height), "white")
+    if ink is not None:
+        ImageDraw.Draw(image).rectangle(ink, fill="black")
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+@pytest.mark.unit
+class TestTheFold:
+    async def test_the_fold_is_the_markers_top_less_the_clearance_as_a_share_of_the_image(
+        self, browser: Harness
+    ) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.fold_tops["#fold"] = 100.0
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(fold_selector="#fold"))
+
+        assert rendered.fold == (100 - render_module.FOLD_CLEARANCE_PX) * 2 / 800
+
+    async def test_a_clipped_capture_measures_the_fold_from_the_clip_origin(
+        self, browser: Harness
+    ) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.boxes["#sheet"] = {"x": 0.0, "y": 50.0, "width": 200.0, "height": 400.0}
+        browser.page.fold_tops["#fold"] = 150.0
+
+        rendered = await render_html_to_image(
+            "<p/>", ImageRenderOptions(clip_selector="#sheet", fold_selector="#fold")
+        )
+
+        assert rendered.fold == (150 - 50 - render_module.FOLD_CLEARANCE_PX) * 2 / 800
+
+    async def test_a_page_without_the_marker_has_no_fold(self, browser: Harness) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.fold_tops["#fold"] = None
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(fold_selector="#fold"))
+
+        assert rendered.fold is None
+
+    async def test_no_fold_selector_asks_the_page_nothing_and_has_no_fold(
+        self, browser: Harness
+    ) -> None:
+        browser.page._image = _png(400, 800)
+
+        rendered = await render_html_to_image("<p/>")
+
+        assert rendered.fold is None
+
+    @pytest.mark.parametrize("top", [1.0, 2.0, 402.0, 500.0])
+    async def test_a_fold_outside_the_image_is_no_fold(self, browser: Harness, top: float) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.fold_tops["#fold"] = top
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(fold_selector="#fold"))
+
+        assert rendered.fold is None
+
+
+@pytest.mark.unit
+class TestThePaper:
+    async def test_the_paper_is_its_box_in_shares_of_the_image(self, browser: Harness) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.paper_boxes["#paper"] = [10.0, 20.0, 110.0, 220.0]
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(paper_selector="#paper"))
+
+        assert rendered.paper == (20 / 400, 40 / 800, 220 / 400, 440 / 800)
+
+    async def test_a_clipped_capture_measures_the_paper_from_the_clip_origin(
+        self, browser: Harness
+    ) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.boxes["#sheet"] = {"x": 5.0, "y": 10.0, "width": 200.0, "height": 400.0}
+        browser.page.paper_boxes["#paper"] = [15.0, 30.0, 115.0, 230.0]
+
+        rendered = await render_html_to_image(
+            "<p/>", ImageRenderOptions(clip_selector="#sheet", paper_selector="#paper")
+        )
+
+        assert rendered.paper == (20 / 400, 40 / 800, 220 / 400, 440 / 800)
+
+    async def test_a_paper_past_the_image_edges_is_clamped_inside_it(
+        self, browser: Harness
+    ) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.paper_boxes["#paper"] = [-50.0, -50.0, 900.0, 900.0]
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(paper_selector="#paper"))
+
+        assert rendered.paper == (0.0, 0.0, 1.0, 1.0)
+
+    async def test_a_page_without_the_marker_has_no_paper(self, browser: Harness) -> None:
+        browser.page._image = _png(400, 800)
+        browser.page.paper_boxes["#paper"] = None
+
+        rendered = await render_html_to_image("<p/>", ImageRenderOptions(paper_selector="#paper"))
+
+        assert rendered.paper is None
+
+    async def test_no_paper_selector_has_no_paper(self, browser: Harness) -> None:
+        browser.page._image = _png(400, 800)
+
+        assert (await render_html_to_image("<p/>")).paper is None
+
+
+@pytest.mark.unit
+class TestTrimmingMovesTheMarkers:
+    async def test_the_fold_and_the_paper_follow_the_content_the_trim_keeps(
+        self, browser: Harness
+    ) -> None:
+        # Black block (100,200)-(300,600); a 10px margin at scale 2 keeps (80,180)-(320,620).
+        browser.page._image = _png(400, 800, ink=(100, 200, 299, 599))
+        browser.page.fold_tops["#fold"] = 150.0
+        browser.page.paper_boxes["#paper"] = [60.0, 110.0, 100.0, 210.0]
+
+        rendered = await render_html_to_image(
+            "<p/>",
+            ImageRenderOptions(trim_margin_px=10, fold_selector="#fold", paper_selector="#paper"),
+        )
+
+        trimmed = Image.open(io.BytesIO(rendered.image))
+        assert trimmed.size == (240, 440)
+        assert rendered.fold == ((150 - render_module.FOLD_CLEARANCE_PX) * 2 - 180) / 440
+        assert rendered.paper == (40 / 240, 40 / 440, 120 / 240, 240 / 440)
+
+
+@pytest.mark.unit
+class TestTrimReadsCoverage:
+    async def test_an_opaque_block_the_same_colour_as_a_transparent_page_is_content(
+        self, browser: Harness
+    ) -> None:
+        image = Image.new("RGBA", (400, 800), (255, 255, 255, 0))
+        ImageDraw.Draw(image).rectangle((100, 200, 299, 599), fill=(255, 255, 255, 255))
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        browser.page._image = out.getvalue()
+        browser.page.fold_tops["#fold"] = 150.0
+
+        rendered = await render_html_to_image(
+            "<p/>", ImageRenderOptions(trim_margin_px=10, fold_selector="#fold")
+        )
+
+        assert Image.open(io.BytesIO(rendered.image)).size == (240, 440)
+        assert rendered.fold == ((150 - render_module.FOLD_CLEARANCE_PX) * 2 - 180) / 440
+
+    async def test_the_paper_share_counts_a_faint_shadow_the_trim_keeps(
+        self, browser: Harness
+    ) -> None:
+        image = Image.new("RGBA", (400, 800), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((100, 200, 299, 599), fill=(250, 250, 250, 255))
+        draw.rectangle((100, 600, 299, 649), fill=(0, 0, 0, render_module.TRIM_ALPHA_THRESHOLD + 1))
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        browser.page._image = out.getvalue()
+        browser.page.paper_boxes["#paper"] = [50.0, 100.0, 150.0, 300.0]
+
+        rendered = await render_html_to_image(
+            "<p/>", ImageRenderOptions(trim_margin_px=10, paper_selector="#paper")
+        )
+
+        assert Image.open(io.BytesIO(rendered.image)).size == (240, 490)
+        assert rendered.paper == (20 / 240, 20 / 490, 220 / 240, 420 / 490)

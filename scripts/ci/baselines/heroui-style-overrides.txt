@@ -22,8 +22,6 @@ apps/web/src/components/browser/RecapSlideshow.tsx:GaiaButton:bg-black/45
 apps/web/src/components/browser/RecapSlideshow.tsx:GaiaButton:data-[hover=true]:bg-black/65
 apps/web/src/features/chat/components/bubbles/bot/LivePreview.tsx:Modal.Dialog:bg-zinc-950
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:Popover.Content:bg-transparent
-apps/web/src/features/chat/components/interface/founder-letter/FounderLetter.tsx:Modal.Backdrop:bg-black/70
-apps/web/src/features/chat/components/interface/founder-letter/FounderLetter.tsx:Modal.Dialog:bg-transparent
 
 # raw status colour outside the semantic tokens (red-500, emerald, blue, orange, yellow, gray, #00bbff)
 apps/web/src/app/[locale]/(landing)/privacy/page.tsx:Link:text-blue-500
@@ -66,7 +64,6 @@ apps/web/src/features/chat/components/bubbles/actions/ChatBubble_Actions_Image.t
 apps/web/src/features/chat/components/bubbles/actions/ChatBubble_Actions_Image.tsx:GaiaButton:py-2
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Chip.Label:px-1.5
 apps/web/src/features/chat/components/bubbles/bot/DeepResearchResultsTabs.tsx:Tabs:p-0
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card.Content:p-3.5
 apps/web/src/features/chat/components/bubbles/bot/GoogleDocsSection.tsx:LinkButton:py-7
 apps/web/src/features/chat/components/bubbles/bot/HandoffPrompt.tsx:GaiaButton:px-3
 apps/web/src/features/chat/components/bubbles/bot/LivePreview.tsx:Modal.Body:p-4
@@ -78,8 +75,6 @@ apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:px-3
 apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:py-2
 apps/web/src/features/chat/components/composer/SendStopButton.tsx:GaiaButton:px-3
 apps/web/src/features/chat/components/interface/BaseCardView.tsx:Header:py-1
-apps/web/src/features/chat/components/interface/founder-letter/FounderLetter.tsx:Modal.Container:p-3
-apps/web/src/features/chat/components/interface/founder-letter/FounderLetter.tsx:Modal.Container:sm:p-6
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup.Input:px-1.5
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pl-0.5
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pr-2
@@ -139,7 +134,6 @@ apps/web/src/layouts/SidebarLayout.tsx:Kbd:rounded-md
 
 # selected, hover or group-hover text on a control with no such tone dimension
 apps/web/src/features/chat/components/bubbles/bot/CodeExecutionSection.tsx:Accordion.Trigger:hover:text-white
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:GaiaButton:group-hover:text-white
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.CloseTrigger:hover:text-white
 apps/web/src/features/workflows/components/workflow-modal/WorkflowRightPanel.tsx:Tabs.Tab:data-[selected]:text-black
 apps/web/src/features/workflows/components/workflow-modal/WorkflowTriggerSection.tsx:Tabs.Tab:data-[selected=true]:text-zinc-100
@@ -152,8 +146,6 @@ apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:I
 apps/web/src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx:Select.Popover:border-zinc-800
 apps/web/src/components/seo/ComparisonTable.tsx:Table.Header:[&>tr]:border-zinc-700
 apps/web/src/components/seo/ComparisonTable.tsx:Table.Row:border-zinc-700/50
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:border-zinc-700/80
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:hover:border-zinc-500
 apps/web/src/features/chat/components/code-block/CustomAnchor.tsx:Tooltip.Content:border-zinc-800
 apps/web/src/features/integrations/components/IntegrationInstructionsModal.tsx:Modal.Dialog:border-zinc-800
 apps/web/src/features/landing/components/demo/MemoryGraphDemo.tsx:Card:border-zinc-600
@@ -176,8 +168,6 @@ apps/web/src/config/openui/components/MapBlockControls.tsx:GaiaButton:bg-zinc-80
 apps/web/src/config/openui/components/MapBlockControls.tsx:GaiaButton:hover:bg-zinc-700
 apps/web/src/features/browser/components/ConnectBrowserModal.tsx:Tabs.List:bg-zinc-900
 apps/web/src/features/chat/components/bubbles/bot/BrowserTaskSection.tsx:Chip:bg-zinc-700
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:bg-zinc-900/70
-apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx:Card:hover:bg-zinc-900
 apps/web/src/features/chat/components/bubbles/bot/FollowUpActions.tsx:GaiaButton:hover:bg-zinc-700
 apps/web/src/features/chat/components/bubbles/bot/NotificationListSection.tsx:Chip:bg-zinc-700
 apps/web/src/features/chat/components/bubbles/bot/SearchResultsTabs.tsx:GaiaButton:bg-zinc-800/80

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from app.models.files_models import PageWiseSummary
 from app.services.files import sandbox
 from app.services.files.sandbox import UploadMirror, workspace_upload_name
 from app.services.storage import FsOps, JuiceFSUnavailable
@@ -29,17 +30,20 @@ def workspace(tmp_path, monkeypatch):
     return tmp_path, uploads
 
 
-def _mirror(**overrides) -> UploadMirror:
-    values = {
-        "file_id": "f-1",
-        "filename": "table.png",
-        "content": b"image-bytes",
-        "content_type": "image/png",
-        "description": "a table",
-        "page_wise_summary": None,
-    }
-    values.update(overrides)
-    return UploadMirror(**values)
+def _mirror(
+    *,
+    filename: str = "table.png",
+    description: str | None = "a table",
+    page_wise_summary: PageWiseSummary = None,
+) -> UploadMirror:
+    return UploadMirror(
+        file_id="f-1",
+        filename=filename,
+        content=b"image-bytes",
+        content_type="image/png",
+        description=description,
+        page_wise_summary=page_wise_summary,
+    )
 
 
 def _fake_writer(root: Path):
@@ -107,13 +111,9 @@ class TestMirrorUpload:
             call(uploads / "f-1_table.png", 0o444),
             call(uploads / "f-1_table.png.summary.md", 0o444),
         ]
-        assert publish.await_args.args[0] == USER
-        event = publish.await_args.args[1]
-        assert event["event"] == "upload"
-        assert event["session_id"] == CONV
-        assert event["path"] == "f-1_table.png"
-        assert event["size_bytes"] == len(b"image-bytes")
-        assert event["content_type"] == "image/png"
+        # Regression: the upload was published as an artifact event, so chat drew the
+        # user's own file as a GAIA card.
+        publish.assert_not_awaited()
 
     async def test_a_page_only_summary_reaches_the_sidecar(self, workspace):
         root, uploads = workspace

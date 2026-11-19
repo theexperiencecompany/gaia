@@ -280,7 +280,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   ${etiquette(city, rng)}
   <div class="addr"><div class="lab">To</div><div class="to">${ed.recipient ? esc(ed.recipient.name) : "You"}</div><div class="re">Re: your ${esc(ed.weekday)}</div><div class="meta">Edition No. ${ed.editionNo} · ${ed.day} ${esc(ed.month)} ${ed.year}</div><div class="under"></div></div>
 </div></div>
-<div class="letter">${grain("pa-l", 0.9)}
+<div class="letter" data-fold>${grain("pa-l", 0.9)}
   <div class="lhead tw"><span class="lbrand">GAIA — Daily brief</span><span class="lmeta">No. ${ed.editionNo} · ${esc(ed.time)}</span></div>
   <p class="dated tw">${esc(city.label)}, ${esc(ed.dateLong)}</p>
   <p class="dear">${ed.recipient ? `Dear ${esc(ed.recipient.first)},` : "Good morning,"}</p>

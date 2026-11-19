@@ -1,6 +1,6 @@
 "use client";
 
-import type { BriefingModel } from "@shared/api/generated";
+import type { BriefingView } from "@shared/api/generated";
 
 import { StandalonePage } from "@/components/layout/StandalonePage";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
@@ -11,7 +11,7 @@ import {
 } from "./BriefingEdition";
 
 export interface StandaloneBriefingProps {
-  briefing: Pick<BriefingModel, "edition_image_url"> & {
+  briefing: Pick<BriefingView, "edition_image_url"> & {
     payload: BriefingEditionPayload;
   };
   /** Set on the owner's own page, which can share the brief or stop sharing it. */

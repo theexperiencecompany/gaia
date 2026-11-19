@@ -1,16 +1,14 @@
 "use client";
 
-import { Modal } from "@heroui/react";
-import { CancelIcon } from "@icons";
 import type { CSSProperties } from "react";
-import { modalVariants } from "@/components/shared/controlVariants";
+
+import { LetterModal } from "@/components/shared/LetterModal";
 import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
 import { useFirstSteps } from "@/features/first-steps";
 import { track } from "@/lib/analytics";
 import {
   BODY_FONT,
   INK,
-  INK_SOFT,
   LETTER_PARAGRAPHS,
   MEETING_CTA,
   MEETING_SENTENCE,
@@ -228,113 +226,83 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         onDismiss={dismissLetter}
       />
 
-      {/* HeroUI owns the dialog semantics: focus trap, Escape, scroll lock and
-          focus restoration to the envelope. The paper is its own surface, so
-          the modal's own background and shadow are stripped off. */}
-      <Modal
+      <LetterModal
         isOpen={isOpen}
-        onOpenChange={(open) => {
-          if (!open) closeLetter();
-        }}
+        onClose={closeLetter}
+        ariaLabel="A letter from Aryan Randeriya"
       >
-        <Modal.Backdrop className="bg-black/70 backdrop-blur-sm">
-          <Modal.Container className="items-center justify-center p-3 sm:p-6">
-            <Modal.Dialog
-              aria-label="A letter from Aryan Randeriya"
-              className={modalVariants({
-                inset: "none",
-                className:
-                  "m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none",
-              })}
+        <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
+          <PaperBackdrop />
+
+          {/* Letter content */}
+          <div
+            className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
+            style={{ fontFamily: BODY_FONT, color: INK }}
+          >
+            {/* Salutation */}
+            <p
+              className="font-semibold"
+              style={{ fontSize: "var(--letter-salutation)" }}
             >
-              <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
-                <PaperBackdrop />
+              Dear {firstName},
+            </p>
 
-                {/* Close */}
-                <button
-                  type="button"
-                  onClick={closeLetter}
-                  aria-label="Close the letter"
-                  className="absolute top-3 right-3 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full outline-none transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-black/60"
-                >
-                  <CancelIcon className="h-4 w-4" style={{ color: INK_SOFT }} />
-                </button>
+            {/* Body */}
+            <div
+              className="mt-2.5 space-y-2.5"
+              style={{
+                fontSize: "var(--letter-body)",
+                lineHeight: "var(--letter-body-lh)",
+              }}
+            >
+              {LETTER_PARAGRAPHS.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+            </div>
 
-                {/* Letter content */}
-                <div
-                  className="relative px-[var(--letter-pad-x)] pt-[var(--letter-pad-t)] pb-[var(--letter-pad-b)]"
-                  style={{ fontFamily: BODY_FONT, color: INK }}
-                >
-                  {/* Salutation */}
-                  <p
-                    className="font-semibold"
-                    style={{ fontSize: "var(--letter-salutation)" }}
-                  >
-                    Dear {firstName},
-                  </p>
+            {liveOfferCode !== null && (
+              <LetterOffer
+                discountCode={liveOfferCode}
+                copied={copied}
+                onCopyCode={copyCode}
+                onClaim={claimOffer}
+              />
+            )}
 
-                  {/* Body */}
-                  <div
-                    className="mt-2.5 space-y-2.5"
-                    style={{
-                      fontSize: "var(--letter-body)",
-                      lineHeight: "var(--letter-body-lh)",
-                    }}
-                  >
-                    {LETTER_PARAGRAPHS.map((paragraph) => (
-                      <p key={paragraph}>{paragraph}</p>
-                    ))}
-                  </div>
+            {/* Meeting */}
+            <p
+              className="mt-4"
+              style={{
+                fontSize: "var(--letter-body)",
+                lineHeight: "var(--letter-body-lh)",
+              }}
+            >
+              {MEETING_SENTENCE}
+            </p>
+            <a
+              href={MEETING_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => track("founder_letter:meeting_clicked", {})}
+              className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
+            >
+              {MEETING_CTA}
+            </a>
 
-                  {liveOfferCode !== null && (
-                    <LetterOffer
-                      discountCode={liveOfferCode}
-                      copied={copied}
-                      onCopyCode={copyCode}
-                      onClaim={claimOffer}
-                    />
-                  )}
-
-                  {/* Meeting */}
-                  <p
-                    className="mt-4"
-                    style={{
-                      fontSize: "var(--letter-body)",
-                      lineHeight: "var(--letter-body-lh)",
-                    }}
-                  >
-                    {MEETING_SENTENCE}
-                  </p>
-                  <a
-                    href={MEETING_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => track("founder_letter:meeting_clicked", {})}
-                    className="mt-1 inline-flex items-center gap-1.5 text-[calc(var(--letter-small)*1.05)] font-semibold underline decoration-[1.5px] underline-offset-4 outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-black/60"
-                  >
-                    {MEETING_CTA}
-                  </a>
-
-                  {/* Signature: draws itself in, stroke by stroke */}
-                  <div className="mt-6">
-                    <Signature
-                      active={isOpen}
-                      scale="clamp(1.05, 0.14vh, 1.35)"
-                    />
-                  </div>
-                  <div
-                    className="mt-1 flex flex-col leading-snug font-normal"
-                    style={{ fontSize: "var(--letter-small)" }}
-                  >
-                    <span className="font-medium">{SIGNATURE_NAME}</span>
-                    <span>{SIGNATURE_ROLE}</span>
-                  </div>
-                </div>
-              </div>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+            {/* Signature: draws itself in, stroke by stroke */}
+            <div className="mt-6">
+              <Signature active={isOpen} scale="clamp(1.05, 0.14vh, 1.35)" />
+            </div>
+            <div
+              className="mt-1 flex flex-col leading-snug font-normal"
+              style={{ fontSize: "var(--letter-small)" }}
+            >
+              <span className="font-medium">{SIGNATURE_NAME}</span>
+              <span>{SIGNATURE_ROLE}</span>
+            </div>
+          </div>
+        </div>
+      </LetterModal>
     </>
   );
 }

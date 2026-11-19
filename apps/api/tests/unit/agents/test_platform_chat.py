@@ -248,6 +248,7 @@ class TestQuietHours:
         message_class: ProactiveMessageClass,
         user: UserDocument | None = AWAKE_USER,
         text: str = TEXT,
+        image: platform_chat.PlatformImage | None = None,
     ) -> tuple[OutboundResult, AsyncMock, AsyncMock]:
         enqueue = AsyncMock()
         publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
@@ -263,7 +264,12 @@ class TestQuietHours:
             time_machine.travel(now, tick=False),
         ):
             result = await platform_chat.post_to_platform_chat(
-                user=USER, channel=CHANNEL, text=text, origin="origin", message_class=message_class
+                user=USER,
+                channel=CHANNEL,
+                text=text,
+                origin="origin",
+                message_class=message_class,
+                image=image,
             )
         return result, enqueue, publish
 
@@ -289,6 +295,11 @@ class TestQuietHours:
             f"{DEFERRED_CHAT_MESSAGE_JOB_PREFIX}[0-9a-f]{{32}}",
             enqueue.await_args.kwargs["_job_id"],
         )
+
+    async def test_a_held_message_keeps_its_image_for_the_morning(self) -> None:
+        _, enqueue, _ = await self._post_at(NIGHT_UTC, ProactiveMessageClass.ROUTINE, image=IMAGE)
+
+        assert enqueue.await_args.args[2].image == IMAGE
 
     async def test_the_users_own_window_and_clock_decide(self) -> None:
         # 12:00 UTC is 17:30 in Kolkata, inside a 17-19 window that ends 13:30 UTC.

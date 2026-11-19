@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The briefings archive says when it could not load, offers a retry, and
- * shows each section under the title the backend gave it.
+ * groups its folded cards by week with the weekly recap leading.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -36,6 +36,9 @@ const brief = {
   opened_at: null,
   created_at: "2026-10-14T02:30:00Z",
   updated_at: null,
+  edition_name: "Air Mail",
+  stamp_city_name: "Bogotá",
+  needs_you_count: 1,
   payload: {
     kicker: "THE MORNING BRIEF",
     date: "2026-10-14",
@@ -88,11 +91,35 @@ describe("BriefingArchive", () => {
     );
   });
 
-  it("shows a section title exactly as the backend wrote it", async () => {
-    fetchBriefings.mockResolvedValueOnce([brief]);
+  it("groups briefs by week, leads with the weekly recap and flags only a notable count", async () => {
+    const weekly = {
+      ...brief,
+      id: "brief_w",
+      kind: "weekly",
+      date: "2026-10-18",
+      edition_name: "The Week",
+      stamp_city_name: null,
+      needs_you_count: 4,
+      payload: { ...brief.payload, headline: "A steady week" },
+    };
+    const lastWeek = { ...brief, id: "brief_old", date: "2026-10-07" };
+    fetchBriefings.mockResolvedValueOnce([brief, weekly, lastWeek]);
 
     renderArchive();
 
-    expect(await screen.findByText("GAIA's work")).toBeTruthy();
+    const cards = await screen.findAllByRole("button", {
+      name: /^Open brief:/,
+    });
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
+      "Open brief: A steady week",
+      "Open brief: Your morning, sorted",
+      "Open brief: Your morning, sorted",
+    ]);
+    expect(screen.getByText("Oct 12 – Oct 18")).toBeTruthy();
+    expect(screen.getByText("Oct 5 – Oct 11")).toBeTruthy();
+    expect(screen.getByText("Weekly recap")).toBeTruthy();
+    expect(screen.getByText("4 waiting")).toBeTruthy();
+    expect(screen.getAllByText("Air Mail, Bogotá")).toHaveLength(2);
+    expect(screen.queryByText(/1 waiting/)).toBeNull();
   });
 });

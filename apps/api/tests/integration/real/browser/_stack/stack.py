@@ -48,6 +48,7 @@ from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.dev_schemas import SeedDevDataRequest
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.jobs import done_state, get_latest_job
@@ -317,7 +318,7 @@ class BrowserStack:
         """Mint a user through the real signup path, link a Telegram account, and make them PRO."""
         email = f"browser-stack-{uuid.uuid4().hex[:10]}@gaia.test"
         user = await mint_dev_user(email)
-        seeded = await seed_dev_data(email, todos=0, conversations=0, platform_links=[_TELEGRAM])
+        seeded = await seed_dev_data(SeedDevDataRequest(email=email, platform_links=[_TELEGRAM]))
         await _make_pro(user.id)
         return BotUser(user_id=user.id, telegram_id=seeded.platform_user_ids[_TELEGRAM])
 

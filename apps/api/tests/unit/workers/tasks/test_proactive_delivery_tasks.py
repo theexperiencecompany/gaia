@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 from arq.worker import Retry
 import pytest
 
-from app.agents.core.background.platform_chat import DeferredChatMessage
+from app.agents.core.background.platform_chat import DeferredChatMessage, PlatformImage
 from app.constants.notifications import PROACTIVE_RECORD_RETRY_DELAY, ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
@@ -57,6 +57,18 @@ class TestDeliverDeferredChatMessage:
         assert kwargs["message_class"] is ProactiveMessageClass.ROUTINE
         assert event["platform"] == "telegram"
         assert event["message_class"] == ProactiveMessageClass.ROUTINE.value
+
+    async def test_the_held_image_goes_out_with_the_message(self) -> None:
+        image = PlatformImage(url="https://cdn.test/brief.png", filename="brief.png")
+        held = MESSAGE.model_copy(update={"image": image})
+        post = AsyncMock(return_value=OutboundResult.PUBLISHED)
+        with (
+            patch.object(user_repository, "get", AsyncMock(return_value=UserDocument(id="user-1"))),
+            patch.object(proactive_delivery_tasks, "post_to_platform_chat", post),
+        ):
+            await proactive_delivery_tasks.deliver_deferred_chat_message({}, held)
+
+        assert post.await_args.kwargs["image"] == image
 
     async def test_a_user_deleted_while_it_was_held_drops_it_with_a_warning(self) -> None:
         async with captured_wide_event() as event:

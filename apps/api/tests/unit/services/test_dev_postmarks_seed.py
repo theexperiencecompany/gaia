@@ -1,4 +1,4 @@
-"""Dev postmark seeding: the brief each seeded day becomes, and what is written for it."""
+"""Dev brief seeding: the brief each seeded day becomes, and what is written for it."""
 
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -10,19 +10,23 @@ import pytest
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
+    BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
     NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    WEEKLY_FAMILY,
+    WEEKLY_KICKER,
     WORK_SECTION_TITLE,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
-from app.models.briefing_models import BriefingPayload
+from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
-from app.services.dev_postmarks_seed import seed_dev_postmarks
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
@@ -107,7 +111,9 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
-        assert upsert_call.kwargs == {"edition_image_url": f"https://cdn.test/{key}.png"}
+        assert upsert_call.kwargs == {
+            "edition": EditionRender(image_url=f"https://cdn.test/{key}.png"),
+        }
         assert deliver_call.args == (
             user.id,
             payload.date,
@@ -164,3 +170,123 @@ async def test_every_city_can_be_seeded_but_not_one_more(user, seeded) -> None:
 
     await seed_dev_postmarks(user, len(CITIES))
     assert seeded.upsert.await_count == len(CITIES)
+
+
+NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+
+async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
+    await seed_dev_editions(user, 4)
+
+    kinds = [call.args[2] for call in seeded.upsert.await_args_list]
+    payloads = seeded.payloads()
+    assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
+    assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]
+    assert [p.date for p in payloads[:4]] == [
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+    ]
+    assert all(p.stamp_city is None for p in payloads)
+    weekly = payloads[-1]
+    assert weekly.week is not None and len(weekly.week.days) == 7
+    assert seeded.deliver.await_count == 5
+
+
+async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -> None:
+    await seed_dev_editions(user, 0)
+    seeded.upsert.assert_not_awaited()
+
+    with pytest.raises(AppError) as exc:
+        await seed_dev_editions(user, len(NON_POSTAL_FAMILIES) + 1)
+
+    assert exc.value.status_code == 400
+    assert seeded.rendered == []
+
+
+async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
+    user, seeded
+) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    with pytest.raises(AppError) as raised:
+        await seed_dev_editions(user, families + 1)
+
+    assert raised.value.message == f"Cannot seed {families + 1} editions"
+    assert raised.value.why == f"there are only {families} daily edition families besides Air Mail"
+    assert raised.value.fix == f"ask for at most {families}"
+    seeded.upsert.assert_not_awaited()
+
+
+async def test_the_weekly_recap_is_the_one_seeded_week_in_full(user, seeded) -> None:
+    await seed_dev_editions(user, 1)
+
+    weekly = seeded.payloads()[-1]
+    assert (weekly.kicker, weekly.date, weekly.template_family) == (
+        WEEKLY_KICKER,
+        "2026-10-11",
+        WEEKLY_FAMILY,
+    )
+    assert (weekly.headline, weekly.lede, weekly.message) == (
+        "A steady week: the release shipped and two decisions are still open",
+        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
+        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
+    )
+    assert (weekly.mood, weekly.caption, weekly.hue) == (
+        "clear",
+        "Two decisions and the week is closed.",
+        hue_for_day(date(2026, 10, 11).timetuple().tm_yday),
+    )
+    assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
+    assert (weekly.tallies.done_by_you, weekly.tallies.done_by_gaia) == (14, 22)
+    asks, work = weekly.sections
+    assert [(s.numeral, s.title) for s in weekly.sections] == [
+        (SECTION_NUMERALS[0], NEEDS_YOU_SECTION_TITLE),
+        (SECTION_NUMERALS[1], WORK_SECTION_TITLE),
+    ]
+    assert [(i.text, i.kind) for i in asks.items] == [
+        ("Confirm the offsite venue", "you"),
+        ("Accept the new lease terms", "you"),
+    ]
+    shipped = [seed.done[0] for seed in dev_postmarks_seed._SEED_DAYS[:4]]
+    assert [(i.text, i.kind) for i in work.items] == [(t, "lookback") for t in shipped]
+    assert weekly.week is not None
+    assert weekly.week.shipped == shipped
+    assert weekly.week.handled == [
+        "Rescheduled 3 meetings",
+        "Paid 2 invoices",
+        "Archived 120 emails",
+    ]
+    assert [(e.date, e.start, e.title) for e in weekly.week.ahead] == [
+        ("2026-10-12", "10:00", "Quarterly planning"),
+        ("2026-10-14", "18:40", "Flight to Lisbon"),
+    ]
+
+
+async def test_a_hosted_editions_fold_and_paper_are_stored_beside_its_url(user) -> None:
+    hosted = HostedEditionImage(
+        display_url="https://cdn.test/e.png",
+        chat_url="https://cdn.test/e.jpg",
+        fold=0.4,
+        paper=(0.1, 0.2, 0.9, 0.8),
+    )
+    with (
+        patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
+        patch(f"{MODULE}.host_edition_image", AsyncMock(return_value=hosted)),
+        patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
+        patch(f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock),
+    ):
+        await seed_dev_postmarks(user, 1)
+
+    assert upsert.await_args.kwargs["edition"] == EditionRender(
+        image_url="https://cdn.test/e.png", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
+    )
+
+
+async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
+    families = len(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
+
+    await seed_dev_editions(user, families)
+
+    assert len(seeded.payloads()) == families + 1

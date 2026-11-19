@@ -1,13 +1,19 @@
 "use client";
 
-import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
+import {
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+  LinkSquare02Icon,
+} from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   GaiaButton,
   type GaiaButtonVariant,
 } from "@/components/shared/GaiaButton";
+import { BriefingFold, type FoldedBriefSummary } from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { NOTIFICATION_KIND_BRIEFING_WEEKLY } from "@/features/notification/constants";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   ActionStyle,
@@ -37,6 +43,58 @@ const ACTION_BUTTON_VARIANT: Record<ActionStyle, GaiaButtonVariant> = {
   [ActionStyle.SECONDARY]: "default-soft",
 };
 
+// The folded brief below already carries the headline, so the header names the kind.
+const BRIEF_LABEL = "Briefing";
+
+/** The brief a briefing notification carries (its metadata names it), or null for any other notification. */
+function briefOf(notification: NotificationView) {
+  const metadata = notification.metadata ?? {};
+  const briefingId = metadata.briefing_id;
+  if (typeof briefingId !== "string") return null;
+  const text = (key: string) =>
+    typeof metadata[key] === "string" ? metadata[key] : null;
+  const summary: FoldedBriefSummary = {
+    headline: notification.content.title,
+    date: text("date") ?? undefined,
+    kind:
+      metadata.kind === NOTIFICATION_KIND_BRIEFING_WEEKLY ? "weekly" : "daily",
+    imageUrl: text("edition_image_url"),
+    editionFold:
+      typeof metadata.edition_fold === "number" ? metadata.edition_fold : null,
+    editionPaper: Array.isArray(metadata.edition_paper)
+      ? metadata.edition_paper.filter(
+          (share): share is number => typeof share === "number",
+        )
+      : null,
+    editionName: text("edition_name"),
+    stampCityName: text("stamp_city_name"),
+    needsYouCount:
+      typeof metadata.needs_you_count === "number"
+        ? metadata.needs_you_count
+        : null,
+  };
+  return { briefingId, summary };
+}
+
+/** Done actions show a check; a redirect shows where it goes, out of GAIA (a new tab or another site) or within it. */
+function actionIcon(action: NotificationAction) {
+  if (action.executed) return <CheckmarkCircle02Icon className="size-3.5" />;
+  const redirect = action.config?.redirect;
+  if (action.type !== ActionType.REDIRECT || !redirect) return undefined;
+  const leavesApp =
+    Boolean(redirect.open_in_new_tab) || /^https?:\/\//.test(redirect.url);
+  return leavesApp ? (
+    <LinkSquare02Icon className="size-3.5" />
+  ) : (
+    <ArrowRight01Icon className="size-3.5" />
+  );
+}
+
+/** The folded card already opens its brief, so an action pointing at that same brief is left out. */
+function opensBrief(action: NotificationAction, briefingId: string): boolean {
+  return action.config?.redirect?.url === `/brief/${briefingId}`;
+}
+
 export const NotificationCard = ({
   notification,
   tone = "raised",
@@ -48,7 +106,11 @@ export const NotificationCard = ({
     onSuccess: () => onRefresh?.(),
   });
 
-  const { title, body, actions = [] } = notification.content;
+  const { title, body } = notification.content;
+  const brief = briefOf(notification);
+  const actions = (notification.content.actions ?? []).filter(
+    (action) => !brief || !opensBrief(action, brief.briefingId),
+  );
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
   const handleActionPress = async (action: NotificationAction) => {
@@ -75,7 +137,7 @@ export const NotificationCard = ({
           <h3
             className={`truncate text-sm font-medium ${isUnread ? "text-zinc-100" : "text-zinc-400"}`}
           >
-            {title}
+            {brief ? BRIEF_LABEL : title}
           </h3>
           {isUnread && (
             <span className="size-1.5 shrink-0 rounded-full bg-accent" />
@@ -89,11 +151,21 @@ export const NotificationCard = ({
             })}
           </span>
         </div>
-        <MarkdownRenderer
-          content={body}
-          className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
-          hideCodeToolbar
-        />
+        {brief ? (
+          <div className="mt-2 w-full max-w-56">
+            <BriefingFold
+              brief={brief.summary}
+              briefingId={brief.briefingId}
+              tone={tone === "raised" ? "inset" : "raised"}
+            />
+          </div>
+        ) : (
+          <MarkdownRenderer
+            content={body}
+            className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
+            hideCodeToolbar
+          />
+        )}
       </div>
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
@@ -117,11 +189,7 @@ export const NotificationCard = ({
                 onPress={() => handleActionPress(action)}
               >
                 {action.label}
-                {isExecuted ? (
-                  <CheckmarkCircle02Icon className="size-3.5" />
-                ) : action.type === ActionType.REDIRECT ? (
-                  <LinkSquare02Icon className="size-3.5" />
-                ) : null}
+                {actionIcon(action)}
               </GaiaButton>
             );
           })}

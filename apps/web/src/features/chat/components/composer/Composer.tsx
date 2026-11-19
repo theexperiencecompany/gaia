@@ -60,7 +60,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedTool,
     setSelectedToolCategory,
   } = useComposerModeSelection();
-  const { uploadedFiles, removeUploadedFile } = useComposerFiles();
+  const { uploadedFiles } = useComposerFiles();
   const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
     useComposerUI();
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
@@ -70,7 +70,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   const { handleFormSubmit, handleRemoveSelectedTool, handleKeyDown } =
     useComposerSubmit({ inputRef, scrollToBottom });
-  const { attachFiles } = useFileAttachments();
+  const { attachFiles, removeAttachment } = useFileAttachments();
   useComposerPaste({ inputRef, attachFiles });
   const { handleToggleSlashCommandDropdown, handleIntegrationClick } =
     useSlashCommandDropdownControl({
@@ -153,7 +153,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         />
         {/* relative z-10 ensures indicators always paint above the absolute banner */}
         <div className="relative z-10">
-          <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
+          <FilePreview files={uploadedFiles} onRemove={removeAttachment} />
           <SelectedToolIndicator
             toolName={selectedTool}
             toolCategory={selectedToolCategory}
