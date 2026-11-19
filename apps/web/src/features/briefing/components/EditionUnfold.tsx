@@ -237,7 +237,7 @@ export function EditionUnfold({
               }),
             ),
           ];
-      Promise.all(opening).then(() => {
+      void Promise.all(opening).then(() => {
         if (isCurrent) setIsOpening(false);
       });
       return () => {

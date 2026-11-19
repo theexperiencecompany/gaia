@@ -1,7 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { type ComponentProps, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   PhoneLinkModal,
   PhoneLinkTarget,
@@ -103,14 +109,14 @@ export function usePlatformLinks({
     !isUnknown &&
     !isPaid;
 
-  const clearPollTimer = () => {
+  const clearPollTimer = useCallback(() => {
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const refetch = async (): Promise<PlatformLinks | null> => {
+  const refetch = useCallback(async (): Promise<PlatformLinks | null> => {
     setIsLoading(true);
     try {
       const data = await api.get("/api/v1/platform-links", { silent: true });
@@ -125,12 +131,12 @@ export function usePlatformLinks({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [onLoadError]);
 
   useEffect(() => {
     void refetch();
     return clearPollTimer;
-  }, []);
+  }, [refetch, clearPollTimer]);
 
   const openAuthPopup = (platform: BotPlatform, authUrl: string) => {
     const left = window.screen.width / 2 - POPUP_WIDTH / 2;
