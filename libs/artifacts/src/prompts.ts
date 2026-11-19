@@ -27,9 +27,10 @@ const HTML_ARTIFACT_RULE =
   "HtmlArtifact is only for a request that asks for inputs to play with (a calculator, a simulator, a small tool); everything else uses the other components. Its html is structure and classes only, and every result it shows is a data-formula over its inputs.";
 
 function namingRule(components: readonly string[]): string {
-  const names = components
-    .filter((c) => STATEMENT_NAMES[c])
-    .map((c) => `${c}: ${STATEMENT_NAMES[c]}1, ${STATEMENT_NAMES[c]}2, ...`);
+  const names = components.flatMap((c) => {
+    const name = STATEMENT_NAMES[c];
+    return name ? [`${c}: ${name}1, ${name}2, ...`] : [];
+  });
   return `Statement names: root, then for each component exactly this name plus a number counting from 1 per type. ${names.join("; ")}. Slots use these names, e.g. {funnel1.worstStepLoss}.`;
 }
 

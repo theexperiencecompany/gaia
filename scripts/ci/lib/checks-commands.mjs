@@ -128,9 +128,9 @@ const gitLsFiles = (patterns) =>
 function sizeFiles(args) {
   const explicit = explicitFileList(args);
   if (explicit.length > 0) {
-    return explicit
-      .filter((p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)))
-      .filter((p) => !shouldIgnore(p));
+    return explicit.filter(
+      (p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)) && !shouldIgnore(p),
+    );
   }
   return gitLsFiles([
     "*.ts",
@@ -524,9 +524,9 @@ function cmdTypesLocation(argv) {
 
 function cmdDocComments(argv) {
   // existsSync: `git ls-files` still lists a file deleted but not yet staged.
-  const findings = sizeFiles(argv)
-    .filter((file) => existsSync(file))
-    .flatMap((file) => checkDocComments(file));
+  const findings = sizeFiles(argv).flatMap((file) =>
+    existsSync(file) ? checkDocComments(file) : [],
+  );
 
   if (findings.length > 0) {
     console.error(`\n❌ doc-comments gate FAILED — ${findings.length} finding(s):\n`);

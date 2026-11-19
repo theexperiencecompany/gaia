@@ -16,6 +16,7 @@ export default function SendNotificationSection({
 }: SendNotificationSectionProps) {
   const { title, message, delivered_channels } = send_notification_data;
   const isDelivered = delivered_channels.length > 0;
+  const shownChannels = delivered_channels.filter(isNotificationChannel);
 
   return (
     <div className="mt-3 w-full max-w-sm">
@@ -27,23 +28,21 @@ export default function SendNotificationSection({
       <div className="flex items-center gap-3 rounded-[22px] bg-zinc-800 p-3.5 shadow-2xl shadow-black/40">
         {isDelivered ? (
           <div className="flex shrink-0 -space-x-2">
-            {delivered_channels
-              .filter(isNotificationChannel)
-              .map((channel, index) => {
-                const icon = NOTIFICATION_CHANNEL_ICONS[channel];
-                const label = NOTIFICATION_CHANNEL_LABELS[channel];
-                return (
-                  <Image
-                    key={channel}
-                    src={icon}
-                    alt={label}
-                    title={label}
-                    width={44}
-                    height={44}
-                    className={`size-11 ${index % 2 === 0 ? "rotate-3" : "-rotate-3"}`}
-                  />
-                );
-              })}
+            {shownChannels.map((channel, index) => {
+              const icon = NOTIFICATION_CHANNEL_ICONS[channel];
+              const label = NOTIFICATION_CHANNEL_LABELS[channel];
+              return (
+                <Image
+                  key={channel}
+                  src={icon}
+                  alt={label}
+                  title={label}
+                  width={44}
+                  height={44}
+                  className={`size-11 ${index % 2 === 0 ? "rotate-3" : "-rotate-3"}`}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-zinc-700">
