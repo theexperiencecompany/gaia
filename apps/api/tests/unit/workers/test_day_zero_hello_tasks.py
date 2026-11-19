@@ -236,14 +236,14 @@ class TestDelivery:
         ("schedule", "promised"),
         [
             # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
-            (BriefingSchedule(hour=9), f"their first brief lands tomorrow at 9:{_MINUTE} AM."),
-            (BriefingSchedule(hour=18), f"their first brief lands today at 6:{_MINUTE} PM."),
+            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9:{minute} AM."),
+            (BriefingSchedule(hour=18), "their first brief lands today at 6:{minute} PM."),
             # Noon is still ahead at 09:00 UTC but already past in Kolkata.
-            (BriefingSchedule(hour=12), f"their first brief lands tomorrow at 12:{_MINUTE} PM."),
+            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12:{minute} PM."),
             # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
             (
                 BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
-                f"their first brief lands Sunday at 5:{_MINUTE} PM.",
+                "their first brief lands Sunday at 5:{minute} PM.",
             ),
         ],
     )
@@ -256,7 +256,7 @@ class TestDelivery:
         await seams.send()
 
         prompt = seams.agent.await_args.kwargs["request"].message
-        assert promised in prompt
+        assert promised.format(minute=_MINUTE) in prompt
         assert "around 8" not in prompt
 
     @pytest.mark.regression
