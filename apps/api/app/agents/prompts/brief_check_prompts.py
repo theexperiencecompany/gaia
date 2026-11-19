@@ -83,7 +83,10 @@ FACT_HAS_NO_FIELD = "{written}: fact {id} has no {field}"
 FACT_SLOT_FORMS = "{written}: a fact slot is {forms}"
 
 SLOT_PROBLEM = "the {field}: {problem}"
-TYPED_SLOT_FIGURE = "the {field} types {word!r} itself; write {slots} where it says {word}"
+TYPED_SLOT_FIGURE = (
+    "the {field} types {word!r} itself; write {slots} where it says {word}, with nothing of "
+    "{rendered} beside it"
+)
 TYPED_LOOSE_FIGURE = (
     "the {field} types {word!r}, a figure no fact carries; say it in words, from the "
     "facts, or leave it out"

@@ -142,7 +142,8 @@ class TestProblems:
         )
 
         assert slot_problems("lede", "Busiest at 9 sharp.", values) == [
-            "the lede types '9' itself; write [[series:hours.peak_at]] where it says 9"
+            "the lede types '9' itself; write [[series:hours.peak_at]] where it says 9, "
+            "with nothing of '9:00' beside it"
         ]
 
     def test_a_title_said_in_words_beside_its_slot_is_named_by_its_field(self) -> None:
@@ -321,9 +322,10 @@ class TestSeriesSlots:
 class TestATypedFigureNamesItsSlot:
     @pytest.mark.parametrize("typed", ["11:00", "11"])
     def test_a_typed_time_names_the_time_slot(self, typed: str) -> None:
-        """E2E: "10:00" and "11 AM" came back typed; the retry was only told to use a slot."""
+        """E2E: "10:00" and "11 AM" came back typed; sim 12-01: the retry kept "AM" beside the slot."""
         assert slot_problems("message", f"Sequoia at {typed} AM.", _VALUES) == [
-            f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}"
+            f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}, "
+            "with nothing of '11:00 AM' beside it"
         ]
 
     def test_a_typed_date_names_the_due_slot_it_came_from(self) -> None:
@@ -331,7 +333,8 @@ class TestATypedFigureNamesItsSlot:
         values = SlotValues(facts={4: BriefFact(title="Brex email", time="Fri Nov 13")}, counts={})
 
         assert slot_problems("message", "The Brex email is overdue from Fri Nov 13.", values) == [
-            "the message types '13' itself; write [[fact:4.time]] where it says 13"
+            "the message types '13' itself; write [[fact:4.time]] where it says 13, "
+            "with nothing of 'Fri Nov 13' beside it"
         ]
 
     @pytest.mark.parametrize(
@@ -438,7 +441,8 @@ class TestTypedFigures:
         )
 
         assert slot_problems("message", "Meet at 11:00 sharp", values) == [
-            "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it says 11:00"
+            "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it "
+            "says 11:00, with nothing of '11:00 AM' beside it"
         ]
 
 

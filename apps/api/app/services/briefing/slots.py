@@ -283,13 +283,18 @@ def _held(word: str, held: set[str]) -> bool:
 def _typed_figure_problem(field_name: str, word: str, values: SlotValues) -> str:
     """Name the slot that renders a typed figure, so the retry writes it; else ask for words."""
     # Any word of what a slot renders: the "13" of "Fri Nov 13", the "11" of "11:00 AM".
-    slots = [
-        slot
+    slots = {
+        slot: value
         for slot, value in _rendered_by_slot(values)
         if word == value or any(word in (part, part.split(":")[0]) for part in value.split())
-    ]
+    }
     if slots:
-        return says.TYPED_SLOT_FIGURE.format(field=field_name, word=word, slots=" or ".join(slots))
+        return says.TYPED_SLOT_FIGURE.format(
+            field=field_name,
+            word=word,
+            slots=" or ".join(slots),
+            rendered=" or ".join(repr(value) for value in dict.fromkeys(slots.values())),
+        )
     return says.TYPED_LOOSE_FIGURE.format(field=field_name, word=word)
 
 
