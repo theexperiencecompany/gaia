@@ -47,7 +47,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
             so the composer keeps every click the old padded button stole. */}
         <div
           aria-hidden="true"
-          className="absolute inset-x-0 top-0 h-[82px] rounded-full bg-zinc-800/40 transition-colors duration-200 group-hover:bg-zinc-800/70"
+          className="absolute inset-x-0 top-0 -z-10 h-[82px] rounded-full bg-zinc-800/40 transition-colors duration-200 group-hover:bg-zinc-800/70"
         />
         <button
           type="button"

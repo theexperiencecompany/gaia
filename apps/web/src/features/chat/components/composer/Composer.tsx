@@ -142,9 +142,27 @@ const Composer: React.FC<MainSearchbarProps> = ({
   // where the input actually lives.
   useComposerSeeds(inputRef);
 
+  // The banner's arch and the composer's padding are larger than the textarea,
+  // so a click on those areas used to do nothing. Treat the whole shell as the
+  // input, except for real controls.
+  const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest(
+        "button, a, input, textarea, select, label, [role='button'], [role='option'], [role='listbox']",
+      )
+    ) {
+      return;
+    }
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <div className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+      <div
+        className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
+        onClick={handleShellClick}
+      >
         <IntegrationsBanner
           integrations={integrations}
           isLoading={integrationsLoading}
