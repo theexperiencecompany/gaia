@@ -154,6 +154,7 @@
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/IntegrationConnectCard.tsx";
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";
+@source "../../../components/shared/letterControlProps.ts";
 @source "../../../components/shared/LetterModal.tsx";
 @source "../../../components/shared/letterMotion.ts";
 @source "../../../components/shared/LinkButton.tsx";

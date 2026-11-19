@@ -87,7 +87,7 @@ function blanks(): Element[] {
   return Array.from(
     screen
       .getByRole("list", { name: "Stamp collection" })
-      .querySelectorAll("li[aria-hidden]"),
+      .querySelectorAll('li[aria-hidden="true"]'),
   );
 }
 

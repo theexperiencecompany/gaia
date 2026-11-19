@@ -31,6 +31,34 @@ const POPUP_HEIGHT = 700;
 const POPUP_POLL_MS = 500;
 const MANUAL_INSTRUCTIONS_TOAST_MS = 10000;
 
+/** Toast a platform's manual connect steps, with its link when it has one. */
+function showManualInstructions(
+  platform: BotPlatform,
+  instructions: string,
+  actionLink: string | null | undefined,
+) {
+  const name = BOT_PLATFORM_LABELS[platform];
+  toast.info(`Connect ${name}`, {
+    description: instructions,
+    duration: MANUAL_INSTRUCTIONS_TOAST_MS,
+    icon: (
+      <Image
+        src={BOT_PLATFORM_ICONS[platform]}
+        alt={name}
+        width={20}
+        height={20}
+        className="rounded"
+      />
+    ),
+    ...(actionLink && {
+      action: {
+        label: "Open",
+        onClick: () => window.open(actionLink, "_blank"),
+      },
+    }),
+  });
+}
+
 interface UsePlatformLinks {
   /** Null until the first load succeeds: an empty map would read as "nothing linked". */
   links: PlatformLinks | null;
@@ -104,33 +132,6 @@ export function usePlatformLinks(): UsePlatformLinks {
         });
       }
     }, POPUP_POLL_MS);
-  };
-
-  const showManualInstructions = (
-    platform: BotPlatform,
-    instructions: string,
-    actionLink: string | null | undefined,
-  ) => {
-    const name = BOT_PLATFORM_LABELS[platform];
-    toast.info(`Connect ${name}`, {
-      description: instructions,
-      duration: MANUAL_INSTRUCTIONS_TOAST_MS,
-      icon: (
-        <Image
-          src={BOT_PLATFORM_ICONS[platform]}
-          alt={name}
-          width={20}
-          height={20}
-          className="rounded"
-        />
-      ),
-      ...(actionLink && {
-        action: {
-          label: "Open",
-          onClick: () => window.open(actionLink, "_blank"),
-        },
-      }),
-    });
   };
 
   const requestConnect = async (platform: BotPlatform, phone?: string) => {

@@ -8,6 +8,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LETTER_CONTROL_PROPS } from "@/components/shared/letterControlProps";
 import {
   LETTER_CLOSE_TRANSITION,
   LETTER_EXIT_SCALE,
@@ -79,14 +80,6 @@ function backdropVariants(
     },
   };
 }
-
-/** The close button's look, for any control pinned beside it to match. */
-export const LETTER_CONTROL_PROPS = {
-  variant: "tertiary",
-  tone: "bright",
-  shape: "pill",
-  elevation: "floating",
-} as const;
 
 interface LetterSheetProps {
   className?: string;

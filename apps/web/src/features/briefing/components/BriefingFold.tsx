@@ -4,13 +4,10 @@ import { ArrowExpand01Icon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import {
-  LETTER_CONTROL_PROPS,
-  LetterModal,
-  LetterSheet,
-} from "@/components/shared/LetterModal";
+import { LetterModal, LetterSheet } from "@/components/shared/LetterModal";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
+import { LETTER_CONTROL_PROPS } from "@/components/shared/letterControlProps";
 
 import { briefingQuery } from "../api/briefingApi";
 import { type BriefTriggerState, useOpenBrief } from "../hooks/useOpenBrief";
