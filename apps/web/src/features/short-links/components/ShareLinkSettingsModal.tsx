@@ -24,6 +24,7 @@ import {
   LINK_ACCESS_OPTIONS,
   LINK_ACCESS_ORDER,
 } from "@/features/short-links/constants";
+import { useReaderDateLabel } from "@/features/short-links/hooks/useReaderDateLabel";
 import type { ShareLink } from "@/features/short-links/hooks/useShareLink";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import type {
@@ -53,13 +54,9 @@ function expiryChange(choice: ExpiryChoice): Pick<LinkSettings, "expires_at"> {
     : {};
 }
 
-function describeExpiry(expiresAt: string | null): string {
-  if (!expiresAt) return "Never expires";
-  const at = new Date(expiresAt).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-  return `Expires ${at}`;
+function ExpiryDescription({ expiresAt }: { readonly expiresAt: string }) {
+  const at = useReaderDateLabel(expiresAt);
+  return <Description>Expires {at}</Description>;
 }
 
 /** Who an artifact's heygaia.link opens for and until when, plus its URL and a way to replace it. */
@@ -215,7 +212,10 @@ function ShareSettingsForm({
               </Radio>
             ))}
           </div>
-          {link && <Description>{describeExpiry(link.expires_at)}</Description>}
+          {link?.expires_at && (
+            <ExpiryDescription expiresAt={link.expires_at} />
+          )}
+          {link && !link.expires_at && <Description>Never expires</Description>}
         </RadioGroup>
 
         {link && (
