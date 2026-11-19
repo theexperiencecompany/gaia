@@ -23,6 +23,7 @@ from app.agents.llm.client import chat_model, chat_route, provider_configured
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.settings import settings
 from app.constants.llm import (
+    AUX_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -217,6 +218,21 @@ def _default_lane() -> ModelLane:
         model=DEFAULT_MODEL_NAME,
         reasoning=OPENROUTER_REASONING,
         provider_pin=_provider_pin(LLMProviderName(DEFAULT_LLM_PROVIDER), DEFAULT_MODEL_NAME),
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def helper_lane() -> ModelLane:
+    """Return the lane resolve_model(ModelUse.HELPER) serves, for an agent graph run on it.
+
+    Accounting prices a call by its run's lane, so a graph on the helper model needs this
+    on its configurable or its calls price as unknown.
+    """
+    return ModelLane(
+        provider=LLMProviderName.OPENROUTER,
+        model=AUX_MODEL_NAME,
+        reasoning=None,
+        provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 

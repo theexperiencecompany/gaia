@@ -46,6 +46,7 @@ from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
     StepUpAuthRequiredError,
     is_terminal_auth_failure,
 )
@@ -875,7 +876,7 @@ class MCPClient:
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
         if not resolved or not resolved.mcp_config:
-            raise ValueError(f"MCP integration {integration_id} not found")
+            raise MCPIntegrationNotFoundError(integration_id)
 
         mcp_config = resolved.mcp_config
         is_custom = resolved.source == "custom"

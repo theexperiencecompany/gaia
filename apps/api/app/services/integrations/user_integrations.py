@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict, cast
 
-from app.config.oauth_config import get_integration_by_id
+from app.config.oauth_config import canonical_integration_id, get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
@@ -200,10 +200,12 @@ async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegr
     """Return connected integration ids paired with their display name.
 
     Platform names resolve from the in-memory OAuth config; custom MCP names
-    (UUIDs, absent from that config) come from a single batched catalog query.
-    Connection state is checked against MCP credentials as well as Mongo status.
+    (UUIDs, absent from that config) come from a single batched catalog query. A retired id
+    reads as the integration it was renamed to; one naming no integration is left out.
     """
-    connected = sorted(await get_connected_integration_ids(user_id))
+    connected = sorted(
+        {canonical_integration_id(iid) for iid in await get_connected_integration_ids(user_id)}
+    )
     if not connected:
         return []
 
@@ -221,7 +223,11 @@ async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegr
             if custom.name:
                 names[custom.integration_id] = custom.name
 
-    return [ConnectedIntegration(id=iid, name=names.get(iid, iid)) for iid in connected]
+    unnamed = [iid for iid in connected if iid not in names]
+    if unnamed:
+        # A record naming no integration is not an app the user has; never show its raw id.
+        log.warning("integrations.unnamed_connection_records", integration_ids=unnamed)
+    return [ConnectedIntegration(id=iid, name=names[iid]) for iid in connected if iid in names]
 
 
 async def invalidate_user_integration_caches(user_id: str) -> None:

@@ -19,11 +19,13 @@ from app.agents.llm.lane import (
     ModelLane,
     dev_option,
     dev_option_for,
+    helper_lane,
     inherits_lane,
     resolve_lane,
 )
 from app.config.settings import settings
 from app.constants.llm import (
+    AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -153,6 +155,15 @@ class TestPlanRouting:
 
         assert comms.reasoning == {"effort": "comms-only"}
         assert executor.reasoning == {"effort": "everyone-else"}
+
+    def test_the_helper_lane_is_the_aux_model_on_openrouter(self) -> None:
+        assert helper_lane() == ModelLane(
+            provider=LLMProviderName.OPENROUTER,
+            model=AUX_MODEL_NAME,
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=DEFAULT_MAX_TOKENS,
+        )
 
     async def test_every_lane_carries_the_context_window(self) -> None:
         """A lane with no budget silently uncaps the summarization middleware."""

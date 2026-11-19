@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
-from app.services.integrations import user_integration_status
-from app.services.integrations.user_integration_status import reconnect_or_unknown
+from app.services.integrations.user_integration_status import (
+    publish_connected,
+    reconnect_or_unknown,
+)
 
 MODULE = "app.services.integrations.user_integration_status"
 
@@ -48,12 +50,46 @@ class TestReconnectOrUnknown:
 
 
 class TestPublishConnected:
+    async def test_a_scout_learn_that_cannot_be_queued_is_logged_and_the_connect_stands(
+        self,
+    ) -> None:
+        broadcast = AsyncMock()
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
+            patch(f"{MODULE}.queue_scout_learn", AsyncMock(side_effect=ConnectionError("down"))),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", broadcast),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()),
+            patch(f"{MODULE}.log") as log,
+        ):
+            await publish_connected("user-1", "linear")
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Failed to queue the brief scout's learn",
+            integration_id="linear",
+            error="down",
+            error_type="ConnectionError",
+        )
+        broadcast.assert_awaited_once()
+
+    async def test_a_new_connection_queues_that_users_scout_for_that_integration(self) -> None:
+        queue = AsyncMock()
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
+            patch(f"{MODULE}.queue_scout_learn", queue),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()),
+        ):
+            await publish_connected("user-1", "linear")
+
+        queue.assert_awaited_once_with("user-1", "linear")
+
     async def test_a_connect_meets_everything_waiting_on_that_integration(self) -> None:
         with (
             patch(f"{MODULE}.schedule_user_integrations_sync"),
+            patch(f"{MODULE}.queue_scout_learn", AsyncMock()),
             patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
             patch(f"{MODULE}.report_wait_met", AsyncMock()) as report,
         ):
-            await user_integration_status.publish_connected("user-1", "gmail")
+            await publish_connected("user-1", "gmail")
 
         report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")

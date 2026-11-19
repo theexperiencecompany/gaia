@@ -17,14 +17,25 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
+from app.services.briefing.scouts.lifecycle import queue_scout_learn
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.wait_service import report_wait_met
 from shared.py.wide_events import log
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS, on any open page, and to anything waiting on it."""
+    """Reflect a new connection in the workspace VFS, on any open page, in the brief and to its waiters."""
     schedule_user_integrations_sync(user_id)
+    # Best-effort too: a scout with no learn queued is learned by the next brief instead.
+    try:
+        await queue_scout_learn(user_id, integration_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.INTEGRATION} Failed to queue the brief scout's learn",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     # Best-effort: a missed push catches up on the next catalog read, so a
     # broadcast failure (Redis down) must not fail the connect.
     try:
