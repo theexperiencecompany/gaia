@@ -86,6 +86,40 @@ test.describe("screen over time — chat", () => {
     expect(answer).toBeGreaterThan(second);
   });
 
+  // Once a reply shows text it is committed: a message arriving while it still streams is never
+  // folded into it, and gets its own reply under it.
+  test("a message sent while a reply is still streaming gets its own reply under it", async ({
+    page,
+  }) => {
+    await openNewChat(page);
+    const first = "Alpha beta gamma delta epsilon zeta eta theta iota kappa.";
+    await sendAndOpen(page, `one [[pace:300]] [[say:${first}]]`);
+    await expect
+      .poll(
+        async () =>
+          (await currentScreen(page)).some(
+            (i) => i.role === "bot" && i.text.startsWith("Alpha"),
+          ),
+        { timeout: TURN_MS },
+      )
+      .toBe(true);
+    expect(
+      botLinesReading(await currentScreen(page), first),
+      "the first reply is still streaming when the second message is sent",
+    ).toBe(0);
+    await sendMessage(page, "two [[say:Answer two.]]");
+    const live = await finish(page, "Answer two.");
+    expectUserOrder(live, ["one", "two"]);
+    expect(roles(live), "each message has its own reply, under it").toEqual([
+      "user",
+      "bot",
+      "user",
+      "bot",
+    ]);
+    expect(live[1].text).toBe(first);
+    expect(live[3].text).toBe("Answer two.");
+  });
+
   test("a hand-off preamble stays on screen and the reply follows below it", async ({
     page,
   }) => {
