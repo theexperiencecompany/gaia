@@ -1,3 +1,19 @@
+/**
+ * Composer integrations banner.
+ *
+ * Rendered inside Composer's `.searchbar`, which is `position: relative;
+ * z-index: 2` and therefore a stacking context. The arch is a separate,
+ * aria-hidden, pointer-events-none layer at the old button's 82px height; it
+ * uses `-z-10` so the textarea and form paint above it and the placeholder
+ * never dims where they overlap. Only the 34px pill is interactive, and the
+ * wrapper stays pointer-events-none so the arch's lower 46px cannot intercept
+ * clicks. The composer shell also focuses the textarea on non-control clicks
+ * (Composer.tsx), covering the arch and padding area.
+ *
+ * Do not put a background back on the button or add z-index to the wrapper:
+ * either one paints the translucent surface over the textarea again.
+ */
+
 import shuffle from "lodash/shuffle";
 import type React from "react";
 import { useMemo } from "react";
