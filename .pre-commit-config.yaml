@@ -113,7 +113,7 @@ repos:
 
       - id: openui-gen-artifact-prompts
         name: artifact prompts up to date
-        entry: bash -c 'pnpm openui:gen-artifact-prompts && git diff --exit-code apps/api/app/agents/prompts/artifacts/'
+        entry: mise exec -- bash -c 'pnpm openui:gen-artifact-prompts && git diff --exit-code apps/api/app/agents/prompts/artifacts/'
         language: system
         files: '^(apps/web/src/features/artifacts/openui/|scripts/openui/generate-artifact-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
         pass_filenames: false
