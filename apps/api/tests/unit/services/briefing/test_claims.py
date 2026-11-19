@@ -98,3 +98,25 @@ class TestAFigureOfAnotherFact:
         )
 
         assert claim_problems("message", text, values) == []
+
+
+class TestAnotherAppsItemCalledAGaiaTodo:
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(title="Sankalp's voice latency numbers", app="Todoist"),
+            2: BriefFact(title="Dentist appointment", app="GAIA"),
+        },
+        counts={},
+    )
+
+    def test_another_apps_item_called_a_gaia_todo_is_named(self) -> None:
+        """Sim 11-25: "Your GAIA todo, Sankalp's voice latency numbers, is past due." (a Todoist task)."""
+        written = "Your GAIA todo, [[fact:1]], is past due."
+
+        assert claim_problems("message", written, self._VALUES) == [
+            "the message calls fact 1 a GAIA todo, but it is a Todoist item; name its app as "
+            "its line does"
+        ]
+
+    def test_a_gaia_todo_called_one_may_be_said(self) -> None:
+        assert claim_problems("message", "Your GAIA todo, [[fact:2]], is due.", self._VALUES) == []

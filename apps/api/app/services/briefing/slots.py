@@ -48,6 +48,8 @@ class BriefFact:
     count: int = 1
     kind: ItemState | None = None
     words: str | None = None
+    #: The app its line names it under; None for a fact that is no item.
+    app: str | None = None
 
 
 def candidate_fact(
@@ -68,6 +70,7 @@ def candidate_fact(
         count=candidate.count,
         kind=kind,
         words=words,
+        app=candidate.app,
     )
 
 

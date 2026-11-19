@@ -1,14 +1,16 @@
-"""Hold what the message says about one fact to that fact: its state and its dates are the fact's own.
+"""Hold what the message says about one fact to that fact: its state, app and dates are its own.
 
 A sentence about exactly one fact (it links or slots that fact alone) may not call a failed item
-a success, a finished one a failure, or something still waiting on the user done; nor may it
-type a figure (a date, a time, an amount) that only another fact's time or words hold. A figure
-in another fact's title names that fact ("the Mercury 2FA setup"), so it is never pinned on this one. A sentence that
-negates ("not yet", "hasn't") is left alone: it may be saying the item is not there yet.
+a success, a finished one a failure, or something still waiting on the user done, nor call
+another app's item a GAIA todo; nor may it type a figure (a date, a time, an amount) that only
+another fact's time or words hold. A figure in another fact's title names that fact ("the
+Mercury 2FA setup"), so it is never pinned on this one. A sentence that negates ("not yet",
+"hasn't") is left alone: it may be saying the item is not there yet.
 """
 
 import re
 
+from app.constants.briefing import GAIA_APP_NAME
 from app.models.brief_item_models import ItemState
 from app.services.briefing.slots import (
     BriefFact,
@@ -24,6 +26,7 @@ _SAYS_DONE = re.compile(
     re.IGNORECASE,
 )
 _SAYS_FAILED = re.compile(r"\b(?:failed|failing|broke|broken|bounced|rejected)\b", re.IGNORECASE)
+_SAYS_GAIA_TODO = re.compile(rf"\b{GAIA_APP_NAME}\s+todos?\b", re.IGNORECASE)
 _NEGATES = re.compile(r"\b(?:not|no longer|never|yet)\b|n't\b", re.IGNORECASE)
 
 #: The claims each item state cannot carry, as the pattern that finds them.
@@ -63,6 +66,11 @@ def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
                     f"the {field} says fact {fact_id} {said.group(0)!r}, but its state is "
                     f"{fact.kind.label.lower()}; say where it stands as its line does"
                 )
+        if fact.app not in (None, GAIA_APP_NAME) and _SAYS_GAIA_TODO.search(sentence):
+            problems.append(
+                f"the {field} calls fact {fact_id} a GAIA todo, but it is a {fact.app} item; "
+                "name its app as its line does"
+            )
         own = figures_in([fact.title]) | _said_of(fact) | {str(fact.count)}
         others = {
             word

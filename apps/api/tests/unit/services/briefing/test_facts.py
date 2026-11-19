@@ -162,6 +162,7 @@ class TestTheFactLines:
             count=3,
             kind=ItemState.YOU,
             words="Re: term sheet needs sign-off",
+            app="Gmail",
         )
         assert facts.block.splitlines()[:3] == [
             "[COUNTS] [[count:needs_you]] (1) · [[count:gaia_todos]] (4)",
@@ -699,7 +700,9 @@ class TestTheEmptyBriefAndTheLead:
 
         facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]))
 
-        assert facts.values.facts == {7: BriefFact(title="Board call", time="3:00 PM")}
+        assert facts.values.facts == {
+            7: BriefFact(title="Board call", time="3:00 PM", app="Google Calendar")
+        }
 
     def test_the_time_an_events_line_says_it_ends_may_be_typed(self) -> None:
         event = BriefingEvent(date="2026-11-11", start="10:30", end="10:45", title="Standup")

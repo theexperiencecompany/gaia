@@ -508,7 +508,11 @@ class TestAPoolItemsFact:
         fact = candidate_fact(_candidate(due_at=due, count=3), _CLOCK)
 
         assert fact == BriefFact(
-            title="Approve the Acme MSA renewal", time="Fri Nov 13", time_is_day=True, count=3
+            title="Approve the Acme MSA renewal",
+            time="Fri Nov 13",
+            time_is_day=True,
+            count=3,
+            app="GAIA",
         )
 
     def test_a_time_of_its_own_beats_its_due_day(self) -> None:
