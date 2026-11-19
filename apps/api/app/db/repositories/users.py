@@ -107,7 +107,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_hours(self, user_id: str) -> UserHours | None:
         """Read only the user's timezone and quiet hours, as a migration may: never the whole user."""
         return await self._find_one_projected(
-            self._identity_filter(user_id), {"timezone": 1, "quiet_hours": 1}, UserHours
+            self._identity_filter(user_id), {"timezone": True, "quiet_hours": True}, UserHours
         )
 
     async def find_named_with_email(self) -> list[NamedEmailRow]:

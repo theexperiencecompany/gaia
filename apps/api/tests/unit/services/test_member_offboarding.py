@@ -116,6 +116,14 @@ class TestStopActingForRemovedMember:
 
         seams.revoke_links.assert_awaited_once_with(USER)
 
+    async def test_links_that_would_not_revoke_are_named_in_the_error(self, seams: Seams) -> None:
+        seams.revoke_links.side_effect = RuntimeError("mongo down")
+
+        with pytest.raises(AppError) as raised:
+            await stop_acting_for_removed_member(USER)
+
+        assert raised.value.why == "Could not stop: links"
+
     async def test_scheduled_reminders_and_tracked_todos_are_paused(self, seams: Seams) -> None:
         await stop_acting_for_removed_member(USER)
 

@@ -22,6 +22,7 @@ from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
 from app.models.quiet_hours_models import QuietHours
+from app.models.user_activity_models import UserActivityRow
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -209,6 +210,17 @@ class TestActivity:
         await repo.create(make_user(last_active_at=_days_ago(45)))
         found = await repo.find_by_activity_status(ActivityStatus.DORMANT, among={mine.id})
         assert [u.id for u in found] == [mine.id]
+
+    async def test_activity_rows_carry_the_id_and_last_seen_of_the_given_ids_only(
+        self, repo, make_user
+    ):
+        mine = await repo.create(make_user(last_active_at=_days_ago(45)))
+        await repo.create(make_user(last_active_at=_days_ago(45)))
+        stored = await repo.get(mine.id)
+
+        rows = await repo.find_activity_rows(ActivityStatus.DORMANT, among={mine.id})
+
+        assert rows == [UserActivityRow(id=mine.id, last_active_at=stored.last_active_at)]
 
 
 class TestOnboardingWrites:

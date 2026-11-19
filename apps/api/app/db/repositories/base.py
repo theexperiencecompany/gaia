@@ -569,7 +569,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
             upsert=upsert,
         )
-        touched = result.matched_count or (upsert and result.upserted_id is not None)
+        touched = result.matched_count or result.upserted_id is not None
         if touched:
             if doc_id is not None:
                 await self._cache_evict(scope, doc_id)
@@ -624,7 +624,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             [dict(stage) for stage in pipeline],
             upsert=upsert,
         )
-        touched = result.matched_count or (upsert and result.upserted_id is not None)
+        touched = result.matched_count or result.upserted_id is not None
         if touched and scope is not None:
             if doc_id is not None:
                 await self._cache_evict(scope, doc_id)
