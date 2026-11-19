@@ -46,7 +46,7 @@ from app.models.brief_settings_models import (
 from app.models.brief_view_models import BriefCard, Postmark, PostmarksResponse
 from app.models.briefing_state_models import BriefingStateDocument
 from app.models.user_models import UserDocument
-from app.services.briefing.editions.stamps import stamp_art
+from app.services.briefing.editions.stamps import stamp_display_art
 from app.services.briefing.view import briefing_card
 from app.workers.brief_slots import slot_minute
 from shared.py.analytics import UserId
@@ -129,8 +129,8 @@ async def test_a_stamps_art_is_served_by_the_deployment_itself(client: AsyncClie
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/webp"
-    assert response.headers["cache-control"] == "public, max-age=86400"
-    assert response.content == stamp_art("tokyo").read_bytes()
+    assert response.headers["cache-control"] == "public, max-age=2592000"
+    assert response.content == stamp_display_art("tokyo").read_bytes()
 
 
 async def test_a_stamp_is_webp_even_on_a_host_whose_mime_table_lacks_it(

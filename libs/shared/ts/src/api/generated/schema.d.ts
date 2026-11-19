@@ -696,7 +696,7 @@ export interface paths {
         };
         /**
          * Get Stamp Art
-         * @description Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404.
+         * @description Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404.
          */
         get: operations["briefings_get_stamp_art"];
         put?: never;

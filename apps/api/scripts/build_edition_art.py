@@ -2,7 +2,8 @@
 """Write the briefing editions' art into the repo, beside its catalogue, so it ships in the image.
 
 stamps: reads the founder's N_<slug>.png Air Mail stamps from --source and writes each as
-a ~600px WebP (keeping the transparent perforated edge) to explorer/assets/stamps/<slug>.webp.
+a ~600px WebP (keeping the transparent perforated edge) to explorer/assets/stamps/<slug>.webp
+and a web-sized copy to stamps/display/<slug>.webp (what GET /briefings/stamps serves).
 Every catalogued city in cities.json must have a source image; every one is rewritten.
 
 artworks: downloads each catalogued Met Open Access work (explorer/assets/artworks/
@@ -11,6 +12,7 @@ it fits every family it is catalogued for, shrinks it to the smallest size those
 at the export's 3x, writes it as explorer/assets/artworks/<slug>.webp and records its size.
 
 Run: uv run python -m scripts.build_edition_art stamps --source <dir>
+     uv run python -m scripts.build_edition_art stamp-display   (display copies from the full files)
      uv run python -m scripts.build_edition_art artworks
 """
 
@@ -24,13 +26,17 @@ from pathlib import Path
 import httpx
 from PIL import Image
 
-from app.constants.briefing import ArtFamily
+from app.constants.briefing import STAMP_DISPLAY_WIDTH_PX, ArtFamily
 from app.services.briefing.editions.artworks import ART_FRAMES, ARTWORKS_JSON
 from app.services.briefing.editions.stamps import stamp_catalogue
 
 _STAMPS_DIR = ARTWORKS_JSON.parents[1] / "stamps"
+_DISPLAY_DIR = _STAMPS_DIR / "display"
 _STAMP_WIDTH_PX = 600
 _WEBP_QUALITY = 82
+# The display copy is small on screen, so it trades colour and perforation-edge fidelity for bytes.
+_DISPLAY_WEBP_QUALITY = 70
+_DISPLAY_ALPHA_QUALITY = 30
 _MET_OBJECT_API = "https://collectionapi.metmuseum.org/public/collection/v1/objects/{}"
 # The Met's CDN refuses httpx's default user agent.
 _MET_HEADERS = {"User-Agent": "gaia-briefing-art/1.0"}
@@ -55,7 +61,26 @@ def build_stamps(source: Path) -> None:
         height = round(image.height * _STAMP_WIDTH_PX / image.width)
         data = _webp(image, (_STAMP_WIDTH_PX, height))
         (_STAMPS_DIR / f"{slug}.webp").write_bytes(data)
-        print(f"  {done}/{len(slugs)} {slug}: {len(data) // 1024} KB")
+        display = write_stamp_display(image, slug)
+        print(f"  {done}/{len(slugs)} {slug}: {len(data) // 1024} KB, display {display} B")
+
+
+def write_stamp_display(image: Image.Image, slug: str) -> int:
+    """Write the web-sized variant of a stamp and return its size in bytes."""
+    height = round(image.height * STAMP_DISPLAY_WIDTH_PX / image.width)
+    out = io.BytesIO()
+    image.convert("RGBA").resize((STAMP_DISPLAY_WIDTH_PX, height), Image.Resampling.LANCZOS).save(
+        out, "WEBP", quality=_DISPLAY_WEBP_QUALITY, alpha_quality=_DISPLAY_ALPHA_QUALITY
+    )
+    data = out.getvalue()
+    _DISPLAY_DIR.mkdir(exist_ok=True)
+    (_DISPLAY_DIR / f"{slug}.webp").write_bytes(data)
+    return len(data)
+
+
+def build_stamp_display() -> None:
+    for slug in stamp_catalogue():
+        write_stamp_display(Image.open(_STAMPS_DIR / f"{slug}.webp"), slug)
 
 
 def _framed_size(width: int, height: int, families: list[ArtFamily]) -> tuple[int, int]:
@@ -102,10 +127,13 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     stamps = commands.add_parser("stamps", help="rewrite every Air Mail city stamp")
     stamps.add_argument("--source", type=Path, required=True, help="folder of N_<slug>.png")
+    commands.add_parser("stamp-display", help="rewrite every stamp's web-sized copy")
     commands.add_parser("artworks", help="fetch every catalogued artwork with no image yet")
     args = parser.parse_args()
     if args.command == "stamps":
         build_stamps(args.source)
+    elif args.command == "stamp-display":
+        build_stamp_display()
     else:
         asyncio.run(build_artworks())
 

@@ -27988,7 +27988,7 @@
     },
     "/api/v1/briefings/stamps/{slug}.webp": {
       "get": {
-        "description": "Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404.",
+        "description": "Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404.",
         "operationId": "briefings_get_stamp_art",
         "parameters": [
           {

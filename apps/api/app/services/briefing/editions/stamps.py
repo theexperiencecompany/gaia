@@ -15,6 +15,7 @@ from typing import TypedDict
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 _STAMPS_DIR = Path(__file__).parent / "explorer" / "assets" / "stamps"
+_DISPLAY_DIR = _STAMPS_DIR / "display"
 _CITIES_JSON = _STAMPS_DIR / "cities.json"
 _COUNTRIES_JSON = _STAMPS_DIR / "countries.json"
 # The air-mail label's own words; a country whose phrase is one of them gets no
@@ -100,3 +101,8 @@ def city_axis() -> list[Stamp]:
 def stamp_art(slug: str) -> Path:
     """Return the file holding a catalogued city's stamp art; KeyError for any other slug."""
     return _STAMPS_DIR / f"{stamp_catalogue()[slug].slug}.webp"
+
+
+def stamp_display_art(slug: str) -> Path:
+    """Return the small web-sized variant of a stamp's art; KeyError for any other slug."""
+    return _DISPLAY_DIR / f"{stamp_catalogue()[slug].slug}.webp"

@@ -27,7 +27,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.edition_image import EDITION_CONTENT_TYPES, signed_edition
-from app.services.briefing.editions.stamps import stamp_art
+from app.services.briefing.editions.stamps import stamp_display_art
 from app.services.briefing.postmarks import collected_postmarks
 from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
 from app.services.briefing.view import briefing_card, briefing_view
@@ -179,10 +179,10 @@ async def get_edition_image(
     responses={200: {"content": {STAMP_ART_CONTENT_TYPE: {}}}},
 )
 async def get_stamp_art(slug: str) -> FileResponse:
-    """Serve a catalogued city's stamp art, the same file for everyone; any other slug is a 404."""
+    """Serve a catalogued city's web-sized stamp art, the same file for everyone; any other slug is a 404."""
     log.set(briefing={"operation": "stamp_art", "city_slug": slug})
     try:
-        art = stamp_art(slug)
+        art = stamp_display_art(slug)
     except KeyError as unknown:
         raise HTTPException(status_code=404, detail="Stamp not found") from unknown
     return FileResponse(
