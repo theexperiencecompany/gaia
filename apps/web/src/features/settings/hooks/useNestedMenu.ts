@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const CLOSE_DELAY_MS = 120;
 
 export function useNestedMenu() {
-  const [isOpen, setIsOpenState] = useState(false);
+  const [isOpenState, setIsOpenState] = useState(false);
   const [itemRef, setItemRef] = useState<HTMLElement | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -40,7 +40,7 @@ export function useNestedMenu() {
   useEffect(() => cancelClose, [cancelClose]);
 
   return {
-    isOpen,
+    isOpen: isOpenState,
     setIsOpen,
     itemRef,
     handleMouseEnter,

@@ -50,6 +50,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   onVoiceModeHover,
 }) => {
   const composerInputRef = useRef<ComposerInputRef>(null);
+  const searchbarRef = useRef<HTMLDivElement>(null);
   const inputText = useInputText();
   const { setInputText } = useComposerTextActions();
   const {
@@ -142,26 +143,35 @@ const Composer: React.FC<MainSearchbarProps> = ({
   // where the input actually lives.
   useComposerSeeds(inputRef);
 
-  // The banner's arch and the composer's padding are larger than the textarea,
-  // so a click on those areas used to do nothing. Treat the whole shell as the
-  // input, except for real controls.
-  const handleShellClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest(
-        "button, a, input, textarea, select, label, [role='button'], [role='option'], [role='listbox']",
-      )
-    ) {
-      return;
-    }
-    inputRef.current?.focus();
-  };
+  // The shell is a focus convenience, not a control: the textarea is the one
+  // keyboard target. A native listener keeps the shell out of the a11y tree
+  // while recovering clicks on the banner arch and the padding.
+  useEffect(() => {
+    const shell = searchbarRef.current;
+    if (!shell) return;
+
+    const focusTextarea = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        !target ||
+        target.closest(
+          "button, a, input, textarea, select, label, [role='button'], [role='option'], [role='listbox']",
+        )
+      ) {
+        return;
+      }
+      inputRef.current?.focus();
+    };
+
+    shell.addEventListener("click", focusTextarea);
+    return () => shell.removeEventListener("click", focusTextarea);
+  }, [inputRef]);
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
       <div
+        ref={searchbarRef}
         className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
-        onClick={handleShellClick}
       >
         {/* Child of this stacking context; see IntegrationsBanner's file header. */}
         <IntegrationsBanner
