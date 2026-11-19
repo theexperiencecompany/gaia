@@ -24,6 +24,8 @@ from app.constants.notifications import (
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
     BriefDeliveryWorkflowsConflict,
+    BriefingEditions,
+    BriefingEditionsUpdate,
     BriefingScheduleState,
     BriefingScheduleUpdate,
 )
@@ -51,6 +53,7 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.schedule import briefing_schedule_state, set_briefing_schedule
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
@@ -237,6 +240,27 @@ async def update_briefing_schedule(
         user_id, body.schedule(), via="settings", workflow_deliveries=body.workflow_deliveries
     )
     return await briefing_schedule_state(user)
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/notifications/preferences/briefing-editions")
+async def read_briefing_editions(user_id: str = Depends(get_user_id)) -> BriefingEditions:
+    """Every daily edition family a brief can draw, and whether the user keeps it on or favours it."""
+    log.set(user={"id": user_id}, operation="read_briefing_editions")
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return briefing_editions(user.briefing_editions)
+
+
+@router.put("/notifications/preferences/briefing-editions")
+async def update_briefing_editions(
+    body: BriefingEditionsUpdate,
+    user_id: str = Depends(get_user_id),
+) -> BriefingEditions:
+    """Replace which daily edition families are off or favourited; at least one must stay on."""
+    log.set(user={"id": user_id}, operation="update_briefing_editions")
+    return await set_edition_choices(user_id, body.choices)
 
 
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)

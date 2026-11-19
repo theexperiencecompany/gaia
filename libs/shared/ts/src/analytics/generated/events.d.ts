@@ -115,6 +115,7 @@ export type ServerEventName =
   | "reminder:updated"
   | "search:performed"
   | "session:artifact_pinned"
+  | "settings:briefing_editions_updated"
   | "settings:briefing_schedule_updated"
   | "settings:briefs_off_blocked"
   | "settings:briefs_off_resolved"
@@ -1309,6 +1310,14 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "settings:briefing_editions_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "editions_off": number;
+    "editions_favourited": number;
+    "editions_total": number;
   };
   "settings:briefing_schedule_updated": {
     "actor": "user" | "agent";

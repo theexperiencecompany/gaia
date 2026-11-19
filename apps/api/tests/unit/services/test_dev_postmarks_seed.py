@@ -285,3 +285,34 @@ async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:
     await seed_dev_editions(user, families)
 
     assert len(seeded.payloads()) == families + 1
+
+
+@pytest.mark.unit
+class TestSampleEditionPayload:
+    def test_air_mail_carries_a_stamp_and_a_framed_family_a_painting(self) -> None:
+        with patch(f"{MODULE}.hosted_stamp_weights", return_value={"paris": 1, "lisbon": 1}):
+            postal = dev_postmarks_seed.sample_edition_payload(POSTAL_FAMILY, "Alex")
+        framed = dev_postmarks_seed.sample_edition_payload(ArtFamily.ALMANAC, "Alex")
+        plain = dev_postmarks_seed.sample_edition_payload("swiss", "Alex")
+
+        assert (postal.stamp_city, postal.artwork_id) == ("lisbon", None)
+        assert framed.stamp_city is None
+        assert framed.artwork_id == min(artworks_for(ArtFamily.ALMANAC))
+        assert (plain.stamp_city, plain.artwork_id) == (None, None)
+        assert [p.template_family for p in (postal, framed, plain)] == [
+            POSTAL_FAMILY,
+            ArtFamily.ALMANAC,
+            "swiss",
+        ]
+        assert all(p.recipient_name == "Alex" for p in (postal, framed, plain))
+
+    async def test_the_sample_is_the_first_brief_the_editions_seed_stores(
+        self, user: UserDocument, seeded: Seeded
+    ) -> None:
+        await seed_dev_editions(user, 1)
+        first = seeded.payloads()[0]
+
+        sample = dev_postmarks_seed.sample_edition_payload(first.template_family, "Ada")
+
+        stored_only = {"link", "edition_render"}
+        assert sample.model_dump(exclude=stored_only) == first.model_dump(exclude=stored_only)

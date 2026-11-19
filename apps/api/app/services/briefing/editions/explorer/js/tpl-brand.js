@@ -1,5 +1,5 @@
 /* ============================================================================
-   tpl-brand.js (round 2) — GAIA · Band and Playfair Frontispiece on a 540 px
+   tpl-brand.js (round 2) — The Band and Playfair Frontispiece on a 540 px
    portrait canvas (export at 3x). Body 17 px or larger.
    Reading order: headline -> the brief's blocks as GAIA composed them -> stats.
    ========================================================================== */
@@ -23,7 +23,7 @@
      ======================================================================== */
   EXPLORER.register({
     id: "band",
-    name: "GAIA · Band",
+    name: "The Band",
     axes: {
       hue: [
         { id: "azure", label: "azure (brand)", filter: "none", acc: "#4fb8ff" },

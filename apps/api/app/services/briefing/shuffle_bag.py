@@ -2,11 +2,13 @@
 
 Each pass is a fresh random order of the whole pool, consumed one draw a day. No
 member lands on two consecutive draws (including across the reshuffle boundary) and
-no pass repeats the previous order. The edition family, the Air Mail stamp city and
-the painting are drawn this way; the state is the small ShuffleBag persisted per user.
+no pass repeats the previous order, as far as the pool allows: a pool too small for
+every rule (one or two editions left on) drops them from the least important up. The
+edition family, the Air Mail stamp city and the painting are drawn this way; the state
+is the small ShuffleBag persisted per user.
 """
 
-from collections.abc import Mapping, Set
+from collections.abc import Callable, Mapping, Set
 from itertools import pairwise
 import random
 
@@ -21,12 +23,16 @@ def _pool(weights: Mapping[str, int]) -> list[str]:
     return sorted(member for member, count in weights.items() for _ in range(count))
 
 
-def _valid(
-    order: list[str], *, previous: list[str] | None, last: str | None, eligible: Set[str]
-) -> bool:
-    if order == previous or order[0] == last or order[0] not in eligible:
-        return False
-    return all(a != b for a, b in pairwise(order))
+def _rules(
+    *, previous: list[str] | None, last: str | None, eligible: Set[str]
+) -> list[Callable[[list[str]], bool]]:
+    """Return what a new pass's order must satisfy, most important first."""
+    return [
+        lambda order: order[0] in eligible,
+        lambda order: all(a != b for a, b in pairwise(order)),
+        lambda order: order[0] != last,
+        lambda order: order != previous,
+    ]
 
 
 def _shuffle(
@@ -38,13 +44,15 @@ def _shuffle(
     eligible: Set[str],
 ) -> list[str]:
     order = _pool(weights)
-    for _ in range(_MAX_SHUFFLE_ATTEMPTS):
-        rng.shuffle(order)
-        if _valid(order, previous=previous, last=last, eligible=eligible):
-            return list(order)
-    raise ValueError(
-        f"No order of {dict(weights)} opening on an eligible member keeps every repeat apart"
-    )
+    rules = _rules(previous=previous, last=last, eligible=eligible)
+    # One member has a single order: reshuffling it can never make a broken rule hold.
+    attempts = 1 if len(set(order)) == 1 else _MAX_SHUFFLE_ATTEMPTS
+    for kept in range(len(rules), 0, -1):
+        for _ in range(attempts):
+            rng.shuffle(order)
+            if all(rule(order) for rule in rules[:kept]):
+                return list(order)
+    raise ValueError(f"No order of {dict(weights)} opens on an eligible member")
 
 
 def _next_eligible(state: ShuffleBag, eligible: Set[str]) -> ShuffleBag | None:

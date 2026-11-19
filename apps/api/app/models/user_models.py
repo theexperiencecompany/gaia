@@ -16,6 +16,7 @@ from pydantic import (
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
+from app.constants.briefing import EditionChoice
 from app.db.repositories.base import MongoDocument
 from app.models.briefing_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
@@ -599,6 +600,8 @@ class UserDocument(MongoDocument):
     # means DEFAULT_CHAT_CHANNEL_PRIORITY.
     chat_channel_priority: list[str] | None = None
     briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
+    # Daily edition families taken out of the rotation or favourited; an absent family is on.
+    briefing_editions: dict[str, EditionChoice] = Field(default_factory=dict)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     # Profile / billing display name used by the payments emails.
@@ -686,6 +689,7 @@ class AuthenticatedUser(BaseModel):
     platform_links_connected_at: dict[str, Any] | None = None
     chat_channel_priority: list[str] | None = None
     briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
+    briefing_editions: dict[str, EditionChoice] = Field(default_factory=dict)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None

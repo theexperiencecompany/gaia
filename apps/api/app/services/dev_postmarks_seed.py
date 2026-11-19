@@ -274,7 +274,7 @@ def _section_blocks(count: int) -> list[BriefBlock]:
 def _brief_payload(
     day: date,
     seed: _SeedDay,
-    user: UserDocument,
+    recipient_name: str | None,
     family: str,
     *,
     city_slug: str | None = None,
@@ -315,7 +315,7 @@ def _brief_payload(
         template_family=family,
         stamp_city=city_slug,
         artwork_id=artwork_id,
-        recipient_name=user.name,
+        recipient_name=recipient_name,
         generated_at=_GENERATED_AT,
         calendar=[
             BriefingEvent(date=iso_day, start=e.start, title=e.title, location=e.location)
@@ -323,6 +323,18 @@ def _brief_payload(
         ],
         tallies=BriefingTallies(done_by_you=seed.done_by_you, done_by_gaia=len(seed.done)),
         message=seed.lede,
+    )
+
+
+def sample_edition_payload(family: str, recipient_name: str) -> BriefingPayload:
+    """Return the first seeded day as a daily brief in family, with its stamp or painting."""
+    return _brief_payload(
+        _FIRST_EDITION_DATE,
+        _SEED_DAYS[0],
+        recipient_name,
+        family,
+        city_slug=min(hosted_stamp_weights()) if family == POSTAL_FAMILY else None,
+        artwork_id=min(artworks_for(ArtFamily(family))) if family in ArtFamily else None,
     )
 
 
@@ -341,7 +353,7 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
         await _store(
             user,
-            _brief_payload(day, seed, user, POSTAL_FAMILY, city_slug=slug),
+            _brief_payload(day, seed, user.name, POSTAL_FAMILY, city_slug=slug),
             BRIEFING_KIND_DAILY,
         )
 
@@ -366,7 +378,7 @@ async def seed_dev_editions(user: UserDocument, count: int) -> None:
         )
         await _store(
             user,
-            _brief_payload(day, seed, user, family, artwork_id=artwork_id),
+            _brief_payload(day, seed, user.name, family, artwork_id=artwork_id),
             BRIEFING_KIND_DAILY,
         )
     await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)

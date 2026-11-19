@@ -24,7 +24,7 @@ from bson import ObjectId
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.constants.briefing import BriefingBag
+from app.constants.briefing import BriefingBag, EditionChoice
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
@@ -497,6 +497,17 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"$set": {"briefing_schedule": schedule.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
+        )
+
+    async def set_briefing_editions(
+        self, user_id: str, choices: Mapping[str, EditionChoice]
+    ) -> None:
+        """Store which daily edition families the user took out of the rotation or favourited."""
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_editions": dict(choices)}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
         )
 
     async def clear_name_if_unchanged(self, user_id: str, name: str) -> bool:

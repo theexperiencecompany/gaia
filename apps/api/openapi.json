@@ -2103,6 +2103,63 @@
         "title": "BriefPoolItem",
         "type": "object"
       },
+      "BriefingEdition": {
+        "description": "One daily edition family, and where the user put it.",
+        "properties": {
+          "choice": {
+            "$ref": "#/components/schemas/EditionChoice"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "name",
+          "choice"
+        ],
+        "title": "BriefingEdition",
+        "type": "object"
+      },
+      "BriefingEditions": {
+        "description": "Every daily edition family a brief can draw, and where the user put each.",
+        "properties": {
+          "editions": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingEdition"
+            },
+            "title": "Editions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "editions"
+        ],
+        "title": "BriefingEditions",
+        "type": "object"
+      },
+      "BriefingEditionsUpdate": {
+        "description": "Where the user puts each daily edition family; a family not named stays in the rotation.",
+        "properties": {
+          "choices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditionChoice"
+            },
+            "title": "Choices",
+            "type": "object"
+          }
+        },
+        "required": [
+          "choices"
+        ],
+        "title": "BriefingEditionsUpdate",
+        "type": "object"
+      },
       "BriefingEvent": {
         "description": "One calendar event on the user's own clock, read from their calendar.",
         "properties": {
@@ -7242,6 +7299,16 @@
         ],
         "title": "DodoWebhookAckResponse",
         "type": "object"
+      },
+      "EditionChoice": {
+        "description": "Where the user put a daily edition family: in the rotation, out of it, or a favourite.",
+        "enum": [
+          "on",
+          "off",
+          "favourite"
+        ],
+        "title": "EditionChoice",
+        "type": "string"
       },
       "EmailSearchResponse": {
         "description": "Contact-email addresses extracted from a web search, plus the raw search data.",
@@ -36173,6 +36240,118 @@
           }
         },
         "summary": "Mark All Read",
+        "tags": [
+          "Notification"
+        ]
+      }
+    },
+    "/api/v1/notifications/preferences/briefing-editions": {
+      "get": {
+        "description": "Every daily edition family a brief can draw, and whether the user keeps it on or favours it.",
+        "operationId": "notification_read_briefing_editions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Read Briefing Editions",
+        "tags": [
+          "Notification"
+        ]
+      },
+      "put": {
+        "description": "Replace which daily edition families are off or favourited; at least one must stay on.",
+        "operationId": "notification_update_briefing_editions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BriefingEditionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingEditions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Briefing Editions",
         "tags": [
           "Notification"
         ]

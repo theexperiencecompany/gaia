@@ -1,14 +1,17 @@
 """What each edition family draws, and the edition draw that follows the composition."""
 
+from collections import Counter
+from itertools import pairwise
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
+from app.constants.briefing import EditionChoice
 from app.models.brief_composition_models import BriefBlock, ChartKind
 from app.models.briefing_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing import edition_draws
-from app.services.briefing.edition_draws import draw_edition
+from app.services.briefing.edition_draws import daily_family_weights, draw_edition
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS, EXPLORER_RENDERER
 from app.services.briefing.editions.capabilities import (
     edition_capabilities,
@@ -154,13 +157,75 @@ class TestDrawEdition:
         assert [b.kind for b in draw.drawn] == ["note", "progress"]
         assert draw.undrawn == []
 
-    def test_with_no_fitting_family_the_next_one_draws_and_the_rest_go_to_the_page(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_with_no_fitting_family_on_the_next_one_draws_and_the_rest_go_to_the_page(
+        self,
     ) -> None:
-        monkeypatch.setattr(edition_draws, "DAILY_FAMILY_WEIGHTS", {"menu": 1, "postal": 1})
+        user = _user_choosing(_only_on("menu", "postal"))
 
-        draw = draw_edition(_user(["menu", "postal"]), _blocks(_NOTE, _chart(ChartKind.LINE)))
+        draw = draw_edition(user, _blocks(_NOTE, _chart(ChartKind.LINE)))
 
-        assert draw.family.member == "menu"
+        assert draw.family.member in {"menu", "postal"}
         assert [b.kind for b in draw.drawn] == ["note"]
         assert [b.kind for b in draw.undrawn] == ["chart"]
+
+
+def _user_choosing(choices: dict[str, EditionChoice]) -> UserDocument:
+    return UserDocument(id="u1", email="a@b.c", briefing_editions=choices)
+
+
+def _only_on(*families: str) -> dict[str, EditionChoice]:
+    return {f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f not in families}
+
+
+def _draw_days(user: UserDocument, days: int, blocks: list[BriefBlock]) -> list[str]:
+    picks: list[str] = []
+    for _ in range(days):
+        family = draw_edition(user, blocks).family
+        picks.append(family.member)
+        user = user.model_copy(update={"briefing_shuffle_bags": {family.bag: family.next_state}})
+    return picks
+
+
+@pytest.mark.unit
+class TestEditionChoices:
+    def test_favourites_draw_twice_as_often_and_an_edition_turned_off_never_draws(
+        self,
+    ) -> None:
+        user = _user_choosing(
+            {
+                "menu": EditionChoice.OFF,
+                "swiss": EditionChoice.FAVOURITE,
+                "postal": EditionChoice.FAVOURITE,
+            }
+        )
+        # menu out, swiss 1 -> 2, postal 2 -> 4
+        per_pass = sum(DAILY_FAMILY_WEIGHTS.values()) - 1 + 1 + 2
+
+        picks = Counter(_draw_days(user, 3 * per_pass, _blocks(_NOTE)))
+
+        assert picks["menu"] == 0
+        assert picks["memo"] == 3
+        assert picks["swiss"] == 6
+        assert picks["postal"] == 12
+
+    def test_a_single_edition_left_on_is_drawn_every_day(self) -> None:
+        picks = _draw_days(_user_choosing(_only_on("swiss")), 5, _blocks(_NOTE))
+
+        assert picks == ["swiss"] * 5
+
+    def test_two_editions_left_on_take_turns_every_day(self) -> None:
+        picks = _draw_days(_user_choosing(_only_on("swiss", "memo")), 8, _blocks(_NOTE))
+
+        assert set(picks) == {"swiss", "memo"}
+        assert all(a != b for a, b in pairwise(picks))
+
+    def test_when_every_edition_left_on_was_retired_every_daily_family_draws_loudly(
+        self,
+    ) -> None:
+        choices = _only_on("retired") | {"retired": EditionChoice.FAVOURITE}
+
+        with patch("app.services.briefing.edition_draws.log") as log:
+            weights = daily_family_weights(choices)
+
+        assert weights == DAILY_FAMILY_WEIGHTS
+        log.warning.assert_called_once_with("briefing.editions_all_retired", kept=sorted(choices))

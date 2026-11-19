@@ -309,6 +309,18 @@ class BriefItemSource(StrEnum):
     TODO = "todo"
 
 
+class EditionChoice(StrEnum):
+    """Where the user put a daily edition family: in the rotation, out of it, or a favourite."""
+
+    ON = "on"
+    OFF = "off"
+    FAVOURITE = "favourite"
+
+
+# A favourite appears this many times its usual weight in each pass of the edition bag.
+FAVOURITE_WEIGHT_FACTOR: Final[int] = 2
+
+
 class BriefingBag(StrEnum):
     """The per-user shuffle bags kept on the user doc (briefing_shuffle_bags)."""
 

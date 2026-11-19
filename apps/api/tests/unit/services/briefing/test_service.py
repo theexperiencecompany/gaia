@@ -52,6 +52,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
     BriefOutcome,
+    EditionChoice,
 )
 from app.constants.desk_buckets import DeskBucket
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -3130,6 +3131,24 @@ class TestTheDailyRunWiring:
         payload = _stored_payload(world)
         assert [b.kind for b in payload.undrawn] == ["progress"]
         assert [b.kind for b in payload.blocks] == ["items"]
+
+    async def test_a_brief_its_only_edition_cannot_draw_is_still_sent(self, world: World) -> None:
+        """Regression (#1804 review): with only Menu on, a progress-only brief drew nothing and was never pushed."""
+        world.calendar = []
+        world.work = _brief_work()
+        world.user.briefing_editions = {
+            family: EditionChoice.OFF for family in DAILY_FAMILY_WEIGHTS if family != "menu"
+        }
+        world.composer.side_effect = lambda schema, _prompt, **_k: schema.model_validate(
+            {"blocks": [{"kind": "progress", "goal_id": "g1"}]}
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert (payload.template_family, payload.blocks) == ("menu", [])
+        assert [b.kind for b in payload.undrawn] == ["progress"]
+        world.post.assert_awaited_once()
 
     async def test_a_chart_in_the_brief_is_counted_among_its_blocks(self, world: World) -> None:
         world.work = _brief_work()

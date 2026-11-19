@@ -3099,6 +3099,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/preferences/briefing-editions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Editions
+         * @description Every daily edition family a brief can draw, and whether the user keeps it on or favours it.
+         */
+        get: operations["notification_read_briefing_editions"];
+        /**
+         * Update Briefing Editions
+         * @description Replace which daily edition families are off or favourited; at least one must stay on.
+         */
+        put: operations["notification_update_briefing_editions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/preferences/briefing-schedule": {
         parameters: {
             query?: never;
@@ -7058,6 +7082,35 @@ export interface components {
          */
         BriefForm: "edition" | "quiet_note";
         /**
+         * BriefingEdition
+         * @description One daily edition family, and where the user put it.
+         */
+        BriefingEdition: {
+            choice: components["schemas"]["EditionChoice"];
+            /** Family */
+            family: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * BriefingEditions
+         * @description Every daily edition family a brief can draw, and where the user put each.
+         */
+        BriefingEditions: {
+            /** Editions */
+            editions: components["schemas"]["BriefingEdition"][];
+        };
+        /**
+         * BriefingEditionsUpdate
+         * @description Where the user puts each daily edition family; a family not named stays in the rotation.
+         */
+        BriefingEditionsUpdate: {
+            /** Choices */
+            choices: {
+                [key: string]: components["schemas"]["EditionChoice"];
+            };
+        };
+        /**
          * BriefingEvent
          * @description One calendar event on the user's own clock, read from their calendar.
          */
@@ -9427,6 +9480,12 @@ export interface components {
              */
             status?: "success";
         };
+        /**
+         * EditionChoice
+         * @description Where the user put a daily edition family: in the rotation, out of it, or a favourite.
+         * @enum {string}
+         */
+        EditionChoice: "on" | "off" | "favourite";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -18010,6 +18069,9 @@ export type BriefAction = components['schemas']['BriefAction'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
 export type BriefForm = components['schemas']['BriefForm'];
+export type BriefingEdition = components['schemas']['BriefingEdition'];
+export type BriefingEditions = components['schemas']['BriefingEditions'];
+export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpdate'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
@@ -18137,6 +18199,7 @@ export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsRespon
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
+export type EditionChoice = components['schemas']['EditionChoice'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -27291,6 +27354,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationResponse_MarkAllReadSummary_"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_read_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_update_briefing_editions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingEditionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingEditions"];
                 };
             };
             /** @description Unprocessable Entity */

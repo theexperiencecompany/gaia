@@ -6800,6 +6800,42 @@
       }
     },
     {
+      "event": "settings:briefing_editions_updated",
+      "class": "SettingsBriefingEditionsUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user chose which daily edition families their brief draws: how many off and favourited.",
+        "properties": {
+          "editions_off": {
+            "title": "Editions Off",
+            "type": "integer"
+          },
+          "editions_favourited": {
+            "title": "Editions Favourited",
+            "type": "integer"
+          },
+          "editions_total": {
+            "title": "Editions Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "editions_off",
+          "editions_favourited",
+          "editions_total"
+        ],
+        "title": "SettingsBriefingEditionsUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:briefing_schedule_updated",
       "class": "SettingsBriefingScheduleUpdated",
       "owner": "server",

@@ -776,6 +776,7 @@
 @source "../../../features/settings/api/usageApi.ts";
 @source "../../../features/settings/api/voiceApi.ts";
 @source "../../../features/settings/components/AccountSettings.tsx";
+@source "../../../features/settings/components/BriefingEditionsSettings.tsx";
 @source "../../../features/settings/components/BriefingScheduleSettings.tsx";
 @source "../../../features/settings/components/BriefsOffBlockedModal.tsx";
 @source "../../../features/settings/components/BrowserSettings.tsx";
@@ -816,6 +817,7 @@
 @source "../../../features/settings/config/sectionComponents.tsx";
 @source "../../../features/settings/config/sectionKeys.ts";
 @source "../../../features/settings/config/settingsConfig.tsx";
+@source "../../../features/settings/hooks/useBriefingEditionsSettings.ts";
 @source "../../../features/settings/hooks/useBriefingScheduleSettings.ts";
 @source "../../../features/settings/hooks/useChatChannelSettings.ts";
 @source "../../../features/settings/hooks/useComposioSetup.ts";

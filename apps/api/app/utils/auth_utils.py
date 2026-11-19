@@ -198,6 +198,7 @@ def build_user_context(
         platform_links_connected_at=user_doc.platform_links_connected_at,
         chat_channel_priority=user_doc.chat_channel_priority,
         briefing_schedule=user_doc.briefing_schedule,
+        briefing_editions=user_doc.briefing_editions,
         starred_voice_ids=user_doc.starred_voice_ids,
         selected_voice_id=user_doc.selected_voice_id,
         first_name=user_doc.first_name,

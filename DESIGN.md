@@ -502,7 +502,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 
 | Prop / option | Means | Values | Where |
 |---|---|---|---|
-| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`. Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
+| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`, `scrim` (a control laid over a picture). Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
 | `color` | semantic colour where HeroUI has a `color` prop | `accent`, `success`, `warning`, `danger`, `default` | `Chip color=`, `tabsVariants`, `sliderVariants` |
 | `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
 | `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |

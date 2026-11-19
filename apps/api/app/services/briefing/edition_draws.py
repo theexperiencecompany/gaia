@@ -5,9 +5,11 @@ from dataclasses import dataclass
 import random
 
 from app.constants.briefing import (
+    FAVOURITE_WEIGHT_FACTOR,
     POSTAL_FAMILY,
     ArtFamily,
     BriefingBag,
+    EditionChoice,
 )
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import BriefBlock
@@ -49,6 +51,24 @@ def draw_from_bag(
     return BagDraw(bag=bag, member=member, next_state=next_state)
 
 
+def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]:
+    """Return the user's daily bag: families turned off left out, each favourite at twice its weight.
+
+    Settings keep one family on, so the bag is empty only when every family left on was
+    since retired; the brief then draws from every daily family.
+    """
+    weights = {
+        family: weight
+        * (FAVOURITE_WEIGHT_FACTOR if choices.get(family) == EditionChoice.FAVOURITE else 1)
+        for family, weight in DAILY_FAMILY_WEIGHTS.items()
+        if choices.get(family) != EditionChoice.OFF
+    }
+    if weights:
+        return weights
+    log.warning("briefing.editions_all_retired", kept=sorted(choices))
+    return dict(DAILY_FAMILY_WEIGHTS)
+
+
 @dataclass(frozen=True)
 class EditionDraw:
     """Today's edition family, and the composed blocks it draws and leaves to the brief's page."""
@@ -59,14 +79,15 @@ class EditionDraw:
 
 
 def draw_edition(user: UserDocument, blocks: list[BriefBlock]) -> EditionDraw:
-    """Draw today's family from the bag's families that can draw every block, else the bag's next.
+    """Draw today's family from the user's bag, among its families that can draw every block.
 
-    Only when no daily family can draw the whole composition does a block go undrawn.
+    When no family in the user's rotation can draw the whole composition, the bag's next
+    family draws and the blocks it cannot draw go to the brief's page; a family the user
+    turned off is never drawn.
     """
-    fits = families_drawing(DAILY_FAMILY_WEIGHTS, blocks)
-    family = draw_from_bag(
-        user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS, eligible=fits or None
-    )
+    weights = daily_family_weights(user.briefing_editions)
+    fits = families_drawing(weights, blocks)
+    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, weights, eligible=fits or None)
     drawn, undrawn = split_drawable(family.member, blocks)
     if undrawn:
         log.info(

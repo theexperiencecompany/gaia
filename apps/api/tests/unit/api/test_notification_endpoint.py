@@ -13,10 +13,14 @@ from pydantic import ValidationError
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefingFrequency
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefingFrequency, EditionChoice
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
+from app.models.briefing_models import (
+    BriefingEditions,
+    BriefingSchedule,
+    BriefingScheduleUpdate,
+)
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationContentView,
@@ -927,6 +931,77 @@ class TestBriefingScheduleEndpoints:
             "app.api.v1.endpoints.notification.set_briefing_schedule", new_callable=AsyncMock
         ) as setter:
             response = await client.put(f"{NOTIF_BASE}/preferences/briefing-schedule", json=body)
+
+        assert response.status_code == 422
+        setter.assert_not_awaited()
+
+
+class TestBriefingEditionsEndpoints:
+    async def test_the_stored_choices_are_read_back_for_every_edition(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(
+                    id=FAKE_USER_ID, briefing_editions={"menu": EditionChoice.OFF}
+                ),
+            ) as get,
+            patch("app.api.v1.endpoints.notification.log") as log,
+        ):
+            response = await client.get(f"{NOTIF_BASE}/preferences/briefing-editions")
+
+        get.assert_awaited_once_with(FAKE_USER_ID)
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_editions")
+        assert response.status_code == 200
+        choices = {e["family"]: e["choice"] for e in response.json()["editions"]}
+        assert choices["menu"] == "off"
+        assert choices["postal"] == "on"
+
+    async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
+        with patch(
+            "app.api.v1.endpoints.notification.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.get(f"{NOTIF_BASE}/preferences/briefing-editions")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "User not found"
+
+    async def test_an_update_goes_through_the_one_setter_and_echoes_it(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.notification.set_edition_choices",
+                new_callable=AsyncMock,
+                return_value=BriefingEditions(editions=[]),
+            ) as setter,
+            patch("app.api.v1.endpoints.notification.log") as log,
+        ):
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/briefing-editions",
+                json={"choices": {"menu": "off", "swiss": "favourite"}},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"editions": []}
+        setter.assert_awaited_once_with(
+            FAKE_USER_ID, {"menu": EditionChoice.OFF, "swiss": EditionChoice.FAVOURITE}
+        )
+        log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="update_briefing_editions")
+
+    async def test_an_unknown_choice_is_refused_before_anything_is_stored(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            "app.api.v1.endpoints.notification.set_edition_choices", new_callable=AsyncMock
+        ) as setter:
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/briefing-editions", json={"choices": {"menu": "hidden"}}
+            )
 
         assert response.status_code == 422
         setter.assert_not_awaited()

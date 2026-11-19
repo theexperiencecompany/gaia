@@ -26,6 +26,7 @@ from app.constants.briefing import (
     BriefForm,
     BriefingFrequency,
     BriefOutcome,
+    EditionChoice,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
@@ -98,6 +99,26 @@ class BriefingScheduleUpdate(BriefingSchedule):
     def schedule(self) -> BriefingSchedule:
         """Return the schedule to store, without the one-off deliveries."""
         return BriefingSchedule(frequency=self.frequency, hour=self.hour)
+
+
+class BriefingEdition(BaseModel):
+    """One daily edition family, and where the user put it."""
+
+    family: str
+    name: str
+    choice: EditionChoice
+
+
+class BriefingEditions(BaseModel):
+    """Every daily edition family a brief can draw, and where the user put each."""
+
+    editions: list[BriefingEdition]
+
+
+class BriefingEditionsUpdate(BaseModel):
+    """Where the user puts each daily edition family; a family not named stays in the rotation."""
+
+    choices: dict[str, EditionChoice]
 
 
 class BriefDeliveryWorkflow(BaseModel):

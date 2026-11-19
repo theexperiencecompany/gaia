@@ -18,6 +18,7 @@ __all__ = [
     "InstructionsUpdated",
     "ProfileLinkCopied",
     "ProfileUpdated",
+    "SettingsBriefingEditionsUpdated",
     "SettingsBriefingScheduleUpdated",
     "SettingsBriefsOffBlocked",
     "SettingsBriefsOffResolved",
@@ -80,6 +81,17 @@ class SettingsBriefingScheduleUpdated(ServerEvent):
     frequency: Identifier
     hour: int
     via: BriefingScheduleChangedVia
+
+
+class SettingsBriefingEditionsUpdated(ServerEvent):
+    """A user chose which daily edition families their brief draws: how many off and favourited."""
+
+    event: ClassVar[str] = "settings:briefing_editions_updated"
+    budget_per_user_day: ClassVar[int] = 50
+
+    editions_off: int
+    editions_favourited: int
+    editions_total: int
 
 
 class SettingsBriefsOffBlocked(ServerEvent):
