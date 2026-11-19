@@ -64,7 +64,10 @@ def _candidate(metadata: Mapping[str, object], source: object) -> dict[str, obje
         return None if tagged is None else {"kind": tagged}
     keys = frozenset(metadata)
     # The executor's failure notice alone wrote a bare workflow_id.
-    if keys == {"workflow_id"} and source == NotificationSourceEnum.WORKFLOW_FAILED.value:
+    if (
+        keys == frozenset({"workflow_id"})
+        and source == NotificationSourceEnum.WORKFLOW_FAILED.value
+    ):
         return {"kind": NotificationKind.WORKFLOW_FAILED, **metadata}
     kind = _KIND_BY_KEYS.get(keys)
     if kind is None:
