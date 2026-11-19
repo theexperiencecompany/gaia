@@ -233,16 +233,18 @@ _migrate_job_args() {
     --env GAIA_SERVICE_NAME=migrate
   )
   _add_each() {
-    local flag="$1" line
+    local flag="$1" line values
+    # A command substitution, not < <(...): a yq that rejects the expression must fail the step.
+    values=$(yq ". as \$root | $2" <<<"$rendered")
     while IFS= read -r line; do
       [[ -n "$line" ]] && MIGRATE_ARGS+=("$flag" "$line")
-    done < <(yq ". as \$root | $2" <<<"$rendered")
+    done <<<"$values"
   }
   _add_each --env "$worker.environment // {} | to_entries | .[] | select(.key != \"GAIA_SERVICE_NAME\") | .key + \"=\" + (.value | tostring)"
   _add_each --secret "$worker.secrets // [] | .[] | (.source // .)"
   # Only networks that outlive the stack: a stack-scoped one may not exist before it.
   _add_each --network "$worker.networks // {} | keys | .[] | . as \$n | \$root.networks[\$n] | select(.external == true) | (.name // \$n)"
-  _add_each --mount "$worker.volumes // [] | .[] | . as \$v | \"type=\" + .type + \",source=\" + (\$root.volumes[\$v.source].name // \$v.source) + \",target=\" + .target + (if .volume.nocopy == true then \",volume-nocopy=true\" else \"\" end)"
+  _add_each --mount "$worker.volumes // [] | .[] | . as \$v | \"type=\" + .type + \",source=\" + (\$root.volumes[\$v.source].name // \$v.source) + \",target=\" + .target + ((.volume | select(.nocopy == true) | \",volume-nocopy=\" + .nocopy) // \"\")"
   _add_each --constraint "$worker.deploy.placement.constraints // [] | .[]"
   MIGRATE_ARGS+=("$(yq "$worker.image" <<<"$rendered")" python -m scripts.post_deploy --apply)
 }
