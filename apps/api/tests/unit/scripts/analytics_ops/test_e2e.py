@@ -30,6 +30,7 @@ WEB: dict[str, object] = {
     "surface": "web",
     "$session_id": SESSION,
 }
+WEB_SERVER: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "web"}
 WEBHOOK: dict[str, object] = {"actor": "agent", "trigger": "webhook", "surface": "worker"}
 BOT: dict[str, object] = {"actor": "user", "trigger": "interactive", "surface": "bot"}
 # The agent acts in the run tree the user's request started.
@@ -43,6 +44,21 @@ BOT_TURN: dict[str, object] = {
     "conversation_id": BOT_CONVERSATION,
     "mode": "interactive",
     "agent": "comms",
+}
+ARTIFACT_CONVERSATION = "7e4cb1d0-5a1e-4a55-9b2c-0f9d3c2b8a11"
+ARTIFACT_TURN: dict[str, object] = {
+    "conversation_id": ARTIFACT_CONVERSATION,
+    "mode": "interactive",
+    "agent": "comms",
+}
+ARTIFACT_CREATED: dict[str, object] = {
+    "kind": "dashboard",
+    "components": 6,
+    "repairs": 0,
+    "output_tokens": 900,
+    "first_component_ms": 2600.0,
+    "total_ms": 5200.0,
+    "model": "gpt-6-luna",
 }
 WORKFLOW_RUN: dict[str, object] = {
     "conversation_id": WORKFLOW_CONVERSATION,
@@ -156,6 +172,41 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
         "settings:briefing_schedule_updated",
         {**WEB, "frequency": "off", "hour": 8, "via": "settings"},
     ),
+    (
+        "chat:message_submitted",
+        {
+            **WEB,
+            "source": "web",
+            "stream_id": "s-artifact",
+            "is_retry": False,
+            "has_files": False,
+            "is_new_conversation": True,
+            "message_count": 1,
+        },
+    ),
+    (
+        "chat:conversation_created",
+        {**WEB, "is_onboarding_demo": False, "is_system_generated": False},
+    ),
+    ("agent:run_started", {**AGENT_WEB, **ARTIFACT_TURN}),
+    ("agent:run_completed", {**AGENT_WEB, **ARTIFACT_TURN}),
+    (
+        "chat:message_completed",
+        {
+            **WEB,
+            **COMPLETED,
+            "conversation_id": ARTIFACT_CONVERSATION,
+            "stream_id": "s-artifact",
+            "source": "web",
+            "is_new_conversation": True,
+        },
+    ),
+    *[("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED})] * 2,
+    (
+        "short_link:opened",
+        {**WEB_SERVER, "target_type": "openui_artifact", "viewer_signed_in": False},
+    ),
+    ("artifact:pdf_exported", {**WEB_SERVER, "kind": "dashboard", "pages": 1}),
     (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},

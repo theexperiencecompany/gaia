@@ -464,6 +464,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
     """Return expected tool-name membership per category, read from the same tool modules _initialize_categories() itself imports."""
     from app.agents.tools import (
         account_tools,
+        artifact_tool,
         browser_tool,
         coding,
         context_tool,
@@ -520,7 +521,11 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "instructions": {t.name for t in instructions_tools.tools},
         "development": {t.name for t in coding.tools},
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
-        "creative": {image_tool.generate_image.name, flowchart_tool.create_flowchart.name},
+        "creative": {
+            image_tool.generate_image.name,
+            flowchart_tool.create_flowchart.name,
+            artifact_tool.create_artifact.name,
+        },
         "weather": {weather_tool.get_weather.name},
         "browser": {browser_tool.browser_task.name},
         "context": {context_tool.gather_context.name},

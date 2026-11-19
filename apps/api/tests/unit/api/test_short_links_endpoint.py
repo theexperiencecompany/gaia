@@ -9,6 +9,7 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
+from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkViewer,
     LinkViewerKind,
@@ -429,3 +430,40 @@ class TestSlugNeverLoggedInPlaintext:
         assert response.status_code == 405
         assert SLUG not in str(event)
         assert [w["path"] for w in event["warnings"]] == [f"{BASE}/{{slug}}/file"]
+
+
+class TestShortLinkPdf:
+    """Tests for GET /l/{slug}/pdf."""
+
+    async def test_a_live_artifact_link_serves_its_pdf(self, client: AsyncClient) -> None:
+        artifact = OpenUIArtifact(
+            id="a1",
+            user_id="owner",
+            kind=ArtifactKind.REPORT,
+            title="Q3 plan",
+            program="p",
+            brief_hash="h",
+            model="gpt-6-luna",
+        )
+        with patch(
+            f"{_ENDPOINT}.public_artifact_pdf", AsyncMock(return_value=(artifact, b"%PDF-1.7"))
+        ) as export:
+            async with captured_wide_event() as event:
+                response = await client.get(f"{BASE}/{SLUG}/pdf")
+
+        assert response.status_code == 200
+        assert response.content == b"%PDF-1.7"
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.headers["content-disposition"] == 'attachment; filename="Q3 plan.pdf"'
+        export.assert_awaited_once_with(SLUG)
+        assert event["operation"] == "pdf"
+        assert event["short_link"] == {"slug_hash": hash_short_link_slug(SLUG)}
+        assert event["artifact"] == {"kind": "report", "pdf_bytes": 8}
+        assert SLUG not in str(event)
+
+    async def test_any_other_slug_is_404(self, client: AsyncClient) -> None:
+        with patch(f"{_ENDPOINT}.public_artifact_pdf", AsyncMock(return_value=None)):
+            response = await client.get(f"{BASE}/{SLUG}/pdf")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == "Short link not found"

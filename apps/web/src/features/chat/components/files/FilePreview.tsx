@@ -1,5 +1,6 @@
+import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { FileCard } from "@/features/chat/components/files/FileCard";
-import { useFilePreview } from "@/features/chat/hooks/useFilePreview";
+import { useSidebarPreview } from "@/features/chat/hooks/useSidebarPreview";
 
 export interface UploadedFilePreview {
   id: string;
@@ -24,12 +25,14 @@ function ComposerFileCard({
   file: UploadedFilePreview;
   onRemove: (id: string) => void;
 }) {
-  const preview = useFilePreview({
-    source: { kind: "url", url: file.url },
-    filename: file.name,
-    contentType: file.type,
-    sizeBytes: file.size,
-  });
+  const preview = useSidebarPreview(
+    <FileViewerPanel
+      source={{ kind: "url", url: file.url }}
+      filename={file.name}
+      contentType={file.type}
+      sizeBytes={file.size}
+    />,
+  );
   const canOpen = !file.isUploading && file.url !== "";
 
   return (

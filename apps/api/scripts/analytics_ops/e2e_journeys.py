@@ -10,8 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
+import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 from uuid import uuid4
@@ -261,6 +263,84 @@ def chat(stack: Stack) -> None:
             _expect(reply, HTTPStatus.OK)
         if not any(line.strip() == STREAM_DONE for line in reply.iter_lines()):
             raise JourneyError("/chat-stream ended without its [DONE] frame")
+
+
+#: A brief the artifact model turns into a small grounded dashboard (real model: the sim stub
+#: speaks chat completions only, and create_artifact calls the Responses API).
+ARTIFACT_BRIEF = (
+    "Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: "
+    "310, 420, 270, 230, 210, 190, 210. Paid: 96."
+)
+#: Someone other than the owner opening the shared link: the owner's own opens never count.
+ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"
+ARTIFACT_ID_PATTERN = re.compile(r'"artifact_id":\s*"([0-9a-f]{24})"')
+CONVERSATION_ID_PATTERN = re.compile(r'"conversation_id":\s*"([^"]+)"')
+#: The executor runs after comms' reply closes the stream; its card lands on the conversation.
+ARTIFACT_TIMEOUT_S = 180.0
+
+
+def _await_artifact_id(api: httpx.Client, conversation_id: str) -> str:
+    """Wait for the executor's artifact_done card on the conversation; return its artifact id."""
+    deadline = time.monotonic() + ARTIFACT_TIMEOUT_S
+    while True:
+        conversation = _expect(api.get(f"/conversations/{conversation_id}"), HTTPStatus.OK)
+        found = ARTIFACT_ID_PATTERN.search(conversation.text)
+        if found is not None:
+            return found.group(1)
+        if time.monotonic() >= deadline:
+            raise JourneyError(
+                f"no stored artifact on {conversation_id} after {ARTIFACT_TIMEOUT_S:.0f}s"
+            )
+        time.sleep(WORKFLOW_POLL_INTERVAL_S)
+
+
+def artifact(stack: Stack) -> None:
+    """Create an artifact in chat, open it in the viewer and through its link, export its PDF."""
+    tool = json.dumps(
+        {"kind": "dashboard", "title": "Analytics e2e launch", "brief": ARTIFACT_BRIEF}
+    )
+    message = MessageDict(role="user", content=f"[[tool:create_artifact {tool}]] [[say:Done.]]")
+    request = MessageRequestWithHistory(message=message["content"], messages=[message])
+    with (
+        stack.client() as api,
+        api.stream(
+            "POST",
+            "/chat-stream",
+            json=request.model_dump(mode="json", exclude_none=True),
+            headers=stack.browser(),
+        ) as reply,
+    ):
+        _expect(reply, HTTPStatus.OK)
+        frames = "\n".join(reply.iter_lines())
+    conversation = CONVERSATION_ID_PATTERN.search(frames)
+    if conversation is None:
+        raise JourneyError("the chat turn streamed no conversation id")
+    with stack.client() as api:
+        artifact_id = _await_artifact_id(api, conversation.group(1))
+        _expect(
+            api.get(f"/artifacts/{artifact_id}", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+        state = _expect(
+            api.get(
+                "/l/state",
+                params={"target_type": "openui_artifact", "target_id": artifact_id},
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+        url = state.json()["url"]
+        if not url:
+            raise JourneyError("create_artifact left the artifact without a link")
+        slug = url.rsplit("/", 1)[-1]
+        _expect(api.get(f"/l/{slug}"), HTTPStatus.OK)
+        # the page's open beacon, from a reader who is not the owner
+        _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
+        _expect(
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            HTTPStatus.NO_CONTENT,
+        )
+        _expect(api.get(f"/l/{slug}/pdf"), HTTPStatus.OK)
 
 
 def briefing_schedule(stack: Stack) -> None:

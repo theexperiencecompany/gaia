@@ -665,6 +665,14 @@
     border-radius: 0;
     background-color: transparent;
   }
+  /* tableVariants({ stickyFirstColumn: true }): the first column stays put over
+     the page background while a wide table scrolls under it. */
+  .table-root.gaia-table-sticky-first :is(.table__column, .table__cell):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: var(--background);
+  }
 
   /* separatorVariants({ surface: "raised" }): v2's zinc-700/50 divider on a zinc-800 card. */
   .separator.gaia-separator-raised {

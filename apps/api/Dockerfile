@@ -22,6 +22,9 @@
 # them and tools/lints/check_tool_pins.py fails when one disagrees.
 ARG PYTHON_VERSION=3.12.15
 ARG RUST_VERSION=1.99.1
+# Node version is declared once in .node-version; this default mirrors it and
+# tools/lints/check_tool_pins.py fails if the two disagree.
+ARG NODE_VERSION=24.22.1
 
 FROM python:${PYTHON_VERSION}-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
@@ -159,6 +162,22 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM scratch AS obscura-bin
 COPY --from=obscura-builder /obscura/target/release/obscura /obscura
 COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
+
+# ---- Artifact validator: the web artifact library's validator as one Node script ----
+# create_artifact checks every generated program with it (app/services/openui_artifacts/
+# validate.py). Only this package's dependencies are installed, and only the bundle and
+# the node binary reach the runtime.
+FROM node:${NODE_VERSION}-slim AS artifact-validator
+WORKDIR /src
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/artifact-validate/package.json ./tools/artifact-validate/
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --filter @gaia/artifact-validate
+COPY tools/artifact-validate ./tools/artifact-validate
+COPY apps/web/src/features/artifacts/openui ./apps/web/src/features/artifacts/openui
+RUN node tools/artifact-validate/build.mjs
 
 # ---- Runtime: minimal production image ----
 FROM python:${PYTHON_VERSION}-slim AS runtime
@@ -311,6 +330,10 @@ RUN adduser --disabled-password --gecos '' appuser \
 # crawl4ai resolves the location through Path.home().
 RUN HOME=/home/appuser python -c "from crawl4ai.install import setup_home_directory, run_migration; setup_home_directory(); run_migration()" \
     && chown -R appuser:appuser /home/appuser/.crawl4ai /home/appuser/global.yml
+
+# The artifact validator: node itself and the one-file bundle validate.py runs.
+COPY --from=artifact-validator /usr/local/bin/node /usr/local/bin/node
+COPY --from=artifact-validator /src/tools/artifact-validate/dist ./tools/artifact-validate/dist
 
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app

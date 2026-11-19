@@ -8,6 +8,7 @@ import type {
   ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
+import { ArtifactCard } from "@/features/chat/components/artifacts/ArtifactCard";
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import { DeviceApprovalPrompt } from "@/features/chat/components/bubbles/bot/DeviceApprovalPrompt";
@@ -210,6 +211,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   google_docs_data: (data) => <GoogleDocsSection google_docs_data={data} />,
   code_data: (data) => <CodeExecutionSection code_data={data} />,
   artifact_data: (data) => <FileArtifactSection artifact_data={data} />,
+  artifact_done: (data) => <ArtifactCard card={data} />,
 
   todo_data: (data) => (
     <TodoSection

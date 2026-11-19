@@ -31,6 +31,10 @@ from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics import is_user_id
 from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
+from shared.py.analytics.catalog.artifacts import (
+    ArtifactCreated,
+    ArtifactPdfExported,
+)
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.auth import UserActive, UserLoggedIn, UserLoggedOut, UserSignedUp
 from shared.py.analytics.catalog.billing import (
@@ -57,6 +61,7 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffBlocked,
     SettingsBriefsOffResolved,
 )
+from shared.py.analytics.catalog.short_links import ShortLinkOpened
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
@@ -304,6 +309,21 @@ def build_journeys(transcript: Path) -> list[Journey]:
                     True,
                     (("frequency", BriefingFrequency.OFF.value), ("via", "settings")),
                 ),
+            ),
+        ),
+        Journey(
+            "artifact",
+            journeys.artifact,
+            (
+                Expect(ChatMessageSubmitted.event, BROWSER, True, (("source", web),)),
+                *_agent_turn(BROWSER, True, web),
+                # Twice under sim only: the stub re-reads the request the executor's result
+                # echoes and dispatches it again; live comms makes one artifact per request.
+                Expect(
+                    ArtifactCreated.event, BROWSER_AGENT, True, (("kind", "dashboard"),), count=2
+                ),
+                Expect(ShortLinkOpened.event, None, False, (("target_type", "openui_artifact"),)),
+                Expect(ArtifactPdfExported.event, None, False, (("kind", "dashboard"),)),
             ),
         ),
         Journey(

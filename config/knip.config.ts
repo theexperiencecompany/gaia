@@ -156,6 +156,10 @@ const config: KnipConfig = {
     "apps/web/src/features/chat/components/dev/OpenUIPlayground.tsx",
     "apps/web/src/config/openui/examples/index.ts",
 
+    // The artifact playground and its sample programs, consumed only by the
+    // /dev/artifacts page (page.dev.tsx, ignored above).
+    "apps/web/src/features/artifacts/dev/**",
+
     // BuiltForEveryone: landing "positioning" section, parked — its dynamic
     // import and render are commented out in app/[locale]/(landing)/client.tsx.
     // Kept intact for re-enablement, not dead code.

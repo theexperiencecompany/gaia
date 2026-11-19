@@ -1,0 +1,23 @@
+{
+  "name": "artifact-validate",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "root": "tools/artifact-validate",
+  "projectType": "application",
+  "tags": ["scope:typescript"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/apps/web/src/features/artifacts/openui/**/*.ts",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": ["{projectRoot}/dist"],
+      "cache": true,
+      "options": {
+        "command": "node build.mjs",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

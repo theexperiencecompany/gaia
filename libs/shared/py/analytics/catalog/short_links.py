@@ -11,7 +11,9 @@ __all__ = ["ShortLinkCreated", "ShortLinkOpened", "ShortLinkRevoked"]
 # (apps/api/app/models/short_link_models.py) is the source of truth; this layer
 # cannot import it, so the event schema restates the closed set, the same way the
 # workflow events restate their delivery modes.
-ShortLinkTarget = Literal["todo_deliverable", "briefing", "session_artifact", "workflow_run"]
+ShortLinkTarget = Literal[
+    "todo_deliverable", "briefing", "session_artifact", "workflow_run", "openui_artifact"
+]
 
 
 class ShortLinkCreated(ServerEvent):

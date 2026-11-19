@@ -3,9 +3,13 @@
 import type { BriefingFrequency } from "@gaia/shared/types";
 import { ListBox, Select } from "@heroui/react";
 import { formatHour12 } from "@shared/utils";
+import { format, parseISO } from "date-fns";
 import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { paywallCopyFor } from "@/features/pricing/constants";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -15,6 +19,10 @@ import {
   formatHour,
   isQuietHour,
 } from "@/features/settings/utils/quietHoursAxis";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+/** The next daily brief, on the reader's clock: "Mon 16 Nov, 7 AM". */
+const NEXT_BRIEF_FORMAT = "EEE d MMM, h a";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -46,6 +54,8 @@ export function BriefingScheduleSettings() {
     keepBriefs,
   } = useBriefingScheduleSettings();
   const { hours: quietHours } = useQuietHours();
+  const { hasEverSubscribed } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const hasDailyBrief =
     schedule?.frequency !== undefined &&
     WITH_DAILY_BRIEF.has(schedule.frequency);
@@ -64,6 +74,26 @@ export function BriefingScheduleSettings() {
           : "How often GAIA briefs you. The weekly digest arrives Sunday evening."
       }
     >
+      {schedule?.paused_for_plan && (
+        <SettingsRow
+          label="Your briefs are paused"
+          description="Briefs on a schedule are part of GAIA Pro, so none are sent on the free plan."
+        >
+          <GaiaButton
+            size="sm"
+            variant="primary"
+            className="font-medium"
+            onPress={() =>
+              openUpgradeModal(undefined, {
+                dismissible: true,
+                source: "settings_briefings",
+              })
+            }
+          >
+            {paywallCopyFor(hasEverSubscribed).cta}
+          </GaiaButton>
+        </SettingsRow>
+      )}
       <SettingsRow label="Frequency">
         <Select
           className={inputVariants({ size: "sm", className: "w-44" })}
@@ -95,9 +125,16 @@ export function BriefingScheduleSettings() {
       <SettingsRow
         label="Daily brief at"
         description={
-          isHeldByQuietHours && quietHours
-            ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
-            : undefined
+          [
+            isHeldByQuietHours && quietHours
+              ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
+              : null,
+            schedule?.next_daily_brief_at
+              ? `Next one ${format(parseISO(schedule.next_daily_brief_at), NEXT_BRIEF_FORMAT)}.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined
         }
       >
         <Select

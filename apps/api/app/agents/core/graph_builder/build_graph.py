@@ -93,6 +93,9 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     # Bound, not retrieved: fetching it cost two retrieve_tools rounds
     # and two model calls (about 8s) before the browser even started.
     "browser_task",
+    # Bound, not retrieved: a report or dashboard request must reach create_artifact,
+    # never fall back to writing HTML through write.
+    "create_artifact",
     # Bound statically, not left to retrieve_tools: prompts name these
     # directly, so a run whose semantic retrieval misses them could read
     # the instruction and silently never act on it.

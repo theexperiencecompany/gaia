@@ -143,10 +143,10 @@ class TestEveryRuntimeModelIsPriced:
     ) -> None:
         """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
         monkeypatch.setattr(settings, "ENV", "development")
-        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-9-unregistered")
 
         with patch("app.config.model_pricing.log") as mock_log:
-            pricing = get_model_pricing("gpt-6-luna")
+            pricing = get_model_pricing("gpt-9-unregistered")
 
         assert pricing == DEFAULT_PRICING
         mock_log.error.assert_not_called()
@@ -155,10 +155,10 @@ class TestEveryRuntimeModelIsPriced:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "production")
-        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-9-unregistered")
 
         with patch("app.config.model_pricing.log") as mock_log:
-            get_model_pricing("gpt-6-luna")
+            get_model_pricing("gpt-9-unregistered")
 
         mock_log.error.assert_called_once()
 

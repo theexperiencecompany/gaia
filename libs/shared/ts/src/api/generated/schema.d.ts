@@ -122,6 +122,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact
+         * @description One of the user's artifacts, program included.
+         */
+        get: operations["artifacts_get_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{artifact_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifact Pdf
+         * @description One of the user's artifacts as an A4 PDF.
+         */
+        get: operations["artifacts_get_artifact_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -528,7 +568,7 @@ export interface paths {
         };
         /**
          * List Briefings
-         * @description Archive of the user's briefings (daily + weekly), newest first.
+         * @description One page of the user's briefings archive (daily + weekly), newest first.
          */
         get: operations["briefings_list_briefings"];
         put?: never;
@@ -2208,6 +2248,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/l/{slug}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link Pdf Route
+         * @description The artifact behind a slug as an A4 PDF. No auth, like the link itself.
+         */
+        get: operations["short_links_get_short_link_pdf_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/l/state": {
         parameters: {
             query?: never;
@@ -2963,12 +3023,12 @@ export interface paths {
         };
         /**
          * Read Briefing Schedule
-         * @description How often the user's briefs come, and the daily brief's hour on their clock.
+         * @description How often the user's briefs come, the daily brief's hour on their clock, and whether they run.
          */
         get: operations["notification_read_briefing_schedule"];
         /**
          * Update Briefing Schedule
-         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.
          */
         put: operations["notification_update_briefing_schedule"];
         post?: never;
@@ -6280,6 +6340,13 @@ export interface components {
             size_bytes: number;
         };
         /**
+         * ArtifactKind
+         * @description What the artifact is; each kind has its own generated prompt
+         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).
+         * @enum {string}
+         */
+        ArtifactKind: "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+        /**
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
          *
@@ -6977,11 +7044,16 @@ export interface components {
         };
         /**
          * BriefingListResponse
-         * @description Archive response shape (frontend is coded against this).
+         * @description One page of the archive, newest first, and where the next page starts.
          */
         BriefingListResponse: {
             /** Briefings */
             briefings: components["schemas"]["BriefingView"][];
+            /**
+             * Next Cursor
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_cursor: string | null;
         };
         /**
          * BriefingPayload
@@ -7082,10 +7154,10 @@ export interface components {
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**
-         * BriefingSchedule
-         * @description When the user wants their briefs: how often, and the daily brief's local hour.
+         * BriefingScheduleState
+         * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
          */
-        BriefingSchedule: {
+        BriefingScheduleState: {
             /** @default daily */
             frequency?: components["schemas"]["BriefingFrequency"];
             /**
@@ -7093,6 +7165,16 @@ export interface components {
              * @default 8
              */
             hour?: number;
+            /**
+             * Next Daily Brief At
+             * @description When the next daily brief runs (UTC); None while no daily brief runs.
+             */
+            next_daily_brief_at: string | null;
+            /**
+             * Paused For Plan
+             * @description The schedule sends briefs, but none run: the user is not on Pro.
+             */
+            paused_for_plan: boolean;
         };
         /**
          * BriefingScheduleUpdate
@@ -12666,6 +12748,28 @@ export interface components {
             user_id: string;
         };
         /**
+         * OpenUIArtifactResponse
+         * @description An artifact as its owner's viewer loads it.
+         */
+        OpenUIArtifactResponse: {
+            /** Conversation Id */
+            conversation_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
          */
@@ -13581,6 +13685,31 @@ export interface components {
              * @default []
              */
             tools?: components["schemas"]["IntegrationTool"][];
+        };
+        /**
+         * PublicOpenUIArtifact
+         * @description An artifact create_artifact made: its program, which the page renders as data.
+         */
+        PublicOpenUIArtifact: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Program */
+            program: string;
+            /** Shared By */
+            shared_by: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "openui_artifact";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
         };
         /**
          * PublicSessionArtifact
@@ -14705,7 +14834,7 @@ export interface components {
          * @description Every kind of artifact a heygaia.link can point at.
          * @enum {string}
          */
-        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
         /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
@@ -17576,6 +17705,7 @@ export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionReq
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
+export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
@@ -17621,7 +17751,7 @@ export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
-export type BriefingSchedule = components['schemas']['BriefingSchedule'];
+export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
 export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
@@ -17929,6 +18059,7 @@ export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type OnboardingUser = components['schemas']['OnboardingUser'];
+export type OpenUIArtifactResponse = components['schemas']['OpenUIArtifactResponse'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -17975,6 +18106,7 @@ export type PublicBriefingPayload = components['schemas']['PublicBriefingPayload
 export type PublicBriefingSection = components['schemas']['PublicBriefingSection'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicOpenUIArtifact = components['schemas']['PublicOpenUIArtifact'];
 export type PublicSessionArtifact = components['schemas']['PublicSessionArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
 export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
@@ -18520,6 +18652,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HILPreferencesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenUIArtifactResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artifacts_get_artifact_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
                 };
             };
             /** @description Unprocessable Entity */
@@ -19512,6 +19742,8 @@ export interface operations {
     briefings_list_briefings: {
         parameters: {
             query?: {
+                /** @description The previous page's next_cursor; omit for the first page. */
+                before?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -24060,7 +24292,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"];
+                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24174,6 +24406,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_pdf_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
             };
             /** @description Short link not found */
             404: {
@@ -26308,7 +26598,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -26359,7 +26649,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Briefs cannot turn off while workflows deliver to the brief */

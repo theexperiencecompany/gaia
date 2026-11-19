@@ -22,7 +22,6 @@ const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
 const GRID_CLASSES = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
 
 export interface BriefingArchiveProps {
-  limit?: number;
   className?: string;
 }
 
@@ -83,16 +82,17 @@ function WeekHeader({ start }: { start: Date }) {
 }
 
 /** Every brief folded to a letter card, grouped by week, newest first; each unfolds above the page. */
-export function BriefingArchive({
-  limit = 30,
-  className,
-}: BriefingArchiveProps) {
+export function BriefingArchive({ className }: BriefingArchiveProps) {
   const {
-    data: briefings,
+    data,
     isLoading,
     isError,
     refetch,
-  } = useBriefingsQuery(limit);
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useBriefingsQuery();
+  const briefings = data?.pages.flatMap((page) => page.briefings);
 
   if (isLoading) {
     return (
@@ -144,6 +144,17 @@ export function BriefingArchive({
           </div>
         </section>
       ))}
+      {hasNextPage && (
+        <GaiaButton
+          size="sm"
+          variant="default-soft"
+          className="self-center"
+          isPending={isFetchingNextPage}
+          onPress={() => void fetchNextPage()}
+        >
+          Show older briefs
+        </GaiaButton>
+      )}
     </div>
   );
 }

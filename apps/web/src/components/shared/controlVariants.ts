@@ -93,6 +93,8 @@ export const inputVariants = tv({
 export const tableVariants = tv({
   variants: {
     surface: { card: "gaia-table-card", plain: "gaia-table-plain" },
+    /** Pins the first column while the rest scroll sideways, on the page background. */
+    stickyFirstColumn: { true: "gaia-table-sticky-first" },
   },
   defaultVariants: { surface: "card" },
 });

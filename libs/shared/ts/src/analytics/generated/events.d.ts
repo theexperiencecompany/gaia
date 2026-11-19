@@ -8,6 +8,9 @@ export type ServerEventName =
   | "agent:wait_resumed"
   | "ai:llm_call_completed"
   | "approval:decided"
+  | "artifact:created"
+  | "artifact:failed"
+  | "artifact:pdf_exported"
   | "bot:audio_transcribed"
   | "bot:chat_opened"
   | "bot:session_reset"
@@ -348,6 +351,33 @@ export interface EventProperties {
     "batch"?: boolean;
     "decisions"?: number;
     "resolved"?: number;
+  };
+  "artifact:created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "components": number;
+    "repairs": number;
+    "output_tokens": number;
+    "first_component_ms": number;
+    "total_ms": number;
+    "model": "gpt-6-luna";
+  };
+  "artifact:failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "reason": "validation" | "refused" | "timeout" | "truncated";
+    "problem_count": number;
+  };
+  "artifact:pdf_exported": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
+    "pages": number;
   };
   "blog:article_viewed": {
     "slug": string;
@@ -1172,7 +1202,7 @@ export interface EventProperties {
   "paywall:modal_viewed": {
     "dismissible": boolean;
     "has_discount_code": boolean;
-    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
+    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "settings_briefings" | "desktop_popup_mirror";
   };
   "pin:viewed": {
     "conversation_id": string;
@@ -1339,13 +1369,13 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
   };
   "short_link:opened": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
     "viewer_signed_in": boolean;
   };
   "short_link:revoked": {

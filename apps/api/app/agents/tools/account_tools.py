@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.tools.core.mutations import define_mutation_tool
-from app.constants.briefing import BriefingFrequency
+from app.constants.briefing import BRIEFS_PAUSED_FOR_PLAN_NOTE, BriefingFrequency
 from app.db.repositories.users import user_repository
 from app.decorators import enforce_rate_limit
 from app.models.briefing_models import BriefingSchedule
@@ -146,7 +146,12 @@ async def _set_briefing_schedule(
         frequency=frequency, hour=user.briefing_schedule.hour if hour is None else hour
     )
     updated = await briefing_schedule.set_briefing_schedule(user_id, schedule, via="agent")
-    return f"Briefing schedule updated: {briefing_schedule.describe_briefing_schedule(updated)}."
+    described = (
+        f"Briefing schedule updated: {briefing_schedule.describe_briefing_schedule(updated)}."
+    )
+    if await briefing_schedule.briefs_paused_for_plan(updated):
+        return f"{described} {BRIEFS_PAUSED_FOR_PLAN_NOTE}"
+    return described
 
 
 set_briefing_schedule = define_mutation_tool(

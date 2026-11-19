@@ -320,6 +320,33 @@ class TestBriefingsReads:
 
         assert [b.id for b in recent] == [weekly_same_day.id, later_day.id, earlier_day.id]
 
+    async def test_list_recent_before_a_brief_continues_the_listing_after_it(self, repo):
+        """The archive's next page starts right after the last brief of the one before it."""
+        user_id = "u-paged"
+        older = await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+        same_day = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+        weekly = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition=_EDITION
+        )
+        newest = await _upsert(
+            repo, user_id, "2026-08-07", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+        await _upsert(
+            repo, "other-user", "2026-08-04", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+
+        first = await repo.list_recent(user_id, limit=2)
+        second = await repo.list_recent(user_id, limit=2, before=first[-1])
+        last = await repo.list_recent(user_id, limit=2, before=second[-1])
+
+        assert [b.id for b in first] == [newest.id, weekly.id]
+        assert [b.id for b in second] == [same_day.id, older.id]
+        assert last == []
+
     async def test_list_stamped_reads_only_the_users_delivered_stamped_briefs_oldest_first(
         self, repo
     ):

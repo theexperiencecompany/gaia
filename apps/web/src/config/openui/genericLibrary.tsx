@@ -4,6 +4,7 @@ import {
   openuiLibrary,
 } from "@openuidev/react-ui/genui-lib";
 import { briefingDef } from "./components/briefing";
+import { chartDefs } from "./components/charts";
 import {
   audioPlayerDef,
   imageGalleryDef,
@@ -22,13 +23,9 @@ import { timelineDef } from "./components/timeline";
 import "./openui.css";
 
 /**
- * Merged OpenUI component library.
- *
- * Base: `@openuidev/react-ui`'s `openuiLibrary` (Stack, Card, Charts, Table,
- * forms, …), themed via `<ThemeProvider darkTheme={gaiaOpenUITheme}>`. Plus
- * GAIA-only components react-ui lacks; `ImageGallery` overrides react-ui's
- * variant to resolve uploaded session-file artifacts via `resolveArtifactSrc`.
- * The prompt is generated from this same set (`scripts/openui/generate-prompt.ts`).
+ * Merged OpenUI library: react-ui's `openuiLibrary` plus GAIA-only components. GAIA defs
+ * override react-ui's by name: `ImageGallery` resolves session-file artifacts, and the charts
+ * read the app theme (`components/charts.tsx`). The prompt is generated from the same set.
  */
 const gaiaComponents = [
   mapBlockDef,
@@ -44,6 +41,7 @@ const gaiaComponents = [
   kbdRowDef,
   imageGalleryDef,
   briefingDef,
+  ...chartDefs,
 ];
 
 const gaiaComponentNames = new Set(gaiaComponents.map((c) => c.name));

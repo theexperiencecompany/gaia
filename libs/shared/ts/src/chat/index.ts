@@ -1,3 +1,12 @@
+export {
+  ARTIFACT_CARD_TOOL_NAME,
+  stopStreamingArtifacts,
+} from "../artifacts/openuiArtifacts";
+export type {
+  ArtifactCardData,
+  ArtifactCardStatus,
+  ArtifactDeltaFrame,
+} from "../artifacts/types";
 export type {
   ApprovalDecision,
   ApprovalDecisionPayload,

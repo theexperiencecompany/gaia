@@ -168,6 +168,7 @@
 @source "../../../../../../libs/shared/ts/src/api/timezone.ts";
 @source "../../../../../../libs/shared/ts/src/api/todosApi.ts";
 @source "../../../../../../libs/shared/ts/src/api/workflowsApi.ts";
+@source "../../../../../../libs/shared/ts/src/artifacts/openuiArtifacts.ts";
 @source "../../../../../../libs/shared/ts/src/chat/approvals.ts";
 @source "../../../../../../libs/shared/ts/src/chat/fixtures.ts";
 @source "../../../../../../libs/shared/ts/src/chat/index.ts";

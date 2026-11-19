@@ -397,6 +397,7 @@ export class TurnSession {
       case "subagent_start":
       case "subagent_end":
       case "todo_progress":
+      case "artifact_delta":
       case "follow_up_actions":
       case "unknown":
         this.accumulate(event);

@@ -5,6 +5,7 @@ import type {
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
+  ArtifactCardData,
   RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
@@ -171,6 +172,7 @@ const TOOL_REGISTRY = {
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as SharedRateLimitData,
   artifact_data: null as unknown as ArtifactData[],
+  artifact_done: null as unknown as ArtifactCardData,
   screenshot_data: null as unknown as ScreenshotData,
   browser_task_data: null as unknown as BrowserTaskSnapshot,
   memory_data: null as unknown as MemoryData,

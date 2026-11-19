@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import type { BriefingSchedule } from "@gaia/shared/types";
+import type { BriefingScheduleState } from "@gaia/shared/types";
 import type { QuietHours } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { quietHoursApi } from "@/features/settings/api/quietHoursApi";
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 import { NotificationsAPI } from "@/services/api/notifications";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 vi.mock("@/services/api/notifications", () => ({
   NotificationsAPI: {
@@ -15,13 +16,36 @@ vi.mock("@/services/api/notifications", () => ({
   },
 }));
 
+vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
+  useIsPaid: () => ({
+    isPaid: false,
+    isUnknown: false,
+    hasEverSubscribed: false,
+  }),
+}));
+
 vi.mock("@/features/settings/api/quietHoursApi", () => ({
   quietHoursApi: { fetch: vi.fn(), update: vi.fn() },
 }));
 
 const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
 
-function renderSchedule(schedule: BriefingSchedule, quietHours: QuietHours) {
+type RunState = Pick<
+  BriefingScheduleState,
+  "paused_for_plan" | "next_daily_brief_at"
+>;
+
+function renderSchedule(
+  stored: Omit<BriefingScheduleState, keyof RunState>,
+  quietHours: QuietHours,
+  runs: Partial<RunState> = {},
+) {
+  const schedule: BriefingScheduleState = {
+    ...stored,
+    paused_for_plan: false,
+    next_daily_brief_at: null,
+    ...runs,
+  };
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
   vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
   const client = new QueryClient({
@@ -75,5 +99,57 @@ describe("the daily brief hour against quiet hours", () => {
 
     await screen.findAllByText("6 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
+  });
+});
+
+describe("a schedule that does not run without Pro", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useUpgradeModalStore.getState().closeModal({ force: true });
+  });
+
+  it("says the briefs are paused and offers the upgrade", async () => {
+    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT, {
+      paused_for_plan: true,
+    });
+
+    expect(await screen.findByText("Your briefs are paused")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+
+    const modal = useUpgradeModalStore.getState();
+    expect([modal.open, modal.source, modal.dismissible]).toEqual([
+      true,
+      "settings_briefings",
+      true,
+    ]);
+  });
+
+  it("says nothing of the plan when the briefs run", async () => {
+    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT);
+
+    await screen.findAllByText("8 AM");
+    expect(screen.queryByText("Your briefs are paused")).toBeNull();
+  });
+});
+
+describe("when the next daily brief lands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("names the day and hour of the next one, on the reader's clock", async () => {
+    const next = new Date(2026, 10, 16, 9, 0).toISOString();
+    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT, {
+      next_daily_brief_at: next,
+    });
+
+    expect(await screen.findByText("Next one Mon 16 Nov, 9 AM.")).toBeTruthy();
+  });
+
+  it("names none while no daily brief runs", async () => {
+    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT);
+
+    await screen.findAllByText("9 AM");
+    expect(screen.queryByText(/^Next one/)).toBeNull();
   });
 });

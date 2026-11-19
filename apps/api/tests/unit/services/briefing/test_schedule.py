@@ -452,6 +452,86 @@ class TestWhatTheBriefHeld:
         seams.consume.assert_not_awaited()
 
 
+class TestBriefingScheduleState:
+    async def test_a_free_users_briefs_read_as_paused_for_the_plan(self, seams: Seams) -> None:
+        seams.is_paid.return_value = False
+        user = _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.WEEKDAYS)
+        user.briefing_schedule.hour = 7
+
+        state = await schedule.briefing_schedule_state(user)
+
+        assert state.paused_for_plan is True
+        assert (state.frequency, state.hour) == (BriefingFrequency.WEEKDAYS, 7)
+        seams.is_paid.assert_awaited_once_with(_USER)
+
+    async def test_a_paying_users_briefs_run(self, seams: Seams) -> None:
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.paused_for_plan is False
+
+    async def test_briefs_switched_off_are_not_paused_whatever_the_plan(self, seams: Seams) -> None:
+        seams.is_paid.return_value = False
+        user = _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.OFF)
+
+        assert (await schedule.briefing_schedule_state(user)).paused_for_plan is False
+
+
+_NEXT_DAILY = datetime(2026, 10, 15, 1, 30, tzinfo=UTC)
+
+
+def _next_runs(seams: Seams, *, daily_on: bool = True) -> None:
+    daily = _workflow(DAILY_BRIEFING_WORKFLOW_KEY, "0 7 * * *", activated=daily_on)
+    daily.trigger_config.next_run = _NEXT_DAILY
+    weekly = _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON)
+    weekly.trigger_config.next_run = datetime(2026, 10, 14, 13, 30, tzinfo=UTC)
+    seams.find.return_value = [weekly, daily]
+
+
+class TestTheNextDailyBrief:
+    async def test_it_is_when_the_daily_briefs_workflow_next_runs(self, seams: Seams) -> None:
+        _next_runs(seams)
+
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.next_daily_brief_at == _NEXT_DAILY
+        seams.find.assert_awaited_once_with(
+            _USER, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
+        )
+
+    async def test_there_is_none_while_the_daily_workflow_is_off(self, seams: Seams) -> None:
+        _next_runs(seams, daily_on=False)
+
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.next_daily_brief_at is None
+
+    async def test_there_is_none_before_the_daily_workflow_is_provisioned(
+        self, seams: Seams
+    ) -> None:
+        seams.find.return_value = [_workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON)]
+
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.next_daily_brief_at is None
+
+    @pytest.mark.parametrize("frequency", [BriefingFrequency.WEEKLY_ONLY, BriefingFrequency.OFF])
+    async def test_there_is_none_on_a_schedule_without_a_daily_brief(
+        self, seams: Seams, frequency: BriefingFrequency
+    ) -> None:
+        _next_runs(seams)
+        user = _user(DEFAULT_QUIET_HOURS, frequency=frequency)
+
+        assert (await schedule.briefing_schedule_state(user)).next_daily_brief_at is None
+
+    async def test_there_is_none_while_the_briefs_wait_on_pro(self, seams: Seams) -> None:
+        _next_runs(seams)
+        seams.is_paid.return_value = False
+
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.next_daily_brief_at is None
+
+
 class TestDescribeBriefingSchedule:
     @pytest.mark.parametrize(
         ("frequency", "hour", "text"),

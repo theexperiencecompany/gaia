@@ -159,6 +159,16 @@ const FileDataFrameSchema = z.object({
     .loose(),
 });
 
+/** One chunk of an artifact program from create_artifact; live only, never persisted. */
+const ArtifactDeltaFrameSchema = z.object({
+  artifact_delta: z.object({
+    stream_id: z.string(),
+    kind: z.string(),
+    title: z.string(),
+    delta: z.string(),
+  }),
+});
+
 /**
  * End of one assistant message. `discarded` is true when that message turned
  * out to carry tool calls, which makes the text it streamed a handoff preamble
@@ -195,6 +205,7 @@ export const ChatStreamFrameSchema = z.union([
   FollowUpActionsFrameSchema,
   ProgressFrameSchema,
   TodoProgressFrameSchema,
+  ArtifactDeltaFrameSchema,
   ToolDataFrameSchema,
   ToolOutputFrameSchema,
   ReasoningFrameSchema,
