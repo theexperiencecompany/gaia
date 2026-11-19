@@ -14,6 +14,7 @@ from datetime import date
 import re
 
 from app.agents.prompts import brief_check_prompts as says
+from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesShape
@@ -50,6 +51,8 @@ class BriefFact:
     words: str | None = None
     #: The app its line names it under; None for a fact that is no item.
     app: str | None = None
+    #: Who finished a done item, as its line says it; None for anything else.
+    done_by: TodoCompleter | None = None
 
 
 def candidate_fact(
@@ -71,6 +74,7 @@ def candidate_fact(
         kind=kind,
         words=words,
         app=candidate.app,
+        done_by=candidate.finished_by,
     )
 
 

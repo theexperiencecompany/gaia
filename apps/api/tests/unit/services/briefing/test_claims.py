@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.constants.todos import TodoCompleter
 from app.models.brief_item_models import ItemState
 from app.services.briefing.claims import claim_problems
 from app.services.briefing.slots import BriefFact, SlotValues
@@ -120,3 +121,62 @@ class TestAnotherAppsItemCalledAGaiaTodo:
 
     def test_a_gaia_todo_called_one_may_be_said(self) -> None:
         assert claim_problems("message", "Your GAIA todo, [[fact:2]], is due.", self._VALUES) == []
+
+
+class TestCreditForFinishedWork:
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(
+                title="Voice release changelog",
+                kind=ItemState.LOOKBACK,
+                done_by=TodoCompleter.USER,
+            ),
+            2: BriefFact(
+                title="Kavya's offer letter review",
+                kind=ItemState.LOOKBACK,
+                done_by=TodoCompleter.USER,
+            ),
+            3: BriefFact(
+                title="Competitor pricing research",
+                kind=ItemState.LOOKBACK,
+                done_by=TodoCompleter.GAIA,
+            ),
+        },
+        counts={},
+    )
+
+    def test_the_users_work_credited_to_gaia_in_words_is_named(self) -> None:
+        """Sim 12-06 weekly: GAIA said "I finished" of two todos the user finished."""
+        written = (
+            "I finished two tasks this week: the voice release changelog and "
+            "Kavya\u2019s offer letter review."
+        )
+
+        assert claim_problems("message", written, self._VALUES) == [
+            "the message credits GAIA with facts 1, 2, but the user finished them; "
+            "say they finished them, as their lines do"
+        ]
+
+    def test_the_users_work_credited_to_gaia_by_its_slot_is_named(self) -> None:
+        assert claim_problems("message", "I've completed [[fact:1]].", self._VALUES) == [
+            "the message credits GAIA with facts 1, but the user finished them; "
+            "say they finished them, as their lines do"
+        ]
+
+    def test_gaias_work_credited_to_the_user_is_named(self) -> None:
+        assert claim_problems("message", "You finished [[fact:3]].", self._VALUES) == [
+            "the message credits the user with facts 3, but GAIA finished them; "
+            "say GAIA finished them, as their lines do"
+        ]
+
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "You finished [[fact:1]] and [[fact:2]].",
+            "I finished [[fact:3]].",
+            "I finished [[fact:3]] and you finished [[fact:1]].",
+        ],
+        ids=["user-by-user", "gaia-by-gaia", "each-by-its-own"],
+    )
+    def test_work_credited_to_whoever_finished_it_may_be_said(self, written: str) -> None:
+        assert claim_problems("message", written, self._VALUES) == []

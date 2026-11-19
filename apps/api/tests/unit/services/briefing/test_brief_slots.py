@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from tests.helpers import user_clock
 
+from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
@@ -514,6 +515,11 @@ class TestAPoolItemsFact:
             count=3,
             app="GAIA",
         )
+
+    def test_it_carries_who_finished_a_done_item(self) -> None:
+        candidate = _candidate(state="lookback", finished_by=TodoCompleter.USER)
+
+        assert candidate_fact(candidate, _CLOCK).done_by is TodoCompleter.USER
 
     def test_a_time_of_its_own_beats_its_due_day(self) -> None:
         candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
