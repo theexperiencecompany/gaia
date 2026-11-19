@@ -69,8 +69,9 @@ class TestRendering:
             ),
             ("both due [[fact:1.time]] / [[fact:2.time]].", "both due Fri Nov 13."),
             ("due [[fact:1.time]] and [[fact:4.time]].", "due Fri Nov 13 and Sat Nov 14."),
+            ("due [[fact:1.time]], respectively.", "due Fri Nov 13, respectively."),
         ],
-        ids=["two alike", "three alike, respectively", "two alike, slashed", "different"],
+        ids=["two alike", "three alike, respectively", "two alike, slashed", "different", "one"],
     )
     def test_a_list_of_slots_that_render_alike_says_the_value_once(
         self, written: str, rendered: str
@@ -462,6 +463,20 @@ class TestTypedFigures:
         assert slot_problems("message", "Meet at 11:00 sharp", values) == [
             "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it "
             "says 11:00, with nothing of '11:00 AM' beside it"
+        ]
+
+    def test_a_figure_two_facts_render_differently_names_both_values(self) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Sync", time="11:00 AM"),
+                2: BriefFact(title="Lunch", time="11:30 AM"),
+            },
+            counts={},
+        )
+
+        assert slot_problems("message", "Meet at 11 sharp", values) == [
+            "the message types '11' itself; write [[fact:1.time]] or [[fact:2.time]] where it "
+            "says 11, with nothing of '11:00 AM' or '11:30 AM' beside it"
         ]
 
 

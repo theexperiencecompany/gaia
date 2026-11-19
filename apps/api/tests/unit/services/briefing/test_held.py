@@ -15,6 +15,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
@@ -71,7 +72,11 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
         return s.briefs
 
     monkeypatch.setattr(workflow_repository, "find_system_workflow", find_system_workflow)
-    monkeypatch.setattr(user_repository, "get", AsyncMock(side_effect=lambda _uid: s.user))
+    monkeypatch.setattr(
+        user_repository,
+        "get",
+        AsyncMock(side_effect=lambda uid: s.user if uid == user_id else None),
+    )
     monkeypatch.setattr(user_repository, "get_activity_dates", activity)
 
     async def state_for(uid: str) -> BriefingStateDocument:
@@ -80,22 +85,25 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
 
     monkeypatch.setattr(briefing_state_repository, "state_for", state_for)
     monkeypatch.setattr(briefing_repository, "list_recent", recent)
-    monkeypatch.setattr(
-        pending_brief_items_repository,
-        "list_for_user",
-        AsyncMock(
-            return_value=[
+
+    async def list_for_user(uid: str, **_kw: object) -> list[PendingBriefItemDocument]:
+        return (
+            [
                 PendingBriefItemDocument(
-                    user_id=user_id,
+                    id="h1",
+                    user_id=uid,
                     source=BriefItemSource.WORKFLOW,
                     source_id="wf_digest",
                     source_title="Digest",
                     conversation_id="c1",
-                    text="Three new leads",
+                    text="Three new leads\nThe longest is from Acme.",
                 )
             ]
-        ),
-    )
+            if uid == user_id
+            else []
+        )
+
+    monkeypatch.setattr(pending_brief_items_repository, "list_for_user", list_for_user)
     monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
     monkeypatch.setattr(notification_service, "create_notification", s.notify)
     with time_machine.travel(_NOW, tick=False):
@@ -153,6 +161,16 @@ class TestBriefWillCarry:
 
         assert not await held.brief_will_carry(seams.user.id)
 
+    async def test_a_workflow_whose_user_is_gone_fails_loud(
+        self, seams: _Seams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(user_repository, "get", AsyncMock(return_value=None))
+
+        with pytest.raises(
+            LookupError, match=f"^Daily brief workflow wf_daily belongs to no user {seams.user.id}$"
+        ):
+            await held.brief_will_carry(seams.user.id)
+
 
 class TestReleaseAfterDailyRun:
     @pytest.mark.regression
@@ -174,7 +192,12 @@ class TestReleaseAfterDailyRun:
     async def test_a_silent_day_releases_what_it_left_held(self, seams: _Seams) -> None:
         await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.SILENT)
 
-        seams.notify.assert_awaited_once()
+        request = seams.notify.await_args.args[0]
+        assert (request.user_id, request.content.body) == (
+            seams.user.id,
+            "Digest: Three new leads",
+        )
+        seams.consume.assert_awaited_once_with(seams.user.id, ["h1"])
 
     async def test_a_first_brief_held_for_a_goal_releases_what_was_held(
         self, seams: _Seams
@@ -190,6 +213,19 @@ class TestReleaseAfterDailyRun:
         self, seams: _Seams
     ) -> None:
         await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.SENT)
+
+        seams.notify.assert_not_awaited()
+        seams.consume.assert_not_awaited()
+
+
+class TestReleaseOnTellMeNow:
+    async def test_moving_a_held_workflow_to_now_releases_what_it_held(self, seams: _Seams) -> None:
+        await held.release_on_tell_me_now(seams.user.id, ["wf_digest"], WorkflowDelivery.NOW)
+
+        seams.consume.assert_awaited_once_with(seams.user.id, ["h1"])
+
+    async def test_moving_another_workflow_to_now_leaves_this_one_held(self, seams: _Seams) -> None:
+        await held.release_on_tell_me_now(seams.user.id, ["wf_other"], WorkflowDelivery.NOW)
 
         seams.notify.assert_not_awaited()
         seams.consume.assert_not_awaited()

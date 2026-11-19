@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from tests.briefing_run_world import (
+    DAY_START,
     DORMANT_SINCE,
     IDLE_SINCE,
     NOW,
@@ -13,6 +14,7 @@ from tests.briefing_run_world import (
     SLOT_MINUTE,
     TZ,
     USER,
+    YESTERDAY,
     World,
     brief_work,
     dormant,
@@ -21,12 +23,14 @@ from tests.briefing_run_world import (
     idle_days,
     setup_block,
     situation,
+    stored_brief,
     winback,
 )
 
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
+    BriefForm,
     BriefingFrequency,
     BriefingKind,
     BriefingRunOutcome,
@@ -41,12 +45,40 @@ from app.models.briefing_state_models import (
     BriefingWindDown,
 )
 from app.models.user_models import UserDocument
+from app.services.briefing.clock import resolve_clock
+from app.services.briefing.daily import DailyStanding, stand_daily
 from app.services.briefing.goals import StatedGoal
+from app.services.briefing.lookback import Lookback
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.wind_down import ladder_state
 from app.services.briefing.work import TrackedWork
 
 pytestmark = pytest.mark.usefixtures("fake_redis")
+
+
+class TestWhereTheDailyStarts:
+    async def test_after_yesterdays_brief_the_look_back_starts_there_and_it_is_not_the_first(
+        self, world: World
+    ) -> None:
+        standing = await stand_daily(world.user, world.state, resolve_clock(TZ))
+
+        assert isinstance(standing, DailyStanding)
+        assert (standing.lookback, standing.is_first) == (
+            Lookback(last=YESTERDAY, since=DAY_START),
+            False,
+        )
+
+    async def test_after_a_skipped_day_the_look_back_starts_at_the_last_brief(
+        self, world: World
+    ) -> None:
+        world.briefs.clear()
+        earlier = stored_brief("2026-10-12", BriefForm.EDITION)
+        world.briefs[earlier.id] = earlier
+
+        standing = await stand_daily(world.user, world.state, resolve_clock(TZ))
+
+        assert isinstance(standing, DailyStanding)
+        assert standing.lookback == Lookback(last=earlier, since=DAY_START - timedelta(days=1))
 
 
 class TestTheGoalHold:

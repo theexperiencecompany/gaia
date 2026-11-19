@@ -123,7 +123,11 @@ class TestRecordProactiveDelivery:
                 )
 
         (warning,) = event["warnings"]
-        assert warning["error_type"] == "RuntimeError"
+        assert (warning["msg"], warning["error"], warning["error_type"]) == (
+            "delivered message not yet recorded in its thread",
+            "checkpoint down",
+            "RuntimeError",
+        )
 
     @pytest.mark.regression
     async def test_the_last_try_gives_up_loudly(self) -> None:

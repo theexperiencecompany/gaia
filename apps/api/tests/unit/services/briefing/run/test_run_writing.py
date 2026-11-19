@@ -161,6 +161,32 @@ class TestTheVoice:
         assert world.voice.await_count == 1
         assert world.stored().headline == "5 open todos, a quiet morning"
 
+    async def test_the_voice_is_told_what_the_todo_list_holds_beside_gaias_open_work(
+        self, world: World
+    ) -> None:
+        world.todos.add(
+            *own_open(5, overdue=1),
+            tracked("t1", "Draft the board memo"),
+            tracked("t2", "Reconcile the invoices"),
+        )
+
+        await run_brief(USER, BriefingKind.DAILY)
+
+        assert world.writing is not None
+        counts = world.writing.values.counts
+        assert (
+            counts[CountName.OPEN_TODOS],
+            counts[CountName.OVERDUE_TODOS],
+            counts[CountName.OPEN_TRACKED],
+        ) == (5, 1, 2)
+        assert (
+            "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
+            " empty. [[count:overdue_gaia_todos]] of them are past due: say that count in one"
+            " plain line that names them as the user's GAIA todos (\"[[count:overdue_gaia_todos]]"
+            " of your GAIA todos is overdue\"), never beside another app's items, and never"
+            " list them. GAIA's tracked work holds [[count:open_tracked]] open beside them."
+        ) in world.writing.grounds.splitlines()
+
     async def test_the_voice_is_held_to_what_recent_briefs_printed_of_every_kind(
         self, world: World
     ) -> None:

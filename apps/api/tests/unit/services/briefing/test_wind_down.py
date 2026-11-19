@@ -161,6 +161,18 @@ class TestTheGoalQuestion:
 
         assert (ladder.goal_question, ladder.idle_days) == (wind_down.GoalQuestion.ASK, 0)
 
+    async def test_an_active_day_for_a_user_with_no_marker_writes_nothing(
+        self, _frozen: AsyncMock
+    ) -> None:
+        prior = BriefingWindDown(idle_days=0, date=None, wound_down_since=None)
+
+        ladder = await wind_down.climb_idle_ladder(
+            _VETERAN, prior, "2026-11-12", has_news=True, has_goal=False
+        )
+
+        assert (ladder.idle_days, ladder.wind_down) == (0, None)
+        _frozen.assert_not_awaited()
+
     async def test_a_goal_asked_inside_the_window_is_not_asked_again(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -271,6 +283,19 @@ class TestTheWeeklyLadder:
 
         assert goodbye is False
         set_day.assert_awaited_once_with(USER_ID, idle_days=0, date_str="2026-11-08")
+
+    async def test_a_same_day_rerun_with_news_is_no_goodbye_whatever_the_count(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        set_day = self._set_day(monkeypatch)
+        counted = BriefingWindDown(idle_days=IDLE_DORMANT_DAYS, date="2026-11-08")
+
+        goodbye = await wind_down.climb_weekly_ladder(
+            _VETERAN, _WEEKLY_ONLY, counted, "2026-11-08", has_news=True, has_goal=False
+        )
+
+        assert goodbye is False
+        set_day.assert_not_awaited()
 
     async def test_a_user_with_a_daily_brief_climbs_on_the_daily_instead(
         self, monkeypatch: pytest.MonkeyPatch

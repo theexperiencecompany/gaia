@@ -9,7 +9,10 @@ from types import SimpleNamespace
 from playwright._impl._errors import TargetClosedError
 import pytest
 from tests.briefing_run_world import (
+    BRIEF_ID,
     BRIEF_LINK,
+    CHAT,
+    CHAT_EDITION_URL,
     DATE,
     DIGEST_REPORT,
     LOGIN,
@@ -23,6 +26,7 @@ from tests.briefing_run_world import (
     dormant,
     held,
     idle_day,
+    quiet_day,
     scouted,
     stored_brief,
     winback,
@@ -39,6 +43,7 @@ from app.constants.briefing import (
 )
 from app.constants.notifications import (
     NotificationKind,
+    ProactiveMessageClass,
 )
 from app.models.brief_document_models import (
     BriefDelivery,
@@ -55,6 +60,8 @@ from app.services.briefing.kinds import KIND_SPECS
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.wind_down import ladder_state
 from app.services.outbound_delivery import OutboundResult
+from app.utils.auth_utils import build_user_context
+from app.utils.message_breaks import split_message_bubbles
 
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
@@ -159,9 +166,26 @@ class TestHowARunEnds:
             RENDERED,
         ]
 
-        assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+        async with captured_wide_event() as event:
+            assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
 
+        [rerun] = [w for w in event["warnings"] if w["msg"] == "briefing.rerun_undelivered"]
+        assert (rerun["error"], rerun["error_type"]) == (
+            "Target page, context or browser has been closed",
+            "TargetClosedError",
+        )
         assert world.render.await_count == 2
+        world.notify.assert_awaited_once()
+        assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
+
+    async def test_a_run_that_failed_after_its_brief_was_delivered_is_not_run_again(
+        self, world: World
+    ) -> None:
+        world.capture.side_effect = RuntimeError("analytics down")
+
+        with pytest.raises(RuntimeError, match="analytics down"):
+            await run_brief(USER, BriefingKind.DAILY)
+
         world.notify.assert_awaited_once()
         assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
 
@@ -212,6 +236,43 @@ class TestHowARunEnds:
             1,
             NOW,
         )
+
+    async def test_an_edition_reaches_the_chat_app_as_a_routine_photo_and_the_conversation_as_its_card(
+        self, world: World
+    ) -> None:
+        await run_brief(USER, BriefingKind.DAILY)
+
+        message = world.stored().message
+        post = world.post.await_args.kwargs
+        assert set(post) == {"user", "channel", "text", "origin", "message_class", "image"}
+        assert post["user"] == build_user_context(world.user, auth_provider=None)
+        assert (post["channel"], post["origin"], post["message_class"]) == (
+            CHAT,
+            "daily brief",
+            ProactiveMessageClass.ROUTINE,
+        )
+        assert split_message_bubbles(post["text"]) == [
+            "Your morning, sorted",
+            f"{message}\n\nFull brief: {BRIEF_LINK}",
+        ]
+        assert post["image"].url.startswith(CHAT_EDITION_URL)
+        assert post["image"].filename == "gaia-daily-brief.jpg"
+        user_id, text, card = world.brief_message.await_args.args
+        assert (user_id, text, card.briefing_id) == (USER, message, BRIEF_ID)
+        redirect = world.notify.await_args.args[0].content.actions[0].config.redirect
+        assert redirect.url == f"/brief/{BRIEF_ID}"
+        assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
+
+    async def test_a_note_reaches_the_chat_app_as_its_plain_message(self, world: World) -> None:
+        quiet_day(world)
+
+        await run_brief(USER, BriefingKind.DAILY)
+
+        message = world.stored().message
+        post = world.post.await_args.kwargs
+        assert (post["text"], post["image"], post["origin"]) == (message, None, "daily brief")
+        world.brief_message.assert_awaited_once_with(USER, message, None)
+        assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
 
     async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
         await run_brief(USER, BriefingKind.DAILY)

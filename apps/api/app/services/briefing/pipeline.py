@@ -5,7 +5,7 @@ or its Standing (where the reader stands); the run itself is one pipeline.
 """
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from app.agents.prompts.brief_fact_prompts import UNNAMED_READER
@@ -141,8 +141,9 @@ async def _run_today(
         return stood
     reads = await _read(user, clock, spec, stood)
     # The pool reads only the standing's goals and look-back, which climbing never changes.
-    pool = await _pool(Run(user, state, clock, spec, stood, reads))
-    run = Run(user, state, clock, spec, await stood.climbed(reads.gathered, pool), reads)
+    stood_run = Run(user, state, clock, spec, stood, reads)
+    pool = await _pool(stood_run)
+    run = replace(stood_run, standing=await stood.climbed(reads.gathered, pool))
     if run.standing.quiet_before_composing(pool):
         return await _quiet(run, pool)
     composed = await compose_brief(user_id, pool, spec)

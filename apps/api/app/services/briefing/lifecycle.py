@@ -55,9 +55,7 @@ async def wake_or_skip(state: BriefingStateDocument) -> BriefingWindDown | None:
     if await wind_down.latest_activity_since(user_id, dstate.wound_down_since) is not None:
         await briefing_state_repository.clear_wind_down(user_id)
         log.info("briefing.wind_down_cleared", user_id=user_id)
-        return BriefingWindDown(
-            idle_days=0, date=None, wound_down_since=None, goal_asked_at=dstate.goal_asked_at
-        )
+        return BriefingWindDown(goal_asked_at=dstate.goal_asked_at)
     log.info("briefing.wound_down_skip", user_id=user_id)
     return None
 

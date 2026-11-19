@@ -203,3 +203,20 @@ class TestTheInboxDesksRecurrence:
         quiet_off = QuietHours(enabled=False, start_hour=22, end_hour=8)
 
         assert run_times.inbox_desk_recurrence(BriefingSchedule(hour=0), quiet_off) == "0 23 * * *"
+
+
+class TestWeekdaySpelling:
+    @pytest.mark.parametrize(
+        ("days", "cron", "phrase"),
+        [
+            (frozenset({0, 1, 3}), "1-2,4", "on Monday, Tuesday, Thursday"),
+            (frozenset({0, 1}), "1-2", "on Monday, Tuesday"),
+            (frozenset({0, 1, 2}), "1-3", "Monday to Wednesday"),
+            (frozenset({1, 2, 3}), "2-4", "Tuesday to Thursday"),
+            (frozenset({0, 2}), "1,3", "on Monday, Wednesday"),
+        ],
+    )
+    def test_a_set_of_weekdays_is_spelled_as_cron_and_in_words(
+        self, days: frozenset[int], cron: str, phrase: str
+    ) -> None:
+        assert (run_times._cron_days(days), run_times._days_phrase(days)) == (cron, phrase)
