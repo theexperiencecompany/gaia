@@ -2,7 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
-import { type ComponentProps, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   PhoneLinkModal,
   PhoneLinkTarget,
@@ -103,17 +109,17 @@ export function usePlatformLinks(): UsePlatformLinks {
     !isUnknown &&
     !isPaid;
 
-  const clearPollTimer = () => {
+  const clearPollTimer = useCallback(() => {
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
-  };
+  }, []);
 
   const reloadLinks = () =>
     queryClient.invalidateQueries({ queryKey: preferenceKeys.platformLinks });
 
-  useEffect(() => clearPollTimer, []);
+  useEffect(() => clearPollTimer, [clearPollTimer]);
 
   const openAuthPopup = (platform: BotPlatform, authUrl: string) => {
     const left = window.screen.width / 2 - POPUP_WIDTH / 2;
