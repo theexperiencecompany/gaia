@@ -1,9 +1,20 @@
 "use client";
 
-import type { ComponentType, ReactElement, ReactNode, SVGProps } from "react";
-import { useEffect, useRef, useState } from "react";
+import type {
+  ComponentType,
+  CSSProperties,
+  ReactElement,
+  ReactNode,
+  SVGProps,
+} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+
+// Position the flyout before the browser paints so the entrance animation
+// never starts at the unclamped rect and then jumps.
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 interface MenuItem {
   iconElement?: ReactElement;
@@ -29,6 +40,8 @@ const VIEWPORT_PADDING_PX = 8;
 interface FlyoutPosition {
   top: number;
   left: number;
+  side: "left" | "right";
+  originY: number;
   anchor: HTMLElement;
 }
 
@@ -43,7 +56,7 @@ export function NestedMenuTooltip({
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<FlyoutPosition | null>(null);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!isOpen || !itemRef) return;
 
     const updatePosition = () => {
@@ -51,10 +64,15 @@ export function NestedMenuTooltip({
       if (!panel) return;
 
       const anchor = itemRef.getBoundingClientRect();
-      const { width, height } = panel.getBoundingClientRect();
+      // Layout box, not getBoundingClientRect: the entrance animation scales
+      // the panel, and a transformed rect would under-measure its height.
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
 
+      let side: "left" | "right" = "right";
       let left = anchor.right + GAP_PX;
       if (left + width > window.innerWidth - VIEWPORT_PADDING_PX) {
+        side = "left";
         left = anchor.left - width - GAP_PX;
       }
       left = Math.max(
@@ -68,7 +86,22 @@ export function NestedMenuTooltip({
       }
       top = Math.max(VIEWPORT_PADDING_PX, top);
 
-      setPosition({ top, left, anchor: itemRef });
+      // Scale from the hovered row even when the panel is clamped away from
+      // it, so the flyout still reads as growing out of that item.
+      const originY = Math.min(
+        Math.max(anchor.top + anchor.height / 2 - top, 0),
+        height,
+      );
+
+      setPosition((previous) =>
+        previous?.anchor === itemRef &&
+        previous.top === top &&
+        previous.left === left &&
+        previous.side === side &&
+        previous.originY === originY
+          ? previous
+          : { top, left, side, originY, anchor: itemRef },
+      );
     };
 
     updatePosition();
@@ -90,12 +123,17 @@ export function NestedMenuTooltip({
   if (!isOpen || !itemRef || typeof document === "undefined") return null;
 
   // The anchor's live rect keeps the flyout attached from the first painted
-  // frame; the effect above only steps in to flip or clamp near an edge.
+  // frame; the layout effect above steps in to flip or clamp before paint.
   const anchorRect = itemRef.getBoundingClientRect();
   const current =
     position?.anchor === itemRef
       ? position
-      : { top: anchorRect.top, left: anchorRect.right + GAP_PX };
+      : {
+          top: anchorRect.top,
+          left: anchorRect.right + GAP_PX,
+          side: "right" as const,
+          originY: 0,
+        };
 
   // React Aria marks everything outside the dropdown's focus scope inert, so
   // a body-level portal would be visible but unclickable. Mount beside the
@@ -107,8 +145,15 @@ export function NestedMenuTooltip({
   return createPortal(
     <div
       ref={panelRef}
-      style={{ top: current.top, left: current.left }}
-      className="fixed z-[100001] min-w-[160px] rounded-xl bg-secondary-bg shadow-xl"
+      data-side={current.side}
+      style={
+        {
+          top: current.top,
+          left: current.left,
+          "--gaia-flyout-origin-y": `${current.originY}px`,
+        } as CSSProperties
+      }
+      className="gaia-flyout fixed z-[100001] min-w-[160px] rounded-xl bg-secondary-bg shadow-xl"
       onMouseEnter={() => onOpenChange(true)}
       onMouseLeave={() => onOpenChange(false)}
     >
