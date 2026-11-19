@@ -822,6 +822,7 @@
 @source "../../../features/settings/components/SubscriptionBillingSection.tsx";
 @source "../../../features/settings/components/SubscriptionSettings.tsx";
 @source "../../../features/settings/components/SubscriptionUpsell.tsx";
+@source "../../../features/settings/components/UnlinkedPlatformsRow.tsx";
 @source "../../../features/settings/components/UsageSettings.tsx";
 @source "../../../features/settings/components/VoiceFilters.tsx";
 @source "../../../features/settings/components/VoiceSettings.tsx";
