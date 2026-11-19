@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -42,9 +43,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 async function openSettings(link: ShortLinkResponse | null) {
   api.fetchShareState.mockResolvedValue(link);
   render(
-    <QueryClientProvider client={new QueryClient()}>
-      <ShareLinkControls target={{ type: "briefing", id: "b1" }} />
-    </QueryClientProvider>,
+    <NextIntlClientProvider locale="en" messages={{}}>
+      <QueryClientProvider client={new QueryClient()}>
+        <ShareLinkControls target={{ type: "briefing", id: "b1" }} />
+      </QueryClientProvider>
+    </NextIntlClientProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Share" }));
   fireEvent.click(
@@ -124,6 +127,7 @@ describe("share settings", () => {
     const expiring = { ...LIVE, expires_at: "2026-11-20T12:00:00Z" };
     api.updateLinkSettings.mockResolvedValue(expiring);
     const dialog = await openSettings(expiring);
+    expect(within(dialog).getByText(/^Expires Nov \d+, 2026/)).toBeTruthy();
 
     save(dialog);
 
