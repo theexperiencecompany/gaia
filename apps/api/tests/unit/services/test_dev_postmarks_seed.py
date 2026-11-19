@@ -147,9 +147,11 @@ async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_i
         assert brief.edition == EditionRender(key=f"key-brief_{payload.date}")
         delivered = brief.delivery
         assert delivered is not None
-        assert (set(delivered.done), delivered.completed_at is not None) == (
+        assert delivered.completed_at is not None
+        assert (set(delivered.done), delivered.push, delivered.completed_at.utcoffset()) == (
             set(DeliveryStep),
             True,
+            timedelta(0),
         )
         assert deliver_call.args == (
             user.id,

@@ -1412,6 +1412,26 @@ class TestUpdateWorkflow:
         assert response.json()["message"] == "Workflow updated successfully"
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
+    async def test_the_stored_workflow_is_read_as_the_users_own_before_the_edit(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as get_workflow,
+            patch(
+                f"{_WF_SERVICE}.update_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(title="Updated Title"),
+            ),
+        ):
+            response = await client.put(f"{BASE_URL}/wf_abc123", json={"title": "Updated Title"})
+
+        assert response.status_code == 200
+        get_workflow.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+
     async def test_moving_a_workflow_onto_the_brief_while_briefs_are_off_is_a_409(
         self, client: AsyncClient
     ):

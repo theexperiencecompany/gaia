@@ -307,8 +307,6 @@ apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
 apps/api/tests/unit/services/test_turnstile_service.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
 apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_user_todos_fs.py	arg-type

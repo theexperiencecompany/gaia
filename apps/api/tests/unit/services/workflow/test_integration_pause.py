@@ -12,6 +12,7 @@ import pytest
 
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import IntegrationRef
+from app.services.system_workflows.registry import UNPAUSABLE_KEYS
 from app.services.triggers.subscription_service import AccountScope
 from app.services.workflow.integration_pause import (
     PauseOutcome,
@@ -85,6 +86,9 @@ class TestPause:
         assert paused == ["Morning digest"]
         service.deactivate_workflow.assert_awaited_once_with(
             "wf-1", USER_ID, reason=DeactivationReason.INTEGRATION_EXPIRED
+        )
+        repo.find_activated_for_user.assert_awaited_once_with(
+            USER_ID, excluding_keys=UNPAUSABLE_KEYS
         )
 
     async def test_one_failure_does_not_abort_the_rest(self) -> None:
