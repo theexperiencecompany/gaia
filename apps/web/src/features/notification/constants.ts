@@ -22,14 +22,17 @@ export const NOTIFICATION_PLATFORM_LABELS: Record<
 export const NOTIFICATION_PLATFORM_ICONS: Record<NotificationPlatform, string> =
   BOT_PLATFORM_ICONS;
 
-// Channel-level maps extend the platform maps with the always-available
-// in-app channel, which is delivered over WebSocket rather than a bot.
+// Channel-level maps extend the platform maps with the channels that are not bot
+// platforms: the always-available in-app channel (delivered over WebSocket) and
+// email (delivered to the account address).
 export const NOTIFICATION_CHANNEL_LABELS: Record<string, string> = {
   ...NOTIFICATION_PLATFORM_LABELS,
   inapp: "In-app",
+  email: "Email",
 };
 
 export const NOTIFICATION_CHANNEL_ICONS: Record<string, string> = {
   ...NOTIFICATION_PLATFORM_ICONS,
   inapp: "/images/logos/macos.webp",
+  email: "/images/icons/macos/mail.webp",
 };

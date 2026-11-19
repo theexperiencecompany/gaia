@@ -59,6 +59,19 @@ class WaitingOn(StrEnum):
     UNPLANNED = "unplanned"
 
 
+class TodoCompleter(StrEnum):
+    """Who closed a todo, so a recap credits each completion to whoever finished it."""
+
+    #: The user marked it done: in the app, or by asking GAIA in chat.
+    USER = "user"
+    #: GAIA finished its own tracked work.
+    GAIA = "gaia"
+    #: An event the todo watched fired and closed it.
+    TRIGGER = "trigger"
+    #: Housekeeping closed it: it expired, or its parent closed while it was being created.
+    SYSTEM = "system"
+
+
 class NoReplyPlan(StrEnum):
     """What a todo waiting on the user does when its question expires unanswered."""
 

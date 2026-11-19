@@ -27,6 +27,7 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
 from app.decorators import with_rate_limiting
 from app.models.agent_models import (
     agent_configurable,
@@ -35,6 +36,14 @@ from app.models.agent_models import (
     read_agent_configurable,
 )
 from app.models.workflow_models import WorkflowExecutionRequest
+from app.models.workflow_tool_models import (
+    JsonObject,
+    WorkflowActivationState,
+    WorkflowExecutionStarted,
+    WorkflowStatusData,
+    WorkflowToolError,
+    WorkflowToolSuccess,
+)
 from app.services.analytics_service import capture
 from app.services.wait_service import wait_for_user
 from app.services.workflow.service import WorkflowService
@@ -66,7 +75,14 @@ async def create_workflow(
         str,
         "The user's exact words describing what workflow they want. Pass verbatim.",
     ],
-) -> dict[str, object]:
+    delivery: Annotated[
+        WorkflowDelivery,
+        "How each run's result reaches the user, from what they said: 'now' when they "
+        "want to be told as soon as it finishes (alerts, reminders, anything time-"
+        "sensitive); 'brief' when they want it in their daily brief or it is a routine "
+        "background check; 'silent' when they asked not to be notified.",
+    ],
+) -> WorkflowToolSuccess[WorkflowStatusData] | WorkflowToolError:
     """
     Create a workflow from the user's description. Delegates to the workflow assistant.
 
@@ -81,11 +97,11 @@ async def create_workflow(
 
     EXAMPLES:
 
-    User: "Create a workflow that checks my email every morning"
-    -> create_workflow(user_request="checks my email every morning")
+    User: "Create a workflow that checks my email every morning, put it in my brief"
+    -> create_workflow(user_request="checks my email every morning", delivery="brief")
 
     User: "I want a workflow that notifies me on Slack when I get a GitHub PR"
-    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR")
+    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR", delivery="now")
 
     DO NOT:
     - Parse cron expressions
@@ -94,8 +110,8 @@ async def create_workflow(
     - Generate titles or descriptions
     - Fill in any other parameters
 
-    Just pass user_request. The workflow assistant handles everything else. To
-    change an existing workflow, use edit_workflow instead.
+    Pass user_request and delivery; the workflow assistant handles everything
+    else. To change an existing workflow, use edit_workflow instead.
     """
     log.set(tool={"name": "create_workflow", "action": "create"})
 
@@ -150,6 +166,7 @@ async def create_workflow(
                     draft=draft,
                     user_id=user_id,
                     writer=writer,
+                    delivery=delivery,
                     user_timezone=user_timezone,
                 )
 
@@ -157,7 +174,9 @@ async def create_workflow(
                     capture(
                         UserId(user_id),
                         WorkflowCreated(
-                            origin="chat_agent", trigger_type=draft.backend_trigger_type.value
+                            origin="chat_agent",
+                            trigger_type=draft.backend_trigger_type.value,
+                            delivery=delivery.value,
                         ),
                     )
                     return direct_result
@@ -177,7 +196,7 @@ async def create_workflow(
                     draft_id,
                     result.draft.title,
                 )
-            writer(result.draft.to_stream_payload(draft_id))
+            writer(result.draft.to_stream_payload(delivery, draft_id))
             log.info(
                 f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
             )
@@ -229,7 +248,7 @@ async def create_workflow(
 async def get_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to retrieve"],
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[JsonObject] | WorkflowToolError:
     """Get detailed information about a specific workflow."""
     try:
         log.set(tool={"name": "get_workflow", "action": "get"})
@@ -240,7 +259,7 @@ async def get_workflow(
 
         # mode="json": plain json.dumps'd twice (tool result + SSE frame), so a
         # native datetime would raise TypeError and wedge the agent in a retry loop.
-        workflow_json = workflow.model_dump(mode="json")
+        workflow_json: JsonObject = workflow.model_dump(mode="json")
         writer = current_stream_writer()
         writer({"workflow_data": {"action": "get", "workflow": workflow_json}})
 
@@ -260,7 +279,7 @@ async def get_workflow(
 async def execute_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to execute"],
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowExecutionStarted] | WorkflowToolError:
     """Execute a workflow immediately (run now)."""
     try:
         log.set(tool={"name": "execute_workflow", "action": "execute"})
@@ -269,7 +288,7 @@ async def execute_workflow(
             workflow_id, WorkflowExecutionRequest(), user_id
         )
 
-        data = {
+        data: WorkflowExecutionStarted = {
             "workflow_id": workflow_id,
             "execution_id": result.execution_id,
             "message": result.message,
@@ -294,7 +313,7 @@ async def execute_workflow(
 async def pause_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to pause"],
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowActivationState] | WorkflowToolError:
     """Pause (deactivate) a workflow so its schedule and integration triggers stop firing.
 
     Reversible with resume_workflow. Use list_workflows or get_workflow first to
@@ -331,7 +350,7 @@ async def pause_workflow(
 async def resume_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to resume"],
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowActivationState] | WorkflowToolError:
     """Resume (reactivate) a paused workflow so its trigger fires again.
 
     Recomputes the next scheduled run from the cron. For integration triggers the
@@ -375,7 +394,7 @@ async def edit_workflow(
     user_request: Annotated[
         str, "The user's change request in their words. Pass verbatim: do not parse it yourself."
     ],
-) -> dict[str, object]:
+) -> WorkflowToolSuccess[WorkflowStatusData] | WorkflowToolError:
     """Edit an existing workflow's behavior, schedule, or trigger.
 
     Delegates to the workflow assistant: pass the user's change request EXACTLY as

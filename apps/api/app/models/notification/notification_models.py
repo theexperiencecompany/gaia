@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.base import UserScopedDocument
 from app.schemas.common import ResponseModel
 
@@ -171,6 +172,8 @@ class NotificationRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: Whether the user's quiet hours may hold its chat-platform copy (in-app is never held).
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
 
     @field_validator("priority", mode="before")
     def validate_priority(cls, v: int) -> int:
@@ -333,21 +336,30 @@ class BulkActions(str, Enum):
 
 
 class ChannelPreferences(ResponseModel):
-    """User notification channel preferences."""
+    """User notification channel preferences.
+
+    One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
+    so FastAPI and mypy see real types, and a unit test pins the set against the
+    enum so the two cannot drift.
+    """
 
     telegram: bool = True
     discord: bool = True
     whatsapp: bool = True
     slack: bool = True
+    imessage: bool = True
+    email: bool = True
 
 
 class ChannelPreferencesUpdate(BaseModel):
-    """Request body for updating channel preferences."""
+    """Request body for updating channel preferences; omitted channels are untouched."""
 
     telegram: bool | None = None
     discord: bool | None = None
     whatsapp: bool | None = None
     slack: bool | None = None
+    imessage: bool | None = None
+    email: bool | None = None
 
 
 class NotificationListFilters(BaseModel):

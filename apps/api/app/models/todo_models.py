@@ -10,6 +10,7 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TODO_RECURRENCE_SHORTCUTS,
     NoReplyPlan,
+    TodoCompleter,
     WaitingOn,
 )
 from app.db.repositories.base import UserScopedDocument
@@ -143,7 +144,7 @@ class TodoBase(BaseModel):
         description=(
             "Deliver this tracked todo's run result to the user's chat platform when a "
             "scheduled or triggered run finishes. The tracked-todo equivalent of a "
-            "workflow's notify_on_completion; unrelated to the todo being marked completed."
+            "workflow's delivery mode; unrelated to the todo being marked completed."
         ),
     )
 
@@ -564,6 +565,8 @@ class TodoDocument(UserScopedDocument):
     reasks_used: int = 0
     hold_checks: int = 0
     completed_at: datetime | None = None
+    #: Who closed it; None while open, and on completions recorded before it was.
+    completed_by: TodoCompleter | None = None
     # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     activity_content: str | None = None
@@ -617,6 +620,7 @@ class TodoUpdate(BaseModel):
     reasks_used: int | None = None
     hold_checks: int | None = None
     completed_at: datetime | None = None
+    completed_by: TodoCompleter | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
     observations_content: str | None = None

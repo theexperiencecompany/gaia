@@ -53,7 +53,6 @@ apps/mobile/src/features/search/api/search-api.ts:SearchMessageResult
 apps/mobile/src/features/search/api/search-api.ts:SearchNoteResult
 apps/mobile/src/features/search/api/search-api.ts:SearchResponse
 apps/mobile/src/features/settings/api/settings-api.ts:HoloCardColors
-apps/mobile/src/features/settings/api/settings-api.ts:UpdatePreferencesResponse
 apps/mobile/src/features/settings/api/settings-api.ts:UserProfile
 apps/mobile/src/features/settings/api/settings-api.ts:UserStats
 apps/mobile/src/features/skills/api/skills-api.ts:SkillsResponse
@@ -212,6 +211,4 @@ libs/shared/ts/src/types/usage.ts:UsageActivity
 libs/shared/ts/src/types/usage.ts:UsagePeriod
 libs/shared/ts/src/types/workflow.ts:CommunityWorkflow
 libs/shared/ts/src/types/workflow.ts:ContentCreator
-libs/shared/ts/src/types/workflow.ts:CreateWorkflowPayload
-libs/shared/ts/src/types/workflow.ts:ExecutionConfig
 libs/shared/ts/src/types/workflow.ts:WorkflowMetadata

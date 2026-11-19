@@ -1,3 +1,4 @@
+import type { WorkflowDelivery } from "@gaia/shared/api/generated";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image as ExpoImage } from "expo-image";
 import { useRef, useState } from "react";
@@ -9,7 +10,8 @@ import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { WORKFLOW_COLORS } from "../constants/colors";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
 import type { TriggerConfig } from "../types/trigger-types";
-import type { CreateWorkflowPayload, Workflow } from "../types/workflow-types";
+import type { CreateWorkflowRequest, Workflow } from "../types/workflow-types";
+import { DeliveryModeTabs } from "./delivery-mode-tabs";
 import {
   ScheduleBuilder,
   type ScheduleConfig,
@@ -45,6 +47,7 @@ export function CreateWorkflowModal({
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<TriggerMode>("manual");
+  const [delivery, setDelivery] = useState<WorkflowDelivery | null>(null);
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(
     DEFAULT_SCHEDULE_CONFIG,
   );
@@ -60,12 +63,13 @@ export function CreateWorkflowModal({
     setDescription("");
     setPrompt("");
     setMode("manual");
+    setDelivery(null);
     setScheduleConfig(DEFAULT_SCHEDULE_CONFIG);
     setSelectedTrigger(null);
     setTriggerConfig(null);
   };
 
-  const buildTriggerConfig = (): CreateWorkflowPayload["trigger_config"] => {
+  const buildTriggerConfig = (): CreateWorkflowRequest["trigger_config"] => {
     if (mode === "manual") {
       return {
         type: "manual",
@@ -95,13 +99,14 @@ export function CreateWorkflowModal({
   };
 
   const handleCreate = async () => {
-    if (!title.trim() || !prompt.trim()) return;
+    if (!title.trim() || !prompt.trim() || delivery === null) return;
 
-    const payload: CreateWorkflowPayload = {
+    const payload: CreateWorkflowRequest = {
       title: title.trim(),
       description: description.trim() || undefined,
       prompt: prompt.trim(),
       trigger_config: buildTriggerConfig(),
+      delivery,
     };
     const workflow = await createWorkflow(payload);
     if (workflow) {
@@ -118,6 +123,7 @@ export function CreateWorkflowModal({
   const canSubmit =
     title.trim().length > 0 &&
     prompt.trim().length > 0 &&
+    delivery !== null &&
     (mode !== "trigger" || selectedTrigger !== null);
 
   const handleTriggerSelect = (trigger: TriggerPickerOption) => {
@@ -261,6 +267,13 @@ export function CreateWorkflowModal({
                   onPick={() => triggerPickerRef.current?.open()}
                 />
               )}
+            </View>
+
+            <View style={{ gap: spacing.sm }}>
+              <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
+                When a run finishes
+              </Text>
+              <DeliveryModeTabs value={delivery} onChange={setDelivery} />
             </View>
 
             {createError ? (

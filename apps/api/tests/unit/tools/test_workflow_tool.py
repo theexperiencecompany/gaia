@@ -1,7 +1,7 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
 from typing import Any, Literal, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -12,6 +12,7 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_config import TriggerSearchResult
 from app.models.workflow_models import TriggerType
 from app.schemas.integrations.responses import (
@@ -137,11 +138,12 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="send me a summary every morning",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once()
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
 
     @pytest.mark.parametrize(("trigger_type", "waits"), [("integration", True), ("manual", False)])
     async def test_an_integration_draft_keeps_the_chat_waiting_on_its_trigger_setup(
@@ -160,10 +162,11 @@ class TestCreateWorkflow:
         ):
             mock_runner.execute = AsyncMock(return_value="subagent output")
             await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
-                config=_make_config(), user_request="digest my PRs"
+                config=_make_config(), user_request="digest my PRs", delivery=WorkflowDelivery.BRIEF
             )
 
-        (draft_id,) = draft.to_stream_payload.call_args.args
+        delivery, draft_id = draft.to_stream_payload.call_args.args
+        assert delivery == WorkflowDelivery.BRIEF
         assert UUID(draft_id).version == 4
         if waits:
             run, user_id, condition, subject_id, name = wait.await_args.args
@@ -194,6 +197,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create a workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
@@ -217,6 +221,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="create workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -232,6 +237,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -251,6 +257,7 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="make a workflow",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is False
@@ -275,7 +282,7 @@ class TestCreateWorkflow:
                 f"{MODULE}.create_workflow_directly",
                 new_callable=AsyncMock,
                 return_value=direct_result,
-            ),
+            ) as mock_direct,
         ):
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
@@ -283,11 +290,14 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily at 9am",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result == direct_result
+        assert mock_direct.await_args.kwargs["delivery"] is WorkflowDelivery.NOW
         capture.assert_called_once_with(
-            UserId(FAKE_USER_ID), WorkflowCreated(origin="chat_agent", trigger_type="schedule")
+            UserId(FAKE_USER_ID),
+            WorkflowCreated(origin="chat_agent", trigger_type="schedule", delivery="now"),
         )
 
     async def test_direct_creation_fallback_to_draft(self) -> None:
@@ -316,11 +326,12 @@ class TestCreateWorkflow:
             result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
                 config=_make_config(),
                 user_request="run daily",
+                delivery=WorkflowDelivery.NOW,
             )
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once()
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
         capture.assert_not_called()  # the confirmed draft is counted by POST /workflows
 
 
@@ -563,7 +574,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="every morning"
+                config=_make_config(), user_request="every morning", delivery=WorkflowDelivery.NOW
             )
 
         mock_log.set.assert_called_once_with(tool={"name": "create_workflow", "action": "create"})
@@ -573,7 +584,7 @@ class TestCreateWorkflowPins:
         from app.agents.tools.workflow_tool import create_workflow
 
         result = await cast(Any, create_workflow).coroutine(
-            config=_make_config(), user_request="   "
+            config=_make_config(), user_request="   ", delivery=WorkflowDelivery.NOW
         )
         assert result["success"] is False
         assert result["error"] == "missing_request"
@@ -594,7 +605,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = writer = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="daily digest"
+                config=_make_config(), user_request="daily digest", delivery=WorkflowDelivery.NOW
             )
 
         kwargs = mock_runner.execute.await_args.kwargs
@@ -623,7 +634,7 @@ class TestCreateWorkflowPins:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="out")
             await cast(Any, create_workflow).coroutine(
-                config=_make_config(), user_request="weekly report"
+                config=_make_config(), user_request="weekly report", delivery=WorkflowDelivery.NOW
             )
 
         mode_logs = [c for c in mock_log.info.call_args_list if "parsed mode" in str(c.args[0])]
@@ -703,6 +714,19 @@ class TestGetMyIntegrations:
         assert result["data"]["connected_count"] == 1
         assert result["data"]["truncated"] is False
         assert result["data"]["query"] == "email"
+
+    async def test_only_the_connected_integrations_are_counted(self) -> None:
+        from app.agents.tools.workflow_shared_tools import get_my_integrations
+
+        matched = [
+            _my_integration("gmail", connected=True),
+            _my_integration("notion"),
+            _my_integration("slack"),
+        ]
+        with patch(f"{SHARED_MODULE}.match_my_integrations", AsyncMock(return_value=matched)):
+            result = await cast(Any, get_my_integrations).coroutine(config=_make_config())
+
+        assert result["data"]["connected_count"] == 1
 
     async def test_results_are_capped_and_flagged_truncated(self) -> None:
         from app.agents.tools.workflow_shared_tools import get_my_integrations

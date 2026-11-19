@@ -1,4 +1,4 @@
-"""Pause the workflows of users who have stopped using GAIA, and resume them on return.
+"""Pause the workflows of dormant users, and resume them when the user comes back.
 
 Nothing else deactivates a workflow on inactivity: the only automatic paths are
 mark_error (unrunnable) and set_steps (missing integration), neither of which
@@ -8,30 +8,21 @@ Pausing goes through WorkflowService.deactivate_workflow, which also
 unregisters the workflow's Composio triggers, rather than a bulk write.
 Resume only ever touches workflows carrying DeactivationReason.USER_DORMANT,
 so a workflow the user switched off themselves is never silently re-enabled.
-
-"Dormant" is decided across every signal available, never last_active_at
-alone: that field is bumped only by a WorkOS web login, so on its own a
-bot-only user looks dormant. See _is_really_dormant.
+"Dormant" is ActivityStatus.DORMANT, the one activity scale every surface records to.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
 from app.constants.log_tags import LogTag
-from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.usage_daily import usage_daily_repository
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
-
-# 30 days. The original 90 covered for circular activity signals — a workflow's
-# own executions used to count as its user's activity. Both signals now count
-# only human-initiated activity.
-DORMANCY_THRESHOLD = timedelta(days=30)
 
 
 class DormantUserWorkflows(BaseModel):
@@ -50,51 +41,22 @@ class DormancySweepResult(BaseModel):
     """
 
     dry_run: bool
-    cutoff: datetime
     dormant_users: int
     workflows_paused: int
     failures: int
     candidates: list[DormantUserWorkflows] = Field(default_factory=list)
 
 
-async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
-    """Return whether user_id shows no activity on ANY signal since cutoff.
-
-    users.last_active_at alone only reports "hasn't opened the web app", so
-    chat activity and metered feature use are checked too — any one of them
-    being recent keeps the user's workflows running.
-    """
-    if await conversation_repository.has_activity_since(user_id, cutoff):
-        return False
-    # Sum, not truthiness: a pure-automation day writes a usage_daily row with
-    # cost but count 0, and a dict holding only zero-count rows is still truthy
-    # — which read as "active" and kept automation-only users unsweepable.
-    counts = await usage_daily_repository.counts_since(user_id, cutoff.strftime("%Y-%m-%d"))
-    return sum(counts.values()) == 0
-
-
-async def find_dormancy_candidates(
-    *, threshold: timedelta = DORMANCY_THRESHOLD, max_users: int | None = None
-) -> tuple[datetime, list[DormantUserWorkflows]]:
-    """Return dormant users owning ≥1 activated workflow, with the resolved cutoff.
-
-    find_dormant_since is a superset pre-filter on last_active_at alone;
-    _is_really_dormant then narrows it. max_users bounds a run and is
-    unbounded by default. Raises ValueError for a non-positive threshold.
-    """
-    if threshold <= timedelta(0):
-        raise ValueError(f"dormancy threshold must be positive, got {threshold!r}")
-
-    cutoff: datetime = datetime.now(UTC) - threshold
+async def find_dormancy_candidates(*, max_users: int | None = None) -> list[DormantUserWorkflows]:
+    """Return dormant users owning at least one activated workflow; max_users bounds a run."""
     candidates: list[DormantUserWorkflows] = []
-
-    for user in await user_repository.find_dormant_since(cutoff):
+    for user in await user_repository.find_by_activity_status(ActivityStatus.DORMANT):
         if max_users is not None and len(candidates) >= max_users:
             break
         workflows: list[WorkflowDocument] = await workflow_repository.find_activated_for_user(
             user.id
         )
-        if not workflows or not await _is_really_dormant(user.id, cutoff):
+        if not workflows:
             continue
         candidates.append(
             DormantUserWorkflows(
@@ -103,22 +65,19 @@ async def find_dormancy_candidates(
                 workflow_ids=[w.id for w in workflows],
             )
         )
-    return cutoff, candidates
+    return candidates
 
 
 async def sweep_dormant_workflows(
-    *,
-    threshold: timedelta = DORMANCY_THRESHOLD,
-    dry_run: bool = False,
-    max_users: int | None = None,
+    *, dry_run: bool = False, max_users: int | None = None
 ) -> DormancySweepResult:
-    """Pause every activated workflow owned by a user dormant for threshold.
+    """Pause every activated workflow owned by a dormant user.
 
     dry_run resolves the same cohort and reports it without writing anything.
     A single workflow that fails to pause is counted and skipped rather than
     aborting the sweep for every other user.
     """
-    cutoff, candidates = await find_dormancy_candidates(threshold=threshold, max_users=max_users)
+    candidates = await find_dormancy_candidates(max_users=max_users)
     paused: int = 0
     failures: int = 0
 
@@ -144,7 +103,6 @@ async def sweep_dormant_workflows(
 
     return DormancySweepResult(
         dry_run=dry_run,
-        cutoff=cutoff,
         dormant_users=len(candidates),
         workflows_paused=paused,
         failures=failures,

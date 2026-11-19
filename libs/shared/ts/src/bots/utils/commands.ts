@@ -15,6 +15,7 @@
  * 3. Add a handler here following the same pattern
  * 4. Import and call it from each bot's command adapter
  */
+import type { CreateWorkflowRequest } from "../../api/generated";
 import type { GaiaClient } from "../api";
 import type { CommandContext } from "../types";
 import { recordBotFailure } from "./failure-reasons";
@@ -27,6 +28,13 @@ import {
   formatWorkflow,
   formatWorkflowList,
 } from "./formatters";
+
+/**
+ * A workflow created from a chat command delivers its runs to the chat it was
+ * asked for in: the user is on that platform, and the command has no option to
+ * choose otherwise. They can change it from the workflow afterwards.
+ */
+const BOT_WORKFLOW_DELIVERY = "now" satisfies CreateWorkflowRequest["delivery"];
 
 /**
  * Records a command's caught API failure on its wide event (reason, HTTP status,
@@ -64,7 +72,7 @@ export async function handleWorkflowExecute(
       { workflow_id: workflowId, inputs },
       ctx,
     );
-    return `✅ BotWorkflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
+    return `✅ Workflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
   } catch (error: unknown) {
     return reportCommandFailure("execute_workflow", error, ctx);
   }
@@ -154,10 +162,16 @@ export async function handleWorkflowCreate(
 ): Promise<string> {
   try {
     const workflow = await gaia.createWorkflow(
-      { name, description: description || "" },
+      {
+        title: name,
+        description,
+        prompt: description || name,
+        trigger_config: { type: "manual", enabled: true },
+        delivery: BOT_WORKFLOW_DELIVERY,
+      },
       ctx,
     );
-    return `✅ BotWorkflow created!\n\n${formatWorkflow(workflow)}`;
+    return `✅ Workflow created!\n\n${formatWorkflow(workflow)}`;
   } catch (error: unknown) {
     return reportCommandFailure("create_workflow", error, ctx);
   }
@@ -210,7 +224,7 @@ export async function handleWorkflowDelete(
 ): Promise<string> {
   try {
     await gaia.deleteWorkflow(workflowId, ctx);
-    return "✅ BotWorkflow deleted successfully";
+    return "✅ Workflow deleted successfully";
   } catch (error: unknown) {
     return reportCommandFailure("delete_workflow", error, ctx);
   }

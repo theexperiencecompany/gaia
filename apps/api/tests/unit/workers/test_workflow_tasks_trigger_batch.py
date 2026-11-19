@@ -22,6 +22,7 @@ import httpx
 import pytest
 
 from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -369,6 +370,7 @@ async def _live_through(
 
 def _workflow_gated_by(gate: TriggerGate | None, trigger_config: TriggerConfig) -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=_GATED_ID,
         user_id=_OWNER_ID,
         title="Draft replies",

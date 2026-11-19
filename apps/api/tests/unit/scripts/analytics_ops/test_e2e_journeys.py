@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import json
 
 import httpx
 import pytest
-from scripts.analytics_ops.e2e_journeys import JourneyError, await_execution
+from scripts.analytics_ops.e2e_journeys import JourneyError, Stack, await_execution, workflow
+
+from app.constants.workflows import WorkflowDelivery
+from app.models.workflow_models import CreateWorkflowRequest
 
 WORKFLOW = "wf_1"
 EXECUTIONS_PATH = f"/api/v1/workflows/{WORKFLOW}/executions"
@@ -66,3 +70,33 @@ def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
     twice = [_execution("success"), _execution("success")]
     with pytest.raises(JourneyError, match="2 finished runs"):
         await_execution(_api(twice), WORKFLOW, timeout_s=5, poll_s=0)
+
+
+class _RecordingStack(Stack):
+    """A Stack whose client answers the workflow journey in-process and records the create body."""
+
+    created: dict[str, object] | None = None
+
+    def client(self) -> httpx.Client:
+        def handle(request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path == "/api/v1/workflows":
+                self.created = json.loads(request.content)
+                return httpx.Response(200, json={"workflow": {"id": WORKFLOW}})
+            if request.url.path == f"/api/v1/workflows/{WORKFLOW}/execute":
+                return httpx.Response(200, json={})
+            assert request.url.path == EXECUTIONS_PATH
+            done = [_execution("success")]
+            return httpx.Response(200, json={"executions": done, "total": 1, "has_more": False})
+
+        return httpx.Client(
+            base_url="http://api.test/api/v1", transport=httpx.MockTransport(handle)
+        )
+
+
+def test_the_workflow_journey_creates_a_workflow_the_api_accepts() -> None:
+    stack = _RecordingStack(api_url="http://api.test", email="e2e@example.com")
+
+    workflow(stack)
+
+    assert stack.created is not None
+    assert CreateWorkflowRequest.model_validate(stack.created).delivery is WorkflowDelivery.NOW

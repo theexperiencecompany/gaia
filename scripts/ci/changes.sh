@@ -223,11 +223,25 @@ cmd_files() {
   # instead of hanging until the job's timeout-minutes cap (which surfaces as a
   # `cancelled` lane and fails the quality gate). If the fetch dies, the diff
   # below falls back to whatever base ref is already local.
+  #
+  # The explicit refspec, rather than the bare branch name, is what makes this
+  # land in refs/remotes/. actions/checkout narrows remote.origin.fetch to the
+  # single ref it checked out, and under a narrowed refspec `git fetch origin
+  # <branch>` updates FETCH_HEAD only — refs/remotes/origin/<branch> keeps
+  # whatever value it already had. That is harmless on a throwaway runner where
+  # it has no value, and wrong on the self-hosted box, which reuses its
+  # workspace (`clean: false`) and so still holds a months-old copy from an
+  # earlier job. `origin/<base>...HEAD` then resolves its merge-base far behind
+  # the real base, and every diff-driven lane grades the PR on most of the
+  # branch instead of its own diff. It fails loudly nowhere: the mutation gate
+  # just plans ~100 modules for a 12-file PR and its shards hit the 20-minute
+  # cap. Stacked PRs feel it worst, their base being another feature branch.
   # Off CI the local base ref is used as is: a commit hook calls this on every
   # commit, and a network fetch there stalls the commit on a slow link.
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
     timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
-      fetch --no-tags origin "$BASE" 2>/dev/null || true
+      fetch --no-tags origin \
+      "+refs/heads/${BASE}:refs/remotes/origin/${BASE}" 2>/dev/null || true
   fi
 
   # `...HEAD` diffs against the merge-base of the base ref and HEAD — the same set

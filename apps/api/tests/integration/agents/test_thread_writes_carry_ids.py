@@ -9,18 +9,19 @@ summary on it. Drives the real writers against a real checkpointed State graph.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import TypedDict
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.core.background.comms_narrator import (
+from app.agents.core.background.comms_narrator import record_executor_cancellation
+from app.agents.core.background.thread_record import (
     record_exchange_in_thread,
-    record_executor_cancellation,
     record_platform_delivery,
 )
 from app.agents.core.interruption import record_interruption
@@ -30,15 +31,19 @@ THREAD = "thread-ids"
 CONFIG: RunnableConfig = {"configurable": {"thread_id": THREAD}}
 
 
+class _TurnInput(TypedDict):
+    messages: list[AnyMessage]
+
+
 @pytest.fixture
 def thread_graph() -> Iterator[CompiledStateGraph]:
-    """Build a checkpointed graph over GAIA's real State and route the narrator to it."""
+    """Build a checkpointed graph over GAIA's real State and route every thread writer to it."""
     builder = StateGraph(State)
     builder.add_node("tools", lambda _state: {})
     builder.set_entry_point("tools")
     graph = builder.compile(checkpointer=InMemorySaver())
     with patch(
-        "app.agents.core.background.comms_narrator.GraphManager.get_graph",
+        "app.agents.core.graph_manager.GraphManager.get_graph",
         AsyncMock(return_value=graph),
     ):
         yield graph
@@ -65,7 +70,7 @@ class TestOutOfBandThreadWritesCarryIds:
     async def test_interruption_write_is_attributed_to_the_tool_node(self) -> None:
         # Without as_node the write inherits the model node that last wrote, so
         # the checkpoint would queue a tools re-entry on resume.
-        builder = StateGraph(State)
+        builder = StateGraph(State, input_schema=_TurnInput)
         builder.add_node("tools", lambda _state: {})
         builder.add_node("model", lambda _state: {})
         builder.set_entry_point("model")
@@ -90,6 +95,7 @@ class TestOutOfBandThreadWritesCarryIds:
         ids = await _ids(thread_graph)
         assert len(ids) == 2 and None not in ids
 
+    @pytest.mark.usefixtures("fake_redis")  # the delivery write takes the executor busy lock
     async def test_platform_delivery_and_exchange(self, thread_graph: CompiledStateGraph) -> None:
         await _seed(thread_graph, HumanMessage("start"), AIMessage("ok"))
 

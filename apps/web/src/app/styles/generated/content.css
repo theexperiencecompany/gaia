@@ -186,6 +186,7 @@
 @source "../../../../../../libs/shared/ts/src/utils/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/utils/formatters.ts";
 @source "../../../../../../libs/shared/ts/src/utils/greetingUtils.ts";
+@source "../../../../../../libs/shared/ts/src/utils/hours.ts";
 @source "../../../../../../libs/shared/ts/src/utils/index.ts";
 @source "../../../../../../libs/shared/ts/src/utils/instructionsDraft.ts";
 @source "../../../../../../libs/shared/ts/src/utils/integrationStatus.ts";
@@ -211,6 +212,7 @@
 @source "../../../features/auth/hooks/useCurrentUser.ts";
 @source "../../../features/auth/hooks/useFetchUser.ts";
 @source "../../../features/auth/hooks/useLoginModal.ts";
+@source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/chat/api/chatApi.ts";

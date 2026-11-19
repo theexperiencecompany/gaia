@@ -18,6 +18,23 @@ interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
 }
 
+function platformIconStack(size: number) {
+  return (
+    <div className="flex shrink-0 -space-x-2">
+      {NOTIFICATION_PLATFORMS.map((p, index) => (
+        <Image
+          key={p}
+          src={NOTIFICATION_PLATFORM_ICONS[p]}
+          alt={NOTIFICATION_PLATFORM_LABELS[p]}
+          width={size}
+          height={size}
+          className={`${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function NotificationConnectBanner({
   variant = "compact",
 }: NotificationConnectBannerProps) {
@@ -52,21 +69,10 @@ export function NotificationConnectBanner({
   if (variant === "compact") {
     return (
       <div className="w-full px-3">
-        <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 px-3 py-2 text-xs w-full">
-          <div className="flex items-center gap-6">
-            <div className="-space-x-2 flex">
-              {unconnectedPlatforms.map((p, index) => (
-                <Image
-                  key={p}
-                  src={NOTIFICATION_PLATFORM_ICONS[p]}
-                  alt={NOTIFICATION_PLATFORM_LABELS[p]}
-                  width={30}
-                  height={30}
-                  className={` ${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
-                />
-              ))}
-            </div>
-            <span className="text-zinc-400">
+        <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-zinc-800/60 px-3 py-2">
+          <div className="flex items-center gap-3">
+            {platformIconStack(26)}
+            <span className="text-xs text-zinc-400">
               Get notified in the apps you already use
             </span>
           </div>
@@ -74,6 +80,7 @@ export function NotificationConnectBanner({
             <GaiaButton
               variant="accent-soft"
               size="sm"
+              shape="md"
               className="text-xs"
               onPress={() => router.push("/settings/linked-accounts")}
             >
@@ -99,35 +106,43 @@ export function NotificationConnectBanner({
   }
 
   return (
-    <div className="relative rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-      <GaiaButton
-        shape="pill"
-        isIconOnly
-        variant="ghost"
-        size="sm"
-        onPress={dismiss}
-        aria-label="Dismiss"
-        tone="faint"
-        hoverTone="white"
-        className="absolute top-2 right-2 h-6 w-6 min-w-6"
-      >
-        <Cancel01Icon className="h-3 w-3" />
-      </GaiaButton>
-      <p className="pr-6 text-sm font-medium text-zinc-200">
-        Stay notified on your devices
-      </p>
-      <p className="mt-1 text-xs text-zinc-400">
-        Connect your platform bots to receive GAIA notifications outside the web
-        app.
-      </p>
-      <GaiaButton
-        variant="accent-soft"
-        size="sm"
-        className="mt-3 text-xs"
-        onPress={() => router.push("/settings/linked-accounts")}
-      >
-        Connect platforms
-      </GaiaButton>
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-zinc-800/60 p-4">
+      <div className="flex items-center gap-4">
+        {platformIconStack(32)}
+        <div>
+          <p className="text-sm font-medium text-zinc-100">
+            Stay notified on your devices
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            Connect Telegram, Discord, WhatsApp, or Slack to get GAIA
+            notifications anywhere.
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <GaiaButton
+          variant="accent-soft"
+          size="sm"
+          shape="md"
+          className="text-xs"
+          onPress={() => router.push("/settings/linked-accounts")}
+        >
+          Connect
+        </GaiaButton>
+        <GaiaButton
+          shape="pill"
+          isIconOnly
+          variant="ghost"
+          size="sm"
+          onPress={dismiss}
+          aria-label="Dismiss"
+          tone="faint"
+          hoverTone="white"
+          className="h-6 w-6 min-w-6"
+        >
+          <Cancel01Icon className="h-3 w-3" />
+        </GaiaButton>
+      </div>
     </div>
   );
 }

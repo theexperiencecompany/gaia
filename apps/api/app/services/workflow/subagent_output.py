@@ -15,6 +15,7 @@ from typing import Literal, Self, TypedDict
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
 from shared.py.wide_events import log
@@ -58,6 +59,7 @@ class WorkflowDraftPayload(TypedDict):
     cron_expression: str | None
     runs_only_when: str | None
     direct_create: bool
+    delivery: str
     #: Sent back on create, so whatever waited on the user setting it up is picked back up.
     draft_id: str
 
@@ -115,9 +117,13 @@ class FinalizedOutput(BaseModel):
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
     def to_stream_payload(
-        self, draft_id: str
+        self, delivery: WorkflowDelivery, draft_id: str
     ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
-        """Convert to the format expected by frontend stream handler."""
+        """Convert to the format expected by frontend stream handler.
+
+        delivery is not the assistant's to choose: the calling agent sets it from
+        the user's intent, and the draft carries it to the confirming modal.
+        """
         return {
             "workflow_draft": {
                 "suggested_title": self.title,
@@ -129,6 +135,7 @@ class FinalizedOutput(BaseModel):
                 "cron_expression": self.cron_expression,
                 "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
+                "delivery": delivery.value,
                 "draft_id": draft_id,
             }
         }

@@ -51,6 +51,7 @@ def _workflow(trigger_type: TriggerType, gate: TriggerGate | None) -> Workflow:
         {
             "user_id": "u1",
             "title": "Billing replies",
+            "delivery": "now",
             "steps": [],
             "trigger_config": trigger,
             "gate": gate,

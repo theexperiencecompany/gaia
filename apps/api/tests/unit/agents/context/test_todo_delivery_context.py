@@ -19,6 +19,7 @@ from app.agents.core.background import comms_narrator, todo_run_delivery
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.graph_manager import GraphManager
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -80,7 +81,12 @@ async def _delivered_request() -> HumanMessage:
                 task_id="t1",
                 user_message_id=None,
             ),
-            TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=False),
+            TodoRun(
+                todo_id=DESK.id,
+                trigger_type=TriggerType.SCHEDULED_TODO,
+                message_class=ProactiveMessageClass.ROUTINE,
+                runs_once=False,
+            ),
             BRIEFING,
             "final",
         )

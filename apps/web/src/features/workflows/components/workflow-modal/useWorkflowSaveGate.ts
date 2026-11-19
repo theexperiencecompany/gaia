@@ -63,6 +63,7 @@ export function useWorkflowSaveGate({
       formData.selectedTrigger !== currentFormData.selectedTrigger ||
       JSON.stringify(formData.trigger_config) !==
         JSON.stringify(currentFormData.trigger_config) ||
+      formData.delivery !== currentFormData.delivery ||
       gateEditFor(existingWorkflow.gate, formData.gate) !== undefined ||
       persistedSlugs !== currentSlugs
     );

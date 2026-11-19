@@ -362,6 +362,15 @@ def _no_captured_loop_carryover() -> Iterator[None]:
 
 
 @pytest.fixture
+def outside_quiet_hours() -> Iterator[AsyncMock]:
+    """Make post_to_platform_chat find the recipient outside their quiet hours, whatever time the suite runs."""
+    with patch(
+        "app.agents.core.background.platform_chat.quiet_hours_end", AsyncMock(return_value=None)
+    ) as end:
+        yield end
+
+
+@pytest.fixture
 def onboarding_finish_on_link() -> Iterator[AsyncMock]:
     """Double the onboarding finish a new platform link runs, for link tests that double the user DB."""
     with patch(

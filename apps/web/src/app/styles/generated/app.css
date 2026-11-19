@@ -316,6 +316,7 @@
 @source "../../../../../../libs/shared/ts/src/utils/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/utils/formatters.ts";
 @source "../../../../../../libs/shared/ts/src/utils/greetingUtils.ts";
+@source "../../../../../../libs/shared/ts/src/utils/hours.ts";
 @source "../../../../../../libs/shared/ts/src/utils/index.ts";
 @source "../../../../../../libs/shared/ts/src/utils/instructionsDraft.ts";
 @source "../../../../../../libs/shared/ts/src/utils/integrationStatus.ts";
@@ -331,6 +332,7 @@
 @source "../../../../../../libs/shared/ts/src/utils/similarity.ts";
 @source "../../../../../../libs/shared/ts/src/utils/streamFold.ts";
 @source "../../../../../../libs/shared/ts/src/utils/thinkingParser.ts";
+@source "../../../../../../libs/shared/ts/src/workflows/delivery.ts";
 @source "../../../../../../libs/shared/ts/src/workflows/index.ts";
 @source "../../../../../../libs/shared/ts/src/workflows/triggerDisplay.ts";
 @source "../../../../../../libs/shared/ts/src/workflows/triggers.ts";
@@ -410,6 +412,7 @@
 @source "../../../features/auth/hooks/useLogout.ts";
 @source "../../../features/auth/hooks/useOnboardingGuard.ts";
 @source "../../../features/auth/utils/firstName.ts";
+@source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
@@ -613,9 +616,11 @@
 @source "../../../features/memory/utils/graphAdapter.ts";
 @source "../../../features/notification/api/notificationCache.ts";
 @source "../../../features/notification/api/queryKeys.ts";
+@source "../../../features/notification/components/NotificationCard.tsx";
 @source "../../../features/notification/components/NotificationCenter.tsx";
 @source "../../../features/notification/components/NotificationConnectBanner.tsx";
-@source "../../../features/notification/components/NotificationItem.tsx";
+@source "../../../features/notification/components/NotificationsEmptyState.tsx";
+@source "../../../features/notification/components/UnreadCountChip.tsx";
 @source "../../../features/notification/hooks/useNotifications.ts";
 @source "../../../features/notification/hooks/useNotificationWebSocket.ts";
 @source "../../../features/onboarding/api/holoCardApi.ts";
@@ -1056,6 +1061,7 @@
 @source "../../../features/workflows/components/workflow-modal/PanelHeader.tsx";
 @source "../../../features/workflows/components/workflow-modal/useWorkflowModalActions.ts";
 @source "../../../features/workflows/components/workflow-modal/useWorkflowSaveGate.ts";
+@source "../../../features/workflows/components/workflow-modal/WorkflowDeliveryField.tsx";
 @source "../../../features/workflows/components/workflow-modal/WorkflowDescriptionField.tsx";
 @source "../../../features/workflows/components/workflow-modal/WorkflowFooter.tsx";
 @source "../../../features/workflows/components/workflow-modal/WorkflowHeader.tsx";

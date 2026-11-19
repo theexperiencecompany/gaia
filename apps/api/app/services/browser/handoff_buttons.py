@@ -7,7 +7,7 @@ Cancel is a real stop of the job, as a "cancel" said in chat is: the run ends
 stopped and nothing tells a result, rather than ending on its own and reporting.
 """
 
-from app.agents.core.background.comms_narrator import record_exchange_in_thread
+from app.agents.core.background.thread_record import record_exchange_in_thread
 from app.constants.browser import (
     BROWSER_HANDOFF_ACK_CANCEL,
     BROWSER_HANDOFF_ACK_CONTINUE,

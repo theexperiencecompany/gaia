@@ -36,6 +36,9 @@ from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CO
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -60,6 +63,7 @@ from app.models.agent_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.presence_models import PresenceSnapshot
+from app.models.trigger_gate_models import QuietHoursBypass, QuietHoursStamp
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
@@ -87,13 +91,23 @@ class _AgentTriggerContext(BaseModel):
     execution_mode: object = None
     workflow_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
     playbook_fallback: str | None = Field(
         default=None, validation_alias=PLAYBOOK_FALLBACK_CONTEXT_KEY
     )
     executor_lock_reservation: str | None = Field(
         default=None, validation_alias=WORKFLOW_LOCK_CONTEXT_KEY
     )
+    quiet_hours: QuietHoursStamp | None = Field(
+        default=None, validation_alias=QUIET_HOURS_CONTEXT_KEY
+    )
+
+    @property
+    def workflow_message_class(self) -> ProactiveMessageClass:
+        """URGENT when the trigger gate let this run through the user's quiet hours."""
+        if isinstance(self.quiet_hours, QuietHoursBypass):
+            return ProactiveMessageClass.URGENT
+        return ProactiveMessageClass.ROUTINE
 
 
 @dataclass(frozen=True)
@@ -268,7 +282,8 @@ async def _core_agent_logic(
     if trigger_context and trigger.workflow_id:
         configurable["workflow_id"] = trigger.workflow_id
         configurable["workflow_title"] = trigger.workflow_title
-        configurable["workflow_notify_on_completion"] = trigger.workflow_notify_on_completion
+        configurable["workflow_delivery"] = trigger.workflow_delivery
+        configurable["workflow_message_class"] = trigger.workflow_message_class
         configurable["playbook_fallback"] = trigger.playbook_fallback
         configurable["executor_lock_reservation"] = trigger.executor_lock_reservation
 

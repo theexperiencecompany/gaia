@@ -23,6 +23,7 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.streaming import DetachedStreamKind
 from app.constants.todos import TodoWakeKind
 from app.models.message_models import TodoRunWake
@@ -39,7 +40,12 @@ WAKE = TodoRunWake(
 )
 REQUEST = TodoRunRequest(
     user=AuthenticatedUser(user_id="user-1"),
-    todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
+    todo_run=TodoRun(
+        todo_id="todo-1",
+        trigger_type=TriggerType.SCHEDULED_TODO,
+        message_class=ProactiveMessageClass.ROUTINE,
+        runs_once=True,
+    ),
     todo_title="Watch the deploy",
     task="Execute the following scheduled task: Watch the deploy",
     conversation_id="run-conv",

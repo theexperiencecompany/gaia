@@ -26,7 +26,6 @@ ModalConfig.props	deferred-until=2026-12-15; props of the web component a notifi
 NotificationContent.rich_content	deferred-until=2026-12-15; renderer payload chosen per notification source (decided 2026-09-16)
 NotificationRequest.metadata	deferred-until=2026-12-15; free-form bag the notification source attaches (decided 2026-09-16)
 NotificationView.metadata	deferred-until=2026-12-15; the stored NotificationRequest.metadata, read back (decided 2026-09-16)
-OnboardingResponse.user	deferred-until=2026-12-15; echoes the updated user document, same shape problem as AuthenticatedUserResponse (decided 2026-09-16)
 RecordedCall.args	deferred-until=2026-12-15; the arguments one tool actually ran with, one schema per tool (decided 2026-09-16)
 ReminderResponse.payload	deferred-until=2026-12-15; StaticReminderPayload or a legacy stored dict, which the union still admits (decided 2026-09-16)
 SandboxExecuteResponse.output	deferred-until=2026-12-22; the proxied tool's own payload, genuinely schemaless — each integration returns its own shape and the proxy passes it through unaltered (decided 2026-09-22)

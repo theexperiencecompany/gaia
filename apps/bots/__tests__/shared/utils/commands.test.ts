@@ -75,8 +75,8 @@ describe("handleWorkflowList", () => {
       workflows: [
         {
           id: "wf-1",
-          name: "Daily Standup",
-          status: "active",
+          title: "Daily Standup",
+          activated: true,
           description: "Posts standup",
         },
       ],
@@ -160,8 +160,8 @@ describe("handleWorkflowGet", () => {
     const gaia = makeGaia();
     vi.mocked(gaia.getWorkflow).mockResolvedValue({
       id: "wf-1",
-      name: "My Workflow",
-      status: "draft",
+      title: "My Workflow",
+      activated: false,
       description: "A test",
     } as never);
 
@@ -184,36 +184,51 @@ describe("handleWorkflowGet", () => {
 });
 
 describe("handleWorkflowCreate", () => {
-  it("returns created workflow with check emoji", async () => {
+  it("sends the API's create contract: title, prompt, a manual trigger and a delivery", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.createWorkflow).mockResolvedValue({
       id: "new-wf",
-      name: "New Flow",
-      status: "draft",
+      title: "New Flow",
+      description: "Desc",
+      activated: false,
     } as never);
 
     const result = await handleWorkflowCreate(gaia, "New Flow", ctx, "Desc");
 
     expect(gaia.createWorkflow).toHaveBeenCalledWith(
-      { name: "New Flow", description: "Desc" },
+      {
+        title: "New Flow",
+        description: "Desc",
+        prompt: "Desc",
+        trigger_config: { type: "manual", enabled: true },
+        delivery: "now",
+      },
       ctx,
     );
-    expect(result).toContain("✅");
+    expect(result).toContain("Workflow created");
     expect(result).toContain("New Flow");
+    expect(result).not.toContain("BotWorkflow");
   });
 
-  it("uses empty string when no description provided", async () => {
+  it("uses the name as the prompt when no description is given", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.createWorkflow).mockResolvedValue({
       id: "wf-x",
-      name: "Flow",
-      status: "active",
+      title: "Flow",
+      description: "",
+      activated: true,
     } as never);
 
     await handleWorkflowCreate(gaia, "Flow", ctx);
 
     expect(gaia.createWorkflow).toHaveBeenCalledWith(
-      { name: "Flow", description: "" },
+      {
+        title: "Flow",
+        description: undefined,
+        prompt: "Flow",
+        trigger_config: { type: "manual", enabled: true },
+        delivery: "now",
+      },
       ctx,
     );
   });

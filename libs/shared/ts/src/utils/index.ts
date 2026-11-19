@@ -40,6 +40,7 @@ export {
   getCompleteTimeBasedGreeting,
   getSimpleTimeGreeting,
 } from "./greetingUtils";
+export { formatHour12, to12Hour, to24Hour } from "./hours";
 export type {
   InstructionsDraftView,
   InstructionsEdit,

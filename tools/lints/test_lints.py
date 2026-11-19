@@ -13,13 +13,18 @@ and asserts on the returned violations.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
+from typing import TypedDict
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import check_plr_complexity
 import comment_slop
 import docstring_slop
 import no_service_classes
@@ -457,6 +462,146 @@ def test_new_bare_dump_in_allowlisted_function_is_flagged(tmp_path: Path) -> Non
         violations = tool_dump_boundary.check([path])
     assert len(violations) == 1
     assert "beyond the 1 grandfathered" in violations[0].detail
+
+
+# --------------------------------------------------------------------------- #
+# plr-complexity-ratchet
+# --------------------------------------------------------------------------- #
+
+_EIGHT_ARGS = "a, b, c, d, e, f, g, h"
+_LANGCHAIN_TOOL_IMPORT = "from langchain_core.tools import tool\n"
+
+
+class _RuffLocation(TypedDict):
+    row: int
+    column: int
+
+
+class _RuffRecord(TypedDict):
+    """The slice of one ``ruff check --output-format json`` entry the ratchet reads."""
+
+    filename: str
+    code: str
+    location: _RuffLocation
+
+
+def _ruff_reported(records: list[_RuffRecord]) -> AbstractContextManager[MagicMock]:
+    """Stand in for the pinned ruff invocation with a canned JSON result."""
+    return patch(
+        "check_plr_complexity.subprocess.run",
+        return_value=SimpleNamespace(returncode=1, stdout=json.dumps(records), stderr=""),
+    )
+
+
+def _plr(path: Path, code: str, row: int) -> _RuffRecord:
+    return {"filename": str(path), "code": code, "location": {"row": row, "column": 11}}
+
+
+def _scan(tmp_path: Path, records: list[_RuffRecord]) -> dict[tuple[str, str], int]:
+    with (
+        patch.object(check_plr_complexity, "REPO_ROOT", tmp_path.resolve()),
+        _ruff_reported(records),
+    ):
+        return check_plr_complexity._current_violations()
+
+
+@pytest.mark.parametrize(
+    ("binding", "decorator"),
+    [
+        (_LANGCHAIN_TOOL_IMPORT, "@tool"),
+        (_LANGCHAIN_TOOL_IMPORT, "@tool(parse_docstring=True)"),
+        ("from langchain_core.tools import tool as langchain_tool\n", "@langchain_tool"),
+        ("import langchain_core.tools as lc_tools\n", "@lc_tools.tool"),
+        ("import langchain_core.tools\n", "@langchain_core.tools.tool"),
+    ],
+)
+def test_tool_decorated_function_is_exempt_from_the_argument_limit(
+    tmp_path: Path, binding: str, decorator: str
+) -> None:
+    """Waive the argument count on a LangChain @tool, however it is imported.
+
+    A @tool's parameters are the schema the model sees, so the argument count is
+    the tool's contract rather than complexity.
+    """
+    src = f"{binding}{decorator}\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 3)]) == {}
+
+
+@pytest.mark.parametrize(
+    ("binding", "decorator"),
+    [
+        ("", "@tool"),
+        ("from mcp.server.fastmcp import tool\n", "@tool"),
+        ("import mcp\n", "@mcp.tool"),
+        ("", "@server.tool"),
+    ],
+)
+def test_a_tool_decorator_not_bound_to_langchain_gets_no_waiver(
+    tmp_path: Path, binding: str, decorator: str
+) -> None:
+    """Match the decorator by its import, not its spelling.
+
+    An unimported or non-LangChain ``tool`` is an unrelated decorator, so its
+    function is held to the argument limit.
+    """
+    src = f"{binding}{decorator}\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+    row = src.count("\n", 0, src.index("async def")) + 1
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", row)]) == {
+        ("app/agents/tools/thing_tool.py", "PLR0913"): row
+    }
+
+
+def test_tool_decorated_function_is_still_held_to_the_branch_limit(tmp_path: Path) -> None:
+    """Waive only the argument count on a @tool.
+
+    Branches inside the body are ordinary complexity and must still fail, on the
+    very same function.
+    """
+    src = f"{_LANGCHAIN_TOOL_IMPORT}@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 3), _plr(path, "PLR0912", 3)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0912"): 3}
+
+
+def test_plain_function_with_too_many_arguments_is_still_reported(tmp_path: Path) -> None:
+    src = f"async def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/services/thing_service.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 1)]) == {
+        ("app/services/thing_service.py", "PLR0913"): 1
+    }
+
+
+def test_the_waiver_is_per_function_not_per_file(tmp_path: Path) -> None:
+    """An undecorated helper sharing a file with a @tool gets no cover from it."""
+    src = (
+        f"{_LANGCHAIN_TOOL_IMPORT}@tool\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+        f"\n\ndef _helper({_EIGHT_ARGS}):\n    return a\n"
+    )
+    path = _write(tmp_path, "app/agents/tools/thing_tool.py", src)
+
+    violations = _scan(tmp_path, [_plr(path, "PLR0913", 3), _plr(path, "PLR0913", 7)])
+
+    assert violations == {("app/agents/tools/thing_tool.py", "PLR0913"): 7}
+
+
+def test_a_differently_decorated_function_gets_no_waiver(tmp_path: Path) -> None:
+    """Grant the waiver to the @tool decorator only.
+
+    A route handler or any other decorated function is held to the argument limit.
+    """
+    src = f"@router.post('/x')\nasync def create_thing({_EIGHT_ARGS}):\n    return a\n"
+    path = _write(tmp_path, "app/api/v1/endpoints/thing.py", src)
+
+    assert _scan(tmp_path, [_plr(path, "PLR0913", 2)]) == {
+        ("app/api/v1/endpoints/thing.py", "PLR0913"): 2
+    }
 
 
 # --------------------------------------------------------------------------- #

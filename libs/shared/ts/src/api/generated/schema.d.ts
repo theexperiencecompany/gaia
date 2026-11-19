@@ -7081,6 +7081,10 @@ export interface components {
         /**
          * ChannelPreferences
          * @description User notification channel preferences.
+         *
+         *     One field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out
+         *     so FastAPI and mypy see real types, and a unit test pins the set against the
+         *     enum so the two cannot drift.
          */
         ChannelPreferences: {
             /**
@@ -7088,6 +7092,16 @@ export interface components {
              * @default true
              */
             discord: boolean;
+            /**
+             * Email
+             * @default true
+             */
+            email: boolean;
+            /**
+             * Imessage
+             * @default true
+             */
+            imessage: boolean;
             /**
              * Slack
              * @default true
@@ -7106,11 +7120,15 @@ export interface components {
         };
         /**
          * ChannelPreferencesUpdate
-         * @description Request body for updating channel preferences.
+         * @description Request body for updating channel preferences; omitted channels are untouched.
          */
         ChannelPreferencesUpdate: {
             /** Discord */
             discord?: boolean | null;
+            /** Email */
+            email?: boolean | null;
+            /** Imessage */
+            imessage?: boolean | null;
             /** Slack */
             slack?: boolean | null;
             /** Telegram */
@@ -7933,6 +7951,8 @@ export interface components {
          * @description Request model for creating a new workflow.
          */
         CreateWorkflowRequest: {
+            /** @description How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short optional display description (1-2 sentences)
@@ -7970,12 +7990,6 @@ export interface components {
              * @default false
              */
             is_system_workflow?: boolean;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes.
-             * @default true
-             */
-            notify_on_completion?: boolean;
             /**
              * Prompt
              * @description Detailed execution instructions for the AI
@@ -11474,6 +11488,8 @@ export interface components {
             created_at?: string;
             /** Id */
             id?: string;
+            /** @default routine */
+            message_class?: components["schemas"]["ProactiveMessageClass"];
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -11825,13 +11841,8 @@ export interface components {
              * @description Whether onboarding was successful
              */
             success: boolean;
-            /**
-             * User
-             * @description Updated user data
-             */
-            user: {
-                [key: string]: unknown;
-            } | null;
+            /** @description Updated user data */
+            user: components["schemas"]["OnboardingUser"];
         };
         /**
          * OnboardingStatusResponse
@@ -11861,6 +11872,15 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+        /**
+         * OnboardingUser
+         * @description The user an onboarding write updated: its id and the onboarding state it left.
+         */
+        OnboardingUser: {
+            onboarding: components["schemas"]["OnboardingStatusResponse"];
+            /** User Id */
+            user_id: string;
+        };
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -12281,6 +12301,12 @@ export interface components {
          * @enum {string}
          */
         Priority: "high" | "medium" | "low" | "none";
+        /**
+         * ProactiveMessageClass
+         * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
+         * @enum {string}
+         */
+        ProactiveMessageClass: "routine" | "user_timed" | "urgent";
         /**
          * ProjectCreate
          * @description Model for creating projects
@@ -14578,7 +14604,7 @@ export interface components {
             labels?: string[];
             /**
              * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
+             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
              * @default true
              */
             notify_on_run?: boolean;
@@ -14693,7 +14719,7 @@ export interface components {
             labels: string[];
             /**
              * Notify On Run
-             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.
+             * @description Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.
              * @default true
              */
             notify_on_run: boolean;
@@ -15512,6 +15538,7 @@ export interface components {
         UpdateWorkflowRequest: {
             /** Activated */
             activated?: boolean | null;
+            delivery?: components["schemas"]["WorkflowDelivery"] | null;
             /** Description */
             description?: string | null;
             /** @description Absent keeps the gate, null removes it, a value replaces it */
@@ -15522,8 +15549,6 @@ export interface components {
             icon_color?: string | null;
             /** Integration Ids */
             integration_ids?: string[] | null;
-            /** Notify On Completion */
-            notify_on_completion?: boolean | null;
             /** Prompt */
             prompt?: string | null;
             /** Steps */
@@ -15915,6 +15940,16 @@ export interface components {
             name: string;
         };
         /**
+         * WorkflowDelivery
+         * @description How a finished workflow run's result reaches the user.
+         *
+         *     Failures always notify, whatever the mode: a broken workflow needs the user
+         *     now. A run whose narration decides there is nothing worth reporting reaches
+         *     nobody in any mode.
+         * @enum {string}
+         */
+        WorkflowDelivery: "now" | "brief" | "silent";
+        /**
          * WorkflowExecution
          * @description A single workflow execution record.
          */
@@ -16202,6 +16237,8 @@ export interface components {
             current_step_index: number;
             /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
+            /** @description How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify. */
+            delivery: components["schemas"]["WorkflowDelivery"];
             /**
              * Description
              * @description Short display description for cards/UI (1-2 sentences)
@@ -16279,12 +16316,6 @@ export interface components {
              * @description Required integrations the user has not connected yet.
              */
             missing_integrations: components["schemas"]["IntegrationRef"][] | null;
-            /**
-             * Notify On Completion
-             * @description Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.
-             * @default true
-             */
-            notify_on_completion: boolean;
             /**
              * Occurrence Count
              * @description Number of times this task has been executed
@@ -16766,6 +16797,7 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
+export type OnboardingUser = components['schemas']['OnboardingUser'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -16790,6 +16822,7 @@ export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
 export type Priority = components['schemas']['Priority'];
+export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
 export type ProjectResponse = components['schemas']['ProjectResponse'];
 export type PromptTriggerHint = components['schemas']['PromptTriggerHint'];
@@ -16971,6 +17004,7 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
+export type WorkflowDelivery = components['schemas']['WorkflowDelivery'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];

@@ -17,9 +17,10 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage
+from langgraph.graph.state import CompiledStateGraph
 import pytest
 
-from app.agents.core.background.comms_narrator import record_platform_delivery
+from app.agents.core.background.thread_record import record_platform_delivery
 from tests.e2e._harness.graph_run import comms_graph
 
 pytestmark = pytest.mark.e2e
@@ -30,7 +31,7 @@ _FRAME = (
 )
 
 
-async def _thread_messages(graph: object, thread_id: str) -> list[object]:
+async def _thread_messages(graph: CompiledStateGraph, thread_id: str) -> list[object]:
     state = await graph.aget_state({"configurable": {"thread_id": thread_id}})
     return state.values.get("messages", [])
 
@@ -40,7 +41,7 @@ async def test_record_platform_delivery_lands_in_the_real_thread() -> None:
     thread_id = f"conv-{uuid4()}"
     async with comms_graph(["ok"]) as graph:
         with patch(
-            "app.agents.core.background.comms_narrator.GraphManager.get_graph",
+            "app.agents.core.background.thread_record.GraphManager.get_graph",
             new=AsyncMock(return_value=graph),
         ):
             await record_platform_delivery(thread_id, _FRAME)

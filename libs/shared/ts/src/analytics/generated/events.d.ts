@@ -1621,6 +1621,7 @@ export interface EventProperties {
     "steps_count"?: number;
     "generated_immediately"?: boolean;
     "is_todo_workflow"?: boolean;
+    "delivery"?: "now" | "brief" | "silent";
   };
   "workflow:deactivated": {
     "actor": "user" | "agent";
@@ -1670,6 +1671,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "delivery"?: "now" | "brief" | "silent";
   };
   "workflow_card:navigate": {
     "slug": string;

@@ -21,7 +21,7 @@ from typing import Literal
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel
 from app.core.websocket_manager import websocket_manager
 from app.models.integration_models import IntegrationAccount
 from app.models.notification.notification_models import (
@@ -206,7 +206,7 @@ async def announce_account_expiry(
             user_id=user_id,
             source=NotificationSourceEnum.INTEGRATION_EXPIRED,
             type=NotificationType.WARNING,
-            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+            channels=[ChannelConfig(channel_type=NotificationChannel.INAPP)],
             content=NotificationContent(
                 title=f"{named} disconnected",
                 body=_expiry_body(named, paused_workflows, reason),

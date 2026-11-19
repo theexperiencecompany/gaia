@@ -24,6 +24,7 @@ from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import (
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
@@ -105,6 +106,8 @@ class FinishedTodoRun(BaseModel):
     trigger_type: TriggerType
     runs_once: bool
     result_text: str
+    #: Defaulted for a job queued before the class was carried.
+    message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     #: Set once the message step is done; only the finish entry is left then.
     finish_entry: str | None = None
 
@@ -131,6 +134,7 @@ async def deliver_todo_run_result(
         trigger_type=todo_run.trigger_type,
         runs_once=todo_run.runs_once,
         result_text=result_text,
+        message_class=todo_run.message_class,
     )
     if (undone := await finish_todo_run(finished, run.user)) is not None:
         await hand_unfinished_run_to_job(undone)
@@ -332,9 +336,9 @@ async def _narrate_and_send(
     platform = (
         await deliver_result_to_platforms(
             user=user,
-            user_id=todo.user_id,
             notification_text=message,
             origin=f'tracked todo "{todo.title}" (id {todo.id})',
+            message_class=finished.message_class,
             target=target,
         )
         if target is not None

@@ -18,6 +18,7 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
@@ -44,7 +45,12 @@ RUN = ExecutorRun(
     task_id="t1",
     user_message_id=None,
 )
-SCHEDULED = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True)
+SCHEDULED = TodoRun(
+    todo_id="todo-1",
+    trigger_type=TriggerType.SCHEDULED_TODO,
+    message_class=ProactiveMessageClass.ROUTINE,
+    runs_once=True,
+)
 
 
 @dataclass
@@ -254,7 +260,12 @@ class TestAOneTimeTodoAlwaysAnswers:
                 source=todo_models.ExternalRefSource.GMAIL_THREAD, id="t1"
             ),
         )
-        watching = TodoRun(todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False)
+        watching = TodoRun(
+            todo_id="todo-1",
+            trigger_type=TriggerType.TODO_TRIGGER,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=False,
+        )
         with _seams(todo=completed_thread) as seams:
             await deliver_todo_run_result(RUN, watching, "report", "final")
 
@@ -266,7 +277,10 @@ class TestAOneTimeTodoAlwaysAnswers:
 class TestAttribution:
     async def test_the_event_names_what_woke_the_run_and_whose_it_is(self) -> None:
         triggered = TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.TODO_TRIGGER, runs_once=False
+            todo_id="todo-1",
+            trigger_type=TriggerType.TODO_TRIGGER,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=False,
         )
         with _seams(todo=_todo(recurrence="daily", user_id=OWNER_ID)) as seams:
             await deliver_todo_run_result(RUN, triggered, "report", "final")

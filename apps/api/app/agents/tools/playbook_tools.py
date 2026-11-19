@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
-from typing import Annotated
+from typing import Annotated, TypeAlias
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolCall
 from langchain_core.runnables.config import RunnableConfig
@@ -39,6 +39,7 @@ from app.models.playbook_models import (
     is_work_call,
 )
 from app.models.workflow_models import WorkflowDocument, WorkflowUpdate
+from app.models.workflow_tool_models import WorkflowToolError, WorkflowToolSuccess
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.metrics import (
     PlaybookDecisionOutcome,
@@ -68,6 +69,8 @@ from app.utils.workflow_utils import (
     success_response,
 )
 from shared.py.wide_events import log
+
+PlaybookResult: TypeAlias = WorkflowToolSuccess[dict[str, object]] | WorkflowToolError
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
@@ -166,7 +169,7 @@ async def _pickable_record(config: RunnableConfig) -> list[RecordEntry]:
     return record_entries(await read_recorded_calls(get_stream_id(config)), UNPICKABLE_TOOLS)
 
 
-def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, object]:
+def _refused(issues: list[PlaybookIssue], workflow_id: str) -> PlaybookResult:
     """Return the refusal for a write, every issue with where it is."""
     record_write(PlaybookDecisionOutcome.REFUSED, issues[0].kind)
     problems = "; ".join(f"{issue.where}: {issue.problem}" for issue in issues)
@@ -184,7 +187,7 @@ def _refused(issues: list[PlaybookIssue], workflow_id: str) -> dict[str, object]
 
 
 @tool
-async def read_run_record(config: RunnableConfig) -> dict[str, object]:
+async def read_run_record(config: RunnableConfig) -> PlaybookResult:
     """
     List the tool calls this run has made, each with its id, to pick a playbook's steps from.
 
@@ -225,7 +228,7 @@ async def write_playbook(
         "How to write the run's result for the user from the steps' results. "
         "Classification, judgement and summarising go here.",
     ],
-) -> dict[str, object]:
+) -> PlaybookResult:
     """
     Freeze calls this workflow run made as its playbook, so later runs replay
     them instead of reasoning the work out again. Pick the calls by their id in
@@ -310,7 +313,7 @@ write_playbook.handle_validation_error = _explain_validation_error
 @tool
 async def read_playbook(
     config: RunnableConfig,
-) -> dict[str, object]:
+) -> PlaybookResult:
     """
     Read back this workflow's playbook: the YAML as written, when it was written,
     and whether the most recent run replayed it or fell back to reasoning.
@@ -351,7 +354,7 @@ async def read_playbook(
 class _Decision:
     """What a well-formed decline answers, and whether that answer refuses it."""
 
-    response: dict[str, object]
+    response: PlaybookResult
     refused: bool = False
 
 
@@ -450,7 +453,7 @@ async def decline_playbook(
         "Required for order_branches: the ONE call that runs on some days and "
         "not others. If you cannot name such a call, the order does not branch.",
     ] = None,
-) -> dict[str, object]:
+) -> PlaybookResult:
     """
     Record that this run's sequence is not worth freezing as a playbook.
 
@@ -499,7 +502,7 @@ async def decline_playbook(
 
 def _decline_request_problem(
     kind: DeclineKind, integrations: list[str] | None, branch_on: str | None
-) -> dict[str, object] | None:
+) -> PlaybookResult | None:
     """The refusal for a decline whose kind needs a detail the call did not give."""
 
     if kind in INTEGRATION_DECLINE_KINDS and not integrations:
@@ -609,7 +612,7 @@ async def _record_decline(
 async def disable_playbook(
     config: RunnableConfig,
     reason: Annotated[str, "Why this sequence no longer holds. Be specific."],
-) -> dict[str, object]:
+) -> PlaybookResult:
     """
     Delete this workflow's playbook so its runs go back to being reasoned out.
 

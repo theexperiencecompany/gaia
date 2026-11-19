@@ -11,6 +11,7 @@ import pytest
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -102,6 +103,7 @@ def _make_workflow(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=USER_ID,
         title="Test Workflow",
@@ -128,6 +130,7 @@ def _make_create_request(
     if trigger_config is None:
         trigger_config = _make_trigger_config()
     return CreateWorkflowRequest(
+        delivery=WorkflowDelivery.NOW,
         title=title,
         prompt=prompt,
         description=description,
@@ -1155,6 +1158,7 @@ class TestCreateWorkflowGate:
                 "prompt": "Draft a reply to the billing email",
                 "trigger_config": {"type": "integration", "trigger_name": "gmail_new_message"},
                 "steps": [{"id": "s1", "title": "Draft", "description": "Draft the reply"}],
+                "delivery": "now",
                 **fields,
             }
         )

@@ -370,12 +370,6 @@ class LogoutResponse(ResponseModel):
     logout_url: str | None = Field(None, description="Identity-provider logout URL to redirect to")
 
 
-class OnboardingResponse(ResponseModel):
-    success: bool = Field(..., description="Whether onboarding was successful")
-    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
-    user: dict[str, Any] | None = Field(None, description="Updated user data")
-
-
 class OnboardingPhaseUpdateRequest(BaseModel):
     """A wizard step the browser reached; the server stamps and reports it once per onboarding run."""
 
@@ -698,6 +692,19 @@ class OnboardingStatusResponse(BaseModel):
     # The "Getting started" conversation seeded at completion — what the web
     # redirects into once the wizard closes.
     getting_started_conversation_id: str | None = None
+
+
+class OnboardingUser(BaseModel):
+    """The user an onboarding write updated: its id and the onboarding state it left."""
+
+    user_id: str
+    onboarding: OnboardingStatusResponse
+
+
+class OnboardingResponse(ResponseModel):
+    success: bool = Field(..., description="Whether onboarding was successful")
+    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
+    user: OnboardingUser = Field(..., description="Updated user data")
 
 
 class AuthenticatedUserResponse(BaseModel):
