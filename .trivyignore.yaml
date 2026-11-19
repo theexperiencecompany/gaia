@@ -4,14 +4,12 @@
 vulnerabilities:
   - id: CVE-2026-112366
     paths: ["pnpm-lock.yaml"]
+    expired_at: 2027-01-02
     statement: >-
-      picomatch ReDoS on attacker-supplied extglob patterns (GHSA-fc5q-39xc-vjpf),
-      with no fixed release: every version through the latest, 4.0.7, is
-      affected. picomatch reaches us only through build and dev tooling (Expo,
-      metro, chokidar, tinyglobby, micromatch), which compiles globs written in
-      this repo's config and never a glob supplied by a user. Mirrors the
-      config/pnpm-audit-allowlist.json entry.
-    expired_at: 2027-02-18
+      picomatch ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf);
+      no fixed release exists (4.0.7 is still affected). Reached only through build
+      tooling matching our own glob patterns, never untrusted input. Mirrors the
+      config/pnpm-audit-allowlist.json entry; drop both once a fix ships.
 secrets:
   - id: stripe-secret-token
     paths: [".gitleaks.toml"]
