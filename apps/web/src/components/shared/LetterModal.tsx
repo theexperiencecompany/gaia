@@ -105,7 +105,11 @@ export function LetterModal({
         >
           <Modal.Backdrop
             variant="transparent"
-            className={presentation === "floating" ? "no-scrollbar" : undefined}
+            className={modalVariants({
+              surface: "bare",
+              className:
+                presentation === "floating" ? "no-scrollbar" : undefined,
+            })}
           >
             {scrim && (
               <m.div
@@ -117,7 +121,11 @@ export function LetterModal({
                 className={cn("pointer-events-none fixed inset-0", scrim)}
               />
             )}
-            <Modal.Container placement="center" scroll="outside">
+            <Modal.Container
+              placement="center"
+              scroll="outside"
+              className={modalVariants({ surface: "bare" })}
+            >
               <Modal.Dialog
                 aria-label={ariaLabel}
                 className={modalVariants({
