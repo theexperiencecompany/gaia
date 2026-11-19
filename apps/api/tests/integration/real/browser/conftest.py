@@ -27,7 +27,7 @@ def _autouse_hil_approvals_collection() -> None:
     """Replace the real tier's per-test approvals collection, which this tier must not use.
 
     That fixture repoints this process's repository layer at a per-worker database
-    on the test's own loop; the stack's processes use the app's own database, which
+    on the test's own loop; the stack's processes use the stack's own database, which
     the users this process seeds must share, and every scenario's user is new.
     """
 

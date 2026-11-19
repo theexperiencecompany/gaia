@@ -42,7 +42,7 @@ from app.constants.browser import BrowserEngine, JobEnding
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
 from app.constants.llm import LLMProviderName
 from app.db.mongodb import collections
-from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.mongodb.mongodb import MongoDB
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
 from app.models.conversation_send_models import ActiveBotConversation, BotMessageAccepted
@@ -54,7 +54,7 @@ from app.services.browser.jobs import done_state, get_latest_job
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
 from shared.py.conversation_wire import ReplyOutcome
-from tests.helpers import pick_free_port, worker_redis_url
+from tests.helpers import pick_free_port, worker_mongo_db_name, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
 from tests.integration.real.browser._stack.live_viewer import LiveViewer
@@ -124,6 +124,9 @@ class BrowserStack:
         self.site = FixtureSite()
         self.models = FakeModels()
         self.redis_url = worker_redis_url(settings.REDIS_URL or "redis://localhost:6379/0")
+        # Each worker's own, like its Redis: a stack's sweeper reads every conversation in
+        # the database, and another stack's live work has no lock in this one's Redis.
+        self.mongo_db_name = worker_mongo_db_name()
         self.api_port = pick_free_port()
         self.proxy_port = pick_free_port()
         #: One key for both hosts: the worker presents the same BROWSER_HOST_KEY to each.
@@ -158,7 +161,7 @@ class BrowserStack:
     async def start(self) -> None:
         say = self.progress.say
         say(
-            f"booting on Redis {self.redis_url}, RabbitMQ {_without_credentials(settings.RABBITMQ_URL)}"
+            f"booting on Redis {self.redis_url}, Mongo {self.mongo_db_name}, RabbitMQ {_without_credentials(settings.RABBITMQ_URL)}"
         )
         await self._own_the_redis_database()
         tls = self.tls = issue(self.log_dir)
@@ -276,7 +279,7 @@ class BrowserStack:
         return {
             "ENV": "development",
             "REDIS_URL": self.redis_url,
-            "MONGO_DB_NAME": MONGO_DATABASE_NAME,
+            "MONGO_DB_NAME": self.mongo_db_name,
             "RABBITMQ_URL": settings.RABBITMQ_URL,
             "DEV_DEFAULT_MODEL": LLMProviderName.CUSTOM.value,
             "DEV_LLM_BASE_URL": self.models.base_url,
@@ -305,7 +308,7 @@ class BrowserStack:
         """
         if self.redis is None:
             raise RuntimeError("the stack's Redis client is made when it claims its database")
-        self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
+        self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=self.mongo_db_name)
         self._patches.setattr(collections, "_get_collection", self.mongo.get_collection)
         self._patches.setattr(redis_cache, "redis", cast(AsyncRedisCommands, self.redis))
 
