@@ -39,8 +39,11 @@ export interface PreparedEdition {
 
 /** Editions kept open at most; each holds ~25 MB of bitmaps. Only held ones (a face being drawn, an open letter) exceed it. */
 const OPEN_EDITIONS_MAX = 4;
-/** Cut widths between the chat letter's and the open letter's step by this, so nearby viewports share a cut. */
-const CUT_WIDTH_STEP_PX = 60;
+/** Cut widths between the chat letter's and the open letter's come in this many steps, so nearby viewports share a cut. */
+const CUT_WIDTH_STEPS = 5;
+const CUT_WIDTH_STEP_PX = Math.ceil(
+  (BRIEF_LETTER_MAX_WIDTH_PX - CHAT_LETTER_MAX_WIDTH_PX) / CUT_WIDTH_STEPS,
+);
 
 interface Preparation {
   edition: Promise<PreparedEdition>;
