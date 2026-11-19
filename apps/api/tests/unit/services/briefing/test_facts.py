@@ -710,6 +710,17 @@ class TestTheEmptyBriefAndTheLead:
         facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]))
 
         assert slot_problems("message", "Standup runs until 10:45.", facts.values) == []
+        assert facts.values.facts[7].words == "until 10:45 AM"
+
+    def test_an_earlier_events_end_stays_typeable_after_a_later_event(self) -> None:
+        events = [
+            BriefingEvent(date="2026-11-11", start="10:30", end="10:45", title="Standup"),
+            BriefingEvent(date="2026-11-11", start="12:00", end="13:00", title="Lunch"),
+        ]
+
+        facts = _facts(Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]))
+
+        assert slot_problems("message", "Standup runs until 10:45.", facts.values) == []
 
     def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
         def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
@@ -842,6 +853,46 @@ class TestTheWeekRecap:
         assert lines[lines.index("[GOALS THIS WEEK]") + 1] == (
             '- "Ship Atlas": nothing linked to it finished, 0 finished, 2 open'
             " | stuck a week or more: Atlas press; also item 1 above (say each only once, as its item)"
+        )
+
+    def test_every_goal_todo_the_brief_places_is_named_by_its_item(self) -> None:
+        def placed(title: str) -> tuple[BriefingItem, BriefCandidate]:
+            return (
+                BriefingItem(text=title, kind=ItemState.YOU, action=BriefAction.REVIEW),
+                BriefCandidate(
+                    origin=CandidateOrigin.BACKLOG,
+                    source="gaia",
+                    app="GAIA",
+                    state=ItemState.YOU,
+                    title=title,
+                ),
+            )
+
+        goal = GoalState(
+            id="g1",
+            statement="Ship Atlas",
+            origin=GoalOrigin.MEMORY,
+            done=0,
+            open=2,
+            linked=["Atlas pricing", "Atlas press"],
+            stalled=["Atlas pricing", "Atlas press"],
+        )
+        sources = FactSources(
+            artifacts={},
+            open_todos=0,
+            calendar=CalendarRead(),
+            event_items={},
+            span=WEEK_AHEAD,
+            todos_note=None,
+            recap=WeekRecap(series=[], goals=[goal]),
+        )
+
+        chosen = _chosen(placed("Atlas pricing"), placed("Atlas press"))
+        lines = _facts(chosen, sources).block.splitlines()
+
+        assert lines[lines.index("[GOALS THIS WEEK]") + 1] == (
+            '- "Ship Atlas": nothing linked to it finished, 0 finished, 2 open'
+            " | stuck a week or more: also item 1, item 2 above (say each only once, as its item)"
         )
 
 

@@ -195,6 +195,22 @@ class TestMongoInventory:
             {"$or": [{"user_id": UID}, {"user_email": email}]}
         )
         per_collection["fs.chunks"].count_documents.assert_not_called()
+
+    def test_link_reports_are_counted_by_the_user_and_by_what_they_reported(self) -> None:
+        db = MagicMock()
+        db.list_collection_names.return_value = ["link_reports"]
+        reports = MagicMock()
+        reports.count_documents.side_effect = [0, 2]
+        db.__getitem__.side_effect = {"link_reports": reports}.__getitem__
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
+            bucket_cls.return_value.find.return_value = []
+            counts = _mongo_inventory(db, UID, "user@example.com")
+
+        assert counts == {"link_reports": 2}
+        assert reports.count_documents.call_args_list[-1] == call(
+            {"$or": [{"user_id": UID}, {"reporter_key": UID}]}
+        )
         bucket_cls.assert_called_once_with(db)
         bucket_cls.return_value.find.assert_called_once_with({"metadata.user_id": UID})
 
@@ -467,7 +483,7 @@ class TestDeleteNewStores:
         d = _footprint()
         reports = MagicMock()
         reports.delete_many.side_effect = [
-            MagicMock(deleted_count=0),
+            MagicMock(deleted_count=1),
             MagicMock(deleted_count=2),
         ]
         users = MagicMock()
@@ -482,10 +498,10 @@ class TestDeleteNewStores:
             {"user_id": UID},
             {"reporter_key": UID},
         ]
-        assert "[mongo] link_reports: deleted 2" in capsys.readouterr().out
+        assert "[mongo] link_reports: deleted 3" in capsys.readouterr().out.splitlines()
 
     @pytest.mark.regression
-    async def test_every_pinned_snapshots_bytes_are_deleted(self) -> None:
+    async def test_every_pinned_snapshots_bytes_are_deleted(self, capsys: Any) -> None:
         snapshots = [
             LinkSnapshot.model_construct(content_id="c-1"),
             LinkSnapshot.model_construct(content_id="c-2"),
@@ -498,6 +514,10 @@ class TestDeleteNewStores:
             await _delete_link_content(d)
 
         assert delete.await_args_list == [call(UID, snapshots[0]), call(UID, snapshots[1])]
+        assert capsys.readouterr().out.splitlines() == [
+            "[link_content] deleted c-1",
+            "[link_content] deleted c-2",
+        ]
 
     @pytest.mark.regression
     async def test_every_brief_edition_image_is_deleted(self, capsys: Any) -> None:
@@ -1078,6 +1098,10 @@ class TestBuildFootprint:
         db.e2b_sandboxes.distinct.return_value = ["sbx-1"]
         db.conversations.distinct.return_value = ["conv-1"]
         db.briefings.distinct.return_value = ["k-1"]
+        snapshot = {"filename": "a.pdf", "mime": "application/pdf", "size_bytes": 3}
+        db.short_links.find.return_value = [
+            {"snapshot": {**snapshot, "render": "pdf", "content_id": "c-1"}}
+        ]
         user = _user_doc(platform_links={"telegram": {"id": "tg-1"}})
 
         d, mocks = await _run_build_footprint(
@@ -1109,6 +1133,10 @@ class TestBuildFootprint:
         assert d.workos_users == [workos_user]
         assert d.jfs_path == JFS_USERS_ROOT / UID
         assert d.edition_keys == ["k-1"]
+        assert [(p.filename, p.content_id) for p in d.link_snapshots] == [("a.pdf", "c-1")]
+        db.short_links.find.assert_called_once_with(
+            {"user_id": UID, "snapshot.content_id": {"$ne": None}}, {"snapshot": 1}
+        )
         db.briefings.distinct.assert_called_once_with(
             "edition.key", {"user_id": UID, "edition.key": {"$ne": None}}
         )
@@ -1125,6 +1153,7 @@ class TestBuildFootprint:
         assert "conversations (checkpoint threads to sweep): 1" in out
         assert "platform_links: ['telegram']" in out
         assert "brief edition images: 1" in out.splitlines()
+        assert "shared-link snapshots: 1" in out.splitlines()
 
     async def test_an_empty_postgres_inventory_prints_none_not_an_empty_dict(
         self, capsys: Any

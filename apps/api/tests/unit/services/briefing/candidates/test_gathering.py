@@ -11,7 +11,7 @@ import pytest
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
-from app.constants.briefing import BRIEF_POOL_PER_SOURCE, BriefAction
+from app.constants.briefing import BRIEF_POOL_PER_SOURCE, BriefAction, BriefItemSource
 from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL, WaitingOn
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
@@ -29,6 +29,7 @@ from app.models.brief_candidate_models import (
     OutsideRef,
 )
 from app.models.brief_item_models import ItemState
+from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingEvent
 from app.models.scout_models import (
     RememberedSignal,
@@ -536,3 +537,61 @@ class TestEachSourceIsCappedByRank:
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 
         assert [c.title for c in gathered.pool.values()] == [e.title for e in events]
+
+
+class TestAHeldResultSayingWhatAnotherSaysIsFolded:
+    @staticmethod
+    def _held(held_id: str, title: str, text: str) -> PendingBriefItemDocument:
+        return PendingBriefItemDocument(
+            id=held_id,
+            user_id=USER_ID,
+            source=BriefItemSource.WORKFLOW,
+            source_id=f"wf-{held_id}",
+            source_title=title,
+            conversation_id=f"conv-{held_id}",
+            text=text,
+        )
+
+    async def test_a_held_result_titled_like_another_candidate_or_an_earlier_held_one_is_folded(
+        self,
+    ) -> None:
+        approve = _tracked("t1", "Approve  the MSA: signed", NEEDS_REPLY_LABEL)
+        held = [
+            self._held("h-msa", "approve the msa", "Signed"),
+            self._held("h-digest", "Weekly digest", "Revenue up 4%"),
+            self._held("h-digest-again", "WEEKLY digest", "revenue up 4%"),
+            self._held("h-invoice", "Invoice", "Paid in full"),
+        ]
+        event = BriefingEvent(date="2026-11-11", start="09:00", title="Standup")
+        sources = CandidateSources(
+            TrackedWork(blocked=[approve]),
+            _scouts(),
+            [event],
+            CLOCK.day_start(days_ago=-1),
+            [],
+            held=held,
+        )
+
+        gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+        assert [c.title for c in gathered.pool.values()] == [
+            "Approve  the MSA: signed",
+            "Weekly digest: Revenue up 4%",
+            "Invoice: Paid in full",
+            "Standup",
+        ]
+        assert gathered.duplicate_held_ids == ["h-msa", "h-digest-again"]
+
+
+async def test_reminders_are_read_from_the_users_day_start_to_the_spans_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    find = AsyncMock(return_value=[])
+    monkeypatch.setattr(reminder_repository, "find_scheduled_between", find)
+    due_before = CLOCK.day_start(days_ago=-1)
+
+    await gather_candidates(
+        USER_ID, CLOCK, NOW, NOW, CandidateSources(TrackedWork(), _scouts(), [], due_before, [])
+    )
+
+    find.assert_awaited_once_with(USER_ID, CLOCK.day_start(), due_before)

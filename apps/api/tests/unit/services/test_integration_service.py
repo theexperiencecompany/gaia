@@ -3128,6 +3128,7 @@ class TestConnectSelfIntegration:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://accounts.google.com/auth"
+        mock_update_status.assert_awaited_once_with(USER_ID, "gcal", IntegrationStatus.CREATED)
 
     async def test_connect_unsupported_provider_returns_error(self):
         result = await connect_self_integration(

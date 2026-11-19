@@ -11,7 +11,7 @@ be served by a single-id entity cache.
 from datetime import UTC, datetime
 from typing import ClassVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import (
     BriefForm,
@@ -30,6 +30,8 @@ from app.utils.errors import AppError
 
 
 class _BriefingOwner(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     user_id: str
 
 
@@ -155,7 +157,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
     async def owner_of_edition(self, key: str) -> str | None:
         """Return who owns the brief an edition key belongs to, for a caller holding its signed URL."""
         owner = await self._find_one_projected(
-            {"edition.key": key}, {"user_id": 1, "_id": 0}, _BriefingOwner
+            {"edition.key": key}, {"user_id": True, "_id": 0}, _BriefingOwner
         )
         return owner.user_id if owner is not None else None
 
@@ -231,7 +233,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         self, user_id: str, briefing_id: str, step: DeliveryStep, reached: list[str]
     ) -> None:
         """Record one delivery step done, and the channels it reached the user on."""
-        await self._apply_raw_update(
+        await self._apply_raw_update(  # pragma: no mutate — no cache_policy: scope is inert
             {"_id": briefing_id, "user_id": user_id},
             {
                 "$addToSet": {

@@ -166,7 +166,9 @@ class TestEditionRendering:
             make_payload(template_family="edition")
 
     async def test_a_quiet_note_has_no_edition_to_render(self, harness: Harness) -> None:
-        with pytest.raises(ValueError, match="quiet note"):
+        with pytest.raises(
+            ValueError, match="^a quiet note is drawn in no family, so it has no edition to render$"
+        ):
             await host(make_payload(template_family=None))
 
         assert harness.render_calls == []

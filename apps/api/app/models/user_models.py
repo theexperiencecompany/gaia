@@ -607,6 +607,8 @@ class UserHours(HoldsQuietHours):
 class NamedEmailRow(BaseModel):
     """Projection of a user's id, name and email: all the derived-name cleanup reads."""
 
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     name: str
     email: str

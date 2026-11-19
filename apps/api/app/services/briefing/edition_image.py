@@ -60,11 +60,18 @@ def _encoded(png: bytes) -> dict[EditionVariant, bytes]:
         image = rendered.convert("RGBA")
     image.thumbnail((EDITION_DELIVERY_MAX_WIDTH_PX, image.height), Image.Resampling.LANCZOS)
     lossless = io.BytesIO()
-    image.save(lossless, format="PNG")
+    image.save(
+        lossless,
+        format="PNG",  # pragma: no mutate — Pillow upper-cases format
+    )
     flattened = Image.new("RGB", image.size, EDITION_JPG_BACKGROUND)
     flattened.paste(image, mask=image.getchannel("A"))
     compact = io.BytesIO()
-    flattened.save(compact, format="JPEG", quality=EDITION_JPG_QUALITY)
+    flattened.save(
+        compact,
+        format="JPEG",  # pragma: no mutate — Pillow upper-cases format
+        quality=EDITION_JPG_QUALITY,
+    )
     return {EditionVariant.PNG: lossless.getvalue(), EditionVariant.JPG: compact.getvalue()}
 
 
@@ -74,11 +81,11 @@ async def store_edition(owner_id: str, briefing_id: str, png: bytes) -> str:
     encoded = await asyncio.to_thread(_encoded, png)
     store = link_content_store()
     for variant, content in encoded.items():
-        await store.put(
+        await store.put(  # pragma: no mutate — every served store discards resource_type
             owner_id,
             _blob(key, variant),
             content,
-            resource_type="image",
+            resource_type="image",  # pragma: no mutate — every served store discards it
             kind=BlobKind.GENERATED_IMAGE,
             content_type=EDITION_CONTENT_TYPES[variant],
         )
@@ -124,6 +131,10 @@ async def signed_edition(
     if owner_id is None:
         return None
     try:
-        return await link_content_store().read(owner_id, _blob(key, variant), "")
+        return await link_content_store().read(  # pragma: no mutate — served stores discard url
+            owner_id,
+            _blob(key, variant),
+            "",  # pragma: no mutate — served stores read by key and discard the url
+        )
     except FileNotFoundError:
         return None

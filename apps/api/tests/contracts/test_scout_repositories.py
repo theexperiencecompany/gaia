@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from pymongo.errors import BulkWriteError
 import pytest
 
 from app.constants.scouts import SIGNAL_MEMORY_RETENTION
@@ -90,6 +91,19 @@ class TestSignalMemory:
 
         assert writes == [5]
         assert len(await memory.find_for("owner", signals)) == 5
+
+    async def test_one_sighting_that_fails_to_write_does_not_drop_the_rest(
+        self, memory, raw_collection
+    ):
+        await raw_collection.create_index("external_id", unique=True)
+        await memory.record_seen("someone-else", [_signal("1", "Todo")], _START)
+
+        with pytest.raises(BulkWriteError):
+            await memory.record_seen("owner", [_signal("1", "Todo"), _signal("2", "Todo")], _START)
+
+        assert [m.external_id for m in await memory.find_for("owner", [_signal("2", None)])] == [
+            "2"
+        ]
 
     async def test_marking_shown_counts_each_delivery_for_that_user_only(self, memory):
         signals = [_signal("1", "Todo"), _signal("2", "Todo")]

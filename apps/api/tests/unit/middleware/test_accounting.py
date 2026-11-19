@@ -912,7 +912,7 @@ async def test_a_ledger_that_is_spent_out_stops_the_next_call_before_the_model_r
     [reply] = response.result
     assert reply.response_metadata[BUDGET_STOP_METADATA_KEY] is True
     [warning] = [w for w in event["warnings"] if w["msg"] == "ledger_stop"]
-    assert warning["agent_name"] == "brief_scout"
+    assert (warning["event_name"], warning["agent_name"]) == ("ledger_stop", "brief_scout")
 
 
 @pytest.mark.regression

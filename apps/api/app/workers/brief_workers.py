@@ -25,10 +25,10 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 def build_brief_worker() -> Worker:
     """Build the arq Worker that runs brief fires, BRIEF_QUEUE_MAX_JOBS at a time."""
-    fire = arq_function(
+    # mutmut reads a keyword argument's pragma on its call's first line.
+    fire = arq_function(  # pragma: no mutate — name=None registers the same name
         execute_workflow_by_id,
-        # The task's own name is the same string, so dropping it is an equivalent mutant.
-        name=EXECUTE_WORKFLOW_TASK,  # pragma: no mutate -- equivalent, see above
+        name=EXECUTE_WORKFLOW_TASK,
         timeout_seconds=WORKER_JOB_TIMEOUT_SECONDS,
     )
     return queue_worker(BRIEF_QUEUE, [fire], max_jobs=BRIEF_QUEUE_MAX_JOBS)

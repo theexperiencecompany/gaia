@@ -14,6 +14,7 @@ import pytest
 from app.api.v1.endpoints.briefings import (
     get_briefing,
     get_postmarks,
+    get_stamp_art,
     list_briefings,
     read_briefing_editions,
     read_briefing_schedule,
@@ -128,7 +129,18 @@ async def test_a_stamps_art_is_served_by_the_deployment_itself(client: AsyncClie
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/webp"
+    assert response.headers["cache-control"] == "public, max-age=86400"
     assert response.content == stamp_art("tokyo").read_bytes()
+
+
+async def test_a_stamp_is_webp_even_on_a_host_whose_mime_table_lacks_it(
+    client: AsyncClient,
+) -> None:
+    """Python 3.12's own table has no .webp; a slim image without /etc/mime.types guesses nothing."""
+    with patch("starlette.responses.guess_type", return_value=(None, None)):
+        response = await client.get(f"{BASE}/stamps/tokyo.webp")
+
+    assert response.headers["content-type"] == "image/webp"
 
 
 @pytest.mark.parametrize("slug", ["atlantis", "..%2Fcities"])
@@ -136,6 +148,19 @@ async def test_a_stamp_off_the_catalogue_is_a_404(client: AsyncClient, slug: str
     response = await client.get(f"{BASE}/stamps/{slug}.webp")
 
     assert response.status_code == 404
+
+
+async def test_an_uncatalogued_city_says_its_stamp_is_not_found(client: AsyncClient) -> None:
+    response = await client.get(f"{BASE}/stamps/atlantis.webp")
+
+    assert (response.status_code, response.json()["message"]) == (404, "Stamp not found")
+
+
+async def test_serving_a_stamp_tags_the_wide_event_with_its_city() -> None:
+    async with captured_wide_event() as event:
+        await get_stamp_art("tokyo")
+
+    assert event["briefing"] == {"operation": "stamp_art", "city_slug": "tokyo"}
 
 
 async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> None:
@@ -369,7 +394,7 @@ class TestBriefingScheduleEndpoints:
                 "app.services.user_service.user_repository.get",
                 new_callable=AsyncMock,
                 return_value=UserDocument(id=FAKE_USER_ID),
-            ),
+            ) as get_user,
             patch(STATE_FOR, new_callable=AsyncMock, return_value=_state(schedule=wanted)),
         ):
             response = await client.put(
@@ -393,6 +418,7 @@ class TestBriefingScheduleEndpoints:
             hour=7,
             workflow_deliveries={},
         )
+        get_user.assert_awaited_once_with(FAKE_USER_ID)
 
     async def test_new_deliveries_are_refused_unless_briefs_are_being_turned_off(
         self, client: AsyncClient

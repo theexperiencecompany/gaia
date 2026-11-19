@@ -1,26 +1,17 @@
 """What the engine reads for each system workflow: the briefs' declared behaviour, a user's for the rest."""
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
-    BriefingFrequency,
 )
-from app.db.repositories.briefing_state import briefing_state_repository
-from app.models.brief_settings_models import BriefingSchedule
-from app.models.briefing_state_models import BriefingStateDocument
-from app.models.user_models import UserDocument
 from app.services.system_workflows.behaviour import USER_WORKFLOW_BEHAVIOUR
 from app.services.system_workflows.registry import (
     UNLISTED_KEYS,
     UNPAUSABLE_KEYS,
     behaviour_of,
 )
-from app.workers.brief_slots import slot_minute
-from tests.factories import make_user_id
 
 pytestmark = pytest.mark.unit
 
@@ -41,25 +32,6 @@ def test_a_brief_is_unlisted_unpausable_and_silent_on_failure(key: str) -> None:
         False,
         False,
     )
-
-
-@pytest.mark.parametrize(
-    ("key", "cron"),
-    [(DAILY_BRIEFING_WORKFLOW_KEY, "8 * * 1-5"), (WEEKLY_DIGEST_WORKFLOW_KEY, "17 * * 0")],
-)
-async def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cron: str) -> None:
-    cron_for = behaviour_of(key).cron_for
-    user = UserDocument(id=make_user_id())
-    stored = BriefingStateDocument(
-        user_id=user.id, schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS)
-    )
-
-    assert cron_for is not None
-    with patch.object(
-        briefing_state_repository, "state_for", AsyncMock(return_value=stored)
-    ) as state_for:
-        assert await cron_for(user) == f"{slot_minute(user.id)} {cron}"
-    state_for.assert_awaited_once_with(user.id)
 
 
 def test_the_key_sets_the_engine_filters_by_are_the_briefs() -> None:

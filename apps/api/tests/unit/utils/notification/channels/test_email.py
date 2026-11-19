@@ -32,7 +32,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing import edition_email, edition_image
-from app.services.briefing.notification_email import EditionEmail
+from app.services.briefing.notification_email import EditionEmail, edition_email as edition_email_of
 from app.services.email.models import EmailMessage
 from app.services.notification_service import EMAIL_RENDERERS
 from app.utils.email_utils import normalize_email
@@ -278,6 +278,15 @@ class TestEmailChannelAdapterContract:
     ) -> None:
         with pytest.raises(ValidationError, match=message):
             _make_request(kind=NotificationKind.BRIEFING_DAILY, details=missing)
+
+    @pytest.mark.asyncio
+    async def test_an_edition_email_of_a_notification_with_no_brief_details_fails_loud(
+        self,
+    ) -> None:
+        with pytest.raises(
+            TypeError, match="^an edition email needs a brief edition's details, not None$"
+        ):
+            await edition_email_of(_make_request())
 
     @pytest.mark.asyncio
     async def test_transform_fails_loud_on_a_card_without_its_hosted_edition(

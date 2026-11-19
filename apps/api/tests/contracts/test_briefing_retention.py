@@ -8,9 +8,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import io
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from PIL import Image
 import pytest
+import time_machine
 
 from app.config.settings import settings
 from app.constants.briefing import BRIEFING_RETENTION, BriefingKind
@@ -100,3 +102,19 @@ async def test_an_expired_brief_goes_with_its_image_and_a_younger_one_stays(
         f"brief-edition-{kept.edition.key}.jpg",
         f"brief-edition-{kept.edition.key}.png",
     ]
+
+
+async def test_the_cutoff_is_a_utc_instant_whatever_zone_the_worker_runs_in(
+    raw_collection,
+) -> None:
+    with time_machine.travel(datetime(2026, 11, 19, 12, tzinfo=ZoneInfo("America/New_York"))):
+        just_past = await _brief(
+            "2025-11-18",
+            with_edition=False,
+            age=BRIEFING_RETENTION + timedelta(hours=1),
+            raw_collection=raw_collection,
+        )
+
+        assert await sweep_expired_briefings({}) == "expired=1 images=0"
+
+    assert await briefing_repository.get(just_past.id, user_id=USER_ID) is None

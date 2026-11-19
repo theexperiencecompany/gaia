@@ -327,7 +327,9 @@ class TestStamp:
         assert ed["stamp"] == stamp_for("paris")
 
     def test_an_air_mail_edition_without_a_drawn_city_fails_loud(self) -> None:
-        with pytest.raises(ValueError, match="needs the stamp_city"):
+        with pytest.raises(
+            ValueError, match="^an Air Mail edition needs the stamp_city drawn for it$"
+        ):
             _build(make_briefing_payload(), family=EditionFamily.POSTAL)
 
     def test_other_families_carry_no_stamp(self) -> None:

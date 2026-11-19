@@ -247,6 +247,47 @@ class TestTrackedTodos:
 
         assert (stands_part(1, found, CLOCK), found.outcome) == (f"stands: {stands}", outcome)
 
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"waiting_on": WaitingOn.EVENT},
+            {"waiting_on": WaitingOn.TIME, "pause_reason": DeactivationReason.INTEGRATION_EXPIRED},
+        ],
+        ids=["untimed-wait", "paused"],
+    )
+    def test_work_not_waiting_on_a_time_names_no_day_gaia_is_back(
+        self, fields: dict[str, Any]
+    ) -> None:
+        doc = make_todo(
+            "Chase the venue", GAIA_TRACKED_LABEL, scheduled_at=NOW + timedelta(days=2), **fields
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
+
+        assert found.back_at is None
+
+    def test_work_waiting_on_a_time_is_back_the_day_it_is_scheduled(self) -> None:
+        back = NOW + timedelta(days=2)
+        doc = make_todo(
+            "Chase the venue", GAIA_TRACKED_LABEL, waiting_on=WaitingOn.TIME, scheduled_at=back
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
+
+        assert found.back_at == back
+
+    def test_what_waits_on_the_user_never_says_where_gaias_work_stands(self) -> None:
+        asked = make_todo(
+            "Pick the venue",
+            WAITING_FOR_REPLY_LABEL,
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=NOW + timedelta(days=2),
+        )
+
+        [found] = waiting_candidates(TrackedWork(blocked=[asked]))
+
+        assert (found.standing, found.back_at) == (None, None)
+
     def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
         asked = make_todo(
             "Pick the venue",
@@ -829,6 +870,7 @@ class TestFailedRuns:
             "note",
             None,
         )
+        assert str(found.seen_as) == "workflow:wf-sync"
 
     async def test_one_item_per_failed_workflow_naming_its_latest_error(
         self, monkeypatch: pytest.MonkeyPatch

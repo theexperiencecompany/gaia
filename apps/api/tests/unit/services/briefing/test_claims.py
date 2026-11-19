@@ -43,6 +43,21 @@ class TestAStateTheFactDoesNotHold:
 
         assert claim_problems("message", written, values) == []
 
+    def test_the_facts_own_word_is_quoted_whatever_its_case(self) -> None:
+        values = SlotValues(
+            facts={
+                4: BriefFact(title="Deploy", kind=ItemState.YOU, words="Is it Done on staging?")
+            },
+            counts={},
+        )
+
+        assert claim_problems("message", "Is [the deploy](fact:4) done on staging?", values) == []
+
+    def test_a_problem_in_one_sentence_stays_named_after_a_clean_one(self) -> None:
+        text = "[The payout](fact:1) is done. Nothing else today."
+
+        assert claim_problems("message", text, _VALUES) == [_FAILED_SAID_DONE]
+
     def test_a_sentence_that_negates_may_say_it_is_not_done(self) -> None:
         assert claim_problems("message", "[The payout](fact:1) is not done.", _VALUES) == []
 
@@ -78,6 +93,23 @@ class TestAFigureOfAnotherFact:
         )
 
         assert claim_problems("message", "[Maya](fact:1) wrote 3 times.", values) == []
+
+    @pytest.mark.parametrize(
+        ("own", "written"),
+        [
+            (BriefFact(title="Invoice 42"), "[[fact:1]] for invoice 42 is ready."),
+            (BriefFact(title="Board call", time="4:30 PM"), "[[fact:1]] starts at 4:30 PM."),
+            (BriefFact(title="Reply to Maya", count=5), "[[fact:1]] holds 5 asks."),
+        ],
+        ids=["its-title", "its-time", "its-count"],
+    )
+    def test_a_facts_own_figure_may_be_said_though_another_facts_line_says_it_too(
+        self, own: BriefFact, written: str
+    ) -> None:
+        other = BriefFact(title="Seats", time="4:30 PM", words="42 seats, 5 left")
+        values = SlotValues(facts={1: own, 2: other}, counts={})
+
+        assert claim_problems("message", written, values) == []
 
     @pytest.mark.regression
     def test_a_figure_that_names_another_fact_by_its_title_is_not_pinned_on_the_slotted_one(
@@ -159,6 +191,12 @@ class TestCreditForFinishedWork:
 
     def test_the_users_work_credited_to_gaia_by_its_slot_is_named(self) -> None:
         assert claim_problems("message", "I've completed [[fact:1]].", self._VALUES) == [
+            "the message credits GAIA with facts 1, but the user finished them; "
+            "say they finished them, as their lines do"
+        ]
+
+    def test_a_curly_apostrophe_credit_is_read_as_the_plain_one(self) -> None:
+        assert claim_problems("message", "I\u2019ve completed [[fact:1]].", self._VALUES) == [
             "the message credits GAIA with facts 1, but the user finished them; "
             "say they finished them, as their lines do"
         ]

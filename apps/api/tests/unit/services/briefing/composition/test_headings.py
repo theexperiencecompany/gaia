@@ -106,6 +106,38 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
     assert model.await_args.kwargs["options"].schema_held is True
 
 
+async def test_each_group_is_its_own_paragraph(model: AsyncMock) -> None:
+    two_groups = BriefComposition.model_validate(
+        {
+            "blocks": [
+                {
+                    "kind": "items",
+                    "state": "needs_you",
+                    "heading": "Waiting on you",
+                    "items": [_item(1, "Offsite venues", action="review")],
+                },
+                {
+                    "kind": "items",
+                    "state": "done",
+                    "heading": "Landed overnight",
+                    "items": [_item(2, "Investor update", outcome="sent")],
+                },
+            ]
+        }
+    )
+    model.return_value = HeadingVerdicts(
+        verdicts=[HeadingVerdict(block=b, why="fits", misfits=[], fits=True) for b in (1, 2)]
+    )
+
+    await heading_problems(USER_ID, two_groups, POOL)
+
+    assert (
+        "- item 1: Offsite venues | waiting on you | action review\n"
+        "\n"
+        'block 2, heading "Landed overnight", state done:\n'
+    ) in model.await_args.args[1]
+
+
 async def test_item_titles_are_fenced_as_data(model: AsyncMock) -> None:
     await heading_problems(USER_ID, COMPOSITION, POOL)
 

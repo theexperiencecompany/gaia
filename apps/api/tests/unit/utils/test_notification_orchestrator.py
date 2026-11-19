@@ -30,6 +30,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
+from app.utils.notification.channels.email import PlainEmail
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,17 @@ class TestOrchestratorInit:
         assert "api_call" in orch.action_handlers
         assert "redirect" in orch.action_handlers
         assert "modal" in orch.action_handlers
+
+    async def test_the_email_channel_renders_with_the_renderers_it_was_given(self) -> None:
+        rendered = PlainEmail(title="Rendered", body="by the kind's renderer")
+        renderer = AsyncMock(return_value=rendered)
+        orch = NotificationOrchestrator(
+            email_renderers={NotificationKind.TODO: renderer}, storage=MagicMock()
+        )
+        request = _make_request()
+
+        assert await orch.channel_adapters["email"].transform(request) is rendered
+        renderer.assert_awaited_once_with(request)
 
     def test_custom_storage_is_used(self) -> None:
         """When a custom storage object is passed it replaces the default."""

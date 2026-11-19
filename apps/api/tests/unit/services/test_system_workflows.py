@@ -24,7 +24,11 @@ from app.models.quiet_hours_models import QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.services.system_workflows.provisioner import (
+    _switch_on_or_wait_for_pro,
+    provision_system_workflows,
+    reset_system_workflow_to_default,
+)
 from app.workers.brief_slots import slot_minute
 
 MODULE = "app.services.system_workflows.provisioner"
@@ -179,6 +183,34 @@ class TestProvisionSystemWorkflows:
 
         # No notification because nothing was created
         mock_notify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
+    @patch(f"{MODULE}._switch_on_or_wait_for_pro", new_callable=AsyncMock)
+    @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_a_workflow_created_concurrently_does_not_stop_the_next_one(
+        self,
+        mock_repo: MagicMock,
+        mock_workflow_svc: MagicMock,
+        mock_notify: AsyncMock,
+        _switch: AsyncMock,
+        _install: AsyncMock,
+    ) -> None:
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
+        mock_workflow_svc.create_workflow = AsyncMock(
+            side_effect=[DuplicateKeyError("dup"), MagicMock()]
+        )
+        second = _make_workflow_request(title="Second")
+
+        with patch.dict(
+            f"{MODULE}.SYSTEM_WORKFLOWS_BY_INTEGRATION",
+            {"gmail": [("first", _make_factory()), ("second", _make_factory(second))]},
+        ):
+            await provision_system_workflows("user-1", "gmail", "Gmail")
+
+        mock_notify.assert_awaited_once_with("user-1", "Gmail", [second])
 
     @pytest.mark.asyncio
     @pytest.mark.regression
@@ -1316,6 +1348,18 @@ class TestActivationForPayingUsers:
 
         with pytest.raises(RuntimeError, match="composio down"):
             await _switch_on_or_wait_for_pro("wf-9", "user-1")
+
+    @patch(f"{MODULE}.WorkflowService")
+    @patch(f"{MODULE}.is_paid", new_callable=AsyncMock, return_value=True)
+    async def test_a_workflow_gone_before_it_is_switched_on_fails_loud_naming_it(
+        self, _is_paid: AsyncMock, mock_service: MagicMock
+    ) -> None:
+        mock_service.activate_workflow = AsyncMock(return_value=None)
+
+        with pytest.raises(LookupError) as raised:
+            await _switch_on_or_wait_for_pro("wf-9", "user-1")
+
+        assert str(raised.value) == "System workflow wf-9 vanished right after it was created"
 
     @patch(f"{MODULE}.install_recipe", new_callable=AsyncMock)
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)

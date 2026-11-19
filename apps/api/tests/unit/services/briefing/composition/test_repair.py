@@ -171,6 +171,14 @@ class TestTheLead:
 
         assert repaired(composition, MANY) == _of(_lead(_item(1)), _group(_item(2)))
 
+    def test_an_item_placed_twice_in_one_group_under_another_title_stays_once(self) -> None:
+        composition = _of(_group(_item(1), _item(1, title="Ask one again")))
+
+        assert repaired(composition, MANY) == _of(_group(_item(1)))
+
+    def test_an_item_the_pool_lacks_is_dropped_and_the_rest_of_its_group_kept(self) -> None:
+        assert repaired(_of(_group(_item(99), _item(1))), MANY) == _of(_group(_item(1)))
+
     @pytest.mark.regression
     def test_a_second_item_the_composer_titles_as_an_earlier_one_is_dropped(self) -> None:
         """Replay: two todos from Mercury's repeated email both read "Mercury application questions"."""
@@ -231,6 +239,50 @@ class TestAnApprovalNoBriefHasShown:
         )
 
         assert repaired(composition, pool) == _of(_group(_item(1, title="Connect integration")))
+
+    def test_more_than_a_group_holds_are_placed_in_groups_of_at_most_five(self) -> None:
+        approvals = [APPROVAL.model_copy(update={"title": f"Approve {n}"}) for n in range(1, 7)]
+        owed = [_item(n, action=BriefAction.APPROVE, title=f"Approve {n}") for n in range(1, 7)]
+
+        assert repaired(_of(NOTE), _pool(*approvals)) == _of(
+            PLACED_APPROVAL.model_copy(update={"items": owed[:5]}),
+            PLACED_APPROVAL.model_copy(update={"items": owed[5:]}),
+            NOTE,
+        )
+
+    def test_one_the_composer_placed_stays_where_it_put_it(self) -> None:
+        placed = ComposedItems(
+            kind="items",
+            state=GroupState.NEEDS_YOU,
+            heading="Sign-offs",
+            items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
+        )
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+
+        assert repaired(_of(placed, NOTE), pool) == _of(placed, NOTE)
+
+    def test_one_the_composer_groups_costs_no_other_item_its_place(self) -> None:
+        others = [_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS)]
+        pool = _pool(*others, APPROVAL)
+        approval = _item(MAX_BRIEF_ITEMS, action=BriefAction.APPROVE, title="Connect")
+        composition = _of(
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS)), approval),
+        )
+
+        assert repaired(composition, pool) == composition
+
+    def test_one_the_composer_leads_with_costs_no_other_item_its_place(self) -> None:
+        others = [_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS)]
+        pool = _pool(*others, APPROVAL)
+        lead = _lead(_item(MAX_BRIEF_ITEMS, action=BriefAction.APPROVE, title="Connect"))
+        composition = _of(
+            lead,
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS))),
+        )
+
+        assert repaired(composition, pool) == composition
 
     def test_it_takes_its_place_inside_the_brief_cap(self) -> None:
         pool = _pool(*(_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS + 1)), APPROVAL)

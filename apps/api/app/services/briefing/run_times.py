@@ -66,7 +66,7 @@ def _days_phrase(days: frozenset[int]) -> str:
 def _past_quiet_hours(hour: int, quiet_hours: QuietHours) -> int:
     """Return hour, or the hour the quiet hours covering it end at."""
     # Quiet hours read only the hour on the clock; any day stands in for the brief's.
-    slot = datetime.min.replace(hour=hour, tzinfo=UTC)
+    slot = datetime.min.replace(hour=hour, tzinfo=UTC)  # pragma: no mutate — only .hour is read
     return quiet_hours.end_after(slot).hour
 
 
@@ -104,7 +104,8 @@ def describe_briefing_schedule(slots: Mapping[str, BriefSlot]) -> str:
     if not runs:
         return "no briefs at all"
     if DAILY_BRIEFING_WORKFLOW_KEY not in slots:
-        return f"only {', plus '.join(runs)}, no daily brief"
+        [weekly] = runs
+        return f"only {weekly}, no daily brief"
     return ", plus ".join(runs)
 
 
@@ -115,7 +116,7 @@ def next_brief_lands(slots: Mapping[str, BriefSlot], now_local: datetime) -> str
     ahead, at = min(
         (days, slot.at)
         for slot in slots.values()
-        for days in range(8)
+        for days in range(8)  # pragma: no mutate — day 7 repeats day 0's weekday, so 8+ never wins
         if (now_local + timedelta(days=days)).weekday() in slot.days
         and (days or now_local.time() < slot.at)
     )

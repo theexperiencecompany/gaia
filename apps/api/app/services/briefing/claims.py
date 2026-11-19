@@ -56,7 +56,10 @@ def _said_of(fact: BriefFact) -> frozenset[str]:
 
 
 def _in_own_words(word: str, fact: BriefFact) -> bool:
-    return re.search(rf"\b{re.escape(word)}\b", fact.words or "", re.IGNORECASE) is not None
+    return (
+        fact.words is not None
+        and re.search(rf"\b{re.escape(word)}\b", fact.words, re.IGNORECASE) is not None
+    )
 
 
 def _named(sentence: str, values: SlotValues) -> set[int]:

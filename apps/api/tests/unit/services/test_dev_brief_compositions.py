@@ -16,6 +16,12 @@ def test_a_family_without_charts_gets_the_chart_as_undrawn_and_draws_the_rest_in
     assert payload.artwork_id == "stamp-art"
 
 
+def test_a_postal_sample_carries_the_city_its_stamp_was_drawn_for() -> None:
+    payload = composed_payload("busy", EditionFamily.POSTAL, "stamp-art", stamp_city="tokyo")
+
+    assert payload.stamp_city == "tokyo"
+
+
 def test_a_family_that_draws_everything_leaves_nothing_undrawn() -> None:
     for composition in COMPOSITIONS:
         payload = composed_payload(composition, _DRAWS_EVERYTHING, None)

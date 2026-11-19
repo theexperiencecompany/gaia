@@ -6,8 +6,9 @@ the HIL sweep's timeout path, sweep re-dispatched executor runs, and
 reminder/workflow-triggered runs.
 """
 
+from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.services import latency_metrics
-from app.services.briefing.metrics import create_brief_run_series
+from app.services.briefing.metrics import FAILED, create_brief_run_series
 from app.services.links.metrics import LinkMintOutcome, create_link_mint_series
 from app.workers.metrics import REGISTRY as WORKER_REGISTRY
 
@@ -27,9 +28,15 @@ def test_every_latency_collector_is_served_by_the_worker_registry() -> None:
 def test_every_briefing_run_series_is_served_by_the_worker_before_its_first_run() -> None:
     create_brief_run_series()
 
-    for kind in ("daily", "weekly"):
-        labels = {"kind": kind, "outcome": "failed"}
-        assert WORKER_REGISTRY.get_sample_value("gaia_brief_run_total", labels) is not None
+    series = {
+        (sample.labels["kind"], sample.labels["outcome"])
+        for family in WORKER_REGISTRY.collect()
+        if family.name == "gaia_brief_run"
+        for sample in family.samples
+        if sample.name == "gaia_brief_run_total"
+    }
+    outcomes = [*(o.value for o in BriefingRunOutcome), FAILED]
+    assert series == {(kind.value, outcome) for kind in BriefingKind for outcome in outcomes}
 
 
 def test_the_link_mint_failure_series_is_served_by_the_worker_before_its_first_mint() -> None:

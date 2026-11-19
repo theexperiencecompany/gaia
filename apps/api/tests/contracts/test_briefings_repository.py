@@ -802,6 +802,30 @@ class TestBriefingsMarkOpened:
         assert await repo.mark_opened(user_id, "brief_missing") is None
 
 
+class TestBriefingsRetention:
+    async def test_expired_briefs_are_listed_oldest_first_up_to_the_limit(
+        self, repo, raw_collection
+    ):
+        now = datetime.now(UTC)
+        ages = {"2026-08-01": 3, "2026-08-02": 5, "2026-08-03": 4, "2026-08-04": 0}
+        ids: dict[str, str] = {}
+        for date, days in ages.items():
+            stored = await _upsert(
+                repo, "u-old", date, BriefingKind.DAILY, make_briefing_payload(), edition=_EDITION
+            )
+            await raw_collection.update_one(
+                {"_id": stored.id}, {"$set": {"created_at": now - timedelta(days=days)}}
+            )
+            ids[date] = stored.id
+
+        expired = await repo.list_expired(now - timedelta(days=1), limit=2)
+
+        assert [(b.id, b.user_id, b.edition_key) for b in expired] == [
+            (ids["2026-08-02"], "u-old", "edition-key"),
+            (ids["2026-08-03"], "u-old", "edition-key"),
+        ]
+
+
 class TestBriefingsDeliverySteps:
     async def test_each_step_and_each_channel_it_reached_is_recorded_once(self, repo):
         user_id = "u-channels"
@@ -824,6 +848,19 @@ class TestBriefingsDeliverySteps:
         assert fetched.delivered_channels == ["inapp", "email", "telegram"]
         assert fetched.delivery.done == [DeliveryStep.NOTIFICATION, DeliveryStep.CHAT]
         assert (fetched.delivery.held_ids, fetched.delivery.completed_at) == (["h1"], None)
+
+    async def test_completing_delivery_stamps_the_utc_instant_whatever_the_local_zone(self, repo):
+        user_id = "u-complete"
+        stored = await _upsert(
+            repo, user_id, "2026-08-06", BriefingKind.DAILY, make_briefing_payload(), edition=None
+        )
+
+        with local_timezone("Asia/Kolkata"):
+            await repo.complete_delivery(user_id, stored.id)
+
+        fetched = await repo.get(stored.id, user_id=user_id)
+        assert fetched is not None and fetched.delivery is not None
+        assert _is_now(fetched.delivery.completed_at)
 
     async def test_a_rerun_before_any_step_replans_its_delivery(self, repo):
         stored = await _upsert(

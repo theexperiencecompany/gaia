@@ -297,10 +297,12 @@ class TestReactivateUserTask:
         self, _user_exists: AsyncMock
     ) -> None:
         _user_exists.return_value = None
-        with patch(_REACTIVATE, new_callable=AsyncMock) as reactivate:
+        with patch(_REACTIVATE, new_callable=AsyncMock) as reactivate, patch(_LOG) as log:
             result = await reactivate_user_task({"job_try": 1}, "u1")
 
         reactivate.assert_not_awaited()
+        _user_exists.assert_awaited_once_with("u1")
+        log.set_ns.assert_called_once_with("reactivation", outcome="user_gone")
         assert result == "user u1 is gone: nothing to resume"
 
     @pytest.mark.regression

@@ -71,6 +71,15 @@ class TestCompositionPrompt:
         assert ", ".join(BriefAction) in prompt
         assert ", ".join(BriefOutcome) in prompt
 
+    def test_the_slots_the_model_may_write_are_spelled_as_code_fills_them(self) -> None:
+        prompt = composition_prompt(_pool({}), DAILY_FRAME, "FACTS")
+
+        assert (
+            "[[fact:N]] is item N's title, [[fact:N.time]] its time\n"
+            '  (only on an item whose line shows "at" or "due"), [[series:ID.FIELD]] one of the'
+            " figures\n  listed on series ID (total, latest, peak, peak_at, low)."
+        ) in prompt
+
     def test_a_weekly_brief_is_framed_as_the_week(self) -> None:
         prompt = composition_prompt(_pool({}), WEEKLY_FRAME, "FACTS")
 

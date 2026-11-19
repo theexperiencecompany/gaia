@@ -6,6 +6,7 @@ from playwright._impl._errors import TargetClosedError
 from playwright.async_api import ViewportSize
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.constants.render import (
     CHROMIUM_DEAD_DRIVER_MESSAGE,
     CHROMIUM_LAUNCH_ARGS,
@@ -13,6 +14,7 @@ from app.constants.render import (
 )
 from app.services.render import chromium as chromium_module
 from app.services.render.chromium import chromium_page, close_chromium, renders_waiting
+from tests.helpers import captured_wide_event
 from tests.unit.services.render.conftest import FakeChromium
 
 _VIEWPORT: ViewportSize = {"width": 800, "height": 600}
@@ -63,12 +65,20 @@ async def test_a_connected_browser_that_cannot_open_a_context_is_replaced_for_th
         pass
     chromium.browsers[0].context_error = Exception(CHROMIUM_DEAD_DRIVER_MESSAGE)
 
-    async with chromium_page(_VIEWPORT):
+    async with captured_wide_event() as event, chromium_page(_VIEWPORT, 2):
         pass
 
     dead, fresh = chromium.browsers
     assert dead.closed and chromium.playwrights[0].stopped
-    assert len(fresh.contexts) == 1 and not fresh.closed
+    [context] = fresh.contexts
+    assert not fresh.closed
+    assert context.options == {"viewport": _VIEWPORT, "device_scale_factor": 2}
+    [warning] = event["warnings"]
+    assert (warning["msg"], warning["error_type"], warning["error"]) == (
+        f"{LogTag.BROWSER} Render browser is dead; relaunching",
+        "Exception",
+        CHROMIUM_DEAD_DRIVER_MESSAGE,
+    )
 
 
 async def test_a_render_fails_loud_when_the_fresh_browser_cannot_open_a_context_either(

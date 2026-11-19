@@ -4,8 +4,12 @@ The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
+from itsdangerous import URLSafeSerializer
 from tests.factories import make_user_id
+import time_machine
 
 from app.config.settings import settings
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome, EditionFamily
@@ -100,15 +104,31 @@ async def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None
 
 async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() -> None:
     stored = _brief(template_family=EditionFamily.MEMO).model_copy(
-        update={"edition": EditionRender(key="k1", fold=0.3, paper=None)}
+        update={"edition": EditionRender(key="k1", fold=0.3, paper=[0.1, 0.05, 0.9, 0.95])}
     )
 
     card = await briefing_card(stored)
 
     assert card.edition is not None
     assert card.edition.image_url.startswith(f"{settings.HOST}/api/v1/briefings/editions/k1/png?t=")
-    assert (card.edition.fold, card.edition.paper) == (0.3, None)
+    assert (card.edition.fold, card.edition.paper) == (0.3, [0.1, 0.05, 0.9, 0.95])
     assert (await briefing_card(_brief(template_family=None))).edition is None
+
+
+# 19:30 EST: a wall-clock year later is EDT, so a naive "now" would sign an hour early,
+# and 00:30 UTC on the deadline puts that hour on the previous UTC day.
+@time_machine.travel(datetime(2026, 11, 2, 19, 30, tzinfo=ZoneInfo("America/New_York")), tick=False)
+async def test_an_editions_url_expires_a_utc_year_out_whatever_the_servers_zone() -> None:
+    stored = _brief(template_family=EditionFamily.MEMO).model_copy(
+        update={"edition": EditionRender(key="k1", fold=0.3, paper=[0.1, 0.05, 0.9, 0.95])}
+    )
+
+    card = await briefing_card(stored)
+
+    assert card.edition is not None
+    [token] = parse_qs(urlsplit(card.edition.image_url).query)["t"]
+    _, signed = URLSafeSerializer("unused").loads_unsafe(token)
+    assert signed == ["k1", "png", int(datetime(2027, 11, 4, tzinfo=UTC).timestamp())]
 
 
 async def test_the_owners_view_carries_the_briefs_card_and_its_delivery() -> None:

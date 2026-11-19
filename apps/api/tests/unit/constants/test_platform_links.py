@@ -1,12 +1,12 @@
 """The API's link to the Linked Accounts page is the one the web app and the bots use."""
 
-from pathlib import Path
 import re
 
 from app.constants.nurture import NURTURE_STEPS
 from app.constants.platform_links import LINKED_ACCOUNTS_SETTINGS_PATH
+from tests.helpers import REPO_ROOT
 
-SHARED_ROUTES = Path(__file__).parents[5] / "libs/shared/ts/src/constants/routes.ts"
+SHARED_ROUTES = REPO_ROOT / "libs/shared/ts/src/constants/routes.ts"
 
 
 def test_linked_accounts_path_matches_the_shared_web_route() -> None:

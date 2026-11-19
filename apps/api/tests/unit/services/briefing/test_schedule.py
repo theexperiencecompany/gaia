@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from tests.factories import make_user_id
@@ -263,7 +263,7 @@ class TestResyncBriefingSchedules:
 
 
 def _switched(mock: AsyncMock) -> list[str]:
-    return [call.args[0] for call in mock.await_args_list]
+    return [made.args[0] for made in mock.await_args_list]
 
 
 class TestTheFrequencySwitchesTheBriefs:
@@ -304,7 +304,10 @@ class TestTheFrequencySwitchesTheBriefs:
 
         await schedule.resync_briefing_schedules(_user(seams, DEFAULT_QUIET_HOURS))
 
-        assert _switched(seams.activate) == ["wf-daily_briefing", "wf-weekly_digest"]
+        assert seams.activate.await_args_list == [
+            call("wf-daily_briefing", USER_ID),
+            call("wf-weekly_digest", USER_ID),
+        ]
         seams.is_paid.assert_awaited_with(USER_ID)
 
     async def test_a_free_users_briefs_stay_off(self, seams: Seams) -> None:

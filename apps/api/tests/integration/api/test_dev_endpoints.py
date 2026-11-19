@@ -19,16 +19,23 @@ from app.api.v1.endpoints.dev import run_briefing_now, seed_dev_user_data
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.briefing import BriefingKind, BriefingRunOutcome
 from app.constants.payments import DEV_PRO_PRODUCT_ID, DEV_PRO_TERM_DAYS
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import (
+    DeleteDevUserResponse,
     DevAgentRunResponse,
     DevBriefingRunResponse,
+    DevDeletedCounts,
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
+from app.services import dev_service
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.errors import AppError
@@ -775,6 +782,38 @@ class TestDevServiceLogic:
         assert exc.value.status_code == 404
         assert DEV_USER_MISSING_HINT in exc.value.fix
 
+    async def test_deleting_a_dev_user_removes_its_brief_state_and_reports_the_counts(self):
+        user_id = str(ObjectId())
+        user = UserDocument.model_validate({"id": user_id, "email": DEV_EMAIL})
+        with (
+            patch.object(
+                user_repository, "get_by_email", new_callable=AsyncMock, return_value=user
+            ),
+            patch.object(todo_repository, "list_for_user", new_callable=AsyncMock, return_value=[]),
+            patch.object(
+                todo_repository, "delete_all_for_user", new_callable=AsyncMock, return_value=3
+            ),
+            patch.object(
+                conversation_repository,
+                "delete_all_for_user",
+                new_callable=AsyncMock,
+                return_value=["c1", "c2"],
+            ),
+            patch.object(
+                project_repository, "delete_all_for_user", new_callable=AsyncMock, return_value=1
+            ),
+            patch.object(briefing_state_repository, "delete", new_callable=AsyncMock) as state,
+            patch.object(user_repository, "delete", new_callable=AsyncMock, return_value=True),
+        ):
+            result = await dev_service.delete_dev_user(DEV_EMAIL)
+
+        state.assert_awaited_once_with(user_id)
+        assert result == DeleteDevUserResponse(
+            email=DEV_EMAIL,
+            user_id=user_id,
+            deleted=DevDeletedCounts(todos=3, conversations=2, projects=1, user=1),
+        )
+
 
 # ---------------------------------------------------------------------------
 # X-Dev-User impersonation (real WorkOSAuthMiddleware)
@@ -969,7 +1008,7 @@ class TestDevBriefingRun:
         ):
             await run_briefing_now(BriefingKind.DAILY, "ghost@gaia.local")
 
-        assert caught.value.status_code == 404
+        assert (caught.value.status_code, caught.value.code) == (404, "dev_user_not_found")
         assert (caught.value.message, caught.value.fix) == (
             "No GAIA user exists for 'ghost@gaia.local'",
             "Mint it via POST /api/v1/dev/users",

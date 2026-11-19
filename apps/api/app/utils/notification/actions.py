@@ -90,7 +90,11 @@ class ApiCallActionHandler(ActionHandler):
                 "user_id": user_id,
                 "notification_id": notification.id,
                 "action_id": action.id,
-                "details": details.model_dump(mode="json") if details else None,
+                "details": (
+                    details.model_dump(mode="json")  # pragma: no mutate — details are JSON-native
+                    if details
+                    else None
+                ),
             }
 
             # If the action is internal, use the request base URL

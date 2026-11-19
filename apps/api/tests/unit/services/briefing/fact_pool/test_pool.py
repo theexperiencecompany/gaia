@@ -457,6 +457,43 @@ class TestTheVoicesLine:
             "| GAIA can act on it" if acts else "| GAIA can only read Gmail: no offer on it"
         )
 
+    def test_the_day_gaia_is_back_on_its_work_is_written_by_the_time_slot_when_untimed(
+        self,
+    ) -> None:
+        item = self._item(
+            state=ItemState.GAIA,
+            standing="paused: waiting on your notes",
+            back_at=datetime(2026, 11, 12, 9, 0, tzinfo=UTC),
+        )
+        voiced = Voiced(BriefFact(title="Draft the deck"))
+
+        assert item_line(5, item, CONTEXT.clock, voiced) == (
+            "5. [GAIA] open: Draft the deck"
+            " | stands: paused: waiting on your notes [[fact:5.time]] (Thu Nov 12)"
+        )
+        assert item_line(5, item, CONTEXT.clock).split(" | ")[1] == (
+            "stands: paused: waiting on your notes Thu Nov 12"
+        )
+
+    @pytest.mark.parametrize(
+        "timing",
+        [{"time": "3:00 PM"}, {"due_at": datetime(2026, 11, 13, 9, 0, tzinfo=UTC)}],
+        ids=["timed", "due"],
+    )
+    def test_a_timed_or_due_item_keeps_the_time_slot_for_its_own_time(
+        self, timing: dict[str, object]
+    ) -> None:
+        item = self._item(
+            state=ItemState.GAIA,
+            standing="paused: waiting on your notes",
+            back_at=datetime(2026, 11, 12, 9, 0, tzinfo=UTC),
+            **timing,
+        )
+
+        line = item_line(5, item, CONTEXT.clock, Voiced(BriefFact(title="Draft the deck")))
+
+        assert line.split(" | ")[1] == "stands: paused: waiting on your notes Thu Nov 12"
+
     def test_only_what_the_brief_can_link_is_linkable_to_the_voice(self) -> None:
         item = self._item(url="https://mail.google.com/t/1", todo_id="t1")
 

@@ -13,7 +13,8 @@ from unittest.mock import AsyncMock
 from urllib.parse import urlsplit
 
 from httpx import AsyncClient
-from PIL import Image
+from itsdangerous import URLSafeSerializer
+from PIL import Image, JpegImagePlugin
 import pytest
 from tests.factories import make_briefing_payload, make_user_id
 import time_machine
@@ -21,11 +22,14 @@ import time_machine
 from app.config.settings import settings
 from app.constants.briefing import (
     EDITION_DELIVERY_MAX_WIDTH_PX,
+    EDITION_JPG_BACKGROUND,
+    EDITION_JPG_QUALITY,
     EDITION_URL_TTL_DAYS,
     BriefingKind,
     EditionFamily,
     EditionVariant,
 )
+from app.constants.http import API_V1_PREFIX
 from app.constants.notifications import NotificationKind
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel
@@ -82,6 +86,24 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Briefing
     return docs
 
 
+def _striped_rgb_png(width: int, height: int) -> bytes:
+    """Draw an opaque render with no alpha channel and one-pixel stripes that resampling filters blur differently."""
+    image = Image.new("RGB", (width, height), (255, 255, 255))
+    for x in range(0, width, 3):
+        image.paste((10, 20, 30), (x, 0, x + 1, height))
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _quantization_at(quality: int) -> dict[int, list[int]]:
+    out = io.BytesIO()
+    Image.new("RGB", (8, 8)).save(out, format="JPEG", quality=quality)
+    with Image.open(out) as reference:
+        assert isinstance(reference, JpegImagePlugin.JpegImageFile)
+        return reference.quantization
+
+
 def _path(url: str) -> str:
     parts = urlsplit(url)
     return f"{parts.path}?{parts.query}"
@@ -100,11 +122,17 @@ async def test_a_self_hosted_brief_is_stored_privately_and_served_by_its_signed_
     chat_url = await edition_url(stored.edition.key, EditionVariant.JPG, _NOW)
     chat_image = await client.get(_path(chat_url))
 
-    assert app_image.status_code == 200
+    assert (app_image.status_code, app_image.headers["content-type"]) == (200, "image/png")
+    assert chat_image.headers["content-type"] == "image/jpeg"
     with Image.open(io.BytesIO(app_image.content)) as png:
         assert (png.format, png.width, png.mode) == ("PNG", EDITION_DELIVERY_MAX_WIDTH_PX, "RGBA")
     with Image.open(io.BytesIO(chat_image.content)) as jpg:
         assert (jpg.format, jpg.mode) == ("JPEG", "RGB")
+        assert isinstance(jpg, JpegImagePlugin.JpegImageFile)
+        assert jpg.quantization == _quantization_at(EDITION_JPG_QUALITY)
+        desk = jpg.getpixel((0, 0))
+    assert isinstance(desk, tuple)
+    assert all(abs(c - b) <= 2 for c, b in zip(desk, EDITION_JPG_BACKGROUND, strict=True))
     assert USER_ID not in edition.image_url
     assert _BRIEF_ID not in edition.image_url
 
@@ -143,3 +171,61 @@ async def test_a_url_serves_nothing_once_tampered_retargeted_expired_or_deleted(
     deleted = await client.get(url)
 
     assert [r.status_code for r in (tampered, retargeted, expired, deleted)] == [404] * 4
+
+
+@time_machine.travel(_NOW, tick=False)
+async def test_an_opaque_render_is_stored_with_alpha_and_lanczos_downscaled(
+    world: dict[str, BriefingModel], client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    render = _striped_rgb_png(1620, 900)
+    monkeypatch.setattr(
+        edition_email,
+        "render_html_to_image",
+        AsyncMock(return_value=RenderedImage(image=render, fold=0.3)),
+    )
+    stored = await store.store_brief(USER_ID, _DATE, BriefingKind.DAILY, _BRIEF, _PLAN)
+    assert stored.edition is not None
+    response = await client.get(
+        _path(await edition_url(stored.edition.key, EditionVariant.PNG, _NOW))
+    )
+
+    with Image.open(io.BytesIO(render)) as source:
+        expected = source.convert("RGBA")
+    expected.thumbnail((EDITION_DELIVERY_MAX_WIDTH_PX, expected.height), Image.Resampling.LANCZOS)
+    with Image.open(io.BytesIO(response.content)) as png:
+        assert png.mode == "RGBA"
+        assert png.tobytes() == expected.tobytes()
+
+
+@time_machine.travel(_NOW, tick=False)
+async def test_a_url_stops_loading_at_the_exact_second_it_expires(
+    world: dict[str, BriefingModel], client: AsyncClient
+) -> None:
+    stored = await store.store_brief(USER_ID, _DATE, BriefingKind.DAILY, _BRIEF, _PLAN)
+    assert stored.edition is not None
+    url = _path(await edition_url(stored.edition.key, EditionVariant.PNG, _NOW))
+    expiry_day = (_NOW + timedelta(days=EDITION_URL_TTL_DAYS)).date() + timedelta(days=1)
+    expires_at = datetime(expiry_day.year, expiry_day.month, expiry_day.day, tzinfo=UTC)
+
+    with time_machine.travel(expires_at - timedelta(seconds=1), tick=False):
+        last_second = await client.get(url)
+    with time_machine.travel(expires_at, tick=False):
+        at_expiry = await client.get(url)
+
+    assert (last_second.status_code, at_expiry.status_code) == (200, 404)
+
+
+@pytest.mark.parametrize("salt", [None, "itsdangerous"])
+@time_machine.travel(_NOW, tick=False)
+async def test_a_token_signed_with_the_secret_but_not_the_edition_salt_serves_nothing(
+    world: dict[str, BriefingModel], client: AsyncClient, salt: str | None
+) -> None:
+    stored = await store.store_brief(USER_ID, _DATE, BriefingKind.DAILY, _BRIEF, _PLAN)
+    assert stored.edition is not None
+    key = stored.edition.key
+    far = int((_NOW + timedelta(days=EDITION_URL_TTL_DAYS)).timestamp())
+    unsalted = URLSafeSerializer(settings.INSTANCE_SECRET, salt=salt).dumps([key, "png", far])
+
+    response = await client.get(f"{API_V1_PREFIX}/briefings/editions/{key}/png?t={unsalted}")
+
+    assert response.status_code == 404

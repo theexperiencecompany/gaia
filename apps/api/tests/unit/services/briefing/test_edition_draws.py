@@ -4,7 +4,7 @@ import pytest
 from tests.factories import make_user_id
 
 from app.constants.briefing import ArtFamily, BriefingBag, EditionFamily
-from app.models.brief_composition_models import ChartBlock, ChartKind
+from app.models.brief_composition_models import ChartBlock, ChartKind, NoteBlock
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.briefing_state_models import BriefingStateDocument, ShuffleBag
 from app.services.briefing.edition_draws import draw_edition, draw_from_bag
@@ -79,6 +79,18 @@ class TestDrawEdition:
 
         assert edition.family is not EditionFamily.MENU
         assert edition_capabilities(edition.family).draws(chart)
+
+    def test_a_fixed_family_prints_the_blocks_it_can_draw_and_draws_nothing_more(self) -> None:
+        note = NoteBlock(text="A light day.")
+
+        edition = draw_edition(BriefingStateDocument(user_id=USER_ID), [note], EditionFamily.SWISS)
+
+        assert (edition.family, edition.drawn, edition.undrawn, edition.draws) == (
+            EditionFamily.SWISS,
+            [note],
+            [],
+            [],
+        )
 
     def test_a_daily_edition_is_the_family_its_bag_drew_first(self) -> None:
         state = BriefingStateDocument(user_id=USER_ID)
