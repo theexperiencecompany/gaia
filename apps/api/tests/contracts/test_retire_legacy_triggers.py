@@ -119,3 +119,33 @@ class TestLegacyEmailTrigger:
         with pytest.raises(UnknownTriggerTypeError, match="fax"):
             await migrate(apply=True)
         assert await raw_collection.find_one({"_id": legacy["_id"]}) == legacy
+
+
+class TestMoveToSuccessorTrigger:
+    """The repository write reports whether the record was still on the retired type."""
+
+    async def test_a_record_on_the_retired_type_is_moved_and_reported(self, raw_collection) -> None:
+        legacy = _legacy_workflow(trigger_type="email", activated=True)
+        await raw_collection.insert_one(legacy)
+
+        moved = await workflow_repository.move_to_successor_trigger(
+            str(legacy["_id"]), "email", GmailNewMessageConfig(), reason=None
+        )
+
+        assert moved is True
+        stored = await raw_collection.find_one({"_id": legacy["_id"]})
+        assert stored is not None
+        assert stored["trigger_config"]["type"] == TriggerType.INTEGRATION.value
+
+    async def test_a_record_already_on_another_type_is_left_alone_and_reported(
+        self, raw_collection
+    ) -> None:
+        legacy = _legacy_workflow(trigger_type="calendar", activated=True)
+        await raw_collection.insert_one(legacy)
+
+        moved = await workflow_repository.move_to_successor_trigger(
+            str(legacy["_id"]), "email", GmailNewMessageConfig(), reason=None
+        )
+
+        assert moved is False
+        assert await raw_collection.find_one({"_id": legacy["_id"]}) == legacy

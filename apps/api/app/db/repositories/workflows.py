@@ -696,17 +696,18 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             "activated": False,
             "trigger_config.type": TriggerType.INTEGRATION.value,
             "trigger_config.trigger_name": successor.trigger_name,
-            "trigger_config.trigger_data": successor.model_dump(mode="json"),
+            # Every trigger config field is JSON-native, so no dump mode changes the stored document.
+            "trigger_config.trigger_data": successor.model_dump(mode="json"),  # pragma: no mutate
             "trigger_config.enabled": False,
             "trigger_config.composio_trigger_ids": [],
         }
         if reason is not None:
             fields["deactivated_reason"] = reason.value
-        matched = await self._apply_raw_update_unfetched(
+        # Workflows keep no entity cache (cache_policy is None), so the seam's scope is inert here.
+        matched = await self._apply_raw_update_unfetched(  # pragma: no mutate
             {"_id": workflow_id, "trigger_config.type": retired_type},
             {"$set": fields},
             scope=REPO_GLOBAL_SCOPE,
-            doc_id=workflow_id,
         )
         return matched > 0
 
