@@ -163,6 +163,7 @@
 @source "../../../features/pricing/advertisedPrice.ts";
 @source "../../../features/pricing/constants.ts";
 @source "../../../features/pricing/types.ts";
+@source "../../../features/settings/constants.ts";
 @source "../../../features/use-cases/constants.ts";
 @source "../../../hooks/providers/GlobalAuth.tsx";
 @source "../../../hooks/providers/GlobalInterceptor.tsx";

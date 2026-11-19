@@ -8,68 +8,63 @@ import type { ReactNode } from "react";
 
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { cn } from "@/lib/utils";
+import { LETTER_CONTROL_PROPS } from "@/components/shared/letterControlProps";
+import {
+  LETTER_CLOSE_TRANSITION,
+  LETTER_OPEN_TRANSITION,
+  LETTER_REDUCED_TRANSITION,
+  LETTER_SHEET_VARIANTS,
+} from "@/components/shared/letterMotion";
+
+/** What the page behind a letter becomes: dimmed for a sheet, lightly frosted under a floating letter. */
+const BACKDROP_LOOKS = {
+  sheet: { blurPx: 8, tint: "rgba(0, 0, 0, 0.7)" },
+  floating: { blurPx: 10, tint: "rgba(9, 9, 11, 0.15)" },
+} as const;
+
+type LetterPresentation = keyof typeof BACKDROP_LOOKS;
 
 /**
- * The sheet tilts and settles onto the screen rather than fading in. It enters
- * from the pose it exits to; reduced motion gets a plain fade instead.
+ * The page frosts on the letter's own ease-out rise and clears on its ease-in
+ * close. Blur radius and tint ramp from clear rather than fading a finished
+ * blur in, which would cross a sharp page with a blurred copy of it.
  */
-const LETTER_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-const SHEET_VARIANTS: Record<"full" | "reduced", Variants> = {
-  full: {
+function backdropVariants(
+  presentation: LetterPresentation,
+  motion: "full" | "reduced",
+): Variants {
+  const { blurPx, tint } = BACKDROP_LOOKS[presentation];
+  const clear = {
+    backdropFilter: "blur(0px)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+  };
+  return {
+    arrive: clear,
     enter: {
-      opacity: 1,
-      scale: 1,
-      rotate: 0,
-      y: 0,
-      transition: { duration: 0.55, ease: LETTER_EASE },
+      backdropFilter: `blur(${blurPx}px)`,
+      backgroundColor: tint,
+      transition:
+        motion === "full" ? LETTER_OPEN_TRANSITION : LETTER_REDUCED_TRANSITION,
     },
     exit: {
-      opacity: 0,
-      scale: 0.95,
-      rotate: 1,
-      y: 22,
-      transition: { duration: 0.3, ease: LETTER_EASE },
+      ...clear,
+      transition:
+        motion === "full" ? LETTER_CLOSE_TRANSITION : LETTER_REDUCED_TRANSITION,
     },
-  },
-  reduced: {
-    enter: { opacity: 1, transition: { duration: 0.15 } },
-    exit: { opacity: 0, transition: { duration: 0.15 } },
-  },
-};
-
-/**
- * A floating letter animates itself: the wrapper only hands its enter/exit
- * labels down and stays mounted until the letter has finished leaving.
- */
-const FLOATING_VARIANTS: Variants = {
-  enter: { opacity: 1 },
-  exit: { opacity: 1, transition: { when: "afterChildren" } },
-};
-
-const SCRIM_VARIANTS: Variants = {
-  enter: { opacity: 1, transition: { duration: 0.2 } },
-  exit: { opacity: 0, transition: { duration: 0.15 } },
-};
-
-const PRESENTATIONS = {
-  sheet: {
-    scrim: "bg-black/70 backdrop-blur-sm",
-    dialog:
-      "max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain",
-  },
-  floating: { scrim: null, dialog: undefined },
-} as const;
+  };
+}
 
 interface LetterModalProps {
   isOpen: boolean;
   onClose: () => void;
   ariaLabel: string;
   /**
-   * "sheet" dims the page and tilts the sheet in; "floating" leaves the page as
-   * it is and lets the children animate on the modal's enter/exit variants.
+   * "sheet" dims the page and tilts the sheet in; "floating" frosts the page
+   * lightly and lets the children animate themselves.
    */
-  presentation?: keyof typeof PRESENTATIONS;
+  presentation?: LetterPresentation;
+  /** Controls pinned beside the close button, reachable however far the letter scrolls. */
+  actions?: ReactNode;
   /** The sheet itself; it brings its own surface. */
   children: ReactNode;
 }
@@ -78,21 +73,18 @@ interface LetterModalProps {
  * A single sheet handed to the reader, with one close button pinned to the
  * screen's corner so a letter taller than the screen still has a way out.
  * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore;
- * the letter stays mounted, still open, until its exit animation has run.
+ * the letter stays mounted, still open, until it and the page behind it have
+ * finished leaving. The whole screen scrolls, so a tall letter is never cut.
  */
 export function LetterModal({
   isOpen,
   onClose,
   ariaLabel,
   presentation = "sheet",
+  actions,
   children,
 }: LetterModalProps) {
-  const reduceMotion = useReducedMotion();
-  const { scrim, dialog } = PRESENTATIONS[presentation];
-  const variants =
-    presentation === "floating"
-      ? FLOATING_VARIANTS
-      : SHEET_VARIANTS[reduceMotion ? "reduced" : "full"];
+  const motion = useReducedMotion() ? "reduced" : "full";
   return (
     <AnimatePresence>
       {isOpen && (
@@ -107,20 +99,17 @@ export function LetterModal({
             variant="transparent"
             className={modalVariants({
               surface: "bare",
-              className:
-                presentation === "floating" ? "no-scrollbar" : undefined,
+              className: "no-scrollbar",
             })}
           >
-            {scrim && (
-              <m.div
-                aria-hidden
-                initial="exit"
-                animate="enter"
-                exit="exit"
-                variants={SCRIM_VARIANTS}
-                className={cn("pointer-events-none fixed inset-0", scrim)}
-              />
-            )}
+            <m.div
+              aria-hidden
+              initial="arrive"
+              animate="enter"
+              exit="exit"
+              variants={backdropVariants(presentation, motion)}
+              className="pointer-events-none fixed inset-0"
+            />
             <Modal.Container
               placement="center"
               scroll="outside"
@@ -128,30 +117,32 @@ export function LetterModal({
             >
               <Modal.Dialog
                 aria-label={ariaLabel}
-                className={modalVariants({
-                  surface: "bare",
-                  className: dialog,
-                })}
+                className={modalVariants({ surface: "bare" })}
               >
-                <GaiaButton
-                  isIconOnly
-                  shape="pill"
-                  variant="tertiary"
-                  tone="bright"
-                  aria-label="Close"
-                  onPress={onClose}
-                  className="fixed top-3 right-3 z-50 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)]"
-                >
-                  <Cancel01Icon className="size-5" />
-                </GaiaButton>
-                <m.div
-                  initial="exit"
-                  animate="enter"
-                  exit="exit"
-                  variants={variants}
-                >
-                  {children}
-                </m.div>
+                <div className="fixed top-3 right-3 z-50 flex items-center gap-2">
+                  {actions}
+                  <GaiaButton
+                    {...LETTER_CONTROL_PROPS}
+                    isIconOnly
+                    aria-label="Close"
+                    onPress={onClose}
+                  >
+                    <Cancel01Icon className="size-5" />
+                  </GaiaButton>
+                </div>
+                {presentation === "sheet" ? (
+                  <m.div
+                    initial="arrive"
+                    animate="enter"
+                    exit="exit"
+                    variants={LETTER_SHEET_VARIANTS[motion]}
+                    className="relative"
+                  >
+                    {children}
+                  </m.div>
+                ) : (
+                  children
+                )}
               </Modal.Dialog>
             </Modal.Container>
           </Modal.Backdrop>

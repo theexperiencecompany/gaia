@@ -75,7 +75,12 @@ def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> N
     assert view.needs_you_count == 3
 
 
-def test_only_air_mail_is_named_so_no_design_explorer_name_reaches_the_user() -> None:
+def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
     view = briefing_view(_brief(template_family="flightplan"))
 
-    assert (view.edition_name, view.stamp_city_name) == (None, None)
+    assert (view.edition_name, view.stamp_city_name) == ("The Blueprint", None)
+
+
+def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
+    assert briefing_view(_brief(template_family="weekly")).edition_name is None
+    assert briefing_view(_brief(template_family="")).edition_name is None

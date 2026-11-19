@@ -1,3 +1,7 @@
+import {
+  BRIEF_LETTER_MAX_WIDTH_PX,
+  LETTER_VIEWPORT_GUTTER_PX,
+} from "../constants";
 import { frontPaper, type Rgb } from "./frontPaper";
 import {
   type EditionSource,
@@ -8,12 +12,6 @@ import {
 
 /** Folded in thirds; only an edition taller than this (height over width) gets a fourth panel. */
 const FOUR_PANEL_ASPECT = 2.2;
-const EDITION_MAX_WIDTH = 540;
-/** Below this width the edition stops shrinking to fit the screen and scrolls instead. */
-const EDITION_MIN_WIDTH = 360;
-const VIEWPORT_GUTTER_PX = 24;
-/** Room kept above and below the letter when it is fitted to the viewport. */
-const VIEWPORT_MARGIN_PX = 64;
 const MAX_PIXEL_RATIO = 2;
 /** A marked fold is kept within this share of the sheet, so neither the front nor the rest collapses. */
 const FRONT_SHARE_RANGE = [0.12, 0.6] as const;
@@ -58,13 +56,14 @@ export function paperBackGradient(paper: string): string {
   return `linear-gradient(180deg, color-mix(in srgb, ${paper} 80%, black) 0%, color-mix(in srgb, ${paper} 92%, black) 45%, ${paper} 100%)`;
 }
 
-/** Fit the edition to the viewport height, but never below a readable width; past that it scrolls. */
-function fittedWidth(aspect: number): number {
-  const available = window.innerWidth - VIEWPORT_GUTTER_PX;
-  const max = Math.min(EDITION_MAX_WIDTH, available);
-  const min = Math.min(EDITION_MIN_WIDTH, available);
-  const toFitHeight = (window.innerHeight - VIEWPORT_MARGIN_PX) / aspect;
-  return Math.round(Math.min(max, Math.max(min, toFitHeight)));
+/** The edition at its full letter width, or the screen's when narrower; a tall one scrolls. */
+function fittedWidth(): number {
+  return Math.round(
+    Math.min(
+      BRIEF_LETTER_MAX_WIDTH_PX,
+      window.innerWidth - LETTER_VIEWPORT_GUTTER_PX,
+    ),
+  );
 }
 
 /** Perceived lightness of an sRGB colour, 0 (black) to 1 (white). */
@@ -130,7 +129,7 @@ async function decodeAndSlice(
       ? null
       : (fold * image.naturalHeight - turnLift - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
-  const width = fittedWidth(aspect);
+  const width = fittedWidth();
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
   const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
   const starts = shares.map((_, index) =>
@@ -166,14 +165,14 @@ async function decodeAndSlice(
 }
 
 /**
- * Decode the edition and cut its panels once per viewport size, so opening only
+ * Decode the edition and cut its panels once per viewport width, so opening only
  * composites small bitmaps. A failed preparation is forgotten and retried next time.
  */
 export function prepareEdition(
   src: string,
   layout: EditionLayout,
 ): Promise<PreparedEdition> {
-  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${window.innerWidth}x${window.innerHeight}`;
+  const key = `${src}@${layout.fold ?? "even"}@${layout.paper?.join(",") ?? "drawn"}@${window.innerWidth}`;
   const cached = prepared.get(key);
   if (cached) return cached;
   const pending = decodeAndSlice(src, layout);

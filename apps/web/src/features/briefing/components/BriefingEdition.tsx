@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight01Icon } from "@icons";
 import type {
   BriefingEvent,
   BriefingPayload,
@@ -12,8 +13,9 @@ import type { z } from "zod";
 
 import type { briefingSchema } from "@/config/openui/promptSpecs";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { cn } from "@/lib/utils";
 
-import { EDITION_ROWS_SHOWN } from "../constants";
+import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "../constants";
 
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
@@ -187,14 +189,16 @@ function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
           </ItemGroup>
         )}
         {uncomposed.length > 0 && (
-          <ItemGroup title="Everything else">
-            {uncomposed.map((item) => (
-              <ItemRow
-                key={`${item.app}-${item.todo_id ?? item.title}`}
-                text={item.title}
-                href={poolItemHref(item)}
-              />
-            ))}
+          <ItemGroup title={ON_YOUR_RADAR_TITLE}>
+            <ul className="divide-y divide-white/5">
+              {uncomposed.map((item) => (
+                <PoolItemRow
+                  key={`${item.app}-${item.todo_id ?? item.title}`}
+                  item={item}
+                  className="py-3 first:pt-0 last:pb-0"
+                />
+              ))}
+            </ul>
           </ItemGroup>
         )}
       </div>
@@ -222,26 +226,90 @@ function BelowEdition({
   );
 }
 
-/** What GAIA read but left out of the edition, one row each, opening its source when it has one. */
-function PoolItemRow({ item }: { item: BriefPoolItem }) {
+/** Where a left-out item came from and where it stands: its app, its state, then its own detail. */
+function PoolItemContext({ item }: { item: BriefPoolItem }) {
+  const parts = [item.app, BRIEF_ITEM_STATES[item.kind], item.detail].filter(
+    (part): part is string => Boolean(part),
+  );
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
+      {parts.map((part, index) => (
+        <span key={part} className="flex items-center gap-2">
+          {index > 0 && (
+            <span aria-hidden className="size-0.5 rounded-full bg-zinc-600" />
+          )}
+          {part}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** What GAIA read but left out of the brief, one row each, opening its source when it has one. */
+function PoolItemRow({
+  item,
+  className,
+}: {
+  item: BriefPoolItem;
+  className: string;
+}) {
   const href = poolItemHref(item);
   return (
-    <li className="flex flex-col gap-0.5 py-3">
+    <li className={cn("flex flex-col gap-1", className)}>
       {href ? (
         <Link
           href={href}
           {...(href.startsWith("/")
             ? {}
             : { target: "_blank", rel: "noopener noreferrer" })}
-          className="w-fit text-sm text-zinc-100 hover:text-white"
+          className="inline-flex w-fit items-center gap-1 text-sm text-zinc-100 hover:text-white"
         >
           {item.title}
+          <ArrowUpRight01Icon aria-hidden className="size-3.5 text-zinc-500" />
         </Link>
       ) : (
         <p className="text-sm text-zinc-100">{item.title}</p>
       )}
-      {item.detail && <p className="text-xs text-zinc-500">{item.detail}</p>}
+      <PoolItemContext item={item} />
     </li>
+  );
+}
+
+const ON_YOUR_RADAR_TITLE = "Also on your radar";
+const ON_YOUR_RADAR_NOTE =
+  "Other things GAIA found that didn't make the brief.";
+
+/**
+ * The pool the composition left out, set apart from the brief as a quiet aside
+ * so it reads as more to know about, not as part of the day's letter.
+ */
+function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
+  return (
+    <section
+      aria-labelledby="brief-on-your-radar"
+      className="mx-auto w-full max-w-[540px] rounded-2xl bg-zinc-900 p-4"
+    >
+      <header className="mb-4 px-1">
+        <h2
+          id="brief-on-your-radar"
+          className="text-base font-medium text-zinc-100"
+        >
+          {ON_YOUR_RADAR_TITLE}
+        </h2>
+        <p className="mt-1 text-sm text-pretty text-zinc-500">
+          {ON_YOUR_RADAR_NOTE}
+        </p>
+      </header>
+      <ul className="flex flex-col gap-2">
+        {items.map((item) => (
+          <PoolItemRow
+            key={`${item.app}-${item.todo_id ?? item.title}`}
+            item={item}
+            className="rounded-xl bg-zinc-800 px-3 py-2.5"
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -293,16 +361,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
           ))}
         </BelowEdition>
       )}
-      {uncomposed.length > 0 && (
-        <BelowEdition id="brief-everything-else" title="Everything else">
-          {uncomposed.map((item) => (
-            <PoolItemRow
-              key={`${item.app}-${item.todo_id ?? item.title}`}
-              item={item}
-            />
-          ))}
-        </BelowEdition>
-      )}
+      {uncomposed.length > 0 && <OnYourRadar items={uncomposed} />}
     </div>
   );
 }

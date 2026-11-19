@@ -106,7 +106,6 @@ apps/web/src/features/landing/data/featuresData.types.ts:FeatureData=Integration
 apps/web/src/features/mail/components/EmailComposeCard.tsx:EmailData=SendEmailForm
 apps/web/src/features/memory/components/MemoryEmptyState.tsx:MemoryEmptyStateProps=CreateWorkflowRequest
 apps/web/src/features/memory/components/MemoryManagement.tsx:OverviewStat=SkillTarget
-apps/web/src/features/settings/components/LinkedAccountsSettings.tsx:PlatformConfig=ProjectCreate
 apps/web/src/features/skills/api/types.ts:DiscoveredSkill=DiscoveredSkillInfo
 apps/web/src/features/skills/components/SkillPreviewModal.tsx:SkillPreview=BuiltinSkillInfo
 apps/web/src/features/support/hooks/useContactSupport.ts:ContactFormData=Body_support_submit_support_request_with_attachments

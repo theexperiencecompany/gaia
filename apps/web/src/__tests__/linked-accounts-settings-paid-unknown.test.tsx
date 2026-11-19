@@ -66,7 +66,7 @@ async function findPlatformRow(label: string) {
   const scope = within(row);
   // Connect stays disabled until the platform-links fetch settles.
   await waitFor(() => {
-    const connect = scope.getByRole("button", { name: "Connect" });
+    const connect = scope.getByRole("button", { name: `Connect ${label}` });
     expect((connect as HTMLButtonElement).disabled).toBe(false);
   });
   return scope;
@@ -86,7 +86,7 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
     const row = await findPlatformRow("iMessage");
 
     expect(row.queryByText("Pro")).toBeNull();
-    fireEvent.click(row.getByRole("button", { name: "Connect" }));
+    fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
     expect(openUpgradeModal).not.toHaveBeenCalled();
   });
 
@@ -95,7 +95,7 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
     const row = await findPlatformRow("iMessage");
 
     expect(row.getByText("Pro")).not.toBeNull();
-    fireEvent.click(row.getByRole("button", { name: "Connect" }));
+    fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
     expect(openUpgradeModal).toHaveBeenCalledTimes(1);
   });
 
@@ -105,7 +105,7 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
     const row = await findPlatformRow("iMessage");
 
     expect(row.queryByText("Pro")).toBeNull();
-    fireEvent.click(row.getByRole("button", { name: "Connect" }));
+    fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
     expect(openUpgradeModal).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,7 @@ describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unk
     // here — falsy — so the badge showed and connect opened the pricing
     // modal for a possibly-paid user.
     expect(row.queryByText("Pro")).toBeNull();
-    fireEvent.click(row.getByRole("button", { name: "Connect" }));
+    fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
     expect(openUpgradeModal).not.toHaveBeenCalled();
   });
 });

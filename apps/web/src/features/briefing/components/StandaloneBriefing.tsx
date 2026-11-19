@@ -5,7 +5,7 @@ import type { BriefingView } from "@shared/api/generated";
 import { StandalonePage } from "@/components/layout/StandalonePage";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
-import { BRIEF_STOP_WARNING } from "../constants";
+import { BACK_TO_BRIEFINGS, BRIEF_STOP_WARNING } from "../constants";
 
 import {
   BriefingEdition,
@@ -29,16 +29,19 @@ export function StandaloneBriefing({
   ownedBriefingId,
 }: StandaloneBriefingProps) {
   return (
-    <StandalonePage>
-      {ownedBriefingId && (
-        <div className="flex justify-end">
+    <StandalonePage
+      width="letter"
+      back={BACK_TO_BRIEFINGS}
+      actions={
+        ownedBriefingId && (
           <ShareLinkControls
             targetType="briefing"
             targetId={ownedBriefingId}
             stopWarning={BRIEF_STOP_WARNING}
           />
-        </div>
-      )}
+        )
+      }
+    >
       <BriefingEdition
         payload={briefing.payload}
         imageUrl={briefing.edition_image_url}

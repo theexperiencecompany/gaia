@@ -107,7 +107,7 @@ describe("brief item links", () => {
     expect(screen.queryByText(/\]\(/)).toBeNull();
   });
 
-  it("lists what the composition left out under Everything else, each opening its source", () => {
+  it("lists what the composition left out as also on your radar, each with its source and state", () => {
     render(
       <BriefingEdition
         payload={{
@@ -134,7 +134,15 @@ describe("brief item links", () => {
       />,
     );
 
-    expect(screen.getByText("Everything else")).toBeTruthy();
+    expect(screen.getByText("Also on your radar")).toBeTruthy();
+    for (const context of [
+      "Linear",
+      "Waiting on you",
+      "due tomorrow",
+      "Note",
+    ]) {
+      expect(screen.getByText(context)).toBeTruthy();
+    }
     expect(
       screen
         .getByRole("link", { name: "Fix the login redirect" })
@@ -147,12 +155,12 @@ describe("brief item links", () => {
     ).toBe("/todos?todoId=t9");
   });
 
-  it("shows no Everything else group when the composition placed everything", () => {
+  it("shows no radar aside when the composition placed everything", () => {
     render(
       <BriefingEdition payload={payload({ text: "Deck", kind: "lookback" })} />,
     );
 
-    expect(screen.queryByText("Everything else")).toBeNull();
+    expect(screen.queryByText("Also on your radar")).toBeNull();
   });
 
   it("lists under the edition only what it could not draw or left out", () => {
@@ -183,8 +191,12 @@ describe("brief item links", () => {
     ).toBeTruthy();
     expect(screen.getByText("Three hires closed this week.")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "Everything else" }),
+      screen.getByRole("heading", { name: "Also on your radar" }),
     ).toBeTruthy();
+    expect(
+      screen.getByText("Other things GAIA found that didn't make the brief."),
+    ).toBeTruthy();
+    expect(screen.getByText("Linear")).toBeTruthy();
     expect(screen.queryByText("Your morning")).toBeNull();
     expect(screen.queryByText("The deck is ready.")).toBeNull();
     expect(screen.queryByText("Deck")).toBeNull();

@@ -16,8 +16,10 @@ export default function BriefingsPage() {
   }, [setHeader]);
 
   return (
-    <div className="mx-auto h-fit min-h-screen w-full max-w-4xl overflow-y-scroll px-6 py-8">
-      <BriefingArchive />
+    <div className="@container min-h-0 flex-1 overflow-y-auto">
+      <div className="w-full px-4 pt-3 pb-12 sm:px-6 md:px-8">
+        <BriefingArchive />
+      </div>
     </div>
   );
 }

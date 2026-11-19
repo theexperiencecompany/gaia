@@ -40,7 +40,7 @@ const WITH_DAILY_BRIEF: ReadonlySet<BriefingFrequency> = new Set([
 ]);
 
 /**
- * "Briefings": how often GAIA sends briefs and the hour the daily one lands,
+ * "Schedule": how often GAIA sends briefs and the hour the daily one lands,
  * on the user's clock (quiet hours still push it later).
  */
 export function BriefingScheduleSettings() {
@@ -67,7 +67,7 @@ export function BriefingScheduleSettings() {
 
   return (
     <SettingsSection
-      title="Briefings"
+      title="Schedule"
       description={
         loadFailed
           ? "Couldn't load your briefing schedule. Reload the page to try again."

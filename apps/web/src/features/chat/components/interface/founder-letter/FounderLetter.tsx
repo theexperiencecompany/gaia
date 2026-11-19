@@ -231,7 +231,10 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
         onClose={closeLetter}
         ariaLabel="A letter from Aryan Randeriya"
       >
-        <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
+        <div
+          className="relative flex w-[min(620px,calc(100vw-24px))] flex-col"
+          style={LETTER_TYPOGRAPHY}
+        >
           <PaperBackdrop />
 
           {/* Letter content */}

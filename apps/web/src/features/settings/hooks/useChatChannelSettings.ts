@@ -5,21 +5,21 @@ import type { NotificationPlatform } from "@/features/notification/constants";
 import { chatChannelApi } from "@/features/settings/api/chatChannelApi";
 import {
   linkedInPriorityOrder,
-  moveChannel,
+  withChannelFirst,
 } from "@/features/settings/utils/chatChannelOrder";
 import { toast } from "@/lib/toast";
 
 interface UseChatChannelSettings {
-  /** The linked platforms in priority order — the rows the section renders. */
+  /** The linked platforms in priority order; the first is where GAIA texts first. */
   linkedOrder: NotificationPlatform[];
-  /** True while a reorder is in flight, so the arrows can't race each other. */
+  /** True while a save is in flight, so two choices can't race each other. */
   saving: boolean;
-  move: (index: number, direction: "up" | "down") => Promise<void>;
+  putFirst: (platform: NotificationPlatform) => Promise<void>;
 }
 
 /**
- * Owns "where GAIA texts you": the stored priority order, persisted
- * immediately and rolled back on failure.
+ * Owns which linked platform GAIA texts first: the stored priority order,
+ * persisted immediately and rolled back on failure.
  */
 export function useChatChannelSettings(
   linkedPlatforms: NotificationPlatform[],
@@ -35,33 +35,22 @@ export function useChatChannelSettings(
 
   const linkedOrder = linkedInPriorityOrder(order, linkedPlatforms);
 
-  const move = async (index: number, direction: "up" | "down") => {
-    const nextLinked = moveChannel(linkedOrder, index, direction);
-    if (nextLinked === linkedOrder) return;
-    // Unlinked platforms stay at the tail, so relinking one later restores the
-    // position the user chose for it rather than dropping it to the default.
-    const linked = new Set(linkedPlatforms);
-    const unlinked = order.filter((platform) => !linked.has(platform));
+  const putFirst = async (platform: NotificationPlatform) => {
+    if (linkedOrder[0] === platform) return;
+    const next = withChannelFirst(order, linkedPlatforms, platform);
     const previous = order;
-    setOrder([...nextLinked, ...unlinked]);
+    setOrder(next);
     setSaving(true);
     try {
-      const saved = await chatChannelApi.updatePriority([
-        ...nextLinked,
-        ...unlinked,
-      ]);
+      const saved = await chatChannelApi.updatePriority(next);
       setOrder(saved.priority);
     } catch {
       setOrder(previous);
-      toast.error("Couldn't save where GAIA texts you.");
+      toast.error("Couldn't save where GAIA texts you first.");
     } finally {
       setSaving(false);
     }
   };
 
-  return {
-    linkedOrder,
-    saving,
-    move,
-  };
+  return { linkedOrder, saving, putFirst };
 }

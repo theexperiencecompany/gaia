@@ -1,9 +1,9 @@
 "use client";
 
+import { Chip } from "@heroui/react";
 import { NewsIcon } from "@icons";
-import { format, parseISO } from "date-fns";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
 import Image from "next/image";
-import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -24,23 +24,26 @@ export interface FoldedBriefSummary {
   needsYouCount?: number | null;
 }
 
-/** The preview's height over its width (aspect-[3/2]); it shows the top of the edition. */
-const PREVIEW_ASPECT = 2 / 3;
-
 /** Below this, a waiting count is the ordinary day and not worth a line. */
 const NOTABLE_NEEDS_YOU = 3;
 
 const TONE_CLASSES = {
-  raised: "bg-zinc-800 hover:bg-zinc-700/80",
-  inset: "bg-zinc-900 hover:bg-zinc-950/80",
+  raised: "bg-zinc-800",
+  inset: "bg-zinc-900",
 } as const;
+
+/** The preview sits one step off the card it is in, so the edition reads as its own sheet. */
+const PREVIEW_TONE_CLASSES: Record<BriefCardTone, string> = {
+  raised: "bg-zinc-900",
+  inset: "bg-zinc-800",
+};
+
+const KIND_LABELS = { daily: "Daily", weekly: "Weekly" } as const;
 
 export type BriefCardTone = keyof typeof TONE_CLASSES;
 
 interface BriefCardProps {
   brief: FoldedBriefSummary;
-  /** "feature" lays the weekly recap out wide, preview beside its words. */
-  variant?: "card" | "feature";
   /** "raised" on the page background, "inset" inside a zinc-800 card. */
   tone?: BriefCardTone;
   isBusy?: boolean;
@@ -48,98 +51,61 @@ interface BriefCardProps {
   onWarm: () => void;
 }
 
+const TODAY_LABEL = "Today";
+
 function dateLabel(brief: FoldedBriefSummary): string | null {
   if (!brief.date) return null;
-  const day = format(parseISO(brief.date), "EEE d MMM");
-  return brief.kind === "weekly" ? `Week to ${day}` : day;
+  const date = parseISO(brief.date);
+  const day = format(date, "EEE d MMM");
+  if (brief.kind === "weekly") return `Week to ${day}`;
+  if (isToday(date)) return TODAY_LABEL;
+  if (isYesterday(date)) return "Yesterday";
+  return day;
 }
 
 function editionLabel(brief: FoldedBriefSummary): string | null {
-  if (brief.kind === "weekly") return "Weekly recap";
   return (
     [brief.editionName, brief.stampCityName].filter(Boolean).join(", ") || null
   );
 }
 
-/**
- * Where the letter's fold falls inside the preview, as a share of its height;
- * null when the edition marks no fold or folds below what the preview shows.
- */
-function creaseInPreview(
-  fold: number | null | undefined,
-  editionAspect: number | null,
-): number | null {
-  if (fold == null || editionAspect === null) return null;
-  const crease = fold / (PREVIEW_ASPECT / editionAspect);
-  return crease > 0 && crease < 1 ? crease : null;
-}
-
-/** The edition's masthead, with a hairline crease where the letter folds. */
+/** The edition's masthead, on a well one step off the card. */
 function Preview({
   imageUrl,
-  editionFold,
-  isFeature,
+  tone,
 }: {
   imageUrl?: string | null;
-  editionFold?: number | null;
-  isFeature: boolean;
+  tone: BriefCardTone;
 }) {
-  const [editionAspect, setEditionAspect] = useState<number | null>(null);
-  const crease = creaseInPreview(editionFold, editionAspect);
   return (
-    <div
-      className={cn(
-        "relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40",
-        isFeature && "sm:w-60 sm:shrink-0",
-      )}
-    >
-      {imageUrl ? (
-        <Image
-          src={imageUrl}
-          alt=""
-          fill
-          sizes={
-            isFeature
-              ? "(max-width: 640px) 50vw, 300px"
-              : "(max-width: 640px) 50vw, 240px"
-          }
-          className="object-cover object-top"
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            setEditionAspect(image.naturalHeight / image.naturalWidth);
-          }}
-        />
-      ) : (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <NewsIcon className="size-6 text-zinc-500" />
-        </span>
-      )}
-      {crease !== null && (
-        <span
-          aria-hidden
-          data-crease
-          className="absolute inset-x-0 h-0.5 border-t border-b border-t-black/20 border-b-white/25"
-          style={{ top: `${Math.round(crease * 1000) / 10}%` }}
-        />
-      )}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[10px] ring-1 ring-white/10 ring-inset"
-      />
+    <div className={cn("rounded-[10px] p-1.5", PREVIEW_TONE_CLASSES[tone])}>
+      <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-hover:brightness-110">
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt=""
+            fill
+            sizes="(max-width: 640px) 50vw, 240px"
+            className="object-cover object-top"
+          />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <NewsIcon className="size-6 text-zinc-500" />
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-/** A brief folded to a letter: its edition's masthead, then the date, headline and edition that tell it apart. */
+/** A brief folded to a letter: its edition's masthead, then the date, what it said, and the edition. */
 export function BriefCard({
   brief,
-  variant = "card",
   tone = "raised",
   isBusy = false,
   onPress,
   onWarm,
 }: BriefCardProps) {
-  const isFeature = variant === "feature";
   const date = dateLabel(brief);
   const edition = editionLabel(brief);
   const needsYou = brief.needsYouCount ?? 0;
@@ -154,25 +120,22 @@ export function BriefCard({
       aria-label={`Open brief: ${brief.headline}`}
       aria-busy={isBusy}
       className={cn(
-        "flex h-full w-full min-w-0 cursor-pointer items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal outline-none transition-[background-color,scale] focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97]",
-        isFeature ? "flex-col sm:flex-row" : "flex-col",
+        "group relative flex h-full w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal outline-none transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97]",
         TONE_CLASSES[tone],
       )}
     >
-      <Preview
-        imageUrl={brief.imageUrl}
-        editionFold={brief.editionFold}
-        isFeature={isFeature}
-      />
-      <span
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1",
-          isFeature && "sm:justify-center sm:px-4 sm:py-3",
-        )}
-      >
+      <Preview imageUrl={brief.imageUrl} tone={tone} />
+      <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
         {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
           <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">
-            <span className="truncate">{date}</span>
+            <span
+              className={cn(
+                "truncate",
+                date === TODAY_LABEL && "font-medium text-accent",
+              )}
+            >
+              {date}
+            </span>
             {needsYou >= NOTABLE_NEEDS_YOU && (
               <span className="shrink-0 text-amber-300/90 tabular-nums">
                 {needsYou} waiting
@@ -180,22 +143,29 @@ export function BriefCard({
             )}
           </span>
         )}
-        <span
-          className={cn(
-            "line-clamp-2 font-medium leading-snug text-balance text-zinc-100",
-            isFeature ? "text-base" : "text-[13px]",
-          )}
-        >
+        <span className="line-clamp-2 text-sm font-medium leading-snug text-balance text-zinc-100">
           {brief.headline}
         </span>
-        {isFeature && brief.lede && (
+        {brief.lede && (
           <span className="line-clamp-2 text-xs leading-relaxed text-pretty text-zinc-400">
             {brief.lede}
           </span>
         )}
-        {edition && (
-          <span className="mt-auto truncate pt-0.5 text-xs text-zinc-500">
-            {edition}
+        {(brief.kind || edition) && (
+          <span className="mt-auto flex min-w-0 items-center gap-1.5 pt-1">
+            {brief.kind && (
+              <Chip
+                size="sm"
+                variant="soft"
+                color={brief.kind === "weekly" ? "accent" : "default"}
+                className="shrink-0"
+              >
+                <Chip.Label>{KIND_LABELS[brief.kind]}</Chip.Label>
+              </Chip>
+            )}
+            {edition && (
+              <span className="truncate text-xs text-zinc-500">{edition}</span>
+            )}
           </span>
         )}
       </span>

@@ -9,6 +9,7 @@ import {
   LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
+  News01Icon,
   NoteEditIcon,
   NotificationIcon,
   PlugSocketIcon,
@@ -22,8 +23,16 @@ import type { InstanceRole } from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
+import {
+  BRIEFINGS_SETTINGS_PATH,
+  POSTMARKS_SETTINGS_PATH,
+} from "@/features/briefing/constants";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
+import {
+  LINKED_ACCOUNTS_SETTINGS_PATH,
+  NOTIFICATIONS_SETTINGS_PATH,
+} from "@/features/settings/constants";
 
 /** The Providers & Tools entry's mark: the custom lane's gateway logo, before any catalog loads. */
 const PROVIDERS_MENU_ICON_URL =
@@ -60,7 +69,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
     key: "linked-accounts",
     label: "Linked Accounts",
     icon: Link04Icon,
-    href: "/settings/linked-accounts",
+    href: LINKED_ACCOUNTS_SETTINGS_PATH,
   },
   {
     key: "providers",
@@ -93,13 +102,19 @@ export const settingsPageItems: SettingsMenuItem[] = [
     key: "notifications",
     label: "Notifications",
     icon: NotificationIcon,
-    href: "/settings/notifications",
+    href: NOTIFICATIONS_SETTINGS_PATH,
+  },
+  {
+    key: "briefings",
+    label: "Briefings",
+    icon: News01Icon,
+    href: BRIEFINGS_SETTINGS_PATH,
   },
   {
     key: "postmarks",
     label: "Postmarks",
     icon: EarthIcon,
-    href: "/settings/postmarks",
+    href: POSTMARKS_SETTINGS_PATH,
   },
   {
     key: "subscription",

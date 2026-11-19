@@ -2,7 +2,6 @@
 
 import type { Postmark } from "@shared/api/generated";
 import type { ProjectionSpecification } from "maplibre-gl";
-import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import {
@@ -15,6 +14,8 @@ import {
 } from "@/components/ui/map";
 import { useGlobeSpin } from "../../hooks/useGlobeSpin";
 import { useNightGlobeBasemap } from "../../hooks/useNightGlobeBasemap";
+import { postmarkBrief } from "../../utils/postmarkBrief";
+import { BriefingFold } from "../BriefingFold";
 import { PostmarkCard } from "./PostmarkCard";
 
 const GLOBE_PROJECTION: ProjectionSpecification = { type: "globe" };
@@ -86,13 +87,29 @@ interface CityLightProps {
   isLatest: boolean;
 }
 
+/** A city's light; pressing it unfolds the brief its stamp came on, as the album's stamps do. */
 function CityLight({ postmark, isLatest }: CityLightProps) {
-  const router = useRouter();
+  return (
+    <BriefingFold
+      briefingId={postmark.briefing_id}
+      brief={postmarkBrief(postmark)}
+      renderTrigger={({ open }) => (
+        <CityMarker postmark={postmark} isLatest={isLatest} onOpen={open} />
+      )}
+    />
+  );
+}
+
+function CityMarker({
+  postmark,
+  isLatest,
+  onOpen,
+}: CityLightProps & { onOpen: () => void }) {
   return (
     <MapMarker
       longitude={postmark.lng}
       latitude={postmark.lat}
-      onClick={() => router.push(`/brief/${postmark.briefing_id}`)}
+      onClick={onOpen}
     >
       <MarkerContent>
         <span

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 import { api } from "@/lib/api/typed";
 import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
 import type { PlatformLinks } from "@/types/platform";
@@ -82,7 +83,7 @@ export function NotificationConnectBanner({
               size="sm"
               shape="md"
               className="text-xs"
-              onPress={() => router.push("/settings/linked-accounts")}
+              onPress={() => router.push(LINKED_ACCOUNTS_SETTINGS_PATH)}
             >
               Connect
             </GaiaButton>
@@ -125,7 +126,7 @@ export function NotificationConnectBanner({
           size="sm"
           shape="md"
           className="text-xs"
-          onPress={() => router.push("/settings/linked-accounts")}
+          onPress={() => router.push(LINKED_ACCOUNTS_SETTINGS_PATH)}
         >
           Connect
         </GaiaButton>

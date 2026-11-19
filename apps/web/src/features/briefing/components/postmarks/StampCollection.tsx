@@ -1,87 +1,121 @@
 import { Tooltip } from "@heroui/react";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
-import Link from "next/link";
 import { Focusable } from "react-aria-components";
 
 import { overlayVariants } from "@/components/shared/controlVariants";
-import { cn } from "@/lib/utils";
+
+import { useGridColumnCount } from "../../hooks/useGridColumnCount";
+import { postmarkBrief } from "../../utils/postmarkBrief";
+import { stampSheet } from "../../utils/stampSheet";
+import { BriefingFold } from "../BriefingFold";
 import { PostmarkCard } from "./PostmarkCard";
+import { StampBlank } from "./StampBlank";
 
 interface StampCollectionProps {
   postmarks: Postmark[];
   total: number;
 }
 
-// The stamp art's own proportions, so the to-come tile and a stamp occupy the same cell.
-const STAMP_SLOT = "aspect-[600/850] w-full";
+/** One collected stamp: its city on hover, its brief readied as the pointer arrives, unfolding when pressed. */
+function CollectedStamp({ postmark }: { postmark: Postmark }) {
+  const place = `${postmark.city}, ${postmark.country}`;
+  return (
+    <BriefingFold
+      briefingId={postmark.briefing_id}
+      brief={postmarkBrief(postmark)}
+      renderTrigger={({ open, warm, isBusy }) => (
+        <Tooltip closeDelay={0}>
+          <Focusable>
+            <button
+              type="button"
+              onClick={open}
+              onPointerEnter={warm}
+              onPointerDown={warm}
+              onFocus={warm}
+              aria-label={place}
+              aria-busy={isBusy}
+              className="group block h-auto w-full min-w-0 cursor-pointer overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <span className="block aspect-[600/850] w-full transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:-rotate-2 group-active:scale-95">
+                <Image
+                  src={postmark.stamp_url}
+                  alt=""
+                  width={200}
+                  height={284}
+                  className="h-full w-full object-contain drop-shadow-[0_6px_12px_rgb(0_0_0/0.45)]"
+                />
+              </span>
+              <span className="mt-1.5 block truncate text-center text-xs text-zinc-400 sm:hidden">
+                {postmark.city}
+              </span>
+            </button>
+          </Focusable>
+          <Tooltip.Content
+            placement="bottom"
+            className={overlayVariants({ surface: "bare" })}
+          >
+            <PostmarkCard postmark={postmark} />
+          </Tooltip.Content>
+        </Tooltip>
+      )}
+    />
+  );
+}
+
+/** A city still to collect, at a collected stamp's size; the last one counts every city the sheet leaves out. */
+function BlankStamp({ counts }: { counts: number | null }) {
+  return (
+    <li aria-hidden className="relative block aspect-[600/850] w-full">
+      <StampBlank />
+      {counts !== null && (
+        <span className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center leading-tight">
+          <span className="text-sm font-medium text-zinc-300 tabular-nums">
+            +{counts}
+          </span>{" "}
+          <span className="text-xs text-balance text-zinc-500">
+            more to unlock
+          </span>
+        </span>
+      )}
+    </li>
+  );
+}
 
 /**
- * The album: collected stamps in arrival order, then one tile counting the
- * cities still to come. Each stamp is captioned with its city below sm, where
- * there is no hover to reveal the tooltip.
+ * The album: the stamps collected so far in full, in arrival order, then blanks
+ * only to finish their row (a full row when they end flush), the last blank
+ * counting the rest. Each stamp is captioned with its city below sm, where
+ * there is no hover.
  */
 export function StampCollection({ postmarks, total }: StampCollectionProps) {
-  const remaining = Math.max(total - postmarks.length, 0);
+  const [gridRef, columns] = useGridColumnCount<HTMLUListElement>();
+  const sheet =
+    columns === null ? null : stampSheet(postmarks.length, total, columns);
+  // A blank has no city of its own; its place on the sheet is all that tells it apart.
+  const blankKeys = Array.from(
+    { length: sheet?.blanks ?? 0 },
+    (_, index) => `blank-${index}`,
+  );
   return (
     <ul
+      ref={gridRef}
       aria-label="Stamp collection"
-      className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-3"
+      className="grid grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-4 md:grid-cols-5"
     >
       {postmarks.map((postmark) => (
         <li key={postmark.city_slug}>
-          <Tooltip closeDelay={0}>
-            <Focusable>
-              <Link
-                href={`/brief/${postmark.briefing_id}`}
-                aria-label={`${postmark.city}, ${postmark.country}`}
-                className="group block"
-              >
-                <div
-                  className={cn(
-                    STAMP_SLOT,
-                    "transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:-rotate-2",
-                  )}
-                >
-                  <Image
-                    src={postmark.stamp_url}
-                    alt=""
-                    width={144}
-                    height={204}
-                    className="h-full w-full object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.45)]"
-                  />
-                </div>
-                <p className="mt-1 truncate text-center text-xs text-zinc-400 sm:hidden">
-                  {postmark.city}
-                </p>
-              </Link>
-            </Focusable>
-            <Tooltip.Content
-              placement="bottom"
-              className={overlayVariants({ surface: "bare" })}
-            >
-              <PostmarkCard postmark={postmark} />
-            </Tooltip.Content>
-          </Tooltip>
+          <CollectedStamp postmark={postmark} />
         </li>
       ))}
-      {remaining > 0 && (
-        <li
-          className={cn(
-            STAMP_SLOT,
-            "flex flex-col items-center justify-center gap-0.5 rounded-md bg-zinc-800/40 p-2 text-center",
-          )}
-        >
-          <span className="text-lg font-medium text-zinc-300 tabular-nums">
-            {remaining}
-          </span>{" "}
-          <span className="text-xs text-pretty text-zinc-500">
-            {postmarks.length === 0
-              ? `${remaining === 1 ? "city" : "cities"} to collect`
-              : `more ${remaining === 1 ? "city" : "cities"}`}
-          </span>
-        </li>
-      )}
+      {blankKeys.map((key, index) => (
+        <BlankStamp
+          key={key}
+          counts={
+            index === blankKeys.length - 1 ? (sheet?.lastCounts ?? null) : null
+          }
+        />
+      ))}
     </ul>
   );
 }

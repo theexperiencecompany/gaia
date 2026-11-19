@@ -93,7 +93,7 @@ describe("BriefingArchive", () => {
     );
   });
 
-  it("groups briefs by week, leads with the weekly recap and flags only a notable count", async () => {
+  it("groups briefs by week, leads with the weekly recap and titles each card alone", async () => {
     const weekly = {
       ...brief,
       id: "brief_w",
@@ -102,7 +102,11 @@ describe("BriefingArchive", () => {
       edition_name: "The Week",
       stamp_city_name: null,
       needs_you_count: 4,
-      payload: { ...brief.payload, headline: "A steady week" },
+      payload: {
+        ...brief.payload,
+        headline: "A steady week",
+        lede: "Five briefs, two launches.",
+      },
     };
     const lastWeek = { ...brief, id: "brief_old", date: "2026-10-07" };
     fetchBriefings.mockResolvedValueOnce({
@@ -122,10 +126,14 @@ describe("BriefingArchive", () => {
     ]);
     expect(screen.getByText("Oct 12 – Oct 18")).toBeTruthy();
     expect(screen.getByText("Oct 5 – Oct 11")).toBeTruthy();
-    expect(screen.getByText("Weekly recap")).toBeTruthy();
-    expect(screen.getByText("4 waiting")).toBeTruthy();
+    expect(screen.getByText("Weekly")).toBeTruthy();
+    expect(screen.getAllByText("Daily")).toHaveLength(2);
+    expect(screen.getByText("The Week")).toBeTruthy();
+    expect(screen.queryByText("Weekly recap")).toBeNull();
     expect(screen.getAllByText("Air Mail, Bogotá")).toHaveLength(2);
-    expect(screen.queryByText(/1 waiting/)).toBeNull();
+    expect(screen.queryByText("Five briefs, two launches.")).toBeNull();
+    expect(screen.queryByText(/waiting/)).toBeNull();
+    expect(screen.queryByText(/\d+ briefs?$/)).toBeNull();
   });
 
   it("reads the next page from where the last one ended, until there is none", async () => {

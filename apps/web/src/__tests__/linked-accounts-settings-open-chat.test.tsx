@@ -53,16 +53,18 @@ const LINKED = {
   connectedAt: null,
 };
 
+/** The platform's row, found through its own Connect or menu button once the links load. */
 async function findPlatformRow(label: string) {
-  const labelEl = await screen.findByText(label);
-  const row = labelEl.closest("div.flex.px-4") as HTMLElement;
-  expect(row).not.toBeNull();
-  const scope = within(row);
-  await waitFor(() => {
-    const connect = scope.getByRole("button", { name: /Connect|Disconnect/ });
-    expect((connect as HTMLButtonElement).disabled).toBe(false);
+  const name = new RegExp(`^(Connect|More for) ${label}$`);
+  // Re-queried each try: the loading row's Connect is replaced once the links arrive.
+  const action = await waitFor(() => {
+    const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    return button;
   });
-  return scope;
+  const row = action.closest("div.flex.px-4") as HTMLElement;
+  expect(row).not.toBeNull();
+  return within(row);
 }
 
 describe("LinkedAccountsSettings — open chat", () => {

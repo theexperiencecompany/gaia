@@ -154,7 +154,9 @@
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/IntegrationConnectCard.tsx";
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";
+@source "../../../components/shared/letterControlProps.ts";
 @source "../../../components/shared/LetterModal.tsx";
+@source "../../../components/shared/letterMotion.ts";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
 @source "../../../components/shared/PanelRow.tsx";
@@ -225,6 +227,7 @@
 @source "../../../features/pricing/advertisedPrice.ts";
 @source "../../../features/pricing/constants.ts";
 @source "../../../features/pricing/types.ts";
+@source "../../../features/settings/constants.ts";
 @source "../../../features/setup-wizard/constants.ts";
 @source "../../../features/short-links/constants.ts";
 @source "../../../features/short-links/registry.tsx";
@@ -458,11 +461,14 @@
 @source "../../../features/briefing/hooks/useBriefingQuery.ts";
 @source "../../../features/briefing/hooks/useBriefingsQuery.ts";
 @source "../../../features/briefing/hooks/useGlobeSpin.ts";
+@source "../../../features/briefing/hooks/useGridColumnCount.ts";
 @source "../../../features/briefing/hooks/useNightGlobeBasemap.ts";
 @source "../../../features/briefing/hooks/usePostmarksQuery.ts";
 @source "../../../features/briefing/utils/frontPaper.ts";
 @source "../../../features/briefing/utils/paperBounds.ts";
+@source "../../../features/briefing/utils/postmarkBrief.ts";
 @source "../../../features/briefing/utils/preparedEdition.ts";
+@source "../../../features/briefing/utils/stampSheet.ts";
 @source "../../../features/browser/api/browserApi.ts";
 @source "../../../features/browser/components/BrowserStatusChip.tsx";
 @source "../../../features/browser/components/BrowserTaskHistory.tsx";
@@ -778,15 +784,16 @@
 @source "../../../features/settings/components/AccountSettings.tsx";
 @source "../../../features/settings/components/BriefingEditionsSettings.tsx";
 @source "../../../features/settings/components/BriefingScheduleSettings.tsx";
+@source "../../../features/settings/components/BriefingsSettings.tsx";
 @source "../../../features/settings/components/BriefsOffBlockedModal.tsx";
 @source "../../../features/settings/components/BrowserSettings.tsx";
 @source "../../../features/settings/components/CancelSubscriptionAction.tsx";
-@source "../../../features/settings/components/ChatChannelSettings.tsx";
 @source "../../../features/settings/components/ComposioAuthConfigRow.tsx";
 @source "../../../features/settings/components/ComposioSetupSettings.tsx";
 @source "../../../features/settings/components/CustomResponseStyleInput.tsx";
 @source "../../../features/settings/components/DesktopSettings.tsx";
 @source "../../../features/settings/components/DevicesSettings.tsx";
+@source "../../../features/settings/components/EditionDemoModal.tsx";
 @source "../../../features/settings/components/ExperimentalFeatureRow.tsx";
 @source "../../../features/settings/components/ExperimentalFeaturesSettings.tsx";
 @source "../../../features/settings/components/GlobalInstructionsEditor.tsx";
@@ -828,6 +835,7 @@
 @source "../../../features/settings/hooks/useMembers.ts";
 @source "../../../features/settings/hooks/useNestedMenu.ts";
 @source "../../../features/settings/hooks/useOpenPlatformChat.ts";
+@source "../../../features/settings/hooks/usePlatformLinks.tsx";
 @source "../../../features/settings/hooks/useProviderCatalog.ts";
 @source "../../../features/settings/hooks/useProviderConfigs.ts";
 @source "../../../features/settings/hooks/useProviderConnect.ts";
@@ -840,6 +848,7 @@
 @source "../../../features/settings/utils/chatChannelOrder.ts";
 @source "../../../features/settings/utils/customPresets.ts";
 @source "../../../features/settings/utils/onboardingPreferences.ts";
+@source "../../../features/settings/utils/platformLinkLabels.ts";
 @source "../../../features/settings/utils/providerCatalog.ts";
 @source "../../../features/settings/utils/quietHoursAxis.ts";
 @source "../../../features/settings/utils/subscriptionSummary.ts";
@@ -1018,6 +1027,7 @@
 @source "../../../features/briefing/components/postmarks/PostmarkCard.tsx";
 @source "../../../features/briefing/components/postmarks/PostmarksGlobe.tsx";
 @source "../../../features/briefing/components/postmarks/PostmarksSettings.tsx";
+@source "../../../features/briefing/components/postmarks/StampBlank.tsx";
 @source "../../../features/briefing/components/postmarks/StampCollection.tsx";
 @source "../../../features/chat/components/artifacts/ArtifactCard.tsx";
 @source "../../../features/chat/components/artifacts/ArtifactViewer.tsx";

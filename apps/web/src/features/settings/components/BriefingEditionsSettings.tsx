@@ -1,35 +1,49 @@
 "use client";
 
-import { Skeleton } from "@heroui/react";
-import { FavouriteIcon } from "@icons";
+import { Chip, Skeleton } from "@heroui/react";
+import { FavouriteIcon, FullScreenIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
+import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
+import { EditionDemoModal } from "@/features/settings/components/EditionDemoModal";
+import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingEditionsSettings } from "@/features/settings/hooks/useBriefingEditionsSettings";
+import { cn } from "@/lib/utils";
 
 /** Built by apps/api/scripts/build_edition_thumbnails.py, one per daily family. */
 const thumbnailSrc = (family: string) =>
   `/images/briefing/editions/${family}.webp`;
+
+/** @icons is a solid set: the heart's own path, stroked and left unfilled, is its outline. */
+const OUTLINED_HEART_CLASSES =
+  "text-zinc-200 [&_path]:fill-transparent [&_path]:stroke-current [&_path]:stroke-[1.75]";
 
 const SKELETON_KEYS = Array.from({ length: 6 }, (_, i) => `edition-${i}`);
 
 /**
  * "Editions": every daily edition the brief can draw. Tapping a card takes it
  * out of the rotation (greyed) or puts it back; the heart makes it a
- * favourite, drawn twice as often.
+ * favourite, drawn twice as often; the corner button shows it full screen
+ * drawing a sample brief.
  */
 export function BriefingEditionsSettings() {
   const { editions, loadFailed, toggleOn, toggleFavourite } =
     useBriefingEditionsSettings();
+  const [previewed, setPreviewed] = useState<BriefingEdition | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   return (
     <section aria-label="Editions">
-      <p className="mb-2 text-sm font-medium text-zinc-300">Editions</p>
-      <p className="mb-3 text-sm text-zinc-500">
-        {loadFailed
-          ? "Couldn't load your editions. Reload the page to try again."
-          : "Tap an edition to take it out of your rotation. Favourites come up twice as often."}
-      </p>
+      <SettingsSectionHeader
+        title="Editions"
+        description={
+          loadFailed
+            ? "Couldn't load your editions. Reload the page to try again."
+            : "Tap an edition to take it out of your rotation. Favourites come up twice as often."
+        }
+      />
       {!loadFailed && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {editions
@@ -39,6 +53,10 @@ export function BriefingEditionsSettings() {
                   edition={edition}
                   onToggle={() => toggleOn(edition.family)}
                   onFavourite={() => toggleFavourite(edition.family)}
+                  onPreview={() => {
+                    setPreviewed(edition);
+                    setIsPreviewOpen(true);
+                  }}
                 />
               ))
             : SKELETON_KEYS.map((key) => (
@@ -46,6 +64,11 @@ export function BriefingEditionsSettings() {
               ))}
         </div>
       )}
+      <EditionDemoModal
+        edition={previewed}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+      />
     </section>
   );
 }
@@ -54,16 +77,18 @@ function EditionCard({
   edition,
   onToggle,
   onFavourite,
+  onPreview,
 }: {
   edition: BriefingEdition;
   onToggle: () => void;
   onFavourite: () => void;
+  onPreview: () => void;
 }) {
   const isOff = edition.choice === "off";
   const isFavourite = edition.choice === "favourite";
 
   return (
-    <div className="relative">
+    <div className="group relative">
       <button
         type="button"
         onClick={onToggle}
@@ -95,14 +120,39 @@ function EditionCard({
       >
         <FavouriteIcon
           size={16}
-          className={isFavourite ? "text-red-500" : "text-zinc-300"}
+          className={isFavourite ? "text-red-500" : OUTLINED_HEART_CLASSES}
         />
       </GaiaButton>
-      <p
-        className={`mt-2 text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
+      <GaiaButton
+        isIconOnly
+        size="sm"
+        shape="pill"
+        variant="scrim"
+        aria-label={`See ${edition.name} full screen`}
+        onPress={onPreview}
+        className="absolute top-2 left-2 z-20 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
       >
-        {edition.name}
-      </p>
+        <FullScreenIcon size={16} className="text-zinc-200" />
+      </GaiaButton>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p
+          className={`truncate text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
+        >
+          {edition.name}
+        </p>
+        {/* Always laid out, so turning an edition off never moves its row. */}
+        <Chip
+          size="sm"
+          variant="soft"
+          aria-hidden={isOff ? undefined : true}
+          className={toneVariants({
+            tone: "muted",
+            className: cn("shrink-0", !isOff && "invisible"),
+          })}
+        >
+          <Chip.Label>Disabled</Chip.Label>
+        </Chip>
+      </div>
     </div>
   );
 }

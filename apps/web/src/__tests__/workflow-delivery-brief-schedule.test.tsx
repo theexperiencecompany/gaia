@@ -71,7 +71,7 @@ describe("adding a workflow's results to the brief", () => {
         screen
           .getByRole("link", { name: "Turn on daily briefs" })
           .getAttribute("href"),
-      ).toBe("/settings/notifications");
+      ).toBe("/settings/briefings");
     },
   );
 
