@@ -266,6 +266,24 @@ class TestACountOfOneIsSaidInTheSingular:
         assert slot_problems("message", written, _VALUES) == []
 
 
+class TestADayIsNotSaidAsAClockTime:
+    def test_at_before_a_time_slot_that_renders_a_due_day_is_named(self) -> None:
+        """Sim 12-02: "so is your dentist appointment at today" went out."""
+        due = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+        values = SlotValues(facts={5: candidate_fact(_candidate(due_at=due), _CLOCK)}, counts={})
+
+        assert slot_problems("message", "[[fact:5]] is due, at [[fact:5.time]].", values) == [
+            "the message says 'at' before [[fact:5.time]], which renders the day 'today'; "
+            "a day takes no 'at': drop it"
+        ]
+
+    def test_at_before_a_time_slot_that_renders_a_clock_time_is_left_alone(self) -> None:
+        candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
+        values = SlotValues(facts={5: candidate_fact(candidate, _CLOCK)}, counts={})
+
+        assert slot_problems("message", "[[fact:5]] at [[fact:5.time]].", values) == []
+
+
 class TestSeriesSlots:
     def test_a_time_series_renders_its_total_latest_peak_its_day_and_low(self) -> None:
         assert series_figures(_MEETINGS) == {
@@ -489,7 +507,9 @@ class TestAPoolItemsFact:
 
         fact = candidate_fact(_candidate(due_at=due, count=3), _CLOCK)
 
-        assert fact == BriefFact(title="Approve the Acme MSA renewal", time="Fri Nov 13", count=3)
+        assert fact == BriefFact(
+            title="Approve the Acme MSA renewal", time="Fri Nov 13", time_is_day=True, count=3
+        )
 
     def test_a_time_of_its_own_beats_its_due_day(self) -> None:
         candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))

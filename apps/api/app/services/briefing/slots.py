@@ -43,6 +43,8 @@ class BriefFact:
 
     title: str
     time: str | None = None
+    #: The time names a day (it is due, or back) rather than a clock time.
+    time_is_day: bool = False
     count: int = 1
     kind: ItemState | None = None
     words: str | None = None
@@ -62,6 +64,7 @@ def candidate_fact(
     return BriefFact(
         title=candidate.title if title is None else title,
         time=candidate.time or due or back,
+        time_is_day=candidate.time is None and (due or back) is not None,
         count=candidate.count,
         kind=kind,
         words=words,
@@ -126,6 +129,10 @@ _COUNT_VERB_RE = re.compile(
     rf"\[\[{re.escape(SlotKind.COUNT.value)}:(\w+)\]\](?:\s+[\w']+){{0,4}}?\s+(are|were|have)\b"
 )
 _SINGULAR = {"are": "is", "were": "was", "have": "has"}
+# "at" before a time slot, which reads only before a clock time ("at [[fact:3.time]]").
+_AT_TIME_RE = re.compile(
+    rf"\bat\s+(\[\[{_FACT}:(\d+)\.{re.escape(FactField.TIME.value)}\]\])", re.I
+)
 _SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
@@ -343,6 +350,18 @@ def _agreement_problems(field_name: str, text: str, values: SlotValues) -> list[
     ]
 
 
+def _day_at_problems(field_name: str, text: str, values: SlotValues) -> list[str]:
+    """Name each time slot written after "at" that renders a day, never a clock time."""
+    problems: list[str] = []
+    for match in _AT_TIME_RE.finditer(text):
+        fact = values.facts.get(int(match.group(2)))
+        if fact is not None and fact.time_is_day:
+            problems.append(
+                says.DAY_AT_TIME.format(field=field_name, slot=match.group(1), day=fact.time)
+            )
+    return problems
+
+
 def sentences(text: str) -> list[str]:
     """Split prose into its sentences and lines."""
     return [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
@@ -397,6 +416,7 @@ def slot_problems(
             problems.append(says.SLOT_PROBLEM.format(field=field_name, problem=exc))
     problems += _title_echo_problems(field_name, text, values)
     problems += _agreement_problems(field_name, text, values)
+    problems += _day_at_problems(field_name, text, values)
     echoes, text = _echo_problems(field_name, text, values)
     problems += echoes
     bare = unslotted(text)

@@ -158,6 +158,7 @@ class TestTheFactLines:
         assert facts.values.facts[1] == BriefFact(
             title="Reply to Maya",
             time="Fri Nov 13",
+            time_is_day=True,
             count=3,
             kind=ItemState.YOU,
             words="Re: term sheet needs sign-off",

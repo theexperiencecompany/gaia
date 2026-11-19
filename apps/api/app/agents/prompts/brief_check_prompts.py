@@ -97,6 +97,10 @@ ECHOED_FIGURE = (
 COUNT_OF_ONE_PLURAL = (
     "the {field} says {slot} (1) with {verb!r}; a count of one takes the singular: {singular!r}"
 )
+DAY_AT_TIME = (
+    "the {field} says 'at' before {slot}, which renders the day {day!r}; a day takes no 'at': "
+    "drop it"
+)
 ECHOED_TITLE = "the {field} names {title!r} in words and again with {slot}; keep one"
 MALFORMED_SLOT = "the {field} has a malformed slot {written!r}; write {forms} exactly"
 TYPED_ADDRESS = "the {field} writes the address {address!r}; link a phrase with ({fact}:N)"
