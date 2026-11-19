@@ -18,6 +18,7 @@ interface UseBriefingEditionsSettings {
 
 const SAVE_FAILED = "Couldn't save your editions.";
 const LAST_ONE_ON = "Keep at least one edition on.";
+const NOTHING_SAVING: Promise<void> = Promise.resolve();
 
 /**
  * Owns which daily editions the user's brief draws: each one on, off or a
@@ -31,7 +32,7 @@ export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
   const [loadFailed, setLoadFailed] = useState(false);
   // What the server last confirmed, which a refused save rolls back to.
   const confirmed = useRef<BriefingEdition[] | null>(null);
-  const saving = useRef<Promise<void>>(Promise.resolve());
+  const saving = useRef(NOTHING_SAVING);
 
   useEffect(() => {
     NotificationsAPI.getBriefingEditions().then(
