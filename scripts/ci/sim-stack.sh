@@ -5,7 +5,8 @@
 #
 # Subcommands:
 #   up    Put mongosh on PATH (the screen fixtures write Mongo through it),
-#         start the stub, API, worker and web, wait until each answers, and
+#         start the stub, API, worker and web, wait until each answers (the
+#         worker by polling its queue), and
 #         publish the endpoints the Playwright and bot harnesses read to $GITHUB_ENV.
 #
 # Env contract:
@@ -65,6 +66,36 @@ _await() {
   ci_ok "$name: answering on $url after ${SECONDS}s"
 }
 
+# Waits until the ARQ worker polls its queue (its health key is written) while its process lives:
+# a worker that dies at startup otherwise leaves every job-driven spec failing for the whole run.
+_await_worker() {
+  local pid="$1"
+  (cd "$REPO_ROOT/apps/api" && WORKER_PID="$pid" BOOT_SECONDS="${BOOT_TIMEOUT_SECONDS:-600}" \
+    LOG_LEVEL=ERROR uv run --frozen --no-sync python - << 'PY'
+import os
+import sys
+import time
+
+import redis
+
+from app.config.settings import settings
+from app.workers.config.worker_settings import WorkerSettings
+
+client = redis.Redis.from_url(settings.REDIS_URL)
+deadline = time.monotonic() + float(os.environ["BOOT_SECONDS"])
+while not client.exists(WorkerSettings.health_check_key):
+    try:
+        os.kill(int(os.environ["WORKER_PID"]), 0)
+    except ProcessLookupError:
+        sys.exit("the ARQ worker exited while starting (see worker.log)")
+    if time.monotonic() > deadline:
+        sys.exit(f"the ARQ worker did not poll its queue within {os.environ['BOOT_SECONDS']}s (see worker.log)")
+    time.sleep(2)
+PY
+  ) || ci_die "the ARQ worker never served its queue"
+  ci_ok "worker: polling its queue after ${SECONDS}s"
+}
+
 cmd_up() {
   : "${OUT_DIR:?OUT_DIR is required}"
   : "${MONGO_DB:?MONGO_DB is required (test-services.sh prepare)}"
@@ -107,7 +138,7 @@ cmd_up() {
     arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG)
   web=$(_start web "$REPO_ROOT/apps/web" pnpm run dev)
   _await api "$api" "http://localhost:$API_PORT/health"
-  kill -0 "$worker" 2> /dev/null || ci_die "the ARQ worker exited while starting (see worker.log)"
+  _await_worker "$worker"
   _await web "$web" "http://localhost:$WEB_PORT/"
 
   {

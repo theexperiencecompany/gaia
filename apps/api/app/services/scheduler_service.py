@@ -7,7 +7,7 @@ from typing import Protocol
 from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
 
-from app.config.settings import settings
+from app.config.arq_redis import arq_redis_settings
 from app.models.scheduler_models import (
     UNSET,
     BaseScheduledTask,
@@ -60,7 +60,7 @@ class BaseSchedulerService(ABC):
 
     def __init__(self, redis_settings: RedisSettings | None = None):
         """Initialize the scheduler service."""
-        self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
+        self.redis_settings = redis_settings or arq_redis_settings()
         self.arq_pool: ArqRedis | None = None
 
     async def initialize(self) -> None:
