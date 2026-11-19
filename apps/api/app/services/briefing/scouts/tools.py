@@ -64,16 +64,27 @@ class ScoutTools:
 async def scout_integrations(user_id: str) -> list[ScoutIntegration]:
     """Return the user's external integrations the rest of the brief does not cover, signed-out ones too."""
     connected: list[ConnectedIntegration] = await get_connected_integrations_named(user_id)
-    signed_out: list[ConnectedIntegration] = await get_signed_out_integrations_named(user_id)
+    expired: list[ConnectedIntegration] = await get_signed_out_integrations_named(user_id)
     handles = await _own_handles(user_id)
+    return _scouted(connected, handles, signed_out=False) + _scouted(
+        expired, handles, signed_out=True
+    )
+
+
+def _scouted(
+    entries: list[ConnectedIntegration],
+    handles: dict[str, frozenset[str]],
+    *,
+    signed_out: bool,
+) -> list[ScoutIntegration]:
+    """Keep the external integrations the rest of the brief does not cover, as scout targets."""
     return [
         ScoutIntegration(
             integration_id=entry["id"],
             name=entry["name"],
-            signed_out=dead,
+            signed_out=signed_out,
             handles=handles.get(entry["id"], frozenset()),
         )
-        for entries, dead in ((connected, False), (signed_out, True))
         for entry in entries
         if entry["id"] not in SCOUTED_ELSEWHERE and _is_external(entry["id"])
     ]
