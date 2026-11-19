@@ -48,7 +48,7 @@ from app.services.briefing.facts import (
 )
 from app.services.briefing.held import held_items
 from app.services.briefing.kinds import KIND_SPECS, BriefKindSpec
-from app.services.briefing.lifecycle import already_delivered
+from app.services.briefing.lifecycle import already_delivered, left_undelivered
 from app.services.briefing.metrics import counted_run
 from app.services.briefing.payload import PayloadParts, edition_payload
 from app.services.briefing.postmarks import new_stamp
@@ -115,6 +115,22 @@ async def _run(user_id: str, spec: BriefKindSpec) -> BriefingRunOutcome:
     if user is None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     clock = resolve_clock(user.timezone)
+    try:
+        return await _run_today(user, clock, spec)
+    except Exception as failed:
+        # A run that stored the brief and then failed (a render, a channel) owes it: run once more.
+        if not await left_undelivered(user_id, clock, spec.kind):
+            raise
+        log.warning(
+            "briefing.rerun_undelivered", error=str(failed), error_type=type(failed).__name__
+        )
+    return await _run_today(user, clock, spec)
+
+
+async def _run_today(
+    user: UserDocument, clock: UserClock, spec: BriefKindSpec
+) -> BriefingRunOutcome:
+    user_id = user.id
     if await already_delivered(user_id, clock, spec.kind):
         return BriefingRunOutcome.ALREADY_DELIVERED
     if await finish_started_delivery(user, clock, spec.kind):

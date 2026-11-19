@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
 
+from playwright._impl._errors import TargetClosedError
 import pytest
 from tests.briefing_run_world import (
     BRIEF_LINK,
@@ -14,6 +15,7 @@ from tests.briefing_run_world import (
     LOGIN,
     NOW,
     ORCHESTRATED,
+    RENDERED,
     TZ,
     USER,
     World,
@@ -141,10 +143,38 @@ class TestHowARunEnds:
         world.render.assert_awaited_once()
         world.notify.assert_awaited_once()
         world.brief_message.assert_awaited_once()
-        assert world.post.await_count == 2
+        # The failed run posted, then its rerun resumed and posted again; then this run.
+        assert world.post.await_count == 3
         assert (world.pending.consumed, world.held) == ([["h1"]], [])
         assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
         assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
+
+    @pytest.mark.regression
+    async def test_a_render_whose_browser_died_is_run_again_and_delivered(
+        self, world: World
+    ) -> None:
+        """Sim 12-03: the render's driver died, the brief stayed stored undelivered and nothing retried it."""
+        world.render.side_effect = [
+            TargetClosedError("Target page, context or browser has been closed"),
+            RENDERED,
+        ]
+
+        assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
+
+        assert world.render.await_count == 2
+        world.notify.assert_awaited_once()
+        assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
+
+    async def test_a_run_that_failed_before_storing_a_brief_is_not_run_again(
+        self, world: World
+    ) -> None:
+        world.voice.side_effect = RuntimeError("model down")
+
+        with pytest.raises(RuntimeError, match="model down"):
+            await run_brief(USER, BriefingKind.DAILY)
+
+        world.voice.assert_awaited_once()
+        assert world.today() is None
 
     @pytest.mark.regression
     async def test_a_resumed_goodbye_still_puts_the_loop_to_sleep_and_spends_its_draw(

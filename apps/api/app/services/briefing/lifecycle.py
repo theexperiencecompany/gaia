@@ -68,3 +68,9 @@ async def already_delivered(user_id: str, clock: UserClock, kind: BriefingKind) 
         log.info("briefing.already_delivered_skip", user_id=user_id, kind=kind)
         return True
     return False
+
+
+async def left_undelivered(user_id: str, clock: UserClock, kind: BriefingKind) -> bool:
+    """Whether today's brief of kind is stored but its delivery never completed."""
+    stored = await briefing_repository.find_for_date(user_id, clock.date_str, kind)
+    return stored is not None and (stored.delivery is None or stored.delivery.completed_at is None)

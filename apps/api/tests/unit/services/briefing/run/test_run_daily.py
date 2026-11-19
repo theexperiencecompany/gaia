@@ -139,10 +139,8 @@ class TestADailyBrief:
     async def test_a_rerun_stores_its_edition_over_the_one_its_brief_had(
         self, world: World
     ) -> None:
-        world.notify.side_effect = RuntimeError("orchestrator down")
-        with pytest.raises(RuntimeError, match="orchestrator down"):
-            await run_brief(USER, BriefingKind.DAILY)
-        world.notify.side_effect = None
+        world.notify.side_effect = [RuntimeError("orchestrator down"), world.notify.return_value]
+
         await run_brief(USER, BriefingKind.DAILY)
 
         stored = [c.args[:2] for c in world.store_edition.await_args_list]

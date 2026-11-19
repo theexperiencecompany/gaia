@@ -63,8 +63,8 @@ async def publish(
 ) -> BriefingModel:
     """Store the brief, deliver it and report where it went; a pushed brief spends its draws.
 
-    An edition is rendered around its link as it is stored, and a render failure stores and
-    sends nothing; a quiet note renders no edition. A brief that is not pushed goes in-app
+    An edition is rendered around its link as it is stored, and a render failure leaves the
+    brief stored and unsent, for the run to run once more; a quiet note renders no edition. A brief that is not pushed goes in-app
     only and spends no shuffle-bag draw. The run's bookkeeping travels on the stored plan, so
     a resumed delivery settles it exactly as this one does.
     """
