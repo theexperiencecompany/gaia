@@ -221,6 +221,14 @@ class TestIdsOnlyAndEachOnce:
             "placed more than once: item 2"
         ]
 
+    def test_a_quote_and_a_goal_placed_twice_are_named_by_their_ids(self) -> None:
+        quote = {"kind": "quote", "quote_id": "q1"}
+        progress = {"kind": "progress", "goal_id": "g1"}
+
+        assert _problems(quote, progress, quote, progress) == [
+            "placed more than once: goal g1, quote q1"
+        ]
+
     def test_a_series_drawn_by_two_charts_is_named(self) -> None:
         assert _problems(_chart("meetings"), _chart("meetings", chart="spark")) == [
             "placed more than once: series meetings"

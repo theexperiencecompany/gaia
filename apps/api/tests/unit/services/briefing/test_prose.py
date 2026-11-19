@@ -98,6 +98,7 @@ class TestAVoiceThatBreaksItsFacts:
         assert asked.await_args_list[1].args[1] == (
             f"PROMPT\n\n{voice_correction_note([problem], broke.model_dump_json(indent=2))}"
         )
+        assert [call.kwargs["label"] for call in asked.await_args_list] == ["brief_voice"] * 2
         assert (voice, draft.message) == (mended, "Reply to Dan first.")
 
 

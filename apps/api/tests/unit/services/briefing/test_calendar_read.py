@@ -10,10 +10,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 from tests.factories import make_user_id
-from tests.helpers import captured_wide_event, user_clock
+from tests.helpers import captured_wide_event, local_timezone, user_clock
 
 from app.models.brief_payload_models import BriefingEvent
-from app.models.calendar_models import CalendarEventsResponse, GoogleCalendarEventResource
+from app.models.calendar_models import (
+    CalendarEventsResponse,
+    CalendarResponse,
+    GoogleCalendarEventResource,
+)
 from app.services import calendar_service
 from app.services.briefing import calendar_read
 from app.services.briefing.calendar_read import CalendarGap, CalendarRead, read_calendar
@@ -95,6 +99,52 @@ class TestReadCalendar:
         window = fetch.await_args.kwargs
         assert window["time_min"] == "2026-10-13T18:30:00+00:00"
         assert window["time_max"] == "2026-10-14T18:30:00+00:00"
+
+    async def test_a_timed_event_carries_its_end_calendar_answer_organizer_and_guests(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        meeting = GoogleCalendarEventResource.model_validate(
+            {
+                "summary": "Board review",
+                "start": {"dateTime": "2026-10-14T05:30:00Z"},
+                "end": {"dateTime": "2026-10-14T06:45:00Z"},
+                "calendarTitle": "Work",
+                "organizer": {"displayName": "Ada Lovelace", "email": "ada@example.com"},
+                "attendees": [
+                    {"self": True, "responseStatus": "tentative"},
+                    {"email": "bob@example.com"},
+                    {"email": "carol@example.com"},
+                    {"email": "room@example.com", "resource": True},
+                ],
+            }
+        )
+        late = GoogleCalendarEventResource.model_validate(
+            {
+                "summary": "Launch watch",
+                "start": {"dateTime": "2026-10-14T17:00:00Z"},
+                "end": {"dateTime": "2026-10-14T19:00:00Z"},
+            }
+        )
+        monkeypatch.setattr(
+            calendar_read, "get_calendar_events", AsyncMock(return_value=_response([meeting, late]))
+        )
+
+        with local_timezone("UTC"):
+            events = (await _calendar(1)).events
+
+        assert events == [
+            BriefingEvent(
+                date="2026-10-14",
+                start="11:00",
+                end="12:15",
+                title="Board review",
+                calendar="Work",
+                response=CalendarResponse.TENTATIVE,
+                organizer="Ada Lovelace",
+                guests=2,
+            ),
+            BriefingEvent(date="2026-10-14", start="22:30", title="Launch watch"),
+        ]
 
     async def test_untitled_and_all_day_events_keep_their_place(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock

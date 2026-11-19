@@ -79,7 +79,9 @@ pytestmark = pytest.mark.usefixtures("fake_redis")
 def _helper_route(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route helper calls to one known model, which the run's lane must be priced by."""
     monkeypatch.setattr(
-        lane_module, "one_shot_route", lambda use: (LLMProviderName.GEMINI, "gemini-helper")
+        lane_module,
+        "one_shot_route",
+        lambda use: (LLMProviderName.GEMINI, "gemini-helper") if use is ModelUse.HELPER else None,
     )
 
 
