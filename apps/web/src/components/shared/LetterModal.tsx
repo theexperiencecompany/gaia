@@ -143,7 +143,13 @@ export function LetterModal({
             if (!nextOpen) onClose();
           }}
         >
-          <Modal.Backdrop variant="transparent" className="no-scrollbar">
+          <Modal.Backdrop
+            variant="transparent"
+            className={modalVariants({
+              surface: "bare",
+              className: "no-scrollbar",
+            })}
+          >
             <m.div
               aria-hidden
               initial="arrive"
@@ -152,7 +158,11 @@ export function LetterModal({
               variants={backdropVariants(presentation, motion)}
               className="pointer-events-none fixed inset-0"
             />
-            <Modal.Container placement="center" scroll="outside">
+            <Modal.Container
+              placement="center"
+              scroll="outside"
+              className={modalVariants({ surface: "bare" })}
+            >
               <Modal.Dialog
                 aria-label={ariaLabel}
                 className={modalVariants({ surface: "bare" })}
