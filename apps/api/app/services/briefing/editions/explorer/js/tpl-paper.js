@@ -236,20 +236,6 @@ ${inkMask("lc-ink", 7)}
      a rubber "Paid in advance" stamp on the prepaid section, and a
      perforated remittance slip. No tracked capitals anywhere.
      ======================================================================== */
-  function qr(seed) {
-    const n = 21;
-    let v = Math.imul(seed, 2654435761) >>> 0;
-    const cells = [];
-    const finder = (x, y) => (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8);
-    for (let y = 0; y < n; y++)
-      for (let x = 0; x < n; x++) {
-        if (finder(x, y)) continue;
-        v = (Math.imul(v, 1103515245) + 12345) >>> 0;
-        if ((v >>> 7) % 2) cells.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
-      }
-    const eye = (x, y) => `<rect x="${x}" y="${y}" width="7" height="7"/><rect x="${x + 1}" y="${y + 1}" width="5" height="5" fill="var(--paper)"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3"/>`;
-    return `<svg class="qr" viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges" aria-hidden="true"><g fill="var(--ink)">${cells.join("")}${eye(0, 0)}${eye(n - 7, 0)}${eye(0, n - 7)}</g></svg>`;
-  }
   EXPLORER.register({
     id: "invoice",
     name: "The Invoice",
@@ -335,7 +321,7 @@ ${inkMask("lc-ink", 7)}
       const s = c.stats;
       const tot = s ? `<div class="tot"><div><span>Settled yesterday</span><b>${s.done}${s.you && s.gaia ? ` (${s.you} you, ${s.gaia} GAIA)` : ""}</b></div>${s.mail ? `<div><span>Correspondence</span><b>${s.mail} filed</b></div>` : ""}${s.focus ? `<div><span>Focus held today</span><b>${esc(s.focus)}</b></div>` : ""}<div class="bal"><span>Awaiting you</span><b>${owed}</b></div></div>` : "";
       const slip = skin.stub.id === "remit"
-        ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>${owed}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${qr(ed.editionNo)}<p class="ref">Ref. GA-${no}</p></div></div>`
+        ? `<div class="perf"><span>Detach and return</span></div><div class="slip">${grain("iv-g2", 0.9)}<div><span class="k">Remittance for invoice ${no}</span><b>${owed}</b><span class="k">Payable to GAIA Studios, on waking</span></div><div>${EXPLORER.code(ed.codes.qr, "qr")}<p class="ref">Ref. GA-${no}</p></div></div>`
         : "";
       return `<article class="t-invoice" style="--paper:${skin.paper.paper}; --ink:${skin.paper.ink}; --soft:${skin.paper.soft}; --hair:${skin.paper.hair}; --desk:${skin.paper.desk}; --acc:${skin.paper.acc}; --tint:${skin.paper.tint}; --fig:${skin.figures.fig}">
 <div class="doc" data-paper>

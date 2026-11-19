@@ -195,6 +195,17 @@ class TestListSince:
         newest = await repo.list_since(user_id, since, exclude_workflow_ids=[], limit=1)
         assert [e.execution_id for e in newest] == [later.execution_id]
 
+    async def test_only_the_asked_status_is_returned(self, repo):
+        user_id, since = _uid("u"), datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
+        failed = await repo.create(_execution(user_id=user_id, started_at=since, status="failed"))
+        await repo.create(_execution(user_id=user_id, started_at=since, status="success"))
+
+        found = await repo.list_since(
+            user_id, since, exclude_workflow_ids=[], limit=10, status="failed"
+        )
+
+        assert [e.execution_id for e in found] == [failed.execution_id]
+
     async def test_the_excluded_workflows_runs_are_left_out(self, repo):
         user_id, since = _uid("u"), datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
         briefing = await repo.create(_execution(user_id=user_id, started_at=since))

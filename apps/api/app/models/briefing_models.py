@@ -7,19 +7,30 @@ are persisted in the ``briefings`` collection, one per user/date/kind.
 """
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, Self
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.briefing import (
+    ACTION_SECTIONS,
+    BRIEF_ITEM_DETAIL_MAX_CHARS,
+    BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEFING_KIND_DAILY,
     DAILY_BRIEFING_HOUR,
     HUE_MAX,
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
+    BriefAction,
     BriefingFrequency,
+    BriefOutcome,
+    SectionKey,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
+from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
 from app.schemas.errors import ErrorEnvelope
 
@@ -42,6 +53,8 @@ BRIEFING_ITEM_STATES: dict[BriefingItemKind, str] = {
     "failed": "Failed",
     "note": "Note",
 }
+# The kinds that wait on the reader: their own asks and work that failed.
+NEEDS_YOU_ITEM_KINDS: frozenset[BriefingItemKind] = frozenset({"you", "failed"})
 
 
 class BriefingSchedule(BaseModel):
@@ -99,11 +112,19 @@ class BriefingStat(BaseModel):
 
 
 class BriefingItem(BaseModel):
-    """A single line inside a section, optionally bound to a todo."""
+    """A single line inside a section, optionally bound to a todo.
+
+    It either asks something of the reader (action) or reports where a thing got to
+    (outcome), never both, under a short title and at most one detail line.
+    """
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
-    text: str
+    #: The item's title: a noun phrase, never a sentence.
+    text: str = Field(min_length=1, max_length=BRIEF_ITEM_TITLE_MAX_CHARS)
+    action: BriefAction | None = None
+    outcome: BriefOutcome | None = None
+    detail: str | None = Field(default=None, min_length=1, max_length=BRIEF_ITEM_DETAIL_MAX_CHARS)
     todo_id: str | None = None
     kind: BriefingItemKind = "note"
     # heygaia.link to the item's artifact (canvas), a capability anyone holding it opens. The
@@ -113,6 +134,19 @@ class BriefingItem(BaseModel):
     # How many tracked todos this one item stands for: todos sharing a parent or a
     # title are one thing to the user (todo_id is the first of them).
     count: int = Field(default=1, ge=1)
+    #: The app the item came from ("GitHub", "Gmail", "GAIA"); None on legacy rows.
+    app: str | None = None
+    #: A deep link into that app, when it gave one.
+    url: str | None = None
+    people: list[str] = Field(default_factory=list)
+    #: What GAIA offers to do about the item (the lead's "Let's do it"); None when nothing.
+    offer: str | None = None
+
+    @model_validator(mode="after")
+    def _one_action_or_outcome(self) -> Self:
+        if (self.action is None) == (self.outcome is None):
+            raise ValueError(f"item {self.text!r} needs exactly one of action or outcome")
+        return self
 
 
 class BriefingSection(BaseModel):
@@ -123,6 +157,21 @@ class BriefingSection(BaseModel):
     numeral: str
     title: str
     items: list[BriefingItem] = Field(default_factory=list)
+    #: What the section holds; None on legacy rows and on the model-written weekly recap.
+    key: SectionKey | None = None
+    #: Items chosen for the section that its cap left out, for "+N more in the full brief".
+    more: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _items_fit_the_section(self) -> Self:
+        if self.key is None:
+            return self
+        asks = self.key in ACTION_SECTIONS
+        misfit = [i.text for i in self.items if (i.action is not None) != asks]
+        if misfit:
+            needed = "an action" if asks else "an outcome"
+            raise ValueError(f"{self.key.value} items need {needed}: {misfit}")
+        return self
 
 
 class BriefingEvent(BaseModel):
@@ -132,6 +181,15 @@ class BriefingEvent(BaseModel):
     start: str | None = None  # user-local "HH:MM"; None for an all-day event
     title: str
     location: str | None = None
+
+
+class UnreadSource(BaseModel):
+    """A connected app the brief could not read this time, and why."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    app: str
+    reason: ScoutSkipReason
 
 
 class BriefingTallies(BaseModel):
@@ -169,6 +227,16 @@ class NewStamp(BaseModel):
     country: str
     collected: int = Field(ge=1, description="Stamps collected, this one included.")
     total: int = Field(ge=1, description="How many city stamps can be collected.")
+
+
+class BriefVoice(BaseModel):
+    """The prose a brief's model writes over code-built facts, as written or as rendered."""
+
+    headline: str = Field(max_length=MAX_BRIEF_HEADLINE_CHARS)
+    lede: str = Field(max_length=MAX_BRIEF_LEDE_CHARS)
+    caption: str = Field(max_length=MAX_BRIEF_CAPTION_CHARS)
+    mood: BriefingMood
+    message: str = Field(min_length=1, max_length=MAX_BRIEF_MESSAGE_CHARS)
 
 
 class BriefingPayload(BaseModel):
@@ -212,11 +280,23 @@ class BriefingPayload(BaseModel):
     generated_at: str | None = Field(
         default=None, description='User-local generation time, e.g. "6:02 AM".'
     )
+    link: str | None = Field(
+        default=None,
+        description=(
+            "The brief's link, set before its edition renders: its heygaia.link, or its "
+            "page URL when minting failed. The edition's QR and barcodes encode it; "
+            "None on legacy rows."
+        ),
+    )
     calendar: list[BriefingEvent] = Field(
         default_factory=list, description="Today's calendar events, in start order."
     )
     tallies: BriefingTallies | None = None
     week: BriefingWeek | None = None
+    sources_read: list[str] = Field(
+        default_factory=list, description="The apps the brief read, by display name."
+    )
+    sources_unavailable: list[UnreadSource] = Field(default_factory=list)
     message: str | None = Field(
         default=None,
         description=(
@@ -225,6 +305,11 @@ class BriefingPayload(BaseModel):
             "the brief's page. None on legacy rows."
         ),
     )
+
+
+def new_briefing_id() -> str:
+    """Return a fresh brief id."""
+    return f"brief_{uuid.uuid4().hex[:12]}"
 
 
 class EditionRender(BaseModel):
@@ -251,7 +336,7 @@ class BriefingModel(UserScopedDocument):
         extra="ignore", from_attributes=True, json_schema_serialization_defaults_required=True
     )
 
-    id: str = Field(default_factory=lambda: f"brief_{uuid.uuid4().hex[:12]}")
+    id: str = Field(default_factory=new_briefing_id)
     date: str  # user-local YYYY-MM-DD
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload

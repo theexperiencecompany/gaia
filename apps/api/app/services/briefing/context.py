@@ -6,12 +6,13 @@ blocks. Every block is plain text — the agent turns it into the payload.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    LOOKBACK_MAX_DAYS,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
 )
@@ -26,8 +27,8 @@ from app.memory.mappers import entry_to_note
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingKind,
+    BriefingModel,
     BriefingMood,
-    BriefingPayload,
     BriefingWeek,
     BriefingWeekDay,
 )
@@ -109,17 +110,29 @@ def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
     return datetime.combine(day, time.min, tzinfo=clock.tz).astimezone(UTC)
 
 
-async def get_yesterday_payload(
-    user_id: str, before_date: str, kind: BriefingKind = BRIEFING_KIND_DAILY
-) -> BriefingPayload | None:
-    """Latest daily briefing payload strictly before before_date (today).
+async def last_brief(
+    user_id: str, clock: UserClock, kind: BriefingKind = BRIEFING_KIND_DAILY
+) -> BriefingModel | None:
+    """Return the latest brief of kind before today; a same-day re-run looks past its own."""
+    return await briefing_repository.get_before_date(user_id, kind=kind, before_date=clock.date_str)
 
-    Excludes today so a same-day re-run compares against the real prior brief.
+
+def lookback_since(clock: UserClock, last: BriefingModel | None) -> datetime:
+    """Return when the look-back starts: the last brief, at most LOOKBACK_MAX_DAYS back.
+
+    With no brief before, it starts at yesterday's local midnight.
     """
-    briefing = await briefing_repository.get_before_date(
-        user_id, kind=kind, before_date=before_date
-    )
-    return briefing.payload if briefing else None
+    if last is None:
+        return day_start_utc(clock, days_ago=1)
+    return max(_aware(last.created_at), day_start_utc(clock, days_ago=LOOKBACK_MAX_DAYS))
+
+
+def _when_sent(last: BriefingModel, clock: UserClock) -> str:
+    """Name the last brief's day as the user would: yesterday, or its weekday and date."""
+    day = date.fromisoformat(last.date)
+    if day == clock.now_local.date() - timedelta(days=1):
+        return "yesterday"
+    return day.strftime("on %A %b %-d")
 
 
 # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
@@ -182,20 +195,13 @@ async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork
     return work
 
 
-async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
-    """Count + first titles of the user's own open todos, for the brief's facts.
-
-    The voice pass gets these so an empty day can't be voiced as "all clear"
-    while the user's own list still has work in it.
-    """
-    docs = await todo_repository.list_open_user_todos(user_id, limit=50)
-    titles = [d.title or "untitled" for d in docs]
-    return len(titles), titles[:5]
-
-
 async def format_lookback_block(
-    user_id: str, yesterday_payload: BriefingPayload | None, since: datetime
+    user_id: str, last: BriefingModel | None, since: datetime, clock: UserClock
 ) -> str:
+    """Return what the last brief planned, then what got done and ran since it.
+
+    A brief older than LOOKBACK_MAX_DAYS is named by its date but not quoted: its plan is stale.
+    """
     completed = await gather_completed_since(user_id, since)
     briefing_workflows = await workflow_repository.find_system_workflows(
         user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS
@@ -208,15 +214,20 @@ async def format_lookback_block(
     )
 
     parts: list[str] = []
-    if yesterday_payload:
-        planned = [item.text for section in yesterday_payload.sections for item in section.items]
+    if last is None:
+        parts.append("No prior briefing — this is the first look-back.")
+    elif _aware(last.created_at) < since:
+        parts.append(
+            f"The last brief went out {_when_sent(last, clock)}, over {LOOKBACK_MAX_DAYS} days "
+            f"ago; what it said is stale, so this looks back over the last {LOOKBACK_MAX_DAYS} days."
+        )
+    else:
+        planned = [item.text for section in last.payload.sections for item in section.items]
         if planned:
             parts.append(
-                "Yesterday you told the user you'd focus on:\n"
+                f"Your last brief, {_when_sent(last, clock)}, told the user you'd focus on:\n"
                 + "\n".join(f"- {p}" for p in planned if p)
             )
-    else:
-        parts.append("No prior briefing — this is the first look-back.")
 
     if completed.gaia or completed.user:
         done = [f"- GAIA finished: {d.title or 'untitled'}" for d in completed.gaia]

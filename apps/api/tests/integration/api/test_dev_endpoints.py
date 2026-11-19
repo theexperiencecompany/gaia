@@ -25,7 +25,7 @@ from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionStatus
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataRequest, SeedDevDataResponse
-from app.services.briefing.service import BriefingGenerationError
+from app.services.briefing.errors import BriefingGenerationError
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event

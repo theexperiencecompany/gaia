@@ -874,6 +874,11 @@ class TestBriefingEngineState:
         assert (counted.idle_days, counted.date, counted.dormant_since) == (3, "2026-10-14", None)
 
         before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
+        await repo.record_goal_question(created.id)
+        asked = (await repo.get(created.id)).briefing_dormancy
+        assert asked is not None and (asked.idle_days, asked.date) == (3, "2026-10-14")
+        assert self._stamped_now(asked.goal_asked_at, before)
+
         await repo.enter_briefing_dormancy(created.id)
         dormant = (await repo.get(created.id)).briefing_dormancy
         assert dormant is not None and (dormant.idle_days, dormant.date) == (3, "2026-10-14")

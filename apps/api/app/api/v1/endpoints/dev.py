@@ -22,11 +22,9 @@ from app.schemas.dev_schemas import (
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
-from app.services.briefing.service import (
-    BriefingGenerationError,
-    run_daily_briefing,
-    run_weekly_digest,
-)
+from app.services.briefing.daily import run_daily_briefing
+from app.services.briefing.errors import BriefingGenerationError
+from app.services.briefing.weekly import run_weekly_digest
 from app.services.dev_agent_service import run_executor_direct
 from app.services.dev_service import (
     attach_dev_file,

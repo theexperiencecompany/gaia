@@ -10,7 +10,7 @@ import time_machine
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
-    HELD_SECTION_TITLE,
+    HELD_RELEASE_TITLE,
     WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
@@ -425,7 +425,7 @@ class TestWhatTheBriefHeld:
         [request] = [call.args[0] for call in seams.notify.await_args_list]
         assert (request.user_id, request.content.title, request.content.body) == (
             _USER,
-            HELD_SECTION_TITLE,
+            HELD_RELEASE_TITLE,
             "Digest: Three new leads\nPrices: Down 4%",
         )
         seams.consume.assert_awaited_once_with(_USER, [doc.id for doc in moving])

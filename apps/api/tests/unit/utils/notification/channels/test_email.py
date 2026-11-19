@@ -80,7 +80,11 @@ _BRIEF_PAYLOAD: dict[str, Any] = {
     "headline": "Three things today",
     "lede": "A calm morning.",
     "sections": [
-        {"numeral": "I", "title": "NEEDS YOU", "items": [{"text": "Pick a slot", "kind": "you"}]}
+        {
+            "numeral": "I",
+            "title": "NEEDS YOU",
+            "items": [{"text": "Pick a slot", "kind": "you", "action": "approve"}],
+        }
     ],
     "mood": "clear",
     "caption": "Onward.",

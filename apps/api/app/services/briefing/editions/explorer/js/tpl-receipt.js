@@ -42,21 +42,6 @@
   const TEAR_TOP = tornTeeth(58, "top");
   const TEAR_BOT = tornTeeth(64, "bottom");
 
-  /* Barcode bars derived from the edition number. */
-  function barcode(seed) {
-    const stops = [];
-    let x = 0;
-    let v = Math.imul(seed, 2654435761) >>> 0;
-    for (let i = 0; i < 58; i++) {
-      v = (Math.imul(v, 1103515245) + 12345) >>> 0;
-      const w = 1 + (v % 3);
-      if (i % 2 === 0) stops.push(`var(--ink) ${x}px ${x + w}px`);
-      else stops.push(`transparent ${x}px ${x + w + 1}px`);
-      x += w + (i % 2 ? 1 : 0);
-    }
-    return { bg: `linear-gradient(90deg, ${stops.join(", ")})`, w: x };
-  }
-
   /* Paper grain: inline SVG fractal noise (no external asset), blended over the sheet at low opacity. */
   const grain = (id, freq) => `<svg class="grain" aria-hidden="true"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="${freq}" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="100%" height="100%" filter="url(#${id})"/></svg>`;
   const item = (label, val, cls) =>
@@ -123,6 +108,7 @@
 .t-receipt .tender { text-align: center; letter-spacing: .14em; line-height: 1.7; margin-top: 12px; }
 .t-receipt .thanks { text-align: center; letter-spacing: .16em; margin: 4px 0 16px; }
 .t-receipt .bars { height: 64px; margin: 0 auto 8px; }
+.t-receipt .bars svg { display: block; width: 100%; height: 100%; }
 .t-receipt .barnum { text-align: center; letter-spacing: .3em; padding-left: .3em; margin-bottom: 14px; font-size: 15px; }
 .t-receipt .colo { text-align: center; font-size: 13px; letter-spacing: .06em; color: var(--soft); }
 `,
@@ -144,7 +130,7 @@
         ? `${RULE}${item("Done yesterday", s.done)}${s.you && s.gaia ? note(`You ${s.you} / GAIA ${s.gaia}`) : ""}${s.mail ? item("Emails handled", s.mail) : ""}${s.focus ? item("Focus time", s.focus) : ""}${RULE2}`
         : "";
       const count = needs.length + c.today.length + c.overnight.length + c.running.length;
-      const bc = barcode(ed.editionNo);
+      const bars = ed.codes.code128;
       return `<article class="t-receipt" style="--hi:${skin.desk.hi}; --a:${skin.desk.a}; --b:${skin.desk.b}; --paper:${skin.stock.paper}; --edge:${skin.stock.edge}; --ink:${skin.density.ink}; --soft:${skin.density.soft}; --red:${skin.density.red}">
 <div class="wrap"><div class="tape">${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>
   <h1 class="store">GAIA</h1>
@@ -157,7 +143,7 @@
   <div class="tender">${count ? `<span>ITEMS: ${count}</span><br>` : ""}<span>AUTH ${ed.editionNo}-${ed.time24.replace(":", "")} &middot; APPROVED</span></div>
   ${RULE}
   <p class="thanks">*** THANK YOU FOR WAKING ***</p>
-  <div class="bars" style="width:${bc.w}px; background:${bc.bg}"></div>
+  <div class="bars" style="width:min(100%, ${bars.width}px)">${EXPLORER.code(bars, "code")}</div>
   <p class="barnum">ED${ed.editionNo}-${ed.time24.replace(":", "")}-GAIA</p>
   <p class="colo">EDITION No. ${ed.editionNo} &middot; GENERATED ${ed.time24} BY GAIA</p>
 </div></div></article>`;

@@ -3,7 +3,7 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
-from app.constants.briefing import NEEDS_YOU_SECTION_TITLE
+from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import (
     BriefingItem,
     BriefingModel,
@@ -44,19 +44,35 @@ def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
     assert view.id == "brief_1"
 
 
-def test_needs_you_counts_only_that_sections_listed_items() -> None:
-    needs_you = BriefingSection(
+def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
+    """The lead can be a needs-you item too; the editions list it with the other decisions."""
+    lead = BriefingSection(
         numeral="I",
-        title=NEEDS_YOU_SECTION_TITLE,
-        items=[BriefingItem(text="Approve the MSA", count=3), BriefingItem(text="Reply to Dan")],
+        title="First up",
+        items=[BriefingItem(text="Priya", action=BriefAction.REPLY, kind="you")],
+    )
+    needs_you = BriefingSection(
+        numeral="II",
+        title="Needs you",
+        items=[
+            BriefingItem(text="The MSA", action=BriefAction.APPROVE, count=3, kind="you"),
+            BriefingItem(text="The export", action=BriefAction.RETRY, kind="failed"),
+        ],
     )
     gaias_work = BriefingSection(
-        numeral="II", title="GAIA's work", items=[BriefingItem(text="Drafted the memo")]
+        numeral="III",
+        title="GAIA's work",
+        items=[
+            BriefingItem(text="The memo", outcome=BriefOutcome.DRAFTED, kind="lookback"),
+            BriefingItem(text="FYI", outcome=BriefOutcome.CHANGED),
+        ],
     )
 
-    view = briefing_view(_brief(template_family="flightplan", sections=[needs_you, gaias_work]))
+    view = briefing_view(
+        _brief(template_family="flightplan", sections=[lead, needs_you, gaias_work])
+    )
 
-    assert view.needs_you_count == 2
+    assert view.needs_you_count == 3
 
 
 def test_only_air_mail_is_named_so_no_design_explorer_name_reaches_the_user() -> None:

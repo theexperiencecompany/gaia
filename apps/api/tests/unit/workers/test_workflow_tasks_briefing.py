@@ -23,11 +23,10 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.briefing.service import BriefingGenerationError
+from app.services.briefing.errors import BriefingGenerationError
 from app.workers.tasks.workflow_tasks import _run_briefing_workflow, execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
-BRIEFING_SERVICE = "app.services.briefing.service"
 
 #: What a briefing fire records: no conversation to thread, no tool calls to
 #: replay, and the summary the execution history shows the user.
@@ -67,8 +66,8 @@ class _Pipelines:
 
     def patches(self) -> list:
         return [
-            patch(f"{BRIEFING_SERVICE}.run_daily_briefing", self.daily),
-            patch(f"{BRIEFING_SERVICE}.run_weekly_digest", self.weekly),
+            patch("app.services.briefing.daily.run_daily_briefing", self.daily),
+            patch("app.services.briefing.weekly.run_weekly_digest", self.weekly),
         ]
 
 

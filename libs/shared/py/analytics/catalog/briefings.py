@@ -31,6 +31,13 @@ class BriefingSent(ServerEvent):
     #: Items the user's connected-app scouts found needing them.
     signal_count: int
     stamp_collected: bool
+    #: Items per section, as the selection judge kept them (flat: PostHog breaks down by property).
+    lead_count: int
+    needs_you_count: int
+    updates_count: int
+    gaia_did_count: int
+    #: Apps the brief read.
+    source_count: int
 
 
 class BriefingOpened(ServerEvent):

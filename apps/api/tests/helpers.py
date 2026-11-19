@@ -85,15 +85,19 @@ async def users_get(user_id: str) -> UserDocument | None:
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
-async def briefs_off_users_get(user_id: str) -> UserDocument:
-    """Stand in for user_repository.get with a user who turned their briefs off."""
-    return UserDocument.model_validate(
-        {
-            "id": user_id,
-            "onboarding": {"completed": True},
-            "briefing_schedule": {"frequency": BriefingFrequency.OFF},
-        }
-    )
+def users_get_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[UserDocument]]:
+    """Stand in for user_repository.get with a user whose briefs run at frequency."""
+
+    async def get(user_id: str) -> UserDocument:
+        return UserDocument.model_validate(
+            {
+                "id": user_id,
+                "onboarding": {"completed": True},
+                "briefing_schedule": {"frequency": frequency},
+            }
+        )
+
+    return get
 
 
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:

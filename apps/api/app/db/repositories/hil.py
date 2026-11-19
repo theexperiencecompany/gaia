@@ -115,6 +115,13 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
             }
         )
 
+    async def list_pending_for_user(self, user_id: str, now: datetime) -> list[HILApprovalRecord]:
+        """Every approval still waiting on the user and not yet past its expiry, oldest first."""
+        return await self._find(
+            {"user_id": user_id, "status": HILApprovalStatus.PENDING, "expires_at": {"$gt": now}},
+            sort=[("created_at", 1)],
+        )
+
     async def list_pending_for_conversation(self, conversation_id: str) -> list[HILApprovalRecord]:
         """Every still-pending approval in a conversation, oldest first."""
         return await self._find(

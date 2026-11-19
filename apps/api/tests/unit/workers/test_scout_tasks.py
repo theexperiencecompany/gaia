@@ -19,7 +19,9 @@ async def test_the_job_learns_the_connected_integration_for_its_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     learn = AsyncMock(
-        return_value=ScoutResult(integration_id="linear", outcome=ScoutOutcome.LEARNED)
+        return_value=ScoutResult(
+            integration_id="linear", app="Linear", outcome=ScoutOutcome.LEARNED
+        )
     )
     get = AsyncMock(return_value=USER)
     monkeypatch.setattr(user_repository, "get", get)

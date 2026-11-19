@@ -6,7 +6,7 @@ only, briefs off, or a daily switched off) is sent each result now, and moving o
 daily brief releases everything it was holding, at once, in the app.
 """
 
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, HELD_SECTION_TITLE
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, HELD_RELEASE_TITLE
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
@@ -30,10 +30,15 @@ async def held_items(user_id: str) -> list[PendingBriefItemDocument]:
     return await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
 
 
+def first_line(text: str) -> str | None:
+    """Return a held report's first non-blank line: all of it that is ever shown."""
+    return next((line.strip() for line in text.splitlines() if line.strip()), None)
+
+
 def held_text(doc: PendingBriefItemDocument) -> str:
     """One line for a held result: where it came from and its report's first line."""
-    first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
-    return f"{doc.source_title}: {first_line}"
+    first = first_line(doc.text)
+    return f"{doc.source_title}: {first}" if first else doc.source_title
 
 
 async def release_held_items(user_id: str) -> None:
@@ -46,7 +51,7 @@ async def release_held_items(user_id: str) -> None:
             user_id=user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             content=NotificationContent(
-                title=HELD_SECTION_TITLE, body="\n".join(held_text(doc) for doc in held)
+                title=HELD_RELEASE_TITLE, body="\n".join(held_text(doc) for doc in held)
             ),
         )
     )

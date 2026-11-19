@@ -72,6 +72,19 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         """Return every reminder of a user that is armed to fire."""
         return await self._find({"user_id": user_id, "status": ReminderStatus.SCHEDULED.value})
 
+    async def find_scheduled_between(
+        self, user_id: str, start: datetime, end: datetime
+    ) -> list[ReminderDocument]:
+        """Return the user's armed reminders due in [start, end), soonest first."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "status": ReminderStatus.SCHEDULED.value,
+                "scheduled_at": {"$gte": start, "$lt": end},
+            },
+            sort=[("scheduled_at", 1)],
+        )
+
     async def find_active_twin(
         self,
         user_id: str,

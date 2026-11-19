@@ -536,12 +536,14 @@ class BriefingBootstrap(BaseModel):
 
 
 class BriefingDormancy(BaseModel):
-    """The idle ladder: consecutive idle days, the last day counted, and when the
-    brief went dormant (None while it is still running)."""
+    """The idle ladder: consecutive idle days, the last day counted, when the brief
+    went dormant (None while it is still running), and when it last asked about a goal."""
 
     idle_days: int = Field(default=0, ge=0)
     date: str | None = None
     dormant_since: datetime | None = None
+    #: When a brief last asked whether the user's remembered goal is still live.
+    goal_asked_at: datetime | None = None
 
 
 class DayZeroHello(BaseModel):
