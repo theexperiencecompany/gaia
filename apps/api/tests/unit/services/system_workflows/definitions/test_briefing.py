@@ -8,16 +8,27 @@ real user's workflow page.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_CRON,
     WEEKLY_DIGEST_WORKFLOW_KEY,
+    BriefingFrequency,
 )
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
+from app.models.user_models import UserDocument
 from app.models.workflow_models import CreateWorkflowRequest, TriggerType
-from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions.briefing import (
+    BRIEFING_BEHAVIOURS,
+    BRIEFING_SYSTEM_WORKFLOWS,
+)
+from app.workers.brief_slots import slot_minute
+from tests.factories import make_user_id
 
 
 def _built(key: str) -> CreateWorkflowRequest:
@@ -95,7 +106,7 @@ class TestBriefingSystemWorkflows:
         trigger = _built(WEEKLY_DIGEST_WORKFLOW_KEY).trigger_config
 
         assert trigger is not None
-        assert trigger.cron_expression == WEEKLY_DIGEST_CRON
+        assert trigger.cron_expression == "0 17 * * 0"
 
     @pytest.mark.parametrize("key", [DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY])
     def test_a_fresh_build_mints_new_step_ids_so_two_users_never_share_one(self, key: str) -> None:
@@ -104,3 +115,23 @@ class TestBriefingSystemWorkflows:
 
         assert all(first)
         assert set(first).isdisjoint(second)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("key", "cron"),
+    [(DAILY_BRIEFING_WORKFLOW_KEY, "8 * * 1-5"), (WEEKLY_DIGEST_WORKFLOW_KEY, "17 * * 0")],
+)
+async def test_a_brief_runs_on_the_cron_its_users_schedule_gives_it(key: str, cron: str) -> None:
+    cron_for = BRIEFING_BEHAVIOURS[key].cron_for
+    user = UserDocument(id=make_user_id())
+    stored = BriefingStateDocument(
+        user_id=user.id, schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS)
+    )
+
+    assert cron_for is not None
+    with patch.object(
+        briefing_state_repository, "state_for", AsyncMock(return_value=stored)
+    ) as state_for:
+        assert await cron_for(user) == f"{slot_minute(user.id)} {cron}"
+    state_for.assert_awaited_once_with(user.id)

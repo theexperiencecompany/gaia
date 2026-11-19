@@ -5,39 +5,64 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
-from typing import Final, Literal
+from types import MappingProxyType
+from typing import Final
 
-# Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
-# run fails loud and retries next week instead of hanging the worker slot.
-WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
+# Hard ceiling on a brief's voice call, daily or weekly; expiry raises so a stalled
+# run fails loud and retries at its next run instead of hanging the worker slot.
+BRIEF_VOICE_TIMEOUT_SECONDS: Final[int] = 420
 
 # System-workflow keys; the workflow ARQ path routes these into the briefing service.
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"
 
+
+class BriefingKind(StrEnum):
+    """Which brief a run makes; keys the payload variant and the one-per-day constraint."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+#: Which kind of brief each briefing system workflow's cron runs.
+BRIEFING_KIND_BY_WORKFLOW_KEY: Final[Mapping[str, BriefingKind]] = MappingProxyType(
+    {
+        DAILY_BRIEFING_WORKFLOW_KEY: BriefingKind.DAILY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: BriefingKind.WEEKLY,
+    }
+)
 # Briefing rhythm crons are product plumbing, never user automations: the
 # workflow list excludes them so briefings don't present as user workflows.
-BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
-    DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
-)
+BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = tuple(BRIEFING_KIND_BY_WORKFLOW_KEY)
 
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
 # The daily brief's default local hour; the user picks their own, and quiet hours
 # covering it push it to when they end (briefing.schedule).
 DAILY_BRIEFING_HOUR: Final[int] = 8
-# Cron day-of-week field for a brief that runs every day, and for Monday to Friday.
-EVERY_DAY_CRON_DAYS: Final[str] = "*"
-WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
-#: The weekly digest's local hour, on Sunday.
+#: The weekly digest's local hour, on Sunday; quiet hours covering it push it to when they end.
 WEEKLY_DIGEST_HOUR: Final[int] = 17
-WEEKLY_DIGEST_CRON: Final[str] = f"0 {WEEKLY_DIGEST_HOUR} * * 0"
+# The weekdays (Monday 0) a brief lands on.
+EVERY_DAY: Final[frozenset[int]] = frozenset(range(7))
+MONDAY_TO_FRIDAY: Final[frozenset[int]] = frozenset(range(5))
+SUNDAY: Final[frozenset[int]] = frozenset({6})
 
-# Briefing kinds — key the payload variant and the unique-per-day constraint.
-BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
-BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
+# Retention. A sent brief stays in the archive and on the postmark globe for a year, then a
+# nightly sweep deletes it with its edition image; a held result the loop neither carried nor
+# released is dropped after a month (its full run stays in its workflow's or todo's conversation).
+BRIEFING_RETENTION: Final = timedelta(days=365)
+#: How many expired briefs one page of the nightly sweep reads before deleting them.
+BRIEFING_EXPIRY_PAGE: Final[int] = 200
+PENDING_BRIEF_ITEM_RETENTION_SECONDS: Final[int] = 30 * 24 * 60 * 60
+
+
+#: The most candidates one source puts in a brief's pool, so the composition prompt stays bounded.
+BRIEF_POOL_PER_SOURCE: Final[int] = 40
+#: Past its first day overdue, a daily brief shows an overdue item at most once in this many days.
+OVERDUE_RESHOW_DAYS: Final[int] = 3
+
 
 # Masthead labels, set by code on each kind's payload (never by the model).
 DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
@@ -53,6 +78,20 @@ class BriefAction(StrEnum):
     RETRY = "retry"
     READ = "read"
     ATTEND = "attend"
+
+
+#: What GAIA offers to do about the lead, by what it asks of the reader: a fixed act GAIA really
+#: does, never words a model wrote over the item's third-party text.
+LEAD_OFFERS: Final[Mapping[BriefAction, str]] = MappingProxyType(
+    {
+        BriefAction.APPROVE: "Walk you through it before you approve",
+        BriefAction.REPLY: "Draft the reply for you to send",
+        BriefAction.REVIEW: "Pull together what you need to review it",
+        BriefAction.RETRY: "Run it again and tell you how it went",
+        BriefAction.READ: "Sum it up for you",
+        BriefAction.ATTEND: "Prepare your notes for it",
+    }
+)
 
 
 class BriefOutcome(StrEnum):
@@ -78,7 +117,8 @@ SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "
 # Every brief item is a short noun-phrase title and at most one muted detail line.
 BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
 BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
-#: Composition calls per brief: one more when the answer breaks the contract, then the run fails.
+#: Composition calls per brief: one more when the answer breaks the contract, then code
+#: salvages what holds of it (briefing.checked_call).
 MAX_COMPOSITION_ATTEMPTS: Final[int] = 2
 #: The composition call's metering label, and its heading check's.
 BRIEF_COMPOSITION_LABEL: Final[str] = "brief_composition"
@@ -99,7 +139,6 @@ BRIEF_HEADING_MAX_CHARS: Final[int] = 40
 BRIEF_CHART_TITLE_MAX_CHARS: Final[int] = 48
 BRIEF_TAKEAWAY_MAX_CHARS: Final[int] = 140
 BRIEF_NOTE_MAX_CHARS: Final[int] = 240
-BRIEF_OFFER_MAX_CHARS: Final[int] = 90
 # A line or spark chart reads a trend only over at least this many days; a bar reads at most this many bars.
 MIN_TREND_POINTS: Final[int] = 5
 #: Lines one chart may draw: every family's two line styles, then the same two dotted.
@@ -113,24 +152,6 @@ QUOTE_MAX_CHARS: Final[int] = 200
 #: What a candidate's source is when GAIA itself, not a connected app, produced it.
 GAIA_SOURCE: Final[str] = "gaia"
 GAIA_APP_NAME: Final[str] = "GAIA"
-#: How the composition names a reader whose name GAIA does not know.
-UNNAMED_READER: Final[str] = "the user"
-# The span each kind of brief reads the calendar over, as its composition is told.
-TODAY_SPAN: Final[str] = "today"
-WEEK_AHEAD_SPAN: Final[str] = "in the week ahead"
-#: What the brief is told when no calendar is connected, so it never calls the user's day empty.
-NO_CALENDAR_CONNECTED: Final[str] = (
-    "No calendar is connected, so nothing is known about the user's schedule: "
-    "never say it is empty, open or clear."
-)
-#: How an undated todo of the user's own reads in the pool and the facts: background, not news.
-BACKLOG_STATE: Final[str] = "on their list, undated"
-#: How an item an earlier brief already showed, unchanged, is marked: still open, not news.
-REPEAT_MARK: Final[str] = "already shown, still open"
-CALENDAR_UNAVAILABLE: Final[str] = (
-    "The user's calendar could not be read this time, so nothing is known about their "
-    "schedule: never say it is empty, open or clear; say once that it could not be read."
-)
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
@@ -156,7 +177,7 @@ FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
     "once again",
 )
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
-# mend shows it what it wrote), then the run fails rather than ship it.
+# mend shows it what it wrote), then code voices it plainly from its facts (briefing.checked_call).
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 #: The plain voice a brief gets when the model's never holds to its facts.
 PLAIN_BRIEF_HEADLINE: Final[str] = "Your brief"
@@ -189,21 +210,15 @@ class BriefForm(StrEnum):
 #: A quiet day's or week's note: nothing new and nothing on the calendar, so no edition, no
 #: filler. Its first line says what is new, then how the calendar stands; a quiet brief after
 #: a quiet brief says it is still quiet and since when, so a quiet streak never reads the same.
-QUIET_NOTE_HEADLINES: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: "Nothing needs you today",
-    BRIEFING_KIND_WEEKLY: "Nothing needs you this week",
-}
-QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: "Nothing new needs you today",
-    BRIEFING_KIND_WEEKLY: "Nothing moved this week",
-}
+DAILY_QUIET_HEADLINE: Final[str] = "Nothing needs you today"
+WEEKLY_QUIET_HEADLINE: Final[str] = "Nothing needs you this week"
+DAILY_QUIET_NOTHING_NEW: Final[str] = "Nothing new needs you today"
+WEEKLY_QUIET_NOTHING_NEW: Final[str] = "Nothing moved this week"
 QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
 QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new since your brief {when}"
 QUIET_NOTE_STILL_FOR: Final[str] = "Still nothing new: {days} days since your brief {when}"
-QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: ", and your calendar is clear.",
-    BRIEFING_KIND_WEEKLY: ", and next week's calendar is clear.",
-}
+DAILY_QUIET_CALENDAR_CLEAR: Final[str] = ", and your calendar is clear."
+WEEKLY_QUIET_CALENDAR_CLEAR: Final[str] = ", and next week's calendar is clear."
 QUIET_NOTE_NO_CALENDAR: Final[str] = "."
 QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
     ". I couldn't read your calendar, so check it before you plan."
@@ -231,12 +246,19 @@ class BriefingFrequency(StrEnum):
     OFF = "off"
 
 
-# The briefing workflows each frequency keeps running.
-ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
-    BriefingFrequency.DAILY: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
-    BriefingFrequency.WEEKDAYS: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
-    BriefingFrequency.WEEKLY_ONLY: frozenset({WEEKLY_DIGEST_WORKFLOW_KEY}),
-    BriefingFrequency.OFF: frozenset(),
+#: The briefing workflows each frequency runs, by key, and the weekdays each lands on;
+#: a workflow a frequency leaves out does not run.
+BRIEF_RUN_DAYS: Final[Mapping[BriefingFrequency, Mapping[str, frozenset[int]]]] = {
+    BriefingFrequency.DAILY: {
+        DAILY_BRIEFING_WORKFLOW_KEY: EVERY_DAY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY,
+    },
+    BriefingFrequency.WEEKDAYS: {
+        DAILY_BRIEFING_WORKFLOW_KEY: MONDAY_TO_FRIDAY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY,
+    },
+    BriefingFrequency.WEEKLY_ONLY: {WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY},
+    BriefingFrequency.OFF: {},
 }
 
 # Idle wind-down: consecutive daily runs that found nothing to work on (no goal,
@@ -267,13 +289,44 @@ def hue_for_day(day_of_year: int) -> int:
     return (day_of_year * HUE_ROTATION_STEP) % HUE_MAX
 
 
-# The weekly recap's edition family (never drawn for a daily brief) and the Air
-# Mail family, the only one that carries a city stamp.
-WEEKLY_FAMILY: Final[str] = "weekly"
-POSTAL_FAMILY: Final[str] = "postal"
+class EditionFamily(StrEnum):
+    """Every edition family a brief is drawn in, one per vendored explorer template.
+
+    WEEKLY is the weekly recap's, never drawn for a daily brief; POSTAL (Air Mail) alone
+    carries a city stamp. The editions package checks this set against the templates at import.
+    """
+
+    ALMANAC = "almanac"
+    BAND = "band"
+    BOARDINGPASS = "boardingpass"
+    BROADSHEET = "broadsheet"
+    EXHIBITION = "exhibition"
+    FLIGHTPLAN = "flightplan"
+    GRADIENT = "gradient"
+    INSTRUMENT = "instrument"
+    INVOICE = "invoice"
+    LIBRARYCARD = "librarycard"
+    MEMO = "memo"
+    MENU = "menu"
+    METROMAP = "metromap"
+    PLAYFAIR = "playfair"
+    POSTAL = "postal"
+    RECEIPT = "receipt"
+    SWISS = "swiss"
+    WEEKLY = "weekly"
+
+
 # Families whose paper lies on a desk: rendered without it, and trimmed to the paper.
-DESK_FAMILIES: Final[frozenset[str]] = frozenset(
-    {"boardingpass", "invoice", "librarycard", "memo", "menu", POSTAL_FAMILY, "receipt"}
+DESK_FAMILIES: Final[frozenset[EditionFamily]] = frozenset(
+    {
+        EditionFamily.BOARDINGPASS,
+        EditionFamily.INVOICE,
+        EditionFamily.LIBRARYCARD,
+        EditionFamily.MEMO,
+        EditionFamily.MENU,
+        EditionFamily.POSTAL,
+        EditionFamily.RECEIPT,
+    }
 )
 # Room around a desk family's root, in CSS px, so its widest shadow is captured whole
 # (Air Mail's envelope: 44px blur, 26px drop) before the trim cuts back to the paper.
@@ -287,9 +340,9 @@ EXPLORER_SCALE: Final[int] = 3
 class ArtFamily(StrEnum):
     """The edition families that hang a painting (their template reads ed.art)."""
 
-    EXHIBITION = "exhibition"
-    BROADSHEET = "broadsheet"
-    ALMANAC = "almanac"
+    EXHIBITION = EditionFamily.EXHIBITION.value
+    BROADSHEET = EditionFamily.BROADSHEET.value
+    ALMANAC = EditionFamily.ALMANAC.value
 
 
 # The web page that shows the user's collected Air Mail stamps.
@@ -322,11 +375,18 @@ FAVOURITE_WEIGHT_FACTOR: Final[int] = 2
 
 
 class BriefingBag(StrEnum):
-    """The per-user shuffle bags kept on the user doc (briefing_shuffle_bags)."""
+    """The per-user shuffle bags kept in briefing_state (shuffle_bags)."""
 
     EDITION_FAMILY = "edition_family"
     STAMP_CITY = "stamp_city"
     ARTWORK = "artwork"
+
+
+class WindDown(StrEnum):
+    """The idle ladder's rungs: the plain warning, then the one goodbye before the loop sleeps."""
+
+    WARN = "warn"
+    FINAL = "final"
 
 
 class BriefingRunOutcome(StrEnum):
@@ -352,31 +412,49 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
 }
 
 # Every surface shows the edition at most 540 CSS px wide (email column, chat
-# bubble); 2x covers retina screens. The 2-6 MB original upload stays on the CDN,
-# and each surface is served a delivery transformation capped at this width.
+# bubble); 2x covers retina screens, so the stored variants are capped at this width.
 EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
 
 # Every edition template marks the top of its first body block, after the header, with
 # this attribute: the gap where the folded letter's front panel ends.
 FOLD_MARKER_SELECTOR: Final[str] = "[data-fold]"
 
-# An edition laid on a desk marks its paper element with this attribute; its box
-# is recorded so the letter and the unfold show the paper alone.
+# An edition laid on a desk marks each of its paper sheets with this attribute; the box
+# they cover is recorded so the letter and the unfold show the paper alone.
 PAPER_MARKER_SELECTOR: Final[str] = "[data-paper]"
 
 
 # A desk family's edition is transparent around its paper; a JPG has no alpha, so it is
-# flattened onto Air Mail's desk base instead of Cloudinary's default white.
-EDITION_JPG_BACKGROUND: Final[str] = "rgb:23262a"
+# flattened onto Air Mail's desk base.
+EDITION_JPG_BACKGROUND: Final[tuple[int, int, int]] = (0x23, 0x26, 0x2A)
+EDITION_JPG_QUALITY: Final[int] = 85
+
+# How long a handed-out edition URL loads: an email opened weeks later still shows its image.
+EDITION_URL_TTL_DAYS: Final[int] = 365
+# How long a browser may reuse an edition image: a same-day re-render keeps its URL.
+EDITION_IMAGE_MAX_AGE_SECONDS: Final[int] = 3_600
+# How long a browser may reuse a stamp's art: one file for everyone, rebuilt rarely.
+STAMP_ART_MAX_AGE_SECONDS: Final[int] = 2_592_000
+# The widest a stamp is drawn on the web is 200 CSS px; the display variant is twice that.
+STAMP_DISPLAY_WIDTH_PX: Final[int] = 400
+STAMP_DISPLAY_MAX_BYTES: Final[int] = 70_000
+STAMP_ART_CONTENT_TYPE: Final[str] = "image/webp"
+# A brief's notification ranks just below an urgent one (1 is highest).
+BRIEF_NOTIFICATION_PRIORITY: Final[int] = 2
+BRIEF_NOTIFICATION_ACTION_LABEL: Final[str] = "Open briefing"
+
+# An edition key's length in hex characters: 128 bits, unguessable.
+EDITION_KEY_CHARS: Final[int] = 32
+# Signs edition URLs apart from every other use of the instance secret.
+EDITION_URL_SALT: Final[str] = "brief-edition-url"
 
 
-class EditionDeliveryFormat(StrEnum):
-    """Cloudinary fetch format for an edition delivery URL."""
+class EditionVariant(StrEnum):
+    """One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide."""
 
-    # Negotiated per client from its Accept header (AVIF/WebP, else PNG): browsers and email.
-    AUTO = "auto"
-    # Chat platforms download the file themselves and pick photo vs document by
-    # its size, so they get one fixed, compact format.
+    #: The app and the email: lossless, keeping a desk family's transparency.
+    PNG = "png"
+    #: Chat platforms, which pick photo vs document by size: compact, flattened on the desk base.
     JPG = "jpg"
 
 

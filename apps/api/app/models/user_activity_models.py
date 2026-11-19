@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.constants.user_activity import DORMANT_AFTER, IDLE_AFTER, ActivityStatus
 from app.utils.timezone import as_utc
@@ -17,6 +17,15 @@ def status_window(status: ActivityStatus, now: datetime) -> tuple[datetime | Non
             return now - DORMANT_AFTER, now - IDLE_AFTER
         case ActivityStatus.DORMANT:
             return None, now - DORMANT_AFTER
+
+
+class UserActivityRow(BaseModel):
+    """A user's id and last-seen instant: all a sweep over one activity status reads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    last_active_at: datetime | None = None
 
 
 class UserActivityDates(BaseModel):

@@ -20,19 +20,25 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import GoalOrigin
-from app.models.briefing_models import BriefingSchedule
-from app.models.user_models import DayZeroHello, UserDocument
-from app.services.briefing import context, silent_turn
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument, DayZeroHello
+from app.models.user_models import UserDocument
+from app.services.briefing import silent_turn
+from app.services.briefing.goals import StatedGoal
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
+from app.workers.brief_slots import slot_minute
 from app.workers.tasks import day_zero_hello_tasks as hello
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
+from tests.factories import make_user_id
 from tests.helpers import WideEventRecorder
 
-_USER = "64f1c0ffee0000000000abcd"
+_USER = make_user_id()
+_MINUTE = f"{slot_minute(_USER):02d}"
 _NOW = datetime(2026, 10, 14, 9, tzinfo=UTC)
 _TASK = "send_day_zero_hello"
 
@@ -52,15 +58,17 @@ class Seams:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.get_user = AsyncMock(return_value=_user())
         self.mark_sent = AsyncMock()
+        self.state = AsyncMock(return_value=BriefingStateDocument(user_id=_USER))
         self.goal = AsyncMock(
-            return_value=[context.StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
+            return_value=[StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
         )
         self.agent = AsyncMock(return_value=SimpleNamespace(message='["Hi Ada!", "Brief at 8."]'))
         self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         self.capture = MagicMock()
         monkeypatch.setattr(user_repository, "get", self.get_user)
-        monkeypatch.setattr(user_repository, "mark_day_zero_hello_sent", self.mark_sent)
-        monkeypatch.setattr(context, "stated_goals", self.goal)
+        monkeypatch.setattr(briefing_state_repository, "state_for", self.state)
+        monkeypatch.setattr(briefing_state_repository, "mark_day_zero_hello_sent", self.mark_sent)
+        monkeypatch.setattr(hello, "stated_goals", self.goal)
         monkeypatch.setattr(silent_turn, "call_agent_silent", self.agent)
         monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
         monkeypatch.setattr(hello, "capture", self.capture)
@@ -139,13 +147,14 @@ class TestGuards:
         seams.assert_nothing_sent()
 
     async def test_the_hello_goes_out_once_ever(self, seams: Seams) -> None:
-        seams.get_user.return_value = _user(
-            day_zero_hello=DayZeroHello(sent_at=_NOW, platform="discord")
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER, day_zero_hello=DayZeroHello(sent_at=_NOW, platform="discord")
         )
 
         assert await seams.send() == f"skip {_USER}: day-zero hello already sent"
 
         assert seams.event["skipped"] == "already_sent"
+        seams.state.assert_awaited_once_with(_USER)
         seams.assert_nothing_sent()
 
     @pytest.mark.parametrize(
@@ -227,31 +236,49 @@ class TestDelivery:
         ("schedule", "promised"),
         [
             # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
-            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9 AM."),
-            (BriefingSchedule(hour=18), "their first brief lands today at 6 PM."),
+            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9:{minute} AM."),
+            (BriefingSchedule(hour=18), "their first brief lands today at 6:{minute} PM."),
             # Noon is still ahead at 09:00 UTC but already past in Kolkata.
-            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12 PM."),
+            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12:{minute} PM."),
             # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
             (
                 BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
-                "their first brief lands Sunday at 5 PM.",
+                "their first brief lands Sunday at 5:{minute} PM.",
             ),
         ],
     )
     async def test_the_hello_promises_the_first_brief_when_it_really_lands(
         self, seams: Seams, schedule: BriefingSchedule, promised: str
     ) -> None:
-        seams.get_user.return_value = _user(timezone="Asia/Kolkata", briefing_schedule=schedule)
+        seams.get_user.return_value = _user(timezone="Asia/Kolkata")
+        seams.state.return_value = BriefingStateDocument(user_id=_USER, schedule=schedule)
 
         await seams.send()
 
         prompt = seams.agent.await_args.kwargs["request"].message
-        assert promised in prompt
+        assert promised.format(minute=_MINUTE) in prompt
         assert "around 8" not in prompt
 
+    @pytest.mark.regression
+    async def test_a_weekdays_user_linking_on_saturday_is_promised_sundays_digest(
+        self, seams: Seams
+    ) -> None:
+        seams.get_user.return_value = _user(timezone="Asia/Kolkata")
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER,
+            schedule=BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=9),
+        )
+
+        # 17 Oct 2026 is a Saturday: the next brief is the digest, not Monday's daily.
+        with time_machine.travel(datetime(2026, 10, 17, 9, tzinfo=UTC), tick=False):
+            await seams.send()
+
+        prompt = seams.agent.await_args.kwargs["request"].message
+        assert f"their first brief lands tomorrow at 5:{_MINUTE} PM." in prompt
+
     async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
-        seams.get_user.return_value = _user(
-            briefing_schedule=BriefingSchedule(frequency=BriefingFrequency.OFF)
+        seams.state.return_value = BriefingStateDocument(
+            user_id=_USER, schedule=BriefingSchedule(frequency=BriefingFrequency.OFF)
         )
 
         await seams.send()

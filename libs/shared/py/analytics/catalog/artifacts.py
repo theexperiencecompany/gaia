@@ -6,9 +6,11 @@ from shared.py.analytics.catalog.base import ServerEvent
 
 __all__ = ["ArtifactCreated", "ArtifactFailed", "ArtifactPdfExported"]
 
-# The API's ArtifactKind (apps/api/app/models/openui_artifact_models.py) is the source of
-# truth; this layer cannot import it, so the event schema restates the closed set.
+# The API's ArtifactKind and ArtifactFailureReason (apps/api/app/models/openui_artifact_models.py)
+# are the source of truth; this layer cannot import them, so the event schema restates each
+# closed set and the API's test_create asserts they stay equal.
 ArtifactKindName = Literal["dashboard", "report", "plan", "comparison", "memo", "document"]
+ArtifactFailureReasonName = Literal["validation", "refused", "timeout", "truncated"]
 
 
 class ArtifactCreated(ServerEvent):
@@ -23,7 +25,6 @@ class ArtifactCreated(ServerEvent):
     output_tokens: int
     first_component_ms: float | None
     total_ms: float
-    model: Literal["gpt-6-luna"]
 
 
 class ArtifactFailed(ServerEvent):
@@ -33,7 +34,7 @@ class ArtifactFailed(ServerEvent):
     budget_per_user_day: ClassVar[int] = 100
 
     kind: ArtifactKindName
-    reason: Literal["validation", "refused", "timeout", "truncated"]
+    reason: ArtifactFailureReasonName
     problem_count: int
 
 

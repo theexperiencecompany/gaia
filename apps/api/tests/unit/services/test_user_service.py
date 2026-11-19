@@ -8,12 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 from fastapi import HTTPException
 import pytest
-import time_machine
 
 from app.constants.files import BlobKind
-from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import ProfilePictureUpload, UserDocument, UserUpdateResponse
-from app.services.user_service import get_user_by_id, quiet_hours_end, update_user_profile
+from app.services.user_service import get_user_by_id, require_user, update_user_profile
+from app.utils.errors import AppError
 
 UPDATED_AT = datetime(2025, 7, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -105,33 +104,27 @@ class TestGetUserById:
         )
 
 
-class TestQuietHoursEnd:
-    @staticmethod
-    def _kolkata_user() -> UserDocument:
-        return UserDocument(
-            id="user-1",
-            timezone="Asia/Kolkata",
-            quiet_hours=QuietHours(enabled=True, start_hour=17, end_hour=19),
+class TestRequireUser:
+    async def test_returns_the_stored_user(self, mock_repo, sample_user):
+        mock_get, _ = mock_repo
+        mock_get.return_value = sample_user
+
+        assert await require_user(sample_user.id) is sample_user
+
+    async def test_a_missing_user_raises_the_exact_404(self, mock_repo):
+        mock_get, _ = mock_repo
+        mock_get.return_value = None
+
+        with pytest.raises(AppError) as exc_info:
+            await require_user("u-gone")
+
+        error = exc_info.value
+        assert (error.message, error.why, error.fix, error.status_code) == (
+            "User not found",
+            "User u-gone does not exist",
+            "Sign in again",
+            404,
         )
-
-    async def test_inside_the_users_own_window_it_is_when_that_window_ends(self, mock_repo) -> None:
-        mock_get, _ = mock_repo
-        mock_get.side_effect = lambda user_id: self._kolkata_user() if user_id == "user-1" else None
-
-        # 12:00 UTC is 17:30 in Kolkata, inside their 17-19 window, which ends 13:30 UTC.
-        with time_machine.travel(datetime(2026, 10, 14, 12, 0, tzinfo=UTC), tick=False):
-            end = await quiet_hours_end("user-1")
-
-        assert end == datetime(2026, 10, 14, 13, 30, tzinfo=UTC)
-
-    async def test_outside_the_window_there_is_nothing_to_wait_for(self, mock_repo) -> None:
-        mock_get, _ = mock_repo
-        mock_get.side_effect = lambda user_id: self._kolkata_user() if user_id == "user-1" else None
-
-        with time_machine.travel(datetime(2026, 10, 14, 6, 0, tzinfo=UTC), tick=False):
-            end = await quiet_hours_end("user-1")
-
-        assert end is None
 
 
 class TestUpdateUserProfile:

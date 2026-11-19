@@ -1,4 +1,8 @@
-import type { Variants } from "motion/react";
+/**
+ * How every letter moves: the founder letter, a brief's text sheet, the
+ * unfolding edition and the folded letter in chat. Documented in DESIGN.md
+ * under Animations > Letters.
+ */
 
 /**
  * A letter opens unhurried and leaves quickly: an ease-out rise, a short
@@ -20,29 +24,15 @@ export const LETTER_REDUCED_TRANSITION = {
 /** How far a letter shrinks as it leaves; opacity and scale run on the one curve. */
 export const LETTER_EXIT_SCALE = 0.96;
 
-/**
- * A sheet tilts and settles onto the screen, then leaves by fading and
- * shrinking in place. Reduced motion gets a plain fade both ways.
- */
-export const LETTER_SHEET_VARIANTS: Record<"full" | "reduced", Variants> = {
-  full: {
-    arrive: { opacity: 0, scale: 0.95, rotate: 1, y: 22 },
-    enter: {
-      opacity: 1,
-      scale: 1,
-      rotate: 0,
-      y: 0,
-      transition: LETTER_OPEN_TRANSITION,
-    },
-    exit: {
-      opacity: 0,
-      scale: LETTER_EXIT_SCALE,
-      transition: LETTER_CLOSE_TRANSITION,
-    },
-  },
-  reduced: {
-    arrive: { opacity: 0 },
-    enter: { opacity: 1, transition: LETTER_REDUCED_TRANSITION },
-    exit: { opacity: 0, transition: LETTER_REDUCED_TRANSITION },
-  },
-};
+/** A letter opened from chat travels from where it lay, on a long ease-out. */
+export const LETTER_TRAVEL_TRANSITION = {
+  duration: 0.5,
+  ease: [0.32, 0.72, 0, 1],
+} as const;
+/** Each crease unpeels gently and settles long, so a panel never flips or snaps flat. */
+export const LETTER_CREASE_TRANSITION = {
+  duration: 0.42,
+  ease: [0.5, 0, 0.15, 1],
+} as const;
+/** The folded letter lifting under the pointer, as a Tailwind timing class. */
+export const LETTER_HOVER_EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";

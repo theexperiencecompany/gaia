@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Generic, TypeVar, cast
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic.main import IncEx
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError
 
@@ -31,6 +32,37 @@ from app.db.repositories.cache import (
 )
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
+
+
+def _defaulted_nones(model: BaseModel) -> dict[str, IncEx | bool]:
+    """Exclude spec for model's None fields whose default is None, at any depth.
+
+    Absent rather than null keeps a sparse index from indexing an unset field; a None
+    a field has no default for stays null, so the document validates back.
+    """
+    spec: dict[str, IncEx | bool] = {}
+    for name, field in type(model).model_fields.items():
+        value = getattr(model, name)
+        if value is None:
+            if field.default is None:
+                spec[name] = True
+        elif nested := _nested_defaulted_nones(value):
+            spec[name] = nested
+    return spec
+
+
+def _nested_defaulted_nones(value: object) -> IncEx | None:
+    if isinstance(value, BaseModel):
+        return _defaulted_nones(value) or None
+    if isinstance(value, list | tuple):
+        items = {i: spec for i, item in enumerate(value) if (spec := _nested_defaulted_nones(item))}
+        return items or None
+    if isinstance(value, dict):
+        entries = {
+            str(k): spec for k, item in value.items() if (spec := _nested_defaulted_nones(item))
+        }
+        return entries or None
+    return None
 
 
 class MongoDocument(BaseModel):
@@ -209,14 +241,18 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
 
     # ---- write/read cores (public methods below are thin scope wrappers) ----
 
+    def _storable(self, doc: TDoc) -> dict[str, Any]:
+        """Dump doc for an insert: no placeholder id (mirrors _id), and no None its default restores."""
+        exclude = _defaulted_nones(doc)
+        if self.identity_field != "id":
+            exclude["id"] = True
+        return doc.model_dump(exclude=exclude)
+
     async def create(self, doc: TDoc) -> TDoc:
         return await self._insert(doc, self._doc_scope(doc))
 
     async def _insert(self, doc: TDoc, scope: str) -> TDoc:
-        # Drop the placeholder id (mirrors _id) unless id is itself the business identity.
-        # exclude_none so an unset optional field is absent, not stored as null.
-        exclude = set() if self.identity_field == "id" else {"id"}
-        data = doc.model_dump(exclude=exclude, exclude_none=True)
+        data = self._storable(doc)
         now = datetime.now(UTC)
         fields = self.document_model.model_fields
         # Stamp created_at only when the caller didn't provide it (some domains,
@@ -533,7 +569,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
             upsert=upsert,
         )
-        touched = result.matched_count or (upsert and result.upserted_id is not None)
+        touched = result.matched_count or result.upserted_id is not None
         if touched:
             if doc_id is not None:
                 await self._cache_evict(scope, doc_id)
@@ -575,16 +611,21 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         scope: str | None,
         doc_id: str | None = None,
         extra_filter: Mapping[str, object] | None = None,
+        upsert: bool = False,
     ) -> int:
         """Apply an aggregation-pipeline update via update_one, without reading it back.
 
         For a write that must read the document it changes in the same atomic update.
         scope None marks a write no cached read shows, so nothing is invalidated.
+        Returns the matched count (0 includes an upsert-insert).
         """
         result = await get_async_collection(self.collection_name).update_one(
-            {**dict(filter_), **(extra_filter or {})}, [dict(stage) for stage in pipeline]
+            {**dict(filter_), **(extra_filter or {})},
+            [dict(stage) for stage in pipeline],
+            upsert=upsert,
         )
-        if result.matched_count and scope is not None:
+        touched = result.matched_count or result.upserted_id is not None
+        if touched and scope is not None:
             if doc_id is not None:
                 await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)

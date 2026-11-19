@@ -7,7 +7,7 @@ The `@heygaia/cli` package — a Node.js CLI tool (`gaia`) for self-hosting GAIA
 | Command | Description |
 |---|---|
 | `gaia up [--yes] [--llm-provider/--llm-key/--llm-base-url/--llm-model] [--domain \| --no-domain] [--[no-]link-domain] [--[no-]usercontent-domain] [--code-sandbox] [--no-local-name]` | One-command self-host install/resume; with a domain, optional short-link and shared-files domains beside it (`lib/share-domains.ts`: flag, else recorded, else asked once on a TTY run that sets `--domain`); names it http://gaia.local on the LAN via portless (`lib/local-name.ts`; gaia-2.local and on when another GAIA on the network holds it, recorded in ~/.gaia/config.json) unless a domain is set. A rerun keeps the recorded domain; `--no-domain` drops it and puts the proxy back on its default ports (`pinnedPorts`, merged into packages/cli/selfhost/.env by `writeDockerComposeEnv`) |
-| `gaia update [--yes] [--version <tag>] [--git]` | Move to the release this CLI ships: download + verify its `gaia-selfhost-<version>.tar.gz` bundle, pull the `v<version>` images, swap the setup files in (dropping removed ones), keep `.env` files and volumes, restart. Moves a clean detached release-tag checkout from an older `gaia up` to the bundle layout; refuses a branch or edited checkout (use `--git`) |
+| `gaia update [--yes] [--version <tag>] [--git]` | Move to the release this CLI ships: download + verify its `gaia-selfhost-<version>.tar.gz` bundle, pull the `v<version>` images, swap the setup files in (dropping removed ones), keep `.env` files and volumes, restart (the compose `migrate` service runs the release's data migrations to the end before the API and worker start). Moves a clean detached release-tag checkout from an older `gaia up` to the bundle layout; refuses a branch or edited checkout (use `--git`) |
 | `gaia doctor` | Ordered diagnostics, incl. per-dependency `/health/ready` |
 | `gaia uninstall [--yes] [--delete-data]` | Remove the recorded self-host install: containers, networks, images, gaia.local, the install folder and ~/.gaia; volumes only on --delete-data (kept data keeps apps/api/.env and packages/cli/selfhost/.env) |
 | `gaia backup` / `gaia restore` | Dump / restore MongoDB + PostgreSQL, the storage volumes and `apps/api/.env` (INSTANCE_SECRET) |
@@ -69,7 +69,7 @@ src/
     host-resources.ts       - Memory and disk thresholds shared by `gaia up` and `gaia doctor`
     domain-reachability.ts  - A --domain's DNS against this machine, and waiting for its HTTPS certificate
     local-name.ts / local-name-ipv6.ts - http://gaia.local via portless (gaia-2 … gaia-9.local when taken), avahi AAAA
-    compose-run.ts / compose-progress.ts / compose-failure.ts - Running compose, its progress, its errors in plain words
+    compose-run.ts / compose-events.ts / compose-progress.ts / compose-failure.ts - Running compose, folding its events, its progress, its errors in plain words
     pull-size.ts / progress.ts / eta.ts - Image download totals, amount-done and time-left captions
     readiness.ts / healthcheck.ts - Waiting for GAIA to answer, per-dependency health
     selfhost-bundle.ts      - Self-host bundle: download/verify/swap, and moving an old git-checkout install to the bundle layout

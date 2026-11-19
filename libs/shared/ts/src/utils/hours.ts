@@ -1,7 +1,4 @@
-/**
- * Whole-hour clock helpers. Deterministic on purpose: no locale lookups, so a
- * label renders the same on the server and the client.
- */
+/** Converting an hour between a 24-hour value and a 12-hour picker's hour and AM/PM; labels are written by dateUtils. */
 
 export type Meridiem = "AM" | "PM";
 
@@ -19,10 +16,4 @@ export const to12Hour = (
 export const to24Hour = (hour12: number, ampm: Meridiem): number => {
   if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
   return hour12 === 12 ? 12 : hour12 + 12;
-};
-
-/** 22 -> "10 PM", 0 -> "12 AM". */
-export const formatHour12 = (hour24: number): string => {
-  const { hour12, ampm } = to12Hour(hour24);
-  return `${hour12} ${ampm}`;
 };

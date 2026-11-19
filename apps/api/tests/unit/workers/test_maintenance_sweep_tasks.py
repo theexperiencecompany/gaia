@@ -18,14 +18,16 @@ import pytest
 
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.notifications import NotificationKind
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.constants.user_activity import ActivityStatus
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
-from app.models.user_models import UserDocument
+from app.models.user_activity_models import UserActivityRow
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -113,7 +115,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
         patch(f"{MODULE}.tracked_todo_service.schedule_execution", mocks["schedule"]),
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
-        patch(f"{MODULE}.record_activity", mocks["activity"]),
+        patch(f"{MODULE}.record_todo_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
         patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
         patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
@@ -296,7 +298,7 @@ class TestHealthCheckExpired:
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
 
@@ -312,7 +314,7 @@ class TestHealthCheckExpired:
         assert request.content.body == "Your todo expired and needs a decision."
         assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
 
     async def test_muted_todo_after_backoff_is_exhausted_sends_nothing(self):
         pool = _pool()
@@ -365,7 +367,7 @@ class TestHealthCheckDormant:
             patch(f"{MODULE}._health_check_verdict", verdict),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}.todo_repository.update", store) as store,
-            patch(f"{MODULE}.record_activity", syslog),
+            patch(f"{MODULE}.record_todo_activity", syslog),
         ):
             before = datetime.now(UTC)
             outcome = await _health_check_dormant(_doc(), pool)
@@ -437,7 +439,7 @@ class TestNotifyOverdue:
         with (
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
-            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()) as activity,
         ):
             # due_date is relative to real now — _notify_overdue computes
             # "days overdue" from its own clock, not the test's frozen NOW.
@@ -534,7 +536,9 @@ class TestSendUserDormantDigest:
         assert request.type == NotificationType.INFO
         assert request.content.title == "1 dormant todo needs attention"
         assert request.content.body == "- Unfinished thing (idle 7d)"
-        assert request.metadata == {"todo_count": 1}
+        assert request.details == DormantTodosNotification(
+            kind=NotificationKind.DORMANT_TODOS, todo_count=1
+        )
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
 
     async def test_multi_todo_digest_counts_and_links_to_the_list(self):
@@ -744,8 +748,8 @@ class TestMaintenanceSweep:
         with (
             _sweep(list=[away, here], health="ARCHIVE: done") as (_pool, mocks),
             patch(
-                f"{MODULE}.user_repository.find_by_activity_status",
-                AsyncMock(return_value=[UserDocument(id="user-away")]),
+                f"{MODULE}.user_repository.find_activity_rows",
+                AsyncMock(return_value=[UserActivityRow(id="user-away")]),
             ) as find,
         ):
             summary = await maintenance_sweep_tracked_todos({})
@@ -1118,7 +1122,7 @@ class TestDormantTierDetails:
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", AsyncMock()) as schedule,
             patch(f"{MODULE}.todo_repository.update", AsyncMock()),
-            patch(f"{MODULE}.record_activity", AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", AsyncMock()),
             patch(f"{MODULE}.random.randint", return_value=42) as randint,
         ):
             outcome = await _health_check_dormant(_doc(), pool)

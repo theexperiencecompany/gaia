@@ -11,7 +11,8 @@ from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_pool_models import DataSeries
 from app.models.calendar_models import ATTENDED_RESPONSES, GoogleCalendarEventResource
 from app.services.briefing.candidates.app_names import integration_name
-from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series
+from app.services.briefing.clock import DayWindow
+from app.services.briefing.fact_pool.series import SeriesName, day_series
 
 #: The eventType Google gives an ordinary event; any other type is not a meeting.
 _MEETING_EVENT_TYPE = "default"
@@ -44,7 +45,7 @@ def _covered_seconds(intervals: list[tuple[datetime, datetime]]) -> float:
 
 
 def calendar_series(
-    raw: Sequence[GoogleCalendarEventResource], window: SeriesWindow
+    raw: Sequence[GoogleCalendarEventResource], window: DayWindow
 ) -> list[DataSeries]:
     """Return the hours meetings hold on each day of the window; nothing when none were held."""
     intervals = [span for event in raw if (span := _interval(event)) is not None]

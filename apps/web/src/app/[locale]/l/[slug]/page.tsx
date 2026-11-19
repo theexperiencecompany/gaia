@@ -8,16 +8,11 @@ import { GatedLinkView } from "@/features/short-links/components/GatedLinkView";
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
 import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
 import { BROWSER_RESOLVED_DENIALS } from "@/features/short-links/constants";
-import type { LinkResolution } from "@/features/short-links/types";
 import { isUnfurlBot } from "@/features/short-links/utils/isUnfurlBot";
-import { linkUnavailableState } from "@/features/short-links/utils/linkDenial";
-import { internalApiHeaders } from "@/lib/internalApiHeaders";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-import type {
-  ErrorEnvelope,
-  LinkEnvelope,
-  LinkPreviewMeta,
-} from "@/types/features/shortLinkTypes";
+import {
+  fetchLinkMeta,
+  resolveLinkOnServer,
+} from "@/features/short-links/utils/linkServerApi";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -26,66 +21,20 @@ interface PageProps {
 const OG_SITE_NAME = "GAIA";
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
-const HTTP_TOO_MANY_REQUESTS = 429;
-
-async function linkApiFetch(path: string): Promise<Response> {
-  const apiBaseUrl = getServerApiBaseUrl();
-  if (!apiBaseUrl) {
-    throw new Error("API base URL is not configured for server rendering");
-  }
-  // No caching: the owner can revoke or narrow a link at any moment. The
-  // headers name the viewer, so the API rate-limits each viewer, not this server.
-  return fetch(`${apiBaseUrl}${path}`, {
-    cache: "no-store",
-    headers: internalApiHeaders(await headers()),
-  });
-}
-
-/**
- * What a preview may show for the link, by its access level and state; `cache`
- * dedupes it per render. Null when the viewer is refused for opening too many
- * links: the page itself says so, from the resolve's own refusal.
- */
-const fetchLinkMeta = cache(
-  async (slug: string): Promise<LinkPreviewMeta | null> => {
-    const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}/meta`);
-    if (response.status === HTTP_TOO_MANY_REQUESTS) return null;
-    if (!response.ok) {
-      // Never the slug: it is a working link, and this message reaches Sentry.
-      throw new Error(`Short link meta failed with ${response.status}`);
-    }
-    return (await response.json()) as LinkPreviewMeta;
-  },
+/** The link's /meta, deduped per render by `cache`. */
+const linkMeta = cache(async (slug: string) =>
+  fetchLinkMeta(slug, await headers()),
 );
-
-/**
- * Open the link as an anonymous viewer: this server never sees the viewer's
- * session, so a people or owner link answers a sign-in denial here and is
- * opened again from the browser.
- */
-async function resolveLinkOnServer(slug: string): Promise<LinkResolution> {
-  const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}`);
-  if (response.ok) {
-    return { kind: "open", envelope: (await response.json()) as LinkEnvelope };
-  }
-  const envelope = (await response.json().catch(() => undefined)) as
-    | ErrorEnvelope
-    | undefined;
-  const state = linkUnavailableState(slug, envelope);
-  if (!state) {
-    throw new Error(`Short link resolve failed with ${response.status}`);
-  }
-  return { kind: "unavailable", state };
-}
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const meta = await fetchLinkMeta(slug);
-  if (!meta) {
+  const reply = await linkMeta(slug);
+  if (!reply) {
     return { title: OG_SITE_NAME, robots: { index: false, follow: false } };
   }
+  const { meta } = reply;
   // The generated card lives on whichever host served this page: the site-wide
   // metadataBase is GAIA Cloud's, which would point a self-host's previews there.
   const requestHeaders = await headers();
@@ -125,7 +74,7 @@ export default async function ShortLinkPage({ params }: PageProps) {
   // A chat-preview bot reads only the metadata; it never resolves the link.
   if (isUnfurlBot((await headers()).get("user-agent"))) return null;
 
-  const resolution = await resolveLinkOnServer(slug);
+  const resolution = await resolveLinkOnServer(slug, await headers());
   if (resolution.kind === "open") {
     return <OpenLinkView slug={slug} envelope={resolution.envelope} />;
   }

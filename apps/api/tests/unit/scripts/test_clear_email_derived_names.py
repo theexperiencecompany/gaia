@@ -9,12 +9,12 @@ from scripts.clear_email_derived_names import (
     derive_name_from_email,
 )
 
-from app.models.user_models import UserDocument
+from app.models.user_models import NamedEmailRow
 
 REPO = "scripts.clear_email_derived_names.user_repository"
-GUESSED = UserDocument(id="u-guessed", name="Aryan Randeriya", email="aryan.randeriya@x.com")
-CHOSEN = UserDocument(id="u-chosen", name="Ari", email="aryan.randeriya@x.com")
-CASED = UserDocument(id="u-cased", name="aryan randeriya", email="aryan.randeriya@x.com")
+GUESSED = NamedEmailRow(id="u-guessed", name="Aryan Randeriya", email="aryan.randeriya@x.com")
+CHOSEN = NamedEmailRow(id="u-chosen", name="Ari", email="aryan.randeriya@x.com")
+CASED = NamedEmailRow(id="u-cased", name="aryan randeriya", email="aryan.randeriya@x.com")
 
 
 @pytest.mark.unit
@@ -57,7 +57,7 @@ class TestClearEmailDerivedNames:
             repo.find_named_with_email = AsyncMock(return_value=[GUESSED, CHOSEN, CASED])
             repo.clear_name_if_unchanged = AsyncMock()
 
-            result = await clear_email_derived_names(dry_run=True)
+            result = await clear_email_derived_names(apply=False)
 
         assert result.scanned == 3
         assert result.candidates == [DerivedName(user_id="u-guessed", name="Aryan Randeriya")]
@@ -68,7 +68,7 @@ class TestClearEmailDerivedNames:
             repo.find_named_with_email = AsyncMock(return_value=[GUESSED, CHOSEN])
             repo.clear_name_if_unchanged = AsyncMock(return_value=True)
 
-            result = await clear_email_derived_names(dry_run=False)
+            result = await clear_email_derived_names(apply=True)
 
         repo.clear_name_if_unchanged.assert_awaited_once_with("u-guessed", "Aryan Randeriya")
         assert (result.cleared, result.changed_since_scan) == (1, 0)
@@ -78,6 +78,6 @@ class TestClearEmailDerivedNames:
             repo.find_named_with_email = AsyncMock(return_value=[GUESSED])
             repo.clear_name_if_unchanged = AsyncMock(return_value=False)
 
-            result = await clear_email_derived_names(dry_run=False)
+            result = await clear_email_derived_names(apply=True)
 
         assert (result.cleared, result.changed_since_scan) == (0, 1)

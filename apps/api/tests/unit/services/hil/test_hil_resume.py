@@ -105,7 +105,7 @@ class TestResumeTodo:
                 f"{MODULE}.enqueue_worker_job",
                 new=_fake_enqueue,
             ),
-            patch(f"{MODULE}.record_activity", new=AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", new=AsyncMock()),
         ):
             await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
         # The parked conversation — never a fresh session. A fresh uuid would
@@ -144,7 +144,7 @@ class TestResumedEvent:
                 f"{MODULE}.enqueue_worker_job",
                 new=AsyncMock(),
             ),
-            patch(f"{MODULE}.record_activity", new=AsyncMock()),
+            patch(f"{MODULE}.record_todo_activity", new=AsyncMock()),
             patch("app.services.hil.resume.capture") as capture,
         ):
             await _resume_todo(_row(owner_run_type="todo", owner_id="todo-9"))
@@ -205,7 +205,7 @@ def seams() -> Iterator[ResumeSeams]:
         patch(
             f"{MODULE}.WorkflowQueueService.queue_workflow_execution", new=AsyncMock()
         ) as queue_workflow,
-        patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
+        patch(f"{MODULE}.record_todo_activity", new=AsyncMock(return_value=True)) as activity,
         patch(f"{MODULE}.capture"),
     ):
         repo.claim_resume = AsyncMock(side_effect=_claim)

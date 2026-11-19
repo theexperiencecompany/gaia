@@ -20,17 +20,23 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from e2b import CommandExitException
+from langchain_core.runnables import RunnableConfig
 import pytest
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos, with_watch
 import time_machine
 
 from app.agents.tools.coding.bash_tool import _setup_lab_run, bash, build_bash_tool
+from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
-from app.models.trigger_subscription_models import SubscriptionAction, TriggerSubscription
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
 from app.services.agent_lab import agents_home, lab_runs, sandbox_setup
 from app.services.agent_lab.lab_runs import (
     LAB_SEED_TIMEOUT_SECONDS,
@@ -57,8 +63,8 @@ USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.coding.bash_tool"
 LAB_RUNS = "app.services.agent_lab.lab_runs"
 SUBSCRIPTIONS = "app.services.triggers.subscription_service"
-CONFIG = {"configurable": {"user_id": USER_ID, "stream_id": "s1"}}
-SESSION_CONFIG = {"configurable": {"user_id": USER_ID, "conversation_id": "conv1"}}
+CONFIG = RunnableConfig(configurable={"user_id": USER_ID, "stream_id": "s1"})
+SESSION_CONFIG = RunnableConfig(configurable={"user_id": USER_ID, "conversation_id": "conv1"})
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 LOCAL_EVENTS_URL = "http://host.docker.internal:3000/api/v1/lab/events"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
@@ -84,14 +90,10 @@ def _acquire(sbx: AsyncMock) -> MagicMock:
 
 
 def _todo(**overrides: object) -> TodoDocument:
-    fields: dict[str, object] = {
-        "id": "t1",
-        "user_id": USER_ID,
-        "title": "Lab task",
-        "labels": [GAIA_TRACKED_LABEL],
-    }
-    fields.update(overrides)
-    return TodoDocument(**fields)
+    return TodoDocument.model_validate(
+        {"id": "t1", "user_id": USER_ID, "title": "Lab task", "labels": [GAIA_TRACKED_LABEL]}
+        | overrides
+    )
 
 
 @contextmanager
@@ -113,7 +115,7 @@ def _lab_stack(
         stack.enter_context(patch(f"{MODULE}.todo_repository", new=todos))
         stack.enter_context(patch(f"{LAB_RUNS}.todo_repository", new=todos))
         stack.enter_context(patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos))
-        stack.enter_context(patch(f"{SUBSCRIPTIONS}.record_activity", new=activity))
+        stack.enter_context(patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=activity))
         stack.enter_context(patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"))
         stack.enter_context(patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL))
         todos.get = AsyncMock(return_value=todo)
@@ -155,10 +157,8 @@ class TestLabGate:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # A local container cannot reach the public callback URL an E2B sandbox dials.
-        monkeypatch.setattr(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
-        monkeypatch.setattr(
-            sandbox_setup.settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", LOCAL_EVENTS_URL
-        )
+        monkeypatch.setattr(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
+        monkeypatch.setattr(settings, "LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL", LOCAL_EVENTS_URL)
         sbx = MagicMock(spec=LocalDockerSandbox)
         sbx.sandbox_id = "gaia-sandbox-u1"
         sbx.commands = SimpleNamespace(run=AsyncMock(side_effect=[_ok("seeded"), _ok("hi")]))
@@ -299,7 +299,7 @@ class TestLabHappyPath:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"),
             patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL),
         ):
@@ -330,9 +330,8 @@ class TestLabSeedExecutes:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Real mint + real seed script through local bash; env visibly reaches a command."""
-        monkeypatch.setattr(sandbox_setup.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET)
-        monkeypatch.setattr(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET)
-        monkeypatch.setattr(sandbox_setup.settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
+        monkeypatch.setattr(settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET)
+        monkeypatch.setattr(settings, "SANDBOX_LAB_EVENTS_CALLBACK_URL", EVENTS_URL)
         fake = FakeAsyncSandbox()
         todo = _todo()
         todos = InMemoryTodos(todo)
@@ -342,7 +341,7 @@ class TestLabSeedExecutes:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", new=AsyncMock(return_value=True)),
         ):
             lab = await _setup_lab_run(user_id=USER_ID, run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str)
@@ -361,10 +360,10 @@ class TestLabSeedExecutes:
                 )
             )
 
-        settings = json.loads(_local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"]).read_text())
+        claude_settings = json.loads(_local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"]).read_text())
         commands = {
             handler["command"]
-            for groups in settings["hooks"].values()
+            for groups in claude_settings["hooks"].values()
             for group in groups
             for handler in group["hooks"]
         }
@@ -401,7 +400,7 @@ class TestFailedLaunchUnsubscribes:
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
             patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
-            patch(f"{SUBSCRIPTIONS}.record_activity", AsyncMock()),
+            patch(f"{SUBSCRIPTIONS}.record_todo_activity", AsyncMock()),
         ):
             out = await bash.ainvoke(
                 {"command": "claude -p hi", "run_todo_id": "t1", "background": True},
@@ -577,10 +576,10 @@ class TestLabRuns:
         self, age_seconds: int, expected: RunCapStatus
     ) -> None:
         now = datetime(2026, 1, 1, 12, tzinfo=UTC)
-        watch = lab_runs.TriggerSubscription(
+        watch = TriggerSubscription(
             trigger_name=lab_runs.SANDBOX_RUN_TRIGGER,
             action=SubscriptionAction.EXECUTE,
-            resolution=lab_runs.SubscriptionResolution.ACCOUNT,
+            resolution=SubscriptionResolution.ACCOUNT,
             trigger_data={lab_runs.RUN_ID_KEY: "r1"},
             created_at=now - timedelta(seconds=age_seconds),
         )
@@ -600,10 +599,10 @@ class TestLabRuns:
 
     async def test_subscribing_stores_a_fresh_watch_naming_the_run_folder(self) -> None:
         todo = _todo()
-        stored = lab_runs.TriggerSubscription(
+        stored = TriggerSubscription(
             trigger_name=lab_runs.SANDBOX_RUN_TRIGGER,
             action=SubscriptionAction.EXECUTE,
-            resolution=lab_runs.SubscriptionResolution.ACCOUNT,
+            resolution=SubscriptionResolution.ACCOUNT,
         )
         store = AsyncMock(return_value=(stored, True))
         with patch(f"{LAB_RUNS}.store_subscription", new=store):

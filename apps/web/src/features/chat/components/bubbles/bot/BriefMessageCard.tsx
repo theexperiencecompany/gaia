@@ -1,20 +1,18 @@
 "use client";
 
-import { BriefingFold } from "@/features/briefing";
-import type { BriefMessageData } from "@/types/features/briefingTypes";
+import {
+  type BriefCard,
+  BriefingFold,
+  BriefLetter,
+  foldedBrief,
+} from "@/features/briefing";
 
 /** The edition attached to GAIA's brief message: a folded letter that unfolds when pressed. */
-export function BriefMessageCard({ data }: { data: BriefMessageData }) {
+export function BriefMessageCard({ data }: { data: BriefCard }) {
+  const brief = foldedBrief(data);
   return (
-    <BriefingFold
-      variant="letter"
-      briefingId={data.briefing_id}
-      brief={{
-        headline: data.headline,
-        imageUrl: data.edition_image_url,
-        editionFold: data.edition_fold,
-        editionPaper: data.edition_paper,
-      }}
-    />
+    <BriefingFold briefingId={data.briefing_id} brief={brief}>
+      {(trigger) => <BriefLetter brief={brief} trigger={trigger} />}
+    </BriefingFold>
   );
 }

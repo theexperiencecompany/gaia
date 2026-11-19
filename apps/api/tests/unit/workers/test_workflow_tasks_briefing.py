@@ -1,8 +1,8 @@
 """Firing a briefing workflow runs the briefing pipeline, not a chat turn.
 
 Briefing workflows share one ARQ entry point with every other workflow, separated only
-by system_workflow_key, so the key-to-pipeline mapping is asserted per key and the
-execution record is asserted whole.
+by the run their system_workflow_key declares, so the key-to-pipeline mapping is
+asserted per key and the execution record is asserted whole.
 """
 
 from contextlib import ExitStack
@@ -14,6 +14,7 @@ from app.constants.briefing import (
     BRIEFING_RUN_SUMMARIES,
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
+    BriefingKind,
     BriefingRunOutcome,
 )
 from app.constants.workflows import WorkflowDelivery
@@ -24,16 +25,20 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.briefing.errors import BriefingGenerationError
-from app.workers.tasks.workflow_tasks import _run_briefing_workflow, execute_workflow_by_id
+from app.services.system_workflows.runs import SYSTEM_RUNS
+from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.workflow_tasks"
+RUNS = "app.services.system_workflows.definitions.briefing_runs"
 
 #: What a briefing fire records: no conversation to thread, no tool calls to
 #: replay, and the summary the execution history shows the user.
 BRIEFING_SUMMARY = "Briefing delivered"
 
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 def _briefing_workflow(system_workflow_key: str) -> Workflow:
@@ -58,16 +63,16 @@ def _briefing_workflow(system_workflow_key: str) -> Workflow:
 
 
 class _Pipelines:
-    """The two briefing entry points, each replaced by a stub."""
+    """The one briefing entry point, replaced by a stub."""
 
     def __init__(self) -> None:
-        self.daily = AsyncMock(return_value=BriefingRunOutcome.SENT)
-        self.weekly = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        self.run = AsyncMock(return_value=BriefingRunOutcome.SENT)
+        self.release = AsyncMock()
 
     def patches(self) -> list:
         return [
-            patch("app.services.briefing.daily.run_daily_briefing", self.daily),
-            patch("app.services.briefing.weekly.run_weekly_digest", self.weekly),
+            patch(f"{RUNS}.run_brief", self.run),
+            patch(f"{RUNS}.release_after_daily_run", self.release),
         ]
 
 
@@ -78,7 +83,7 @@ def pipelines() -> _Pipelines:
 
 @pytest.mark.unit
 class TestKeyChoosesThePipeline:
-    """_run_briefing_workflow maps the key to exactly one pipeline."""
+    """Each briefing key's declared run is exactly one pipeline."""
 
     async def test_daily_key_runs_the_daily_brief_for_that_user(
         self, pipelines: _Pipelines
@@ -88,13 +93,27 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
-            log = stack.enter_context(patch("app.workers.tasks.workflow_tasks.log"))
-            summary = await _run_briefing_workflow(workflow)
+            async with captured_wide_event() as event:
+                summary = await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](workflow)
 
-        pipelines.daily.assert_awaited_once_with(USER_ID)
-        pipelines.weekly.assert_not_awaited()
+        pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.DAILY)
         assert summary == BRIEFING_SUMMARY
-        log.set_ns.assert_called_once_with("workflow", briefing_outcome="sent")
+        assert event["workflow"] == {"briefing_outcome": "sent"}
+
+    @pytest.mark.regression
+    async def test_a_daily_run_hands_its_outcome_to_the_held_release(
+        self, pipelines: _Pipelines
+    ) -> None:
+        pipelines.run.return_value = BriefingRunOutcome.WINBACK_BACKOFF
+
+        with ExitStack() as stack:
+            for patcher in pipelines.patches():
+                stack.enter_context(patcher)
+            await SYSTEM_RUNS[DAILY_BRIEFING_WORKFLOW_KEY](
+                _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY)
+            )
+
+        pipelines.release.assert_awaited_once_with(USER_ID, BriefingRunOutcome.WINBACK_BACKOFF)
 
     async def test_weekly_key_runs_the_weekly_digest_for_that_user(
         self, pipelines: _Pipelines
@@ -104,10 +123,10 @@ class TestKeyChoosesThePipeline:
         with ExitStack() as stack:
             for patcher in pipelines.patches():
                 stack.enter_context(patcher)
-            summary = await _run_briefing_workflow(workflow)
+            summary = await SYSTEM_RUNS[WEEKLY_DIGEST_WORKFLOW_KEY](workflow)
 
-        pipelines.weekly.assert_awaited_once_with(USER_ID)
-        pipelines.daily.assert_not_awaited()
+        pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.WEEKLY)
+        pipelines.release.assert_not_awaited()
         assert summary == BRIEFING_SUMMARY
 
 
@@ -156,7 +175,7 @@ class TestTheFireTakesTheBriefingPath:
 
         await _fire(harness, pipelines)
 
-        pipelines.daily.assert_awaited_once_with(USER_ID)
+        pipelines.run.assert_awaited_once_with(USER_ID, BriefingKind.DAILY)
         harness.chat.assert_not_awaited()
 
     async def test_the_execution_record_says_a_briefing_was_delivered(
@@ -178,7 +197,7 @@ class TestTheFireTakesTheBriefingPath:
     async def test_a_skipped_briefing_says_why_instead_of_claiming_delivery(
         self, pipelines: _Pipelines
     ) -> None:
-        pipelines.daily.return_value = BriefingRunOutcome.DORMANT
+        pipelines.run.return_value = BriefingRunOutcome.DORMANT
         harness = _FireHarness(_briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY))
 
         await _fire(harness, pipelines)
@@ -196,8 +215,7 @@ class TestTheFireTakesTheBriefingPath:
         await _fire(harness, pipelines)
 
         harness.chat.assert_awaited_once()
-        pipelines.daily.assert_not_awaited()
-        pipelines.weekly.assert_not_awaited()
+        pipelines.run.assert_not_awaited()
 
 
 @pytest.mark.unit
@@ -205,13 +223,16 @@ class TestAFailedBrief:
     """A failed brief told the user "Workflow Failed: Daily brief" for a workflow they never see."""
 
     async def _fail(
-        self, workflow: Workflow, pipelines: _Pipelines
+        self, workflow: Workflow, pipelines: _Pipelines, raised: type[Exception]
     ) -> tuple[_FireHarness, AsyncMock]:
-        pipelines.daily.side_effect = BriefingGenerationError("the prose contradicts its items")
+        pipelines.run.side_effect = BriefingGenerationError("the prose contradicts its items")
         harness = _FireHarness(workflow)
         harness.chat.side_effect = RuntimeError("the chat turn broke")
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with (
+            patch(f"{MODULE}.notification_service.create_notification", notify),
+            pytest.raises(raised),
+        ):
             await _fire(harness, pipelines)
         return harness, notify
 
@@ -219,7 +240,7 @@ class TestAFailedBrief:
         self, pipelines: _Pipelines
     ) -> None:
         harness, notify = await self._fail(
-            _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY), pipelines
+            _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY), pipelines, BriefingGenerationError
         )
 
         notify.assert_not_awaited()
@@ -231,7 +252,9 @@ class TestAFailedBrief:
     async def test_a_users_own_workflow_that_fails_still_tells_them(
         self, pipelines: _Pipelines
     ) -> None:
-        _harness, notify = await self._fail(_briefing_workflow("todo_followup"), pipelines)
+        _harness, notify = await self._fail(
+            _briefing_workflow("todo_followup"), pipelines, RuntimeError
+        )
 
         [call] = notify.await_args_list
         assert call.args[0].content.title == "Workflow Failed: Daily brief"

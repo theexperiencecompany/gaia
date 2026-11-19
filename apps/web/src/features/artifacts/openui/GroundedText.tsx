@@ -1,6 +1,6 @@
+import { resolveText } from "@gaia/artifacts/grounding";
 import { Fragment, useContext } from "react";
 import { GroundingContext } from "./GroundingContext";
-import { resolveText } from "./grounding";
 
 const BOLD = /(\*\*[^*]+\*\*)/g;
 

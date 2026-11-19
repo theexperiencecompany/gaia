@@ -29,8 +29,6 @@ apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
 apps/api/app/agents/skills/parser.py	TB002
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
-apps/api/app/agents/tools/discovery_tools.py	TB001
-apps/api/app/agents/tools/discovery_tools.py	TB002
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
@@ -74,7 +72,6 @@ apps/api/app/services/mcp/device_connector.py	TB002
 apps/api/app/services/mcp/device_exec.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
-apps/api/app/services/nurture/predicates.py	TB002
 apps/api/app/services/onboarding/inbox_scan_cache.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002

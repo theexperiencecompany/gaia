@@ -5,8 +5,8 @@ import { Modal } from "@heroui/react";
 import { useState } from "react";
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import type { BriefsOffBlock } from "@/features/briefing";
 import { DeliverySegments } from "@/features/workflows/components/DeliverySegments";
-import type { BriefsOffBlock } from "@/services/api/notifications";
 
 interface BriefsOffBlockedModalProps {
   block: BriefsOffBlock | null;

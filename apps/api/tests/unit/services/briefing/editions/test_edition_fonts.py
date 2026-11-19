@@ -7,6 +7,7 @@ import re
 
 import pytest
 
+from app.constants.briefing import EditionFamily
 from app.services.briefing.editions import edition_fonts
 from app.services.briefing.editions.edition_fonts import (
     EDITION_FAMILIES,
@@ -55,7 +56,7 @@ class TestManifest:
 @pytest.mark.unit
 class TestFontFacesCss:
     def test_each_cut_of_each_family_is_one_rule(self) -> None:
-        css = edition_font_faces_css("broadsheet")
+        css = edition_font_faces_css(EditionFamily.BROADSHEET)
         rules = re.findall(
             r"@font-face\{font-family:'([^']+)';font-style:(\w+);font-weight:(\d+)", css
         )
@@ -72,7 +73,7 @@ class TestFontFacesCss:
         ]
 
     def test_the_data_uri_is_the_file_on_disk(self) -> None:
-        css = edition_font_faces_css("receipt")
+        css = edition_font_faces_css(EditionFamily.RECEIPT)
         uris = re.findall(r"data:font/woff2;base64,([A-Za-z0-9+/=]+)", css)
 
         assert [base64.b64decode(uri) for uri in uris] == [
@@ -98,12 +99,12 @@ class TestFontFacesCss:
 
         expected = "".join(
             rule(face)
-            for name in EDITION_FAMILIES["postal"]
+            for name in EDITION_FAMILIES[EditionFamily.POSTAL]
             for face in manifest
             if face["family"] == name
         )
 
-        assert edition_font_faces_css("postal") == expected
+        assert edition_font_faces_css(EditionFamily.POSTAL) == expected
         assert "size-adjust:83%;" in expected
 
     def test_the_manifest_is_read_whole(self) -> None:
@@ -112,7 +113,3 @@ class TestFontFacesCss:
         assert [(f.family, f.file) for f in font_faces()] == [
             (face["family"], face["file"]) for face in manifest
         ]
-
-    def test_an_unknown_family_fails_loud(self) -> None:
-        with pytest.raises(KeyError):
-            edition_font_faces_css("nope")

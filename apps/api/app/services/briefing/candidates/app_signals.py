@@ -2,9 +2,10 @@
 
 from collections.abc import Sequence
 
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin, OutsideRef
+from app.models.brief_item_models import ItemState
 from app.models.scout_models import RememberedSignal
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.briefing.scouts.facts import memory_note
 
 
@@ -25,9 +26,10 @@ def app_signal_candidates(
     """Return one candidate per signal, with what earlier briefs remember of it in its detail."""
     return [
         BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
             source=item.signal.integration_id,
             app=item.signal.app,
-            state="you",
+            state=ItemState.YOU,
             title=item.signal.title,
             detail=_detail(item, clock),
             people=list(item.signal.people),
@@ -35,7 +37,10 @@ def app_signal_candidates(
             url=item.signal.url,
             importance=item.signal.importance,
             signal=item.signal,
-            ref=f"{item.signal.integration_id}:{item.signal.external_id}",
+            ref=OutsideRef(
+                integration_id=item.signal.integration_id,
+                external_id=item.signal.external_id,
+            ),
             memory=item.memory,
             moved=item.previous_state is not None,
         )

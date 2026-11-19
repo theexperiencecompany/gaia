@@ -5,8 +5,11 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
-from app.constants.briefing import EditionChoice
+from app.constants.briefing import EditionChoice, EditionFamily
+from app.models.briefing_state_models import BriefingStateUpdate
 from app.services.briefing.edition_choices import briefing_editions, set_edition_choices
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names
@@ -14,27 +17,25 @@ from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsBriefingEditionsUpdated
 
-_USER = "507f1f77bcf86cd799439011"
+USER_ID = make_user_id()
 
 
 @dataclass
 class _Seams:
     store: AsyncMock
     capture: MagicMock
-    log: MagicMock
 
 
 @pytest.fixture
 def seams() -> Iterator[_Seams]:
     with (
         patch(
-            "app.services.briefing.edition_choices.user_repository.set_briefing_editions",
+            "app.services.briefing.edition_choices.briefing_state_repository.upsert",
             new_callable=AsyncMock,
         ) as store,
         patch("app.services.briefing.edition_choices.capture") as capture,
-        patch("app.services.briefing.edition_choices.log") as log,
     ):
-        yield _Seams(store=store, capture=capture, log=log)
+        yield _Seams(store=store, capture=capture)
 
 
 @pytest.mark.unit
@@ -63,45 +64,54 @@ class TestSetEditionChoices:
     async def test_only_off_and_favourite_are_stored_and_the_counts_are_captured(
         self, seams: _Seams
     ) -> None:
-        view = await set_edition_choices(
-            _USER,
-            {
-                "menu": EditionChoice.OFF,
-                "memo": EditionChoice.OFF,
-                "swiss": EditionChoice.FAVOURITE,
-                "postal": EditionChoice.ON,
-            },
-        )
+        async with captured_wide_event() as event:
+            view = await set_edition_choices(
+                USER_ID,
+                {
+                    "menu": EditionChoice.OFF,
+                    "memo": EditionChoice.OFF,
+                    "swiss": EditionChoice.FAVOURITE,
+                    "postal": EditionChoice.ON,
+                },
+            )
 
         seams.store.assert_awaited_once_with(
-            _USER,
-            {
-                "menu": EditionChoice.OFF,
-                "memo": EditionChoice.OFF,
-                "swiss": EditionChoice.FAVOURITE,
-            },
+            USER_ID,
+            BriefingStateUpdate(
+                editions={
+                    "menu": EditionChoice.OFF,
+                    "memo": EditionChoice.OFF,
+                    "swiss": EditionChoice.FAVOURITE,
+                }
+            ),
         )
         seams.capture.assert_called_once_with(
-            UserId(_USER),
+            UserId(USER_ID),
             SettingsBriefingEditionsUpdated(
                 editions_off=2, editions_favourited=1, editions_total=len(DAILY_FAMILY_WEIGHTS)
             ),
         )
-        seams.log.audit.assert_called_once_with(
-            "briefing editions updated", actor=_USER, off=2, favourites=1
-        )
-        assert {e.family: e.choice for e in view.editions}["swiss"] == EditionChoice.FAVOURITE
+        assert event["audit"] == [
+            {"msg": "briefing editions updated", "actor": USER_ID, "off": 2, "favourites": 1}
+        ]
+        assert {e.family: e.choice for e in view.editions}[
+            EditionFamily.SWISS
+        ] == EditionChoice.FAVOURITE
 
     async def test_one_edition_left_on_is_accepted(self, seams: _Seams) -> None:
-        choices = {f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f != "swiss"}
+        choices: dict[str, EditionChoice] = {
+            f: EditionChoice.OFF for f in DAILY_FAMILY_WEIGHTS if f != "swiss"
+        }
 
-        await set_edition_choices(_USER, choices)
+        await set_edition_choices(USER_ID, choices)
 
-        seams.store.assert_awaited_once_with(_USER, choices)
+        seams.store.assert_awaited_once_with(USER_ID, BriefingStateUpdate(editions=choices))
 
     async def test_every_edition_off_is_refused_and_nothing_is_stored(self, seams: _Seams) -> None:
         with pytest.raises(AppError) as refused:
-            await set_edition_choices(_USER, dict.fromkeys(DAILY_FAMILY_WEIGHTS, EditionChoice.OFF))
+            await set_edition_choices(
+                USER_ID, dict.fromkeys(DAILY_FAMILY_WEIGHTS, EditionChoice.OFF)
+            )
 
         error = refused.value
         assert (error.status_code, error.message, error.why, error.fix) == (
@@ -118,7 +128,7 @@ class TestSetEditionChoices:
     ) -> None:
         with pytest.raises(AppError) as refused:
             await set_edition_choices(
-                _USER, {"weekly": EditionChoice.OFF, "gone": EditionChoice.FAVOURITE}
+                USER_ID, {"weekly": EditionChoice.OFF, "gone": EditionChoice.FAVOURITE}
             )
 
         error = refused.value
@@ -126,6 +136,6 @@ class TestSetEditionChoices:
             422,
             "Not a daily edition: gone, weekly",
             "Only the daily edition families can be turned off or favourited",
-            "Choose from the editions GET /notifications/preferences/briefing-editions lists",
+            "Choose from the editions GET /briefings/editions lists",
         )
         seams.store.assert_not_awaited()

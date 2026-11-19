@@ -977,6 +977,7 @@ jobs:
       SLICE_NODE: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].node }}
       SLICE_SERVICES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].services }}
       SLICE_ENGINES: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].engines }}
+      SLICE_CHROMIUM: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].chromium }}
       SLICE_SERIAL: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].serial }}
       SLICE_WORKERS: ${{ fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].workers }}
       SLICE_AFTER: ${{ join(fromJSON(needs.detect.outputs.slice_defs)[matrix.slice].after, ' ') }}
@@ -1006,13 +1007,7 @@ jobs:
         with:
           node: ${{ env.SLICE_NODE }}
           services: ${{ env.SLICE_SERVICES }}
-      # tests/integration/test_edition_families_render.py rasterizes every
-      # briefing edition family through real headless Chromium; the browser is
-      # not part of the uv environment, so the integration slice fetches it.
-      - name: Install headless Chromium for the edition render test
-        if: env.SLICE_NAME == 'integration'
-        working-directory: apps/api
-        run: uv run --frozen playwright install chromium-headless-shell
+          chromium: ${{ env.SLICE_CHROMIUM }}
       # An engine slice runs real browser hosts: Chrome from the runner image and
       # Obscura as the obscura-bin job built it. A missing binary fails the slice.
       - name: Fetch the Obscura binaries the obscura-bin job built
@@ -1627,8 +1622,8 @@ jobs:
   # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
   # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
   # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
-  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN Worker secret must exist
-  # first, or the deploy reds master. After turning it on, dispatch ci.yml on
+  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN and LINK_CONTENT_EDGE_TOKEN
+  # Worker secrets must exist first, or the deploy reds master. After turning it on, dispatch ci.yml on
   # master once (a dispatch runs every task) to ship the first version.
   deploy-usercontent-worker:
     needs: [detect, quality-gate]

@@ -24,7 +24,6 @@ function bitmap(height: number): ImageBitmap {
 
 const EDITION: PreparedEdition = {
   aspect: 2,
-  width: 540,
   panels: [bitmap(360), bitmap(360), bitmap(360)],
   sheet: bitmap(1080),
   shares: [1 / 3, 1 / 3, 1 / 3],

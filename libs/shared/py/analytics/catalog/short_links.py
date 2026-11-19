@@ -7,6 +7,7 @@ from shared.py.analytics.catalog.base import ServerEvent
 __all__ = [
     "ShortLinkAccessChanged",
     "ShortLinkContentPublished",
+    "ShortLinkContentRestricted",
     "ShortLinkCreated",
     "ShortLinkDenied",
     "ShortLinkOpened",
@@ -23,17 +24,20 @@ __all__ = [
 # set and the API's test_registry asserts they stay equal, the same way the
 # workflow events restate their delivery modes.
 ShortLinkTarget = Literal[
-    "todo_deliverable", "briefing", "session_artifact", "workflow_run", "openui_artifact"
+    "todo_deliverable", "briefing", "workspace_file", "workflow_run", "openui_artifact"
 ]
-ShortLinkAccess = Literal["public", "unlisted", "people", "owner"]
-ShortLinkRevokeReason = Literal["owner", "rotated", "expired", "takedown", "target_deleted"]
+ShortLinkAccess = Literal["public", "unlisted", "owner"]
+ShortLinkRevokeReason = Literal[
+    "owner", "rotated", "expired", "takedown", "target_deleted", "account_removed"
+]
 ShortLinkDenialReason = Literal[
     "expired", "revoked", "removed", "target_deleted", "sign_in_required", "forbidden"
 ]
 ShortLinkRenderMode = Literal[
     "frame_active", "image", "image_svg", "pdf", "text", "media", "download"
 ]
-ShortLinkPublishRejection = Literal["too_large", "restricted_type", "quota"]
+ShortLinkPublishRejection = Literal["too_large", "quota"]
+ShortLinkContentRestriction = Literal["executable", "credential_form", "repeat_takedowns"]
 ShortLinkReportReason = Literal["phishing", "malware", "harassment", "illegal", "other"]
 
 
@@ -73,7 +77,6 @@ class ShortLinkAccessChanged(ServerEvent):
     target_type: ShortLinkTarget
     from_access: ShortLinkAccess
     to_access: ShortLinkAccess
-    grantee_count: int
 
 
 class ShortLinkRotated(ServerEvent):
@@ -87,7 +90,7 @@ class ShortLinkRotated(ServerEvent):
 
 
 class ShortLinkRevoked(ServerEvent):
-    """The user stopped sharing one of their artifacts."""
+    """One of the user's links was turned off: by them, or with their account."""
 
     event: ClassVar[str] = "short_link:revoked"
     budget_per_user_day: ClassVar[int] = 50
@@ -118,13 +121,24 @@ class ShortLinkContentPublished(ServerEvent):
 
 
 class ShortLinkPublishRejected(ServerEvent):
-    """A shared file was not published, or was published only for narrower access."""
+    """A shared file's bytes were not published; its link shows only its name and size."""
 
     event: ClassVar[str] = "short_link:publish_rejected"
     budget_per_user_day: ClassVar[int] = 500
 
     target_type: ShortLinkTarget
     reason: ShortLinkPublishRejection
+
+
+class ShortLinkContentRestricted(ServerEvent):
+    """A shared file was published, but may be served only to narrower access than the widest."""
+
+    event: ClassVar[str] = "short_link:content_restricted"
+    budget_per_user_day: ClassVar[int] = 500
+
+    target_type: ShortLinkTarget
+    reason: ShortLinkContentRestriction
+    max_access: ShortLinkAccess
 
 
 class ShortLinkReported(ServerEvent):

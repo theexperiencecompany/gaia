@@ -6,20 +6,21 @@ Workflows that already carry a delivery are left alone, so re-running is safe.
 
 WorkflowDocument reads an unmigrated record the same way at load time, so the
 deploy does not depend on this having run; running it retires that mapping's
-work and is safe before or after the new code ships.
+work and is safe before or after the new code ships. Each record is read as its
+id and flag only, so a field GAIA has since dropped cannot stop the run.
 
     cd apps/api && uv run python -m scripts.migrate_workflow_delivery [--apply]
 """
 
 import asyncio
-import sys
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
+from scripts._cli import apply_requested
 
 
-async def migrate(apply: bool) -> None:
-    """Store delivery on every workflow that lacks it, from its legacy flag."""
+async def migrate(apply: bool) -> int:
+    """Store delivery on every workflow that lacks it, from its legacy flag; return how many."""
     mode = "APPLY" if apply else "DRY RUN"
     print(f"[{mode}] Mapping notify_on_completion to delivery...\n")
 
@@ -34,7 +35,8 @@ async def migrate(apply: bool) -> None:
     print(f"\n[{mode}] Done. {summary}")
     if not apply:
         print("Re-run with --apply to write these changes.")
+    return sum(counts.values())
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply="--apply" in sys.argv))
+    asyncio.run(migrate(apply=apply_requested(__doc__)))

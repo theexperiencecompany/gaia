@@ -2,12 +2,12 @@
 
 import { Tooltip } from "@heroui/react";
 import { EarthIcon, News01Icon, Settings01Icon } from "@icons";
-import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { LinkButton } from "@/components/shared/LinkButton";
 import {
   BRIEFINGS_SETTINGS_PATH,
   POSTMARKS_SETTINGS_PATH,
-} from "@/features/briefing/constants";
+} from "@shared/constants/routes";
+import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
+import { LinkButton } from "@/components/shared/LinkButton";
 
 /** The Briefings page's title, with its two neighbours: the stamps briefs bring, and when briefs come. */
 export default function BriefingsHeader() {

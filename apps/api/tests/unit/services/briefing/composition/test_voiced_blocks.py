@@ -1,5 +1,6 @@
 """The voice is told every non-item block as the brief shows it, and may quote only what those blocks carry."""
 
+from app.agents.prompts.brief_fact_prompts import BLOCKS_HEADER
 from app.models.brief_composition_models import (
     ChartBlock,
     ChartKind,
@@ -16,12 +17,9 @@ from app.models.brief_pool_models import (
     SeriesShape,
 )
 from app.services.briefing.composition.voiced_blocks import (
-    BLOCKS_HEADER,
     block_words,
-    charted_figures,
     voiced_block_lines,
 )
-from app.services.briefing.slots import SeriesField
 
 
 def _series(series_id: str, ys: list[float]) -> DataSeries:
@@ -73,7 +71,7 @@ def test_each_kind_of_block_is_told_to_the_voice_under_one_header() -> None:
         "- a chart, This week (series meetings, focus): Thursday was heaviest.",
         '- Maya\'s words, from Gmail: "Can you confirm by Friday?"',
         # Who finished what, over which days: GAIA's and the user's work never blur together.
-        '- progress on "Ship v3": linked todos 2 finished since Mon 9 Nov'
+        '- progress on "Ship v3": linked todos 2 finished since Mon Nov 9'
         " (1 by GAIA, 1 by the user), 7 open",
         "- a note: A light day.",
     ]
@@ -93,15 +91,6 @@ def test_a_chart_over_one_page_of_an_app_tells_the_voice_its_total_is_not_the_ap
 
 def test_no_blocks_beyond_the_items_tell_the_voice_nothing() -> None:
     assert voiced_block_lines([]) == []
-
-
-def test_the_figures_of_every_charted_series_are_offered_by_id() -> None:
-    figures = charted_figures([NOTE, CHART])
-
-    assert list(figures) == ["meetings", "focus"]
-    assert figures["meetings"][SeriesField.TOTAL] == "7"
-    assert figures["meetings"][SeriesField.PEAK] == "4"
-    assert figures["focus"][SeriesField.LATEST] == "1"
 
 
 def test_the_words_the_prose_may_quote_come_from_every_kind_of_block() -> None:

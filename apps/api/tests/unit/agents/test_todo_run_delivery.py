@@ -15,23 +15,27 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.config.settings import settings
 from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ProactiveMessageClass
+from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import NotificationType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp
+from app.services.links.placeholders import link_placeholder
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
-from tests.helpers import captured_wide_event
+from tests.helpers import brief_loop_awake, captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -102,6 +106,7 @@ def _seams(
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
         patch.object(workflow_repository, "find_system_workflow", seams.daily_brief),
+        brief_loop_awake(),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "create_notification", seams.in_app),
@@ -113,6 +118,25 @@ def _todo(**fields: object) -> TodoDocument:
     return TodoDocument.model_validate(
         {"id": "todo-1", "user_id": USER_ID, "title": "Watch the deploy", **fields}
     )
+
+
+class TestALinkInTheWriteUp:
+    async def test_reaches_the_user_as_its_live_link(self) -> None:
+        """Narration returns the model's placeholder; this delivery is where it becomes the URL."""
+        target = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="todo-1")
+        narrated = f"Deploy failed. [The log]({link_placeholder(target)})"
+        live = ShortLink(slug="loglink1234", user_id=USER_ID, target=target)
+        with (
+            _seams(todo=_todo(), narrated=narrated) as seams,
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                AsyncMock(return_value=live),
+            ),
+        ):
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        body = seams.in_app.await_args.args[0].content.body
+        assert body == f"Deploy failed. [The log]({settings.SHORTLINK_BASE_URL}/loglink1234)"
 
 
 class TestResultsThatReachNobody:
@@ -134,7 +158,7 @@ class TestResultsThatReachNobody:
         assert request.type is NotificationType.INFO
         assert request.content.title == "Watch the deploy"
         assert request.content.body == "Deploy failed."
-        assert request.metadata == {"todo_id": "todo-1"}
+        assert request.details == TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
         assert seams.entry() == "result sent as an in-app notification (summary='report')"
         assert seams.event().outcome == "delivered"
         assert seams.event().platform is None
@@ -407,7 +431,7 @@ class TestTheWideEventSaysWhatHappened:
     async def test_with_delivery_off_the_report_is_still_kept_for_the_chats_next_turn(
         self,
     ) -> None:
-        with _seams(todo=_todo(notify_on_run=False)) as seams:
+        with _seams(todo=_todo(delivery="silent")) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         seams.narrate.assert_not_awaited()
@@ -459,7 +483,6 @@ class TestTheDecisionSeesTheStandingRules:
             "- thread abc",
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -468,7 +491,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=()
         )
 
     @pytest.mark.regression
@@ -486,7 +509,6 @@ class TestTheDecisionSeesTheStandingRules:
             details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     @pytest.mark.regression
@@ -496,7 +518,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
     @pytest.mark.regression
@@ -511,7 +533,6 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             runs_once=True,
             run_history=(),
-            may_wait=False,
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -519,7 +540,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -527,7 +548,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
+            "Watch the deploy", None, None, runs_once=True, run_history=()
         )
 
 

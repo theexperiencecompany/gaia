@@ -1,5 +1,6 @@
 // Comprehensive cron expression builder and parser
 
+import { FIXED_LOCALE, formatClockTime } from "@shared/utils";
 import cronstrue from "cronstrue";
 
 export interface CronSchedule {
@@ -119,12 +120,8 @@ export const parseCronExpression = (cron: string): CronSchedule => {
 export const getScheduleDescription = (cron: string): string => {
   const schedule = parseCronExpression(cron);
 
-  const formatTime = (hour: number, minute: number): string => {
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    const displayMinute = minute.toString().padStart(2, "0");
-    return `${displayHour}:${displayMinute} ${ampm}`;
-  };
+  const formatTime = (hour: number, minute: number): string =>
+    formatClockTime(`${hour}:${minute}`, FIXED_LOCALE);
 
   const dayNames = [
     "Sunday",

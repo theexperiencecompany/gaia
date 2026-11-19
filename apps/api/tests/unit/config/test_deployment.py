@@ -47,6 +47,7 @@ def test_production_bills_enforces_and_reads_env_only() -> None:
     assert profile.blob_store is BlobStoreKind.CLOUDINARY
     assert profile.gaia_support is True
     assert profile.hosted_bots is True
+    assert profile.gaia_mail_domain is True
 
 
 def test_production_with_local_auth_is_refused() -> None:
@@ -91,6 +92,7 @@ def test_selfhost_has_no_plans_no_limits_and_a_credential_store() -> None:
     assert profile.blob_store is BlobStoreKind.LOCAL
     assert profile.gaia_support is False
     assert profile.hosted_bots is False
+    assert profile.gaia_mail_domain is False
 
 
 def test_selfhost_runs_the_local_code_sandbox_only_when_opted_in() -> None:
@@ -314,21 +316,20 @@ def test_each_kind_exposes_its_own_network_surface(
 
 
 @pytest.mark.parametrize(
-    ("kind", "edge_web_server", "link_base"),
+    ("kind", "link_base"),
     [
-        (DeploymentKind.PRODUCTION, True, LinkBase.GAIA_LINK_DOMAIN),
-        (DeploymentKind.DEVELOPMENT, False, LinkBase.INSTANCE_WEB_ROUTE),
-        (DeploymentKind.SELFHOST, False, LinkBase.INSTANCE_WEB_ROUTE),
+        (DeploymentKind.PRODUCTION, LinkBase.GAIA_LINK_DOMAIN),
+        (DeploymentKind.DEVELOPMENT, LinkBase.INSTANCE_WEB_ROUTE),
+        (DeploymentKind.SELFHOST, LinkBase.INSTANCE_WEB_ROUTE),
     ],
 )
-def test_only_production_sits_behind_the_edge_and_serves_links_from_gaias_domain(
-    kind: DeploymentKind, edge_web_server: bool, link_base: LinkBase
+def test_only_production_serves_links_from_gaias_domain(
+    kind: DeploymentKind, link_base: LinkBase
 ) -> None:
     profile = deployment_profile(
         kind, "workos", unlimited_usage=False, local_code_sandbox=False, blob_store=None
     )
 
-    assert profile.edge_web_server is edge_web_server
     assert profile.link_base is link_base
 
 

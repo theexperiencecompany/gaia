@@ -38,6 +38,7 @@ from app.utils.notification.channels import (
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
+from app.utils.notification.channels.email import EmailRenderers
 from app.utils.notification.storage import (
     MongoDBNotificationStorage,
 )
@@ -47,7 +48,9 @@ from shared.py.wide_events import NotificationContext, log
 class NotificationOrchestrator:
     """Core notification engine: creation, multi-channel delivery, actions, bulk operations, and status management."""
 
-    def __init__(self, storage: MongoDBNotificationStorage | None = None) -> None:
+    def __init__(
+        self, email_renderers: EmailRenderers, storage: MongoDBNotificationStorage | None = None
+    ) -> None:
         self.storage = storage or MongoDBNotificationStorage()
         # Erased element type: the registry is heterogeneous by design (each
         # adapter has its own payload shape). ``_deliver_via_channel`` rebinds
@@ -55,17 +58,17 @@ class NotificationOrchestrator:
         self.channel_adapters: dict[str, ChannelAdapter[Any]] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
 
-        self._register_default_components()
+        self._register_default_components(email_renderers)
 
     # INITIALIZATION & REGISTRATION METHODS
-    def _register_default_components(self) -> None:
+    def _register_default_components(self, email_renderers: EmailRenderers) -> None:
         """Register default adapters, handlers, and sources."""
         self.register_channel_adapter(InAppChannelAdapter())
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
-        self.register_channel_adapter(EmailChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter(email_renderers))
         self.register_channel_adapter(ImessageChannelAdapter())
 
         self.register_action_handler(ApiCallActionHandler())
@@ -472,7 +475,7 @@ class NotificationOrchestrator:
             ),
             source=request.source,
             type=request.type,
-            metadata=request.metadata,
+            details=request.details,
             channels=[
                 NotificationChannelView(
                     channel_type=ch.channel_type,

@@ -18,7 +18,7 @@ import secrets
 from urllib.parse import urlsplit
 
 import filetype
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 import pymupdf
 
 from app.agents.workspace.paths import is_inlineable_content_type
@@ -29,6 +29,7 @@ from app.constants.short_links import (
     CONTENT_ID_ALPHABET,
     CONTENT_ID_LENGTH,
     CONTENT_TOKEN_TTL_SECONDS,
+    DOWNLOAD_MIME,
     EXECUTABLE_EXTENSIONS,
     MAX_HTML_SNAPSHOT_BYTES,
     MAX_PUBLISHED_BYTES_PER_DAY,
@@ -45,6 +46,7 @@ from app.constants.short_links import (
 from app.db.redis import redis_cache
 from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
     LinkContent,
     LinkSnapshot,
@@ -55,16 +57,16 @@ from app.models.short_link_models import (
 )
 from app.services.analytics_service import analytics_day_start, capture
 from app.services.blob_store import link_content_store
-from app.services.links.access import at_most
+from app.services.links.access import servable_content
 from app.services.links.spec import SnapshotSource
+from app.utils.image_codec import ImageCodec
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
+    ShortLinkContentRestricted,
     ShortLinkPublishRejected,
 )
 from shared.py.wide_events import log
-
-_DOWNLOAD_MIME = "application/octet-stream"
 
 # Declared types served as themselves once the bytes agree; anything else is TEXT or a download.
 _RENDER_BY_MIME: dict[str, RenderMode] = {
@@ -97,7 +99,9 @@ _SIZE_CAPS: dict[RenderMode, int] = {
     RenderMode.FRAME_ACTIVE: MAX_HTML_SNAPSHOT_BYTES,
     RenderMode.IMAGE_SVG: MAX_SVG_SNAPSHOT_BYTES,
 }
-_SENSITIVE_INPUT = re.compile(
+# A hint that narrows the obvious credential forms, not a phishing guard: an obfuscated or
+# script-built form passes it. The content origin's isolation and reports are the guard.
+_LOOKS_LIKE_CREDENTIAL_FORM = re.compile(
     rb"""<input\b[^>]*\btype\s*=\s*["']?password|autocomplete\s*=\s*["']?cc-""", re.IGNORECASE
 )
 _SIZE_BUCKETS = ((100 * 1024, "lt_100kb"), (1024 * 1024, "lt_1mb"), (10 * 1024 * 1024, "lt_10mb"))
@@ -129,14 +133,14 @@ def served_type(declared_mime: str, data: bytes) -> ServedType:
     if render is None and is_inlineable_content_type(declared_mime):
         render = RenderMode.TEXT
     if render is None:
-        return ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        return ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
     if render in _TEXTUAL_RENDERS:
         agrees = _is_text(data)
     else:
         sniffed = filetype.guess_mime(data)
         agrees = sniffed in _MAGIC_ALIASES.get(declared_mime, frozenset({declared_mime}))
     if not agrees:
-        return ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        return ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
     return ServedType(declared_mime, render)
 
 
@@ -147,17 +151,16 @@ def _extension(filename: str) -> str:
 
 async def _restriction(
     owner_id: str, filename: str, data: bytes, render: RenderMode
-) -> tuple[LinkAccess, PublishRejection] | None:
-    """Return the widest level these bytes may be served at, when something narrows it."""
+) -> tuple[LinkAccess, ContentRestriction] | None:
+    """Return the widest level these bytes may be served at, and why, when something narrows it."""
     if _extension(filename) in EXECUTABLE_EXTENSIONS:
-        return LinkAccess.OWNER, PublishRejection.RESTRICTED_TYPE
+        return LinkAccess.OWNER, ContentRestriction.EXECUTABLE
     if render is not RenderMode.FRAME_ACTIVE:
         return None
-    if (
-        _SENSITIVE_INPUT.search(data)
-        or await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS
-    ):
-        return LinkAccess.PEOPLE, PublishRejection.RESTRICTED_TYPE
+    if _LOOKS_LIKE_CREDENTIAL_FORM.search(data):
+        return LinkAccess.OWNER, ContentRestriction.CREDENTIAL_FORM
+    if await short_link_repository.count_takedowns(owner_id) >= REPEAT_ABUSE_TAKEDOWNS:
+        return LinkAccess.OWNER, ContentRestriction.REPEAT_TAKEDOWNS
     return None
 
 
@@ -186,6 +189,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
     """Render the preview image of a raster or a PDF's first page; other types get the generated card."""
     try:
         if render is RenderMode.IMAGE:
+            ImageCodec.probe(data)
             with Image.open(io.BytesIO(data)) as image:
                 return _jpeg(image)
         if render is RenderMode.PDF:
@@ -199,7 +203,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
                 )
                 pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale))
                 return _jpeg(pixmap.pil_image())
-    except (UnidentifiedImageError, pymupdf.FileDataError, OSError, ValueError) as exc:
+    except (pymupdf.FileDataError, OSError, ValueError) as exc:
         # A broken file still shares; only its preview image is lost.
         log.warning(
             "short_link.thumbnail_failed", render=render.value, error_type=type(exc).__name__
@@ -261,7 +265,7 @@ async def publish(
     """Store source as a new snapshot and describe it; a capped or over-quota file is described, not stored."""
     data = source.data
     if data is None:
-        unread = ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        unread = ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
         return _rejected(owner_id, target_type, source, unread, PublishRejection.TOO_LARGE)
     kind = served_type(source.declared_mime, data)
     size = len(data)
@@ -301,7 +305,11 @@ async def publish(
     if restriction is not None:
         capture(
             UserId(owner_id),
-            ShortLinkPublishRejected(target_type=target_type.value, reason=restriction[1].value),
+            ShortLinkContentRestricted(
+                target_type=target_type.value,
+                reason=restriction[1].value,
+                max_access=restriction[0].value,
+            ),
         )
     return LinkSnapshot(
         filename=source.filename,
@@ -353,25 +361,28 @@ def active_link_content() -> bool:
 _WITHOUT_ORIGIN: dict[RenderMode, RenderMode] = {RenderMode.FRAME_ACTIVE: RenderMode.TEXT}
 
 
+def isolates_each_snapshot() -> bool:
+    """Whether every snapshot gets a host of its own, the only isolation a PDF can have.
+
+    A self-host serves every snapshot from one host, where one link's PDF could read the next's.
+    """
+    template = settings.LINK_CONTENT_URL_TEMPLATE
+    return template is not None and "{content_id}" in urlsplit(template).netloc
+
+
 def presented_render(snapshot: LinkSnapshot) -> RenderMode:
     """How the page shows a snapshot on this deployment."""
+    if snapshot.render is RenderMode.PDF and not isolates_each_snapshot():
+        return RenderMode.DOWNLOAD
     if active_link_content() or snapshot.render is RenderMode.TEXT:
         return snapshot.render
     return _WITHOUT_ORIGIN.get(snapshot.render, RenderMode.DOWNLOAD)
 
 
-def servable(snapshot: LinkSnapshot | None, access: LinkAccess) -> bool:
-    """Whether a link at access may serve the snapshot's bytes at all."""
-    return (
-        snapshot is not None
-        and snapshot.content_id is not None
-        and at_most(access, snapshot.max_access)
-    )
-
-
-def framed_content(snapshot: LinkSnapshot | None, access: LinkAccess) -> LinkContent | None:
+def framed_content(link: ShortLink, now: datetime) -> LinkContent | None:
     """Return what the page loads from the content origin; None when it renders the view alone."""
-    if snapshot is None or snapshot.content_id is None or not servable(snapshot, access):
+    snapshot = servable_content(link, now)
+    if snapshot is None or snapshot.content_id is None:
         return None
     render = presented_render(snapshot)
     if render in (RenderMode.TEXT, RenderMode.DOWNLOAD):

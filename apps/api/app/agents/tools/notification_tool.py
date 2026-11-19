@@ -294,7 +294,7 @@ async def result_is_delivered_automatically(
         return configurable.workflow_delivery is WorkflowDelivery.NOW
     if configurable.active_todo_id:
         todo = await todo_repository.get(configurable.active_todo_id, user_id=user_id)
-        return todo is not None and todo.notify_on_run
+        return todo is not None and todo.delivery is not WorkflowDelivery.SILENT
     return False
 
 

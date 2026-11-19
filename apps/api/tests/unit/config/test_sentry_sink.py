@@ -13,11 +13,13 @@ scope (logger/module tags, PII-scrubbed extras) and picks the capture level.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import json
 import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+from fastapi import FastAPI
 import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -25,14 +27,18 @@ from langchain_core.outputs import ChatResult
 from mcp_use.client.connectors.http import HttpConnector
 import pytest
 import sentry_sdk
+from sentry_sdk._types import AnnotatedValue
 from sentry_sdk.consts import OP
 from sentry_sdk.integrations.langchain import LangchainIntegration
+from sentry_sdk.tracing import TransactionSource
 from sentry_sdk.types import Event, Hint
 
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
+from app.config.sentry_scrub import FILTERED, UNROUTED, scrub_request
 from app.config.settings import settings
+from app.constants.http import VIEWER_IP_HEADER
 from shared.py import logging as shared_logging
 from shared.py.logging import _InterceptHandler, env_context
 from shared.py.wide_events import (
@@ -595,8 +601,10 @@ def test_an_arq_job_failure_is_left_to_the_arq_integration() -> None:
     cap_exc.assert_not_called()
 
 
-@pytest.mark.parametrize("name", ["x-gaia-internal", "X-Gaia-Internal"])
-def test_the_internal_api_token_never_reaches_sentry(name: str) -> None:
+@pytest.mark.parametrize(
+    "name", ["x-gaia-internal", "X-Gaia-Internal", "x-gaia-content-edge", "X-Gaia-Content-Edge"]
+)
+def test_a_shared_secret_header_never_reaches_sentry(name: str) -> None:
     """send_default_pii keeps unknown headers, and the SDK scrubber matches no such name."""
     raw = _event(extra={"trace_id": "t1"})
     raw["request"] = {"headers": {name: "the-token", "user-agent": "node"}}
@@ -605,3 +613,194 @@ def test_the_internal_api_token_never_reaches_sentry(name: str) -> None:
 
     assert event is not None
     assert event["request"]["headers"] == {"user-agent": "node"}
+
+
+def _link_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/api/v1/l/{slug}")
+    async def resolve(slug: str) -> dict[str, str]:
+        if slug.startswith("boom"):
+            raise RuntimeError("resolve failed")
+        return {"slug": slug}
+
+    return app
+
+
+async def _request_link(slug: str) -> None:
+    transport = httpx.ASGITransport(app=_link_app(), raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
+        await client.get(
+            f"/api/v1/l/{slug}",
+            params={"t": "content-token-secret"},
+            headers={VIEWER_IP_HEADER: "203.0.113.9", "user-agent": "node"},
+        )
+
+
+def _carried(event: Event) -> str:
+    return json.dumps(event, default=str)
+
+
+@pytest.mark.regression
+async def test_a_captured_error_carries_no_link_slug_content_token_or_viewer_ip(
+    sentry_events: list[Event],
+) -> None:
+    await _request_link("boom-secret-slug")
+
+    [event] = sentry_events
+    carried = _carried(event)
+    for secret in ("boom-secret-slug", "content-token-secret", "203.0.113.9"):
+        assert secret not in carried
+    assert event["request"]["url"] == "http://api.test/api/v1/l/{slug}"
+
+
+@pytest.mark.regression
+async def test_a_trace_carries_no_link_slug_content_token_or_viewer_ip(
+    sentry_transactions: list[Event],
+) -> None:
+    await _request_link("unlisted-secret-slug")
+
+    [transaction] = sentry_transactions
+    carried = _carried(transaction)
+    for secret in ("unlisted-secret-slug", "content-token-secret", "203.0.113.9"):
+        assert secret not in carried
+    assert transaction["transaction"] == "/api/v1/l/{slug}"
+
+
+def test_a_trace_span_loses_its_query_string_and_keeps_the_rest() -> None:
+    raw: Event = {
+        "transaction": "/api/v1/l/{slug}",
+        "transaction_info": {"source": "route"},
+        "spans": [
+            {"op": "http.client", "data": {"http.query": "X-Amz-Signature=sig", "url": "u"}},
+            {"op": "db"},
+        ],
+    }
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["spans"] == [{"op": "http.client", "data": {"url": "u"}}, {"op": "db"}]
+
+
+def test_spans_sentry_already_trimmed_pass_through() -> None:
+    trimmed = AnnotatedValue.removed_because_over_size_limit()
+    raw: Event = {"transaction": "/x", "transaction_info": {"source": "route"}, "spans": trimmed}
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["spans"] is trimmed
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [("process_reminder", TransactionSource.TASK), ("chat turn", TransactionSource.CUSTOM)],
+)
+def test_a_worker_or_custom_trace_keeps_its_name(
+    sentry_transactions: list[Event], name: str, source: TransactionSource
+) -> None:
+    with sentry_sdk.start_transaction(name=name, source=source):
+        pass
+
+    [transaction] = sentry_transactions
+    assert transaction["transaction"] == name
+
+
+def test_a_trace_named_by_its_raw_url_is_renamed_unrouted() -> None:
+    raw: Event = {"transaction": "/api/v1/l/raw-slug", "transaction_info": {"source": "url"}}
+
+    event = sentry_config._before_send_transaction(raw, {})
+
+    assert event["transaction"] == UNROUTED
+
+
+def _routed_event(route: str, request: dict[str, object], **fields: object) -> Event:
+    return cast(
+        Event,
+        {
+            "transaction": route,
+            "transaction_info": {"source": "route"},
+            "request": request,
+            **fields,
+        },
+    )
+
+
+def test_only_capability_path_params_are_filtered_out_of_the_event() -> None:
+    route = "/api/v1/users/{user_id}/content/{content_id:path}/l/{slug}"
+    event = scrub_request(
+        _routed_event(
+            route,
+            {"url": "http://api.test/api/v1/users/u-visible-42/content/cid-secret/l/slug-secret"},
+            extra={"frame": ["u-visible-42 cid-secret", ("slug-secret",)]},
+        )
+    )
+
+    assert event["request"] == {"url": f"http://api.test{route}", "headers": {}}
+    assert event["extra"] == {"frame": [f"u-visible-42 {FILTERED}", [FILTERED]]}
+
+
+def test_every_long_query_value_is_filtered_and_short_ones_kept() -> None:
+    query = "t=abcdefgh&n=1234567"
+    event = scrub_request(
+        _routed_event(
+            "/x",
+            {"url": "http://api.test/x", "query_string": query},
+            extra={"locals": f"abcdefgh 1234567 {query}"},
+        )
+    )
+
+    assert event["request"] == {"url": "http://api.test/x", "headers": {}}
+    assert event["extra"] == {"locals": f"{FILTERED} 1234567 {FILTERED}"}
+
+
+def test_a_query_string_is_filtered_whole_though_its_value_sorts_after_it() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x",
+            {"url": "http://api.test/x", "query_string": "a=zzzzzzzz"},
+            extra={"v": "a=zzzzzzzz"},
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_a_query_only_in_the_url_is_still_filtered() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x", {"url": "http://api.test/x?t=url-token-secret"}, extra={"v": "url-token-secret"}
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_a_short_valued_query_string_is_filtered_whole() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x", {"url": "http://api.test/x", "query_string": "a=1&b=2"}, extra={"v": "a=1&b=2"}
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_an_unrouted_request_keeps_only_its_host() -> None:
+    raw = cast(Event, {"request": {"url": "http://api.test/raw/path?q=1", "headers": {}}})
+
+    assert scrub_request(raw)["request"] == {"url": "http://api.test", "headers": {}}
+
+
+def test_a_request_without_a_host_drops_its_url() -> None:
+    raw = cast(
+        Event, {"request": {"url": "/relative", "query_string": "q=1", "headers": {"a": "b"}}}
+    )
+
+    assert scrub_request(raw)["request"] == {"headers": {"a": "b"}}
+
+
+def test_a_span_without_a_query_keeps_its_data() -> None:
+    raw = cast(Event, {"spans": [{"op": "db", "data": {"db.system": "mongodb"}}]})
+
+    assert scrub_request(raw)["spans"] == [{"op": "db", "data": {"db.system": "mongodb"}}]

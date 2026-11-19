@@ -330,8 +330,8 @@ PING_WITH_FOLLOW_THROUGH_RULE: Final[str] = (
 )
 # The one tracked todo per user that triages mail and owns its threads; its daily findings go into the morning brief.
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
-# An hour ahead of the brief (never earlier than 08:00), so the sweep's report is waiting when it runs.
-INBOX_DESK_RECURRENCE: Final[str] = "0 7 * * *"
+# How long before the user's daily brief the desk sweeps every day, so its report is waiting when the brief runs.
+INBOX_DESK_LEAD_HOURS: Final[int] = 1
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
 # Automated senders the desk's fetch leaves out: GitHub and other
 # notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.

@@ -34,7 +34,6 @@ from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
 from app.services.turn_timings import TurnStep, turn_step
-from app.services.user_activity.recording import record_activity
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -110,7 +109,7 @@ _SESSION_ID: TypeAdapter[str] = TypeAdapter(Identifier)
 
 
 class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
-    """Bind the request's analytics context and PostHog identity, and record a user's activity.
+    """Bind the request's analytics context and PostHog identity.
 
     Runs inside WorkOS and bot authentication, so the user is the stable Mongo
     id whichever way the request authenticated, and the context knows which
@@ -125,8 +124,6 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
         with analytics_context(context):
             user = get_current_user(request)
             user_id = user.user_id if user else None
-            if user_id and context.attribution.actor is Actor.USER:
-                await record_activity(user_id, context.attribution.surface)
             # An unconfigured provider resolves to None (SILENT strategy), so this one
             # check covers both a missing token and an unbuilt client.
             if not user_id or providers.get(POSTHOG_PROVIDER_KEY) is None:

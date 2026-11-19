@@ -141,6 +141,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
       # Reaches browser-host:8930 on its isolated island.
@@ -311,6 +313,40 @@ services:
     networks:
       - gaia_network
 
+  # The release's data migrations (apps/api/scripts/post_deploy.py), run to the end
+  # before the dockered API or worker starts, as in production. Natively, `nx dev api`
+  # and `nx worker api` run them first through the api:migrate target.
+  migrate:
+    image: gaia
+    profiles: ["backend", "worker", "all"]
+    working_dir: /app/apps/api
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      - GAIA_SERVICE_NAME=migrate
+      - PYTHONPATH=/app/apps/api
+      - UV_NO_SYNC=1
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
+      - REDIS_URL=redis://redis:6379/0
+      - MONGO_DB=mongodb://mongo:27017/
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+    command: ["python", "-m", "scripts.post_deploy", "--apply"]
+    restart: "no"
+    volumes:
+      - ../../apps/api/app:/app/apps/api/app
+      - ../../apps/api/scripts:/app/apps/api/scripts
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Arq Worker (use profile to run in docker, otherwise run locally with mise)
   arq_worker:
     container_name: arq_worker
@@ -371,6 +407,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
       # The worker also drives browser tasks, so it needs the browser island too.

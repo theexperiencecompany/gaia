@@ -61,6 +61,7 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-shimmer: shimmer 2s linear infinite;
   --animate-shake: shake 0.7s ease-in-out;
+  --animate-icon-sway: icon-sway 3.2s ease-in-out infinite;
   --animate-scale-in: scale-in 0.4s ease-out forwards;
   --animate-caret-blink: caret-blink 1.25s ease-out infinite;
 }

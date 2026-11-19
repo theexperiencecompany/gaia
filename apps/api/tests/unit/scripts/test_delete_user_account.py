@@ -20,12 +20,14 @@ import pytest
 from app.config.settings import settings
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, object_id_filter
 from app.models.platform_models import PlatformLinkEntry
+from app.models.short_link_models import LinkSnapshot
 from app.models.user_models import UserDocument
 from app.scripts.delete_user_account import (
     JFS_USERS_ROOT,
     PG_USER_TABLES,
     _build_footprint,
     _chroma_inventory,
+    _delete_link_content,
     _delete_local_stores,
     _delete_mongo_data,
     _delete_postgres_data,
@@ -193,6 +195,22 @@ class TestMongoInventory:
             {"$or": [{"user_id": UID}, {"user_email": email}]}
         )
         per_collection["fs.chunks"].count_documents.assert_not_called()
+
+    def test_link_reports_are_counted_by_the_user_and_by_what_they_reported(self) -> None:
+        db = MagicMock()
+        db.list_collection_names.return_value = ["link_reports"]
+        reports = MagicMock()
+        reports.count_documents.side_effect = [0, 2]
+        db.__getitem__.side_effect = {"link_reports": reports}.__getitem__
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket") as bucket_cls:
+            bucket_cls.return_value.find.return_value = []
+            counts = _mongo_inventory(db, UID, "user@example.com")
+
+        assert counts == {"link_reports": 2}
+        assert reports.count_documents.call_args_list[-1] == call(
+            {"$or": [{"user_id": UID}, {"reporter_key": UID}]}
+        )
         bucket_cls.assert_called_once_with(db)
         bucket_cls.return_value.find.assert_called_once_with({"metadata.user_id": UID})
 
@@ -261,6 +279,8 @@ def _footprint(**overrides: Any) -> Any:
         "chroma_counts": {},
         "redis_keys": [],
         "jfs_path": JFS_USERS_ROOT / UID,
+        "link_snapshots": [],
+        "edition_keys": [],
     }
     defaults.update(overrides)
     return _Footprint(**defaults)
@@ -453,6 +473,89 @@ class TestDeleteMongoData:
 
         assert len(_failures) == 1
         assert _failures[0].startswith("mongo:")
+
+
+class TestDeleteNewStores:
+    """The stores the briefing and links work added, which a user_id sweep alone misses."""
+
+    @pytest.mark.regression
+    def test_link_reports_the_user_filed_are_deleted_by_reporter(self, capsys: Any) -> None:
+        d = _footprint()
+        reports = MagicMock()
+        reports.delete_many.side_effect = [
+            MagicMock(deleted_count=1),
+            MagicMock(deleted_count=2),
+        ]
+        users = MagicMock()
+        users.delete_one.return_value.deleted_count = 1
+        d.db.__getitem__.side_effect = lambda name: users if name == "users" else reports
+        d.db.list_collection_names.return_value = ["link_reports"]
+
+        with patch("app.scripts.delete_user_account.gridfs.GridFSBucket"):
+            _delete_mongo_data(d)
+
+        assert [c.args[0] for c in reports.delete_many.call_args_list] == [
+            {"user_id": UID},
+            {"reporter_key": UID},
+        ]
+        assert "[mongo] link_reports: deleted 3" in capsys.readouterr().out.splitlines()
+
+    @pytest.mark.regression
+    async def test_every_pinned_snapshots_bytes_are_deleted(self, capsys: Any) -> None:
+        snapshots = [
+            LinkSnapshot.model_construct(content_id="c-1"),
+            LinkSnapshot.model_construct(content_id="c-2"),
+        ]
+        d = _footprint(link_snapshots=snapshots)
+
+        with patch(
+            "app.scripts.delete_user_account.delete_snapshot", new_callable=AsyncMock
+        ) as delete:
+            await _delete_link_content(d)
+
+        assert delete.await_args_list == [call(UID, snapshots[0]), call(UID, snapshots[1])]
+        assert capsys.readouterr().out.splitlines() == [
+            "[link_content] deleted c-1",
+            "[link_content] deleted c-2",
+        ]
+
+    @pytest.mark.regression
+    async def test_every_brief_edition_image_is_deleted(self, capsys: Any) -> None:
+        d = _footprint(edition_keys=["k-1", "k-2"])
+
+        with patch(
+            "app.scripts.delete_user_account.delete_edition", new_callable=AsyncMock
+        ) as delete:
+            await _delete_link_content(d)
+
+        assert delete.await_args_list == [call(UID, "k-1"), call(UID, "k-2")]
+        out = capsys.readouterr().out
+        assert "[link_content] deleted brief edition k-1" in out.splitlines()
+
+    async def test_an_edition_that_will_not_delete_is_a_failed_step(self) -> None:
+        d = _footprint(edition_keys=["k-1"])
+
+        with patch(
+            "app.scripts.delete_user_account.delete_edition",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("bucket down"),
+        ):
+            await _delete_link_content(d)
+
+        assert _failures == ["link_content:edition:k-1: RuntimeError: bucket down"]
+
+    async def test_a_snapshot_that_will_not_delete_is_a_failed_step(self) -> None:
+        snapshot = LinkSnapshot.model_construct(content_id="c-1")
+        d = _footprint(link_snapshots=[snapshot])
+
+        with patch(
+            "app.scripts.delete_user_account.delete_snapshot",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("bucket down"),
+        ):
+            await _delete_link_content(d)
+
+        assert _failures == ["link_content:c-1: RuntimeError: bucket down"]
 
 
 class TestDeletePostgresData:
@@ -994,6 +1097,11 @@ class TestBuildFootprint:
         db = MagicMock()
         db.e2b_sandboxes.distinct.return_value = ["sbx-1"]
         db.conversations.distinct.return_value = ["conv-1"]
+        db.briefings.distinct.return_value = ["k-1"]
+        snapshot = {"filename": "a.pdf", "mime": "application/pdf", "size_bytes": 3}
+        db.short_links.find.return_value = [
+            {"snapshot": {**snapshot, "render": "pdf", "content_id": "c-1"}}
+        ]
         user = _user_doc(platform_links={"telegram": {"id": "tg-1"}})
 
         d, mocks = await _run_build_footprint(
@@ -1024,6 +1132,14 @@ class TestBuildFootprint:
         assert d.composio_accounts == [account]
         assert d.workos_users == [workos_user]
         assert d.jfs_path == JFS_USERS_ROOT / UID
+        assert d.edition_keys == ["k-1"]
+        assert [(p.filename, p.content_id) for p in d.link_snapshots] == [("a.pdf", "c-1")]
+        db.short_links.find.assert_called_once_with(
+            {"user_id": UID, "snapshot.content_id": {"$ne": None}}, {"snapshot": 1}
+        )
+        db.briefings.distinct.assert_called_once_with(
+            "edition.key", {"user_id": UID, "edition.key": {"$ne": None}}
+        )
         db.e2b_sandboxes.distinct.assert_called_once_with("sandbox_id", {"user_id": UID})
         db.conversations.distinct.assert_called_once_with("conversation_id", {"user_id": UID})
         mocks["composio"].connected_accounts.list.assert_called_once_with(user_ids=[UID])
@@ -1036,6 +1152,8 @@ class TestBuildFootprint:
         assert "e2b sandboxes: ['sbx-1']" in out
         assert "conversations (checkpoint threads to sweep): 1" in out
         assert "platform_links: ['telegram']" in out
+        assert "brief edition images: 1" in out.splitlines()
+        assert "shared-link snapshots: 1" in out.splitlines()
 
     async def test_an_empty_postgres_inventory_prints_none_not_an_empty_dict(
         self, capsys: Any

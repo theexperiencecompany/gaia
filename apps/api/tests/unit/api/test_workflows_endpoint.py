@@ -1,5 +1,6 @@
 """Unit tests for the workflows API endpoints (CRUD, execute/status, activate/publish, explore/community, regenerate-steps, generate-prompt)."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,7 +12,7 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -25,11 +26,11 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
+from app.services.briefing.errors import BriefsOffError, refuse_a_missing_brief
 from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
 )
-from app.services.workflow.service import delivers_to_a_missing_brief
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
@@ -40,7 +41,7 @@ from shared.py.analytics.catalog.workflows import (
 )
 from shared.py.wide_events import WorkflowContext, log
 from tests.conftest import FAKE_USER
-from tests.helpers import users_get_on
+from tests.helpers import briefs_on, users_get
 
 BASE_URL = "/api/v1/workflows"
 _LOG = "app.api.v1.endpoints.workflows.log"
@@ -397,7 +398,8 @@ class TestCreateWorkflow:
                 new_callable=AsyncMock,
                 return_value={},
             ),
-            patch("app.utils.auth_utils.user_repository.get", new=users_get_on(frequency)),
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
             patch("app.services.workflow.service.workflow_repository.create") as mock_create,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload(delivery="brief"))
@@ -406,7 +408,7 @@ class TestCreateWorkflow:
         body = response.json()
         assert {key: body[key] for key in ("code", "message", "why", "fix")} == {
             "code": BRIEFS_OFF,
-            "message": "You get no daily brief, so a workflow cannot add its results to one",
+            "message": "You get no daily brief, so results cannot be added to one",
             "why": "Results wait only for a daily brief, so they would go nowhere",
             "fix": "Choose Tell me now or Don't notify me, or turn on daily briefs in Settings",
         }
@@ -422,14 +424,15 @@ class TestCreateWorkflow:
             (BriefingFrequency.OFF, WorkflowDelivery.SILENT, False),
         ],
     )
-    def test_only_a_brief_delivery_without_a_daily_brief_is_refused(
+    async def test_only_a_brief_delivery_without_a_daily_brief_is_refused(
         self, frequency: BriefingFrequency, delivery: WorkflowDelivery, refused: bool
     ):
-        owner = FAKE_USER.model_copy(
-            update={"briefing_schedule": BriefingSchedule(frequency=frequency)}
-        )
-
-        assert delivers_to_a_missing_brief(owner, delivery) is refused
+        with patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)):
+            if refused:
+                with pytest.raises(BriefsOffError):
+                    await refuse_a_missing_brief(FAKE_USER.user_id, delivery)
+            else:
+                await refuse_a_missing_brief(FAKE_USER.user_id, delivery)
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1382,6 +1385,14 @@ class TestGetWorkflow:
 class TestUpdateWorkflow:
     """Tests for the update workflow endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _stored(self) -> Iterator[None]:
+        """Serve the workflow as stored before the edit, read to tell whether its delivery changed."""
+        with patch(
+            f"{_WF_SERVICE}.get_workflow", new_callable=AsyncMock, return_value=_make_workflow()
+        ):
+            yield
+
     async def test_update_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(title="Updated Title")
         with (
@@ -1401,6 +1412,26 @@ class TestUpdateWorkflow:
         assert response.json()["message"] == "Workflow updated successfully"
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
 
+    async def test_the_stored_workflow_is_read_as_the_users_own_before_the_edit(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ) as get_workflow,
+            patch(
+                f"{_WF_SERVICE}.update_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(title="Updated Title"),
+            ),
+        ):
+            response = await client.put(f"{BASE_URL}/wf_abc123", json={"title": "Updated Title"})
+
+        assert response.status_code == 200
+        get_workflow.assert_awaited_once_with("wf_abc123", FAKE_USER.user_id)
+
     async def test_moving_a_workflow_onto_the_brief_while_briefs_are_off_is_a_409(
         self, client: AsyncClient
     ):
@@ -1410,9 +1441,8 @@ class TestUpdateWorkflow:
                 new_callable=AsyncMock,
                 return_value=_make_workflow(),
             ),
-            patch(
-                "app.utils.auth_utils.user_repository.get",
-                new=users_get_on(BriefingFrequency.OFF),
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
             ),
             patch("app.services.workflow.service.workflow_repository.update_for_user") as update,
         ):

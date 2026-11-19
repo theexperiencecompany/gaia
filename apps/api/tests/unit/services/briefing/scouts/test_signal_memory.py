@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.factories import make_user_id
 
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.scout_models import (
@@ -14,11 +15,13 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.context import UserClock
-from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL, memory_note, signals_block
+from app.services.briefing.candidates.app_signals import app_signal_candidates
+from app.services.briefing.clock import UserClock
+from app.services.briefing.fact_pool.render import item_line
+from app.services.briefing.scouts.facts import memory_note
 from app.services.briefing.scouts.memory import remember
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-10-22", day_of_year=295)
 
@@ -84,40 +87,27 @@ class TestRemember:
         store["record_seen"].assert_awaited_once_with(USER_ID, [moved, same, new], NOW)
 
 
-class TestTheFactsBlock:
-    def test_signals_are_grouped_per_app_important_first_with_their_memory(self) -> None:
-        urgent = _signal("9").model_copy(update={"importance": SignalImportance.HIGH})
-        remembered = [
-            RememberedSignal(signal=_signal("1", app="Jira")),
-            RememberedSignal(
-                signal=_signal("2"),
-                memory=_memory(
-                    "2",
-                    first_seen=NOW - timedelta(days=4),
-                    times_shown=3,
-                    last_shown=NOW - timedelta(days=1),
-                ),
-            ),
-            RememberedSignal(
-                signal=urgent,
-                memory=_memory("9", first_seen=NOW - timedelta(days=1)),
-                previous_state="Backlog",
-            ),
-        ]
+def _line(remembered: RememberedSignal, clock: UserClock = CLOCK) -> str:
+    """Say one signal as both the composition and the voice read it."""
+    [candidate] = app_signal_candidates([remembered], clock)
+    return item_line(1, candidate, clock)
 
-        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines() == [
-            f"[ACROSS THEIR APPS] 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
-            "[Jira] 1 item(s) shown",
-            "- fact 1 | other | issue: Issue 1 | state: Todo | first seen today, created date"
-            " unknown",
-            "[Linear] 2 item(s) shown",
-            "- fact 3 | important | issue: Issue 9 | state: Todo | first seen yesterday, never"
-            " mentioned,"
-            " moved from Backlog to Todo",
-            "- fact 2 | other | issue: Issue 2 | state: Todo | first seen 4 days ago, mentioned"
-            " 3 time(s),"
-            " last yesterday",
-        ]
+
+_READ_ONLY = "GAIA can only read Linear: no offer on it"
+
+
+class TestASignalsLine:
+    def test_a_signal_says_its_kind_state_and_memory(self) -> None:
+        remembered = RememberedSignal(
+            signal=_signal("9").model_copy(update={"importance": SignalImportance.HIGH}),
+            memory=_memory("9", first_seen=NOW - timedelta(days=1)),
+            previous_state="Backlog",
+        )
+
+        assert _line(remembered) == (
+            "1. [Linear] waiting on you, important: Issue 9 | issue | state: Todo"
+            " | first seen yesterday, never mentioned, moved from Backlog to Todo | " + _READ_ONLY
+        )
 
     def test_every_detail_a_signal_carries_is_on_its_line(self) -> None:
         signal = _signal("5").model_copy(
@@ -128,15 +118,14 @@ class TestTheFactsBlock:
                 "why": "blocks the release",
             }
         )
-        remembered = [
-            RememberedSignal(signal=signal, memory=_memory("5", times_shown=0, last_shown=NOW))
-        ]
+        remembered = RememberedSignal(
+            signal=signal, memory=_memory("5", times_shown=0, last_shown=NOW)
+        )
 
-        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | names Priya, Sam"
-            " (the app does not say their part in it)"
-            " | linkable | why: blocks the release"
-            " | first seen today, never mentioned"
+        assert _line(remembered) == (
+            "1. [Linear] waiting on you: Issue 5 | issue | state: Todo | why: blocks the release"
+            " | first seen today, never mentioned | due Sat Oct 24"
+            " | names Priya, Sam (the app does not say their part in it) | linkable | " + _READ_ONLY
         )
 
     def test_the_people_an_app_names_are_said_in_the_part_it_gives_them(self) -> None:
@@ -144,10 +133,7 @@ class TestTheFactsBlock:
             update={"people": ["Priya", "Sam"], "people_role": PeopleRole.ASSIGNEE}
         )
 
-        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 7 | state: Todo | assignee: Priya, Sam"
-            " | first seen today, created date unknown"
-        )
+        assert "| assignee: Priya, Sam |" in _line(RememberedSignal(signal=signal))
 
     def test_the_person_who_is_the_user_is_marked_so_the_voice_says_you(self) -> None:
         signal = _signal("7").model_copy(
@@ -158,28 +144,18 @@ class TestTheFactsBlock:
             }
         )
 
-        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 7 | state: Todo | reviewer: Aryan (this is the"
-            " user: say you, never their name), Sam | first seen today, created date unknown"
+        assert "| reviewer: Aryan (this is the user: say you, never their name), Sam |" in _line(
+            RememberedSignal(signal=signal)
         )
 
     def test_a_sighting_stamped_after_now_still_reads_as_today(self) -> None:
         later = NOW + timedelta(hours=2)
-        remembered = [
-            RememberedSignal(
-                signal=_signal("6"),
-                memory=_memory("6", first_seen=later, times_shown=1, last_shown=later),
-            )
-        ]
-
-        assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 6 | state: Todo | first seen today, mentioned 1"
-            " time(s),"
-            " last today"
+        remembered = RememberedSignal(
+            signal=_signal("6"),
+            memory=_memory("6", first_seen=later, times_shown=1, last_shown=later),
         )
 
-    def test_no_signals_is_no_block(self) -> None:
-        assert signals_block([], CLOCK) == ""
+        assert "| first seen today, mentioned 1 time(s), last today |" in _line(remembered)
 
 
 class TestDaysAreTheUsers:
@@ -196,10 +172,10 @@ class TestDaysAreTheUsers:
             }
         )
 
-        line = signals_block([(1, RememberedSignal(signal=signal))], clock).splitlines()[-1]
+        line = _line(RememberedSignal(signal=signal), clock)
 
-        assert "due 2026-10-23" in line
-        assert line.endswith("new: created today")
+        assert "| due Fri Oct 23 |" in line
+        assert "| new: created today |" in line
 
 
 class TestWhatIsNew:
@@ -235,4 +211,18 @@ class TestWhatIsNew:
 
         assert memory_note(RememberedSignal(signal=signal), CLOCK) == (
             "first seen today, created 2026-10-21 (yesterday)"
+        )
+
+    @pytest.mark.regression
+    def test_an_item_seen_before_but_never_mentioned_keeps_its_created_date(self) -> None:
+        """Replay: an issue created a week before its first brief was voiced as a new one."""
+        signal = _signal("12").model_copy(
+            update={"created_at": datetime(2026, 10, 14, 4, 30, tzinfo=UTC)}
+        )
+        remembered = RememberedSignal(
+            signal=signal, memory=_memory("12", first_seen=NOW - timedelta(days=1))
+        )
+
+        assert memory_note(remembered, CLOCK) == (
+            "first seen yesterday, never mentioned, created 2026-10-14 (8 days ago)"
         )

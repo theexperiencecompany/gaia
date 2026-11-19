@@ -137,7 +137,6 @@ async def create_openui_artifact(
             output_tokens=result.output_tokens,
             first_component_ms=result.first_component_ms,
             total_ms=total_ms,
-            model=ARTIFACT_MODEL_NAME,
         ),
     )
     log.set_ns(

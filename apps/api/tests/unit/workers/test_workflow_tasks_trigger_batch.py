@@ -21,6 +21,7 @@ import fakeredis.aioredis
 import httpx
 import pytest
 
+from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.trigger_gates import GateAuthor
 from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_configs import GmailPollInboxConfig
@@ -145,7 +146,7 @@ class TestGatesRunBeforeTheDrain:
         result, drain, run_chat, _refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
-            budget_error=RuntimeError("daily budget exhausted"),
+            budget_error=CostBudgetExceededException("trigger_workflow_executions"),
         )
 
         drain.assert_not_awaited()
@@ -158,7 +159,7 @@ class TestRefillOnEveryExit:
         result, _drain, _run_chat, refill, _log, _coalesce, _wf = await _run_task(
             {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             [{"id": 1}],
-            budget_error=RuntimeError("daily budget exhausted"),
+            budget_error=CostBudgetExceededException("trigger_workflow_executions"),
         )
 
         refill.assert_awaited_once()
@@ -473,7 +474,7 @@ class TestADrainDueInsideQuietHours:
 
         assert result == f"Workflow {_GATED_ID} held until the user's quiet hours end"
         scheduler.get_task.assert_awaited_once_with(_GATED_ID)
-        gate.tz.assert_awaited_once_with(_OWNER_ID)
+        gate.owner_read.assert_awaited_once_with(_OWNER_ID)
         assert job.args == (_GATED_ID, {**context, "quiet_hours": {"kind": "hold"}})
         assert job.score == int(_on_kolkata_clock(2, 8, 0).timestamp() * 1000)
         assert event["workflow_id"] == _GATED_ID

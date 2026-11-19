@@ -39,6 +39,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.config.settings import settings
 from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
@@ -57,16 +58,17 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
+from app.services.links.placeholders import PLACEHOLDER_PREFIX, link_placeholder
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunFailed, AgentRunStarted
 from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved
 from shared.py.analytics.catalog.workflows import WorkflowResultDelivered
 from shared.py.wide_events import log
-from tests.helpers import captured_wide_event
+from tests.helpers import brief_loop_awake, captured_wide_event
 
 # A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
 pytestmark = pytest.mark.usefixtures("fake_redis")
@@ -454,7 +456,15 @@ class TestWorkflowResultCarriesTheRunLink:
     history's copy button hands out.
     """
 
-    RUN_URL = "https://heygaia.link/runlink1234"
+    RUN_LINK = ShortLink(
+        slug="runlink1234",
+        user_id=USER_ID,
+        target=RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7"),
+    )
+
+    @property
+    def run_url(self) -> str:
+        return f"{settings.SHORTLINK_BASE_URL}/runlink1234"
 
     async def _deliver_workflow(self, run: ExecutorRun) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
         with (
@@ -474,8 +484,13 @@ class TestWorkflowResultCarriesTheRunLink:
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ),
             patch.object(
-                rd, "optional_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
+                rd, "attach_link", new_callable=AsyncMock, return_value=self.RUN_LINK
             ) as mint,
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                new_callable=AsyncMock,
+                return_value=self.RUN_LINK,
+            ),
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
         return save, deliver, mint
@@ -485,10 +500,61 @@ class TestWorkflowResultCarriesTheRunLink:
 
         save, deliver, mint = await self._deliver_workflow(run)
 
-        mint.assert_awaited_once_with(USER_ID, ShortLinkTargetType.WORKFLOW_RUN, "exec-7")
-        assert self.RUN_URL in deliver.await_args.kwargs["notification_text"]
+        mint.assert_awaited_once_with(
+            USER_ID, RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec-7")
+        )
+        assert self.run_url in deliver.await_args.kwargs["notification_text"]
         saved = save.await_args.args[0].messages[0]
-        assert self.RUN_URL in saved.response
+        assert self.run_url in saved.response
+
+    @pytest.mark.regression
+    async def test_the_follow_up_model_sees_only_placeholders_and_the_user_gets_the_links(
+        self,
+    ) -> None:
+        """A link's URL is a capability: the follow-up model was handed the run's real URL."""
+        run = replace(_run(workflow=True), workflow_execution_id="exec-7")
+        plan = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        plan_link = ShortLink(slug="planlink123", user_id=USER_ID, target=plan)
+        live = {self.RUN_LINK.target: self.RUN_LINK, plan: plan_link}
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value=f"Triaged 12 emails. [The plan]({link_placeholder(plan)})",
+            ),
+            patch.object(
+                rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=["Next"]
+            ) as follow_ups,
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                workflow_completion, "deliver_workflow_result", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
+            patch.object(rd, "attach_link", new_callable=AsyncMock, return_value=self.RUN_LINK),
+            patch(
+                "app.services.links.placeholders.short_link_repository.get_live_for_target",
+                new_callable=AsyncMock,
+                side_effect=lambda _user_id, target: live[target],
+            ),
+        ):
+            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
+
+        model_input = follow_ups.await_args.args[0]
+        assert settings.SHORTLINK_BASE_URL not in model_input
+        assert link_placeholder(plan) in model_input
+        assert link_placeholder(self.RUN_LINK.target) in model_input
+        plan_url = f"{settings.SHORTLINK_BASE_URL}/planlink123"
+        for delivered in (
+            save.await_args.args[0].messages[0].response,
+            deliver.await_args.kwargs["notification_text"],
+        ):
+            assert self.run_url in delivered
+            assert plan_url in delivered
+            assert PLACEHOLDER_PREFIX not in delivered
 
     async def test_a_run_without_an_execution_record_gets_no_link(self) -> None:
         save, deliver, mint = await self._deliver_workflow(_run(workflow=True))
@@ -1841,6 +1907,7 @@ class TestDeferredFollowUpPush:
             run = _run(RunKind.QUEUED, task_id="task-7")
             await rd._generate_and_push_follow_ups(
                 bot_message=bot_message,
+                model_text="answered",
                 result_type="final",
                 tool_data=None,
                 target=rd._DeliveryTarget(
@@ -2285,6 +2352,7 @@ class TestSpawnDeferredFollowUps:
         ):
             rd._spawn_deferred_follow_ups(
                 bot_message=bot_message,
+                model_text="voiced",
                 result_type="final",
                 tool_data=CARDS,
                 target=_target(),
@@ -2294,6 +2362,7 @@ class TestSpawnDeferredFollowUps:
         await spawned[0]
         assert captured == {
             "bot_message": bot_message,
+            "model_text": "voiced",
             "result_type": "final",
             "tool_data": CARDS,
             "target": _target(),
@@ -2836,6 +2905,7 @@ async def _deliver_run(
                 new_callable=AsyncMock,
                 return_value=MagicMock(activated=True) if seams.daily_brief_live else None,
             ) as daily_brief,
+            brief_loop_awake(),
             patch.object(
                 rd, "send_workflow_failure_notification", new_callable=AsyncMock
             ) as failed,

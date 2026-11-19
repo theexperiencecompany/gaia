@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict, cast
 
 from app.config.oauth_config import canonical_integration_id, get_integration_by_id
-from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
+from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
-from app.decorators.caching import Cacheable, CacheInvalidator
+from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
     IntegrationToolsRecord,
@@ -36,13 +36,6 @@ class ConnectedIntegration(TypedDict):
 
     id: str
     name: str
-
-
-class UserIntegrationRecord(TypedDict, total=False):
-    """Persisted user-integration fields read downstream (dumped document shape)."""
-
-    integration_id: str
-    status: str
 
 
 class _StoredIntegrationDoc(TypedDict, total=False):
@@ -131,26 +124,19 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     )
 
 
-async def get_user_integration_records(user_id: str) -> list[UserIntegrationRecord]:
-    """Return user integration records with auth-required MCP status checked against credentials."""
-    records: list[UserIntegrationRecord] = await _get_cached_user_integration_records(user_id)
+async def get_user_integration_records(user_id: str) -> list[UserIntegrationDocument]:
+    """Return the user's integration records; an auth-required MCP whose credential died reads as created."""
+    records = await user_integration_repository.list_for_user(user_id)
+    connected_ids = [r.integration_id for r in records if r.status == IntegrationStatus.CONNECTED]
     integration_ids = [
-        str(record["integration_id"])
-        for record in records
-        if record.get("status") == "connected"
-        and record.get("integration_id")
-        and (integration := get_integration_by_id(str(record["integration_id"])))
+        iid
+        for iid in connected_ids
+        if (integration := get_integration_by_id(iid))
         and integration.managed_by == "mcp"
         and integration.mcp_config
         and integration.mcp_config.requires_auth
     ]
-    unresolved_ids = [
-        str(record["integration_id"])
-        for record in records
-        if record.get("status") == "connected"
-        and record.get("integration_id")
-        and get_integration_by_id(str(record["integration_id"])) is None
-    ]
+    unresolved_ids = [iid for iid in connected_ids if get_integration_by_id(iid) is None]
     integration_ids += await get_custom_auth_mcp_ids(unresolved_ids)
     if not integration_ids:
         return records
@@ -162,32 +148,24 @@ async def get_user_integration_records(user_id: str) -> list[UserIntegrationReco
         return records
 
     return [
-        {**record, "status": "created"}
-        if str(record.get("integration_id")) in stale_ids
+        record.model_copy(update={"status": IntegrationStatus.CREATED})
+        if record.integration_id in stale_ids
         else record
         for record in records
     ]
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
-async def _get_cached_user_integration_records(user_id: str) -> list[UserIntegrationRecord]:
-    """Load the persisted integration records before live credential validation."""
-    docs = await user_integration_repository.list_for_user(user_id)
-    return cast(list[UserIntegrationRecord], [doc.model_dump() for doc in docs])
-
-
 async def get_connected_integration_ids(user_id: str) -> set[str]:
     """Return the integration ids the user has actually *connected*.
 
-    Single source of the status == "connected" filter shared by the
-    workspace materializers (chat path, registration, integration sync, bulk
-    sync) so they can never disagree on what "connected" means.
+    Single source of the connected filter shared by the workspace materializers
+    (chat path, registration, integration sync, bulk sync) so they can never
+    disagree on what connected means.
     """
-    docs: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
     return {
-        str(d["integration_id"])
-        for d in docs
-        if d.get("status") == "connected" and d.get("integration_id")
+        record.integration_id
+        for record in await get_user_integration_records(user_id)
+        if record.status == IntegrationStatus.CONNECTED
     }
 
 
@@ -203,13 +181,12 @@ async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegr
 
 
 async def get_signed_out_integrations_named(user_id: str) -> list[ConnectedIntegration]:
-    """Return the integrations whose sign-in died, paired with their display name: each needs a reconnect."""
-    records: list[UserIntegrationRecord] = await get_user_integration_records(user_id)
+    """Return the expired integrations, paired with their display name: each needs a reconnect."""
     return await _named(
         {
-            str(record["integration_id"])
-            for record in records
-            if record.get("status") == INTEGRATION_STATUS_EXPIRED and record.get("integration_id")
+            record.integration_id
+            for record in await get_user_integration_records(user_id)
+            if record.status == IntegrationStatus.EXPIRED
         }
     )
 
@@ -276,7 +253,7 @@ async def invalidate_user_integration_caches(user_id: str) -> None:
 async def add_user_integration(
     user_id: str,
     integration_id: str,
-    initial_status: Literal["created", "connected"] | None = None,
+    initial_status: Literal[IntegrationStatus.CREATED, IntegrationStatus.CONNECTED] | None = None,
 ) -> UserIntegration:
     """Add an integration to user's workspace."""
     log.set(integration={"provider": integration_id, "action": "add_user_integration"})
@@ -287,11 +264,11 @@ async def add_user_integration(
     if await user_integration_repository.exists(user_id, integration_id):
         raise ValueError(f"Integration '{integration_id}' already added to workspace")
 
-    status: Literal["created", "connected"] = initial_status or (
-        "connected" if not integration.requires_auth else "created"
+    status = initial_status or (
+        IntegrationStatus.CREATED if integration.requires_auth else IntegrationStatus.CONNECTED
     )
     now = datetime.now(UTC)
-    connected_at = now if status == "connected" else None
+    connected_at = now if status == IntegrationStatus.CONNECTED else None
 
     await user_integration_repository.create(
         UserIntegrationDocument(

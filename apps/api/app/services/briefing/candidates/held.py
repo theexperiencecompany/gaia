@@ -7,10 +7,12 @@ claimed from.
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefItemSource, BriefOutcome
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.todos import todo_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
+from app.models.brief_item_models import ItemState
 from app.models.brief_models import PendingBriefItemDocument
 from app.services.briefing.candidates.app_names import integration_name
-from app.services.briefing.held import first_line, held_text
+from app.services.briefing.formats import opening_line
+from app.services.briefing.held import held_text
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 
@@ -26,26 +28,26 @@ async def held_candidates(
         from_desk = (
             desk is not None and doc.source is BriefItemSource.TODO and doc.source_id == desk.id
         )
-        first = first_line(doc.text)
+        first = opening_line(doc.text)
         if from_desk:
             # The desk writes each finding as one self-contained line.
             candidates.append(
                 BriefCandidate(
+                    origin=HeldResult(id=doc.id),
                     source=GMAIL_INTEGRATION_ID,
                     app=integration_name(GMAIL_INTEGRATION_ID),
-                    state="note",
+                    state=ItemState.NOTE,
                     title=first or doc.source_title,
-                    held_id=doc.id,
                 )
             )
             continue
         candidates.append(
             BriefCandidate(
+                origin=HeldResult(id=doc.id),
                 source=GAIA_SOURCE,
                 app=GAIA_APP_NAME,
-                state="note",
+                state=ItemState.NOTE,
                 title=held_text(doc),
-                held_id=doc.id,
                 # Only a workflow result is held from a run that succeeded; a todo run's report says itself how it went.
                 outcome=BriefOutcome.FINISHED if doc.source is BriefItemSource.WORKFLOW else None,
             )

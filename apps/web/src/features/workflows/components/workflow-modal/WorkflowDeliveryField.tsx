@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  BRIEF_DELIVERY_DESCRIPTION,
   NO_DAILY_BRIEF_DELIVERY_REASON,
   WORKFLOW_DELIVERIES,
   WORKFLOW_DELIVERY_COPY,
 } from "@gaia/shared";
 import type { WorkflowDelivery } from "@shared/api/generated";
+import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
-import { BRIEFINGS_SETTINGS_PATH } from "@/features/briefing/constants";
-import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
+import { briefingScheduleQuery } from "@/features/briefing";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";
@@ -33,15 +33,13 @@ export default function WorkflowDeliveryField({
   control,
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
-  const { schedule } = useBriefingScheduleSettings();
-  const briefDescription = schedule?.frequency
-    ? BRIEF_DELIVERY_DESCRIPTION[schedule.frequency]
-    : WORKFLOW_DELIVERY_COPY.brief.description;
-  const noDailyBrief = briefDescription === null;
+  const { data: schedule } = useQuery(briefingScheduleQuery());
+  const noDailyBrief = !!schedule && !schedule.has_daily_brief;
   // Without a daily brief, the reason line below the control speaks for "brief".
   const helperFor = (value: WorkflowDelivery | null) => {
     if (!value) return UNCHOSEN_HINT;
-    if (value === "brief") return briefDescription;
+    if (value === "brief")
+      return noDailyBrief ? null : WORKFLOW_DELIVERY_COPY.brief.description;
     return WORKFLOW_DELIVERY_COPY[value].description;
   };
 

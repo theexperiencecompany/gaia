@@ -11,7 +11,7 @@ import re
 
 from app.models.brief_pool_models import DataSeries, SeriesPoint
 from app.models.scout_models import Signal
-from app.services.briefing.fact_pool.window import SeriesName, categorical_series
+from app.services.briefing.fact_pool.series import SeriesName, categorical_series
 
 _ID_WORD = re.compile(r"[a-z0-9]+")
 # A unit the app counts in hundredths of another ("USD cents"): said in the whole unit.

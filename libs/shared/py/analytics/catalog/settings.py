@@ -8,6 +8,7 @@ from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
     "AccountSettingChanged",
+    "BriefingFrequencyName",
     "BriefingScheduleChangedVia",
     "FeatureDiscovered",
     "FeatureFlagEvaluated",
@@ -70,6 +71,8 @@ class SettingsNotificationsToggled(ServerEvent):
 
 
 BriefingScheduleChangedVia = Literal["settings", "agent"]
+#: How often briefs come: BriefingFrequency's values, kept equal by a test in apps/api.
+BriefingFrequencyName = Literal["daily", "weekdays", "weekly_only", "off"]
 
 
 class SettingsBriefingScheduleUpdated(ServerEvent):
@@ -78,7 +81,7 @@ class SettingsBriefingScheduleUpdated(ServerEvent):
     event: ClassVar[str] = "settings:briefing_schedule_updated"
     budget_per_user_day: ClassVar[int] = 20
 
-    frequency: Identifier
+    frequency: BriefingFrequencyName
     hour: int
     via: BriefingScheduleChangedVia
 

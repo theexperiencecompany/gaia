@@ -14,6 +14,7 @@
 @source "../../not-found.tsx";
 @source "../../../config/appConfig.tsx";
 @source "../../../config/botPlatforms.ts";
+@source "../../../config/site.ts";
 @source "../../../config/toolIconConfig.ts";
 @source "../../../hooks/useGitHubStars.ts";
 @source "../../../hooks/useOAuthSuccessToast.ts";
@@ -149,7 +150,6 @@
 @source "../../../lib/docs-links/index.ts";
 @source "../../../lib/electron/api.ts";
 @source "../../../types/features/toolDataTypes.ts";
-@source "../../../utils/date/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiClient.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiError.ts";
@@ -164,6 +164,7 @@
 @source "../../../../../../libs/shared/ts/src/api/todosApi.ts";
 @source "../../../../../../libs/shared/ts/src/api/workflowsApi.ts";
 @source "../../../../../../libs/shared/ts/src/artifacts/openuiArtifacts.ts";
+@source "../../../../../../libs/shared/ts/src/artifacts/schema.ts";
 @source "../../../../../../libs/shared/ts/src/chat/approvals.ts";
 @source "../../../../../../libs/shared/ts/src/chat/fixtures.ts";
 @source "../../../../../../libs/shared/ts/src/chat/index.ts";

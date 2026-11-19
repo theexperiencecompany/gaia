@@ -114,12 +114,6 @@
     },
     "test": {
       "executor": "nx:run-commands",
-      "inputs": [
-        "default",
-        "^production",
-        "{workspaceRoot}/apps/api/app/constants/briefing.py",
-        "{workspaceRoot}/apps/api/app/models/briefing_models.py"
-      ],
       "options": {
         "command": "pnpm vitest run --config vitest.config.ts",
         "cwd": "{projectRoot}"

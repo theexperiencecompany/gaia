@@ -3,6 +3,7 @@
 import { Kbd } from "@heroui/react";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import type { SearchResultsResponse } from "@shared/api/generated";
+import { formatDate } from "@shared/utils";
 import { Command } from "cmdk";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -114,7 +115,7 @@ function MessageResults({
               suppressHydrationWarning
             >
               {message.message.date
-                ? new Date(message.message.date).toLocaleDateString()
+                ? formatDate(message.message.date, "numeric")
                 : null}
             </div>
           </div>

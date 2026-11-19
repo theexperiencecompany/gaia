@@ -915,11 +915,6 @@
           "total_ms": {
             "title": "Total Ms",
             "type": "number"
-          },
-          "model": {
-            "const": "gpt-6-luna",
-            "title": "Model",
-            "type": "string"
           }
         },
         "required": [
@@ -928,8 +923,7 @@
           "repairs",
           "output_tokens",
           "first_component_ms",
-          "total_ms",
-          "model"
+          "total_ms"
         ],
         "title": "ArtifactCreated",
         "type": "object"
@@ -1655,9 +1649,16 @@
             "type": "string"
           },
           "family": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Family",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family"
           },
           "mood": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -6850,7 +6851,12 @@
         "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
         "properties": {
           "frequency": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "enum": [
+              "daily",
+              "weekdays",
+              "weekly_only",
+              "off"
+            ],
             "title": "Frequency",
             "type": "string"
           },
@@ -7236,7 +7242,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7247,7 +7253,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "From Access",
@@ -7257,22 +7262,16 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "To Access",
             "type": "string"
-          },
-          "grantee_count": {
-            "title": "Grantee Count",
-            "type": "integer"
           }
         },
         "required": [
           "target_type",
           "from_access",
-          "to_access",
-          "grantee_count"
+          "to_access"
         ],
         "title": "ShortLinkAccessChanged",
         "type": "object"
@@ -7296,7 +7295,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7337,6 +7336,59 @@
       }
     },
     {
+      "event": "short_link:content_restricted",
+      "class": "ShortLinkContentRestricted",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file was published, but may be served only to narrower access than the widest.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file was published, but may be served only to narrower access than the widest.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "workspace_file",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "executable",
+              "credential_form",
+              "repeat_takedowns"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "max_access": {
+            "enum": [
+              "public",
+              "unlisted",
+              "owner"
+            ],
+            "title": "Max Access",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "reason",
+          "max_access"
+        ],
+        "title": "ShortLinkContentRestricted",
+        "type": "object"
+      }
+    },
+    {
       "event": "short_link:created",
       "class": "ShortLinkCreated",
       "owner": "server",
@@ -7354,7 +7406,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7365,7 +7417,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",
@@ -7412,7 +7463,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7458,7 +7509,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7469,7 +7520,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",
@@ -7494,20 +7544,20 @@
       "class": "ShortLinkPublishRejected",
       "owner": "server",
       "domain": "short_link",
-      "description": "A shared file was not published, or was published only for narrower access.",
+      "description": "A shared file's bytes were not published; its link shows only its name and size.",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A shared file was not published, or was published only for narrower access.",
+        "description": "A shared file's bytes were not published; its link shows only its name and size.",
         "properties": {
           "target_type": {
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7517,7 +7567,6 @@
           "reason": {
             "enum": [
               "too_large",
-              "restricted_type",
               "quota"
             ],
             "title": "Reason",
@@ -7550,7 +7599,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7587,20 +7636,20 @@
       "class": "ShortLinkRevoked",
       "owner": "server",
       "domain": "short_link",
-      "description": "The user stopped sharing one of their artifacts.",
+      "description": "One of the user's links was turned off: by them, or with their account.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The user stopped sharing one of their artifacts.",
+        "description": "One of the user's links was turned off: by them, or with their account.",
         "properties": {
           "target_type": {
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7613,7 +7662,8 @@
               "rotated",
               "expired",
               "takedown",
-              "target_deleted"
+              "target_deleted",
+              "account_removed"
             ],
             "title": "Reason",
             "type": "string"
@@ -7645,7 +7695,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -7656,7 +7706,6 @@
             "enum": [
               "public",
               "unlisted",
-              "people",
               "owner"
             ],
             "title": "Access",
@@ -7689,7 +7738,7 @@
             "enum": [
               "todo_deliverable",
               "briefing",
-              "session_artifact",
+              "workspace_file",
               "workflow_run",
               "openui_artifact"
             ],
@@ -10144,25 +10193,18 @@
             "title": "Is Todo Workflow"
           },
           "delivery": {
-            "anyOf": [
-              {
-                "enum": [
-                  "now",
-                  "brief",
-                  "silent"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "now",
+              "brief",
+              "silent"
             ],
-            "default": null,
-            "title": "Delivery"
+            "title": "Delivery",
+            "type": "string"
           }
         },
         "required": [
-          "origin"
+          "origin",
+          "delivery"
         ],
         "title": "WorkflowCreated",
         "type": "object"

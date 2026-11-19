@@ -160,13 +160,14 @@ COOLIFY_SERVICES = {
     "gaia-web": "gaia-web",
     "gaia-backend": "gaia-backend",
     "arq_worker": "arq-worker",
+    "migrate": "migrate",
     "chromadb": "chromadb",
     "postgres": "postgres",
     "redis": "redis",
     "mongo": "mongo",
     "rabbitmq": "rabbitmq",
 }
-COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker"}
+COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker", "migrate"}
 COOLIFY_VOLUMES = {
     "models_cache": "models-cache",
     "workspace": "workspace",
@@ -258,7 +259,15 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
         out["depends_on"] = {
             COOLIFY_SERVICES[dep]: cond for dep, cond in service["depends_on"].items()
         }
-    out["healthcheck"] = {**service["healthcheck"], "test": Flow(service["healthcheck"]["test"])}
+    if "healthcheck" in service:
+        out["healthcheck"] = {
+            **service["healthcheck"],
+            "test": Flow(service["healthcheck"]["test"]),
+        }
+    else:
+        # A one-shot service (the migrations) exits by design; Coolify must not read that as down.
+        out["restart"] = service["restart"]
+        out["exclude_from_hc"] = True
     unhandled = set(service) - LOCAL_ONLY_KEYS - set(out) - {"environment"}
     if unhandled:
         raise SystemExit(
@@ -268,10 +277,29 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
 
 
 _CADDY_PLACEHOLDER_RE = re.compile(r"\{\$(\w+)(?::([^}]*))?\}")
+#: A share-domain site block's address: filled by `gaia up --link-domain` /
+#: `--usercontent-domain`, idle on its .invalid default. Coolify has no `gaia up`.
+_SHARE_DOMAIN_SITE_RE = re.compile(r"^\{\$\w+:http://[\w.-]+\.invalid\} \{$", re.MULTILINE)
+_PARAGRAPH_BREAK = "\n\n"
+
+
+def _without_share_domains(caddyfile: str) -> str:
+    """Drop each share-domain site block, which the Caddyfile keeps in one paragraph with its comment."""
+    kept: list[str] = []
+    for paragraph in caddyfile.split(_PARAGRAPH_BREAK):
+        if _SHARE_DOMAIN_SITE_RE.search(paragraph) is None:
+            kept.append(paragraph)
+        elif paragraph.count("{") != paragraph.count("}"):
+            raise SystemExit(
+                "deploy_templates: a share-domain site block must be one paragraph "
+                "(no blank line inside it) so the Coolify template can drop it whole"
+            )
+    # A dropped last block takes the file's final newline with it.
+    return _PARAGRAPH_BREAK.join(kept).rstrip("\n") + "\n"
 
 
 def _coolify_caddyfile() -> Block:
-    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values."""
+    """Resolve the Caddyfile's {$VAR} and {$VAR:default} placeholders to Coolify's values, share domains dropped."""
 
     def value(match: re.Match[str]) -> str:
         name, default = match.group(1), match.group(2)
@@ -283,7 +311,7 @@ def _coolify_caddyfile() -> Block:
             )
         return default
 
-    text = _CADDY_PLACEHOLDER_RE.sub(value, CADDYFILE.read_text())
+    text = _CADDY_PLACEHOLDER_RE.sub(value, _without_share_domains(CADDYFILE.read_text()))
     # Tabs become spaces: a YAML block scalar cannot carry a tab indent.
     return Block("\n".join(line.rstrip() for line in text.replace("\t", "    ").split("\n")))
 
@@ -382,6 +410,8 @@ RENDER_SERVICES = {
     *RENDER_DATASTORES,
     "redis",
     "postgres",
+    # Render runs it as the backend's and the worker's pre-deploy command.
+    "migrate",
 }
 
 #: Values only known once the private services exist: Render cannot compose a
@@ -501,6 +531,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
     services = compose["services"]
     _require_all("Render", "service", services, RENDER_SERVICES)
     worker = services["arq_worker"]
+    migrate = " ".join(services["migrate"]["command"])
     render_services = SpacedList(
         [
             Note(
@@ -551,6 +582,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                     "The local embedding model loads ~1.8 GB on first memory use.",
                     RENDER_PLANS["gaia-backend"],
                 ),
+                "preDeployCommand": migrate,
                 "envVars": _render_app_env(services, "gaia-backend"),
             },
             {
@@ -560,6 +592,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(worker),
                 "plan": RENDER_PLANS["arq_worker"],
                 "dockerCommand": " ".join(worker["command"]),
+                "preDeployCommand": migrate,
                 "envVars": _render_app_env(services, "arq_worker"),
             },
             *(_render_datastore(services, name) for name in RENDER_DATASTORES),

@@ -1,9 +1,9 @@
+import type { heatmapSchema } from "@gaia/artifacts/specs";
 import type { z } from "zod";
-import { ARTIFACT_PALETTE } from "../constants";
-import type { heatmapSchema } from "../specs";
+import { CHART_PALETTE } from "@/config/openui/theme";
 import { Figure } from "./ChartFigure";
 
-const [FIRST_COLOUR] = ARTIFACT_PALETTE;
+const [FIRST_COLOUR] = CHART_PALETTE;
 
 // a cell's tint runs from a faint wash to the full colour; text turns white once it is dark
 const HEAT_FLOOR = 0.06;

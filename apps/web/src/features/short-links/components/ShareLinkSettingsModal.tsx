@@ -17,15 +17,14 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
-import { GranteeEmailsInput } from "@/features/short-links/components/GranteeEmailsInput";
 import {
   EXPIRY_PRESETS,
   type ExpiryChoice,
   LINK_ACCESS_OPTIONS,
-  LINK_ACCESS_ORDER,
 } from "@/features/short-links/constants";
 import { useReaderDateLabel } from "@/features/short-links/hooks/useReaderDateLabel";
 import type { ShareLink } from "@/features/short-links/hooks/useShareLink";
+import { LINK_CONSTANTS } from "@/features/short-links/link-constants.generated";
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 import type {
   LinkAccess,
@@ -104,18 +103,16 @@ function ShareSettingsForm({
   link: ShortLinkResponse | null;
 }) {
   const [access, setAccess] = useState<LinkAccess>(link?.access ?? "unlisted");
-  const [grantees, setGrantees] = useState<string[]>(link?.grantees ?? []);
   const [expiry, setExpiry] = useState<ExpiryChoice>(
     link?.expires_at ? "keep" : "never",
   );
-  const [missingPeople, setMissingPeople] = useState(false);
   const [confirmingRotate, setConfirmingRotate] = useState(false);
 
   const maxAccess = link?.content_max_access;
   const exceedsContent =
     maxAccess != null &&
-    LINK_ACCESS_OPTIONS[access].breadth >
-      LINK_ACCESS_OPTIONS[maxAccess].breadth;
+    LINK_CONSTANTS.accessWidestFirst.indexOf(access) <
+      LINK_CONSTANTS.accessWidestFirst.indexOf(maxAccess);
   const expiryChoices = [
     ...(link?.expires_at ? [{ key: "keep", label: "Keep current" }] : []),
     ...EXPIRY_PRESETS,
@@ -123,16 +120,7 @@ function ShareSettingsForm({
   ];
 
   const save = () => {
-    const isPeople = access === "people";
-    if (isPeople && grantees.length === 0) {
-      setMissingPeople(true);
-      return;
-    }
-    share.saveSettings({
-      access,
-      grantees: isPeople ? grantees : [],
-      ...expiryChange(expiry),
-    });
+    share.saveSettings({ access, ...expiryChange(expiry) });
   };
 
   return (
@@ -152,7 +140,7 @@ function ShareSettingsForm({
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {LINK_ACCESS_ORDER.map((level) => (
+              {LINK_CONSTANTS.accessWidestFirst.map((level) => (
                 <GaiaListBoxItem
                   key={level}
                   id={level}
@@ -169,17 +157,6 @@ function ShareSettingsForm({
             </ListBox>
           </Select.Popover>
         </Select>
-
-        {access === "people" && (
-          <GranteeEmailsInput
-            emails={grantees}
-            onEmailsChange={(emails) => {
-              setGrantees(emails);
-              setMissingPeople(false);
-            }}
-            isMissing={missingPeople}
-          />
-        )}
 
         {exceedsContent && (
           <div className="flex gap-2 rounded-xl bg-amber-400/10 p-3 text-sm text-amber-400">

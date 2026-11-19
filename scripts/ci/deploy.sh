@@ -7,6 +7,11 @@
 #                               published to GHCR without it (drift). Writes
 #                               backend_deploy / backend_orphaned to
 #                               $GITHUB_OUTPUT.
+#   migrate                     Run the release's data migrations
+#                               (apps/api/scripts/post_deploy.py) as a one-off
+#                               Swarm job of the image `stack` is about to
+#                               roll, and wait for it: it must succeed before
+#                               any new API or worker serves.
 #   stack                       `docker stack deploy` the production Swarm stack
 #                               from the private gaia-infra checkout at .infra/.
 #   verify                      Everything a deploy needs, without touching a
@@ -41,6 +46,9 @@
 #           the images; empty falls through to the compose file's
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
+#   migrate as `stack`; the job takes the arq_worker's image, environment,
+#           secrets, external networks, mounts and placement from the rendered
+#           stack. MIGRATE_TIMEOUT_SECS (default 1800), MIGRATE_POLL_SECS.
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
 #           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
 #           re-points every service on one of our repos, grafana included.
@@ -201,11 +209,88 @@ _cmd_swarm_stack() {
       echo "::endgroup::"
       echo "deploy verify: OK (infra ref $(git -C .infra rev-parse --short HEAD), obs config hash $OBS_CFG_HASH, $(echo "$rendered" | yq '.services | length') services)"
       ;;
+    migrate)
+      _migrate "$(docker --context prod stack config -c "$STACK_FILE")"
+      ;;
     *)
-      echo "deploy.sh: unknown stack mode '$MODE' (deploy|verify)" >&2
+      echo "deploy.sh: unknown stack mode '$MODE' (deploy|verify|migrate)" >&2
       exit 2
       ;;
   esac
+}
+
+MIGRATE_JOB="gaia-prod_migrate"
+
+# `docker service create` arguments for the migration job, from the rendered
+# stack's arq_worker: the job is the worker's image running the release step.
+_migrate_job_args() {
+  local rendered="$1"
+  local worker='.services.arq_worker'
+  MIGRATE_ARGS=(
+    --name "$MIGRATE_JOB" --mode replicated-job --restart-condition none
+    --with-registry-auth --detach
+    --workdir "$(yq "$worker.working_dir" <<<"$rendered")"
+    --env GAIA_SERVICE_NAME=migrate
+  )
+  _add_each() {
+    local flag="$1" line values
+    # A command substitution, not < <(...): a yq that rejects the expression must fail the step.
+    values=$(yq ". as \$root | $2" <<<"$rendered")
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && MIGRATE_ARGS+=("$flag" "$line")
+    done <<<"$values"
+  }
+  _add_each --env "$worker.environment // {} | to_entries | .[] | select(.key != \"GAIA_SERVICE_NAME\") | .key + \"=\" + (.value | tostring)"
+  _add_each --secret "$worker.secrets // [] | .[] | (.source // .)"
+  # Only networks that outlive the stack: a stack-scoped one may not exist before it.
+  _add_each --network "$worker.networks // {} | keys | .[] | . as \$n | \$root.networks[\$n] | select(.external == true) | (.name // \$n)"
+  _add_each --mount "$worker.volumes // [] | .[] | . as \$v | \"type=\" + .type + \",source=\" + (\$root.volumes[\$v.source].name // \$v.source) + \",target=\" + .target + ((.volume | select(.nocopy == true) | \",volume-nocopy=\" + .nocopy) // \"\")"
+  _add_each --constraint "$worker.deploy.placement.constraints // [] | .[]"
+  MIGRATE_ARGS+=("$(yq "$worker.image" <<<"$rendered")" python -m scripts.post_deploy --apply)
+}
+
+# Wait for the migration job's one task to end; 0 when it completed.
+_await_migrate_job() {
+  local deadline=$(( $(date +%s) + MIGRATE_TIMEOUT_SECS )) state
+  while :; do
+    state=$(docker --context prod service ps "$MIGRATE_JOB" --format '{{.CurrentState}}' | head -n 1)
+    case "$state" in
+      Complete*) return 0 ;;
+      Failed*|Rejected*|Shutdown*|Orphaned*) echo "migration job ended: $state"; return 1 ;;
+    esac
+    if (( $(date +%s) >= deadline )); then
+      echo "::error::the migration job is still running after ${MIGRATE_TIMEOUT_SECS}s; it is left running and the next deploy waits for it"
+      return 2
+    fi
+    sleep "$MIGRATE_POLL_SECS"
+  done
+}
+
+_migrate() {
+  local rendered="$1" outcome=0
+  : "${MIGRATE_TIMEOUT_SECS:=1800}"
+  : "${MIGRATE_POLL_SECS:=5}"
+  # A job an earlier deploy left behind may still be migrating: let it finish, never kill it.
+  if docker --context prod service inspect "$MIGRATE_JOB" >/dev/null 2>&1; then
+    echo "an earlier migration job exists; waiting for it to end"
+    local earlier=0
+    _await_migrate_job || earlier=$?
+    if (( earlier == 2 )); then exit 1; fi
+    docker --context prod service rm "$MIGRATE_JOB" >/dev/null
+  fi
+  _migrate_job_args "$rendered"
+  docker --context prod service create "${MIGRATE_ARGS[@]}" >/dev/null
+  _await_migrate_job || outcome=$?
+  echo "::group::Migration job log"
+  docker --context prod service logs --raw "$MIGRATE_JOB"
+  echo "::endgroup::"
+  if (( outcome == 2 )); then exit 1; fi
+  docker --context prod service rm "$MIGRATE_JOB" >/dev/null
+  if (( outcome != 0 )); then
+    echo "::error::the release's migrations failed; the stack was not rolled (log above)"
+    exit 1
+  fi
+  ci_ok "deploy migrate: OK"
 }
 
 cmd_retag() {
@@ -687,7 +772,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,63p' "$0" >&2
+  sed -n '2,71p' "$0" >&2
 }
 
 main() {
@@ -696,6 +781,7 @@ main() {
   case "$sub" in
     plan)   cmd_plan "$@" ;;
     stack)  _cmd_swarm_stack deploy "$@" ;;
+    migrate) _cmd_swarm_stack migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;

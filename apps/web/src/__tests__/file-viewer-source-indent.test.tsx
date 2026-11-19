@@ -5,7 +5,7 @@ import { render, waitFor } from "@testing-library/react";
 import postcss, { type Rule } from "postcss";
 import { describe, expect, it } from "vitest";
 
-import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
+import { FileContentRenderer } from "@/features/chat/components/artifacts/FileViewerBody";
 
 const GLOBALS_CSS = join(__dirname, "../app/styles/base.css");
 // The highlighter loads its grammar lazily; a cold run takes well over waitFor's 1s default.
@@ -27,15 +27,10 @@ function codePaddingSelectors(): string[] {
 describe("the file viewer's source view", () => {
   it("pads no line of the highlighted code, so line 1 lines up with the rest", async () => {
     const { container } = render(
-      <FileViewerBody
-        isImage={false}
-        isPdf={false}
-        loading={false}
-        error={false}
+      <FileContentRenderer
         content={"month,revenue\nJan,120\nFeb,140"}
         contentType="text/csv"
         filename="revenue.csv"
-        fileUrl=""
         viewMode="source"
       />,
     );

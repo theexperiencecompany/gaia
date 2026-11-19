@@ -251,7 +251,7 @@ async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) ->
     """
     # Can't be a decorator: the caller has no authenticated request (resolved
     # from a platform link). Without this, bot turns had no quota and never hit
-    # record_activity. enforce_rate_limit (above) is separate: flat anti-spam.
+    # count_daily_actions. enforce_rate_limit (above) is separate: flat anti-spam.
     await enforce_tiered_limit(user_id, "chat_messages")
     # Caps how EXPENSIVE the day has been (the tiered limit above caps how MANY
     # messages) — without it, an over-budget bot user got a stream that opened

@@ -1,3 +1,7 @@
+import {
+  dataTableSchema,
+  describeArtifactComponent,
+} from "@gaia/artifacts/specs";
 import { Input, Table, TextField } from "@heroui/react";
 import { ArrowDown01Icon, ArrowRight01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
@@ -10,7 +14,6 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { TABLE_FILTER_MIN_ROWS } from "../constants";
 import { GroundedText } from "../GroundedText";
 import { type TableRow as Row, useTableRows } from "../hooks/useTableRows";
-import { dataTableSchema, describeArtifactComponent } from "../specs";
 
 const ROW_TONE: Record<Row["kind"], string> = {
   row: "",

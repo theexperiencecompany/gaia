@@ -131,6 +131,16 @@ jobs:
         id: before
         run: bash scripts/ci/deploy.sh served-commit
 
+      # The release's data migrations, as a one-off job of the image about to roll.
+      # They finish before any new API or worker serves; a failure stops the deploy here.
+      - name: Run the release's migrations
+        if: inputs.action == 'deploy'
+        env:
+          GAIA_IMAGE_TAG: ${{ inputs.apps_image_tag }}
+          GAIA_BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
+          GAIA_GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
+        run: bash scripts/ci/deploy.sh migrate
+
       - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
           # Pin the stack to this run's immutable tags. Empty values fall
@@ -300,7 +310,7 @@ jobs:
           STATE: deploy_failed
           SUBJECT: a step failed outside convergence
           IMPACT: unchanged — the failure came before or after the rollout.
-          CAUSE: image pull, auth or config failed; the run log names the step
+          CAUSE: image pull, auth, config or the release's migrations failed; the run log names the step
           ACTION: read the failed step in this run.
           CLEARS_WHEN: a green master run deploys
         run: bash scripts/ci/deploy.sh notify

@@ -322,6 +322,31 @@ def test_an_explicit_selfhost_short_link_base_wins(monkeypatch) -> None:
     assert settings_obj.SHORTLINK_BASE_URL == "https://go.example.org"
 
 
+def test_production_sends_brief_email_from_the_heygaia_domain(monkeypatch) -> None:
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    assert _prod_settings().EMAIL_FROM == "brief@heygaia.io"
+
+
+def test_selfhost_sends_brief_email_from_the_instances_own_domain(monkeypatch) -> None:
+    """Only GAIA Cloud's Resend account verifies heygaia.io, so a self-host sending from it is refused."""
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    settings_obj = _selfhost_settings("local", FRONTEND_URL="https://gaia.example.org:8443/")
+
+    assert settings_obj.EMAIL_FROM == "brief@gaia.example.org"
+
+
+def test_an_explicit_selfhost_sender_wins(monkeypatch) -> None:
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
+
+    settings_obj = _selfhost_settings(
+        "local", FRONTEND_URL="https://gaia.example.org", EMAIL_FROM="GAIA <gaia@mail.example.org>"
+    )
+
+    assert settings_obj.EMAIL_FROM == "GAIA <gaia@mail.example.org>"
+
+
 def test_short_sandbox_execute_secret_refuses_to_boot():
     """A sandbox execute token names whose tools the host runs, and nothing else binds that claim — a guessable signing secret means running any user's tools."""
     with pytest.raises(

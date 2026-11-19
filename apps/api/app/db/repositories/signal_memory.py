@@ -1,7 +1,9 @@
 """Repository for signal_memory: what the brief remembers about each item it has seen."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import datetime
+
+from pymongo import UpdateOne
 
 from app.db.repositories.base import UserScopedRepository
 from app.models.scout_models import Sighted, SignalMemoryDocument, SignalMemoryUpdate
@@ -26,17 +28,23 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
         return await self._find({"user_id": user_id, "$or": [_key(s) for s in signals]})
 
     async def record_seen(self, user_id: str, signals: Sequence[Sighted], at: datetime) -> None:
-        """Remember each signal's state as of now; the first sighting also stamps first_seen."""
-        for signal in signals:
-            key = {"user_id": user_id, **_key(signal)}
-            update: dict[str, Mapping[str, object]] = {
-                "$set": {"last_state": signal.state},
-                "$setOnInsert": {"first_seen": at},
-            }
-            # pragma: no mutate start — with cache_policy None, scope addresses no cache;
-            # mutmut cannot pragma a single argument.
-            await self._apply_raw_update_unfetched(key, update, scope=user_id, upsert=True)
-            # pragma: no mutate end
+        """Remember each signal's state as of at, in one unordered write; a first sighting stamps first_seen."""
+        if not signals:
+            return
+        await self._raw_collection().bulk_write(
+            [
+                UpdateOne(
+                    {"user_id": user_id, **_key(signal)},
+                    {
+                        "$set": {"last_state": signal.state, "last_seen": at},
+                        "$setOnInsert": {"first_seen": at},
+                    },
+                    upsert=True,
+                )
+                for signal in signals
+            ],
+            ordered=False,
+        )
 
     async def mark_shown(self, user_id: str, signals: Sequence[Sighted], at: datetime) -> None:
         if not signals:

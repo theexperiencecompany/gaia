@@ -7,8 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.tools import BaseTool, tool
 import pytest
+from tests.factories import make_user_id
+from tests.integration_account_factories import make_integration_record
 
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
+from app.constants.integrations import IntegrationStatus
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
 from app.db.repositories.user_integrations import user_integration_repository
 from app.models.hil_models import ToolReadOnlyVerdict
@@ -30,7 +33,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 CUSTOM_MCP = "3f2c9a1e-custom-mcp"
 
 
@@ -209,17 +212,22 @@ class TestWhichIntegrations:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         records = [
-            {"integration_id": "linear", "status": "connected"},
-            {"integration_id": "github", "status": "expired"},
-            {"integration_id": "slack", "status": "created"},
-            {"integration_id": "googlecalendar", "status": "expired"},
+            make_integration_record(user_id=USER_ID, integration_id=iid, status=status)
+            for iid, status in (
+                ("linear", IntegrationStatus.CONNECTED),
+                ("github", IntegrationStatus.EXPIRED),
+                ("slack", IntegrationStatus.CREATED),
+                ("googlecalendar", IntegrationStatus.EXPIRED),
+            )
         ]
         read = AsyncMock(return_value=records)
         monkeypatch.setattr(user_integrations_module, "get_user_integration_records", read)
 
         assert await scout_integrations(USER_ID) == [
             ScoutIntegration(integration_id="linear", name="Linear"),
-            ScoutIntegration(integration_id="github", name="GitHub", signed_out=True),
+            ScoutIntegration(
+                integration_id="github", name="GitHub", status=IntegrationStatus.EXPIRED
+            ),
         ]
         assert [c.args for c in read.await_args_list] == [(USER_ID,), (USER_ID,)]
 
@@ -318,10 +326,12 @@ class TestReadOnly:
     ) -> None:
         """A custom MCP rarely sets readOnlyHint; its reading tools must still reach the scout."""
         mcp_client.ensure_connected.return_value = [list_open_tickets, create_ticket, fetch_digest]
-        stored: dict[str, ToolReadOnlyVerdict] = {}
+        stored: dict[tuple[str, str], ToolReadOnlyVerdict] = {}
         repository = MagicMock(
-            find_verdict=AsyncMock(side_effect=stored.get),
-            upsert_verdict=AsyncMock(side_effect=lambda v: stored.__setitem__(v.tool_hash, v)),
+            find_verdict=AsyncMock(side_effect=lambda shape, by: stored.get((shape, by))),
+            upsert_verdict=AsyncMock(
+                side_effect=lambda v: stored.__setitem__((v.tool_hash, v.classifier), v)
+            ),
         )
         judged: list[str] = []
 
@@ -332,6 +342,7 @@ class TestReadOnly:
 
         monkeypatch.setattr(read_only_module, "tool_read_only_verdict_repository", repository)
         monkeypatch.setattr(read_only_module, "ainvoke_structured", judge)
+        monkeypatch.setattr(read_only_module, "classifier_fingerprint", lambda: "judge")
 
         result = await scout_tools(USER_ID, CUSTOM_MCP)
 

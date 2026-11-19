@@ -31,7 +31,7 @@ vi.mock("@/lib/analytics", () => ({ track: vi.fn() }));
 
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 
-const SCHEDULE_PATH = "/notifications/preferences/briefing-schedule";
+const SCHEDULE_PATH = "/briefings/schedule";
 const BRIEF_DELIVERY_WORKFLOWS_EXIST = "brief_delivery_workflows_exist";
 
 interface StoredWorkflow {
@@ -40,7 +40,22 @@ interface StoredWorkflow {
   delivery: "now" | "brief" | "silent";
 }
 
-let schedule = { frequency: "daily", hour: 8 };
+/** The stored schedule as the endpoint reports it; the stand-in keeps no quiet hours. */
+function scheduleState(frequency: string, hour: number) {
+  const daily = frequency === "daily" || frequency === "weekdays";
+  return {
+    frequency,
+    hour,
+    paused_for_plan: false,
+    next_daily_brief_at: null,
+    has_daily_brief: daily,
+    daily_brief_lands_at: daily
+      ? `${String(hour).padStart(2, "0")}:17:00`
+      : null,
+  };
+}
+
+let schedule = scheduleState("daily", 8);
 let workflows: StoredWorkflow[] = [];
 const putBodies: Record<string, unknown>[] = [];
 
@@ -88,7 +103,7 @@ const fakeApi = async (config: {
       deliveries[w.id] ? { ...w, delivery: deliveries[w.id] } : w,
     );
   }
-  schedule = { frequency: body.frequency, hour: body.hour };
+  schedule = scheduleState(body.frequency, body.hour);
   return ok(schedule);
 };
 
@@ -125,7 +140,7 @@ const dialog = () => screen.findByRole("dialog", BLOCKED_DIALOG);
 describe("turning briefs off while workflows deliver to the brief", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    schedule = { frequency: "daily", hour: 8 };
+    schedule = scheduleState("daily", 8);
     workflows = [
       { id: "wf_news", title: "Morning news", delivery: "brief" },
       { id: "wf_prs", title: "Open PRs", delivery: "brief" },
@@ -179,7 +194,7 @@ describe("turning briefs off while workflows deliver to the brief", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", BLOCKED_DIALOG)).toBeNull(),
     );
-    expect(schedule).toEqual({ frequency: "off", hour: 8 });
+    expect(schedule).toEqual(scheduleState("off", 8));
     expect(putBodies.at(-1)?.workflow_deliveries).toEqual({
       wf_news: "now",
       wf_prs: "silent",

@@ -8,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 ARTIFACT_VALIDATOR_BUNDLE = REPO_ROOT / "tools" / "artifact-validate" / "dist" / "validate.cjs"
 ARTIFACT_VALIDATOR_TIMEOUT_SECONDS = 20
 
-# Generated per-kind system prompts (scripts/openui/generate-artifact-prompt.ts), found from the
+# Generated per-kind system prompts (scripts/openui/generate-prompts.ts), found from the
 # app package so the mutation lane's relocated copy of app/ still reads them.
 ARTIFACT_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "agents" / "prompts" / "artifacts"
 
@@ -38,18 +38,13 @@ ARTIFACT_DELTA_EVENT = "artifact_delta"
 ARTIFACT_DONE_EVENT = "artifact_done"
 
 # PDF export: the web page that prints a program handed to it, the marker it sets once
-# rendered, and
-# how long a printed (artifact id, version) stays cached.
+# rendered, and how long a print of one program (by its sha256) stays cached.
 ARTIFACT_PRINT_URL = "{frontend}/artifact-print"
 # The window global the print page reads its program from (ArtifactPrintView.tsx).
 ARTIFACT_PRINT_PROGRAM_GLOBAL = "__GAIA_ARTIFACT_PROGRAM__"
 ARTIFACT_READY_SELECTOR = "[data-artifact-ready]"
-ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{artifact_id}:{version}"
+ARTIFACT_PDF_CACHE_KEY = "artifact_pdf:{program_sha256}"
 ARTIFACT_PDF_CACHE_TTL_SECONDS = 7 * 24 * 3600
 
-#: Chromium renders running at once on one API process; the rest wait their turn.
-PDF_RENDER_MAX_CONCURRENT = 2
-#: Renders allowed to wait for a turn; past it a request is refused with 429.
+#: Chromium renders allowed to wait for a turn; past it a PDF export is refused with 429.
 PDF_RENDER_MAX_WAITING = 6
-#: The public short link's PDF route: /api/v1/l/{slug}/pdf.
-PUBLIC_PDF_PATH_PATTERN = r"/api/v1/l/[^/]+/pdf"

@@ -13,11 +13,12 @@ from collections.abc import Callable
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.log_tags import LogTag
+from app.constants.notifications import NotificationKind
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
+from app.models.notification.details_models import SystemWorkflowsProvisionedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -29,6 +30,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     SystemWorkflowDefinition,
@@ -36,11 +38,12 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowDocument,
 )
-from app.services.briefing.schedule import briefing_cron, resync_briefing_schedules
+from app.services.briefing.schedule import resync_briefing_schedules
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.definitions.briefing import BRIEFING_SYSTEM_WORKFLOWS
 from app.services.system_workflows.recipes import install_recipe
+from app.services.system_workflows.registry import behaviour_of
 from app.services.user_service import get_profile_timezone
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -94,101 +97,57 @@ async def provision_system_workflows(
         integration_id=integration_id,
     )
 
-    created = await _provision_entries(user_id, entries, integration_display_name)
+    created = await _provision_entries(user_id, entries)
 
     if created and notify:
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
 
 
-async def _provision_entries(
-    user_id: str, entries: WorkflowEntries, integration_display_name: str | None = None
-) -> list[CreateWorkflowRequest]:
+async def _provision_entries(user_id: str, entries: WorkflowEntries) -> list[CreateWorkflowRequest]:
     """Create each (key, factory) workflow for the user, idempotent by key.
 
-    Fits scheduled definitions to the user (factories can't know them), skips
-    keys that already exist, and switches each new one on for a paying user.
-    Returns the requests actually created.
+    Fits scheduled definitions to the user (factories can't know them), skips keys
+    that already exist, and switches each new one on for a paying user. Any failure
+    raises: a half-provisioned user retries. Returns the requests actually created.
     """
     created: list[CreateWorkflowRequest] = []
 
     for key, factory in entries:
-        # Idempotency: skip if this key already exists for this user
-        existing = await workflow_repository.find_system_workflow(user_id, key)
-        if existing:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
-                key=key,
-                user_id=user_id,
-            )
+        if await workflow_repository.find_system_workflow(user_id, key):
             continue
-
+        request = factory()
+        trigger_config = ensure_trigger_config_object(request.trigger_config)
+        await _stamp_user_schedule(key, trigger_config, user_id)
+        request.trigger_config = trigger_config
         try:
-            request = factory()
-            trigger_config = ensure_trigger_config_object(request.trigger_config)
-            await _stamp_user_schedule(key, trigger_config, user_id)
-            request.trigger_config = trigger_config
             workflow = await WorkflowService.create_workflow(request, user_id)
-            created.append(request)
-            log.info(
-                f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key, user_id=user_id
-            )
-            await _activate_for_paying_user(workflow.id, user_id, key)
-            # Last: the workflow runs without its recipe (the agent authors one), so a
-            # failed install is logged below and costs only the shortcut.
-            await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
         except DuplicateKeyError:
-            log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
-                key=key,
-                user_id=user_id,
-            )
-        except Exception as e:
-            log.error(
-                "system_workflow_provision_failed",
-                system_workflow_key=key,
-                user_id=user_id,
-                integration_display_name=integration_display_name,
-                error_type=type(e).__name__,
-                error=str(e)[:500],
-                outcome="failed",
-                exc_info=True,
-            )
+            # A concurrent provisioning created it first; that one carries on.
+            continue
+        created.append(request)
+        log.info(f"{LogTag.WORKFLOW} Provisioned system workflow for user", key=key)
+        await _switch_on_or_wait_for_pro(workflow.id, user_id)
+        # Last: the workflow runs without its recipe (the agent authors one), so a
+        # failed install costs only the shortcut.
+        await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
 
     return created
 
 
-async def _activate_for_paying_user(workflow_id: str, user_id: str, key: str) -> None:
+async def _switch_on_or_wait_for_pro(workflow_id: str, user_id: str) -> None:
     """Switch a freshly provisioned system workflow on for a Pro user.
 
-    Free users keep it dormant instead (the paid-only gate would refuse to
-    run it anyway); an activation failure is logged but never blocks the
-    rest of provisioning.
+    A free user's waits for Pro, paused as SUBSCRIPTION_LAPSED: the restore on upgrade
+    switches on exactly those.
     """
-    if not await is_paid(user_id):
-        log.info(
-            f"{LogTag.WORKFLOW} System workflow left dormant for user without a plan",
-            key=key,
-            user_id=user_id,
+    if await is_paid(user_id):
+        switched = await WorkflowService.activate_workflow(workflow_id, user_id)
+    else:
+        switched = await WorkflowService.deactivate_workflow(
+            workflow_id, user_id, reason=DeactivationReason.SUBSCRIPTION_LAPSED
         )
-        return
-    try:
-        await WorkflowService.activate_workflow(workflow_id, user_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.WORKFLOW} Could not activate provisioned system workflow",
-            key=key,
-            workflow_id=workflow_id,
-            user_id=user_id,
-            error=str(e)[:500],
-            error_type=type(e).__name__,
-        )
-        return
-    log.info(
-        f"{LogTag.WORKFLOW} Activated provisioned system workflow for paying user",
-        key=key,
-        workflow_id=workflow_id,
-        user_id=user_id,
-    )
+    if switched is None:
+        raise LookupError(f"System workflow {workflow_id} vanished right after it was created")
 
 
 async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowRequest]:
@@ -197,7 +156,7 @@ async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowReque
     Called at onboarding completion and by the existing-user backfill. Idempotent
     by system_workflow_key. The announcement is the caller's responsibility
     (app/services/briefing/rollout.py); this only wires the schedules, then fits
-    them to a briefing frequency the user may have set before they existed.
+    them, new or not, to the user's briefing frequency and plan.
     """
     log.set(
         component="system_workflow_provisioner",
@@ -205,11 +164,10 @@ async def provision_briefing_workflows(user_id: str) -> list[CreateWorkflowReque
         user_id=user_id,
     )
     created = await _provision_entries(user_id, BRIEFING_SYSTEM_WORKFLOWS)
-    if created:
-        user = await user_repository.get(user_id)
-        if user is None:
-            raise LookupError(f"Cannot fit the briefs to unknown user {user_id}")
-        await resync_briefing_schedules(user)
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise LookupError(f"Cannot fit the briefs to unknown user {user_id}")
+    await resync_briefing_schedules(user)
     return created
 
 
@@ -255,7 +213,10 @@ async def _notify_workflows_provisioned(
                         )
                     ],
                 ),
-                metadata={"integration_display_name": integration_display_name},
+                details=SystemWorkflowsProvisionedNotification(
+                    kind=NotificationKind.SYSTEM_WORKFLOWS_PROVISIONED,
+                    integration_display_name=integration_display_name,
+                ),
             )
         )
         log.info(
@@ -277,18 +238,18 @@ async def _stamp_user_schedule(key: str, trigger_config: TriggerConfig, user_id:
     """Fit a schedule definition to its user, then recompute next_run.
 
     Factories can't know the user, so scheduled definitions carry no timezone:
-    the profile timezone is stamped so the cron fires on the user's clock. The
-    daily brief also takes the days and hour the user's briefing schedule gives it.
+    the profile timezone is stamped so the cron fires on the user's clock, and a
+    definition that fits its cron to the user (the briefs) gets the user's own.
     """
     if trigger_config.type != TriggerType.SCHEDULE:
         return
     if not trigger_config.timezone:
         trigger_config.timezone = (await get_profile_timezone(user_id)).value
-    if key == DAILY_BRIEFING_WORKFLOW_KEY:
+    if cron_for := behaviour_of(key).cron_for:
         user = await user_repository.get(user_id)
         if user is None:
-            raise LookupError(f"Cannot schedule the daily brief for unknown user {user_id}")
-        trigger_config.cron_expression = briefing_cron(key, user)
+            raise LookupError(f"Cannot schedule {key} for unknown user {user_id}")
+        trigger_config.cron_expression = await cron_for(user)
     if trigger_config.cron_expression:
         trigger_config.update_next_run(user_timezone=trigger_config.timezone)
 

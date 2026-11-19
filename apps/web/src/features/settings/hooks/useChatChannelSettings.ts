@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NotificationPlatform } from "@/features/notification/constants";
-import { chatChannelApi } from "@/features/settings/api/chatChannelApi";
+import {
+  chatChannelPriorityQuery,
+  preferencesApi,
+} from "@/features/settings/api/preferencesApi";
+import { preferenceKeys } from "@/features/settings/api/queryKeys";
 import {
   linkedInPriorityOrder,
   withChannelFirst,
@@ -10,11 +14,14 @@ import {
 import { toast } from "@/lib/toast";
 
 interface UseChatChannelSettings {
-  /** The linked platforms in priority order; the first is where GAIA texts first. */
-  linkedOrder: NotificationPlatform[];
+  /** The linked platforms in priority order; the first is where GAIA texts first. Null until the stored order loads. */
+  linkedOrder: NotificationPlatform[] | null;
+  /** The stored order could not be read. */
+  loadFailed: boolean;
+  refetch: () => void;
   /** True while a save is in flight, so two choices can't race each other. */
   saving: boolean;
-  putFirst: (platform: NotificationPlatform) => Promise<void>;
+  putFirst: (platform: NotificationPlatform) => void;
 }
 
 /**
@@ -24,33 +31,36 @@ interface UseChatChannelSettings {
 export function useChatChannelSettings(
   linkedPlatforms: NotificationPlatform[],
 ): UseChatChannelSettings {
-  const [order, setOrder] = useState<NotificationPlatform[]>([]);
-  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const { data, isError, refetch } = useQuery(chatChannelPriorityQuery());
+  const order = data?.priority ?? null;
 
-  useEffect(() => {
-    chatChannelApi.fetchPriority().then((priority) => {
-      setOrder(priority.priority);
-    });
-  }, []);
-
-  const linkedOrder = linkedInPriorityOrder(order, linkedPlatforms);
-
-  const putFirst = async (platform: NotificationPlatform) => {
-    if (linkedOrder[0] === platform) return;
-    const next = withChannelFirst(order, linkedPlatforms, platform);
-    const previous = order;
-    setOrder(next);
-    setSaving(true);
-    try {
-      const saved = await chatChannelApi.updatePriority(next);
-      setOrder(saved.priority);
-    } catch {
-      setOrder(previous);
+  const mutation = useMutation({
+    mutationFn: preferencesApi.updateChatChannelPriority,
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: preferenceKeys.chatChannelPriority });
+      const previous = qc.getQueryData(preferenceKeys.chatChannelPriority);
+      qc.setQueryData(preferenceKeys.chatChannelPriority, { priority: next });
+      return { previous };
+    },
+    onError: (_error, _next, context) => {
+      qc.setQueryData(preferenceKeys.chatChannelPriority, context?.previous);
       toast.error("Couldn't save where GAIA texts you first.");
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+    onSuccess: (saved) =>
+      qc.setQueryData(preferenceKeys.chatChannelPriority, saved),
+  });
 
-  return { linkedOrder, saving, putFirst };
+  const linkedOrder = order && linkedInPriorityOrder(order, linkedPlatforms);
+
+  return {
+    linkedOrder,
+    loadFailed: isError,
+    refetch: () => void refetch(),
+    saving: mutation.isPending,
+    putFirst: (platform) => {
+      if (!order || linkedOrder?.[0] === platform) return;
+      mutation.mutate(withChannelFirst(order, linkedPlatforms, platform));
+    },
+  };
 }

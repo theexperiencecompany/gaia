@@ -16,7 +16,7 @@
    Reading order: deck -> awaiting payment -> today -> overnight -> totals.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   const caps = (s) => esc(String(s).toUpperCase());
   const pad2 = (n) => String(n).padStart(2, "0");
 
@@ -185,7 +185,7 @@
       const count = ed.blocks.reduce((n, b) => n + (rows[b.kind] ? rows[b.kind](b) : 0), 0);
       const bars = ed.codes.code128;
       return `<article class="t-receipt" style="--hi:${skin.desk.hi}; --a:${skin.desk.a}; --b:${skin.desk.b}; --paper:${skin.stock.paper}; --edge:${skin.stock.edge}; --ink:${skin.density.ink}; --soft:${skin.density.soft}; --red:${skin.density.red}">
-<div class="wrap"><div class="tape">${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>${DITHER}
+<div class="wrap"><div class="tape" data-paper>${grain("rc-g", 0.9)}<i class="crease" aria-hidden="true"></i>${DITHER}
   <h1 class="store">GAIA</h1>
   <p class="meta">DAILY BRIEF &mdash; REGISTER 1<br>${ed.weekday.slice(0, 3).toUpperCase()} ${pad2(ed.day)} ${ed.monthShort.toUpperCase()} ${ed.year}&nbsp;&nbsp;${ed.time24}<br>EDITION #${ed.editionNo}<br>SERVED BY: GAIA &middot; TERMINAL 01</p>
   ${RULE}

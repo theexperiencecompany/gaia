@@ -45,7 +45,7 @@ function nodeProps(value: unknown): Props | null {
 }
 
 /** labels + Series(category, values) nodes, or header labels + row arrays, as chart points. */
-function seriesPoints(labels: unknown, series: unknown): Point[] {
+export function seriesPoints(labels: unknown, series: unknown): Point[] {
   const names = asArray(labels).map(String);
   const rows = asArray(series);
   if (Array.isArray(rows[0])) {

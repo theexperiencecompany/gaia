@@ -16,6 +16,7 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
+from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
 
 BriefBlockKind = Literal["lead", "items", "chart", "quote", "progress", "note"]
@@ -45,19 +46,10 @@ class ComposedItem(BaseModel):
 
 
 class ComposedLead(BaseModel):
-    """The one thing to start on, and what GAIA will do about it."""
+    """The one thing to start on; GAIA's offer on it is code's, from the item's action (LEAD_OFFERS)."""
 
     kind: Literal["lead"]
     item: ComposedItem
-    offer: str = Field(description="What GAIA does when the user says yes, one short sentence")
-
-
-class GroupState(StrEnum):
-    """What every item of a group is: waiting on the user, done, or still running."""
-
-    NEEDS_YOU = "needs_you"
-    DONE = "done"
-    IN_PROGRESS = "in_progress"
 
 
 class ComposedItems(BaseModel):

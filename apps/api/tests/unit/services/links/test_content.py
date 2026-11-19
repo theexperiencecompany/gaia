@@ -8,8 +8,11 @@ import hmac
 import io
 from pathlib import Path
 import random
+import struct
+from typing import Final
 from unittest.mock import AsyncMock, call, patch
 import wave
+import zlib
 
 import fakeredis.aioredis
 from PIL import Image
@@ -19,6 +22,7 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.files import BlobKind
+from app.constants.media import MAX_IMAGE_PIXELS
 from app.constants.short_links import (
     CONTENT_TOKEN_TTL_SECONDS,
     MAX_HTML_SNAPSHOT_BYTES,
@@ -31,12 +35,15 @@ from app.constants.short_links import (
     THUMBNAIL_SIZE,
 )
 from app.models.short_link_models import (
+    ContentRestriction,
     LinkAccess,
+    LinkContent,
     LinkSnapshot,
     PublishRejection,
     RenderMode,
     ShortLink,
     ShortLinkTargetType,
+    WorkspaceFileTarget,
 )
 from app.services.blob_store import LocalVolumeBlobStore
 from app.services.links import content
@@ -54,12 +61,13 @@ from app.services.links.spec import SnapshotSource
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
+    ShortLinkContentRestricted,
     ShortLinkPublishRejected,
 )
 from tests.helpers import captured_wide_event
 
 OWNER = "507f1f77bcf86cd799439011"
-SESSION = ShortLinkTargetType.SESSION_ARTIFACT
+FILE: Final = ShortLinkTargetType.WORKSPACE_FILE
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
 
 
@@ -94,7 +102,28 @@ def _pdf_page(width: float, height: float) -> bytes:
         return document.tobytes()
 
 
+def _png_chunk(kind: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+
+def _blank_png(side: int) -> bytes:
+    """Build a 1-bit side x side PNG by hand: tiny on disk, enormous once decoded."""
+    header = struct.pack(">IIBBBBB", side, side, 1, 0, 0, 0, 0)
+    rows = (b"\x00" * (1 + (side + 7) // 8)) * side
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(rows, 9))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
 PNG = _png()
+# 1x1, whose IDAT checksum is wrong: browsers draw it, Pillow's verify refuses it.
+BAD_CHECKSUM_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+)
 PDF = _pdf()
 WAV = _wav()
 # zinc-900, the preview card's background
@@ -182,7 +211,7 @@ class TestPublish:
     async def test_stores_the_bytes_under_a_fresh_content_id(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("notes.md", "text/markdown", b"# Hi"))
+        snapshot = await publish(OWNER, FILE, _source("notes.md", "text/markdown", b"# Hi"))
 
         assert snapshot.content_id is not None
         assert len(snapshot.content_id) == 26
@@ -195,8 +224,8 @@ class TestPublish:
     async def test_two_publishes_of_one_file_are_two_origins(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        first = await publish(OWNER, SESSION, _source("a.md", "text/markdown", b"x"))
-        second = await publish(OWNER, SESSION, _source("a.md", "text/markdown", b"x"))
+        first = await publish(OWNER, FILE, _source("a.md", "text/markdown", b"x"))
+        second = await publish(OWNER, FILE, _source("a.md", "text/markdown", b"x"))
         assert first.content_id != second.content_id
 
     @pytest.mark.parametrize(
@@ -216,7 +245,7 @@ class TestPublish:
         size: int,
     ) -> None:
         data = b"a" * size
-        snapshot = await publish(OWNER, SESSION, _source("big", mime, data))
+        snapshot = await publish(OWNER, FILE, _source("big", mime, data))
         assert snapshot.content_id is None
         assert snapshot.rejected is PublishRejection.TOO_LARGE
         assert snapshot.size_bytes == size
@@ -225,7 +254,7 @@ class TestPublish:
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         snapshot = await publish(
-            OWNER, SESSION, _source("r.html", "text/html", b"a" * MAX_HTML_SNAPSHOT_BYTES)
+            OWNER, FILE, _source("r.html", "text/html", b"a" * MAX_HTML_SNAPSHOT_BYTES)
         )
         assert snapshot.content_id is not None
 
@@ -233,7 +262,7 @@ class TestPublish:
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         source = _source("video.mov", "video/quicktime", None, size=MAX_SNAPSHOT_BYTES * 4)
-        snapshot = await publish(OWNER, SESSION, source)
+        snapshot = await publish(OWNER, FILE, source)
         assert snapshot.content_id is None
         assert snapshot.rejected is PublishRejection.TOO_LARGE
         assert snapshot.size_bytes == MAX_SNAPSHOT_BYTES * 4
@@ -243,7 +272,7 @@ class TestPublish:
     ) -> None:
         quota = AsyncMock(return_value=False)
         monkeypatch.setattr(content, "_within_quota", quota)
-        snapshot = await publish(OWNER, SESSION, _source("a.md", "text/markdown", b"xyz"))
+        snapshot = await publish(OWNER, FILE, _source("a.md", "text/markdown", b"xyz"))
         quota.assert_awaited_once_with(OWNER, 3)
         assert snapshot.content_id is None
         assert snapshot.rejected is PublishRejection.QUOTA
@@ -255,13 +284,13 @@ class TestPublish:
             b'<input name="card" autocomplete="cc-number">',
         ],
     )
-    async def test_html_asking_for_secrets_opens_only_for_specific_people(
+    async def test_html_asking_for_secrets_opens_only_for_its_owner(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None, html: bytes
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("login.html", "text/html", html))
+        snapshot = await publish(OWNER, FILE, _source("login.html", "text/html", html))
         assert snapshot.content_id is not None
-        assert snapshot.max_access is LinkAccess.PEOPLE
-        assert snapshot.restricted_by is PublishRejection.RESTRICTED_TYPE
+        assert snapshot.max_access is LinkAccess.OWNER
+        assert snapshot.restricted_by is ContentRestriction.CREDENTIAL_FORM
 
     @pytest.mark.parametrize(
         "filename", ["setup.exe", "App.DMG", "run.ps1", "tool.jar", "notes.v2.exe"]
@@ -270,31 +299,33 @@ class TestPublish:
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None, filename: str
     ) -> None:
         snapshot = await publish(
-            OWNER, SESSION, _source(filename, "application/octet-stream", b"MZ\x90")
+            OWNER, FILE, _source(filename, "application/octet-stream", b"MZ\x90")
         )
         assert snapshot.max_access is LinkAccess.OWNER
+        assert snapshot.restricted_by is ContentRestriction.EXECUTABLE
         assert snapshot.render is RenderMode.DOWNLOAD
 
-    async def test_an_owner_with_repeated_takedowns_shares_html_only_with_people(
+    async def test_an_owner_with_repeated_takedowns_shares_html_only_with_themselves(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         no_takedowns.return_value = 2
-        snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", b"<p>hi</p>"))
+        snapshot = await publish(OWNER, FILE, _source("r.html", "text/html", b"<p>hi</p>"))
         no_takedowns.assert_awaited_once_with(OWNER)
-        assert snapshot.max_access is LinkAccess.PEOPLE
+        assert snapshot.max_access is LinkAccess.OWNER
+        assert snapshot.restricted_by is ContentRestriction.REPEAT_TAKEDOWNS
 
     async def test_one_takedown_does_not_narrow_html(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         no_takedowns.return_value = 1
-        snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", b"<p>hi</p>"))
+        snapshot = await publish(OWNER, FILE, _source("r.html", "text/html", b"<p>hi</p>"))
         assert snapshot.max_access is LinkAccess.PUBLIC
 
     async def test_the_urls_a_file_names_never_narrow_it(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         html = b"<a href='http://testsafebrowsing.appspot.com/s/phishing.html'>x</a>"
-        snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", html))
+        snapshot = await publish(OWNER, FILE, _source("r.html", "text/html", html))
         assert (snapshot.max_access, snapshot.restricted_by) == (LinkAccess.PUBLIC, None)
 
     async def test_an_svg_is_never_narrowed_by_its_owners_takedowns(
@@ -302,14 +333,14 @@ class TestPublish:
     ) -> None:
         no_takedowns.return_value = 5
         svg = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
-        snapshot = await publish(OWNER, SESSION, _source("a.svg", "image/svg+xml", svg))
+        snapshot = await publish(OWNER, FILE, _source("a.svg", "image/svg+xml", svg))
         no_takedowns.assert_not_awaited()
         assert (snapshot.max_access, snapshot.restricted_by) == (LinkAccess.PUBLIC, None)
 
     async def test_a_png_gets_a_preview_card_under_the_size_cap(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("chart.png", "image/png", PNG))
+        snapshot = await publish(OWNER, FILE, _source("chart.png", "image/png", PNG))
         assert snapshot.has_thumbnail
         assert snapshot.content_id is not None
         thumb = await content.read_thumbnail(OWNER, snapshot.content_id)
@@ -318,23 +349,49 @@ class TestPublish:
             assert image.format == "JPEG"
             assert image.size == (1200, 630)
 
+    @pytest.mark.usefixtures("store", "no_takedowns", "unlimited")
+    @pytest.mark.parametrize(
+        "side",
+        [
+            # Past the pixel budget, though Pillow would still decode it whole.
+            int(MAX_IMAGE_PIXELS**0.5) + 1,
+            # Past Pillow's own decompression-bomb limit.
+            20_000,
+        ],
+    )
+    async def test_an_image_past_the_pixel_budget_shares_without_decoding_a_preview(
+        self, side: int
+    ) -> None:
+        source = _source("big.png", "image/png", _blank_png(side))
+        async with captured_wide_event() as event:
+            snapshot = await publish(OWNER, FILE, source)
+        assert snapshot.content_id is not None
+        assert not snapshot.has_thumbnail
+        assert event["warnings"] == [
+            {
+                "msg": "short_link.thumbnail_failed",
+                "render": "image",
+                "error_type": "InvalidImageError",
+            }
+        ]
+
     async def test_a_pdf_previews_its_first_page(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("deck.pdf", "application/pdf", PDF))
+        snapshot = await publish(OWNER, FILE, _source("deck.pdf", "application/pdf", PDF))
         assert snapshot.render is RenderMode.PDF
         assert snapshot.has_thumbnail
 
     async def test_html_is_never_rendered_for_a_preview(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("r.html", "text/html", b"<p>hi</p>"))
+        snapshot = await publish(OWNER, FILE, _source("r.html", "text/html", b"<p>hi</p>"))
         assert not snapshot.has_thumbnail
 
     async def test_unchanged_bytes_are_recognised_by_digest(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("a.md", "text/markdown", b"one"))
+        snapshot = await publish(OWNER, FILE, _source("a.md", "text/markdown", b"one"))
         assert unchanged(snapshot, _source("a.md", "text/markdown", b"one"))
         assert not unchanged(snapshot, _source("a.md", "text/markdown", b"two"))
         assert not unchanged(snapshot, _source("a.md", "text/markdown", None, size=3))
@@ -346,7 +403,7 @@ class TestPublish:
             patch.object(store, "put", wraps=store.put) as put,
             patch.object(content, "capture") as capture,
         ):
-            snapshot = await publish(OWNER, SESSION, _source("chart.png", "image/png", PNG))
+            snapshot = await publish(OWNER, FILE, _source("chart.png", "image/png", PNG))
 
         assert snapshot.content_id is not None
         thumb = await content.read_thumbnail(OWNER, snapshot.content_id)
@@ -371,7 +428,7 @@ class TestPublish:
         capture.assert_called_once_with(
             UserId(OWNER),
             ShortLinkContentPublished(
-                target_type=SESSION.value, render_mode="image", size_bucket="lt_100kb"
+                target_type=FILE.value, render_mode="image", size_bucket="lt_100kb"
             ),
         )
 
@@ -379,17 +436,19 @@ class TestPublish:
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
         with patch.object(content, "capture") as capture:
-            await publish(OWNER, SESSION, _source("setup.exe", "application/octet-stream", b"MZ"))
+            await publish(OWNER, FILE, _source("setup.exe", "application/octet-stream", b"MZ"))
         assert capture.call_args_list == [
             call(
                 UserId(OWNER),
                 ShortLinkContentPublished(
-                    target_type=SESSION.value, render_mode="download", size_bucket="lt_100kb"
+                    target_type=FILE.value, render_mode="download", size_bucket="lt_100kb"
                 ),
             ),
             call(
                 UserId(OWNER),
-                ShortLinkPublishRejected(target_type=SESSION.value, reason="restricted_type"),
+                ShortLinkContentRestricted(
+                    target_type=FILE.value, reason="executable", max_access="owner"
+                ),
             ),
         ]
 
@@ -401,11 +460,11 @@ class TestPublish:
             patch.object(store, "put", wraps=store.put) as put,
             patch.object(content, "capture") as capture,
         ):
-            snapshot = await publish(OWNER, SESSION, source)
+            snapshot = await publish(OWNER, FILE, source)
         put.assert_not_awaited()
         capture.assert_called_once_with(
             UserId(OWNER),
-            ShortLinkPublishRejected(target_type=SESSION.value, reason="too_large"),
+            ShortLinkPublishRejected(target_type=FILE.value, reason="too_large"),
         )
         assert snapshot == LinkSnapshot(
             filename="video.mov",
@@ -420,7 +479,7 @@ class TestPublish:
     async def test_reads_name_the_snapshot_and_its_preview(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
-        snapshot = await publish(OWNER, SESSION, _source("chart.png", "image/png", PNG))
+        snapshot = await publish(OWNER, FILE, _source("chart.png", "image/png", PNG))
         assert snapshot.content_id is not None
         with patch.object(store, "read", wraps=store.read) as read:
             assert await content.read_snapshot(OWNER, snapshot.content_id) == PNG
@@ -434,7 +493,9 @@ class TestPublish:
     @pytest.mark.parametrize(
         ("source", "render", "error_type"),
         [
-            (_source("chart.png", "image/png", PNG[:40]), "image", "UnidentifiedImageError"),
+            (_source("chart.png", "image/png", PNG[:40]), "image", "InvalidImageError"),
+            # A bad chunk checksum, which Pillow's verify reports as SyntaxError.
+            (_source("chart.png", "image/png", BAD_CHECKSUM_PNG), "image", "InvalidImageError"),
             (
                 _source("deck.pdf", "application/pdf", b"%PDF-1.7 truncated"),
                 "pdf",
@@ -446,7 +507,7 @@ class TestPublish:
         self, source: SnapshotSource, render: str, error_type: str
     ) -> None:
         async with captured_wide_event() as event:
-            snapshot = await publish(OWNER, SESSION, source)
+            snapshot = await publish(OWNER, FILE, source)
         assert snapshot.content_id is not None
         assert not snapshot.has_thumbnail
         assert event["warnings"] == [
@@ -613,8 +674,7 @@ CID = "abcdefghijklmnopqrstuvwxyz"
 LINK = ShortLink(
     slug="abcdefghijk",
     user_id=OWNER,
-    target_type=SESSION,
-    target_id="conv-1/r.html",
+    target=WorkspaceFileTarget(type=FILE, conversation_id="conv-1", path="r.html"),
     created_at=NOW - timedelta(days=1),
 )
 
@@ -707,6 +767,19 @@ def _snapshot(render: RenderMode, **overrides: object) -> LinkSnapshot:
     return LinkSnapshot.model_validate(data)
 
 
+def _framed(snapshot: LinkSnapshot | None, access: LinkAccess) -> LinkContent | None:
+    link = ShortLink(
+        slug="s1",
+        user_id=OWNER,
+        target=WorkspaceFileTarget(type=FILE, conversation_id="conv-1", path="a"),
+        access=access,
+        snapshot=snapshot,
+        # Live until after NOW: the frame is read at the time it is asked for.
+        expires_at=NOW + timedelta(minutes=1),
+    )
+    return framed_content(link, NOW)
+
+
 class TestPresentation:
     @pytest.mark.parametrize(
         ("render", "without_origin"),
@@ -735,23 +808,34 @@ class TestPresentation:
     def test_with_a_content_origin_every_mode_renders_as_published(self, origin: None) -> None:
         assert all(presented_render(_snapshot(render)) is render for render in RenderMode)
 
+    def test_on_one_content_host_a_pdf_downloads_and_html_still_runs(
+        self, origin: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A PDF can't be sandboxed: only a per-snapshot host isolates it from the next link's file."""
+        monkeypatch.setattr(
+            settings, "LINK_CONTENT_URL_TEMPLATE", "https://u.example.com/usercontent/{content_id}"
+        )
+        assert presented_render(_snapshot(RenderMode.PDF)) is RenderMode.DOWNLOAD
+        assert _framed(_snapshot(RenderMode.PDF), LinkAccess.PUBLIC) is None
+        assert presented_render(_snapshot(RenderMode.FRAME_ACTIVE)) is RenderMode.FRAME_ACTIVE
+
     @pytest.mark.parametrize("render", [RenderMode.FRAME_ACTIVE, RenderMode.PDF, RenderMode.IMAGE])
     def test_framed_content_names_the_snapshot(self, origin: None, render: RenderMode) -> None:
-        framed = framed_content(_snapshot(render), LinkAccess.UNLISTED)
+        framed = _framed(_snapshot(render), LinkAccess.UNLISTED)
         assert framed is not None
         assert framed.content_id == CID
         assert framed.render is render
 
     @pytest.mark.parametrize("render", [RenderMode.TEXT, RenderMode.DOWNLOAD])
     def test_text_and_downloads_are_never_framed(self, origin: None, render: RenderMode) -> None:
-        assert framed_content(_snapshot(render), LinkAccess.UNLISTED) is None
+        assert _framed(_snapshot(render), LinkAccess.UNLISTED) is None
 
     def test_nothing_is_framed_without_stored_bytes(self, origin: None) -> None:
-        assert framed_content(None, LinkAccess.UNLISTED) is None
+        assert _framed(None, LinkAccess.UNLISTED) is None
         unstored = _snapshot(RenderMode.FRAME_ACTIVE, content_id=None)
-        assert framed_content(unstored, LinkAccess.UNLISTED) is None
+        assert _framed(unstored, LinkAccess.UNLISTED) is None
 
     def test_a_link_wider_than_its_bytes_allow_frames_nothing(self, origin: None) -> None:
-        restricted = _snapshot(RenderMode.FRAME_ACTIVE, max_access=LinkAccess.PEOPLE)
-        assert framed_content(restricted, LinkAccess.UNLISTED) is None
-        assert framed_content(restricted, LinkAccess.PEOPLE) is not None
+        restricted = _snapshot(RenderMode.FRAME_ACTIVE, max_access=LinkAccess.OWNER)
+        assert _framed(restricted, LinkAccess.UNLISTED) is None
+        assert _framed(restricted, LinkAccess.OWNER) is not None

@@ -1,10 +1,13 @@
 import type { ErrorEnvelope } from "@/types/features/shortLinkTypes";
 
-import { DEAD_LINK_COPY } from "../constants";
+import { GATED_LINK_DENIALS } from "../constants";
+import { LINK_CONSTANTS } from "../link-constants.generated";
 import type { DeadLinkState, LinkUnavailableState } from "../types";
 
+const GATED_CODES: ReadonlySet<string> = new Set(GATED_LINK_DENIALS);
+
 function isDeadLinkState(code: string): code is DeadLinkState {
-  return Object.hasOwn(DEAD_LINK_COPY, code);
+  return Object.hasOwn(LINK_CONSTANTS.pageCopy, code) && !GATED_CODES.has(code);
 }
 
 /**

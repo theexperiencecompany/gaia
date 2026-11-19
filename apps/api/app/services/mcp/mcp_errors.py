@@ -63,8 +63,8 @@ class MCPAuthorizationRequiredError(ValueError):
         )
 
 
-#: The server refused GAIA's credential: the user has to sign in to the integration again.
-MCP_SIGN_IN_ERRORS: tuple[type[Exception], ...] = (
+#: The server refused GAIA's credential: the integration is signed out until the user signs in again.
+MCP_SIGNED_OUT_ERRORS: tuple[type[Exception], ...] = (
     MCPAuthorizationRequiredError,
     StepUpAuthRequiredError,
     OAuthAuthenticationError,

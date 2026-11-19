@@ -1,19 +1,23 @@
 "use client";
 
 import { Cancel01Icon } from "@icons";
+import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { platformLinksQuery } from "@/features/settings/api/platformLinksApi";
 import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
-import { api } from "@/lib/api/typed";
 import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
-import type { PlatformLinks } from "@/types/platform";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "../constants";
+
+/** Every chat app GAIA can notify on, named as one choice: "Telegram, WhatsApp, … or Discord". */
+const PLATFORM_CHOICES = new Intl.ListFormat("en", {
+  type: "disjunction",
+}).format(NOTIFICATION_PLATFORMS.map((p) => NOTIFICATION_PLATFORM_LABELS[p]));
 
 interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
@@ -42,27 +46,13 @@ export function NotificationConnectBanner({
   const router = useRouter();
   const isDismissed = useNotificationBannerStore((s) => s.isDismissed);
   const dismiss = useNotificationBannerStore((s) => s.dismiss);
-  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
-  const [isLoading, setIsLoading] = useState(true);
+  // Until the links are read (or when they can't be) nothing is known to be unlinked.
+  const { data } = useQuery(platformLinksQuery());
 
-  useEffect(() => {
-    api
-      .get("/api/v1/platform-links", { silent: true })
-      .then((data) => {
-        setPlatformLinks(data.platform_links || {});
-      })
-      .catch(() => {
-        // Silently fail — banner is non-critical
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, []);
-
-  if (isLoading || isDismissed) return null;
+  if (!data || isDismissed) return null;
 
   const unconnectedPlatforms = NOTIFICATION_PLATFORMS.filter(
-    (p) => !platformLinks[p]?.platformUserId,
+    (p) => !data.platform_links[p]?.platformUserId,
   );
 
   if (unconnectedPlatforms.length === 0) return null;
@@ -115,8 +105,7 @@ export function NotificationConnectBanner({
             Stay notified on your devices
           </p>
           <p className="mt-0.5 text-xs text-zinc-400">
-            Connect Telegram, Discord, WhatsApp, or Slack to get GAIA
-            notifications anywhere.
+            Connect {PLATFORM_CHOICES} to get GAIA notifications anywhere.
           </p>
         </div>
       </div>

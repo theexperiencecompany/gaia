@@ -3,8 +3,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, SECTION_NUMERALS
-from app.models.brief_candidate_models import BriefCandidate
+from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, LEAD_OFFERS, SECTION_NUMERALS
+from app.models.brief_candidate_models import BriefCandidate, HeldResult
 from app.models.brief_composition_models import (
     BriefBlock,
     BriefComposition,
@@ -23,14 +23,8 @@ from app.models.brief_composition_models import (
     SectionBlock,
     placed_items,
 )
-from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
-    BriefingItem,
-    BriefingItemKind,
-    BriefingSection,
-    BriefPoolItem,
-)
-from app.models.scout_models import RememberedSignal
+from app.models.brief_item_models import ItemState
+from app.models.brief_payload_models import BriefingItem, BriefingSection, BriefPoolItem
 from app.services.briefing.fact_pool.pool import FactPool
 from shared.py.wide_events import log
 
@@ -52,12 +46,12 @@ class Laid:
     uncomposed: list[BriefPoolItem]
 
 
-def _item_kind(asks: bool, candidate: BriefCandidate) -> BriefingItemKind:
+def _item_kind(asks: bool, candidate: BriefCandidate) -> ItemState:
     """How a placed item reads: its own state, unless placing it says it waits on the user or not."""
-    if asks and candidate.state not in NEEDS_YOU_ITEM_KINDS:
-        return "you"
-    if not asks and candidate.state in NEEDS_YOU_ITEM_KINDS:
-        return "note"
+    if asks and not candidate.state.needs_you:
+        return ItemState.YOU
+    if not asks and candidate.state.needs_you:
+        return ItemState.NOTE
     return candidate.state
 
 
@@ -82,11 +76,12 @@ def _item(placed: ComposedItem, candidate: BriefCandidate, offer: str | None) ->
 
 def _section(block: ComposedLead | ComposedItems, pool: FactPool, numeral: str) -> BriefingSection:
     if isinstance(block, ComposedLead):
-        offer = block.offer.strip() or None
+        candidate = pool.items[block.item.id]
+        action = candidate.action or block.item.action
         return BriefingSection(
             numeral=numeral,
             title=LEAD_HEADING,
-            items=[_item(block.item, pool.items[block.item.id], offer)],
+            items=[_item(block.item, candidate, LEAD_OFFERS[action] if action else None)],
         )
     return BriefingSection(
         numeral=numeral,
@@ -168,20 +163,7 @@ def sources_shown(laid: Laid, items: Mapping[int, BriefCandidate]) -> list[str]:
 
 def carried_ids(items: Mapping[int, BriefCandidate], duplicates: list[str]) -> list[str]:
     """Return every held result the brief accounts for: each is on its page, composed or not."""
-    return [held for c in items.values() if (held := c.held_id) is not None] + duplicates
-
-
-def chosen_signals(
-    chosen: Chosen, remembered: list[RememberedSignal]
-) -> list[tuple[int, RememberedSignal]]:
-    """Return the app signals the composition placed, by fact id, with their memory for the apps block."""
-    by_key = {(r.signal.integration_id, r.signal.external_id): r for r in remembered}
-    return [
-        (fact_id, by_key[(c.signal.integration_id, c.signal.external_id)])
-        for picked in chosen.picked
-        for fact_id, c in picked
-        if c.signal is not None
-    ]
+    return [c.origin.id for c in items.values() if isinstance(c.origin, HeldResult)] + duplicates
 
 
 def log_composition(pool: FactPool, laid: Laid) -> None:
@@ -197,6 +179,6 @@ def log_composition(pool: FactPool, laid: Laid) -> None:
     )
 
 
-def event_ids(pool: Mapping[int, BriefCandidate]) -> list[int]:
-    """Return the pool id of each calendar event, in calendar order."""
-    return [i for i, c in pool.items() if c.is_event]
+def event_items(pool: Mapping[int, BriefCandidate]) -> dict[int, BriefCandidate]:
+    """Return the pool's calendar events by id, in calendar order."""
+    return {i: c for i, c in pool.items() if c.is_event}

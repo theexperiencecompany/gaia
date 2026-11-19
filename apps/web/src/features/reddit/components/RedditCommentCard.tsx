@@ -2,6 +2,7 @@
 
 import { ScrollShadow } from "@heroui/react";
 import { ArrowUp02Icon, RedditIcon, UserCircle02Icon } from "@icons";
+import { FIXED_LOCALE, formatRelativeDate } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { RedditCommentData } from "@/types/features/redditTypes";
 
@@ -12,21 +13,10 @@ interface RedditCommentCardProps {
   isCollapsible?: boolean;
 }
 
-// Format timestamp to relative time
+// The date past a week is read in UTC so the server and the browser agree.
 function formatTime(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  const now = new Date();
-  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 604800)
-    return `${Math.floor(diffInSeconds / 86400)}d ago`;
-
-  // UTC keeps the rendered date identical between SSR and the browser.
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
+  return formatRelativeDate(new Date(timestamp * 1000), {
+    locale: FIXED_LOCALE,
     timeZone: "UTC",
   });
 }

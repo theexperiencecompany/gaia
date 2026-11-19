@@ -45,8 +45,9 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.oauth.oauth_state_service import is_safe_redirect_path
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
+from app.services.quiet_hours import get_quiet_hours
 from app.services.user_quiet_hours import set_quiet_hours
-from app.services.user_service import get_quiet_hours, update_user_profile
+from app.services.user_service import update_user_profile
 from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import clear_session_cookie
 from app.utils.errors import AppError
@@ -224,10 +225,7 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await set_user_timezone(user_id, user_timezone.strip())
-
-        if updated is None:
-            raise HTTPException(status_code=404, detail="User not found")
+        await set_user_timezone(user_id, user_timezone.strip())
 
         schedule_account_sync(user_id)
         log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
@@ -238,7 +236,7 @@ async def update_user_timezone(
             message="Timezone updated successfully",
             timezone=user_timezone.strip(),
         )
-    except HTTPException:
+    except (HTTPException, AppError):
         raise
     except Exception as e:
         log.error(

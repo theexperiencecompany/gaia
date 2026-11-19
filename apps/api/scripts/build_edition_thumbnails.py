@@ -5,30 +5,27 @@ cropped to the card's 3:4 top as a small thumbnail, and the busy composition (le
 needs-you, done, calendar, chart, quote, note) whole, as the full-size demo the card opens.
 Re-run when an edition's design or the family list changes.
 
-Usage (from apps/api)::
+Usage (from apps/api, with a development apps/api/.env; nothing is read from its services)::
 
-    LOG_LEVEL=ERROR PYTHONPATH=. uv run --group backend --group dev python scripts/build_edition_thumbnails.py
+    LOG_LEVEL=ERROR uv run --group backend --group dev python -m scripts.build_edition_thumbnails
 """
 
 import asyncio
+from collections.abc import Sequence
 import io
-import os
 from pathlib import Path
-import sys
-
-API_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(API_ROOT))
-os.chdir(API_ROOT)
 
 from PIL import Image
-from tests import offline_env  # noqa: F401 -- must run before any app import
-from tests.integration.brief_compositions import composed_payload
 
-from app.models.briefing_models import BriefingPayload
+from app.constants.briefing import EditionFamily
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.dev_brief_compositions import composed_payload
 from app.services.dev_postmarks_seed import sample_edition_payload
+from app.services.render.chromium import close_chromium
 
+API_ROOT = Path(__file__).resolve().parent.parent
 OUT = API_ROOT.parent / "web/public/images/briefing/editions"
 DEMO_OUT = OUT / "demo"
 DEMO_COMPOSITION = "busy"
@@ -63,20 +60,20 @@ def demo(png: bytes) -> bytes:
     return out.getvalue()
 
 
-def demo_payload(family: str) -> BriefingPayload:
+def demo_payload(family: EditionFamily) -> BriefingPayload:
     """Return the busy composition in family, wearing the sample's stamp or painting and day hue."""
     sample = sample_edition_payload(family, RECIPIENT)
-    return composed_payload(DEMO_COMPOSITION, family, sample.artwork_id).model_copy(
+    return composed_payload(
+        DEMO_COMPOSITION, family, sample.artwork_id, sample.stamp_city
+    ).model_copy(
         update={
-            "stamp_city": sample.stamp_city,
             "hue": sample.hue,
             "recipient_name": RECIPIENT,
-            "link": SAMPLE_LINK,
         }
     )
 
 
-def drop_stale(directory: Path, families: list[str]) -> None:
+def drop_stale(directory: Path, families: Sequence[str]) -> None:
     """Delete images for families that no longer exist."""
     for stale in set(directory.glob("*.webp")) - {directory / f"{f}.webp" for f in families}:
         stale.unlink()
@@ -87,14 +84,16 @@ async def main() -> None:
     families = sorted(DAILY_FAMILY_WEIGHTS)
     drop_stale(OUT, families)
     drop_stale(DEMO_OUT, families)
-    for family in families:
-        payload = sample_edition_payload(family, RECIPIENT)
-        payload.link = SAMPLE_LINK
-        rendered = await render_edition_png(payload)
-        (OUT / f"{family}.webp").write_bytes(thumbnail(rendered.image))
-        shown = await render_edition_png(demo_payload(family))
-        (DEMO_OUT / f"{family}.webp").write_bytes(demo(shown.image))
-        print(f"{family}.webp")
+    try:
+        for family in families:
+            payload = sample_edition_payload(family, RECIPIENT)
+            rendered = await render_edition_png(payload, SAMPLE_LINK)
+            (OUT / f"{family}.webp").write_bytes(thumbnail(rendered.image))
+            shown = await render_edition_png(demo_payload(family), SAMPLE_LINK)
+            (DEMO_OUT / f"{family}.webp").write_bytes(demo(shown.image))
+            print(f"{family}.webp")
+    finally:
+        await close_chromium()
 
 
 if __name__ == "__main__":

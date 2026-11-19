@@ -15,7 +15,7 @@
    (today) and the overnight report, then the figures box.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
   const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
   const word = (n) => WORDS[n] || String(n);

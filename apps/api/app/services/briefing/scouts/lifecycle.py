@@ -1,12 +1,13 @@
 """A scout follows its integration: learned in the background on connect, dropped on disconnect.
 
-Kept apart from the scout service: the connect and disconnect paths import this, and the
-service reaches the agent stack and integration modules that import those paths back.
+Kept apart from the scout service: the integration hook registry imports this, and the
+service reaches the agent stack and integration modules that import the registry back.
 """
 
 from app.constants.scouts import LEARN_SCOUT_TASK
 from app.db.repositories.scouts import scouts_repository
 from app.db.repositories.signal_memory import signal_memory_repository
+from app.services.integrations.hooks import IntegrationHooks
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 
@@ -27,3 +28,10 @@ async def forget_integration(user_id: str, integration_id: str) -> None:
     """Drop a disconnected integration's scout and everything the brief remembered from it."""
     await scouts_repository.delete_for(user_id, integration_id)
     await signal_memory_repository.delete_for_integration(user_id, integration_id)
+
+
+SCOUT_INTEGRATION_HOOKS = IntegrationHooks(
+    name="briefing_scouts",
+    on_connected=queue_scout_learn,
+    on_disconnected=forget_integration,
+)

@@ -1,37 +1,22 @@
 """The written message is the brief's one text; each surface frames it, none rewrites it."""
 
-from typing import Any
-
 import pytest
+from tests.factories import make_briefing_payload
 
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.models.briefing_models import BriefingPayload, NewStamp
+from app.models.brief_payload_models import NewStamp
 from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader
 from app.utils.message_breaks import split_message_bubbles
 
 _LINK = "https://heygaia.io/brief/brief_1"
 _MESSAGE = "Priya's deck is waiting on you.\n\nSequoia at 11:00.\nThen lunch with Dhruv."
-
-
-def _payload(**overrides: Any) -> BriefingPayload:
-    data: dict[str, Any] = {
-        "kicker": "K",
-        "template_family": "swiss",
-        "date": "2026-10-14",
-        "headline": "The deck, then Sequoia",
-        "lede": "lede",
-        "mood": "packed",
-        "caption": "c",
-        "message": _MESSAGE,
-    }
-    data.update(overrides)
-    return BriefingPayload.model_validate(data)
+_BRIEF = make_briefing_payload(headline="The deck, then Sequoia", message=_MESSAGE)
 
 
 @pytest.mark.unit
 class TestChatText:
     def test_the_headline_is_its_own_bubble_and_the_message_follows_with_the_link(self) -> None:
-        text = chat_text(_payload(), _LINK)
+        text = chat_text(_BRIEF, _LINK)
 
         assert split_message_bubbles(text) == [
             "The deck, then Sequoia",
@@ -39,7 +24,7 @@ class TestChatText:
         ]
 
     def test_the_message_keeps_its_line_breaks(self) -> None:
-        text = chat_text(_payload(), _LINK)
+        text = chat_text(_BRIEF, _LINK)
 
         assert text.split(NEW_MESSAGE_BREAKER)[1].startswith(_MESSAGE)
 
@@ -47,7 +32,7 @@ class TestChatText:
 @pytest.mark.unit
 class TestPreheader:
     def test_the_message_reads_as_one_preview_line(self) -> None:
-        assert preheader(_payload()) == (
+        assert preheader(_BRIEF) == (
             "Priya's deck is waiting on you. Sequoia at 11:00. Then lunch with Dhruv."
         )
 
@@ -57,12 +42,12 @@ class TestLinkedPhrases:
     _LINKED = "The [venue shortlist](https://heygaia.link/v1) is ready.\nPick one."
 
     def test_chat_keeps_the_markdown_link_each_bot_renders_natively(self) -> None:
-        text = chat_text(_payload(message=self._LINKED), _LINK)
+        text = chat_text(make_briefing_payload(message=self._LINKED), _LINK)
 
         assert "The [venue shortlist](https://heygaia.link/v1) is ready." in text
 
     def test_the_preview_line_shows_the_phrase_without_its_url(self) -> None:
-        assert preheader(_payload(message=self._LINKED)) == (
+        assert preheader(make_briefing_payload(message=self._LINKED)) == (
             "The venue shortlist is ready. Pick one."
         )
 
@@ -74,10 +59,10 @@ class TestBriefMessage:
         self, message: str | None
     ) -> None:
         with pytest.raises(ValueError, match="2026-10-14"):
-            brief_message(_payload(message=message))
+            brief_message(make_briefing_payload(date="2026-10-14", message=message))
 
     def test_a_written_message_is_returned_as_written(self) -> None:
-        assert brief_message(_payload()) == _MESSAGE
+        assert brief_message(_BRIEF) == _MESSAGE
 
 
 @pytest.mark.unit
@@ -85,7 +70,7 @@ class TestNewStampLine:
     _STAMP = NewStamp(city="Lima", country="Peru", collected=3, total=85)
 
     def test_a_new_stamp_follows_the_message_on_every_surface(self) -> None:
-        payload = _payload(new_stamp=self._STAMP)
+        payload = make_briefing_payload(message=_MESSAGE, new_stamp=self._STAMP)
 
         delivered = delivered_message(payload)
 
@@ -96,4 +81,4 @@ class TestNewStampLine:
         assert brief_message(payload) == _MESSAGE
 
     def test_without_a_new_stamp_the_message_is_delivered_as_written(self) -> None:
-        assert delivered_message(_payload()) == _MESSAGE
+        assert delivered_message(_BRIEF) == _MESSAGE

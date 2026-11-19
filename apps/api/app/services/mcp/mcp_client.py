@@ -13,7 +13,7 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
-from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST, MCP_UNLISTED_CONNECT_MAX
 from app.constants.providers import CredentialProviderName
@@ -23,7 +23,7 @@ from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.models.integration_models import Integration, UserIntegrationStatus
+from app.models.integration_models import Integration
 from app.models.mcp_config import (
     MCPConfig,
     McpProbeResult,
@@ -440,14 +440,14 @@ class MCPClient:
         )
         return result
 
-    async def _signed_out_status(self, integration_id: str) -> UserIntegrationStatus:
+    async def _signed_out_status(self, integration_id: str) -> IntegrationStatus:
         """Say how a credential that no longer works reads: expired once it ever connected, else never set up."""
         if await user_integration_repository.has_connected_before(self.user_id, integration_id):
-            return INTEGRATION_STATUS_EXPIRED
-        return "created"
+            return IntegrationStatus.EXPIRED
+        return IntegrationStatus.CREATED
 
     async def _reset_to_disconnected(
-        self, integration_id: str, *, status: UserIntegrationStatus = "created"
+        self, integration_id: str, *, status: IntegrationStatus = IntegrationStatus.CREATED
     ) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 
@@ -695,7 +695,9 @@ class MCPClient:
         labelled.append(
             (
                 "update_status_connected",
-                update_user_integration_status(self.user_id, integration_id, "connected"),
+                update_user_integration_status(
+                    self.user_id, integration_id, IntegrationStatus.CONNECTED
+                ),
             )
         )
         await self._await_logged(integration_id, labelled)

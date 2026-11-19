@@ -55,6 +55,7 @@ import time_machine
 import uvicorn
 from workos.session import SessionModule
 
+from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.config.rate_limits import RateLimitConfig
 from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
@@ -63,10 +64,14 @@ from app.constants.briefing import BriefingFrequency
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.briefing_state import briefing_state_repository
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.briefing.context import UserClock
+from app.services.briefing.clock import UserClock
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.auth_utils import session_hint_cookie_domain
@@ -86,19 +91,30 @@ async def users_get(user_id: str) -> UserDocument | None:
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
 
 
-def users_get_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[UserDocument]]:
-    """Stand in for user_repository.get with a user whose briefs run at frequency."""
+def briefs_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[BriefingStateDocument]]:
+    """Stand in for briefing_state_repository.state_for with briefs that run at frequency."""
 
-    async def get(user_id: str) -> UserDocument:
-        return UserDocument.model_validate(
-            {
-                "id": user_id,
-                "onboarding": {"completed": True},
-                "briefing_schedule": {"frequency": frequency},
-            }
+    async def state_for(user_id: str) -> BriefingStateDocument:
+        return BriefingStateDocument(
+            user_id=user_id, schedule=BriefingSchedule(frequency=frequency)
         )
 
-    return get
+    return state_for
+
+
+@contextmanager
+def brief_loop_awake() -> Iterator[None]:
+    """Serve brief_will_carry's reads past the workflow: a user with no goal hold, dormancy or winback."""
+    with (
+        patch.object(
+            user_repository, "get", new=AsyncMock(side_effect=lambda uid: UserDocument(id=uid))
+        ),
+        patch.object(
+            briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.DAILY)
+        ),
+        patch.object(briefing_repository, "list_recent", new=AsyncMock(return_value=[])),
+    ):
+        yield
 
 
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:
@@ -161,11 +177,8 @@ def pick_free_port() -> int:
 
 
 # The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
-LLM_STUB_DIR = (
-    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
-    / "tools"
-    / "llm-stub"
-)
+REPO_ROOT = Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+LLM_STUB_DIR = REPO_ROOT / "tools" / "llm-stub"
 
 
 def load_llm_stub_module(name: str) -> ModuleType:
@@ -242,12 +255,8 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
-        patch(
-            "app.services.user_service.get_profile_timezone", AsyncMock(return_value=tz)
-        ) as profile_tz,
-        patch(
-            "app.services.user_service.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
-        ) as quiet_hours,
+        # The owner quiet hours read once: their clock and hours (the default until set on owner).
+        patch("app.services.quiet_hours.user_repository") as users,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
         patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
         patch(
@@ -264,12 +273,14 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
     ):
         if now is not None:
             clock.enter_context(time_machine.travel(now, tick=False))
+        owner = UserDocument(id="gate-owner", timezone=tz.value)
+        users.get = AsyncMock(return_value=owner)
         yield SimpleNamespace(
             jev=router.post(HIL_JEV_URL),
             enforced=enforced,
             capture=capture,
-            tz=profile_tz,
-            quiet_hours=quiet_hours,
+            owner=owner,
+            owner_read=users.get,
             wrote=wrote,
             workflow_skips=workflow_skips,
             watch_skips=watch_skips,
@@ -354,6 +365,21 @@ def email_verdict_answers(
         "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
     }
     return {"answers": answers}
+
+
+_FENCE_RE = re.compile(r"<<[0-9a-f]{8,}>>")
+
+
+def unfenced(prompt: str) -> str:
+    """Return the prompt outside its untrusted-data fences; fails unless it has one fence, announced once."""
+    fences = set(_FENCE_RE.findall(prompt))
+    assert len(fences) == 1, f"expected one untrusted-data fence, found {sorted(fences)}"
+    (fence,) = fences
+    announced = UNTRUSTED_DATA_NOTE.format(fence=fence)
+    assert prompt.count(announced) == 1, "the fence is never said to hold data, not instructions"
+    parts = prompt.replace(announced, "").split(fence)
+    assert len(parts) % 2 == 1, "a fence is opened and never closed"
+    return "".join(parts[0::2])
 
 
 def user_clock(tz_name: str, day: date, hour: int = 8) -> UserClock:

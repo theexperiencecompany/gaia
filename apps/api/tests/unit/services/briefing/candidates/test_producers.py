@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_todo, make_user_id
 
+from app.config.settings import settings
 from app.constants.briefing import (
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
     DUE_TODO_CANDIDATES_LIMIT,
@@ -36,8 +37,9 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_candidate_models import CandidateOrigin, HeldResult, OutsideRef
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.briefing_models import BriefingEvent
+from app.models.brief_payload_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument
@@ -48,7 +50,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.briefing.candidates.app_names import integration_name
@@ -64,7 +66,9 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork, UserClock
+from app.services.briefing.clock import UserClock
+from app.services.briefing.fact_pool.render import stands_part
+from app.services.briefing.work import TrackedWork
 from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
@@ -72,12 +76,6 @@ USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
 CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_of_year=314)
 DESK_ID = "desk-1"
-
-
-def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument:
-    return TodoDocument(
-        id=todo_id, user_id=USER_ID, title=title, labels=[GAIA_TRACKED_LABEL, *labels], **fields
-    )
 
 
 class TestTrackedTodos:
@@ -88,20 +86,20 @@ class TestTrackedTodos:
         due = NOW + timedelta(days=2)
         rule = "Do not make a payment without explicit approval."
         work = TrackedWork(
-            blocked=[_todo("d1", "Pay the invoice", description=rule, due_date=due)],
-            running=[_todo("d2", "Draft the memo", description=rule)],
+            blocked=[make_todo("Pay the invoice", description=rule, due_date=due)],
+            running=[make_todo("Draft the memo", description=rule)],
         )
 
         [waiting] = waiting_candidates(work)
-        [running] = gaia_work_candidates(work, CLOCK)
+        [running] = gaia_work_candidates(work)
 
         assert (waiting.detail, waiting.due_at) == (None, due)
         assert (running.detail, running.due_at) == (None, None)
 
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
         work = TrackedWork(
-            blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
-            failed=[_todo("f1", "Book the Lisbon flights", FAILED_LABEL)],
+            blocked=[make_todo("Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL, id="b1")],
+            failed=[make_todo("Book the Lisbon flights", FAILED_LABEL, id="f1")],
         )
 
         found = waiting_candidates(work)
@@ -134,7 +132,7 @@ class TestTrackedTodos:
     )
     def test_a_waiting_todo_asks_what_its_label_says(self, label: str, action: BriefAction) -> None:
         """Live brief: an approval read as "review", so "To approve" over it was refused."""
-        [found] = waiting_candidates(TrackedWork(blocked=[_todo("b1", "Priya's venues", label)]))
+        [found] = waiting_candidates(TrackedWork(blocked=[make_todo("Priya's venues", label)]))
 
         assert found.action is action
 
@@ -142,8 +140,10 @@ class TestTrackedTodos:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
         work = TrackedWork(
             blocked=[
-                _todo("t1", "Reply to Dan about the lease", NEEDS_REPLY_LABEL, external_ref=thread),
-                _todo("t2", "Reply to Dan again", NEEDS_REPLY_LABEL, external_ref=thread),
+                make_todo(
+                    "Reply to Dan about the lease", NEEDS_REPLY_LABEL, external_ref=thread, id="t1"
+                ),
+                make_todo("Reply to Dan again", NEEDS_REPLY_LABEL, external_ref=thread),
             ]
         )
 
@@ -156,16 +156,16 @@ class TestTrackedTodos:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-9")
         work = TrackedWork(
             blocked=[
-                _todo("t1", "Reply to Dan", external_ref=thread),
-                _todo("t2", "Triage the mailbox", external_ref=desk),
-                _todo("t3", "Plain todo"),
+                make_todo("Reply to Dan", external_ref=thread, id="t1"),
+                make_todo("Triage the mailbox", external_ref=desk, id="t2"),
+                make_todo("Plain todo", id="t3"),
             ]
         )
 
         found = waiting_candidates(work)
 
         assert [(c.todo_id, c.ref) for c in found] == [
-            ("t1", "gmail:18c2f"),
+            ("t1", OutsideRef(integration_id="gmail", external_id="18c2f")),
             ("t2", None),
             ("t3", None),
         ]
@@ -173,15 +173,17 @@ class TestTrackedTodos:
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
             completed=[
-                _todo("c1", "Investor update", completed=True, completed_by=TodoCompleter.GAIA),
-                _todo(
-                    "c2", "Wait for Sam's yes", completed=True, completed_by=TodoCompleter.TRIGGER
+                make_todo("Investor update", completed=True, completed_by=TodoCompleter.GAIA),
+                make_todo(
+                    "Wait for Sam's yes",
+                    completed=True,
+                    completed_by=TodoCompleter.TRIGGER,
                 ),
             ],
-            running=[_todo("r1", "Vet the Q4 leads")],
+            running=[make_todo("Vet the Q4 leads")],
         )
 
-        found = gaia_work_candidates(work, CLOCK)
+        found = gaia_work_candidates(work)
 
         assert [(c.title, c.state, c.outcome, c.finished_by) for c in found] == [
             ("Investor update", "lookback", BriefOutcome.FINISHED, TodoCompleter.GAIA),
@@ -239,20 +241,55 @@ class TestTrackedTodos:
         self, fields: dict[str, Any], stands: str, outcome: BriefOutcome | None
     ) -> None:
         """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
-        doc = TodoDocument(
-            id="r1",
-            user_id=USER_ID,
-            title="Chase the venue",
-            **{"labels": [GAIA_TRACKED_LABEL], **fields},
+        doc = make_todo("Chase the venue", GAIA_TRACKED_LABEL, **fields)
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
+
+        assert (stands_part(1, found, CLOCK), found.outcome) == (f"stands: {stands}", outcome)
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"waiting_on": WaitingOn.EVENT},
+            {"waiting_on": WaitingOn.TIME, "pause_reason": DeactivationReason.INTEGRATION_EXPIRED},
+        ],
+        ids=["untimed-wait", "paused"],
+    )
+    def test_work_not_waiting_on_a_time_names_no_day_gaia_is_back(
+        self, fields: dict[str, Any]
+    ) -> None:
+        doc = make_todo(
+            "Chase the venue", GAIA_TRACKED_LABEL, scheduled_at=NOW + timedelta(days=2), **fields
         )
 
-        [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
 
-        assert (found.standing, found.outcome) == (stands, outcome)
+        assert found.back_at is None
+
+    def test_work_waiting_on_a_time_is_back_the_day_it_is_scheduled(self) -> None:
+        back = NOW + timedelta(days=2)
+        doc = make_todo(
+            "Chase the venue", GAIA_TRACKED_LABEL, waiting_on=WaitingOn.TIME, scheduled_at=back
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]))
+
+        assert found.back_at == back
+
+    def test_what_waits_on_the_user_never_says_where_gaias_work_stands(self) -> None:
+        asked = make_todo(
+            "Pick the venue",
+            WAITING_FOR_REPLY_LABEL,
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=NOW + timedelta(days=2),
+        )
+
+        [found] = waiting_candidates(TrackedWork(blocked=[asked]))
+
+        assert (found.standing, found.back_at) == (None, None)
 
     def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
-        asked = _todo(
-            "q1",
+        asked = make_todo(
             "Pick the venue",
             waiting_on=WaitingOn.USER,
             question="Lisbon or Porto?",
@@ -269,9 +306,9 @@ class TestTrackedTodos:
 
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
-            _own_todo("u1", "Send the deck to Priya", completed=True),
-            _own_todo("u2", "send the  deck to priya", completed=True),
-            _own_todo("u3", "File the VAT return", completed=True),
+            make_todo("Send the deck to Priya", completed=True, id="u1"),
+            make_todo("send the deck to priya", completed=True, id="u2"),
+            make_todo("File the VAT return", completed=True, id="u3"),
         ]
 
         found = user_done_candidates(done)
@@ -286,98 +323,90 @@ class TestTrackedTodos:
         assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
 
 
-def _own_todo(todo_id: str, title: str, **fields: Any) -> TodoDocument:
-    return TodoDocument(id=todo_id, user_id=USER_ID, title=title, **fields)
-
-
-def _listings(
-    monkeypatch: pytest.MonkeyPatch, due: list[TodoDocument], undated: list[TodoDocument]
-) -> tuple[AsyncMock, AsyncMock]:
-    due_listing, undated_listing = AsyncMock(return_value=due), AsyncMock(return_value=undated)
-    monkeypatch.setattr(todo_repository, "list_open_user_todos", due_listing)
-    monkeypatch.setattr(todo_repository, "list_undated_user_todos", undated_listing)
-    return due_listing, undated_listing
-
-
 class TestOwnTodos:
-    async def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to_most_overdue_first(
+        self,
     ) -> None:
         overdue = NOW - timedelta(days=3)
-        due = [
-            _own_todo("o1", "File the VAT return", description="Q3", due_date=overdue),
-            _own_todo("o2", "Renew the passport", due_date=NOW),
+        open_own = [
+            make_todo("Renew the passport", due_date=NOW, id="o2"),
+            make_todo("File the VAT return", description="Q3", due_date=overdue, id="o1"),
+            make_todo("Book the dentist", due_date=NOW + timedelta(days=2), id="late"),
         ]
-        listing, _ = _listings(monkeypatch, due, [])
-        cutoff = NOW + timedelta(hours=20)
 
-        found = await own_todo_candidates(USER_ID, cutoff, TrackedWork())
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=20), TrackedWork())
 
-        assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
-            ("File the VAT return", None, overdue, "o1"),
-            ("Renew the passport", None, NOW, "o2"),
+        assert [(c.title, c.detail, c.due_at, c.todo_id, c.origin) for c in found] == [
+            ("File the VAT return", None, overdue, "o1", CandidateOrigin.OWN_TODO),
+            ("Renew the passport", None, NOW, "o2", CandidateOrigin.OWN_TODO),
         ]
         assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
-        assert listing.await_args.args == (USER_ID,)
-        assert listing.await_args.kwargs == {
-            "limit": DUE_TODO_CANDIDATES_LIMIT,
-            "due_before": cutoff,
-        }
 
-    async def test_the_oldest_undated_todos_follow_the_due_ones_with_no_due_date(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        due = [_own_todo("o1", "File the VAT return", due_date=NOW)]
-        undated = [_own_todo("n1", "Sort the garage"), _own_todo("n2", "Call grandma")]
-        _, listing = _listings(monkeypatch, due, undated)
+    def test_a_todo_due_exactly_at_the_cutoff_is_not_the_briefs(self) -> None:
+        open_own = [make_todo("File the VAT return", due_date=NOW, id="o1")]
 
-        found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
+        assert own_todo_candidates(open_own, NOW, TrackedWork()) == []
 
-        assert [(c.todo_id, c.due_at, c.backlog) for c in found] == [
-            ("o1", NOW, False),
-            ("n1", None, True),
-            ("n2", None, True),
+    def test_a_naive_due_date_is_read_as_utc(self) -> None:
+        naive = (NOW - timedelta(minutes=1)).replace(tzinfo=None)
+        open_own = [make_todo("File the VAT return", due_date=naive, id="o1")]
+
+        assert [c.todo_id for c in own_todo_candidates(open_own, NOW, TrackedWork())] == ["o1"]
+
+    def test_only_the_most_overdue_are_offered_and_ties_keep_creation_order(self) -> None:
+        open_own = [
+            make_todo(f"Errand {n}", due_date=NOW - timedelta(days=n % 3), id=f"o{n:02d}")
+            for n in reversed(range(DUE_TODO_CANDIDATES_LIMIT + 5))
+        ]
+
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
+
+        ordered = sorted(open_own, key=lambda d: (d.due_date, d.id))[:DUE_TODO_CANDIDATES_LIMIT]
+        assert [c.todo_id for c in found] == [d.id for d in ordered]
+
+    def test_the_oldest_undated_todos_follow_the_due_ones_as_backlog(self) -> None:
+        open_own = [
+            make_todo(f"Someday {n}", created_at=NOW - timedelta(days=n), id=f"n{n}")
+            for n in range(UNDATED_TODO_CANDIDATES_LIMIT + 2)
+        ] + [make_todo("File the VAT return", due_date=NOW, id="o1")]
+
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
+
+        oldest = [f"n{n}" for n in reversed(range(2, UNDATED_TODO_CANDIDATES_LIMIT + 2))]
+        assert [(c.todo_id, c.backlog) for c in found] == [
+            ("o1", False),
+            *((todo_id, True) for todo_id in oldest),
         ]
         assert {(c.state, c.action) for c in found} == {("you", BriefAction.ATTEND)}
-        listing.assert_awaited_once_with(USER_ID, limit=UNDATED_TODO_CANDIDATES_LIMIT)
 
-    async def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
+        self,
     ) -> None:
-        _listings(
-            monkeypatch,
-            [
-                _own_todo("b1", "Approve the Priya reply", due_date=NOW),
-                _own_todo("u9", "draft the  MEMO", due_date=NOW),
-                _own_todo("u1", "Call the bank", due_date=NOW),
-            ],
-            [
-                _own_todo("b1", "Approve the Priya reply"),
-                _own_todo("n9", "Draft the memo"),
-                _own_todo("n1", "Sort the garage"),
-            ],
-        )
+        open_own = [
+            make_todo("Approve the Priya reply", due_date=NOW, id="b1"),
+            make_todo("draft the MEMO", due_date=NOW, id="u9"),
+            make_todo("Call the bank", due_date=NOW, id="u1"),
+            make_todo("Draft the memo", id="n9"),
+            make_todo("Sort the garage", id="n1"),
+        ]
         work = TrackedWork(
-            blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
-            running=[_todo("r1", "Draft the memo")],
+            blocked=[make_todo("Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL, id="b1")],
+            running=[make_todo("Draft the memo")],
         )
 
-        found = await own_todo_candidates(USER_ID, NOW, work)
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), work)
 
         assert [c.todo_id for c in found] == ["u1", "n1"]
 
-    async def test_an_undated_todo_on_a_due_ones_subject_is_counted_into_it(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _listings(
-            monkeypatch,
-            [_own_todo("o1", "Call the bank", due_date=NOW)],
-            [_own_todo("n1", "call the  BANK")],
-        )
+    def test_an_undated_todo_on_a_due_ones_subject_is_counted_into_it(self) -> None:
+        open_own = [
+            make_todo("call the BANK", id="n1"),
+            make_todo("Call the bank", due_date=NOW, id="o1"),
+        ]
 
-        found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
+        found = own_todo_candidates(open_own, NOW + timedelta(hours=1), TrackedWork())
 
-        assert [(c.todo_id, c.count) for c in found] == [("o1", 2)]
+        assert [(c.todo_id, c.count, c.backlog) for c in found] == [("o1", 2, False)]
 
 
 def _held(
@@ -398,7 +427,7 @@ class TestHeldResults:
     async def test_the_desks_findings_are_gmail_updates_and_the_rest_gaias_work(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        desk = _todo(DESK_ID, "Inbox desk")
+        desk = make_todo("Inbox desk", id=DESK_ID)
         find_desk = AsyncMock(return_value=desk)
         monkeypatch.setattr(todo_repository, "find_latest_by_external_ref", find_desk)
         held = [
@@ -416,12 +445,12 @@ class TestHeldResults:
 
         found = await held_candidates(USER_ID, held)
 
-        assert [(c.app, c.title, c.held_id, c.outcome) for c in found] == [
-            ("Gmail", "Stripe payout of $2,400 landed", "h1", None),
+        assert [(c.app, c.title, c.origin, c.outcome) for c in found] == [
+            ("Gmail", "Stripe payout of $2,400 landed", HeldResult(id="h1"), None),
             (
                 "GAIA",
                 "Research digest: 3 new papers on retrieval",
-                "h2",
+                HeldResult(id="h2"),
                 BriefOutcome.FINISHED,
             ),
         ]
@@ -448,7 +477,7 @@ class TestHeldResults:
         monkeypatch.setattr(
             todo_repository,
             "find_latest_by_external_ref",
-            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+            AsyncMock(return_value=make_todo("Inbox desk", id=DESK_ID)),
         )
         held = [
             _held("h1", BriefItemSource.TODO, "other-todo", "Weekly review", "Wrote the summary"),
@@ -468,7 +497,7 @@ class TestHeldResults:
         monkeypatch.setattr(
             todo_repository,
             "find_latest_by_external_ref",
-            AsyncMock(return_value=_todo(DESK_ID, "Inbox desk")),
+            AsyncMock(return_value=make_todo("Inbox desk", id=DESK_ID)),
         )
         held = [
             _held(
@@ -662,11 +691,43 @@ class TestApprovals:
             ("Slack", "Message #launch on Slack", "you"),
         ]
         assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
-        assert [c.seen_as for c in found] == ["approval:ap_1", "approval:ap_3", "approval:appr-1"]
+        assert [str(c.seen_as) for c in found] == [
+            "approval:ap_1",
+            "approval:ap_3",
+            "approval:appr-1",
+        ]
         assert {c.action for c in found} == {BriefAction.APPROVE}
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)
         assert gate.await_args.args == (USER_ID, NOW)
+
+    async def test_an_approval_opens_the_conversation_its_card_waits_in(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dhruv replay 11-12: "review the update" went out as text, the approval had no address."""
+        record = HILApprovalRecord(
+            approval_id="appr-1",
+            user_id=USER_ID,
+            conversation_id="conv-2",
+            stream_id="s-1",
+            tool_name="delete_file",
+            expires_at=NOW + timedelta(minutes=15),
+        )
+        monkeypatch.setattr(
+            approval_ledger_repository,
+            "list_pending_for_user",
+            AsyncMock(return_value=[_ledger("ap_1")]),
+        )
+        monkeypatch.setattr(
+            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[record])
+        )
+
+        found = await approval_candidates(USER_ID, NOW, set())
+
+        assert [c.url for c in found] == [
+            f"{settings.FRONTEND_URL}/c/conv-1",
+            f"{settings.FRONTEND_URL}/c/conv-2",
+        ]
 
     async def test_a_ledger_row_names_the_app_its_mcp_tool_key_points_at(
         self, monkeypatch: pytest.MonkeyPatch
@@ -809,6 +870,7 @@ class TestFailedRuns:
             "note",
             None,
         )
+        assert str(found.seen_as) == "workflow:wf-sync"
 
     async def test_one_item_per_failed_workflow_naming_its_latest_error(
         self, monkeypatch: pytest.MonkeyPatch

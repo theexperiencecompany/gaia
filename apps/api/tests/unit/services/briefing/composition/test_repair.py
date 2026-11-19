@@ -5,8 +5,8 @@ from datetime import UTC, date, datetime
 import pytest
 from tests.helpers import user_clock
 
-from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate
+from app.constants.briefing import MAX_BRIEF_ITEMS, BriefAction, BriefOutcome
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ChartKind,
@@ -16,9 +16,11 @@ from app.models.brief_composition_models import (
     ComposedItems,
     ComposedLead,
     ComposedNote,
-    GroupState,
+    placed_items,
 )
+from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.composition.compose import pool_values
 from app.services.briefing.composition.repair import pool_composition, repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
@@ -45,7 +47,14 @@ NOTE = ComposedNote(kind="note", text="A light day.")
 
 def _candidate(title: str, **fields: object) -> BriefCandidate:
     return BriefCandidate.model_validate(
-        {"source": "gaia", "app": "GAIA", "state": "you", "title": title, "gaia_acts": True}
+        {
+            "origin": CandidateOrigin.TRACKED,
+            "source": "gaia",
+            "app": "GAIA",
+            "state": "you",
+            "title": title,
+            "gaia_acts": True,
+        }
         | fields
     )
 
@@ -66,9 +75,11 @@ def _item(
     *,
     action: BriefAction | None = BriefAction.REVIEW,
     outcome: BriefOutcome | None = None,
-    title: str = "Term sheet",
+    title: str | None = None,
 ) -> ComposedItem:
-    return ComposedItem(id=item_id, action=action, outcome=outcome, title=title, detail=None)
+    return ComposedItem(
+        id=item_id, action=action, outcome=outcome, title=title or f"Ask {item_id}", detail=None
+    )
 
 
 def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> ComposedItems:
@@ -76,7 +87,7 @@ def _group(*items: ComposedItem, state: GroupState = GroupState.NEEDS_YOU) -> Co
 
 
 def _lead(item: ComposedItem) -> ComposedLead:
-    return ComposedLead(kind="lead", item=item, offer="Send the reply I drafted")
+    return ComposedLead(kind="lead", item=item)
 
 
 def _chart(title: str) -> ComposedChart:
@@ -107,7 +118,9 @@ class TestTheProducersSide:
         )
 
     def test_an_outcome_the_producer_named_replaces_what_the_model_said(self) -> None:
-        pool = _pool(_candidate("Weekly update", state="lookback", outcome=BriefOutcome.SENT))
+        pool = _pool(
+            _candidate("Weekly update", state=ItemState.LOOKBACK, outcome=BriefOutcome.SENT)
+        )
         said = _item(1, action=BriefAction.REPLY)
 
         assert repaired(_of(_group(said, state=GroupState.DONE)), pool) == _of(
@@ -131,7 +144,7 @@ class TestTheProducersSide:
         assert group.state is GroupState.NEEDS_YOU
 
     def test_a_group_whose_items_differ_keeps_its_declared_state(self) -> None:
-        pool = _pool(_candidate("Ask"), _candidate("Done", state="lookback"))
+        pool = _pool(_candidate("Ask"), _candidate("Done", state=ItemState.LOOKBACK))
         mixed = _group(
             _item(1), _item(2, action=None, outcome=BriefOutcome.FINISHED), state=GroupState.DONE
         )
@@ -157,6 +170,130 @@ class TestTheLead:
         composition = _of(_lead(_item(1)), _group(_item(1), _item(2)))
 
         assert repaired(composition, MANY) == _of(_lead(_item(1)), _group(_item(2)))
+
+    def test_an_item_placed_twice_in_one_group_under_another_title_stays_once(self) -> None:
+        composition = _of(_group(_item(1), _item(1, title="Ask one again")))
+
+        assert repaired(composition, MANY) == _of(_group(_item(1)))
+
+    def test_an_item_the_pool_lacks_is_dropped_and_the_rest_of_its_group_kept(self) -> None:
+        assert repaired(_of(_group(_item(99), _item(1))), MANY) == _of(_group(_item(1)))
+
+    @pytest.mark.regression
+    def test_a_second_item_the_composer_titles_as_an_earlier_one_is_dropped(self) -> None:
+        """Replay: two todos from Mercury's repeated email both read "Mercury application questions"."""
+        mercury = "Mercury application questions"
+        composition = _of(
+            _lead(_item(1, title=mercury)),
+            _group(_item(2), _item(3, title=f" {mercury.upper()} ")),
+        )
+
+        assert repaired(composition, MANY) == _of(_lead(_item(1, title=mercury)), _group(_item(2)))
+
+
+APPROVAL = _candidate(
+    "Connect integration", origin=CandidateOrigin.APPROVAL, action=BriefAction.APPROVE
+)
+PLACED_APPROVAL = ComposedItems(
+    kind="items",
+    state=GroupState.NEEDS_YOU,
+    heading=GroupState.NEEDS_YOU.fallback_heading,
+    items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
+)
+
+
+class TestAnApprovalNoBriefHasShown:
+    """Replay of Dhruv's Nov 9: the composer left out an unseen approval, and the day went quiet."""
+
+    def test_it_is_placed_after_the_asks_when_the_composer_leaves_it_out(self) -> None:
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+        done = _group(_item(1, action=None, outcome=BriefOutcome.FINISHED), state=GroupState.DONE)
+
+        assert repaired(_of(_group(_item(1)), NOTE), pool) == _of(
+            _group(_item(1)), PLACED_APPROVAL, NOTE
+        )
+        assert repaired(_of(done), pool) == _of(PLACED_APPROVAL, done)
+
+    def test_one_shown_before_and_unchanged_is_the_composers_call(self) -> None:
+        shown = APPROVAL.model_copy(
+            update={
+                "memory": SignalMemoryDocument(
+                    user_id="u",
+                    integration_id="gaia",
+                    external_id="approval:1",
+                    first_seen=datetime(2026, 11, 9, tzinfo=UTC),
+                    times_shown=1,
+                )
+            }
+        )
+
+        assert repaired(_of(_group(_item(1))), _pool(_candidate("Ask 1"), shown)) == _of(
+            _group(_item(1))
+        )
+
+    def test_one_titled_as_an_earlier_item_is_said_once_not_placed_again(self) -> None:
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+        composition = _of(
+            _group(_item(1, title="Connect integration")),
+            _group(_item(2, action=BriefAction.APPROVE, title="Connect integration")),
+        )
+
+        assert repaired(composition, pool) == _of(_group(_item(1, title="Connect integration")))
+
+    def test_more_than_a_group_holds_are_placed_in_groups_of_at_most_five(self) -> None:
+        approvals = [APPROVAL.model_copy(update={"title": f"Approve {n}"}) for n in range(1, 7)]
+        owed = [_item(n, action=BriefAction.APPROVE, title=f"Approve {n}") for n in range(1, 7)]
+
+        assert repaired(_of(NOTE), _pool(*approvals)) == _of(
+            PLACED_APPROVAL.model_copy(update={"items": owed[:5]}),
+            PLACED_APPROVAL.model_copy(update={"items": owed[5:]}),
+            NOTE,
+        )
+
+    def test_one_the_composer_placed_stays_where_it_put_it(self) -> None:
+        placed = ComposedItems(
+            kind="items",
+            state=GroupState.NEEDS_YOU,
+            heading="Sign-offs",
+            items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
+        )
+        pool = _pool(_candidate("Ask 1"), APPROVAL)
+
+        assert repaired(_of(placed, NOTE), pool) == _of(placed, NOTE)
+
+    def test_one_the_composer_groups_costs_no_other_item_its_place(self) -> None:
+        others = [_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS)]
+        pool = _pool(*others, APPROVAL)
+        approval = _item(MAX_BRIEF_ITEMS, action=BriefAction.APPROVE, title="Connect")
+        composition = _of(
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS)), approval),
+        )
+
+        assert repaired(composition, pool) == composition
+
+    def test_one_the_composer_leads_with_costs_no_other_item_its_place(self) -> None:
+        others = [_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS)]
+        pool = _pool(*others, APPROVAL)
+        lead = _lead(_item(MAX_BRIEF_ITEMS, action=BriefAction.APPROVE, title="Connect"))
+        composition = _of(
+            lead,
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS))),
+        )
+
+        assert repaired(composition, pool) == composition
+
+    def test_it_takes_its_place_inside_the_brief_cap(self) -> None:
+        pool = _pool(*(_candidate(f"Ask {n}") for n in range(1, MAX_BRIEF_ITEMS + 1)), APPROVAL)
+        full = _of(
+            _group(*(_item(n) for n in range(1, 6))),
+            _group(*(_item(n) for n in range(6, MAX_BRIEF_ITEMS + 1))),
+        )
+
+        placed = [i.id for b in repaired(full, pool).blocks for i in placed_items(b)]
+
+        assert placed == [*range(1, MAX_BRIEF_ITEMS), MAX_BRIEF_ITEMS + 1]
 
 
 class TestThePageBudget:
@@ -228,10 +365,10 @@ class TestThePoolsOwnBrief:
     def test_its_news_is_grouped_by_state_with_each_items_own_side(self) -> None:
         pool = _pool(
             _candidate("Reply to Maya"),
-            _candidate("Board deck", state="lookback"),
-            _candidate("Weekly update", state="lookback", outcome=BriefOutcome.SENT),
-            _candidate("Inbox triage", state="gaia"),
-            _candidate("Standup", state="note", is_event=True),
+            _candidate("Board deck", state=ItemState.LOOKBACK),
+            _candidate("Weekly update", state=ItemState.LOOKBACK, outcome=BriefOutcome.SENT),
+            _candidate("Inbox triage", state=ItemState.GAIA),
+            _candidate("Standup", state=ItemState.NOTE, origin=CandidateOrigin.EVENT),
         )
 
         assert pool_composition(pool, pool_values(pool)) == _of(
@@ -259,7 +396,7 @@ class TestThePoolsOwnBrief:
         )
 
     def test_a_failed_item_asks_the_user_to_look(self) -> None:
-        pool = _pool(_candidate("Sync job", state="failed"))
+        pool = _pool(_candidate("Sync job", state=ItemState.FAILED))
 
         assert pool_composition(pool, pool_values(pool)) == _of(
             ComposedItems(

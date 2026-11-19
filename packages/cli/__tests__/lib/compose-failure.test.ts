@@ -2,13 +2,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  applyComposeEvent,
+  createComposeProgress,
+} from "../../src/lib/compose-events.js";
+import {
   ComposeError,
   explainComposeFailure,
 } from "../../src/lib/compose-failure.js";
-import {
-  applyComposeEvent,
-  createComposeProgress,
-} from "../../src/lib/compose-progress.js";
 
 const UP = { rebuildCommand: "gaia up --build" };
 
@@ -107,6 +107,21 @@ describe("explainComposeFailure", () => {
 
     expect(failure.cause).toBe("GAIA's MongoDB didn't start.");
     expect(failure.service).toBe("mongo");
+  });
+
+  it("names a one-shot service that failed, so its log tail is shown", () => {
+    // Verbatim from a real `up` (Compose v5) whose migrate service exited 1.
+    const failure = explainComposeFailure(
+      ['service "migrate" didn\'t complete successfully: exit 1'],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toBe(
+      "GAIA's data update didn't finish, so GAIA did not start on it.",
+    );
+    expect(failure.next).toContain("again");
+    expect(failure.service).toBe("migrate");
   });
 
   it.each([

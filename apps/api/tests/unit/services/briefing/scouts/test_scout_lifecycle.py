@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, sentinel
 
 import pytest
+from tests.factories import make_user_id
 
 from app.constants.scouts import LEARN_SCOUT_TASK
 from app.db.repositories.scouts import scouts_repository
@@ -11,7 +12,7 @@ from app.services.briefing.scouts import lifecycle
 from app.services.briefing.scouts.lifecycle import forget_integration, queue_scout_learn
 from app.utils.redis_utils import RedisPoolManager
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 async def test_a_connect_queues_one_learn_per_user_and_integration(

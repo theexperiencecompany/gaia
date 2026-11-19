@@ -49,9 +49,11 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
+from app.services.briefing.errors import refuse_a_missing_brief
+from app.services.briefing.held import release_on_tell_me_now
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
@@ -319,7 +321,7 @@ async def reopening_todos(
         raise
     reopened_tracked = [todo.id for todo in todos if todo.completed and todo.vfs_path]
     for todo_id in reopened_tracked:
-        await record_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.REOPENED, detail)
         await set_canvas_completed(todo_id, completed=False)
     if reopened_tracked:
         schedule_gaia_tasks_sync(user_id)
@@ -352,7 +354,8 @@ async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
 
 
 async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> None:
-    """Refuse, before any write, a bulk update that may only be made one todo at a time."""
+    """Refuse, before any write, a bulk update that may only be made one todo at a time, or no brief carries."""
+    await refuse_a_missing_brief(user_id, request.updates.delivery)
     # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
     if request.updates.workflow_id is not None:
         raise AppError(
@@ -538,7 +541,7 @@ class TodoService:
             gaia_retry_count=todo.gaia_retry_count,
             expires_at=todo.expires_at,
             references=todo.references,
-            notify_on_run=todo.notify_on_run,
+            delivery=todo.delivery,
             external_ref=external_ref,
             parent_todo_id=parent_todo_id,
         )
@@ -628,6 +631,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
+        await refuse_a_missing_brief(user_id, updates.delivery)
         await _refuse_what_a_tracked_todo_cannot_take(todo_id, user_id, updates)
 
         if update.project_id is not None:
@@ -659,6 +663,7 @@ class TodoService:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        await release_on_tell_me_now(user_id, [todo_id], updates.delivery)
         if updates.completed is not None:
             # Toggle semantics: fires for both completing and un-completing,
             # tracked or plain.
@@ -780,6 +785,7 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
+            await release_on_tell_me_now(user_id, succeeded, request.updates.delivery)
 
         return BulkOperationResponse(
             success=succeeded,

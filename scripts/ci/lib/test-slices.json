@@ -11,7 +11,8 @@
       "serial": "false",
       "after": [],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "unit-b",
@@ -24,7 +25,8 @@
       "serial": "false",
       "after": ["shared-suite"],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "integration",
@@ -37,7 +39,8 @@
       "serial": "false",
       "after": ["contract-fuzz"],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "true"
     },
     {
       "name": "bridge",
@@ -50,7 +53,8 @@
       "serial": "true",
       "after": [],
       "timeout_minutes": "45",
-      "engines": "false"
+      "engines": "false",
+      "chromium": "false"
     },
     {
       "name": "browser",
@@ -63,7 +67,8 @@
       "serial": "false",
       "timeout_minutes": "15",
       "after": [],
-      "engines": "true"
+      "engines": "true",
+      "chromium": "false"
     }
   ]
 }

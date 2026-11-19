@@ -697,6 +697,40 @@
         }
       }
     },
+    "link-constants": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs link-constants"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/app/constants/short_links.py",
+        "{workspaceRoot}/apps/api/app/constants/http.py",
+        "{workspaceRoot}/apps/api/app/utils/loggable_path.py",
+        "{workspaceRoot}/apps/api/app/models/short_link_models.py",
+        "{workspaceRoot}/apps/api/app/services/links/access.py",
+        "{workspaceRoot}/apps/api/app/services/links/errors.py",
+        "{workspaceRoot}/apps/api/scripts/dump_link_constants.py",
+        "{workspaceRoot}/apps/api/tests/offline_env.py",
+        "{workspaceRoot}/apps/usercontent-worker/src/link-constants.generated.json",
+        "{workspaceRoot}/packages/cli/src/lib/link-constants.generated.json",
+        "{workspaceRoot}/apps/web/src/features/short-links/link-constants.generated.ts",
+        "{workspaceRoot}/packages/cli/selfhost/Caddyfile",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "link-constants",
+          "area": "contracts"
+        }
+      }
+    },
     "deploy-templates": {
       "executor": "nx:run-commands",
       "options": {
@@ -722,6 +756,35 @@
         "ci": {
           "job": "lint-mixed",
           "check": "deploy-templates",
+          "area": "contracts"
+        }
+      }
+    },
+    "openui-prompts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs openui-prompts"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/scripts/openui/**/*",
+        "{workspaceRoot}/apps/web/src/config/openui/**/*",
+        "{workspaceRoot}/libs/artifacts/src/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/artifacts/**/*",
+        "{workspaceRoot}/apps/api/app/agents/prompts/openui_generated.txt",
+        "{workspaceRoot}/apps/api/app/agents/prompts/artifacts/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "openui-prompts",
           "area": "contracts"
         }
       }

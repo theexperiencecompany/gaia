@@ -14,7 +14,13 @@ from openai.types.responses import (
 )
 import pytest
 
-from app.constants.llm import ARTIFACT_MODEL_NAME, ARTIFACT_REASONING_EFFORT
+from app.config.settings import settings
+from app.constants.llm import (
+    ARTIFACT_MODEL_NAME,
+    ARTIFACT_REASONING_EFFORT,
+    SIM_STUB_API_KEY,
+    SIM_STUB_BASE_URL,
+)
 from app.constants.openui_artifacts import (
     ARTIFACT_MAX_OUTPUT_TOKENS,
     ARTIFACT_PROMPTS_DIR,
@@ -297,6 +303,23 @@ async def test_a_configured_key_builds_the_client() -> None:
         built = await generate._client()
 
     client.assert_called_once_with(api_key="sk-test")
+    assert built is client.return_value
+
+
+async def test_under_sim_mode_the_artifact_model_is_the_local_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The analytics e2e drives artifacts under GAIA_SIM_MODE; it must never reach OpenAI."""
+    monkeypatch.setattr(settings, "GAIA_SIM_MODE", True)
+    monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
+    with (
+        patch(f"{_GEN}.resolve", AsyncMock()) as resolver,
+        patch(f"{_GEN}.AsyncOpenAI") as client,
+    ):
+        built = await generate._client()
+
+    resolver.assert_not_awaited()
+    client.assert_called_once_with(api_key=SIM_STUB_API_KEY, base_url=SIM_STUB_BASE_URL)
     assert built is client.return_value
 
 

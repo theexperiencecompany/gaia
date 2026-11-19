@@ -152,3 +152,15 @@ async def test_partial_config_never_initialises_client(mocker: MockerFixture) ->
         pass
 
     providers_get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_the_render_browser_is_closed_when_the_app_stops(mocker: MockerFixture) -> None:
+    _set_posthog(mocker, None, None)
+    _boot_patches(mocker)
+    close_chromium = mocker.patch("app.core.lifespan.close_chromium", new=mocker.AsyncMock())
+
+    async with lifespan(None):
+        close_chromium.assert_not_awaited()
+
+    close_chromium.assert_awaited_once_with()

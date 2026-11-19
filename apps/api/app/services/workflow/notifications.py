@@ -10,8 +10,17 @@ imports the agent stack).
 
 from datetime import UTC, datetime
 
+from app.constants.chat import CONVERSATION_PATH
 from app.constants.log_tags import LogTag
-from app.constants.notifications import NotificationChannel, pick_workflow_done_copy
+from app.constants.notifications import (
+    NotificationChannel,
+    NotificationKind,
+    pick_workflow_done_copy,
+)
+from app.models.notification.details_models import (
+    WorkflowCompletedNotification,
+    WorkflowFailedNotification,
+)
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -63,7 +72,7 @@ async def send_workflow_completion_notification(
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=f"/c/{conversation_id}",
+                                    url=CONVERSATION_PATH.format(conversation_id=conversation_id),
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )
@@ -71,7 +80,11 @@ async def send_workflow_completion_notification(
                         )
                     ],
                 ),
-                metadata={"workflow_id": workflow_id, "conversation_id": conversation_id},
+                details=WorkflowCompletedNotification(
+                    kind=NotificationKind.WORKFLOW_COMPLETED,
+                    workflow_id=workflow_id,
+                    conversation_id=conversation_id,
+                ),
             )
         )
         log.info(
@@ -108,7 +121,9 @@ async def send_workflow_failure_notification(
                         "you can re-run it whenever you're ready."
                     ),
                 ),
-                metadata={"workflow_id": workflow_id},
+                details=WorkflowFailedNotification(
+                    kind=NotificationKind.WORKFLOW_FAILED, workflow_id=workflow_id
+                ),
             )
         )
         log.info(

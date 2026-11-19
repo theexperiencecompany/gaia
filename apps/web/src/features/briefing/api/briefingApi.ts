@@ -1,5 +1,12 @@
+import type {
+  BriefingEditionsUpdate,
+  BriefingScheduleUpdate,
+} from "@shared/api/generated";
+import { queryOptions } from "@tanstack/react-query";
 import { api } from "@/lib/api/typed";
+
 import { BRIEFING_ARCHIVE_PAGE_SIZE } from "../constants";
+import { BRIEFING_STALE_MS, briefingKeys } from "./queryKeys";
 
 export const briefingApi = {
   // Fetch one page of past briefings, most recent first; before is the last page's next_cursor.
@@ -19,4 +26,60 @@ export const briefingApi = {
       path: { briefing_id: briefingId },
       silent: true,
     }),
+
+  // How often briefs come, and the daily brief's hour on the user's clock.
+  fetchSchedule: () =>
+    api.get("/api/v1/briefings/schedule", {
+      silent: true,
+    }),
+
+  // Silent so a refused "off" can open its own dialog instead of a toast.
+  updateSchedule: (update: BriefingScheduleUpdate) =>
+    api.put("/api/v1/briefings/schedule", {
+      body: update,
+      silent: true,
+    }),
+
+  // Every daily edition family, and whether the user keeps it on or favours it.
+  fetchEditions: () =>
+    api.get("/api/v1/briefings/editions", {
+      silent: true,
+    }),
+
+  // Silent so the editions grid rolls back and words its own toast.
+  updateEditions: (update: BriefingEditionsUpdate) =>
+    api.put("/api/v1/briefings/editions", {
+      body: update,
+      silent: true,
+    }),
 };
+
+/** One brief by id; fetching it is what marks it opened on the server. */
+export const briefingQuery = (briefingId: string) =>
+  queryOptions({
+    queryKey: briefingKeys.detail(briefingId),
+    queryFn: () => briefingApi.fetchBriefing(briefingId),
+    staleTime: BRIEFING_STALE_MS,
+    retry: false,
+  });
+
+export const postmarksQuery = () =>
+  queryOptions({
+    queryKey: briefingKeys.postmarks,
+    queryFn: briefingApi.fetchPostmarks,
+    staleTime: BRIEFING_STALE_MS,
+  });
+
+export const briefingScheduleQuery = () =>
+  queryOptions({
+    queryKey: briefingKeys.schedule,
+    queryFn: briefingApi.fetchSchedule,
+    staleTime: BRIEFING_STALE_MS,
+  });
+
+export const briefingEditionsQuery = () =>
+  queryOptions({
+    queryKey: briefingKeys.editions,
+    queryFn: briefingApi.fetchEditions,
+    staleTime: BRIEFING_STALE_MS,
+  });

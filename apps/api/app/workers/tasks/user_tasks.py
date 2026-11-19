@@ -97,17 +97,23 @@ async def check_inactive_users(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- co
 async def reactivate_user_task(ctx: ArqJobContext, user_id: str) -> str:
     """Resume what was paused while user_id was dormant, retrying until it all resumes.
 
-    Queued by record_activity on a dormant user's first activity, which has
+    Queued by mark_user_seen on a dormant user's first activity, which has
     already marked them active, so this task is the only thing coming back for
     the paused work.
     """
     job_try = ctx.get("job_try", 1)
     log.set(user=UserContext(id=user_id))
+    if await user_repository.get(user_id) is None:
+        log.set_ns("reactivation", outcome="user_gone")
+        return f"user {user_id} is gone: nothing to resume"
     try:
         resumed = await reactivate_user(user_id)
+    except LookupError:
+        # Something it resumes vanished: no retry brings it back.
+        raise
     except Exception as e:
         # Broad on purpose: whatever stopped the resume, Retry re-raises it and
-        # max_tries bounds the chain.
+        # REACTIVATE_USER_MAX_TRIES bounds the chain.
         defer = REACTIVATE_USER_RETRY_DELAY * RETRY_BACKOFF_BASE ** (job_try - 1)
         log.warning(
             "user.reactivation_incomplete",

@@ -19,11 +19,12 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, IntegrationStatus
 from app.constants.log_tags import LogTag
-from app.constants.notifications import NotificationChannel
+from app.constants.notifications import NotificationChannel, NotificationKind
 from app.core.websocket_manager import websocket_manager
 from app.models.integration_models import IntegrationAccount
+from app.models.notification.details_models import IntegrationExpiredNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -98,12 +99,16 @@ async def expire_account(
     if account is None:
         log.set_ns("integration_expiry", outcome="untracked_account")
         return None
-    if account.status == "expired":
+    if account.status == IntegrationStatus.EXPIRED:
         log.set_ns("integration_expiry", outcome="already_expired")
         return None
 
     dead = account.model_copy(
-        update={"status": "expired", "expired_at": datetime.now(UTC), "expired_reason": reason}
+        update={
+            "status": IntegrationStatus.EXPIRED,
+            "expired_at": datetime.now(UTC),
+            "expired_reason": reason,
+        }
     )
     accounts = [dead if a is account else a for a in record.accounts]
     saved = await save_accounts(
@@ -115,7 +120,7 @@ async def expire_account(
         account=dead,
         account_count=len(accounts),
         was_primary=record.primary_account_id == account.id,
-        integration_expired=saved.status == "expired",
+        integration_expired=saved.status == IntegrationStatus.EXPIRED,
     )
     log.set_ns(
         "integration_expiry",
@@ -191,7 +196,9 @@ async def announce_account_expiry(
             "type": INTEGRATION_STATUS_UPDATE_EVENT,
             "data": {
                 "integration_id": integration_id,
-                "status": "expired" if expired.integration_expired else "connected",
+                "status": IntegrationStatus.EXPIRED
+                if expired.integration_expired
+                else IntegrationStatus.CONNECTED,
             },
         },
     )
@@ -226,9 +233,10 @@ async def announce_account_expiry(
                     )
                 ],
             ),
-            metadata={
-                "integration_id": integration_id,
-                "paused_workflows": len(paused_workflows),
-            },
+            details=IntegrationExpiredNotification(
+                kind=NotificationKind.INTEGRATION_EXPIRED,
+                integration_id=integration_id,
+                paused_workflows=len(paused_workflows),
+            ),
         )
     )

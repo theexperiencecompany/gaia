@@ -39,6 +39,7 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
 from app.db.repositories.integrations import IntegrationsRepository
@@ -50,7 +51,6 @@ from app.models.integration_models import (
     IntegrationToolsRecord,
     StoredIntegrationTool,
     UserIntegrationDocument,
-    UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp import mcp_client, mcp_oauth, server_routing, tool_naming
@@ -203,9 +203,7 @@ def _custom_doc(name: str, description: str) -> dict[str, object]:
     ).model_dump()
 
 
-def _user_integration(
-    integration_id: str, status: UserIntegrationStatus
-) -> UserIntegrationDocument:
+def _user_integration(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
     return UserIntegrationDocument(user_id=USER_ID, integration_id=integration_id, status=status)
 
 
@@ -839,29 +837,28 @@ class TestMCPClientDisconnect:
 
 
 class TestTearingDownADeadIntegration:
-    @pytest.mark.parametrize(
-        ("kwargs", "status"), [({}, "created"), ({"status": "expired"}, "expired")]
-    )
+    @pytest.mark.parametrize(("given", "status"), [(None, "created"), ("expired", "expired")])
     async def test_the_record_reads_never_set_up_unless_the_sign_in_expired(
-        self, kwargs: dict[str, UserIntegrationStatus], status: str
+        self, given: IntegrationStatus | None, status: IntegrationStatus
     ) -> None:
         """A disconnect reads as never set up; a dead sign-in reads expired, so settings offers Reconnect."""
         client = MCPClient(user_id=USER_ID)
         with (
-            patch.object(
-                client.token_store, "delete_credentials", new_callable=AsyncMock
-            ) as delete_credentials,
-            patch.object(client.token_store, "delete_dcr_client", new_callable=AsyncMock),
+            patch.object(client.token_store, "delete_credentials", AsyncMock()) as deleted,
+            patch.object(client.token_store, "delete_dcr_client", AsyncMock()),
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ) as update_status,
         ):
-            await client._reset_to_disconnected(INTEGRATION_ID, **kwargs)
+            if given is None:
+                await client._reset_to_disconnected(INTEGRATION_ID)
+            else:
+                await client._reset_to_disconnected(INTEGRATION_ID, status=given)
 
         update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status)
-        delete_credentials.assert_awaited_once_with(INTEGRATION_ID)
+        deleted.assert_awaited_once_with(INTEGRATION_ID)
 
 
 class TestMCPClientGetTools:
@@ -5112,11 +5109,11 @@ class TestHandleConnectFailureExact:
 
     async def test_a_dead_credential_that_never_connected_reads_as_never_set_up(
         self, _connected_before: AsyncMock
-    ) -> None:
+    ):
         _connected_before.return_value = False
         client = MCPClient(user_id=USER_ID)
         with (
-            patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
+            patch.object(client, "_reset_to_disconnected", AsyncMock()) as reset,
             patch("app.services.mcp.mcp_client.log"),
             pytest.raises(MCPAuthorizationRequiredError),
         ):

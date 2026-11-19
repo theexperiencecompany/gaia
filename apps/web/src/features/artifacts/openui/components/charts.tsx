@@ -1,10 +1,3 @@
-import { defineComponent } from "@openuidev/react-lang";
-import { AreaChartCondensed } from "@openuidev/react-ui/Charts/AreaChartCondensed";
-import { LineChartCondensed } from "@openuidev/react-ui/Charts/LineChartCondensed";
-import type { ReactNode } from "react";
-import type { z } from "zod";
-import { orderedPalette } from "@/config/openui/palette";
-import { ARTIFACT_PALETTE } from "../constants";
 import {
   type ArtifactComponentName,
   areaSchema,
@@ -16,7 +9,15 @@ import {
   heatmapSchema,
   lineSchema,
   stackedBarsSchema,
-} from "../specs";
+} from "@gaia/artifacts/specs";
+import { defineComponent } from "@openuidev/react-lang";
+import { AreaChartCondensed } from "@openuidev/react-ui/Charts/AreaChartCondensed";
+import { LineChartCondensed } from "@openuidev/react-ui/Charts/LineChartCondensed";
+import type { ReactNode } from "react";
+import type { z } from "zod";
+import { seriesPoints } from "@/config/openui/components/charts";
+import { orderedPalette } from "@/config/openui/palette";
+import { CHART_PALETTE } from "@/config/openui/theme";
 import { BarsView } from "./BarsView";
 import { Figure } from "./ChartFigure";
 import { FunnelView } from "./FunnelView";
@@ -26,16 +27,13 @@ import { HeatmapView } from "./HeatmapView";
 // Views stay file-private: this module's surface is the defs (react-refresh/only-export-components).
 
 type ChartProps = z.infer<ReturnType<typeof chartSchema>>;
-type Point = Record<string, string | number>;
-
-const [_FIRST_COLOUR] = ARTIFACT_PALETTE;
+type Point = ReturnType<typeof seriesPoints>[number];
 
 function points(props: ChartProps): Point[] {
-  return props.labels.map((label, i) => {
-    const point: Point = { category: label };
-    for (const [name, values] of props.series) point[name] = values[i] ?? 0;
-    return point;
-  });
+  return seriesPoints(
+    props.labels,
+    props.series.map(([category, values]) => ({ category, values })),
+  );
 }
 
 function seriesChartDef(
@@ -51,7 +49,7 @@ function seriesChartDef(
       <Figure title={props.title} subtitle={props.subtitle}>
         {chart(
           points(props),
-          orderedPalette(ARTIFACT_PALETTE, props.series.length),
+          orderedPalette(CHART_PALETTE, props.series.length),
         )}
       </Figure>
     ),

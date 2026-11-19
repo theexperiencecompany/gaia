@@ -1,23 +1,22 @@
 // @vitest-environment jsdom
 import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPreferences } from "@gaia/shared/types";
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  linkedPlatform,
+  platformLinks,
+} from "@/__tests__/helpers/platformLinks";
+import { renderWithQueryClient } from "@/__tests__/helpers/queryClient";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
-import { api } from "@/lib/api/typed";
-import { NotificationsAPI } from "@/services/api/notifications";
+import { toast } from "@/lib/toast";
 
 /**
- * Regression: a failed `getChannelPreferences()` used to be swallowed, leaving
+ * Regression: a failed channel-preferences read used to be swallowed, leaving
  * the all-true initializer on screen. A user whose stored `email` preference was
- * `false` saw Email enabled — and toggling from that reading wrote the wrong
+ * `false` saw Email enabled, and toggling from that reading wrote the wrong
  * value back. The page now waits behind an error + retry until the stored
  * preferences actually load.
  */
@@ -30,23 +29,29 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+const { getChannels, putChannels, getLinks, fetchPriority, updatePriority } =
+  vi.hoisted(() => ({
+    getChannels: vi.fn(),
+    putChannels: vi.fn(),
+    getLinks: vi.fn(),
+    fetchPriority: vi.fn(),
+    updatePriority: vi.fn(),
+  }));
+const READS: Record<string, () => unknown> = {
+  "/api/v1/notifications/preferences/channels": () => getChannels(),
+  "/api/v1/platform-links": () => getLinks(),
+  "/api/v1/user/chat-channel-priority": () => fetchPriority(),
+};
 vi.mock("@/lib/api/typed", () => ({
-  api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
-}));
-
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getChannelPreferences: vi.fn(),
-    updateChannelPreference: vi.fn(),
+  api: {
+    get: (path: string) => READS[path](),
+    patch: (_path: string, init: { body: { priority: string[] } }) =>
+      updatePriority(init.body.priority),
+    put: (_path: string, init: { body: Partial<ChannelPreferences> }) =>
+      putChannels(init.body),
+    post: vi.fn(),
+    delete: vi.fn(),
   },
-}));
-
-const { fetchPriority, updatePriority } = vi.hoisted(() => ({
-  fetchPriority: vi.fn(),
-  updatePriority: vi.fn(),
-}));
-vi.mock("@/features/settings/api/chatChannelApi", () => ({
-  chatChannelApi: { fetchPriority, updatePriority },
 }));
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
@@ -75,20 +80,12 @@ const ALL_ON: ChannelPreferences = {
   email: true,
 };
 
-function link(platform: string) {
-  return {
-    platform,
-    platformUserId: `${platform}-1`,
-    username: null,
-    displayName: null,
-    connectedAt: null,
-  };
+function mockLinked(...platforms: string[]) {
+  getLinks.mockResolvedValue(platformLinks(...platforms));
 }
 
-function mockLinked(...platforms: string[]) {
-  vi.mocked(api.get).mockResolvedValue({
-    platform_links: Object.fromEntries(platforms.map((p) => [p, link(p)])),
-  });
+function render(ui: ReactElement) {
+  return renderWithQueryClient(ui);
 }
 
 async function findChannels() {
@@ -99,7 +96,7 @@ describe("NotificationSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLinked("telegram");
-    vi.mocked(NotificationsAPI.getChannelPreferences).mockResolvedValue(ALL_ON);
+    getChannels.mockResolvedValue(ALL_ON);
     fetchPriority.mockResolvedValue({ priority: [] });
     updatePriority.mockImplementation((priority: string[]) =>
       Promise.resolve({ priority }),
@@ -107,9 +104,7 @@ describe("NotificationSettings", () => {
   });
 
   it("shows a retry instead of default preferences when the load fails", async () => {
-    vi.mocked(NotificationsAPI.getChannelPreferences).mockRejectedValue(
-      new Error("boom"),
-    );
+    getChannels.mockRejectedValue(new Error("boom"));
 
     render(<NotificationSettings />);
 
@@ -122,7 +117,7 @@ describe("NotificationSettings", () => {
   });
 
   it("shows a retry instead of channels when the linked accounts fail to load", async () => {
-    vi.mocked(api.get).mockRejectedValue(new Error("boom"));
+    getLinks.mockRejectedValue(new Error("boom"));
 
     render(<NotificationSettings />);
 
@@ -130,11 +125,25 @@ describe("NotificationSettings", () => {
       await screen.findByRole("button", { name: "Try again" }),
     ).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Link / })).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "Manage linked accounts" }),
+    ).toBeNull();
+  });
+
+  it("shows a retry instead of a guessed first channel when the stored order fails to load", async () => {
+    mockLinked("telegram", "whatsapp");
+    fetchPriority.mockRejectedValue(new Error("boom"));
+
+    render(<NotificationSettings />);
+
+    expect(
+      await screen.findByRole("button", { name: "Try again" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Text me first on")).toBeNull();
   });
 
   it("renders the stored preferences after a successful retry", async () => {
-    vi.mocked(NotificationsAPI.getChannelPreferences)
+    getChannels
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce({ ...ALL_ON, email: false });
 
@@ -152,13 +161,33 @@ describe("NotificationSettings", () => {
     expect(telegramSwitch.checked).toBe(true);
   });
 
+  it("flips a channel at once and puts it back, naming the channel, when the save fails", async () => {
+    putChannels.mockRejectedValue(new Error("boom"));
+
+    render(<NotificationSettings />);
+    const emailSwitch = (await screen.findByRole("switch", {
+      name: "Enable Email notifications",
+    })) as HTMLInputElement;
+    fireEvent.click(emailSwitch);
+
+    await waitFor(() =>
+      expect(putChannels).toHaveBeenCalledWith({ email: false }),
+    );
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Couldn't update Email notifications",
+      ),
+    );
+    expect(emailSwitch.checked).toBe(true);
+  });
+
   it("says the email switch controls GAIA's emails, not notification delivery", async () => {
     render(<NotificationSettings />);
 
     expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
   });
 
-  it("shows each chat app's link status and sends the rest to Linked Accounts", async () => {
+  it("shows each chat app's link status and groups the rest into one row to Linked Accounts", async () => {
     render(<NotificationSettings />);
 
     const channels = await findChannels();
@@ -167,16 +196,13 @@ describe("NotificationSettings", () => {
     });
     expect(channels.getByText("Connected")).toBeTruthy();
     expect(channels.getAllByRole("switch")).toHaveLength(2);
-    expect(channels.getAllByText("Not linked")).toHaveLength(4);
-    for (const label of ["WhatsApp", "iMessage", "Slack", "Discord"]) {
-      expect(
-        channels
-          .getByRole("link", { name: `Link ${label} in Linked Accounts` })
-          .getAttribute("href"),
-      ).toBe("/settings/linked-accounts");
-    }
     expect(
-      channels.getByRole("link", { name: "Manage" }).getAttribute("href"),
+      channels.getByText("WhatsApp, iMessage, Slack, Discord"),
+    ).toBeTruthy();
+    expect(
+      channels
+        .getByRole("link", { name: "Manage linked accounts" })
+        .getAttribute("href"),
     ).toBe("/settings/linked-accounts");
     expect(channels.queryByRole("button", { name: /^Connect/ })).toBeNull();
     expect(channels.queryByRole("button", { name: /^More for/ })).toBeNull();
@@ -184,11 +210,9 @@ describe("NotificationSettings", () => {
   });
 
   it("names the linked account on its row", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      platform_links: {
-        telegram: { ...link("telegram"), username: "aryan" },
-      },
-    });
+    getLinks.mockResolvedValue(
+      platformLinks(linkedPlatform("telegram", { username: "aryan" })),
+    );
 
     render(<NotificationSettings />);
 

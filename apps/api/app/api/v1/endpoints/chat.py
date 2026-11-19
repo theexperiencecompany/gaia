@@ -8,7 +8,7 @@ runs to completion and the conversation lands in MongoDB.
 import asyncio
 from collections.abc import AsyncGenerator
 import time
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -29,8 +29,10 @@ from app.db.redis import redis_cache
 from app.decorators import enforce_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.openui_artifact_models import ArtifactStreamFrame
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
+from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
@@ -52,9 +54,26 @@ _STREAM_PROGRESS = TypeAdapter(StreamProgress)
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
 _SSE_MEDIA_TYPE = "text/event-stream"
+# The 200 an SSE route documents: the frames with a published shape, under text/event-stream.
+_STREAM_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **NON_JSON_ROUTE_ERROR_RESPONSES,
+    200: {
+        "model": ArtifactStreamFrame,
+        # each data: line is one JSON frame object, not the bare string FastAPI assumes
+        "content": {_SSE_MEDIA_TYPE: {"schema": {"type": "object"}}},
+        "description": "Server-sent events, one JSON frame per data: line; the frames with a "
+        "published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts.",
+    },
+}
 _DELIVERY_FAILED = "The connection to the server was lost before this response finished."
 
 router = APIRouter()
+
+
+class _EventStream(StreamingResponse):
+    """A chat SSE stream."""
+
+    media_type = _SSE_MEDIA_TYPE
 
 
 def _build_chat_context(
@@ -138,7 +157,7 @@ async def _stream_from_redis(
             observe_sse_delivery(time.perf_counter() - delivery_start, status=delivery_status)
 
 
-@router.post("/chat-stream", response_class=StreamingResponse)
+@router.post("/chat-stream", response_class=_EventStream, responses=_STREAM_RESPONSES)
 @tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
     request: Request,
@@ -240,9 +259,8 @@ async def chat_stream_endpoint(
     # Don't set Access-Control-Allow-Origin here — CORSMiddleware echoes the
     # request Origin per-request against the allowlist; hardcoding it would
     # pin a single origin and break the desktop app + alternate domains.
-    return StreamingResponse(
+    return _EventStream(
         _stream_from_redis(stream_id, request),
-        media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -290,7 +308,7 @@ async def cancel_stream_endpoint(
     return CancelStreamResponse(success=True, stream_id=stream_id)
 
 
-@router.get("/stream/{stream_id}", response_class=StreamingResponse)
+@router.get("/stream/{stream_id}", response_class=_EventStream, responses=_STREAM_RESPONSES)
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
@@ -338,9 +356,8 @@ async def subscribe_executor_stream(
         async def _already_done() -> AsyncGenerator[str, None]:
             yield "data: [DONE]\n\n"
 
-        return StreamingResponse(
+        return _EventStream(
             _already_done(),
-            media_type=_SSE_MEDIA_TYPE,
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
@@ -351,9 +368,8 @@ async def subscribe_executor_stream(
 
     log.info(f"{LogTag.CHAT} Client subscribed to executor stream", stream_id=stream_id)
 
-    return StreamingResponse(
+    return _EventStream(
         _stream_from_redis(stream_id, request, last_event_id=request.headers.get("Last-Event-ID")),
-        media_type=_SSE_MEDIA_TYPE,
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",

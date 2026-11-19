@@ -34,6 +34,7 @@ from app.constants.todos import (
     TodoCompleter,
     WaitingOn,
 )
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.todos import todo_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
@@ -44,7 +45,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdate,
     TrackedTodoCreation,
-    default_notify_on_run,
+    default_delivery,
 )
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import (
@@ -58,8 +59,8 @@ from app.services.todo_activity import (
     activity_line,
     agent_actor,
     field_change_lines,
-    record_activity,
     record_field_changes,
+    record_todo_activity,
     record_waiting_change,
     waiting_change_line,
 )
@@ -289,7 +290,7 @@ class TrackedTodoService:
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
-        notify_on_run: bool | None = None,
+        delivery: WorkflowDelivery | None = None,
         external_ref: ExternalRef | None = None,
         references: list[str] | None = None,
         parent_todo_id: str | None = None,
@@ -305,10 +306,8 @@ class TrackedTodoService:
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
-        if notify_on_run is None:
-            notify_on_run = default_notify_on_run(
-                parent_todo_id=parent_todo_id, external_ref=external_ref
-            )
+        if delivery is None:
+            delivery = default_delivery(parent_todo_id=parent_todo_id, external_ref=external_ref)
         schedule = with_waiting_normalized(None, schedule or TodoUpdate())
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
@@ -342,7 +341,7 @@ class TrackedTodoService:
                     **schedule.model_dump(exclude_unset=True),
                     "title": title,
                     "labels": all_labels,
-                    "notify_on_run": notify_on_run,
+                    "delivery": delivery,
                     "parent_todo_id": parent_todo_id,
                     **{field: value for field, value in given.items() if value is not None},
                 }
@@ -363,7 +362,7 @@ class TrackedTodoService:
             project_id=project_id,
             priority=priority,
             labels=all_labels,
-            notify_on_run=notify_on_run,
+            delivery=delivery,
             references=references or [],
             scheduled_at=schedule.scheduled_at,
             recurrence=schedule.recurrence,
@@ -548,7 +547,7 @@ class TrackedTodoService:
 
         now = datetime.now(UTC)
 
-        await record_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
+        await record_todo_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
 
         # Derived, never the stored one: legacy docs carry a host-side /users/<uid>/todos/<id>
         # label this heals. The repository's cache refresh shows the completion at once.
@@ -573,7 +572,7 @@ class TrackedTodoService:
         await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
         # A sub-todo reports to its parent: its outcome is in the parent's next run.
         if doc.parent_todo_id:
-            await record_activity(
+            await record_todo_activity(
                 doc.parent_todo_id,
                 user_id,
                 TodoActivityEvent.SUB_TODO_COMPLETED,

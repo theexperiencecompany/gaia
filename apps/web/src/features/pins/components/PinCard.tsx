@@ -1,8 +1,8 @@
+import { formatMessageTime } from "@shared/utils";
 import Link from "next/link";
 import type React from "react";
 import { track } from "@/lib/analytics";
 import type { PinCardProps } from "@/types/features/pinTypes";
-import { parseDate } from "@/utils/date/dateUtils";
 
 export const PinCard: React.FC<PinCardProps> = ({
   message,
@@ -40,7 +40,7 @@ export const PinCard: React.FC<PinCardProps> = ({
       </div>
 
       <div className="mt-auto text-xs text-zinc-400" suppressHydrationWarning>
-        {message.date ? parseDate(message.date) : null}
+        {message.date ? formatMessageTime(message.date) : null}
       </div>
     </Link>
   );

@@ -1,6 +1,3 @@
-# /// script
-# dependencies = ["fonttools==4.68.0", "brotli==1.2.1", "httpx==0.28.1"]
-# ///
 """Build the brief editions' webfonts into app/services/briefing/editions/fonts/.
 
 Downloads each approved face from a pinned source (verified by SHA-256), instances
@@ -9,9 +6,9 @@ and writes WOFF2 files, their licences and fonts.json (the faces explorer_render
 embeds, with each source's URL, version and hash). Aeonik is copied as-is from the
 web app. Rerunning it reproduces the checked-in files byte for byte.
 
-Usage (from the repo root)::
+Usage (from apps/api)::
 
-    uv run apps/api/scripts/build_edition_fonts.py
+    uv run --group backend --group dev python -m scripts.build_edition_fonts
 """
 
 from dataclasses import dataclass, field

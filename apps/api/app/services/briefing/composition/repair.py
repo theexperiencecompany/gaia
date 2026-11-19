@@ -1,10 +1,12 @@
 """Hold a composition to what code can enforce, and salvage a correct brief when the model never does.
 
-Code fixes what it can decide alone (an id twice or unknown, a producer's action or outcome, the
-page budget by the composition's own order); a block that still breaks its contract after the
+Code fixes what it can decide alone (an id twice or unknown, a second item titled as an earlier
+one, a producer's action or outcome, the page budget by the composition's own order); a block that still breaks its contract after the
 retry is dropped, a misfit heading gives way to one code derives from the group's state, and a
 composition with nothing left is built from the pool. The user always gets a correct brief.
 """
+
+from collections.abc import Callable
 
 from app.constants.briefing import (
     BRIEF_ITEM_TITLE_MAX_CHARS,
@@ -14,35 +16,21 @@ from app.constants.briefing import (
     BriefAction,
     BriefOutcome,
 )
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import (
     BriefComposition,
     ComposedBlock,
     ComposedItem,
     ComposedItems,
     ComposedLead,
-    GroupState,
 )
-from app.models.briefing_models import BriefingItemKind
+from app.models.brief_item_models import GroupState
+from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.composition.checks import block_problems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.slots import SlotValues
 
-#: The heading a group falls back to when the model's is untrue of its items.
-FALLBACK_HEADINGS: dict[GroupState, str] = {
-    GroupState.NEEDS_YOU: "Needs you",
-    GroupState.DONE: "Done",
-    GroupState.IN_PROGRESS: "Still in progress",
-}
 _ELLIPSIS = "…"
-#: The outcome an item gets when its producer named none: done work finished, the rest changed.
-_UNSAID_OUTCOMES: dict[BriefingItemKind, BriefOutcome] = {
-    "lookback": BriefOutcome.FINISHED,
-    "gaia": BriefOutcome.STARTED,
-    "note": BriefOutcome.CHANGED,
-    "you": BriefOutcome.CHANGED,
-    "failed": BriefOutcome.CHANGED,
-}
 
 
 def _sided(item: ComposedItem, candidate: BriefCandidate) -> ComposedItem:
@@ -67,31 +55,95 @@ def _shared_state(items: list[ComposedItem]) -> GroupState | None:
     return states.pop() if len(states) == 1 else None
 
 
+def _owed(pool: FactPool) -> list[int]:
+    """Return the pending approvals no brief has shown, in pool order, as many as a brief holds."""
+    return [
+        item_id
+        for item_id, candidate in pool.items.items()
+        if candidate.origin is CandidateOrigin.APPROVAL and candidate.is_news
+    ][:MAX_BRIEF_ITEMS]
+
+
+def _with_owed(blocks: list[ComposedBlock], owed: list[ComposedItem]) -> list[ComposedBlock]:
+    """Place the owed approvals in groups of their own, right after what already asks the user."""
+    asks = [
+        i
+        for i, b in enumerate(blocks)
+        if isinstance(b, ComposedLead)
+        or (isinstance(b, ComposedItems) and b.state is GroupState.NEEDS_YOU)
+    ]
+    at = asks[-1] + 1 if asks else 0
+    groups: list[ComposedBlock] = [
+        ComposedItems(
+            kind="items",
+            state=GroupState.NEEDS_YOU,
+            heading=GroupState.NEEDS_YOU.fallback_heading,
+            items=owed[start : start + MAX_ITEMS_PER_BLOCK],
+        )
+        for start in range(0, len(owed), MAX_ITEMS_PER_BLOCK)
+    ]
+    return blocks[:at] + groups + blocks[at:]
+
+
+def _kept(
+    items: list[ComposedItem],
+    pool: FactPool,
+    said: tuple[set[int], set[str]],
+    fits: Callable[[int], bool],
+) -> list[ComposedItem]:
+    """Keep a group's items not yet said by id or title that fit the page; said grows with them.
+
+    An item dropped for its title counts as said, so an owed approval among them is not owed again.
+    """
+    seen, titles = said
+    kept: list[ComposedItem] = []
+    for item in items:
+        candidate = pool.items.get(item.id)
+        title = same_text_key(item.title)
+        if title in titles:
+            seen.add(item.id)
+            continue
+        if candidate is None or item.id in seen or not fits(item.id):
+            continue
+        seen.add(item.id)
+        titles.add(title)
+        kept.append(_sided(item, candidate))
+    return kept
+
+
 def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
-    """Enforce what code decides alone: known ids once each, producers' sides, one lead, the budget."""
+    """Enforce what code decides alone: known ids and titles once each, producers' sides, one lead, the budget.
+
+    A pending approval no brief has shown always has its place: the composer's choice is
+    what else fills the page.
+    """
     seen: set[int] = set()
-    left = MAX_BRIEF_ITEMS
+    # Two items the composer titles alike are one subject to the reader, even from two todos.
+    titles: set[str] = set()
+    owed = _owed(pool)
+    left = MAX_BRIEF_ITEMS - len(owed)
     charts = 0
     blocks: list[ComposedBlock] = []
+
+    def fits(item_id: int) -> bool:
+        nonlocal left
+        if item_id in owed:
+            return True
+        left -= 1
+        return left >= 0
+
     for block in composition.blocks:
         if isinstance(block, ComposedLead):
             candidate = pool.items.get(block.item.id)
-            if blocks or candidate is None:
+            if blocks or candidate is None or not fits(block.item.id):
                 continue
             seen.add(block.item.id)
-            left -= 1
+            titles.add(same_text_key(block.item.title))
             blocks.append(block.model_copy(update={"item": _sided(block.item, candidate)}))
         elif isinstance(block, ComposedItems):
-            items: list[ComposedItem] = []
-            for item in block.items:
-                candidate = pool.items.get(item.id)
-                if candidate is None or item.id in seen or len(items) >= left:
-                    continue
-                seen.add(item.id)
-                items.append(_sided(item, candidate))
+            items = _kept(block.items, pool, (seen, titles), fits)
             if not items:
                 continue
-            left -= len(items)
             state = _shared_state(items) or block.state
             blocks.append(block.model_copy(update={"items": items, "state": state}))
         elif block.kind == "chart":
@@ -100,15 +152,16 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
                 blocks.append(block)
         else:
             blocks.append(block)
-    return BriefComposition(blocks=blocks)
+    missing = [_placed(i, pool.items[i]) for i in owed if i not in seen]
+    return BriefComposition(blocks=_with_owed(blocks, missing) if missing else blocks)
 
 
 def _as_group(lead: ComposedLead) -> ComposedItems:
-    """Turn a lead whose offer cannot stand into a one-item group: the item still matters."""
+    """Turn a lead that cannot stand into a one-item group: the item still matters."""
     return ComposedItems(
         kind="items",
         state=GroupState.NEEDS_YOU,
-        heading=FALLBACK_HEADINGS[GroupState.NEEDS_YOU],
+        heading=GroupState.NEEDS_YOU.fallback_heading,
         items=[lead.item],
     )
 
@@ -116,13 +169,13 @@ def _as_group(lead: ComposedLead) -> ComposedItems:
 def _sound(
     index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
 ) -> ComposedBlock | None:
-    """Return the block once it holds its contract, its heading or offer given way if need be; else None."""
+    """Return the block once it holds its contract, its heading or its lead given way if need be; else None."""
     if not block_problems(index, block, pool, values):
         return block
     if isinstance(block, ComposedLead):
         block = _as_group(block)
     if isinstance(block, ComposedItems):
-        block = block.model_copy(update={"heading": FALLBACK_HEADINGS[block.state]})
+        block = block.model_copy(update={"heading": block.state.fallback_heading})
         items = [
             item
             for item in block.items
@@ -154,11 +207,11 @@ def _short(title: str) -> str:
 
 
 def _placed(item_id: int, candidate: BriefCandidate) -> ComposedItem:
-    asks = candidate.state in ("you", "failed")
+    asks = candidate.state.needs_you
     return ComposedItem(
         id=item_id,
         action=(candidate.action or BriefAction.REVIEW) if asks else None,
-        outcome=None if asks else (candidate.outcome or _UNSAID_OUTCOMES[candidate.state]),
+        outcome=None if asks else (candidate.outcome or candidate.state.unsaid_outcome),
         title=_short(candidate.title),
         detail=None,
     )
@@ -175,7 +228,7 @@ def pool_composition(pool: FactPool, values: SlotValues) -> BriefComposition:
         ComposedItems(
             kind="items",
             state=state,
-            heading=FALLBACK_HEADINGS[state],
+            heading=state.fallback_heading,
             items=items[:MAX_ITEMS_PER_BLOCK],
         )
         for state, items in by_state.items()

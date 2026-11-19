@@ -10,8 +10,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.notifications import NotificationChannel, ProactiveMessageClass
+from app.constants.notifications import (
+    NotificationChannel,
+    NotificationKind,
+    ProactiveMessageClass,
+)
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -37,6 +42,7 @@ from app.utils.notification.channels.telegram import TelegramChannelAdapter
 from app.utils.notification.channels.whatsapp import WhatsAppChannelAdapter
 
 _SENTINEL = object()
+_DETAILS = TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1")
 
 
 def _make_request(
@@ -64,7 +70,7 @@ def _make_request(
             actions=actions,
             rich_content=rich_content,
         ),
-        metadata={"key": "value"},
+        details=_DETAILS,
     )
 
 
@@ -128,7 +134,7 @@ class TestInAppChannelAdapter:
         content = await InAppChannelAdapter().transform(request)
         assert content.title == "Hello"
         assert content.body == "World"
-        assert content.metadata == {"key": "value"}
+        assert content.details == _DETAILS
 
     async def test_transform_carries_the_action_confirmation_message(self) -> None:
         action = _make_redirect_action()
@@ -170,7 +176,7 @@ class TestInAppChannelAdapter:
                     },
                 }
             ],
-            "metadata": {"key": "value"},
+            "details": {"kind": NotificationKind.TODO, "todo_id": "todo-1"},
             "created_at": request.created_at.isoformat(),
         }
 

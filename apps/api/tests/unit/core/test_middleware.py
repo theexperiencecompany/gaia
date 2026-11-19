@@ -26,8 +26,9 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
+from app.api.v1.middleware.rate_limiter import rate_limit_handler
 from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
-from app.core.middleware import configure_middleware, rate_limit_handler
+from app.core.middleware import configure_middleware
 from shared.py.wide_events import log
 
 
@@ -176,7 +177,7 @@ def test_the_crash_catch_all_covers_every_layer_inside_cors(
     for inner in (
         "EntitlementMiddleware",
         "RequestTimeoutMiddleware",
-        "RouterAwareSlowAPIMiddleware",
+        "RateLimitMiddleware",
     ):
         assert catch_all < middleware_names.index(inner)
 
@@ -300,7 +301,7 @@ class TestRateLimitHandler:
 
     def test_the_refusal_is_recorded_with_who_was_refused_and_where(self) -> None:
         """Every field here is queried in Loki when someone reports being throttled."""
-        with patch("app.core.middleware.wide_log") as mock_log:
+        with patch("app.api.v1.middleware.rate_limiter.log") as mock_log:
             TestClient(self._app_that_is_rate_limited(record_window=True)).get("/limited")
 
         mock_log.warning.assert_called_once_with(
@@ -342,7 +343,7 @@ class TestRateLimitHandler:
             )
         )
 
-        with patch("app.core.middleware.wide_log") as mock_log:
+        with patch("app.api.v1.middleware.rate_limiter.log") as mock_log:
             response = rate_limit_handler(request, exc)
 
         assert response.status_code == 429

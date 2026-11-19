@@ -334,6 +334,18 @@ class TestPickChatChannelRefusesNonBotSources:
         assert pick_chat_channel(["pager"], {"pager": _link("pager", "1")}, {}, active=None) is None
 
 
+class TestChannelFor:
+    def test_the_named_platform_is_reached_whatever_the_order_says(self) -> None:
+        """Slack leads this user's order; a send already decided for Telegram still goes there."""
+        channel = chat_channel.channel_for(_two_linked_user(), ConversationSource.TELEGRAM)
+
+        assert channel is not None
+        assert (channel.source, channel.platform_user_id) == (ConversationSource.TELEGRAM, "tg-1")
+
+    def test_a_platform_the_user_never_linked_has_no_channel(self) -> None:
+        assert chat_channel.channel_for(_two_linked_user(), ConversationSource.DISCORD) is None
+
+
 class TestResolveProactiveTarget:
     @pytest.fixture(autouse=True)
     def no_recent_activity(self) -> Iterator[AsyncMock]:

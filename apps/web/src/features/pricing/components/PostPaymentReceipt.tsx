@@ -1,5 +1,6 @@
 "use client";
 
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
 import Image from "next/image";
 import { ReceiptPrinter } from "@/features/pricing/components/ReceiptPrinter";
 import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
@@ -47,19 +48,14 @@ function formatReceiptMoney(amount: number, currency?: string): string {
   return formatMoney(amount, code);
 }
 
-function formatDate(dateString?: string | null): string | null {
+function formatBillingDate(dateString?: string | null): string | null {
   if (!dateString) return null;
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return null;
   // Billing dates can arrive as date-only strings ("2027-08-22"), which JS
   // parses as UTC midnight — format in UTC so the calendar date never shifts
   // a day in UTC-negative timezones.
-  return date.toLocaleDateString("en-US", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatDate(date, "medium", { locale: FIXED_LOCALE, timeZone: "UTC" });
 }
 
 function billingPeriodLabel(billingPeriod?: string): string {
@@ -104,8 +100,8 @@ export function PostPaymentReceipt({
   quantity = 1,
 }: PostPaymentReceiptProps) {
   const displayName = planName ?? "GAIA Pro";
-  const nextBilling = formatDate(nextBillingDate);
-  const purchased = formatDate(purchasedAt);
+  const nextBilling = formatBillingDate(nextBillingDate);
+  const purchased = formatBillingDate(purchasedAt);
   const cycle = billingCycleLabel(billingPeriod);
   const price = amount != null ? formatReceiptMoney(amount, currency) : null;
   const lineTotal =

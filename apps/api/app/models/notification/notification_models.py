@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.base import UserScopedDocument
+from app.models.notification.details_models import NotificationDetails
 from app.schemas.common import ResponseModel
 
 
@@ -169,7 +170,7 @@ class NotificationRequest(BaseModel):
     priority: int = Field(default=3, ge=1, le=5)  # 1 highest
     channels: list[ChannelConfig] = Field(default_factory=list)
     content: NotificationContent
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    details: NotificationDetails | None = None
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     #: Whether the user's quiet hours may hold its chat-platform copy (in-app is never held).
@@ -281,7 +282,7 @@ class NotificationView(BaseModel):
     Distinct from ``NotificationRecord``: the record is the stored document (it
     nests the whole ``original_request``), while this is the flat shape the web
     and mobile clients actually read — ``content``/``source``/``type``/
-    ``metadata`` are lifted out of the request, and the channel entries are
+    ``details`` are lifted out of the request, and the channel entries are
     projected. It mirrors ``NotificationRecord`` in the frontend's
     ``notificationTypes.ts``.
 
@@ -302,7 +303,7 @@ class NotificationView(BaseModel):
     content: NotificationContentView
     source: NotificationSourceEnum
     type: NotificationType
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    details: NotificationDetails | None = None
     channels: list[NotificationChannelView] = Field(default_factory=list)
 
 

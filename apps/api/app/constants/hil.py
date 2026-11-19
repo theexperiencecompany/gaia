@@ -6,6 +6,7 @@ the tool registry (app/agents/tools/core/registry.py), the single source of trut
 for every tool in the app.
 """
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
 
@@ -218,6 +219,9 @@ COMPOSIO_TAGS_METADATA_KEY: Final[str] = "composio_tags"
 COMPOSIO_WRITE_TAGS: Final[frozenset[str]] = frozenset(
     {MCP_DESTRUCTIVE_HINT, "updateHint", "createHint"}
 )
+
+#: How long a cached read-only verdict stands before the tool is judged again.
+TOOL_READ_ONLY_VERDICT_TTL: Final = timedelta(days=30)
 
 #: Base-form verbs whose presence in a tool's name or description rules out inferring it read-only.
 WRITE_INTENT_TOKENS: Final[frozenset[str]] = frozenset(

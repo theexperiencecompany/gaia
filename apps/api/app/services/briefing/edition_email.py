@@ -1,8 +1,8 @@
-"""Render and host the briefing edition image, and wrap it as an email.
+"""Render the briefing edition image, and wrap it as an email.
 
 The edition targets a real browser, so it is rasterized to an image (render.py),
-hosted on the CDN once when the brief is generated, and referenced by URL (Gmail
-blocks base64 data: images). The email embeds that stored image, linked to the
+stored once when the brief is generated (edition_image.py), and referenced by a signed
+URL (Gmail blocks base64 data: images). The email embeds that stored image, linked to the
 brief's heygaia.link, above the brief's written message as real text and a deep link
 into the app; the email can never approve or send on its own.
 """
@@ -13,37 +13,23 @@ from dataclasses import dataclass
 from datetime import date as date_cls
 from html import escape
 
-import cloudinary.utils
-
 from app.constants.briefing import (
-    EDITION_DELIVERY_MAX_WIDTH_PX,
-    EDITION_JPG_BACKGROUND,
     FOLD_MARKER_SELECTOR,
     PAPER_MARKER_SELECTOR,
-    WEEKLY_FAMILY,
-    EditionDeliveryFormat,
+    EditionFamily,
 )
-from app.constants.files import BlobKind
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-)
-from app.models.briefing_models import BriefingPayload
-from app.services.blob_store import CloudinaryBlobStore
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.message import (
     MESSAGE_LINK_RE,
     delivered_message,
     preheader,
 )
-from app.services.briefing.render import ImageRenderOptions, RenderedImage, render_html_to_image
-from shared.py.wide_events import log
+from app.services.render.image import ImageRenderOptions, RenderedImage, render_html_to_image
 
 # Edition numbering is cosmetic furniture; anchor it to a fixed epoch so the
 # number is stable and monotonic across days without any stored counter.
 _EDITION_EPOCH = date_cls(2026, 1, 1)
-
-EDITION_IMAGE_STORE = CloudinaryBlobStore()
 
 # GAIA email palette: dark-first, single cyan accent (matches DESIGN.md).
 _BG = "#000000"
@@ -128,13 +114,15 @@ def _text_strip(message: str, brief_url: str, unsubscribe_url: str, wording: _Em
     )
 
 
-async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
-    """Render the edition as a PNG cropped tight to its paper, with where its letter folds."""
+async def render_edition_png(payload: BriefingPayload, link: str | None) -> RenderedImage:
+    """Render the edition, its codes encoding link, as a PNG cropped to its paper, with its fold."""
     family = payload.template_family
+    if family is None:
+        raise ValueError("a quiet note is drawn in no family, so it has no edition to render")
     render = EXPLORER_RENDERER[family]
-    edition_html = render(payload, edition_no=_edition_no(payload.date), generated_local="")
+    edition_html = render(payload, link=link, edition_no=_edition_no(payload.date))
     frame = edition_frame(family)
-    # The image is hosted and referenced by URL (Gmail blocks base64 data: URIs),
+    # The image is stored and referenced by URL (Gmail blocks base64 data: URIs),
     # so its size has no ceiling.
     return await render_html_to_image(
         edition_html,
@@ -148,62 +136,6 @@ async def render_edition_png(payload: BriefingPayload) -> RenderedImage:
             paper_selector=PAPER_MARKER_SELECTOR,
             omit_background=frame.transparent_desk,
         ),
-    )
-
-
-@dataclass(frozen=True)
-class HostedEditionImage:
-    """Delivery URLs for one hosted edition; the original upload stays untouched."""
-
-    display_url: str
-    chat_url: str
-    #: Share of the edition's height where its letter folds; None for a template without a marker.
-    fold: float | None = None
-    #: The paper's box as (left, top, right, bottom) shares of the edition; None when it fills it.
-    paper: tuple[float, float, float, float] | None = None
-
-
-def edition_delivery_url(public_id: str, fetch_format: EditionDeliveryFormat) -> str:
-    """Build the CDN URL serving the edition at display size instead of the full original."""
-    # The SDK is untyped; it returns (url, options left after building the URL).
-    delivery: tuple[str, dict[str, object]] = cloudinary.utils.cloudinary_url(
-        public_id,
-        secure=True,
-        fetch_format=fetch_format.value,
-        quality="auto",
-        width=EDITION_DELIVERY_MAX_WIDTH_PX,
-        crop="limit",
-        background=EDITION_JPG_BACKGROUND if fetch_format is EditionDeliveryFormat.JPG else None,
-    )
-    return delivery[0]
-
-
-async def host_edition_image(
-    payload: BriefingPayload, *, owner_id: str, render_key: str
-) -> HostedEditionImage:
-    """Render the edition, host it on the CDN under render_key, and return its delivery URLs.
-
-    The display URL serves the in-app page and the email, the chat URL the chat post.
-    The URL goes out in emails and on public brief links, so its path is the caller's
-    random key alone, never the user, kind or date.
-    """
-    rendered = await render_edition_png(payload)
-    public_id = f"briefing/editions/{render_key}"
-    # The delivery URLs are Cloudinary transformations, so the edition lives there.
-    original_url = await EDITION_IMAGE_STORE.put(
-        owner_id,
-        public_id,
-        rendered.image,
-        resource_type="image",
-        kind=BlobKind.GENERATED_IMAGE,
-        content_type="image/png",
-    )
-    log.debug("briefing.edition_image.hosted", image_bytes=len(rendered.image), url=original_url)
-    return HostedEditionImage(
-        display_url=edition_delivery_url(public_id, EditionDeliveryFormat.AUTO),
-        chat_url=edition_delivery_url(public_id, EditionDeliveryFormat.JPG),
-        fold=rendered.fold,
-        paper=rendered.paper,
     )
 
 
@@ -235,13 +167,7 @@ def render_edition_email(
             delivered_message(payload),
             brief_url,
             unsubscribe_url,
-            _WEEKLY_WORDING if payload.template_family == WEEKLY_FAMILY else _DAILY_WORDING,
+            _WEEKLY_WORDING if payload.template_family == EditionFamily.WEEKLY else _DAILY_WORDING,
         )
         + "</div>"
     )
-
-
-def is_edition_kind(kind: str | None) -> bool:
-    """Both daily and weekly briefings render as editions."""
-
-    return kind in (NOTIFICATION_KIND_BRIEFING_DAILY, NOTIFICATION_KIND_BRIEFING_WEEKLY)

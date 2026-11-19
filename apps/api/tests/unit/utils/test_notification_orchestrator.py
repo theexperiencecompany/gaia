@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.notifications import NotificationKind
 from app.models.chat_models import ConversationSource
+from app.models.notification.details_models import TodoNotification
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -28,6 +30,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
+from app.utils.notification.channels.email import PlainEmail
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -60,7 +63,7 @@ def _make_request(
             body="This is a test body",
             actions=actions,
         ),
-        metadata={"key": "value"},
+        details=TodoNotification(kind=NotificationKind.TODO, todo_id="todo-1"),
     )
 
 
@@ -138,7 +141,7 @@ class TestOrchestratorInit:
 
     def test_default_components_registered(self) -> None:
         """Default channel adapters and action handlers are registered."""
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         assert "inapp" in orch.channel_adapters
         assert "telegram" in orch.channel_adapters
         assert "discord" in orch.channel_adapters
@@ -146,15 +149,26 @@ class TestOrchestratorInit:
         assert "redirect" in orch.action_handlers
         assert "modal" in orch.action_handlers
 
+    async def test_the_email_channel_renders_with_the_renderers_it_was_given(self) -> None:
+        rendered = PlainEmail(title="Rendered", body="by the kind's renderer")
+        renderer = AsyncMock(return_value=rendered)
+        orch = NotificationOrchestrator(
+            email_renderers={NotificationKind.TODO: renderer}, storage=MagicMock()
+        )
+        request = _make_request()
+
+        assert await orch.channel_adapters["email"].transform(request) is rendered
+        renderer.assert_awaited_once_with(request)
+
     def test_custom_storage_is_used(self) -> None:
         """When a custom storage object is passed it replaces the default."""
         custom_storage = MagicMock()
-        orch = NotificationOrchestrator(storage=custom_storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=custom_storage)
         assert orch.storage is custom_storage
 
     def test_register_channel_adapter(self) -> None:
         """register_channel_adapter adds adapter under its channel_type key."""
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         adapter = MagicMock()
         adapter.channel_type = "custom_channel"
         orch.register_channel_adapter(adapter)
@@ -162,7 +176,7 @@ class TestOrchestratorInit:
 
     def test_register_action_handler(self) -> None:
         """register_action_handler adds handler under its action_type key."""
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         handler = MagicMock()
         handler.action_type = "custom_action"
         orch.register_action_handler(handler)
@@ -180,7 +194,7 @@ class TestCreateNotification:
     async def test_creates_and_saves_notification(self) -> None:
         """Notification record is saved and delivery is attempted."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         # Stub delivery to be a no-op
         orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
@@ -198,7 +212,7 @@ class TestCreateNotification:
     async def test_notification_record_fields(self) -> None:
         """The record preserves the original request and timestamps."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
 
         request = _make_request(user_id="user-42", notification_id="n-42")
@@ -220,7 +234,7 @@ class TestDeliverNotification:
     async def test_delivers_via_matching_channel_adapter(self) -> None:
         """When a channel adapter can handle the request it is invoked."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         success_status = ChannelDeliveryStatus(
             channel_type="inapp",
@@ -250,7 +264,7 @@ class TestDeliverNotification:
     async def test_overall_status_failed_when_no_channel_succeeds(self) -> None:
         """If all channels fail, overall status is FAILED."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         fail_status = ChannelDeliveryStatus(
             channel_type="inapp",
@@ -277,7 +291,7 @@ class TestDeliverNotification:
     async def test_skipped_channels_do_not_count_as_delivered(self) -> None:
         """A channel with status DELIVERED but skipped=True is not counted."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         skipped_status = ChannelDeliveryStatus(
             channel_type="inapp",
@@ -303,7 +317,7 @@ class TestDeliverNotification:
     async def test_adapter_exception_treated_as_error(self) -> None:
         """If an adapter raises, it is caught and does not crash delivery."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         adapter = _mock_channel_adapter(channel_type="inapp", can_handle=True)
         adapter.transform.side_effect = RuntimeError("adapter died")
@@ -320,7 +334,7 @@ class TestDeliverNotification:
     async def test_no_delivery_tasks_when_adapter_cannot_handle(self) -> None:
         """If no adapter can handle the request, nothing is delivered."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         orch.channel_adapters["inapp"] = _mock_channel_adapter(
             channel_type="inapp", can_handle=False
@@ -339,7 +353,7 @@ class TestDeliverNotification:
     async def test_websocket_broadcast_after_delivery(self) -> None:
         """A notification.delivered event is broadcast via websocket."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         success_status = ChannelDeliveryStatus(
             channel_type="inapp",
@@ -377,7 +391,7 @@ class TestDefaultChannels:
 
     @staticmethod
     def _orch_with_every_adapter_succeeding(storage: AsyncMock) -> NotificationOrchestrator:
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         for key in list(orch.channel_adapters.keys()):
             orch.channel_adapters[key] = _mock_channel_adapter(
                 channel_type=key,
@@ -436,7 +450,7 @@ class TestDefaultChannels:
         assert [ch["channel_type"] for ch in updates["channels"]] == ["inapp"]
 
     async def test_a_failed_lookup_is_in_app_only_and_on_the_wide_event(self) -> None:
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         with (
             patch(
                 "app.utils.notification.orchestrator.resolve_proactive_target",
@@ -451,7 +465,7 @@ class TestDefaultChannels:
 
     async def test_explicit_channels_are_delivered_as_named_and_nothing_is_resolved(self) -> None:
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         orch.channel_adapters["inapp"] = _mock_channel_adapter(
             channel_type="inapp", can_handle=True
         )
@@ -480,7 +494,7 @@ class TestDeliverViaChannel:
     async def test_returns_success_from_adapter(self) -> None:
         """On successful delivery, returns the adapter's status."""
         storage = MagicMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         expected = ChannelDeliveryStatus(
             channel_type="inapp",
@@ -500,7 +514,7 @@ class TestDeliverViaChannel:
 
     async def test_exception_returns_pending_status_with_error(self) -> None:
         """An exception in the adapter returns PENDING with error message."""
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
 
         adapter = AsyncMock()
         adapter.channel_type = "inapp"
@@ -527,7 +541,7 @@ class TestExecuteAction:
         """Returns NOT_FOUND when storage returns None."""
         storage = AsyncMock()
         storage.get_notification.return_value = None
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.execute_action("notif-1", "action-1", "user-1", None)
 
@@ -540,7 +554,7 @@ class TestExecuteAction:
         request = _make_request(actions=[_make_action(action_id="other-action")])
         record = _make_record(request=request)
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.execute_action("notif-1", "missing-action", "user-1", None)
 
@@ -553,7 +567,7 @@ class TestExecuteAction:
         request = _make_request(actions=[action])
         record = _make_record(request=request)
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.execute_action("notif-1", "act-1", "user-1", None)
 
@@ -566,7 +580,7 @@ class TestExecuteAction:
         request = _make_request(actions=[action])
         record = _make_record(request=request)
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.execute_action("notif-1", "act-1", "user-1", None)
 
@@ -581,7 +595,7 @@ class TestExecuteAction:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         # Remove all handlers
         orch.action_handlers.clear()
 
@@ -598,7 +612,7 @@ class TestExecuteAction:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         handler = MagicMock()
         handler.can_handle.return_value = False
         orch.action_handlers["redirect"] = handler
@@ -616,7 +630,7 @@ class TestExecuteAction:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         handler = MagicMock()
         handler.action_type = "redirect"
@@ -645,7 +659,7 @@ class TestExecuteAction:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         handler = MagicMock()
         handler.action_type = "redirect"
@@ -691,7 +705,7 @@ class TestExecuteAction:
         storage.get_notification.return_value = _make_record(
             request=_make_request(actions=[action])
         )
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         with patch("app.utils.notification.orchestrator.websocket_manager"):
             result = await orch.execute_action("notif-1", "act-1", "user-1", None)
@@ -710,7 +724,7 @@ class TestExecuteAction:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         handler = MagicMock()
         handler.action_type = "redirect"
@@ -742,7 +756,7 @@ class TestMarkAsRead:
         record = _make_record(request=request, status=NotificationStatus.DELIVERED)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
@@ -762,7 +776,7 @@ class TestMarkAsRead:
         storage = AsyncMock()
         storage.get_notification.return_value = None
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.mark_as_read("notif-1", "user-1")
 
@@ -785,7 +799,7 @@ class TestArchiveNotification:
         record = _make_record(request=request)
         storage.get_notification.return_value = record
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.archive_notification("notif-1", "user-1")
 
@@ -799,7 +813,7 @@ class TestArchiveNotification:
         storage = AsyncMock()
         storage.get_notification.return_value = None
 
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.archive_notification("notif-1", "user-1")
 
@@ -823,7 +837,7 @@ class TestGetNotifications:
             _make_record(request=_make_request(notification_id="n-2")),
         ]
         storage.get_user_notifications.return_value = records
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         results = await orch.get_user_notifications("user-1")
 
@@ -835,7 +849,7 @@ class TestGetNotifications:
         """The filters object is forwarded to storage unchanged."""
         storage = AsyncMock()
         storage.get_user_notifications.return_value = []
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
         filters = NotificationListFilters(
             status=NotificationStatus.DELIVERED,
             limit=10,
@@ -854,7 +868,7 @@ class TestGetNotifications:
         storage = AsyncMock()
         record = _make_record()
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.get_notification("notif-1", "user-1")
 
@@ -865,7 +879,7 @@ class TestGetNotifications:
         """get_notification returns None when storage returns None."""
         storage = AsyncMock()
         storage.get_notification.return_value = None
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         result = await orch.get_notification("notif-1", "user-1")
 
@@ -885,7 +899,7 @@ class TestBulkActions:
         storage = AsyncMock()
         record = _make_record()
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
@@ -899,7 +913,7 @@ class TestBulkActions:
         storage = AsyncMock()
         record = _make_record()
         storage.get_notification.return_value = record
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         results = await orch.bulk_actions(["n-1", "n-2"], "user-1", BulkActions.ARCHIVE)
 
@@ -909,7 +923,7 @@ class TestBulkActions:
     async def test_bulk_unknown_action_returns_false(self) -> None:
         """An unrecognised bulk action type returns False for each ID."""
         storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         # Simulate an unknown action by patching BulkActions value
         results = await orch.bulk_actions(
@@ -933,7 +947,7 @@ class TestBulkActions:
             return _make_record()
 
         storage.get_notification.side_effect = mock_get
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
             ws.broadcast_to_user = AsyncMock()
@@ -946,7 +960,7 @@ class TestBulkActions:
         """If mark_as_read returns None (not found), result is False."""
         storage = AsyncMock()
         storage.get_notification.return_value = None
-        orch = NotificationOrchestrator(storage=storage)
+        orch = NotificationOrchestrator(email_renderers={}, storage=storage)
 
         results = await orch.bulk_actions(["n-missing"], "user-1", BulkActions.MARK_READ)
 
@@ -976,7 +990,7 @@ class TestSerializeNotification:
             )
         ]
 
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["id"] == record.id
@@ -990,7 +1004,7 @@ class TestSerializeNotification:
         assert data["content"]["actions"][0]["id"] == "a-1"
         assert data["source"] == NotificationSourceEnum.AI_TODO_ADDED.value
         assert data["type"] == NotificationType.INFO.value
-        assert data["metadata"] == {"key": "value"}
+        assert data["details"] == {"kind": "todo", "todo_id": "todo-1"}
         assert len(data["channels"]) == 1
         assert data["channels"][0]["channel_type"] == "inapp"
 
@@ -1000,7 +1014,7 @@ class TestSerializeNotification:
         record.delivered_at = None
         record.read_at = None
 
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["delivered_at"] is None
@@ -1011,7 +1025,7 @@ class TestSerializeNotification:
         request = _make_request(actions=None)
         record = _make_record(request=request)
 
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["content"]["actions"] == []
@@ -1021,7 +1035,7 @@ class TestSerializeNotification:
         record = _make_record()
         record.channels = []
 
-        orch = NotificationOrchestrator(storage=MagicMock())
+        orch = NotificationOrchestrator(email_renderers={}, storage=MagicMock())
         data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["channels"] == []

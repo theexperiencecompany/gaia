@@ -1,7 +1,7 @@
 import type { Postmark } from "@shared/api/generated";
+import { FIXED_LOCALE, formatDate } from "@shared/utils";
+import { parseISO } from "date-fns";
 import Image from "next/image";
-
-import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 interface PostmarkCardProps {
   postmark: Postmark;
@@ -13,6 +13,8 @@ export function PostmarkCard({ postmark }: PostmarkCardProps) {
     <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 p-2 pr-4 shadow-xl shadow-black/40">
       <Image
         src={postmark.stamp_url}
+        // served by this deployment's API, which the optimizer refuses on a private IP (self-host, local)
+        unoptimized
         alt={`${postmark.city} stamp`}
         width={44}
         height={56}
@@ -24,7 +26,9 @@ export function PostmarkCard({ postmark }: PostmarkCardProps) {
         </p>
         <p className="truncate text-xs text-zinc-400">{postmark.country}</p>
         <p className="mt-1 text-xs text-zinc-500 tabular-nums">
-          {formatRelativeDate(postmark.date)}
+          {formatDate(parseISO(postmark.card.date), "long", {
+            locale: FIXED_LOCALE,
+          })}
         </p>
       </div>
     </div>

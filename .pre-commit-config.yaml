@@ -104,18 +104,11 @@ repos:
         files: '(^|/)(pyproject\.toml|uv\.lock)$'
         pass_filenames: false
 
-      - id: openui-gen-prompt
-        name: openui generated prompt up to date
-        entry: mise exec -- bash -c 'pnpm openui:gen-prompt && git diff --exit-code apps/api/app/agents/prompts/openui_generated.txt'
+      - id: openui-prompts
+        name: OpenUI prompts up to date
+        entry: mise exec -- node scripts/ci/checks.mjs openui-prompts
         language: system
-        files: '^(apps/web/src/config/openui/|scripts/openui/generate-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
-        pass_filenames: false
-
-      - id: openui-gen-artifact-prompts
-        name: artifact prompts up to date
-        entry: mise exec -- bash -c 'pnpm openui:gen-artifact-prompts && git diff --exit-code apps/api/app/agents/prompts/artifacts/'
-        language: system
-        files: '^(apps/web/src/features/artifacts/openui/|scripts/openui/generate-artifact-prompt\.ts|apps/web/package\.json|pnpm-lock\.yaml)'
+        files: '^(scripts/openui/|scripts/ci/checks\.mjs|apps/web/src/config/openui/|libs/artifacts/src/|libs/shared/ts/src/artifacts/|apps/api/app/agents/prompts/(openui_generated\.txt|artifacts/)|pnpm-lock\.yaml)'
         pass_filenames: false
 
       # `files:` selects exactly what the ci:api-schema nx target's inputs do —

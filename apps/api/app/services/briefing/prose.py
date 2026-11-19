@@ -1,7 +1,8 @@
 """Voice the brief, hold its slots to its facts, and build the payload from it.
 
 Code builds every fact; the agent writes only the voice. Prose whose slots break a fact is sent
-back once with the problems named; a second failure voices the brief plainly from its facts.
+back once with the problems named; a second failure voices the brief plainly from its facts
+(the checked-call policy, briefing.checked_call).
 """
 
 from dataclasses import dataclass, field
@@ -10,8 +11,6 @@ import re
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
-from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
-from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import (
     RecentLines,
     reader_line,
@@ -25,33 +24,27 @@ from app.constants.briefing import (
     MAX_VOICE_ATTEMPTS,
     PLAIN_BRIEF_EMPTY,
     PLAIN_BRIEF_HEADLINE,
-    hue_for_day,
 )
-from app.models.briefing_models import (
-    BriefingModel,
-    BriefingMood,
-    BriefingPayload,
-    BriefVoice,
-)
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.brief_document_models import BriefingModel
+from app.models.brief_payload_models import BriefingMood, BriefVoice
+from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
+from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
 from app.services.briefing.claims import claim_problems
-from app.services.briefing.context import UserClock
-from app.services.briefing.errors import BriefingGenerationError, VoiceUnreadableError
-from app.services.briefing.facts import (
-    Facts,
-)
+from app.services.briefing.facts import Facts
+from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
     SlotValues,
     referenced_facts,
     render_slots,
     slot_problems,
 )
-from app.services.links.service import optional_short_link
+from app.services.links.service import attach_link
+from app.services.links.urls import build_url
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences
-from shared.py.wide_events import log
 
 
 async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
@@ -65,14 +58,12 @@ async def links_in(user_id: str, message: str, facts: Facts) -> dict[int, str]:
     for fact_id, todo_id in facts.deliverables.items():
         if fact_id not in linked:
             continue
-        url = await optional_short_link(user_id, ShortLinkTargetType.TODO_DELIVERABLE, todo_id)
-        if url is not None:
-            links[fact_id] = url
+        link = await attach_link(
+            user_id, RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id=todo_id)
+        )
+        if link is not None:
+            links[fact_id] = build_url(link.slug)
     return links
-
-
-#: The provider holds the voice to its schema, so every field arrives and each is a string.
-_SCHEMA_HELD = StructuredCallOptions(schema_held=True)
 
 
 def reader_block(user: UserDocument) -> str:
@@ -85,29 +76,6 @@ def reader_block(user: UserDocument) -> str:
             *build_user_context_parts(preferences or {}),
         ]
     )
-
-
-def _unreadable_problems(exc: MalformedStructuredOutputError) -> list[str]:
-    """Name each field the reply got wrong, never its text; a reply with no voice at all, why."""
-    cause = exc.__cause__
-    if not isinstance(cause, ValidationError):
-        return [exc.reason]
-    errors: list[ErrorDetails] = cause.errors()
-    return [f"{error['loc'][0]}: {error['msg']}" for error in errors]
-
-
-async def _voice(user_id: str, prompt: str) -> BriefVoice:
-    """Voice the brief in one structured call: briefing work, never charged to the user's allowance."""
-    try:
-        return await ainvoke_structured(
-            BriefVoice,
-            prompt,
-            label=BRIEF_VOICE_LABEL,
-            config=metered_config(user_id),
-            options=_SCHEMA_HELD,
-        )
-    except MalformedStructuredOutputError as exc:
-        raise VoiceUnreadableError(_unreadable_problems(exc), exc.llm_output) from exc
 
 
 @dataclass(frozen=True)
@@ -139,11 +107,6 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 _FREQUENCY_RE = re.compile(rf"\b({'|'.join(FREQUENCY_CLAIMS)})\b", re.IGNORECASE)
 _NOT_A_WORD_RE = re.compile(r"[^\w\s]")
-
-
-def opening_line(message: str) -> str:
-    """Return a message's first non-blank line."""
-    return next((line.strip() for line in message.splitlines() if line.strip()), "")
 
 
 def recent_lines(briefs: list[BriefingModel]) -> RecentLines:
@@ -209,7 +172,7 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         problems.append(
             f"the message never refers to the lead, fact {lead} "
             f"({writing.values.facts[lead].title}); say it in your own words as "
-            f"[your phrase](fact:{lead})"
+            f"{LinkSlot('your phrase', lead)}"
         )
     if problems:
         return problems
@@ -226,38 +189,34 @@ async def written_brief(
 ) -> tuple[BriefVoice, BriefVoice]:
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
-    An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to
-    the model once with the problems named; after a second failure the brief is voiced plainly
-    from its facts, and the failure is logged as an error.
+    An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to the
+    model with the problems named; past the last attempt the brief is voiced plainly from its
+    facts.
     """
-    note = ""
-    failure: BriefingGenerationError
-    rejections: list[str] = []
-    for attempt in range(1, MAX_VOICE_ATTEMPTS + 1):
-        attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
-        try:
-            voice = await _voice(user_id, attempt_prompt)
-        except VoiceUnreadableError as exc:
-            # Logged here, not where the reply failed: that error's text quotes the reply.
-            log.warning("briefing.voice_unreadable", problems=exc.problems)
-            rejections.append("; ".join(exc.problems))
-            failure, note = exc, voice_unreadable_note(exc.problems, exc.reply)
-            continue
+
+    async def held(voice: BriefVoice) -> tuple[BriefVoice, BriefVoice] | Rejected[BriefVoice]:
         checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):
-            log.set_ns("brief_voice", attempts=attempt, plain=False, rejections=rejections)
             return voice, checked
-        log.warning("briefing.voice_rejected", problems=checked)
-        rejections.append("; ".join(checked))
-        failure = BriefingGenerationError(
-            f"The brief's prose does not hold to its facts: {'; '.join(checked)}"
-        )
-        note = voice_correction_note(checked, voice.model_dump_json(indent=2))
-    # Loud, but never the user's loss: the brief goes out in plain words built from its facts.
-    log.set_ns("brief_voice", attempts=MAX_VOICE_ATTEMPTS, plain=True, rejections=rejections)
-    log.error("briefing.voice_salvaged", problems=str(failure))
-    plain = plain_voice(writing)
-    return plain, _draft(plain, writing.values)
+        return Rejected(checked, voice_correction_note(checked, voice.model_dump_json(indent=2)))
+
+    def plainly(_last: BriefVoice | None) -> tuple[BriefVoice, BriefVoice]:
+        plain = plain_voice(writing)
+        return plain, _draft(plain, writing.values)
+
+    return await checked_structured_call(
+        user_id,
+        prompt,
+        CheckedCall(
+            name="voice",
+            schema=BriefVoice,
+            label=BRIEF_VOICE_LABEL,
+            attempts=MAX_VOICE_ATTEMPTS,
+            check=held,
+            unreadable=voice_unreadable_note,
+            salvage=plainly,
+        ),
+    )
 
 
 def plain_voice(writing: Writing) -> BriefVoice:
@@ -266,14 +225,15 @@ def plain_voice(writing: Writing) -> BriefVoice:
     order = [writing.lead] if writing.lead is not None else []
     order += [fact_id for fact_id in facts if fact_id != writing.lead]
     lines = [
-        f"- [[fact:{fact_id}]]" + (f" ([[fact:{fact_id}.time]])" if facts[fact_id].time else "")
+        f"- {FactSlot(fact_id)}"
+        + (f" ({FactSlot(fact_id, FactField.TIME)})" if facts[fact_id].time else "")
         for fact_id in order
     ]
     message = "\n".join(lines) or PLAIN_BRIEF_EMPTY
     while len(_draft_message(message, writing)) > MAX_BRIEF_MESSAGE_CHARS and "\n" in message:
         message = message.rsplit("\n", 1)[0]
     return BriefVoice(
-        headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood="clear", message=message
+        headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood=BriefingMood.CLEAR, message=message
     )
 
 
@@ -288,33 +248,3 @@ class Prose:
     written: BriefVoice
     draft: BriefVoice
     links: dict[int, str]
-
-
-def voiced_payload(
-    clock: UserClock,
-    prose: Prose,
-    facts: Facts,
-    *,
-    kicker: str,
-    mood: BriefingMood,
-    family: str,
-) -> BriefingPayload:
-    """Build the brief from its rendered prose; an item the message links carries its link."""
-    linked = {todo: prose.links[i] for i, todo in facts.deliverables.items() if i in prose.links}
-    for item in (item for section in facts.sections for item in section.items):
-        if item.todo_id in linked:
-            item.link = linked[item.todo_id]
-    draft = prose.draft
-    return BriefingPayload(
-        kicker=kicker,
-        date=clock.date_str,
-        headline=draft.headline,
-        lede=draft.lede,
-        sections=facts.sections,
-        mood=mood,
-        caption=draft.caption,
-        hue=hue_for_day(clock.day_of_year),
-        generated_at=clock.now_local.strftime("%-I:%M %p"),
-        message=render_slots(prose.written.message, facts.values, prose.links),
-        template_family=family,
-    )

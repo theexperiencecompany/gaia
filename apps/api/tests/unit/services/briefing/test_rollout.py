@@ -7,16 +7,20 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from tests.factories import make_user_id
+from tests.helpers import captured_wide_event
 
 from app.models.brief_pool_models import GoalOrigin
-from app.models.user_models import BriefingBootstrap, UserDocument
-from app.services.briefing import context, rollout
+from app.models.briefing_state_models import BriefingBootstrap, BriefingStateDocument
+from app.models.user_models import OnboardingSubdocument, UserDocument
+from app.services.briefing import rollout
+from app.services.briefing.goals import StatedGoal
 from app.services.briefing.rollout import provision_existing_user
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingProvisioned
-from shared.py.wide_events import log, log_context
 
-USER_ID = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
+_ONBOARDED = OnboardingSubdocument(completed=True)
 
 
 class FakeIntegrationRepo:
@@ -31,15 +35,24 @@ class FakeIntegrationRepo:
 
 class FakeUserRepo:
     def __init__(self) -> None:
-        self.user: UserDocument | None = UserDocument(id=USER_ID)
+        self.user: UserDocument | None = UserDocument(id=USER_ID, onboarding=_ONBOARDED)
         self.lookups: list[str] = []
-        self.bootstrap_calls: list[str] = []
 
     async def get(self, user_id: str) -> UserDocument | None:
         self.lookups.append(user_id)
         return self.user
 
-    async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
+
+class FakeBriefingStateRepo:
+    def __init__(self) -> None:
+        self.state = BriefingStateDocument(user_id=USER_ID)
+        self.bootstrap_calls: list[str] = []
+
+    async def state_for(self, user_id: str) -> BriefingStateDocument:
+        assert user_id == USER_ID
+        return self.state
+
+    async def hold_for_goal(self, user_id: str) -> None:
         self.bootstrap_calls.append(user_id)
 
 
@@ -61,6 +74,7 @@ class Harness:
         self.captured: list[tuple[UserId, Any]] = []
         self.integrations = FakeIntegrationRepo(0)
         self.users = FakeUserRepo()
+        self.states = FakeBriefingStateRepo()
 
 
 def _provisioned(held_for_goal: bool) -> list[tuple[UserId, Any]]:
@@ -75,19 +89,20 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         h.provisioned.append(user_id)
         return []
 
-    async def fake_stated_goals(user_id: str, user: UserDocument) -> list[context.StatedGoal]:
+    async def fake_stated_goals(user_id: str, user: UserDocument) -> list[StatedGoal]:
         h.goal_calls.append((user_id, user))
-        return [context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if h.has_goal else []
+        return [StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if h.has_goal else []
 
     def fake_capture(user_id: UserId, event: Any) -> None:
         h.captured.append((user_id, event))
 
     monkeypatch.setattr(rollout, "provision_briefing_workflows", fake_provision)
-    monkeypatch.setattr(context, "stated_goals", fake_stated_goals)
+    monkeypatch.setattr(rollout, "stated_goals", fake_stated_goals)
     monkeypatch.setattr(rollout, "capture", fake_capture)
     monkeypatch.setattr(rollout, "user_integration_repository", h.integrations)
     monkeypatch.setattr(rollout, "user_repository", h.users)
     monkeypatch.setattr(rollout, "briefing_repository", h.briefings)
+    monkeypatch.setattr(rollout, "briefing_state_repository", h.states)
     return h
 
 
@@ -97,15 +112,13 @@ class TestReRun:
 
     async def test_a_user_already_held_keeps_their_grace_window(self, harness: Harness) -> None:
         harness.has_goal = False
-        harness.users.user = UserDocument(
-            id=USER_ID,
-            briefing_bootstrap=BriefingBootstrap(
-                pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)
-            ),
+        harness.states.state = BriefingStateDocument(
+            user_id=USER_ID,
+            bootstrap=BriefingBootstrap(pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)),
         )
 
         assert await provision_existing_user(USER_ID) == "already_rolled_out"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.provisioned == [USER_ID]
 
     async def test_a_user_already_briefed_is_never_held(self, harness: Harness) -> None:
@@ -113,7 +126,7 @@ class TestReRun:
         harness.briefings.briefed = True
 
         assert await provision_existing_user(USER_ID) == "already_rolled_out"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == []
 
 
@@ -125,7 +138,24 @@ class TestUnknownUser:
         assert await provision_existing_user(USER_ID) == "skipped"
         assert harness.provisioned == []
         assert harness.goal_calls == []
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
+        assert harness.captured == []
+
+
+@pytest.mark.unit
+class TestMidOnboarding:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "onboarding", [None, OnboardingSubdocument(completed=False)], ids=["none", "unfinished"]
+    )
+    async def test_a_user_still_in_the_wizard_is_left_to_it(
+        self, harness: Harness, onboarding: OnboardingSubdocument | None
+    ) -> None:
+        harness.users.user = UserDocument(id=USER_ID, onboarding=onboarding)
+
+        assert await provision_existing_user(USER_ID) == "mid_onboarding"
+        assert harness.provisioned == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == []
 
 
@@ -137,7 +167,7 @@ class TestNormalPath:
         assert await provision_existing_user(USER_ID) == "normal"
         assert harness.users.lookups == [USER_ID]
         assert harness.provisioned == [USER_ID]
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == _provisioned(held_for_goal=False)
 
     async def test_goal_derivation_reads_the_user_that_was_looked_up(
@@ -152,7 +182,7 @@ class TestNormalPath:
         harness.integrations.count = 2
 
         assert await provision_existing_user(USER_ID) == "normal"
-        assert harness.users.bootstrap_calls == []
+        assert harness.states.bootstrap_calls == []
         assert harness.captured == _provisioned(held_for_goal=False)
 
 
@@ -164,7 +194,7 @@ class TestBootstrapPath:
 
         assert await provision_existing_user(USER_ID) == "bootstrap"
         assert harness.provisioned == [USER_ID]
-        assert harness.users.bootstrap_calls == [USER_ID]
+        assert harness.states.bootstrap_calls == [USER_ID]
         assert harness.captured == _provisioned(held_for_goal=True)
 
     async def test_zero_integrations_is_sparse(self, harness: Harness) -> None:
@@ -172,7 +202,7 @@ class TestBootstrapPath:
         harness.integrations.count = 0
 
         assert await provision_existing_user(USER_ID) == "bootstrap"
-        assert harness.users.bootstrap_calls == [USER_ID]
+        assert harness.states.bootstrap_calls == [USER_ID]
 
     async def test_sparsity_is_measured_for_the_same_user(self, harness: Harness) -> None:
         harness.has_goal = False
@@ -192,9 +222,8 @@ class TestWideEvent:
     """
 
     async def test_stamps_the_component_operation_and_user(self, harness: Harness) -> None:
-        async with log_context("briefing_rollout_test"):
+        async with captured_wide_event() as event:
             await provision_existing_user(USER_ID)
-            event = dict(log.get())
 
         assert event["component"] == "briefing_rollout"
         assert event["operation"] == "provision_existing_user"
@@ -205,8 +234,7 @@ class TestWideEvent:
     ) -> None:
         harness.users.user = None
 
-        async with log_context("briefing_rollout_test"):
+        async with captured_wide_event() as event:
             assert await provision_existing_user(USER_ID) == "skipped"
-            event = dict(log.get())
 
         assert event["warnings"] == [{"msg": "briefing_rollout.unknown_user", "user_id": USER_ID}]

@@ -3,7 +3,7 @@
  *
  * Imports ONLY `zod` — no `@/` aliases, no React, no browser deps — so both
  * the React component files (which add the views) and the Node prompt
- * generator (`scripts/openui/generate-prompt.ts`) can import it. The LLM
+ * generator (`scripts/openui/generate-prompts.ts`) can import it. The LLM
  * prompt's vocabulary is generated from `GAIA_COMPONENT_SPECS` + `@openuidev/react-ui`.
  */
 import { z } from "zod";
@@ -182,41 +182,6 @@ export const timelineSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Briefing
-// ---------------------------------------------------------------------------
-
-export const briefingSchema = z.object({
-  kicker: z.string(),
-  date: z.string(),
-  headline: z.string(),
-  lede: z.string(),
-  stats: z.array(
-    z.object({
-      value: z.string(),
-      label: z.string(),
-      delta: z.string().nullish(),
-    }),
-  ),
-  sections: z.array(
-    z.object({
-      numeral: z.string(),
-      title: z.string(),
-      items: z.array(
-        z.object({
-          text: z.string(),
-          todo_id: z.string().nullish(),
-          link: z.string().nullish(),
-          kind: z.enum(["gaia", "you", "lookback", "failed", "note"]),
-        }),
-      ),
-    }),
-  ),
-  mood: z.string(),
-  caption: z.string(),
-  hue: z.number().min(0).max(360),
-});
-
-// ---------------------------------------------------------------------------
 // Documents
 // ---------------------------------------------------------------------------
 
@@ -308,13 +273,5 @@ export const GAIA_COMPONENT_SPECS = [
     description:
       "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.",
     props: textDocumentSchema,
-  },
-  {
-    name: "Briefing",
-    description:
-      "GAIA's daily/weekly briefing: its headline, the message GAIA wrote, then its sections of items " +
-      "(optionally linking to a todo). Use only for GAIA's own daily/weekly briefing payloads — never " +
-      "hand-assemble one from other components.",
-    props: briefingSchema,
   },
 ] as const;

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import JsonValue, ValidationError
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.auth import get_current_user as get_request_user
@@ -41,7 +41,6 @@ from app.models.bot_models import (
     TranscribeAudioResponse,
     UnlinkAccountResponse,
 )
-from app.models.integration_models import UserIntegrationDocument
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import error_responses
@@ -393,10 +392,6 @@ def _bot_stream_control_frame(
         )
         return None, None, False
 
-
-# ``get_user_integration_records`` returns dumped documents; the settings route
-# validates them back into the document model where they enter the handler.
-_USER_INTEGRATION_RECORDS = TypeAdapter(list[UserIntegrationDocument])
 
 # Web stream payload keys that carry nothing a bot renders.
 _WEB_ONLY_STREAM_FIELDS = frozenset(
@@ -825,10 +820,7 @@ async def get_settings(
 
     connected_integrations_list = []
     try:
-        integrations = _USER_INTEGRATION_RECORDS.validate_python(
-            await get_user_integration_records(user_id)
-        )
-        for integration_doc in integrations:
+        for integration_doc in await get_user_integration_records(user_id):
             integration_id = integration_doc.integration_id
             status = integration_doc.status
             if integration_id:

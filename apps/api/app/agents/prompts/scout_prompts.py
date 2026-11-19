@@ -15,7 +15,11 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
 ```json
 {{
   "watching": "one line: what in {app} can need this user",
-  "criteria": "<how to tell, in {app}, which items need this user and which are important, and what to leave out>",
+  "criteria": {{
+    "needs_you": "<one line: how to tell, in {app}, which items need this user>",
+    "important": "<one line: which of those are important>",
+    "leave_out": "<one line: what to leave out>"
+  }},
   "nothing_to_watch": false,
   "steps": [
     {{"id": "<short step id>", "tool": "<exact tool name you called>", "args": {{"<arg>": "<value you sent>"}}}}
@@ -72,7 +76,8 @@ useful or only discovered ids. Write a date that should move with the calendar a
 "sources" say where each step's result holds the items and how to read one item; every path is
 dotted keys and list indexes into the JSON that tool returned. Tomorrow's look reads EVERY item
 at those paths, so "criteria" is what then decides, without you, which of them matter: write it
-from what you saw today, concretely enough to drop the items you left out. "importance" is high
+from what you saw today, concretely enough to drop the items you left out, each part one short
+line of at most {criterion_chars} characters. "importance" is high
 only when the item is overdue, due within a day, or someone is blocked on the user.
 
 If {app} holds nothing that could ever need the user's attention (it is a reference, a utility, or

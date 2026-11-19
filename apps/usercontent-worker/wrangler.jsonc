@@ -1,7 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // Forwards <content_id>.heygaia.link to the API's /api/v1/usercontent route,
-  // which owns every serving rule. Secret (wrangler secret put): INTERNAL_API_TOKEN.
+  // which owns every serving rule. Secrets (wrangler secret put): INTERNAL_API_TOKEN
+  // and LINK_CONTENT_EDGE_TOKEN, each the API's value of the same name.
   "name": "gaia-usercontent",
   "main": "src/index.ts",
   "compatibility_date": "2026-02-24",

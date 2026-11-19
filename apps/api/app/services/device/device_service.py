@@ -38,6 +38,7 @@ from app.constants.device_bridge import (
     USER_CODE_LENGTH,
     DeviceServerKind,
 )
+from app.constants.integrations import IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, redis_cache, set_cache
@@ -512,7 +513,7 @@ async def _create_server_integration(
         clone_count=0,
     )
     await integration_repository.create(integration)
-    await add_user_integration(user_id, integration_id, initial_status="connected")
+    await add_user_integration(user_id, integration_id, initial_status=IntegrationStatus.CONNECTED)
     await invalidate_user_integration_caches(user_id)
 
 

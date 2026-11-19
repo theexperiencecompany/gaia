@@ -9,30 +9,28 @@ platform / background-job named methods.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-import time
 
 from bson import ObjectId
 import pytest
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.constants.briefing import BriefingBag, EditionChoice
 from app.constants.email import SignupDelivery
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
 from app.models.onboarding_models import SocialProfile
 from app.models.quiet_hours_models import QuietHours
+from app.models.user_activity_models import UserActivityRow
 from app.models.user_models import (
     BioStatus,
-    BriefingDormancy,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
-    ShuffleBag,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
 
@@ -48,23 +46,6 @@ def make_user() -> Callable[..., UserDocument]:
         return UserDocument.model_validate({"email": "a@b.com", "name": "A", **overrides})
 
     return _make
-
-
-@pytest.fixture
-def local_time_offset_from_utc(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Move the process's local timezone off UTC for the test.
-
-    The suite pins TZ=UTC, which makes a naive datetime.now() numerically
-    identical to an aware UTC one — so a timestamp that forgot its timezone
-    would look correct here and be hours wrong in production.
-    """
-    monkeypatch.setenv("TZ", "Asia/Kolkata")  # UTC+5:30
-    time.tzset()
-    try:
-        yield
-    finally:
-        monkeypatch.undo()
-        time.tzset()
 
 
 class TestUserReads:
@@ -230,6 +211,17 @@ class TestActivity:
         found = await repo.find_by_activity_status(ActivityStatus.DORMANT, among={mine.id})
         assert [u.id for u in found] == [mine.id]
 
+    async def test_activity_rows_carry_the_id_and_last_seen_of_the_given_ids_only(
+        self, repo, make_user
+    ):
+        mine = await repo.create(make_user(last_active_at=_days_ago(45)))
+        await repo.create(make_user(last_active_at=_days_ago(45)))
+        stored = await repo.get(mine.id)
+
+        rows = await repo.find_activity_rows(ActivityStatus.DORMANT, among={mine.id})
+
+        assert rows == [UserActivityRow(id=mine.id, last_active_at=stored.last_active_at)]
+
 
 class TestOnboardingWrites:
     async def test_complete_onboarding_is_gated_and_idempotent(self, repo, make_user):
@@ -253,23 +245,6 @@ class TestOnboardingWrites:
         )
         assert second is None
         assert (await repo.get(created.id)).onboarding.phase == OnboardingPhase.COMPLETED
-
-    async def test_complete_onboarding_writes_timezone_at_the_document_root(
-        self, repo, make_user, raw_collection
-    ):
-        """user.timezone is the single source of truth — the wizard's answer must land at the root, not on the subdocument."""
-        created = await repo.create(make_user(email="tz@y.com"))
-        completed = await repo.complete_onboarding(
-            created.id,
-            phase=OnboardingPhase.COMPLETED,
-            bio_status=BioStatus.COMPLETED,
-            preferences=OnboardingPreferences(profession="eng"),
-            timezone="Europe/Berlin",
-        )
-        assert completed is not None
-        assert completed.timezone == "Europe/Berlin"
-        stored = await raw_collection.find_one({"email": "tz@y.com"})
-        assert stored["timezone"] == "Europe/Berlin"
 
     async def test_complete_onboarding_without_timezone_keeps_the_stored_one(
         self, repo, make_user, raw_collection
@@ -524,6 +499,28 @@ class TestUserCounts:
         a = await repo.create(make_user(email="a1@b.com"))
         b = await repo.create(make_user(email="a2@b.com"))
         assert set(await repo.list_all_ids()) == {a.id, b.id}
+
+    @pytest.mark.regression
+    async def test_a_release_step_reads_a_user_no_longer_valid_whole(self, repo, raw_collection):
+        """A release step loading whole users failed on one shape an older release left behind."""
+        hours = QuietHours(enabled=True, start_hour=23, end_hour=6)
+        old = await raw_collection.insert_one(
+            {
+                "email": "old@b.com",
+                "timezone": "Asia/Kolkata",
+                "quiet_hours": hours.model_dump(),
+                "first_steps": "an old release's string",
+            }
+        )
+        user_id = str(old.inserted_id)
+        with pytest.raises(ValueError, match="first_steps"):
+            await repo.get(user_id)
+
+        assert await repo.list_all_ids() == [user_id]
+        assert await repo.get_hours(user_id) == UserHours(
+            timezone="Asia/Kolkata", quiet_hours=hours
+        )
+        assert await repo.get_hours("0" * 24) is None
 
     async def test_count_created_before(self, repo, make_user):
         from datetime import datetime
@@ -813,103 +810,6 @@ class TestHilPreferenceWrites:
         got = await repo.get(user.id)
         assert got is not None
         assert (got.hil_preferences or {})["tool_overrides"] == {"send": True}
-
-
-class TestBriefingEngineState:
-    """The briefing engine's per-user state; every write is read back through the cached get()."""
-
-    @staticmethod
-    def _stamped_now(stamp: datetime | None, before: datetime) -> bool:
-        return stamp is not None and before <= stamp <= datetime.now(UTC)
-
-    async def test_the_bootstrap_hold_is_stamped_in_utc_then_cleared(
-        self, repo, make_user, local_time_offset_from_utc
-    ):
-        created = await repo.create(make_user())
-        assert (await repo.get(created.id)).briefing_bootstrap is None
-        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
-
-        await repo.set_briefing_bootstrap_pending(created.id)
-
-        held = (await repo.get(created.id)).briefing_bootstrap
-        assert held is not None and held.pending is True
-        assert self._stamped_now(held.since, before)
-        await repo.clear_briefing_bootstrap(created.id)
-        assert (await repo.get(created.id)).briefing_bootstrap is None
-
-    async def test_a_second_hold_never_restarts_the_grace_window(self, repo, make_user):
-        created = await repo.create(make_user())
-        await repo.set_briefing_bootstrap_pending(created.id)
-        first = (await repo.get(created.id)).briefing_bootstrap
-
-        await repo.set_briefing_bootstrap_pending(created.id)
-
-        assert (await repo.get(created.id)).briefing_bootstrap == first
-
-    async def test_each_shuffle_bag_is_stored_and_read_on_its_own(self, repo, make_user):
-        created = await repo.create(make_user())
-        assert (await repo.get(created.id)).briefing_shuffle_bags is None
-        family = ShuffleBag(order=["gaia", "explorer"], index=1)
-        city = ShuffleBag(order=["Lisbon"], index=0)
-
-        await repo.set_briefing_bag(created.id, BriefingBag.EDITION_FAMILY, family)
-        assert (await repo.get(created.id)).briefing_shuffle_bags == {
-            BriefingBag.EDITION_FAMILY: family
-        }
-        await repo.set_briefing_bag(created.id, BriefingBag.STAMP_CITY, city)
-
-        assert (await repo.get(created.id)).briefing_shuffle_bags == {
-            BriefingBag.EDITION_FAMILY: family,
-            BriefingBag.STAMP_CITY: city,
-        }
-
-    async def test_edition_choices_replace_the_stored_ones_whole(self, repo, make_user):
-        created = await repo.create(make_user())
-        assert (await repo.get(created.id)).briefing_editions == {}
-
-        await repo.set_briefing_editions(created.id, {"menu": EditionChoice.OFF})
-        await repo.set_briefing_editions(created.id, {"swiss": EditionChoice.FAVOURITE})
-
-        assert (await repo.get(created.id)).briefing_editions == {"swiss": EditionChoice.FAVOURITE}
-
-    async def test_the_dormancy_ladder_counts_goes_dormant_in_utc_and_clears(
-        self, repo, make_user, local_time_offset_from_utc
-    ):
-        created = await repo.create(make_user())
-        assert (await repo.get(created.id)).briefing_dormancy is None
-
-        await repo.set_dormancy_day(created.id, idle_days=3, date_str="2026-10-14")
-        counted = (await repo.get(created.id)).briefing_dormancy
-        assert counted is not None
-        assert (counted.idle_days, counted.date, counted.dormant_since) == (3, "2026-10-14", None)
-
-        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
-        await repo.record_goal_question(created.id)
-        asked = (await repo.get(created.id)).briefing_dormancy
-        assert asked is not None and (asked.idle_days, asked.date) == (3, "2026-10-14")
-        assert self._stamped_now(asked.goal_asked_at, before)
-
-        await repo.enter_briefing_dormancy(created.id)
-        dormant = (await repo.get(created.id)).briefing_dormancy
-        assert dormant is not None and (dormant.idle_days, dormant.date) == (3, "2026-10-14")
-        assert self._stamped_now(dormant.dormant_since, before)
-
-        await repo.clear_briefing_dormancy(created.id)
-        woken = (await repo.get(created.id)).briefing_dormancy
-        assert woken == BriefingDormancy(goal_asked_at=asked.goal_asked_at)
-
-    async def test_the_day_zero_hello_records_when_and_where_in_utc(
-        self, repo, make_user, local_time_offset_from_utc
-    ):
-        created = await repo.create(make_user())
-        assert (await repo.get(created.id)).day_zero_hello is None
-        before = datetime.now(UTC) - timedelta(milliseconds=1)  # BSON stores milliseconds
-
-        await repo.mark_day_zero_hello_sent(created.id, "telegram")
-
-        hello = (await repo.get(created.id)).day_zero_hello
-        assert hello is not None and hello.platform == "telegram"
-        assert self._stamped_now(hello.sent_at, before)
 
 
 class TestSetRoleIfUnset:

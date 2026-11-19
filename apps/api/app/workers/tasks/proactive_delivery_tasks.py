@@ -12,7 +12,7 @@ from arq.worker import Retry
 
 from app.agents.core.background.platform_chat import DeferredChatMessage, post_to_platform_chat
 from app.agents.core.background.thread_record import try_record_platform_delivery
-from app.constants.notifications import PROACTIVE_RECORD_RETRY_DELAY
+from app.constants.notifications import PROACTIVE_RECORD_MAX_TRIES, PROACTIVE_RECORD_RETRY_DELAY
 from app.db.repositories.users import user_repository
 from app.utils.auth_utils import build_user_context
 from app.workers.task_envelope import ArqJobContext
@@ -40,17 +40,24 @@ async def deliver_deferred_chat_message(
     return result.value
 
 
-async def record_proactive_delivery(
-    ctx: ArqJobContext,  # noqa: ARG001 -- ARQ task contract
-    conversation_id: str,
-    text: str,
-) -> str:
-    """Record text in the conversation's checkpoint, or retry while the thread is held.
+async def record_proactive_delivery(ctx: ArqJobContext, conversation_id: str, text: str) -> str:
+    """Record text in the conversation's checkpoint, retrying while the thread is held or the write fails.
 
-    Past the registered max tries ARQ fails the job loudly: the message was
-    delivered, but the conversation will not remember it.
+    The last try gives up with an error: the message was delivered, but the
+    conversation will not remember it.
     """
     log.set(conversation_id=conversation_id)
-    if not await try_record_platform_delivery(conversation_id, text):
+    try:
+        if await try_record_platform_delivery(conversation_id, text):
+            return "recorded"
+    except Exception as exc:  # retried below; the last try reports it as an error
+        log.warning(
+            "delivered message not yet recorded in its thread",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+    tries = ctx["job_try"]
+    if tries < PROACTIVE_RECORD_MAX_TRIES:
         raise Retry(defer=PROACTIVE_RECORD_RETRY_DELAY)
-    return "recorded"
+    log.error("delivered message never reached its conversation's thread", tries=tries)
+    return "failed"

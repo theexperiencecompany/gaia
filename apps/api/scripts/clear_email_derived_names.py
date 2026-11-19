@@ -10,10 +10,11 @@ is at write time, so a name the user set in settings survives. A user whose real
 name happens to equal the derivation gets it back on their next login that
 carries one.
 
-Run from the api directory (or /app inside the container):
+Run from the api directory (or /app inside the container); the post-deploy step
+(scripts.post_deploy) runs it once with --apply:
 
-    python scripts/clear_email_derived_names.py --dry-run
-    python scripts/clear_email_derived_names.py --apply
+    uv run python -m scripts.clear_email_derived_names --dry-run
+    uv run python -m scripts.clear_email_derived_names --apply
 
 Flags:
 --dry-run  Report the users whose name would be cleared. Default.
@@ -24,12 +25,7 @@ Flags:
 import argparse
 import asyncio
 from dataclasses import dataclass, field
-from pathlib import Path
 import re
-import sys
-
-# Ensure app is on path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.repositories.users import user_repository
 
@@ -72,16 +68,16 @@ class CleanupResult:
     changed_since_scan: int = 0
 
 
-async def clear_email_derived_names(*, dry_run: bool) -> CleanupResult:
-    """Find every name equal to its email's derivation and, unless dry_run, clear it."""
+async def clear_email_derived_names(*, apply: bool) -> CleanupResult:
+    """Find every name equal to its email's derivation and, when apply, clear it."""
     users = await user_repository.find_named_with_email()
-    result = CleanupResult(dry_run=dry_run, scanned=len(users))
+    result = CleanupResult(dry_run=not apply, scanned=len(users))
     result.candidates = [
         DerivedName(user_id=user.id, name=user.name)
         for user in users
-        if user.name and user.email and user.name == derive_name_from_email(user.email)
+        if user.name == derive_name_from_email(user.email)
     ]
-    if dry_run:
+    if not apply:
         return result
     for candidate in result.candidates:
         if await user_repository.clear_name_if_unchanged(candidate.user_id, candidate.name):
@@ -117,7 +113,7 @@ async def main() -> None:
     parser.add_argument("--limit", type=int, default=25, help="users to list in the report")
     args = parser.parse_args()
 
-    result = await clear_email_derived_names(dry_run=not args.apply)
+    result = await clear_email_derived_names(apply=args.apply)
     _render(result, args.limit)
 
     if not args.apply:

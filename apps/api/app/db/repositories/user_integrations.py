@@ -9,12 +9,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PREFIX
+from app.constants.integrations import IntegrationStatus
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
-    UserIntegrationStatus,
     UserIntegrationUpdate,
 )
 
@@ -59,7 +59,7 @@ class UserIntegrationsRepository(
 
     async def is_connected(self, user_id: str, integration_id: str) -> bool:
         doc = await self.get_for_user(user_id, integration_id)
-        return doc is not None and doc.status == "connected"
+        return doc is not None and doc.status == IntegrationStatus.CONNECTED
 
     async def has_connected_before(self, user_id: str, integration_id: str) -> bool:
         """Whether this user's record was ever connected; connected_at survives a later expiry or re-auth."""
@@ -73,14 +73,14 @@ class UserIntegrationsRepository(
         status check just says "not usable".
         """
         doc = await self.get_for_user(user_id, integration_id)
-        return doc is not None and doc.status == "expired"
+        return doc is not None and doc.status == IntegrationStatus.EXPIRED
 
     async def set_status(
         self,
         user_id: str,
         integration_id: str,
         *,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> bool:
         """Upsert the user's connection status; always succeeds (the upsert matches or inserts).
@@ -93,11 +93,11 @@ class UserIntegrationsRepository(
             "user_id": user_id,
             "integration_id": integration_id,
         }
-        if status == "connected":
+        if status == IntegrationStatus.CONNECTED:
             set_fields["connected_at"] = datetime.now(UTC)
             set_fields["expired_at"] = None
             set_fields["expired_reason"] = None
-        elif status == "expired":
+        elif status == IntegrationStatus.EXPIRED:
             set_fields["expired_at"] = datetime.now(UTC)
             set_fields["expired_reason"] = expired_reason
         doc = await self._apply_raw_update(
@@ -115,7 +115,7 @@ class UserIntegrationsRepository(
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
         expired_reason: str | None = None,
     ) -> UserIntegrationDocument:
         """Replace the account list and primary, with the status derived from them, in one write.
@@ -130,11 +130,11 @@ class UserIntegrationsRepository(
             "primary_account_id": primary_account_id,
             "status": status,
         }
-        if status == "connected":
+        if status == IntegrationStatus.CONNECTED:
             set_fields["connected_at"] = now
             set_fields["expired_at"] = None
             set_fields["expired_reason"] = None
-        elif status == "expired":
+        elif status == IntegrationStatus.EXPIRED:
             set_fields["expired_at"] = now
             set_fields["expired_reason"] = expired_reason
         doc = await self._apply_raw_update(
@@ -169,7 +169,7 @@ class UserIntegrationsRepository(
         *,
         accounts: list[IntegrationAccount],
         primary_account_id: str | None,
-        status: UserIntegrationStatus,
+        status: IntegrationStatus,
     ) -> UserIntegrationDocument | None:
         """Move a pre-multi-account record onto its account list, dropping its single account id."""
         return await self._apply_raw_update(

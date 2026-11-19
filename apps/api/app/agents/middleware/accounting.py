@@ -35,6 +35,7 @@ from app.constants.llm import (
     FALLBACK_MODEL_METADATA_KEY,
     FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
+    LEDGER_STOP_TEXT,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
 )
@@ -78,6 +79,10 @@ class SpendLedger(Protocol):
     """Where a run's spend is booked instead of the user's allowance (a brief scout's tally)."""
 
     async def book(self, cost_usd: float) -> None: ...
+
+    def exhausted(self) -> bool:
+        """Whether the run has spent what it may: the wall stops its next call."""
+        ...
 
 
 def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
@@ -200,8 +205,19 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
-        """Run the call behind the user's budget wall; a run with its own ledger has no wall."""
-        if self.ledger is None:
+        """Run the call behind the user's budget wall, or a ledger run behind its own ledger's."""
+        if self.ledger is not None:
+            if self.ledger.exhausted():
+                log.warning("ledger_stop", event_name="ledger_stop", agent_name=self.agent_name)
+                return ModelResponse(
+                    result=[
+                        AIMessage(
+                            content=LEDGER_STOP_TEXT,
+                            response_metadata={BUDGET_STOP_METADATA_KEY: True},
+                        )
+                    ]
+                )
+        else:
             walled = await self._budget_wall(request)
             if isinstance(walled, ModelResponse):
                 return walled

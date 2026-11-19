@@ -1,3 +1,5 @@
+"use client";
+
 import { Tooltip } from "@heroui/react";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
@@ -6,9 +8,10 @@ import { Focusable } from "react-aria-components";
 import { overlayVariants } from "@/components/shared/controlVariants";
 
 import { useGridColumnCount } from "../../hooks/useGridColumnCount";
-import { postmarkBrief } from "../../utils/postmarkBrief";
+import { foldedBrief } from "../../utils/briefCard";
 import { stampSheet } from "../../utils/stampSheet";
 import { BriefingFold } from "../BriefingFold";
+import { BriefTrigger } from "../BriefTrigger";
 import { PostmarkCard } from "./PostmarkCard";
 import { StampBlank } from "./StampBlank";
 
@@ -22,24 +25,23 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
   const place = `${postmark.city}, ${postmark.country}`;
   return (
     <BriefingFold
-      briefingId={postmark.briefing_id}
-      brief={postmarkBrief(postmark)}
-      renderTrigger={({ open, warm, isBusy }) => (
+      briefingId={postmark.card.briefing_id}
+      brief={foldedBrief(postmark.card)}
+    >
+      {(trigger) => (
         <Tooltip closeDelay={0}>
           <Focusable>
-            <button
-              type="button"
-              onClick={open}
-              onPointerEnter={warm}
-              onPointerDown={warm}
-              onFocus={warm}
+            <BriefTrigger
+              trigger={trigger}
+              onPress={() => trigger.open()}
               aria-label={place}
-              aria-busy={isBusy}
-              className="group block h-auto w-full min-w-0 cursor-pointer overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="group block h-auto w-full min-w-0 overflow-visible"
             >
               <span className="block aspect-[600/850] w-full transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:-rotate-2 group-active:scale-95">
                 <Image
                   src={postmark.stamp_url}
+                  // served by this deployment's API, which the optimizer refuses on a private IP (self-host, local)
+                  unoptimized
                   alt=""
                   width={200}
                   height={284}
@@ -49,7 +51,7 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
               <span className="mt-1.5 block truncate text-center text-xs text-zinc-400 sm:hidden">
                 {postmark.city}
               </span>
-            </button>
+            </BriefTrigger>
           </Focusable>
           <Tooltip.Content
             placement="bottom"
@@ -59,7 +61,7 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
           </Tooltip.Content>
         </Tooltip>
       )}
-    />
+    </BriefingFold>
   );
 }
 

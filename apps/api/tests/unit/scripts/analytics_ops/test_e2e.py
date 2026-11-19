@@ -58,7 +58,6 @@ ARTIFACT_CREATED: dict[str, object] = {
     "output_tokens": 900,
     "first_component_ms": 2600.0,
     "total_ms": 5200.0,
-    "model": "gpt-6-luna",
 }
 WORKFLOW_RUN: dict[str, object] = {
     "conversation_id": WORKFLOW_CONVERSATION,
@@ -138,6 +137,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "origin": "user_created",
             "steps_count": 1,
             "generated_immediately": False,
+            "delivery": "now",
             "trigger_type": "manual",
         },
     ),
@@ -160,6 +160,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "origin": "user_created",
             "steps_count": 1,
             "generated_immediately": False,
+            "delivery": "now",
             "trigger_type": "manual",
         },
     ),
@@ -201,7 +202,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "is_new_conversation": True,
         },
     ),
-    *[("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED})] * 2,
+    ("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED}),
     (
         "short_link:opened",
         {
@@ -250,12 +251,11 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             **WEB,
             "target_type": "todo_deliverable",
             "from_access": "unlisted",
-            "to_access": "people",
-            "grantee_count": 1,
+            "to_access": "owner",
         },
     ),
     ("short_link:denied", {**WEB_SERVER, "target_type": "todo_deliverable", "reason": "forbidden"}),
-    ("short_link:rotated", {**WEB, "target_type": "todo_deliverable", "access": "people"}),
+    ("short_link:rotated", {**WEB, "target_type": "todo_deliverable", "access": "owner"}),
     ("short_link:revoked", {**WEB, "target_type": "todo_deliverable", "reason": "owner"}),
     (
         "chat:message_submitted",

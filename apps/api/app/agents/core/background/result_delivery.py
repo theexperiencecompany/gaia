@@ -61,13 +61,14 @@ from app.models.chat_models import (
 )
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData, TodoRunWake
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
-from app.services.links.service import optional_short_link
+from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
+from app.services.links.service import attach_link
 from app.services.platform_message_service import (
     deliver_message_to_platform,
     deliver_reaction_to_platform,
@@ -326,21 +327,19 @@ async def deliver_message_to_conversation(
 
 
 async def _workflow_run_link_line(run: ExecutorRun) -> str:
-    """Return the run's heygaia.link as a closing line, or "" without one.
+    """Return a closing line linking the run's heygaia.link by its placeholder, or "" without one.
 
     "" when the run has no execution, the owner stopped sharing it, or the mint
-    failed — the result message is delivered either way (optional_short_link).
+    failed — the result message is delivered either way (attach_link).
     Minted here because delivery runs before complete_execution; the public page
     shows the run's real status, so an early open reads as running.
     """
     if not (run.workflow_id and run.workflow_execution_id):
         return ""
-    url = await optional_short_link(
-        run.user.user_id, ShortLinkTargetType.WORKFLOW_RUN, run.workflow_execution_id
-    )
-    if url is None:
+    target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id=run.workflow_execution_id)
+    if await attach_link(run.user.user_id, target) is None:
         return ""
-    return f"\n\n[Open this run]({url})"
+    return f"\n\n[Open this run]({link_placeholder(target)})"
 
 
 async def _narrate_and_deliver(
@@ -382,6 +381,8 @@ async def _narrate_and_deliver(
     else:
         log.set(comms_delivery="message")
         notification_text += await _workflow_run_link_line(run)
+    # Every model sees notification_text with its link placeholders; the user gets the links.
+    delivered_text = await resolve_link_placeholders(user_id, notification_text)
 
     # A HIL-resumed run reconciles onto the ORIGINAL message (run.bot_message_id);
     # QUEUED is load-bearing because every live run carries bot_message_id but only
@@ -389,7 +390,7 @@ async def _narrate_and_deliver(
     is_hil_resume = run.is_queued and bool(run.bot_message_id)
     bot_message = _build_bot_message(
         run,
-        notification_text,
+        delivered_text,
         tool_data,
         is_hil_resume=is_hil_resume,
         kind=message_kind,
@@ -433,24 +434,24 @@ async def _narrate_and_deliver(
             run,
             target=target,
             message_id=bot_message.message_id,
-            notification_text=notification_text,
+            notification_text=delivered_text,
             result_type=result_type,
         )
         _capture_resolution(run, directive, "fallback_text" if is_react else "message")
-        return None if is_react else notification_text, bot_message.message_id
+        return None if is_react else delivered_text, bot_message.message_id
 
     # Deliver over exactly one transport, by the conversation's source: bot
     # conversations to their platform API, web/mobile/system to WebSocket (the
     # web list excludes bot sources, so a WebSocket push there would be dropped).
     if is_bot_platform(conversation_source):
         delivered, transport = await _deliver_to_platform(
-            run, conversation_source, notification_text, is_react=is_react
+            run, conversation_source, delivered_text, is_react=is_react
         )
     else:
         await _broadcast_and_defer_follow_ups(
             target=target,
             bot_message=bot_message,
-            notification_text=notification_text,
+            model_text=notification_text,
             tool_data=tool_data,
             result_type=result_type,
             is_react=is_react,
@@ -467,7 +468,7 @@ async def _narrate_and_deliver(
     _capture_resolution(run, directive, _react_delivery(transport) if is_react else "message")
     # A reaction has no speakable text: voice must not read the emoji aloud,
     # so it resolves to None here (the ack itself is saved and routed above).
-    return None if is_react else notification_text, bot_message.message_id
+    return None if is_react else delivered_text, bot_message.message_id
 
 
 def _capture_resolution(
@@ -579,12 +580,12 @@ async def _broadcast_and_defer_follow_ups(
     *,
     target: _DeliveryTarget,
     bot_message: MessageModel,
-    notification_text: str,
+    model_text: str,
     tool_data: list[ToolDataEntry] | None,
     result_type: str,
     is_react: bool,
 ) -> None:
-    """Push the answer to the client now, then generate follow-ups in the background.
+    """Push the answer to the client now, then generate follow-ups off model_text in the background.
 
     The second push reuses conversation.new_message — the client upserts by id.
     A reaction gets none: there is no rendered message to attach chips to.
@@ -592,12 +593,13 @@ async def _broadcast_and_defer_follow_ups(
     await _broadcast_bot_message(
         target=target,
         bot_message=bot_message,
-        notification_text=notification_text,
+        notification_text=bot_message.response,
         tool_data=tool_data,
     )
     if not is_react:
         _spawn_deferred_follow_ups(
             bot_message=bot_message,
+            model_text=model_text,
             result_type=result_type,
             tool_data=tool_data,
             target=target,
@@ -1072,6 +1074,7 @@ async def _build_follow_up_actions(
 def _spawn_deferred_follow_ups(
     *,
     bot_message: MessageModel,
+    model_text: str,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
     target: _DeliveryTarget,
@@ -1084,6 +1087,7 @@ def _spawn_deferred_follow_ups(
     spawn_background_task(
         _generate_and_push_follow_ups(
             bot_message=bot_message,
+            model_text=model_text,
             result_type=result_type,
             tool_data=tool_data,
             target=target,
@@ -1094,6 +1098,7 @@ def _spawn_deferred_follow_ups(
 async def _generate_and_push_follow_ups(
     *,
     bot_message: MessageModel,
+    model_text: str,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
     target: _DeliveryTarget,
@@ -1110,7 +1115,7 @@ async def _generate_and_push_follow_ups(
         try:
             follow_up_actions = await _build_follow_up_actions(
                 msg_type=result_type,
-                notification_text=bot_message.response,
+                notification_text=model_text,
                 user_msg_content=target.user_msg_content,
                 user_id=target.user_id,
                 conversation_id=target.conversation_id,

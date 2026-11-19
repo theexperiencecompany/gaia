@@ -9,7 +9,7 @@ Without both, the user's reply reaches an agent that has no idea what it just
 said.
 
 Being the one path, it is also where quiet hours apply to a message: one sent
-inside the user's quiet hours (user_service.quiet_hours_end), unless its class
+inside the user's quiet hours (quiet_hours.quiet_hours_end), unless its class
 is exempt, is scheduled as a durable job for their end instead of being sent,
 so no caller knows about quiet hours.
 """
@@ -40,7 +40,7 @@ from app.services.outbound_delivery import (
     publish_outbound_message,
     publish_outbound_photo,
 )
-from app.services.user_service import quiet_hours_end
+from app.services.quiet_hours import quiet_hours_end
 from app.utils.message_breaks import split_for_caption, split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job

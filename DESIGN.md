@@ -655,7 +655,7 @@ Every control and overlay. "How to write frontend code" above lists the wrappers
 | `Tabs` | Tabbed card content · `tabsVariants` |
 | `ProgressBar`, `Avatar`, `ScrollShadow` | Progress, contact avatars, overflowing lists |
 
-Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+Chart palette (Recharts), cyan-led like the rest of the UI: `["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`; pie and radial charts use `["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]`. Both are `CHART_PALETTE` / `PIE_PALETTE` in `apps/web/src/config/openui/theme.ts`; import them rather than restating the colours.
 
 ### HeroUI control dimensions
 
@@ -818,6 +818,19 @@ Default transition: `transition-all duration-200`. Use this everywhere unless a 
 | Default | `ease` | Most transitions |
 | Exit / entrance | `ease-out` | Entrances, exits |
 | Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Letters
+
+A letter (the founder letter, a brief's sheet, the unfolding edition, the folded letter in chat) moves on its own curves, all in `apps/web/src/components/shared/letterMotion.ts`. Import them; never restate a curve.
+
+| Token | Duration | Easing | Use |
+|---|---|---|---|
+| `LETTER_OPEN_TRANSITION` | 0.4s | `[0.33, 1, 0.68, 1]` | A letter and its backdrop arriving |
+| `LETTER_CLOSE_TRANSITION` | 0.2s | `[0.4, 0, 1, 1]` | Leaving: fades and shrinks to `LETTER_EXIT_SCALE` (0.96) |
+| `LETTER_REDUCED_TRANSITION` | 0.15s | `easeOut` | Reduced motion: a plain fade both ways |
+| `LETTER_TRAVEL_TRANSITION` | 0.5s | `[0.32, 0.72, 0, 1]` | A chat letter travelling from where it lay |
+| `LETTER_CREASE_TRANSITION` | 0.42s | `[0.5, 0, 0.15, 1]` | Each crease of an unfolding edition |
+| `LETTER_HOVER_EASE` | 300ms | `cubic-bezier(0.23, 1, 0.32, 1)` | The folded chat letter lifting under the pointer |
 
 ### Framer Motion
 

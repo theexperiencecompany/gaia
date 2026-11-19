@@ -39,6 +39,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import SilentRunResult
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -54,6 +55,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
+from app.services.workflow.execution_service import PlaybookFallbackFailed
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.metrics import REPLAY_STATUSES
@@ -239,10 +241,23 @@ class _Harness:
                 f"{COMPLETION}.send_workflow_completion_notification",
                 self.completion_notification,
             ),
-            patch(f"{COMPLETION}.pending_brief_items_repository.create", self.brief_create),
+            patch(
+                "app.services.briefing.held.pending_brief_items_repository.create",
+                self.brief_create,
+            ),
             patch(
                 f"{MODULE}.workflow_repository.find_system_workflow",
                 AsyncMock(return_value=MagicMock(activated=True)),
+            ),
+            # brief_will_carry's state and winback reads: no goal hold or dormancy, and no
+            # brief has gone unanswered.
+            patch(
+                "app.services.briefing.held.briefing_state_repository.state_for",
+                AsyncMock(side_effect=lambda user_id: BriefingStateDocument(user_id=user_id)),
+            ),
+            patch(
+                "app.services.briefing.lookback.briefing_repository.list_recent",
+                AsyncMock(return_value=[]),
             ),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
@@ -506,7 +521,10 @@ async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+    with (
+        patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+        pytest.raises(PlaybookFallbackFailed, match="^agent exploded$"),
+    ):
         await _fire(harness)
 
     harness.complete_execution.assert_awaited_once()
@@ -525,7 +543,10 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     harness.playbook_run = AsyncMock(return_value=_stopped_replay())
     harness.record_run_outcome = AsyncMock(side_effect=ConnectionError("mongo away"))
 
-    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+    with (
+        patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+        pytest.raises(PlaybookFallbackFailed, match="^mongo away$"),
+    ):
         await _fire(harness)
 
     kwargs = harness.complete_execution.await_args.kwargs
@@ -1214,7 +1235,8 @@ class TestHealAttemptsAreBounded:
         harness.get_for_workflow = AsyncMock(return_value=_distrusted(workflow))
         harness.chat = AsyncMock(side_effect=OSError("nodename nor servname provided"))
 
-        await _fire(harness)
+        with pytest.raises(OSError, match="^nodename nor servname provided$"):
+            await _fire(harness)
 
         harness.increment_heal_attempts.assert_not_awaited()
 
@@ -1457,7 +1479,8 @@ class TestTheFireReservesItsConversation:
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         harness.replay_result = RuntimeError("tool exploded")
 
-        await _fire(harness)
+        with pytest.raises(RuntimeError, match="^tool exploded$"):
+            await _fire(harness)
 
         harness.release.assert_awaited_once_with("conv_1", "", harness.acquired_task_id())
         assert harness.calls == ["acquire", "run", "release"]
@@ -2425,7 +2448,10 @@ class TestAFailureAfterAReplayIsStillTheWorkflowsOwn:
         harness.playbook_run = AsyncMock(return_value=_stopped_replay())
         harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
 
-        with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+        with (
+            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            pytest.raises(PlaybookFallbackFailed, match="^agent exploded$"),
+        ):
             await _fire(harness)
 
         assert increment.await_args_list == [call("wf_1", USER_ID, is_successful=False)]

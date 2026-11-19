@@ -2,12 +2,12 @@
 
 import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
+import { formatHour } from "@shared/utils";
 import { sliderVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
-  formatHour,
   fromAxis,
   QUIET_AXIS_END,
   QUIET_AXIS_MARKS,

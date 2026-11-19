@@ -581,15 +581,15 @@ async def _publish_artifacts(
         )
         inline_body = _decode_inline(body_b64, size_bytes, artifact.content_type)
         # Same shared publisher write/edit use — one owner of the event shape.
-        short_url = await publish_artifact(
+        placeholder = await publish_artifact(
             user_id,
             session_id,
             artifact,
             inline_body,
             written_this_turn=mtime >= changed_since - ARTIFACT_MTIME_SKEW_SECONDS,
         )
-        if short_url:
-            links[rel] = short_url
+        if placeholder:
+            links[rel] = placeholder
     return links
 
 

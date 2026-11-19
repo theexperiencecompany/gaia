@@ -1,18 +1,23 @@
 """The painting drawn for a framed edition is one its frame can hang."""
 
 import pytest
+from tests.factories import make_user_id
 
-from app.constants.briefing import ArtFamily, BriefingBag
-from app.models.briefing_models import BriefingPayload
-from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.edition_draws import draw_from_bag, draw_stamp_or_artwork
+from app.constants.briefing import ArtFamily, BriefingBag, EditionFamily
+from app.models.brief_composition_models import ChartBlock, ChartKind, NoteBlock
+from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.briefing_state_models import BriefingStateDocument, ShuffleBag
+from app.services.briefing.edition_draws import draw_edition, draw_from_bag
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import (
     artwork_catalogue,
     artwork_weights,
     artworks_for,
 )
+from app.services.briefing.editions.capabilities import edition_capabilities
+from app.services.briefing.editions.stamps import stamp_weights
 
-_USER = "64f1c0ffee0000000000abcd"
+USER_ID = make_user_id()
 
 
 def _family_with_a_work_it_cannot_hang() -> tuple[ArtFamily, str]:
@@ -23,37 +28,20 @@ def _family_with_a_work_it_cannot_hang() -> tuple[ArtFamily, str]:
     pytest.fail("every work fits every frame, so the eligibility draw has nothing to narrow")
 
 
-def _user_whose_bag_opens_on(slug: str) -> UserDocument:
+def _state_whose_bag_opens_on(slug: str) -> BriefingStateDocument:
     rest = sorted(set(artwork_catalogue()) - {slug})
     bag = ShuffleBag(order=[slug, *rest], index=0)
-    return UserDocument(
-        id=_USER,
-        email="ada@example.com",
-        name="Ada",
-        briefing_shuffle_bags={BriefingBag.ARTWORK: bag},
-    )
-
-
-def _payload(family: str) -> BriefingPayload:
-    return BriefingPayload(
-        kicker="k",
-        date="2026-10-14",
-        headline="h",
-        lede="l",
-        mood="clear",
-        caption="c",
-        template_family=family,
-    )
+    return BriefingStateDocument(user_id=USER_ID, shuffle_bags={BriefingBag.ARTWORK: bag})
 
 
 @pytest.mark.unit
 class TestDrawFromBag:
     def test_only_an_eligible_member_is_drawn_and_the_others_keep_their_turn(self) -> None:
         family, unfit = _family_with_a_work_it_cannot_hang()
-        user = _user_whose_bag_opens_on(unfit)
+        state = _state_whose_bag_opens_on(unfit)
         eligible = artworks_for(family)
 
-        drawn = draw_from_bag(user, BriefingBag.ARTWORK, artwork_weights(), eligible=eligible)
+        drawn = draw_from_bag(state, BriefingBag.ARTWORK, artwork_weights(), eligible=eligible)
 
         assert drawn.member in eligible
         assert drawn.next_state.index == 1
@@ -61,12 +49,81 @@ class TestDrawFromBag:
 
 
 @pytest.mark.unit
-class TestDrawStampOrArtwork:
+class TestDrawEdition:
+    def test_a_daily_edition_is_drawn_among_the_families_that_can_draw_its_blocks(
+        self,
+    ) -> None:
+        pool = sorted(f.value for f, n in DAILY_FAMILY_WEIGHTS.items() for _ in range(n))
+        pool.remove(EditionFamily.MENU.value)
+        bag = ShuffleBag(order=[EditionFamily.MENU.value, *pool], index=0)
+        state = BriefingStateDocument(
+            user_id=USER_ID, shuffle_bags={BriefingBag.EDITION_FAMILY: bag}
+        )
+        chart = ChartBlock(
+            chart=ChartKind.LINE,
+            title="Meetings",
+            takeaway="A busy week",
+            series=[
+                DataSeries(
+                    id="meetings",
+                    label="Meetings",
+                    source="gaia",
+                    app="GAIA",
+                    shape=SeriesShape.TIME_SERIES,
+                    points=[SeriesPoint(x=f"2026-11-{d:02d}", y=d) for d in range(5, 12)],
+                )
+            ],
+        )
+
+        edition = draw_edition(state, [chart], None)
+
+        assert edition.family is not EditionFamily.MENU
+        assert edition_capabilities(edition.family).draws(chart)
+
+    def test_a_fixed_family_prints_the_blocks_it_can_draw_and_draws_nothing_more(self) -> None:
+        note = NoteBlock(text="A light day.")
+
+        edition = draw_edition(BriefingStateDocument(user_id=USER_ID), [note], EditionFamily.SWISS)
+
+        assert (edition.family, edition.drawn, edition.undrawn, edition.draws) == (
+            EditionFamily.SWISS,
+            [note],
+            [],
+            [],
+        )
+
+    def test_a_daily_edition_is_the_family_its_bag_drew_first(self) -> None:
+        state = BriefingStateDocument(user_id=USER_ID)
+
+        edition = draw_edition(state, [], None)
+
+        first = edition.draws[0]
+        assert first.bag is BriefingBag.EDITION_FAMILY
+        assert edition.family is EditionFamily(first.member)
+        assert edition.family in DAILY_FAMILY_WEIGHTS
+
     def test_a_framed_family_hangs_a_painting_that_fits_its_frame(self) -> None:
         family, unfit = _family_with_a_work_it_cannot_hang()
-        payload = _payload(family.value)
 
-        [drawn] = draw_stamp_or_artwork(_user_whose_bag_opens_on(unfit), payload)
+        edition = draw_edition(_state_whose_bag_opens_on(unfit), [], EditionFamily(family))
 
-        assert payload.artwork_id == drawn.member
+        [drawn] = edition.draws
+        assert edition.artwork_id == drawn.member
         assert drawn.member in artworks_for(family)
+
+    def test_an_air_mail_edition_continues_the_users_stamp_bag(self) -> None:
+        cities = sorted(stamp_weights())
+        state = BriefingStateDocument(
+            user_id=USER_ID,
+            shuffle_bags={BriefingBag.STAMP_CITY: ShuffleBag(order=cities, index=1)},
+        )
+
+        edition = draw_edition(state, [], EditionFamily.POSTAL)
+
+        [drawn] = edition.draws
+        assert (drawn.bag, drawn.member, edition.stamp_city) == (
+            BriefingBag.STAMP_CITY,
+            cities[1],
+            cities[1],
+        )
+        assert drawn.next_state == ShuffleBag(order=cities, index=2)

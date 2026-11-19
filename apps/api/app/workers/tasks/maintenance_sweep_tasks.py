@@ -12,10 +12,12 @@ from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
+from app.constants.notifications import NotificationKind
 from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.models.notification.details_models import DormantTodosNotification, TodoNotification
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -25,7 +27,7 @@ from app.models.notification.notification_models import (
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_todo_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.redis_utils import RedisPoolManager
@@ -68,7 +70,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
     # A dormant owner would read none of what the sweep's LLM checks produce.
-    away = await user_repository.find_by_activity_status(
+    away = await user_repository.find_activity_rows(
         ActivityStatus.DORMANT, among={todo.user_id for todo in todos}
     )
     away_ids = {user.id for user in away}
@@ -383,7 +385,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
-    await record_activity(
+    await record_todo_activity(
         todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
     )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
@@ -429,7 +431,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
-        await record_activity(
+        await record_todo_activity(
             todo_id,
             user_id,
             TodoActivityEvent.MAINTENANCE,
@@ -479,7 +481,7 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
 
     # Add needs-follow-up label
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
-    await record_activity(
+    await record_todo_activity(
         todo_id,
         user_id,
         TodoActivityEvent.MAINTENANCE,
@@ -544,7 +546,9 @@ async def _send_user_dormant_digest(
                     body=body,
                     actions=[action],
                 ),
-                metadata={"todo_count": count},
+                details=DormantTodosNotification(
+                    kind=NotificationKind.DORMANT_TODOS, todo_count=count
+                ),
             )
         )
         log.info(
@@ -616,7 +620,7 @@ async def _send_individual_notification(
                     body=body,
                     actions=[todo_redirect_action("View todo", todo_id)],
                 ),
-                metadata={"todo_id": todo_id},
+                details=TodoNotification(kind=NotificationKind.TODO, todo_id=todo_id),
             )
         )
     except Exception as exc:

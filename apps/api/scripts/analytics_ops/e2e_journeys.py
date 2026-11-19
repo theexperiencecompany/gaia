@@ -24,7 +24,7 @@ from standardwebhooks.webhooks import Webhook
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
+from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import (
     OnboardingAnswers,
@@ -70,7 +70,7 @@ EXECUTION_RUNNING = "running"
 EXECUTION_SUCCEEDED = "success"
 # A schedule other than the default, so the PUT is a real change.
 BRIEFING_SCHEDULE = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
-BRIEFING_SCHEDULE_PATH = "/notifications/preferences/briefing-schedule"
+BRIEFING_SCHEDULE_PATH = "/briefings/schedule"
 
 
 class JourneyError(RuntimeError):
@@ -265,11 +265,16 @@ def chat(stack: Stack) -> None:
             raise JourneyError("/chat-stream ended without its [DONE] frame")
 
 
-#: A brief the artifact model turns into a small grounded dashboard (real model: the sim stub
-#: speaks chat completions only, and create_artifact calls the Responses API).
+#: The program the sim stub's Responses route writes for the brief: grounded in its figures.
+ARTIFACT_PROGRAM = (
+    'root = Artifact("Analytics e2e launch", "Week one", [], [callout1])\n'
+    'callout1 = Callout("good", "Sign-ups beat the target", '
+    '"Sign-ups reached 1,840 against a target of 1,500.")'
+)
+#: A brief create_artifact's model turns into a small grounded dashboard, scripting its reply.
 ARTIFACT_BRIEF = (
     "Sign-ups 1,840 in seven days against a target of 1,500. Daily sign-ups Tue to Mon: "
-    "310, 420, 270, 230, 210, 190, 210. Paid: 96."
+    f"310, 420, 270, 230, 210, 190, 210. Paid: 96. [[say:{ARTIFACT_PROGRAM}]]"
 )
 #: Someone other than the owner opening the shared link: the owner's own opens never count.
 ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"
@@ -322,9 +327,9 @@ def artifact(stack: Stack) -> None:
             HTTPStatus.OK,
         )
         state = _expect(
-            api.get(
+            api.post(
                 "/l/state",
-                params={"target_type": "openui_artifact", "target_id": artifact_id},
+                json={"target": {"type": "openui_artifact", "id": artifact_id}},
                 headers=stack.browser(),
             ),
             HTTPStatus.OK,
@@ -345,7 +350,7 @@ def artifact(stack: Stack) -> None:
 
 #: A chat-preview bot's user agent: its fetch builds an unfurl and never counts as an open.
 SLACKBOT_USER_AGENT = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
-#: A signed-in viewer the shared todo is not granted to.
+#: A signed-in viewer other than the shared todo's owner.
 LINK_STRANGER = "delivered+analytics-e2e-stranger@resend.dev"
 
 
@@ -358,7 +363,7 @@ def link_share(stack: Stack) -> None:
             ),
             HTTPStatus.CREATED,
         ).json()
-        target = {"target_type": "todo_deliverable", "target_id": todo["id"]}
+        target = {"target": {"type": "todo_deliverable", "id": todo["id"]}}
         link = _expect(api.post("/l", json=target, headers=stack.browser()), HTTPStatus.OK).json()
         slug = link["slug"]
         _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
@@ -378,19 +383,21 @@ def link_share(stack: Stack) -> None:
         _expect(
             api.patch(
                 f"/l/{slug}",
-                json={"access": "people", "grantees": [ARTIFACT_READER]},
+                json={"access": "owner"},
                 headers=stack.browser(),
             ),
             HTTPStatus.OK,
         )
+        # A denial counts only from the browser's /opened, never from a server-side read.
         _expect(
-            api.get(f"/l/{slug}", headers={DEV_USER_HEADER: LINK_STRANGER}), HTTPStatus.FORBIDDEN
+            api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: LINK_STRANGER}),
+            HTTPStatus.FORBIDDEN,
         )
         rotated = _expect(
             api.post(f"/l/{slug}/rotate", headers=stack.browser()), HTTPStatus.OK
         ).json()
         _expect(
-            api.get(f"/l/{rotated['slug']}", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            api.get(f"/l/{rotated['slug']}", headers=stack.browser()),
             HTTPStatus.OK,
         )
         _expect(api.post("/l/unshare", json=target, headers=stack.browser()), HTTPStatus.OK)

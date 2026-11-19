@@ -24,7 +24,6 @@ from bson import ObjectId
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.constants.briefing import BriefingBag, EditionChoice
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     USER_CACHE_PREFIX,
@@ -43,25 +42,23 @@ from app.constants.onboarding import (
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import BriefingSchedule
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
 )
 from app.models.quiet_hours_models import QuietHours
-from app.models.user_activity_models import UserActivityDates, status_window
+from app.models.user_activity_models import UserActivityDates, UserActivityRow, status_window
 from app.models.user_models import (
     BioStatus,
-    BriefingBootstrap,
-    DayZeroHello,
+    NamedEmailRow,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
     PlatformLinkRecord,
-    ShuffleBag,
     StartingJobs,
     UserDocument,
+    UserHours,
     UserUpdate,
 )
 from shared.py.analytics.catalog.onboarding import OnboardingStep
@@ -104,12 +101,24 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
     async def list_all_ids(self) -> list[str]:
-        """Return every user id — the bulk workspace-provisioning scan."""
-        return [doc.id for doc in await self._find({})]
+        """Return every user id — the bulk workspace-provisioning scan, reading no document whole."""
+        return await self._distinct("_id")
 
-    async def find_named_with_email(self) -> list[UserDocument]:
+    async def get_hours(self, user_id: str) -> UserHours | None:
+        """Read only the user's timezone and quiet hours, as a migration may: never the whole user."""
+        return await self._find_one_projected(
+            self._identity_filter(user_id), {"timezone": True, "quiet_hours": True}, UserHours
+        )
+
+    async def find_named_with_email(self) -> list[NamedEmailRow]:
         """Return every user holding both a name and an email — the derived-name cleanup scan."""
-        return await self._find({"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}})
+        return await self._aggregate(
+            [
+                {"$match": {"name": {"$nin": [None, ""]}, "email": {"$nin": [None, ""]}}},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "name": 1, "email": 1}},
+            ],
+            NamedEmailRow,
+        )
 
     async def count_created_before(self, created_at: datetime) -> int:
         """Return the number of users created before created_at — the holo-card rank."""
@@ -151,9 +160,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             branches.append({"last_active_at": None, "created_at": None})
         return {"$or": branches}
 
-    async def find_by_activity_status(
-        self, status: ActivityStatus, *, among: Collection[str] | None = None
-    ) -> list[UserDocument]:
+    def _status_query(
+        self, status: ActivityStatus, among: Collection[str] | None
+    ) -> dict[str, object]:
         """Live users in status now, optionally only those whose id is in among (invalid ids skipped)."""
         query: dict[str, object] = {
             **self._activity_filter(status, datetime.now(UTC)),
@@ -163,7 +172,25 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             query["_id"] = {
                 "$in": [self._id_value(user_id) for user_id in among if self.is_valid_id(user_id)]
             }
-        return await self._find_lenient(query)
+        return query
+
+    async def find_by_activity_status(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserDocument]:
+        """Live users in status now, as whole documents; a sweep needing only ids reads find_activity_rows."""
+        return await self._find_lenient(self._status_query(status, among))
+
+    async def find_activity_rows(
+        self, status: ActivityStatus, *, among: Collection[str] | None = None
+    ) -> list[UserActivityRow]:
+        """Live users in status now, as their id and last-seen instant only."""
+        return await self._aggregate(
+            [
+                {"$match": self._status_query(status, among)},
+                {"$project": {"_id": 0, "id": {"$toString": "$_id"}, "last_active_at": True}},
+            ],
+            UserActivityRow,
+        )
 
     async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
         """Recently-signed-up, still-active users — the nurture-sequence cohort.
@@ -266,7 +293,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         phase: OnboardingPhase,
         bio_status: BioStatus,
         preferences: OnboardingPreferences,
-        timezone: str | None = None,
         completed_at: datetime | None = None,
     ) -> UserDocument | None:
         """Atomically mark onboarding complete (gated on it not being complete yet).
@@ -285,8 +311,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         }
         for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
-        if timezone is not None:
-            set_fields["timezone"] = timezone
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
@@ -488,26 +512,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"$set": {"chat_channel_priority": priority}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
-        )
-
-    async def set_briefing_schedule(self, user_id: str, schedule: BriefingSchedule) -> None:
-        """Store how often the user wants briefs and the daily brief's hour."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"briefing_schedule": schedule.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def set_briefing_editions(
-        self, user_id: str, choices: Mapping[str, EditionChoice]
-    ) -> None:
-        """Store which daily edition families the user took out of the rotation or favourited."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"briefing_editions": dict(choices)}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
         )
 
     async def clear_name_if_unchanged(self, user_id: str, name: str) -> bool:
@@ -835,105 +839,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 }
             },
             scope=REPO_GLOBAL_SCOPE,
-        )
-
-    # ------------------------------------------------------------ briefing engine
-
-    async def clear_briefing_bootstrap(self, user_id: str) -> None:
-        """Clear the pending-bootstrap marker once a real briefing goes out."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {"$unset": {"briefing_bootstrap": _UNSET}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def set_briefing_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
-        """Persist one shuffle bag's advanced state (see shuffle_bag.draw)."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"briefing_shuffle_bags.{bag.value}": state.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def set_briefing_bootstrap_pending(self, user_id: str) -> None:
-        """Hold briefings for a sparse existing-user rollout.
-
-        Held until a goal arrives or the grace window elapses. Only a user with no
-        marker yet is stamped, so a re-run never restarts a running grace window.
-        """
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id), "briefing_bootstrap": {"$exists": False}},
-            {
-                "$set": {
-                    "briefing_bootstrap": BriefingBootstrap(
-                        pending=True, since=datetime.now(UTC)
-                    ).model_dump()
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def set_dormancy_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
-        """Persist today's idle/active outcome on the dormancy ladder."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {
-                "$set": {
-                    "briefing_dormancy.idle_days": idle_days,
-                    "briefing_dormancy.date": date_str,
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def enter_briefing_dormancy(self, user_id: str) -> None:
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"briefing_dormancy.dormant_since": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def record_goal_question(self, user_id: str) -> None:
-        """Stamp now as when a brief last asked whether the user's goal is still live."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"briefing_dormancy.goal_asked_at": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def clear_briefing_dormancy(self, user_id: str) -> None:
-        """Wake the loop: clear the idle streak and dormancy, keeping when a goal was last asked about."""
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {
-                "$unset": {
-                    "briefing_dormancy.dormant_since": _UNSET,
-                    "briefing_dormancy.idle_days": _UNSET,
-                    "briefing_dormancy.date": _UNSET,
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
-        )
-
-    async def mark_day_zero_hello_sent(self, user_id: str, platform: str) -> None:
-        await self._apply_raw_update_unfetched(
-            {"_id": self._id_value(user_id)},
-            {
-                "$set": {
-                    "day_zero_hello": DayZeroHello(
-                        sent_at=datetime.now(UTC), platform=platform
-                    ).model_dump()
-                }
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
         )
 
 

@@ -46,16 +46,15 @@ vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
 
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
 import { PublicOpenUIArtifactView } from "@/features/short-links/components/PublicOpenUIArtifactView";
-import { PublicSessionArtifactView } from "@/features/short-links/components/PublicSessionArtifactView";
 import { PublicWorkflowRunView } from "@/features/short-links/components/PublicWorkflowRunView";
-import { DEAD_LINK_COPY } from "@/features/short-links/constants";
+import { PublicWorkspaceFileView } from "@/features/short-links/components/PublicWorkspaceFileView";
 import { LINK_VIEWS } from "@/features/short-links/registry";
-import type { DeadLinkDenial } from "@/features/short-links/types";
+import type { DeadLinkState } from "@/features/short-links/types";
 import type {
   LinkContent,
   PublicOpenUIArtifact,
-  PublicSessionArtifact,
   PublicWorkflowRun,
+  PublicWorkspaceFile,
 } from "@/types/features/shortLinkTypes";
 
 const RUN: PublicWorkflowRun = {
@@ -102,7 +101,15 @@ describe("a heygaia.link that doesn't open", () => {
     ],
     ["link_target_deleted", "What this link pointed to was deleted."],
     ["link_removed", "This link was removed for breaking GAIA's terms."],
-  ] satisfies [DeadLinkDenial, string][])(
+    [
+      "link_lookup_locked",
+      "Too many links that don't exist were opened from here. Try again in an hour.",
+    ],
+    [
+      "rate_limit_exceeded",
+      "Too many links were opened from here. Try again in a minute.",
+    ],
+  ] satisfies [DeadLinkState, string][])(
     "%s says so and leads to GAIA",
     (denial, copy) => {
       render(<LinkUnavailable state={{ denial }} />);
@@ -114,20 +121,6 @@ describe("a heygaia.link that doesn't open", () => {
     },
   );
 
-  it("covers every dead denial with copy", () => {
-    expect(Object.keys(DEAD_LINK_COPY).sort()).toEqual(
-      [
-        "link_expired",
-        "link_lookup_locked",
-        "link_not_found",
-        "link_removed",
-        "link_revoked",
-        "link_target_deleted",
-        "rate_limit_exceeded",
-      ].sort(),
-    );
-  });
-
   it("asks a signed-out viewer to sign in and come back to the link", () => {
     render(
       <LinkUnavailable
@@ -136,14 +129,14 @@ describe("a heygaia.link that doesn't open", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Sign in to open this" }),
+      screen.getByRole("heading", { name: "Sign in to open this." }),
     ).toBeTruthy();
     expect(
       screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe("/login?return_url=%2Fl%2Fabcdefghijk");
   });
 
-  it("tells a signed-in viewer who isn't a grantee which account they're using", () => {
+  it("tells a signed-in viewer who isn't the owner which account they're using", () => {
     render(
       <LinkUnavailable
         state={{
@@ -216,7 +209,6 @@ describe("a shared artifact", () => {
     kind: "report",
     title: "Q3 revenue",
     program: 'root = Report("Q3 revenue", [])',
-    version: 1,
     created_at: "2026-11-10T06:27:00Z",
     shared_by: "Ana",
   };
@@ -234,8 +226,8 @@ describe("a shared artifact", () => {
 });
 
 describe("a shared file", () => {
-  const FILE: PublicSessionArtifact = {
-    target_type: "session_artifact",
+  const FILE: PublicWorkspaceFile = {
+    target_type: "workspace_file",
     filename: "report.html",
     content_type: "text/html",
     size_bytes: 2048,
@@ -251,7 +243,7 @@ describe("a shared file", () => {
   }
 
   function renderFile(
-    view: PublicSessionArtifact,
+    view: PublicWorkspaceFile,
     linkContent: LinkContent | null,
     downloadable = true,
   ) {
@@ -260,7 +252,7 @@ describe("a shared file", () => {
       expires_at: new Date(Date.now() + 600_000).toISOString(),
     });
     return render(
-      <PublicSessionArtifactView
+      <PublicWorkspaceFileView
         slug="abcdefghijk"
         view={view}
         content={linkContent}

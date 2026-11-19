@@ -14,11 +14,15 @@ from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
 from app.constants.todos import (
     CANVAS_SECTIONS,
-    INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.models.brief_settings_models import BriefingSchedule
+from app.models.briefing_state_models import BriefingStateDocument
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -27,7 +31,7 @@ from app.models.todo_models import (
     TodoUpdate,
     TrackedTodoCreation,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import UserDocument, UserHours
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.todos import inbox_desk
 from app.services.todos.errors import ExternalRefTakenError
@@ -47,6 +51,9 @@ KOLKATA = ZoneInfo("Asia/Kolkata")
 DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 TOMORROW_8 = datetime.now(UTC) + timedelta(hours=12)
 PROVISIONED_BY = "GAIA, setting up the Inbox desk"
+FOLLOWED_BY = "GAIA, keeping the Inbox desk ahead of the daily brief"
+#: The default daily brief lands at 08:00, so the desk sweeps an hour ahead of it.
+DESK_RECURRENCE = "0 7 * * *"
 
 
 def _desk(**overrides: object) -> TodoDocument:
@@ -85,6 +92,8 @@ def _response() -> TrackedTodoCreation:
 def seams() -> Iterator[SimpleNamespace]:
     """Every call the provisioner makes; the repository holds whatever desk a test puts in it."""
     stored: dict[str, TodoDocument] = {}
+    users = {USER_ID: UserDocument(id=USER_ID, timezone="Asia/Kolkata")}
+    states = {USER_ID: BriefingStateDocument(user_id=USER_ID)}
 
     async def _create(*_args: object, **kwargs: object) -> TrackedTodoCreation:
         schedule = kwargs["schedule"]
@@ -106,14 +115,27 @@ def seams() -> Iterator[SimpleNamespace]:
             f"{MODULE}.get_connected_integration_ids", AsyncMock(return_value={"gmail"})
         ) as connected,
         patch(f"{MODULE}.todo_repository", repo),
-        # Only the provisioned user lives in Kolkata; any other lookup falls back to UTC.
-        patch(
-            "app.services.user_service.get_user_by_id",
+        # Only the provisioned user exists, in Kolkata, briefed at the default hour.
+        patch.object(
+            user_repository,
+            "get",
+            AsyncMock(side_effect=lambda user_id: users.get(user_id)),
+        ),
+        patch.object(
+            user_repository,
+            "get_hours",
             AsyncMock(
                 side_effect=lambda user_id: (
-                    UserDocument(timezone="Asia/Kolkata") if user_id == USER_ID else None
+                    UserHours.model_validate(users[user_id].model_dump())
+                    if user_id in users
+                    else None
                 )
             ),
+        ),
+        patch.object(
+            briefing_state_repository,
+            "state_for",
+            AsyncMock(side_effect=lambda user_id: states[user_id]),
         ),
         patch.object(
             TrackedTodoService, "create_tracked_todo", AsyncMock(side_effect=_create)
@@ -133,6 +155,8 @@ def seams() -> Iterator[SimpleNamespace]:
             schedule=schedule,
             timeline=timeline,
             capture=capture,
+            users=users,
+            states=states,
         )
 
 
@@ -158,10 +182,10 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     kwargs = seams.create.await_args.kwargs
     assert kwargs["description"] == INBOX_DESK_DESCRIPTION
     assert kwargs["external_ref"] == DESK_REF
-    assert kwargs["notify_on_run"] is True
+    assert kwargs["delivery"] is WorkflowDelivery.BRIEF
     assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
-    assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
+    assert kwargs["schedule"].recurrence == DESK_RECURRENCE
     assert _at_7_in_kolkata(first)
     assert before < first <= before + timedelta(days=1)
     seams.repo.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
@@ -201,10 +225,10 @@ async def test_an_open_desk_without_a_schedule_is_rearmed_on_its_timeline(
 
     seams.create.assert_not_awaited()
     rearmed = seams.stored[DESK_ID]
-    assert rearmed.recurrence == INBOX_DESK_RECURRENCE
+    assert rearmed.recurrence == DESK_RECURRENCE
     assert rearmed.scheduled_at is not None
     assert _at_7_in_kolkata(rearmed.scheduled_at)
-    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
+    schedule = TodoUpdate(recurrence=DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
     seams.repo.update.assert_awaited_once_with(DESK_ID, user_id=USER_ID, update=schedule)
     seams.timeline.assert_awaited_once_with(DESK_ID, USER_ID, schedule, by=PROVISIONED_BY)
     seams.schedule.assert_awaited_once_with(DESK_ID, rearmed.scheduled_at)
@@ -215,7 +239,7 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
     seams: SimpleNamespace,
 ) -> None:
     seams.repo.find_latest_by_external_ref.return_value = _desk(
-        scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE
+        scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE
     )
 
     await provision_inbox_desk(USER_ID)
@@ -226,13 +250,112 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
 
 
 async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace) -> None:
-    winner = _desk(scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE)
+    winner = _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE)
     seams.create.side_effect = ExternalRefTakenError(winner)
 
     await provision_inbox_desk(USER_ID)
 
     seams.schedule.assert_awaited_once_with(DESK_ID, TOMORROW_8)
     seams.capture.assert_not_called()
+
+
+@pytest.mark.regression
+async def test_the_desk_sweeps_an_hour_ahead_of_the_users_own_brief(
+    seams: SimpleNamespace,
+) -> None:
+    seams.states[USER_ID].schedule = BriefingSchedule(hour=10)
+
+    await provision_inbox_desk(USER_ID)
+
+    schedule = seams.create.await_args.kwargs["schedule"]
+    assert schedule.recurrence == "0 9 * * *"
+    assert schedule.scheduled_at.astimezone(KOLKATA).hour == 9
+
+
+async def test_a_desk_on_the_old_brief_hour_follows_the_brief(seams: SimpleNamespace) -> None:
+    seams.stored[DESK_ID] = _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE)
+    seams.repo.find_latest_by_external_ref.return_value = seams.stored[DESK_ID]
+    seams.states[USER_ID].schedule = BriefingSchedule(hour=10)
+
+    await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    moved = seams.stored[DESK_ID]
+    assert moved.recurrence == "0 9 * * *"
+    assert moved.scheduled_at is not None
+    assert moved.scheduled_at.astimezone(KOLKATA).hour == 9
+    seams.schedule.assert_awaited_once_with(DESK_ID, moved.scheduled_at)
+    seams.repo.find_latest_by_external_ref.assert_awaited_once_with(USER_ID, DESK_REF)
+    assert seams.repo.update.await_args.kwargs["user_id"] == USER_ID
+    seams.timeline.assert_awaited_once_with(
+        DESK_ID,
+        USER_ID,
+        TodoUpdate(recurrence="0 9 * * *", scheduled_at=moved.scheduled_at),
+        by=FOLLOWED_BY,
+    )
+
+
+@pytest.mark.parametrize(
+    "desk",
+    [None, _desk(scheduled_at=TOMORROW_8, recurrence=DESK_RECURRENCE, completed=True)],
+    ids=["no-desk", "stopped-desk"],
+)
+async def test_no_open_desk_means_nothing_follows_the_brief(
+    seams: SimpleNamespace, desk: TodoDocument | None
+) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = desk
+
+    await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    seams.repo.update.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
+
+
+async def test_a_desk_whose_user_is_gone_fails_loud_naming_both(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk(recurrence=DESK_RECURRENCE)
+    seams.users.clear()
+
+    with pytest.raises(LookupError) as caught:
+        await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    assert str(caught.value) == f"Inbox desk {DESK_ID} belongs to no user {USER_ID}"
+    seams.repo.update.assert_not_awaited()
+
+
+@pytest.mark.parametrize("stored", [None, _desk(recurrence="0 9 * * *")], ids=["gone", "no-run"])
+async def test_a_desk_lost_while_it_follows_the_brief_fails_loud(
+    seams: SimpleNamespace, stored: TodoDocument | None
+) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk(recurrence=DESK_RECURRENCE)
+    seams.repo.update.side_effect = None
+    seams.repo.update.return_value = stored
+
+    with pytest.raises(LookupError) as caught:
+        await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    assert str(caught.value) == f"Inbox desk {DESK_ID} vanished while it followed the brief"
+    seams.timeline.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
+
+
+async def test_a_desk_for_an_unknown_user_is_never_scheduled(seams: SimpleNamespace) -> None:
+    seams.users.clear()
+
+    with pytest.raises(LookupError) as caught:
+        await provision_inbox_desk(USER_ID)
+
+    assert str(caught.value) == f"Cannot schedule an Inbox desk for unknown user {USER_ID}"
+    seams.create.assert_not_awaited()
+
+
+async def test_a_desk_the_user_moved_stays_where_they_put_it(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk(
+        scheduled_at=TOMORROW_8, recurrence="30 6 * * 1-5"
+    )
+
+    await inbox_desk.follow_the_brief(USER_ID, DESK_RECURRENCE, "0 9 * * *")
+
+    seams.repo.update.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
 
 
 async def test_a_user_without_a_plan_gets_no_desk(seams: SimpleNamespace) -> None:

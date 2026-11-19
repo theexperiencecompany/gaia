@@ -26,7 +26,6 @@ const LIVE_LINK = {
   url: LIVE_URL,
   slug: "abcdefghijk",
   access: "unlisted",
-  grantees: [],
   expires_at: null,
   content_max_access: null,
 } as const;
@@ -34,7 +33,7 @@ const LIVE_LINK = {
 function renderControls() {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <ShareLinkControls targetType="briefing" targetId="b1" />
+      <ShareLinkControls target={{ type: "briefing", id: "b1" }} />
     </QueryClientProvider>,
   );
 }
@@ -65,7 +64,10 @@ describe("ShareLinkControls", () => {
 
     await openMenu();
     await waitFor(() =>
-      expect(api.fetchShareState).toHaveBeenCalledWith("briefing", "b1"),
+      expect(api.fetchShareState).toHaveBeenCalledWith({
+        type: "briefing",
+        id: "b1",
+      }),
     );
 
     expect(screen.queryByRole("menuitem", { name: /Stop sharing/ })).toBeNull();

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { ApiError } from "@shared/api";
+import type { BriefEditionNotification } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion/react";
@@ -17,10 +19,14 @@ vi.mock("@/components/shared/ConfirmationDialog", () => ({
 }));
 
 const fetchBriefing = vi.fn();
-vi.mock("@/features/briefing/api/briefingApi", () => ({
-  briefingApi: { fetchBriefing: (id: string) => fetchBriefing(id) },
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: (_path: string, init: { path: { briefing_id: string } }) =>
+      fetchBriefing(init.path.briefing_id),
+  },
 }));
 
+import type { BriefCard } from "@/features/briefing";
 import { NotificationCard } from "@/features/notification/components/NotificationCard";
 import {
   NotificationStatus,
@@ -44,8 +50,60 @@ const OPEN_BRIEFING = {
   },
 };
 
+function briefCard(
+  briefingId: string,
+  card: Partial<BriefCard> = {},
+): BriefCard {
+  return {
+    briefing_id: briefingId,
+    headline: HEADLINE,
+    date: "2026-10-22",
+    kind: "daily",
+    edition: null,
+    edition_name: null,
+    stamp_city_name: null,
+    needs_you_count: 0,
+    ...card,
+  };
+}
+
+/** A briefing notification's details: its kind, its link and the brief's card. */
+function briefDetails(
+  briefingId: string,
+  card: Partial<BriefCard> = {},
+): BriefEditionNotification {
+  return {
+    kind: "briefing_daily",
+    brief_url: "https://heygaia.link/b",
+    card: briefCard(briefingId, card),
+  };
+}
+
+/** The brief as GET /briefings/{id} returns it: its card, its payload and nothing left out. */
+function storedBrief(
+  briefingId: string,
+  payload: Record<string, unknown>,
+  card: Partial<BriefCard> = {},
+) {
+  return {
+    card: briefCard(briefingId, card),
+    payload: {
+      kicker: "THE MORNING BRIEF",
+      date: "2026-10-22",
+      headline: HEADLINE,
+      lede: "",
+      caption: "",
+      message: MESSAGE,
+      stats: [],
+      sections: [],
+      ...payload,
+    },
+    left_out: { items: [], events: [], uncomposed: [] },
+  };
+}
+
 function notification(
-  metadata: Record<string, unknown>,
+  details: NotificationView["details"],
   actions: unknown[] = [],
 ): NotificationView {
   return {
@@ -56,7 +114,7 @@ function notification(
     status: NotificationStatus.DELIVERED,
     channels: [],
     content: { title: HEADLINE, body: MESSAGE, actions },
-    metadata,
+    details,
     created_at: new Date().toISOString(),
   } as unknown as NotificationView;
 }
@@ -82,18 +140,8 @@ describe("briefing notification", () => {
   });
 
   it("folds the brief and opens it, loaded by id, as a letter", async () => {
-    fetchBriefing.mockResolvedValue({
-      id: "brief_1",
-      date: "2026-10-22",
-      edition_image_url: null,
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
+    fetchBriefing.mockResolvedValue(
+      storedBrief("brief_1", {
         sections: [
           {
             numeral: "I",
@@ -101,15 +149,9 @@ describe("briefing notification", () => {
             items: [{ text: "Approve the Acme MSA" }],
           },
         ],
-      },
-    });
-    renderCard(
-      notification({
-        briefing_id: "brief_1",
-        date: "2026-10-22",
-        edition_image_url: null,
       }),
     );
+    renderCard(notification(briefDetails("brief_1")));
 
     expect(screen.queryByText(MESSAGE)).toBeNull();
     fireEvent.click(
@@ -121,7 +163,7 @@ describe("briefing notification", () => {
     expect(fetchBriefing).toHaveBeenCalledWith("brief_1");
   });
 
-  it("unfolds a rendered edition on its own, with none of the brief's text below it", async () => {
+  it("unfolds a rendered edition on its own, its text only for screen readers", async () => {
     // jsdom never decodes images nor cuts bitmaps; the browser does both off this path.
     Object.defineProperty(HTMLImageElement.prototype, "decode", {
       configurable: true,
@@ -150,27 +192,29 @@ describe("briefing notification", () => {
       "naturalHeight",
       "get",
     ).mockReturnValue(4500);
-    fetchBriefing.mockResolvedValue({
-      id: "brief_2",
-      date: "2026-10-22",
-      edition_image_url: "https://cdn.example/edition.png",
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
-        sections: [],
-      },
-    });
+    fetchBriefing.mockResolvedValue(
+      storedBrief(
+        "brief_2",
+        {},
+        {
+          edition: {
+            image_url: "https://cdn.example/edition.png",
+            fold: null,
+            paper: null,
+          },
+        },
+      ),
+    );
     renderCard(
-      notification({
-        briefing_id: "brief_2",
-        date: "2026-10-22",
-        edition_image_url: "https://cdn.example/edition.png",
-      }),
+      notification(
+        briefDetails("brief_2", {
+          edition: {
+            image_url: "https://cdn.example/edition.png",
+            fold: null,
+            paper: null,
+          },
+        }),
+      ),
     );
 
     fireEvent.click(
@@ -178,12 +222,14 @@ describe("briefing notification", () => {
     );
 
     expect(await screen.findByRole("img", { name: HEADLINE })).toBeTruthy();
-    expect(screen.queryByText(MESSAGE)).toBeNull();
+    expect(
+      (await screen.findByText(MESSAGE)).closest(".sr-only"),
+    ).not.toBeNull();
     expect(fetchBriefing).toHaveBeenCalledWith("brief_2");
   });
 
   it("opens the brief from the card alone, without a second button to the same brief", () => {
-    renderCard(notification({ briefing_id: "brief_1" }, [OPEN_BRIEFING]));
+    renderCard(notification(briefDetails("brief_1"), [OPEN_BRIEFING]));
 
     expect(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -192,22 +238,8 @@ describe("briefing notification", () => {
   });
 
   it("closes the opened brief from its close button", async () => {
-    fetchBriefing.mockResolvedValue({
-      id: "brief_1",
-      date: "2026-10-22",
-      edition_image_url: null,
-      payload: {
-        kicker: "THE MORNING BRIEF",
-        date: "2026-10-22",
-        headline: HEADLINE,
-        lede: "",
-        caption: "",
-        message: MESSAGE,
-        stats: [],
-        sections: [],
-      },
-    });
-    renderCard(notification({ briefing_id: "brief_1" }));
+    fetchBriefing.mockResolvedValue(storedBrief("brief_1", {}));
+    renderCard(notification(briefDetails("brief_1")));
 
     fireEvent.click(
       screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
@@ -218,14 +250,67 @@ describe("briefing notification", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("tells a screen reader the brief's day, what waits and its edition, not only its headline", () => {
+    renderCard(
+      notification(
+        briefDetails("brief_1", {
+          needs_you_count: 4,
+          edition_name: "Air Mail",
+          stamp_city_name: "Bogotá",
+        }),
+      ),
+    );
+
+    const card = screen.getByRole("button", {
+      name: `Open brief: ${HEADLINE}`,
+    });
+    const description = (card.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+    expect(description).toContain("4 waiting");
+    expect(description).toContain("Air Mail, Bogotá");
+    expect(description).toContain("Thu, Oct 22");
+  });
+
+  it("says a deleted brief isn't available anymore", async () => {
+    fetchBriefing.mockRejectedValue(new ApiError("Not found", 404));
+    renderCard(notification(briefDetails("brief_gone")));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
+    );
+
+    expect(
+      await screen.findByText("This brief isn't available anymore."),
+    ).toBeTruthy();
+  });
+
+  it("offers a retry, not a missing brief, when the brief could not be loaded", async () => {
+    fetchBriefing
+      .mockRejectedValueOnce(new ApiError("Service unavailable", 503))
+      .mockResolvedValue(storedBrief("brief_1", {}));
+    renderCard(notification(briefDetails("brief_1")));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: `Open brief: ${HEADLINE}` }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText(MESSAGE)).toBeTruthy();
+    expect(
+      screen.queryByText("This brief isn't available anymore."),
+    ).toBeNull();
+  });
+
   it("keeps an action that goes somewhere other than the brief", () => {
-    renderCard(notification({}, [OPEN_BRIEFING]));
+    renderCard(notification(null, [OPEN_BRIEFING]));
 
     expect(screen.getByRole("button", { name: "Open briefing" })).toBeTruthy();
   });
 
   it("leaves any other notification's body as it was", () => {
-    renderCard(notification({}));
+    renderCard(notification(null));
 
     expect(screen.getByText(MESSAGE)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Open brief:/ })).toBeNull();

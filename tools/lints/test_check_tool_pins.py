@@ -379,6 +379,20 @@ def test_pnpm_mirror_must_match_package_manager(
     assert "mirrors pnpm 10.16.0, package.json declares 10.17.1" in err
 
 
+def test_every_dockerfile_preparing_pnpm_is_a_mirror() -> None:
+    """apps/api/Dockerfile's artifact-validator stage ran corepack unguarded: a drifted pin passed."""
+    root = Path(__file__).resolve().parents[2]
+    tracked = subprocess.run(
+        ["git", "ls-files", "*Dockerfile"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.split()
+    preparing = {
+        root / rel
+        for rel in tracked
+        if "corepack prepare pnpm@" in check_tool_pins._executable_text((root / rel).read_text())
+    }
+    assert preparing <= {path for path, _pattern in check_tool_pins._PNPM_MIRRORS}
+
+
 def test_pnpm_action_setup_explicit_version_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

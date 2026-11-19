@@ -1035,8 +1035,9 @@ async def _project_reminders(user_id: str, want: list[object]) -> list[dict[str,
 
 async def _project_workflows(user_id: str) -> list[dict[str, object]]:
     from app.db.repositories.workflows import workflow_repository
+    from app.services.system_workflows.registry import UNLISTED_KEYS
 
-    docs = await workflow_repository.list_for_user(user_id)
+    docs = await workflow_repository.list_for_user(user_id, unlisted_keys=UNLISTED_KEYS)
     return [{"count": len(docs)}]
 
 

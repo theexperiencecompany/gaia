@@ -21,7 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.integrations import IntegrationStatus
 from app.constants.user_activity import ActivityStatus
+from app.models.integration_models import UserIntegrationDocument
 from app.models.user_models import UserDocument
 from app.services.integrations import user_integrations
 from app.services.integrations.user_integration_status import update_user_integration_status
@@ -38,6 +40,7 @@ from app.services.workspace_sync import (
     resync_stale_user_workspaces,
     sync_stale_user_workspaces,
 )
+from tests.integration_account_factories import make_integration_record
 
 WS = "app.services.workspace_sync"
 IFS = "app.services.integrations_fs"
@@ -87,7 +90,7 @@ def wsync():
         patch(f"{WS}.user_repository") as users,
     ):
         by_status: dict[ActivityStatus, list[str]] = {}
-        users.find_by_activity_status = AsyncMock(
+        users.find_activity_rows = AsyncMock(
             side_effect=lambda status: [
                 SimpleNamespace(id=uid) for uid in by_status.get(status, [])
             ]
@@ -103,7 +106,7 @@ def wsync():
             provision=provision,
             connected=connected,
             by_status=by_status,
-            find_by_status=users.find_by_activity_status,
+            find_by_status=users.find_activity_rows,
             all_ids=users.list_all_ids,
             set_active=set_active,
         )
@@ -262,35 +265,41 @@ async def test_sync_user_integrations_empty_set_still_materializes():
 # ---------------------------------------------------------------------------
 
 
+def _record(integration_id: str, status: IntegrationStatus) -> UserIntegrationDocument:
+    return make_integration_record(
+        user_id="u", integration_id=integration_id, primary=None, status=status
+    )
+
+
+def _statuses(records: list[UserIntegrationDocument]) -> dict[str, IntegrationStatus]:
+    return {record.integration_id: record.status for record in records}
+
+
 @pytest.mark.parametrize(
     "docs, expected",
     [
         ([], set()),
-        ([{"integration_id": "gmail", "status": "connected"}], {"gmail"}),
-        ([{"integration_id": "gmail", "status": "created"}], set()),
-        ([{"status": "connected"}], set()),  # missing integration_id
+        ([("gmail", IntegrationStatus.CONNECTED)], {"gmail"}),
+        ([("gmail", IntegrationStatus.CREATED)], set()),
+        ([("gmail", IntegrationStatus.EXPIRED)], set()),
+        ([("x", IntegrationStatus.CONNECTED), ("x", IntegrationStatus.CONNECTED)], {"x"}),
         (
             [
-                {"integration_id": "x", "status": "connected"},
-                {"integration_id": "x", "status": "connected"},
-            ],
-            {"x"},
-        ),
-        (
-            [
-                {"integration_id": "a", "status": "connected"},
-                {"integration_id": "b", "status": "created"},
-                {"integration_id": "c", "status": "connected"},
+                ("a", IntegrationStatus.CONNECTED),
+                ("b", IntegrationStatus.CREATED),
+                ("c", IntegrationStatus.CONNECTED),
             ],
             {"a", "c"},
         ),
     ],
 )
-async def test_get_connected_integration_ids_filter(docs, expected):
+async def test_get_connected_integration_ids_filter(
+    docs: list[tuple[str, IntegrationStatus]], expected: set[str]
+) -> None:
     with patch(
         f"{UINT}.get_user_integration_records",
         new_callable=AsyncMock,
-        return_value=docs,
+        return_value=[_record(iid, status) for iid, status in docs],
     ):
         assert await get_connected_integration_ids("u") == expected
 
@@ -298,10 +307,9 @@ async def test_get_connected_integration_ids_filter(docs, expected):
 @asynccontextmanager
 async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
     """Workspace seams with posthog connected in Mongo but dead in Postgres."""
-    record = MagicMock()
-    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+    record = _record("posthog", IntegrationStatus.CONNECTED)
 
-    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
+    async def _list_for_user(user_id: str) -> list[UserIntegrationDocument]:
         return [record] if user_id == "u" else []
 
     with (
@@ -311,8 +319,6 @@ async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
             side_effect=_list_for_user,
         ),
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
-        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
-        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
         token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
         yield token_store_class
@@ -323,7 +329,7 @@ async def test_user_integration_records_reflect_posthog_credential_status():
     async with _stale_posthog_credential() as token_store_class:
         result = await get_user_integration_records("u")
 
-    assert result == [{"integration_id": "posthog", "status": "created"}]
+    assert _statuses(result) == {"posthog": IntegrationStatus.CREATED}
     token_store_class.assert_called_once_with("u")
     token_store_class.return_value.are_connected.assert_awaited_once_with(["posthog"])
 
@@ -340,9 +346,9 @@ async def test_mcp_record_without_stored_config_keeps_its_status():
     """An MCP record with no stored config keeps its status without crashing."""
     with (
         patch(
-            f"{UINT}._get_cached_user_integration_records",
+            f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
-            return_value=[{"integration_id": "odd-mcp", "status": "connected"}],
+            return_value=[_record("odd-mcp", IntegrationStatus.CONNECTED)],
         ),
         patch(f"{UINT}.get_integration_by_id") as mock_lookup,
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
@@ -351,7 +357,7 @@ async def test_mcp_record_without_stored_config_keeps_its_status():
 
         result = await get_user_integration_records("u")
 
-    assert result == [{"integration_id": "odd-mcp", "status": "connected"}]
+    assert _statuses(result) == {"odd-mcp": IntegrationStatus.CONNECTED}
     token_store_class.assert_not_called()
 
 
@@ -382,8 +388,8 @@ async def test_custom_auth_filter_empty_list_skips_the_query():
 async def test_custom_and_platform_records_reconcile_independently():
     """Platform and custom checks share one credential batch but filter separately."""
     records = [
-        {"integration_id": "github", "status": "connected"},
-        {"integration_id": "custom-uuid", "status": "connected"},
+        _record("github", IntegrationStatus.CONNECTED),
+        _record("custom-uuid", IntegrationStatus.CONNECTED),
     ]
     custom_doc = MagicMock(integration_id="custom-uuid", managed_by="mcp", requires_auth=True)
 
@@ -395,7 +401,7 @@ async def test_custom_and_platform_records_reconcile_independently():
 
     with (
         patch(
-            f"{UINT}._get_cached_user_integration_records",
+            f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
             return_value=records,
         ),
@@ -407,8 +413,10 @@ async def test_custom_and_platform_records_reconcile_independently():
 
         result = await get_user_integration_records("u")
 
-    by_id = {record["integration_id"]: record["status"] for record in result}
-    assert by_id == {"github": "connected", "custom-uuid": "created"}
+    assert _statuses(result) == {
+        "github": IntegrationStatus.CONNECTED,
+        "custom-uuid": IntegrationStatus.CREATED,
+    }
     mock_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
     token_store_class.return_value.are_connected.assert_awaited_once_with(["custom-uuid"])
 
@@ -425,7 +433,7 @@ async def test_connect_schedules_sync():
         patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        ok = await update_user_integration_status("u", "gmail", "connected")
+        ok = await update_user_integration_status("u", "gmail", IntegrationStatus.CONNECTED)
     assert ok is True
     sched.assert_called_once_with("u")
 
@@ -437,7 +445,7 @@ async def test_created_status_does_not_schedule_sync():
         patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        await update_user_integration_status("u", "gmail", "created")
+        await update_user_integration_status("u", "gmail", IntegrationStatus.CREATED)
     sched.assert_not_called()
 
 

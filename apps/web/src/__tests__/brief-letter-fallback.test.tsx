@@ -6,10 +6,10 @@ vi.mock("motion/react", () => ({ useInView: () => true }));
 
 const prepareEdition = vi.fn();
 vi.mock("@/features/briefing/utils/preparedEdition", () => ({
-  LETTER_MAX_WIDTH: 400,
-  LETTER_PERSPECTIVE_PX: 800,
-  LETTER_TILT_DEG: 2,
-  prepareEdition: (url: string) => prepareEdition(url),
+  holdEdition: (url: string) => ({
+    edition: prepareEdition(url),
+    release: () => undefined,
+  }),
 }));
 
 vi.mock("@/features/briefing/components/EditionUnfold", () => ({
@@ -17,21 +17,32 @@ vi.mock("@/features/briefing/components/EditionUnfold", () => ({
 }));
 
 import { BriefLetter } from "@/features/briefing/components/BriefLetter";
+import type { FoldedBriefSummary } from "@/features/briefing/utils/briefCard";
 
-const LAYOUT = { fold: 0.3, paper: null };
 const HEADLINE = "Three decisions are waiting on you";
+
+function brief(imageUrl: string | null): FoldedBriefSummary {
+  return {
+    headline: HEADLINE,
+    date: "2026-10-22",
+    kind: "daily",
+    imageUrl,
+    editionFold: 0.3,
+    editionPaper: null,
+    editionName: null,
+    stampCityName: null,
+    needsYouCount: 0,
+  };
+}
+
+function trigger(open: (origin?: DOMRect) => void) {
+  return { open, warm: vi.fn(), isBusy: false, isLifted: false };
+}
 
 describe("BriefLetter without a usable edition image", () => {
   it("opens the brief from a plain headline button when the brief has no image", () => {
     const onOpen = vi.fn();
-    render(
-      <BriefLetter
-        headline={HEADLINE}
-        imageUrl={null}
-        layout={LAYOUT}
-        onOpen={onOpen}
-      />,
-    );
+    render(<BriefLetter brief={brief(null)} trigger={trigger(onOpen)} />);
 
     fireEvent.click(screen.getByRole("button", { name: HEADLINE }));
 
@@ -45,10 +56,8 @@ describe("BriefLetter without a usable edition image", () => {
     const onOpen = vi.fn();
     render(
       <BriefLetter
-        headline={HEADLINE}
-        imageUrl="https://cdn/edition.png"
-        layout={LAYOUT}
-        onOpen={onOpen}
+        brief={brief("https://cdn/edition.png")}
+        trigger={trigger(onOpen)}
       />,
     );
 

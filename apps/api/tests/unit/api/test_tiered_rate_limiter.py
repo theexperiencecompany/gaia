@@ -183,13 +183,19 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         self.redis.redis = redis_mock
 
-        with patch(
-            "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
-            side_effect=_noop_create_task,
+        with (
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
+                side_effect=_noop_create_task,
+            ),
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.count_daily_actions", AsyncMock()
+            ) as counted,
         ):
             result = await self.limiter.check_and_increment(USER_ID, "chat_messages", PlanType.PRO)
 
         assert "day" in result or "month" in result
+        counted.assert_called_once_with(USER_ID)
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan")

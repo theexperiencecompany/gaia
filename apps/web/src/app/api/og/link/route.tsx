@@ -1,14 +1,12 @@
 import { ImageResponse } from "next/og";
 import type { NextRequest } from "next/server";
 
-import { internalApiHeaders } from "@/lib/internalApiHeaders";
-import type { LinkPreviewMeta } from "@/types/features/shortLinkTypes";
+import { fetchLinkMeta } from "@/features/short-links/utils/linkServerApi";
 
 import {
   colors,
   createErrorResponse,
   fonts,
-  getApiBaseUrl,
   getBaseUrl,
   loadFonts,
   OG_HEIGHT,
@@ -16,24 +14,7 @@ import {
   truncateText,
 } from "../lib";
 
-// Previews are re-fetched by chat apps; a revoked link shows the dead card within this window.
-const LINK_CARD_CACHE_CONTROL = "public, max-age=300";
 const TITLE_MAX_LENGTH = 90;
-
-async function fetchLinkMeta(
-  slug: string,
-  viewer: Headers,
-): Promise<LinkPreviewMeta> {
-  const response = await fetch(
-    `${getApiBaseUrl()}/l/${encodeURIComponent(slug)}/meta`,
-    { cache: "no-store", headers: internalApiHeaders(viewer) },
-  );
-  if (!response.ok) {
-    // Never the slug: it is a working link, and this message reaches Sentry.
-    throw new Error(`Short link meta failed with ${response.status}`);
-  }
-  return (await response.json()) as LinkPreviewMeta;
-}
 
 /**
  * The generated preview card for a heygaia.link, from what /meta lets anyone
@@ -44,7 +25,11 @@ export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug");
   if (!slug) return new Response("Missing slug", { status: 400 });
   try {
-    const meta = await fetchLinkMeta(slug, request.headers);
+    const reply = await fetchLinkMeta(slug, request.headers);
+    if (!reply) {
+      return new Response("Too many links opened from here", { status: 429 });
+    }
+    const { meta, cacheControl } = reply;
     const title = truncateText(meta.title, TITLE_MAX_LENGTH);
     const logoUrl = `${getBaseUrl(request.url)}/brand/gaia_logo.png`;
     const loadedFonts = await loadFonts("", `${title}${meta.description}GAIA`);
@@ -92,7 +77,8 @@ export async function GET(request: NextRequest) {
         width: OG_WIDTH,
         height: OG_HEIGHT,
         fonts: loadedFonts.length > 0 ? loadedFonts : undefined,
-        headers: { "Cache-Control": LINK_CARD_CACHE_CONTROL },
+        // The card shows what /meta shows, so it may be kept exactly as long.
+        headers: { "Cache-Control": cacheControl ?? "no-store" },
       },
     );
   } catch (error: unknown) {

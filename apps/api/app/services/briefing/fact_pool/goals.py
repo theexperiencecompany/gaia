@@ -13,7 +13,8 @@ from app.constants.briefing import GOAL_WORK_STALLED_AFTER
 from app.constants.todos import TodoCompleter
 from app.models.brief_pool_models import GoalState
 from app.models.todo_models import TodoDocument
-from app.services.briefing.context import StatedGoal, finished_by
+from app.services.briefing.goals import StatedGoal
+from app.services.briefing.work import finished_by
 from app.utils.timezone import as_utc
 
 

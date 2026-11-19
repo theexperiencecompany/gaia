@@ -1,10 +1,7 @@
-from datetime import datetime
-
 from fastapi import HTTPException
 
 from app.constants.files import BlobKind
 from app.db.repositories.users import user_repository
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import (
     ProfilePictureUpload,
     UserDocument,
@@ -12,6 +9,7 @@ from app.models.user_models import (
     UserUpdateResponse,
 )
 from app.services.blob_store import blob_store
+from app.utils.errors import AppError, create_error
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -27,23 +25,28 @@ async def get_user_by_id(user_id: str) -> UserDocument | None:
         raise HTTPException(status_code=404, detail="User not found") from e
 
 
-async def get_quiet_hours(user_id: str) -> QuietHours:
-    """Return the user's quiet hours: their own, or 22:00 to 08:00 when they never set any."""
-    user = await get_user_by_id(user_id)
-    return (user.quiet_hours if user else None) or DEFAULT_QUIET_HOURS
+def user_not_found(user_id: str) -> AppError:
+    """Return the 404 a change to a user raises when the id has no users row."""
+    return create_error(
+        message="User not found",
+        why=f"User {user_id} does not exist",
+        fix="Sign in again",
+        status_code=404,
+    )
+
+
+async def require_user(user_id: str) -> UserDocument:
+    """Return the user, or raise user_not_found's 404."""
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise user_not_found(user_id)
+    return user
 
 
 async def get_profile_timezone(user_id: str) -> Timezone:
     """Return the timezone on the user's profile; UTC when they have none or it is not one."""
     user = await get_user_by_id(user_id)
     return Timezone.parse(user.timezone if user else None)
-
-
-async def quiet_hours_end(user_id: str) -> datetime | None:
-    """Return when the user's quiet hours end when their own clock is inside them now, else None."""
-    local_now = datetime.now((await get_profile_timezone(user_id)).tzinfo)
-    hours = await get_quiet_hours(user_id)
-    return hours.end_after(local_now) if hours.contains(local_now) else None
 
 
 async def update_user_profile(

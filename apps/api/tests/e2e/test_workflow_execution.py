@@ -14,6 +14,7 @@ where separate thread_ids keep independent state. Doubled at I/O edges only: the
 and notification delivery.
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -39,6 +40,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.agent_models import SilentRunResult
+from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
     RecordedCall,
@@ -558,6 +560,12 @@ class TestWorkflowExecutionFailurePropagation:
         # These tests are about the execution path, not the paid-only gate —
         # default the owner to an active subscription so it stays out of the way.
         monkeypatch.setattr(workflow_tasks, "is_paid", AsyncMock(return_value=True))
+        # Nor the dormant-owner gate: the owner was seen just now.
+        monkeypatch.setattr(
+            user_repository,
+            "get_activity_dates",
+            AsyncMock(return_value=UserActivityDates(last_active_at=datetime.now(UTC))),
+        )
 
         return {
             "records": records,
@@ -620,7 +628,8 @@ class TestWorkflowExecutionFailurePropagation:
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
 
-        result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
+        with pytest.raises(RuntimeError, match="Summarize the thread"):
+            await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         assert completed == ["Read overnight email"], (
             "Execution must stop at the failing step — steps after it must not run. "
@@ -654,10 +663,6 @@ class TestWorkflowExecutionFailurePropagation:
         assert notifications[0].user_id == workflow.user_id
         assert workflow.title in notifications[0].content.title
         assert notifications[0].metadata["workflow_id"] == workflow.id
-
-        assert "Error executing workflow" in result, (
-            f"The task's return value must report the failure, got {result!r}"
-        )
 
     async def test_all_steps_succeeding_records_a_successful_execution(
         self, monkeypatch, workflow_execution_env
@@ -709,13 +714,13 @@ class TestWorkflowExecutionFailurePropagation:
             AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
         )
 
-        result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
+        with pytest.raises(RuntimeError, match="Post to Slack"):
+            await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
         execution = workflow_execution_env["records"].only()
         assert execution.status == "failed"
         assert "Post to Slack" in (execution.error_message or "")
         assert workflow_execution_env["recorded_stats"] == [False]
-        assert "Error executing workflow" in result
 
     async def test_missing_workflow_creates_no_execution_record(
         self, monkeypatch, workflow_execution_env

@@ -14,6 +14,7 @@ from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.scheduler_models import (
     UNSET,
     DeactivationReason,
@@ -38,6 +39,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
     WorkflowStep,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS
 from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     WorkflowPromptRequest,
@@ -60,7 +62,7 @@ from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
-from tests.helpers import UNKNOWN_USER_ID, users_get, users_get_on
+from tests.helpers import UNKNOWN_USER_ID, briefs_on, users_get
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants
@@ -644,8 +646,11 @@ class TestBriefDeliveryWhileBriefsOff:
 
     @pytest.fixture(autouse=True)
     def _briefs_are_off(self):
-        with patch(
-            "app.utils.auth_utils.user_repository.get", new=users_get_on(BriefingFrequency.OFF)
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            patch.object(
+                briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.OFF)
+            ),
         ):
             yield
 
@@ -801,7 +806,7 @@ class TestListWorkflows:
         # The todo-exclusion filter is the repository's contract; the service just
         # forwards the flag (and the unpaginated limit/offset).
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
@@ -809,7 +814,7 @@ class TestListWorkflows:
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=False, limit=None, offset=0
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False, limit=None, offset=0
         )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
@@ -834,9 +839,11 @@ class TestListWorkflows:
         _result, total = await WorkflowService.list_workflows(USER_ID, limit=10, offset=20)
 
         mock_list.assert_awaited_once_with(
-            USER_ID, exclude_todo_workflows=True, limit=10, offset=20
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True, limit=10, offset=20
         )
-        mock_count.assert_awaited_once_with(USER_ID, exclude_todo_workflows=True)
+        mock_count.assert_awaited_once_with(
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=True
+        )
         assert total == 42
 
     @patch(f"{_REPO}.count_for_user", new_callable=AsyncMock)

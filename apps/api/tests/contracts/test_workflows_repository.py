@@ -35,6 +35,7 @@ from app.models.workflow_models import (
     WorkflowStep,
     WorkflowUpdate,
 )
+from app.services.system_workflows.registry import UNLISTED_KEYS, UNPAUSABLE_KEYS
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.utils.occurrence import parse_occurrence_stamp
 
@@ -209,10 +210,17 @@ class TestWorkflowsOwnedCrud:
         newer = await repo.create(_workflow(user_id=owner, created_at=datetime.now(UTC)))
         await repo.create(_workflow(user_id=owner, is_todo_workflow=True))
         await repo.create(_workflow(user_id=_uid("other")))
-        listed = await repo.list_for_user(owner)
+        listed = await repo.list_for_user(owner, unlisted_keys=UNLISTED_KEYS)
         assert [w.id for w in listed] == [newer.id, older.id]
         # opt-in includes the todo workflow
-        assert len(await repo.list_for_user(owner, exclude_todo_workflows=False)) == 3
+        assert (
+            len(
+                await repo.list_for_user(
+                    owner, unlisted_keys=UNLISTED_KEYS, exclude_todo_workflows=False
+                )
+            )
+            == 3
+        )
 
     async def test_find_by_ids_variants(self, repo):
         owner = _uid("owner")
@@ -232,7 +240,7 @@ class TestWorkflowsOwnedCrud:
         # so one corrupt document can't blank the user's whole workflow list.
         bad_id = _uid("bad")
         await raw_collection.insert_one({"_id": bad_id, "user_id": owner})
-        listed = await repo.list_for_user(owner)
+        listed = await repo.list_for_user(owner, unlisted_keys=UNLISTED_KEYS)
         assert [w.id for w in listed] == [valid.id]
         # The single-document read of the same corrupt row stays strict — a fetch of
         # a known id surfaces the corruption rather than silently returning nothing.
@@ -549,7 +557,7 @@ class TestWorkflowsTriggersAndSystem:
         plain = await repo.create(_workflow(user_id=owner))
         assert await repo.get_system_workflow_for_user(plain.id, owner) is None
 
-    async def test_the_dormancy_pause_set_leaves_out_the_briefs(self, repo):
+    async def test_the_pause_set_leaves_out_the_workflows_declared_unpausable(self, repo):
         """The sweep paused the brief of a user who read it in Telegram, so briefs stopped."""
         owner = _uid("owner")
         own = await repo.create(_workflow(user_id=owner, activated=True))
@@ -566,7 +574,7 @@ class TestWorkflowsTriggersAndSystem:
             )
         await repo.create(_workflow(user_id=owner, activated=False))
 
-        pausable = await repo.find_activated_for_user(owner)
+        pausable = await repo.find_activated_for_user(owner, excluding_keys=UNPAUSABLE_KEYS)
 
         assert sorted(w.id for w in pausable) == sorted([own.id, triage.id])
 

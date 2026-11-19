@@ -18,10 +18,16 @@ from app.models.brief_composition_models import (
     QuoteBlock,
     SectionBlock,
 )
+from app.models.brief_payload_models import (
+    EVENT_TIME_FORMAT,
+    BriefingEvent,
+    BriefingItem,
+    BriefingSection,
+)
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.services.briefing.candidates.app_names import integration_id_named
 from app.services.briefing.editions.edition_logos import logo_key
+from app.services.briefing.formats import clock_time, short_weekday
 
 # A week or less of days is named by weekday; a longer run by its date.
 _WEEKDAY_SPAN = 7
@@ -149,11 +155,11 @@ def _item(item: BriefingItem) -> ExplorerItem:
 
 
 def _event(event: BriefingEvent, today: str) -> ExplorerEvent:
-    start = datetime.strptime(event.start, "%H:%M") if event.start else None
+    start = datetime.strptime(event.start, EVENT_TIME_FORMAT) if event.start else None
     return {
-        "t12": start.strftime("%-I:%M %p") if start else None,
+        "t12": clock_time(start) if start else None,
         "t24": event.start or None,
-        "day": None if event.date == today else date.fromisoformat(event.date).strftime("%a"),
+        "day": None if event.date == today else short_weekday(date.fromisoformat(event.date)),
         "title": event.title,
         "detail": event.location or None,
         "logo": GOOGLE_CALENDAR_INTEGRATION_ID,
@@ -173,7 +179,7 @@ def _x_labels(series: DataSeries) -> list[str]:
         return [p.x for p in series.points]
     days = _days(series)
     if len(days) <= _WEEKDAY_SPAN:
-        return [d.strftime("%a") for d in days]
+        return [short_weekday(d) for d in days]
     return [f"{d.day} {d:%b}" for d in days]
 
 
@@ -281,6 +287,27 @@ def build_blocks(
     leads = bool(blocks) and isinstance(blocks[0], SectionBlock) and blocks[0].kind == "lead"
     after = groups[0] + 1 if groups else int(leads)
     return [*drawn[:after], _calendar(calendar, today), *drawn[after:]]
+
+
+def left_out_items(
+    blocks: list[BriefBlock], undrawn: list[BriefBlock], sections: list[BriefingSection]
+) -> list[BriefingItem]:
+    """Return every item the edition leaves to the brief's page: the sections it could not draw, then the rows past its own."""
+    not_drawn = [
+        item for b in undrawn if isinstance(b, SectionBlock) for item in sections[b.section].items
+    ]
+    past_rows = [
+        item
+        for b in blocks
+        if isinstance(b, SectionBlock) and b.kind == "items"
+        for item in sections[b.section].items[EDITION_ROWS_SHOWN:]
+    ]
+    return not_drawn + past_rows
+
+
+def events_past_rows(events: list[BriefingEvent]) -> list[BriefingEvent]:
+    """Return the events past the rows the edition's calendar prints."""
+    return events[EDITION_ROWS_SHOWN:]
 
 
 def printed_logos(

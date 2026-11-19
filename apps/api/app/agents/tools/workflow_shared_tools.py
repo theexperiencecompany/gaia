@@ -18,6 +18,7 @@ from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_INTEGRATION_TOOLS_FOR_LLM,
     MAX_MY_INTEGRATIONS_RESULTS,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
@@ -187,7 +188,7 @@ async def get_my_integrations(
                 "name": i.name,
                 "category": i.category,
                 "description": i.description,
-                "connected": i.status == "connected",
+                "connected": i.status == IntegrationStatus.CONNECTED,
                 "source": i.source,
             }
             for i in capped
@@ -195,7 +196,9 @@ async def get_my_integrations(
         return success_response(
             {
                 "integrations": integrations,
-                "connected_count": sum(1 for i in capped if i.status == "connected"),
+                "connected_count": sum(
+                    1 for i in capped if i.status == IntegrationStatus.CONNECTED
+                ),
                 "truncated": len(matched) > len(capped),
                 "query": query,
             }
@@ -306,7 +309,7 @@ async def search_integration_tools(
             integration_tools: IntegrationToolList = {
                 "integration_id": integration.id,
                 "integration_name": integration.name,
-                "connected": integration.status == "connected",
+                "connected": integration.status == IntegrationStatus.CONNECTED,
                 "tools": [
                     {"name": t.name, "description": t.description}
                     for t in matched[:MAX_INTEGRATION_TOOLS_FOR_LLM]
@@ -316,7 +319,7 @@ async def search_integration_tools(
             return success_response(integration_tools)
 
         # Query only: scan across the user's connected integrations.
-        connected = [i for i in mine if i.status == "connected"]
+        connected = [i for i in mine if i.status == IntegrationStatus.CONNECTED]
         tool_lists = await asyncio.gather(
             *(get_integration_tool_list(i.id) for i in connected),
             return_exceptions=True,

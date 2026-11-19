@@ -11,10 +11,12 @@ from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_MY_INTEGRATIONS_RESULTS,
+    IntegrationStatus,
 )
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.trigger_config import TriggerSearchResult
 from app.models.workflow_models import TriggerType
 from app.schemas.integrations.responses import (
@@ -28,7 +30,7 @@ from app.schemas.integrations.responses import (
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowCreated
-from tests.helpers import captured_wide_event, users_get_on
+from tests.helpers import briefs_on, captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -192,7 +194,7 @@ class TestCreateWorkflow:
         from app.agents.tools.workflow_tool import create_workflow
 
         with (
-            patch("app.utils.auth_utils.user_repository.get", new=users_get_on(frequency)),
+            patch.object(briefing_state_repository, "state_for", new=briefs_on(frequency)),
             patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -694,7 +696,7 @@ def _my_integration(
         category="productivity",
         source=source,
         managed_by="composio",
-        status="connected" if connected else "not_connected",
+        status=IntegrationStatus.CONNECTED if connected else "not_connected",
         available=True,
     )
 

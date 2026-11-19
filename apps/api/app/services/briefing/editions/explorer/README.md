@@ -106,7 +106,7 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    Receipt's barcode and the Boarding Pass's barcode were pixels seeded by the
    edition number, and encoded nothing. `qr()` (tpl-paper.js) and both `barcode()`
    functions (tpl-receipt.js, tpl-transit.js) are deleted. `editions/codes.py`
-   encodes `payload.link` (its heygaia.link, or its page URL when minting failed)
+   encodes the stored brief's `link` (its heygaia.link, or its page URL when minting failed)
    and passes the geometry as `ed.codes`. Each template draws it with
    `EXPLORER.code`, which `explorer_render.py` defines. The Invoice draws a QR
    (segno) in the same 108px box. The Receipt draws a Code 128 (python-barcode) at
@@ -119,7 +119,7 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
    code has no 2px gaps between its rows, because a PDF417 with gaps does not
    scan. If the page URL is too long for the width, it is squeezed below 1px per
    module, and the Code 128 then reads only at render size, not at the delivered
-   1080px. `tests/integration/test_edition_codes_scan.py` decodes each code from
+   1080px. `tests/integration/render/test_edition_codes_scan.py` decodes each code from
    the rendered PNG.
 10. **Every family is set in embedded type (2026-11-11).** The templates named
    macOS system faces (Helvetica Neue, Didot, Iowan Old Style, Menlo, American
@@ -240,17 +240,29 @@ or a skin axis, except where an entry says it is a founder-approved layout chang
      take as many columns as there are figures, never a lone third. Air Mail,
      the weekly and the almanac say "1 thing" and "1 task".
 
+14. **One escaper (2026-11-18).** Each template's own `esc` escaped `&`, `<` and
+   `>` but not quotes, so a `"` in printed text closed the attribute it sat in
+   (a painting's `alt`). Every template binds `esc` to `EXPLORER.blocks.esc`
+   (`shell/blocks.js`), which escapes both quotes too.
+
+15. **Every desk family marks its paper (2026-10-23, Air Mail and Receipt 2026-11-18).**
+   Each sheet a desk family lays down carries a bare `data-paper` attribute: the boarding
+   pass, the invoice's document, the library card, the memo's sheet and the menu card, Air
+   Mail's envelope and its letter, and the receipt's tape. The render records the box they
+   cover (`services/render/image.py`), each sheet cut to the level box inside it however it
+   is turned, and the letter and the unfold crop to that box. No markup, CSS or skin moves.
+
 The painting that `broadsheet`, `exhibition` and `almanac` hang is drawn from the
 user's artwork shuffle bag, over the Met Open Access works whose image fits that
 family's frame (`editions/artworks.py`), and recorded on the payload as
 `artwork_id`; that is data, not a template edit.
 
-`tests/integration/test_edition_families_render.py` renders every family in
+`tests/integration/render/test_edition_families_render.py` renders every family in
 Chromium and fails on a script error, a dropped item, a fixture string, a `null`
 or zero-filled figure, a block drawn for an empty brief, overprinted item rows, an
 image crop that lets the paper touch the edge or keeps more than 24px past its
 shadow, or a desk painted into the image.
-`tests/integration/test_edition_reading_system.py` renders every family over four
+`tests/integration/render/test_edition_reading_system.py` renders every family over four
 compositions and measures the reading system's rules on the page.
 
 The families whose paper lies on a desk (`edition_frame` in `editions/__init__.py`)

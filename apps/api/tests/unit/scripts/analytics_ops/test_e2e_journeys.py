@@ -21,7 +21,7 @@ from scripts.analytics_ops.e2e_journeys import (
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
-from app.models.briefing_models import BriefingSchedule, BriefingScheduleUpdate
+from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
 from app.models.workflow_models import CreateWorkflowRequest
 
 WORKFLOW = "wf_1"
@@ -136,7 +136,7 @@ def test_the_briefing_journey_puts_a_non_default_schedule_from_the_browser() -> 
 
     assert stack.sent is not None
     assert stack.sent.method == "PUT"
-    assert stack.sent.url.path == "/api/v1/notifications/preferences/briefing-schedule"
+    assert stack.sent.url.path == "/api/v1/briefings/schedule"
     assert stack.sent.headers[POSTHOG_SESSION_HEADER] == stack.session_id
     sent = BriefingSchedule.model_validate_json(stack.sent.content)
     assert sent == BRIEFING_SCHEDULE

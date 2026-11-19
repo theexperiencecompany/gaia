@@ -38,8 +38,7 @@ export function ArtifactViewer({ artifactId, title }: ArtifactViewerProps) {
         </LinkButton>
         <ShareLinkControls
           iconOnly
-          targetType="openui_artifact"
-          targetId={artifactId}
+          target={{ type: "openui_artifact", id: artifactId }}
         />
         {drawsClose && (
           <GaiaButton

@@ -1,13 +1,3 @@
-import type { ChannelPlatform } from "@gaia/shared/types";
-import { ApiError } from "@shared/api";
-import type {
-  BriefDeliveryWorkflow,
-  BriefDeliveryWorkflowsConflict,
-  BriefingEditionsUpdate,
-  BriefingScheduleUpdate,
-} from "@shared/api/generated";
-import { z } from "zod";
-import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { api } from "@/lib/api/typed";
 import {
   type BulkActionRequest,
@@ -84,71 +74,4 @@ export class NotificationsAPI {
       query: { channel_type: channelType },
     });
   }
-
-  /** The enabled state of every user-configurable notification channel. */
-  static getChannelPreferences() {
-    return api.get("/api/v1/notifications/preferences/channels");
-  }
-
-  /** How often briefs come, and the daily brief's hour on the user's clock. */
-  static getBriefingSchedule() {
-    return api.get("/api/v1/notifications/preferences/briefing-schedule");
-  }
-
-  /** Silent so a refused "off" can open its own dialog instead of a toast. */
-  static updateBriefingSchedule(update: BriefingScheduleUpdate) {
-    return api.put("/api/v1/notifications/preferences/briefing-schedule", {
-      body: update,
-      silent: true,
-    });
-  }
-
-  /** Every daily edition family, and whether the user keeps it on or favours it. */
-  static getBriefingEditions() {
-    return api.get("/api/v1/notifications/preferences/briefing-editions");
-  }
-
-  /** Silent so the editions grid rolls back and words its own toast. */
-  static updateBriefingEditions(update: BriefingEditionsUpdate) {
-    return api.put("/api/v1/notifications/preferences/briefing-editions", {
-      body: update,
-      silent: true,
-    });
-  }
-
-  static async updateChannelPreference(
-    channel: ChannelPlatform,
-    enabled: boolean,
-  ): Promise<void> {
-    await api.put("/api/v1/notifications/preferences/channels", {
-      body: { [channel]: enabled },
-    });
-  }
-}
-
-const BriefDeliveryWorkflowsSchema = z.array(
-  z.object({
-    id: z.string(),
-    title: z.string(),
-  }) satisfies z.ZodType<BriefDeliveryWorkflow>,
-);
-
-/** A refused "off": the API's own words and the workflows still delivering to the brief. */
-export type BriefsOffBlock = Pick<
-  BriefDeliveryWorkflowsConflict,
-  "message" | "workflows"
->;
-
-/** What blocked turning briefs off, when that is why the save failed, else null. */
-export function readBriefsOffBlock(error: unknown): BriefsOffBlock | null {
-  if (
-    !(error instanceof ApiError) ||
-    error.code !== API_ERROR_CODES.BRIEF_DELIVERY_WORKFLOWS_EXIST
-  ) {
-    return null;
-  }
-  return {
-    message: error.message,
-    workflows: BriefDeliveryWorkflowsSchema.parse(error.envelope?.workflows),
-  };
 }

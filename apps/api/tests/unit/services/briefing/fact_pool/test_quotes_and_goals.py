@@ -3,19 +3,18 @@
 from datetime import UTC, date, datetime, timedelta
 
 import bson
-from tests.factories import make_user_id
+from tests.factories import make_todo
 
 from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
-from app.models.todo_models import TodoDocument
-from app.services.briefing.context import StatedGoal
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.quotes import quote_spans, verbatim_span
+from app.services.briefing.goals import StatedGoal
 
-USER_ID = make_user_id()
 MAYA = (
     "Can you confirm the 1x non-participating preference by Friday? Our partners meet Monday "
     "and I want to walk in with your answer. Also, the board deck looks great, thank you for "
@@ -39,7 +38,13 @@ def _message(
         author=author if author is not None else (people[0] if people else None),
     )
     return BriefCandidate(
-        source="gmail", app="Gmail", state="you", title=title, people=people, signal=signal
+        origin=CandidateOrigin.APP_SIGNAL,
+        source="gmail",
+        app="Gmail",
+        state=ItemState.YOU,
+        title=title,
+        people=people,
+        signal=signal,
     )
 
 
@@ -111,7 +116,13 @@ class TestQuoteSpans:
             4: _message("Can we move the offsite to the week after Diwali?", ["Priya Raman"]),
             5: _message(None, ["Arjun"]),
             6: _message("A message nobody signed, which has no author.", []),
-            7: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Deck"),
+            7: BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.LOOKBACK,
+                title="Deck",
+            ),
         }
 
         quotes = quote_spans(items)
@@ -132,7 +143,13 @@ class TestQuoteSpans:
 
     def test_an_item_with_nothing_to_quote_does_not_end_the_search(self) -> None:
         items = {
-            1: BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Deck"),
+            1: BriefCandidate(
+                origin=CandidateOrigin.TRACKED,
+                source="gaia",
+                app="GAIA",
+                state=ItemState.LOOKBACK,
+                title="Deck",
+            ),
             2: _message("ok thanks", ["Priya Raman"]),
             3: _message("Can we move the offsite to the week after Diwali?", ["Priya Raman"]),
         }
@@ -144,24 +161,6 @@ _NOW = datetime(2026, 11, 15, 9, tzinfo=UTC)
 _SINCE = date(2026, 11, 9)
 
 
-def _todo(
-    title: str,
-    *,
-    completed: bool = False,
-    touched: datetime | None = None,
-    by: TodoCompleter | None = None,
-) -> TodoDocument:
-    return TodoDocument(
-        id=title,
-        user_id=USER_ID,
-        title=title,
-        completed=completed,
-        updated_at=touched,
-        completed_by=by,
-        labels=[GAIA_TRACKED_LABEL] if by is TodoCompleter.GAIA else [],
-    )
-
-
 class TestGoalStates:
     def test_todos_naming_what_a_goal_is_about_are_its_linked_work(self) -> None:
         goals = [
@@ -169,13 +168,18 @@ class TestGoalStates:
             StatedGoal("Raise a seed round", GoalOrigin.MEMORY, ("Accel", "Sequoia")),
         ]
         todos = [
-            _todo("GAIA App Store screenshots", completed=True, by=TodoCompleter.GAIA),
-            _todo("TestFlight build for gaia", completed=True, by=TodoCompleter.USER),
-            _todo("GAIA privacy labels"),
-            _todo("Send the deck to Accel"),
+            make_todo(
+                "GAIA App Store screenshots",
+                GAIA_TRACKED_LABEL,
+                completed=True,
+                completed_by=TodoCompleter.GAIA,
+            ),
+            make_todo("TestFlight build for gaia", completed=True, completed_by=TodoCompleter.USER),
+            make_todo("GAIA privacy labels"),
+            make_todo("Send the deck to Accel"),
             # "Sequoia" inside another word is not the name.
-            _todo("Sequoiadendron seeds for the garden"),
-            _todo("Book the dentist"),
+            make_todo("Sequoiadendron seeds for the garden"),
+            make_todo("Book the dentist"),
         ]
 
         mobile, seed = goal_states(goals, todos, _NOW, _SINCE)
@@ -207,10 +211,12 @@ class TestGoalStates:
     def test_open_work_untouched_a_week_or_more_is_stuck_and_the_rest_is_not(self) -> None:
         goal = StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
         todos = [
-            _todo("Atlas pricing", touched=_NOW - GOAL_WORK_STALLED_AFTER),
-            _todo("Atlas press list", touched=_NOW - GOAL_WORK_STALLED_AFTER + timedelta(hours=1)),
-            _todo("Atlas launch post"),
-            _todo("Atlas landing page", completed=True, touched=_NOW - timedelta(days=30)),
+            make_todo("Atlas pricing", updated_at=_NOW - GOAL_WORK_STALLED_AFTER),
+            make_todo(
+                "Atlas press list", updated_at=_NOW - GOAL_WORK_STALLED_AFTER + timedelta(hours=1)
+            ),
+            make_todo("Atlas launch post"),
+            make_todo("Atlas landing page", completed=True, updated_at=_NOW - timedelta(days=30)),
         ]
 
         [state] = goal_states([goal], todos, _NOW, _SINCE)
@@ -220,7 +226,7 @@ class TestGoalStates:
     def test_a_goal_that_names_nothing_has_no_linked_work(self) -> None:
         [goal] = goal_states(
             [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)],
-            [_todo("Customer call")],
+            [make_todo("Customer call")],
             _NOW,
             _SINCE,
         )

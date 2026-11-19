@@ -1,4 +1,4 @@
-"""record_activity, activity_status_of and reactivate_user: recording, reading and returning from user activity."""
+"""mark_user_seen, activity_status_of and reactivate_user: recording, reading and returning from user activity."""
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ from app.constants.user_activity import IDLE_AFTER, REACTIVATE_USER_TASK, Activi
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_activity_models import UserActivityDates
 from app.services.user_activity.reactivation import reactivate_user
-from app.services.user_activity.recording import record_activity
+from app.services.user_activity.recording import mark_user_seen
 from app.services.user_activity.status import activity_status_of
 from shared.py.analytics.catalog.attribution import EntrySurface
 
@@ -36,7 +36,7 @@ def _assert_redis_failure_logged(log: MagicMock, step: str) -> None:
 
 @pytest.fixture
 def seam() -> Iterator[SimpleNamespace]:
-    """Patch record_activity's collaborators; every call is also logged to one ordered list."""
+    """Patch mark_user_seen's collaborators; every call is also logged to one ordered list."""
     calls: list[str] = []
     redis = MagicMock()
     redis.exists = AsyncMock(return_value=0)
@@ -61,7 +61,7 @@ def seam() -> Iterator[SimpleNamespace]:
 class TestRecordActivity:
     @time_machine.travel(NOW, tick=False)
     async def test_it_writes_now_and_closes_the_gate(self, seam):
-        await record_activity("u1", EntrySurface.WEB)
+        await mark_user_seen("u1", EntrySurface.WEB)
 
         gate = f"{LAST_ACTIVE_GATE_PREFIX}:u1"
         seam.redis.exists.assert_awaited_once_with(gate)
@@ -74,7 +74,7 @@ class TestRecordActivity:
     async def test_a_second_request_inside_the_window_writes_nothing(self, seam):
         seam.redis.exists.return_value = 1
 
-        await record_activity("u1", EntrySurface.BOT)
+        await mark_user_seen("u1", EntrySurface.BOT)
 
         seam.status.assert_not_awaited()
         seam.write.assert_not_awaited()
@@ -83,7 +83,7 @@ class TestRecordActivity:
         """Queued first, so a failed enqueue leaves the user dormant for the next request to retry."""
         seam.status.return_value = ActivityStatus.DORMANT
 
-        await record_activity("u1", EntrySurface.VOICE)
+        await mark_user_seen("u1", EntrySurface.VOICE)
 
         assert seam.calls == ["enqueue", "write"]
         assert seam.enqueue.await_args.args == ("pool", REACTIVATE_USER_TASK, "u1")
@@ -93,7 +93,7 @@ class TestRecordActivity:
         seam.status.return_value = ActivityStatus.DORMANT
         seam.enqueue.side_effect = RedisConnectionError("redis down")
 
-        await record_activity("u1", EntrySurface.WEB)
+        await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.write.assert_not_awaited()
         seam.redis.set.assert_not_awaited()
@@ -105,7 +105,7 @@ class TestRecordActivity:
             f"{RECORDING}.RedisPoolManager.get_pool",
             AsyncMock(side_effect=RedisConnectionError("redis down")),
         ):
-            await record_activity("u1", EntrySurface.WEB)
+            await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.enqueue.assert_not_awaited()
         seam.write.assert_not_awaited()
@@ -115,7 +115,7 @@ class TestRecordActivity:
     async def test_a_failed_gate_read_still_records_the_activity(self, seam):
         seam.redis.exists.side_effect = RedisConnectionError("redis down")
 
-        await record_activity("u1", EntrySurface.WEB)
+        await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.write.assert_awaited_once_with("u1", NOW)
         seam.redis.set.assert_awaited_once()
@@ -124,7 +124,7 @@ class TestRecordActivity:
     async def test_a_failed_gate_write_keeps_the_recorded_activity(self, seam):
         seam.redis.set.side_effect = RedisConnectionError("redis down")
 
-        await record_activity("u1", EntrySurface.WEB)
+        await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.write.assert_awaited_once()
         _assert_redis_failure_logged(seam.log, "gate_write")
@@ -135,7 +135,7 @@ class TestRecordActivity:
         getattr(seam, failing).side_effect = ServerSelectionTimeoutError("mongo down")
 
         with pytest.raises(ServerSelectionTimeoutError):
-            await record_activity("u1", EntrySurface.WEB)
+            await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.log.error.assert_not_called()
 
@@ -143,14 +143,14 @@ class TestRecordActivity:
     async def test_only_a_dormant_user_is_reactivated(self, seam, status):
         seam.status.return_value = status
 
-        await record_activity("u1", EntrySurface.WEB)
+        await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.enqueue.assert_not_awaited()
         seam.write.assert_awaited_once()
 
     async def test_without_redis_every_call_writes(self, seam):
         with patch(f"{RECORDING}.redis_cache", SimpleNamespace(redis=None)):
-            await record_activity("u1", EntrySurface.WEB)
+            await mark_user_seen("u1", EntrySurface.WEB)
 
         seam.write.assert_awaited_once()
 

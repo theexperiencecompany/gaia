@@ -1,24 +1,25 @@
 """The per-user shuffle bag that picks each brief's edition family and stamp."""
 
 from collections import Counter
+from collections.abc import Mapping
 from itertools import pairwise
 import random
 from unittest.mock import patch
 
 import pytest
 
-from app.models.user_models import ShuffleBag
+from app.constants.briefing import EditionFamily
+from app.models.briefing_state_models import ShuffleBag
 from app.services.briefing.editions import (
     DAILY_FAMILY_WEIGHTS,
     EXPLORER_RENDERER,
-    WEEKLY_FAMILY,
 )
 from app.services.briefing.shuffle_bag import draw
 
 _WEIGHTS = {"postal": 2, "memo": 1, "swiss": 1, "receipt": 1}
 
 
-def _draws(n: int, weights: dict[str, int], seed: int = 7) -> tuple[list[str], list[list[str]]]:
+def _draws(n: int, weights: Mapping[str, int], seed: int = 7) -> tuple[list[str], list[list[str]]]:
     rng = random.Random(seed)
     state: ShuffleBag | None = None
     picks: list[str] = []
@@ -186,13 +187,14 @@ class TestEligibleDraw:
 @pytest.mark.unit
 class TestDailyFamilyWeights:
     def test_postal_is_twice_as_common_and_every_daily_family_is_in(self) -> None:
-        assert DAILY_FAMILY_WEIGHTS["postal"] == 2
-        assert set(DAILY_FAMILY_WEIGHTS) == set(EXPLORER_RENDERER) - {WEEKLY_FAMILY}
+        assert DAILY_FAMILY_WEIGHTS[EditionFamily.POSTAL] == 2
+        assert set(DAILY_FAMILY_WEIGHTS) == set(EXPLORER_RENDERER) - {EditionFamily.WEEKLY}
         assert "metromap" in DAILY_FAMILY_WEIGHTS
         assert all(w == 1 for f, w in DAILY_FAMILY_WEIGHTS.items() if f != "postal")
 
     def test_the_daily_bag_only_draws_families_that_have_a_renderer(self) -> None:
-        picks, _ = _draws(10 * sum(DAILY_FAMILY_WEIGHTS.values()), DAILY_FAMILY_WEIGHTS)
+        weights = {str(family): weight for family, weight in DAILY_FAMILY_WEIGHTS.items()}
+        picks, _ = _draws(10 * sum(weights.values()), weights)
 
         assert "edition" not in picks
         assert set(picks) <= set(EXPLORER_RENDERER)

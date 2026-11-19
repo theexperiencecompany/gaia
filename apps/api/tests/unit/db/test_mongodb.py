@@ -427,7 +427,13 @@ class TestCreateShortLinkIndexes:
         await create_short_link_indexes()
 
         collection.create_index.assert_any_await(
-            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+            [
+                ("user_id", 1),
+                ("target.type", 1),
+                ("target.id", 1),
+                ("target.conversation_id", 1),
+                ("target.path", 1),
+            ],
             unique=True,
             partialFilterExpression={"revoked": False},
             name=LIVE_TARGET_UNIQUE_INDEX,
@@ -497,6 +503,32 @@ class TestCreateAllIndexes:
         }
         mocks = {name: p.start() for name, p in patches.items()}
         mocks["create_short_link_indexes"].side_effect = DuplicateKeyError("E11000 duplicate key")
+
+        try:
+            from app.db.mongodb.indexes import create_all_indexes
+
+            with pytest.raises(DuplicateKeyError):
+                await create_all_indexes()
+        finally:
+            for p in patches.values():
+                p.stop()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "creator",
+        ["create_briefing_indexes", "create_scout_indexes", "create_signal_memory_indexes"],
+    )
+    @patch("app.db.mongodb.indexes.log")
+    async def test_a_failed_brief_store_index_build_stops_startup(
+        self, mock_log: MagicMock, creator: str
+    ) -> None:
+        """Their unique keys are what make a rerun replace a brief, scout or memory, not add one."""
+        patches = {
+            name: patch(f"app.db.mongodb.indexes.{name}", new_callable=AsyncMock)
+            for name in _INDEX_CREATORS
+        }
+        mocks = {name: p.start() for name, p in patches.items()}
+        mocks[creator].side_effect = DuplicateKeyError("E11000 duplicate key")
 
         try:
             from app.db.mongodb.indexes import create_all_indexes

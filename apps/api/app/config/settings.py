@@ -33,6 +33,7 @@ from app.constants.bot import (
     GAIA_CLOUD_WHATSAPP_NUMBER,
 )
 from app.constants.browser import BrowserAgentEffort
+from app.constants.email import BRIEF_SENDER, BRIEF_SENDER_MAILBOX
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.files import S3AddressingStyle
 from app.constants.llm import DevLLMApi
@@ -41,10 +42,9 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from app.constants.short_links import SHORTLINK_WEB_ROUTE
 from shared.py.wide_events import log
 
-# The web app route a heygaia.link slug rewrites to.
-SHORTLINK_WEB_ROUTE = "/l"
 MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()
@@ -109,6 +109,9 @@ class Settings(BrowserHostSettings):
     LINK_CONTENT_URL_TEMPLATE: str | None = None
     # Signs the short-lived content tokens that origin checks (min 32 chars).
     LINK_CONTENT_SIGNING_KEY: str | None = None
+    # Shared with GAIA Cloud's usercontent Worker, the only caller whose named content
+    # host is believed. Unset (any self-host: its proxy keeps the Host), none is.
+    LINK_CONTENT_EDGE_TOKEN: str | None = None
     # The bots' HMAC key for hashed platform ids in logs; the same value here
     # makes the API's user_hash join the bots'. Unset falls back like the bots.
     BOT_LOG_HASH_SECRET: str | None = None
@@ -157,8 +160,9 @@ class Settings(BrowserHostSettings):
     # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
     # FRONTEND_URL/l, the instance's own route. No trailing slash.
     SHORTLINK_BASE_URL: str = "https://heygaia.link"
-    # Sender address for outbound briefing email; the same in every environment.
-    EMAIL_FROM: str = "brief@heygaia.io"
+    # Sender of notification and brief email. Unset on a self-host, it is
+    # brief@<FRONTEND_URL's host>: a domain its own Resend account must verify.
+    EMAIL_FROM: str = BRIEF_SENDER
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
@@ -690,7 +694,19 @@ class Settings(BrowserHostSettings):
             self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
         return self
 
-    @field_validator("LINK_CONTENT_URL_TEMPLATE", "LINK_CONTENT_SIGNING_KEY", mode="after")
+    @model_validator(mode="after")
+    def _email_from_the_instances_domain(self) -> Self:
+        """Send from the instance's own web domain unless it is GAIA Cloud's or EMAIL_FROM is set."""
+        if not self.deployment.gaia_mail_domain and "EMAIL_FROM" not in self.model_fields_set:
+            self.EMAIL_FROM = f"{BRIEF_SENDER_MAILBOX}@{urlsplit(self.FRONTEND_URL).hostname}"
+        return self
+
+    @field_validator(
+        "LINK_CONTENT_URL_TEMPLATE",
+        "LINK_CONTENT_SIGNING_KEY",
+        "LINK_CONTENT_EDGE_TOKEN",
+        mode="after",
+    )
     @classmethod
     def _blank_link_content_setting_is_unset(cls, v: str | None) -> str | None:
         # A templated deploy spells "unset" as blank; failing on "" once took the whole API down.

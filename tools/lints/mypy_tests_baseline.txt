@@ -13,15 +13,10 @@
 # instead). Past the date it fails again: fix it, or renew the deferral with a
 # fresh reason. --update keeps the field.
 apps/api/tests/_harness/chroma_fakes.py	attr-defined
-apps/api/tests/composio/test_connection_expiry_live.py	attr-defined
-apps/api/tests/composio/test_connection_expiry_live.py	call-arg
-apps/api/tests/composio/test_connection_expiry_live.py	call-overload
 apps/api/tests/contracts/test_blog_repository.py	misc
 apps/api/tests/contracts/test_browser_profiles_repository.py	misc
 apps/api/tests/contracts/test_folded_cards.py	list-item
-apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
-apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
 apps/api/tests/e2e/_harness/graph_double.py	attr-defined
@@ -107,7 +102,6 @@ apps/api/tests/unit/agents/test_interruption.py	union-attr
 apps/api/tests/unit/agents/test_llm_runtime_config.py	arg-type
 apps/api/tests/unit/agents/test_llm_runtime_config.py	attr-defined
 apps/api/tests/unit/agents/test_llm_runtime_config.py	index
-apps/api/tests/unit/agents/test_openui_prompts.py	assignment
 apps/api/tests/unit/agents/test_profile_crawler.py	return-value
 apps/api/tests/unit/agents/test_subagent_channel.py	arg-type
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	arg-type
@@ -129,12 +123,10 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	assignment
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	index
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
-apps/api/tests/unit/api/test_integrations_user.py	call-arg
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
-apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
@@ -145,10 +137,6 @@ apps/api/tests/unit/browser_host/test_proxy.py	index
 apps/api/tests/unit/browser_host/test_proxy.py	var-annotated
 apps/api/tests/unit/browser_host/test_storage.py	arg-type
 apps/api/tests/unit/config/test_oauth_config.py	attr-defined
-apps/api/tests/unit/config/test_prod_isolation.py	arg-type
-apps/api/tests/unit/config/test_prod_isolation.py	attr-defined
-apps/api/tests/unit/config/test_prod_isolation.py	index
-apps/api/tests/unit/config/test_prod_isolation.py	misc
 apps/api/tests/unit/config/test_settings_hermetic.py	attr-defined
 apps/api/tests/unit/config/test_token_repository.py	arg-type
 apps/api/tests/unit/config/test_workos.py	attr-defined
@@ -319,8 +307,6 @@ apps/api/tests/unit/services/test_trigger_handlers.py	union-attr
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	arg-type
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	attr-defined
 apps/api/tests/unit/services/test_turnstile_service.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	arg-type
-apps/api/tests/unit/services/test_usage_activity_rollup.py	attr-defined
 apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_user_todos_fs.py	arg-type
@@ -366,8 +352,6 @@ apps/api/tests/unit/tools/test_linkedin_tool.py	call-arg
 apps/api/tests/unit/tools/test_manual_tool.py	attr-defined
 apps/api/tests/unit/tools/test_memory_tools.py	arg-type
 apps/api/tests/unit/tools/test_memory_tools.py	attr-defined
-apps/api/tests/unit/tools/test_notification_tool.py	arg-type
-apps/api/tests/unit/tools/test_notification_tool.py	attr-defined
 apps/api/tests/unit/tools/test_research_tool.py	arg-type
 apps/api/tests/unit/tools/test_research_tool.py	assignment
 apps/api/tests/unit/tools/test_skill_tools.py	attr-defined
@@ -404,7 +388,6 @@ apps/api/tests/unit/utils/test_stream_utils.py	arg-type
 apps/api/tests/unit/utils/test_webpage_fetch.py	arg-type
 apps/api/tests/unit/workers/test_browser_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_browser_tasks.py	misc
-apps/api/tests/unit/workers/test_browser_worker.py	arg-type
 apps/api/tests/unit/workers/test_browser_worker.py	attr-defined
 apps/api/tests/unit/workers/test_checkpoint_retention_tasks.py	arg-type
 apps/api/tests/unit/workers/test_cleanup_tasks.py	arg-type
@@ -413,4 +396,3 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type

@@ -16,11 +16,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.db.repositories.workflows import WorkflowsRepository
+from app.services.system_workflows.registry import UNLISTED_KEYS
 
 pytestmark = pytest.mark.unit
 
 USER_ID = "user-1"
 TODO_EXCLUSION = [{"is_todo_workflow": {"$exists": False}}, {"is_todo_workflow": False}]
+# The briefs declare themselves unlisted (definitions/briefing.py).
 RHYTHM_EXCLUSION = {"$nin": ["daily_briefing", "weekly_digest"]}
 
 
@@ -72,7 +74,7 @@ class TestCountForUser:
         self, repo: WorkflowsRepository, collection: MagicMock
     ) -> None:
         """System workflows are part of the default total, since the workflows page shows the auto-provisioned ones."""
-        await repo.count_for_user(USER_ID)
+        await repo.count_for_user(USER_ID, unlisted_keys=UNLISTED_KEYS)
 
         assert _counted(collection) == {
             "user_id": USER_ID,
@@ -84,7 +86,9 @@ class TestCountForUser:
         self, repo: WorkflowsRepository, collection: MagicMock
     ) -> None:
         """The activation checklist asks what the user authored themselves, so a GAIA-provisioned workflow must not tick the step."""
-        await repo.count_for_user(USER_ID, exclude_system_workflows=True)
+        await repo.count_for_user(
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_system_workflows=True
+        )
 
         assert _counted(collection) == {
             "user_id": USER_ID,
@@ -97,7 +101,9 @@ class TestCountForUser:
         self, repo: WorkflowsRepository, collection: MagicMock
     ) -> None:
         """$ne rather than False: rows predating is_system_workflow carry no such field, and False would exclude every one of them."""
-        await repo.count_for_user(USER_ID, exclude_system_workflows=True)
+        await repo.count_for_user(
+            USER_ID, unlisted_keys=UNLISTED_KEYS, exclude_system_workflows=True
+        )
 
         assert _counted(collection)["is_system_workflow"] == {"$ne": True}
 
@@ -105,7 +111,10 @@ class TestCountForUser:
         self, repo: WorkflowsRepository, collection: MagicMock
     ) -> None:
         await repo.count_for_user(
-            USER_ID, exclude_todo_workflows=False, exclude_system_workflows=False
+            USER_ID,
+            unlisted_keys=UNLISTED_KEYS,
+            exclude_todo_workflows=False,
+            exclude_system_workflows=False,
         )
 
         assert _counted(collection) == {"user_id": USER_ID, "system_workflow_key": RHYTHM_EXCLUSION}
@@ -115,7 +124,7 @@ class TestCountForUser:
     ) -> None:
         collection.count_documents.return_value = 3
 
-        assert await repo.count_for_user(USER_ID) == 3
+        assert await repo.count_for_user(USER_ID, unlisted_keys=UNLISTED_KEYS) == 3
 
 
 class TestListForUser:
@@ -123,7 +132,7 @@ class TestListForUser:
         self, repo: WorkflowsRepository, collection: MagicMock
     ) -> None:
         """The system-workflow exclusion is count-side opt-in only; on the list default it would empty the page for provisioned-only users."""
-        await repo.list_for_user(USER_ID)
+        await repo.list_for_user(USER_ID, unlisted_keys=UNLISTED_KEYS)
 
         assert _listed(collection) == {
             "user_id": USER_ID,

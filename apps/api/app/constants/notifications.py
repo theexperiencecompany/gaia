@@ -3,6 +3,7 @@
 from datetime import timedelta
 from enum import StrEnum
 import re
+from typing import Literal
 
 # Maximum devices a user can register for push notifications
 MAX_DEVICES_PER_USER = 10
@@ -141,9 +142,45 @@ def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[st
 # the rest of a longer caption as follow-up text.
 CHAT_CAPTION_MAX_CHARS = 1024
 
-# Daily brief / weekly recap notifications: the email channel renders the
-# edition from content.rich_content when metadata.kind names one of these.
-NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
-NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
-# A quiet day's plain note: no edition, so every channel renders it as a plain notification.
-NOTIFICATION_KIND_BRIEFING_NOTE = "briefing_note"
+
+class NotificationKind(StrEnum):
+    """What a notification is about, stored as its details' kind; a channel may render each its own way."""
+
+    #: The daily brief: its email is the edition.
+    BRIEFING_DAILY = "briefing_daily"
+    #: The weekly recap: its email is the edition.
+    BRIEFING_WEEKLY = "briefing_weekly"
+    #: A quiet day's note: no edition, so every channel renders it as a plain notification.
+    BRIEFING_NOTE = "briefing_note"
+    #: One todo: its run's result, or what its health check found.
+    TODO = "todo"
+    #: A scheduled todo that used up its attempts.
+    TODO_FAILED = "todo_failed"
+    #: An event a todo watches fired.
+    TODO_TRIGGER_FIRED = "todo_trigger_fired"
+    #: The digest of todos left idle.
+    DORMANT_TODOS = "dormant_todos"
+    #: A reminder came due.
+    REMINDER = "reminder"
+    #: A workflow run finished; its result is in the conversation.
+    WORKFLOW_COMPLETED = "workflow_completed"
+    #: A workflow run errored or was stopped by a limit.
+    WORKFLOW_FAILED = "workflow_failed"
+    #: A workflow paused until the integrations it needs are connected.
+    WORKFLOW_PAUSED = "workflow_paused"
+    #: An integration's connection expired and paused the workflows using it.
+    INTEGRATION_EXPIRED = "integration_expired"
+    #: Connecting an integration set up its system workflows.
+    SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
+    #: The user's memory was seeded from past conversations.
+    MEMORY_READY = "memory_ready"
+    #: GAIA personalised itself from the user's Gmail.
+    GMAIL_PERSONALIZED = "gmail_personalized"
+
+
+#: The kinds a brief's notification takes.
+BriefNotificationKind = Literal[
+    NotificationKind.BRIEFING_DAILY,
+    NotificationKind.BRIEFING_WEEKLY,
+    NotificationKind.BRIEFING_NOTE,
+]

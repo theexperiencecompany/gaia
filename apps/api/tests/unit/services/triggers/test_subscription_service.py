@@ -58,7 +58,7 @@ INSTANCE_TRIGGER = "slack_new_message"
 def activity() -> Iterator[AsyncMock]:
     """Capture the todo timeline entries the subscription lifecycle records."""
     with patch(
-        "app.services.triggers.subscription_service.record_activity", new_callable=AsyncMock
+        "app.services.triggers.subscription_service.record_todo_activity", new_callable=AsyncMock
     ) as recorded:
         yield recorded
 
@@ -969,7 +969,7 @@ class TestOneAccountsWatches:
                 "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
                 pause,
             ),
-            patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
+            patch("app.services.triggers.subscription_service.record_todo_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
                 USER_ID,
@@ -999,7 +999,7 @@ class TestOneAccountsWatches:
                 "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
                 pause,
             ),
-            patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
+            patch("app.services.triggers.subscription_service.record_todo_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
                 USER_ID,
@@ -1056,7 +1056,7 @@ class TestOneAccountsWatches:
                 "app.services.triggers.subscription_service.todo_repository.pause_trigger_subscriptions",
                 pause,
             ),
-            patch("app.services.triggers.subscription_service.record_activity", AsyncMock()),
+            patch("app.services.triggers.subscription_service.record_todo_activity", AsyncMock()),
         ):
             paused = await pause_subscriptions_for_trigger_names(
                 USER_ID,

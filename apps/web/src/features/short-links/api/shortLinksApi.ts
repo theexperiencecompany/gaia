@@ -2,8 +2,8 @@ import { api } from "@/lib/api/typed";
 import type {
   LinkSettings,
   LinkSettingsUpdate,
+  LinkTarget,
   ShortLinkResponse,
-  ShortLinkTargetType,
 } from "@/types/features/shortLinkTypes";
 
 /**
@@ -12,23 +12,21 @@ import type {
  * unchanged, settings ignored; sharing again after stopping mints a new one.
  */
 export async function createShortLink(
-  targetType: ShortLinkTargetType,
-  targetId: string,
+  target: LinkTarget,
   settings?: LinkSettings,
 ): Promise<ShortLinkResponse> {
   return api.post("/api/v1/l", {
-    body: { target_type: targetType, target_id: targetId, settings },
+    body: { target, settings },
     errorMessage: "Couldn't create a link",
   });
 }
 
 /** The owner's live heygaia.link for an artifact, or null when it isn't shared. Never mints one. */
 export async function fetchShareState(
-  targetType: ShortLinkTargetType,
-  targetId: string,
+  target: LinkTarget,
 ): Promise<ShortLinkResponse | null> {
-  const { link } = await api.get("/api/v1/l/state", {
-    query: { target_type: targetType, target_id: targetId },
+  const { link } = await api.post("/api/v1/l/state", {
+    body: { target },
     errorMessage: "Couldn't check whether this is shared",
   });
   return link;
@@ -60,11 +58,10 @@ export async function rotateLink(slug: string): Promise<ShortLinkResponse> {
  * live link was actually turned off.
  */
 export async function stopSharingShortLink(
-  targetType: ShortLinkTargetType,
-  targetId: string,
+  target: LinkTarget,
 ): Promise<boolean> {
   const { revoked } = await api.post("/api/v1/l/unshare", {
-    body: { target_type: targetType, target_id: targetId },
+    body: { target },
     errorMessage: "Couldn't stop sharing",
   });
   return revoked;

@@ -18,3 +18,7 @@ class WorkflowDelivery(StrEnum):
     BRIEF = "brief"
     #: Kept in the workflow's conversation only; nothing is pushed.
     SILENT = "silent"
+
+
+#: The ARQ task every workflow fire runs as, on whichever queue the workflow's fires take.
+EXECUTE_WORKFLOW_TASK = "execute_workflow_by_id"

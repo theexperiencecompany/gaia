@@ -130,6 +130,23 @@ def test_a_compose_change_reaches_both_templates(
     assert {"key": "MONGO_NEW_FLAG", "value": "1"} in render_mongo["envVars"]
 
 
+def test_both_templates_run_the_migrations_before_the_api_and_worker(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    coolify = _coolify(compose, secrets)["services"]
+    render = {s["name"]: s for s in _render(compose, secrets)["services"]}
+    migrate = " ".join(compose["services"]["migrate"]["command"])
+
+    for app in ("gaia-backend", "arq-worker"):
+        assert coolify[app]["depends_on"]["migrate"] == {
+            "condition": "service_completed_successfully"
+        }
+    assert coolify["migrate"]["exclude_from_hc"] is True
+    assert coolify["migrate"]["restart"] == "no"
+    assert render["gaia-backend"]["preDeployCommand"] == migrate
+    assert render["gaia-worker"]["preDeployCommand"] == migrate
+
+
 def test_the_inline_caddyfile_holds_no_compose_interpolation(
     compose: dict[str, Any], secrets: list[str]
 ) -> None:
@@ -138,6 +155,26 @@ def test_the_inline_caddyfile_holds_no_compose_interpolation(
     assert "$" not in content
     assert ":80 {" in content
     assert "reverse_proxy gaia-backend:8000" in content
+
+
+def test_the_inline_caddyfile_drops_the_share_domain_blocks(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    """Coolify has no `gaia up --link-domain`: the blocks only ever bound *.gaia.invalid there."""
+    content = _coolify(compose, secrets)["services"]["proxy"]["volumes"][0]["content"]
+
+    assert ".invalid" not in content
+    assert "--link-domain" not in content
+    assert "/api/v1/usercontent/" not in content
+    assert content.count("{") == content.count("}")
+    assert "http://localhost, http://host.docker.internal {" in content
+
+
+def test_a_share_domain_block_split_across_paragraphs_fails_loud() -> None:
+    split = "{$GAIA_X_SITE_ADDRESS:http://x.gaia.invalid} {\n\trespond 404\n\n}\n"
+
+    with pytest.raises(SystemExit, match="share-domain"):
+        dt._without_share_domains(split)
 
 
 @pytest.mark.parametrize(

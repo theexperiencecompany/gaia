@@ -1,5 +1,8 @@
 """The prompt for the one call that judges a brief's group headings against the items under them."""
 
+#: Marks an item an earlier brief already saw as it stands.
+NOT_NEW = "not new"
+
 BRIEF_HEADING_PROMPT = """You check the headings of a brief. GAIA grouped the items it placed and wrote a
 heading over each group. Judge whether every item under each heading satisfies it.
 
@@ -30,13 +33,18 @@ tone are never judged.
   ("Replies and approvals") fits items asking any of them.
 - A heading that says how the user can take the items ("Ready when you are", "Worth a look",
   "For later", "Ready to review") fits any item that can be taken that way.
+- A heading that calls items new or just arrived ("New issues", "Just in", "Fresh today") fits
+  only items not marked "{not_new}": an item so marked was there at an earlier brief.
 - A heading that only names a subject, a time or an occasion ("Money", "Before today's calls",
   "This morning") says nothing about actions or outcomes, so it fits every item under it.
 Wording and style never count, and neither does anything the group leaves out.
 When the heading can be said truthfully of every item under it, it fits.
 
 ## The groups
+{untrusted}
+{fence}
 {groups}
+{fence}
 
 Answer one verdict per group, by its block number: why in a few words, the ids of the items it
 is not true of (empty when it fits), then whether it fits."""

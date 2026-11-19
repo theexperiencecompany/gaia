@@ -5,9 +5,9 @@ Each repo lands in <target dir>/<repo>, the layout app/memory/embeddings.py load
 through MEMORY_BAKED_MODELS_DIR.
 """
 
+import argparse
 from pathlib import Path
 import shutil
-import sys
 
 from huggingface_hub import snapshot_download
 
@@ -31,4 +31,8 @@ def bake(target_root: Path, specs: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    bake(Path(sys.argv[1]), sys.argv[2:])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("target_root", type=Path)
+    parser.add_argument("specs", nargs="+", metavar="repo@sha")
+    args = parser.parse_args()
+    bake(args.target_root, args.specs)

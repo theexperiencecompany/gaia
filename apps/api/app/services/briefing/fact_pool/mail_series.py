@@ -16,9 +16,9 @@ from app.models.brief_pool_models import DataSeries, SeriesPoint
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.todo_models import TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
-from app.services.briefing.fact_pool.window import (
+from app.services.briefing.clock import DayWindow
+from app.services.briefing.fact_pool.series import (
     SeriesName,
-    SeriesWindow,
     categorical_series,
     day_series,
     per_day,
@@ -46,7 +46,7 @@ def _name(series_id: str, label: str, unit: str) -> SeriesName:
     )
 
 
-def thread_series(threads: Sequence[TodoDocument], window: SeriesWindow) -> list[DataSeries]:
+def thread_series(threads: Sequence[TodoDocument], window: DayWindow) -> list[DataSeries]:
     """Return the threads the desk took on and closed on each day; a series with none is left out."""
     taken = [t.created_at for t in threads if t.created_at is not None]
     closed = [t.completed_at for t in threads if t.completed_at is not None]

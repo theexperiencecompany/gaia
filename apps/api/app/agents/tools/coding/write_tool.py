@@ -140,9 +140,9 @@ async def write(
     # Real-time artifact push: the chat stream's forwarder relays this as an
     # SSE `artifact_data` chunk during the active turn, so the card renders
     # immediately — no polling, no dependence on the sandbox-side watcher.
-    short_url = await publish_artifact_write(
+    placeholder = await publish_artifact_write(
         user_id, role, role_conv, abs_path, content, real_mtime
     )
-    links = {posixpath.basename(abs_path): short_url} if short_url else {}
+    links = {posixpath.basename(abs_path): placeholder} if placeholder else {}
 
     return f"Wrote {len(encoded)} bytes to {abs_path}{artifact_links_note(links)}"

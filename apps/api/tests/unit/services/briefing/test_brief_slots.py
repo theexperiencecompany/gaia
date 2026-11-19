@@ -1,14 +1,20 @@
 """The brief's slots are filled from the facts, and a slot the facts cannot fill is named."""
 
-import pytest
+from datetime import UTC, date, datetime
 
+import pytest
+from tests.helpers import user_clock
+
+from app.constants.todos import TodoCompleter
+from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
+from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_slot_models import CountName, SeriesField
 from app.services.briefing.slots import (
     BriefFact,
-    CountSlot,
-    SeriesField,
     SlotError,
     SlotValues,
+    candidate_fact,
     figures_in,
     referenced_facts,
     render_slots,
@@ -25,7 +31,7 @@ _VALUES = SlotValues(
         7: BriefFact(title="Q4 board deck"),
         9: BriefFact(title="Sequoia partner meeting", time="11:00 AM"),
     },
-    counts={CountSlot.NEEDS_YOU: 2, CountSlot.EVENTS: 1},
+    counts={CountName.NEEDS_YOU: 2, CountName.EVENTS: 1},
 )
 _DECK = "https://heygaia.link/deck"
 _OFFERED = "(offered: needs_you, events)"
@@ -53,6 +59,34 @@ class TestRendering:
             "the deck and the MSA"
         )
 
+    @pytest.mark.parametrize(
+        ("written", "rendered"),
+        [
+            ("were due [[fact:1.time]] and [[fact:2.time]].", "were due Fri Nov 13."),
+            (
+                "due [[fact:1.time]], [[fact:2.time]] and [[fact:3.time]], respectively.",
+                "due Fri Nov 13.",
+            ),
+            ("both due [[fact:1.time]] / [[fact:2.time]].", "both due Fri Nov 13."),
+            ("due [[fact:1.time]] and [[fact:4.time]].", "due Fri Nov 13 and Sat Nov 14."),
+            ("due [[fact:1.time]], respectively.", "due Fri Nov 13, respectively."),
+        ],
+        ids=["two alike", "three alike, respectively", "two alike, slashed", "different", "one"],
+    )
+    def test_a_list_of_slots_that_render_alike_says_the_value_once(
+        self, written: str, rendered: str
+    ) -> None:
+        """Replay of Dhruv's Nov 14: "were due Fri Nov 13 and Fri Nov 13"."""
+        values = SlotValues(
+            facts={
+                n: BriefFact(title=f"Task {n}", time="Sat Nov 14" if n == 4 else "Fri Nov 13")
+                for n in range(1, 5)
+            },
+            counts={},
+        )
+
+        assert render_slots(written, values, {}) == rendered
+
     def test_a_title_holding_a_slot_shape_is_not_filled_again(self) -> None:
         values = SlotValues(facts={1: BriefFact(title="Read [[fact:1]]")}, counts={})
 
@@ -78,6 +112,47 @@ class TestRendering:
 
 
 class TestProblems:
+    @pytest.mark.parametrize(
+        ("written", "problem"),
+        [
+            ("[[count:needs_you.total]]", "[[count:needs_you.total]]: a count slot has no field"),
+            (
+                "[[count:done]]",
+                "[[count:done]] is not a count the facts list (offered: needs_you, events)",
+            ),
+            ("[[fact:7.time]]", "[[fact:7.time]]: fact 7 has no time"),
+            ("[[fact:7.count]]", "[[fact:7.count]]: fact 7 has no count"),
+            (
+                "[[fact:7.when]]",
+                "[[fact:7.when]]: a fact slot is [[fact:N]], [[fact:N.time]] or [[fact:N.count]]",
+            ),
+        ],
+        ids=["count-with-field", "count-not-offered", "no-time", "no-count", "unknown-field"],
+    )
+    def test_a_slot_the_facts_cannot_fill_is_named_exactly(
+        self, written: str, problem: str
+    ) -> None:
+        assert slot_problems("lede", f"Then {written}.", _VALUES) == [f"the lede: {problem}"]
+
+    def test_a_figure_typed_from_a_series_value_names_the_series_slot_that_writes_it(
+        self,
+    ) -> None:
+        values = SlotValues(
+            facts={},
+            counts={},
+            series={"hours": {SeriesField.PEAK_AT: "9:00", SeriesField.PEAK: "4"}},
+        )
+
+        assert slot_problems("lede", "Busiest at 9 sharp.", values) == [
+            "the lede types '9' itself; write [[series:hours.peak_at]] where it says 9, "
+            "with nothing of '9:00' beside it"
+        ]
+
+    def test_a_title_said_in_words_beside_its_slot_is_named_by_its_field(self) -> None:
+        assert slot_problems("lede", "The Q4 board deck is ready: [[fact:7]].", _VALUES) == [
+            "the lede names 'Q4 board deck' in words and again with [[fact:7]]; keep one"
+        ]
+
     def test_well_formed_prose_has_none(self) -> None:
         written = "[[count:events]] meeting today: [[fact:9]] at [[fact:9.time]]."
 
@@ -95,7 +170,7 @@ class TestProblems:
         )
 
     def test_a_day_with_no_counts_says_none_were_offered(self) -> None:
-        values = SlotValues(facts={}, counts={CountSlot.DONE: 0})
+        values = SlotValues(facts={}, counts={CountName.DONE: 0})
 
         assert slot_problems("message", "[[count:done]] done", values) == [
             "the message: [[count:done]] is not a count the facts list (offered: none today)"
@@ -171,6 +246,46 @@ _MAIL = DataSeries(
 )
 
 
+class TestACountOfOneIsSaidInTheSingular:
+    def test_a_plural_verb_after_a_count_that_renders_one_is_named(self) -> None:
+        """Sim 11-25: "1 of your GAIA todos are overdue" went out."""
+        written = "[[count:events]] of your meetings are moved."
+
+        assert slot_problems("message", written, _VALUES) == [
+            "the message says [[count:events]] (1) with 'are'; a count of one takes the "
+            "singular: 'is'"
+        ]
+
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "[[count:needs_you]] of your asks are waiting.",
+            "[[count:events]] meeting is moved.",
+            "[[count:events]] meeting moved; the others are fine.",
+        ],
+    )
+    def test_a_count_and_its_verb_that_agree_are_left_alone(self, written: str) -> None:
+        assert slot_problems("message", written, _VALUES) == []
+
+
+class TestADayIsNotSaidAsAClockTime:
+    def test_at_before_a_time_slot_that_renders_a_due_day_is_named(self) -> None:
+        """Sim 12-02: "so is your dentist appointment at today" went out."""
+        due = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+        values = SlotValues(facts={5: candidate_fact(_candidate(due_at=due), _CLOCK)}, counts={})
+
+        assert slot_problems("message", "[[fact:5]] is due, at [[fact:5.time]].", values) == [
+            "the message says 'at' before [[fact:5.time]], which renders the day 'today'; "
+            "a day takes no 'at': drop it"
+        ]
+
+    def test_at_before_a_time_slot_that_renders_a_clock_time_is_left_alone(self) -> None:
+        candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
+        values = SlotValues(facts={5: candidate_fact(candidate, _CLOCK)}, counts={})
+
+        assert slot_problems("message", "[[fact:5]] at [[fact:5.time]].", values) == []
+
+
 class TestSeriesSlots:
     def test_a_time_series_renders_its_total_latest_peak_its_day_and_low(self) -> None:
         assert series_figures(_MEETINGS) == {
@@ -227,9 +342,10 @@ class TestSeriesSlots:
 class TestATypedFigureNamesItsSlot:
     @pytest.mark.parametrize("typed", ["11:00", "11"])
     def test_a_typed_time_names_the_time_slot(self, typed: str) -> None:
-        """E2E: "10:00" and "11 AM" came back typed; the retry was only told to use a slot."""
+        """E2E: "10:00" and "11 AM" came back typed; sim 12-01: the retry kept "AM" beside the slot."""
         assert slot_problems("message", f"Sequoia at {typed} AM.", _VALUES) == [
-            f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}"
+            f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}, "
+            "with nothing of '11:00 AM' beside it"
         ]
 
     def test_a_typed_date_names_the_due_slot_it_came_from(self) -> None:
@@ -237,7 +353,8 @@ class TestATypedFigureNamesItsSlot:
         values = SlotValues(facts={4: BriefFact(title="Brex email", time="Fri Nov 13")}, counts={})
 
         assert slot_problems("message", "The Brex email is overdue from Fri Nov 13.", values) == [
-            "the message types '13' itself; write [[fact:4.time]] where it says 13"
+            "the message types '13' itself; write [[fact:4.time]] where it says 13, "
+            "with nothing of 'Fri Nov 13' beside it"
         ]
 
     @pytest.mark.parametrize(
@@ -318,6 +435,16 @@ class TestTypedFigures:
             "facts, or leave it out"
         ]
 
+    def test_a_held_figure_hyphened_to_a_word_is_the_same_figure(self) -> None:
+        """Replay of the weekly: "the 300-user goal" was refused, and the retry dropped the goal."""
+        values = SlotValues(facts={}, counts={}, quoted=frozenset({"300"}))
+
+        assert slot_problems("message", "The 300-user goal stalled.", values) == []
+        assert slot_problems("message", "A 3-day sprint, 300-user goal.", values) == [
+            "the message types '3-day', a figure no fact carries; say it in words, from the "
+            "facts, or leave it out"
+        ]
+
     def test_a_typed_figure_is_named_without_the_punctuation_around_it(self) -> None:
         assert slot_problems("message", "up by (8).", _VALUES) == [
             "the message types '8', a figure no fact carries; say it in words, from the "
@@ -334,7 +461,22 @@ class TestTypedFigures:
         )
 
         assert slot_problems("message", "Meet at 11:00 sharp", values) == [
-            "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it says 11:00"
+            "the message types '11:00' itself; write [[fact:1.time]] or [[fact:2.time]] where it "
+            "says 11:00, with nothing of '11:00 AM' beside it"
+        ]
+
+    def test_a_figure_two_facts_render_differently_names_both_values(self) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Sync", time="11:00 AM"),
+                2: BriefFact(title="Lunch", time="11:30 AM"),
+            },
+            counts={},
+        )
+
+        assert slot_problems("message", "Meet at 11 sharp", values) == [
+            "the message types '11' itself; write [[fact:1.time]] or [[fact:2.time]] where it "
+            "says 11, with nothing of '11:00 AM' or '11:30 AM' beside it"
         ]
 
 
@@ -362,3 +504,51 @@ class TestUnslotted:
 class TestFiguresIn:
     def test_each_word_with_a_digit_is_kept_without_the_punctuation_around_it(self) -> None:
         assert figures_in(["up by (8).", "the Q3 plan,", "no figures here"]) == {"8", "Q3"}
+
+
+_CLOCK = user_clock("Asia/Kolkata", date(2026, 11, 11))
+
+
+def _candidate(**fields: object) -> BriefCandidate:
+    return BriefCandidate.model_validate(
+        {"origin": CandidateOrigin.TRACKED, "source": "gaia", "app": "GAIA", "state": "you"}
+        | {"title": "Approve the Acme MSA renewal"}
+        | fields
+    )
+
+
+class TestAPoolItemsFact:
+    def test_it_is_its_title_its_due_day_on_the_users_clock_and_its_count(self) -> None:
+        due = datetime(2026, 11, 12, 20, 0, tzinfo=UTC)  # Friday 01:30 in Kolkata
+
+        fact = candidate_fact(_candidate(due_at=due, count=3), _CLOCK)
+
+        assert fact == BriefFact(
+            title="Approve the Acme MSA renewal",
+            time="Fri Nov 13",
+            time_is_day=True,
+            count=3,
+            app="GAIA",
+        )
+
+    def test_it_carries_who_finished_a_done_item(self) -> None:
+        candidate = _candidate(state="lookback", finished_by=TodoCompleter.USER)
+
+        assert candidate_fact(candidate, _CLOCK).done_by is TodoCompleter.USER
+
+    def test_a_time_of_its_own_beats_its_due_day(self) -> None:
+        candidate = _candidate(time="4:00 PM", due_at=datetime(2026, 11, 11, tzinfo=UTC))
+
+        assert candidate_fact(candidate, _CLOCK).time == "4:00 PM"
+
+    def test_the_briefs_own_wording_its_state_and_its_words_ride_along(self) -> None:
+        fact = candidate_fact(
+            _candidate(), _CLOCK, title="Acme renewal", kind=ItemState.YOU, words="by Friday"
+        )
+
+        assert (fact.title, fact.time, fact.kind, fact.words) == (
+            "Acme renewal",
+            None,
+            ItemState.YOU,
+            "by Friday",
+        )

@@ -581,6 +581,23 @@ class ShortLinkContext(TypedDict, total=False):
     render: str
 
 
+class BriefingContext(TypedDict, total=False):
+    """Daily/weekly brief run, delivery and read context."""
+
+    operation: str  # "list"|"postmarks"|"get"|"edition_image"
+    id: str
+    kind: str  # "daily"|"weekly"
+    limit: int
+    variant: str
+    outcome: str
+    form: str
+    channels: list[str]
+    pushed: bool
+    resumed: bool
+    pool_capped: int
+    postmarks_collected: int
+
+
 OUTCOME_FAILED = "failed"
 
 
@@ -625,6 +642,7 @@ class WideEventFields(TypedDict, total=False):
     desktop: DesktopContext
     dev: DevContext
     short_link: ShortLinkContext
+    briefing: BriefingContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str

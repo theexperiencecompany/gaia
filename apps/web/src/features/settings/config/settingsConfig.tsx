@@ -20,13 +20,13 @@ import {
   WhatsappIcon,
 } from "@icons";
 import type { InstanceRole } from "@shared/api/generated";
-import Image from "next/image";
-import type { ReactNode } from "react";
-import { PostageStampIcon } from "@/components/shared/icons";
 import {
   BRIEFINGS_SETTINGS_PATH,
   POSTMARKS_SETTINGS_PATH,
-} from "@/features/briefing/constants";
+} from "@shared/constants/routes";
+import Image from "next/image";
+import type { ReactNode } from "react";
+import { PostageStampIcon } from "@/components/shared/icons";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 import {

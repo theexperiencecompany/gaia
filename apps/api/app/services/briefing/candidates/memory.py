@@ -5,12 +5,13 @@ the daily pool holds is remembered here, under GAIA's own key for it.
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from app.constants.briefing import GAIA_SOURCE
+from app.constants.briefing import GAIA_SOURCE, OVERDUE_RESHOW_DAYS
 from app.db.repositories.signal_memory import signal_memory_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import BriefCandidate, GaiaRef, GaiaRefKind
 from app.models.scout_models import Sighting
+from app.services.briefing.clock import UserClock
 
 
 def sighting(candidate: BriefCandidate) -> Sighting | None:
@@ -19,9 +20,10 @@ def sighting(candidate: BriefCandidate) -> Sighting | None:
         signal = candidate.signal
         return Sighting(signal.integration_id, signal.external_id, signal.state)
     if candidate.todo_id is not None:
-        return Sighting(GAIA_SOURCE, f"todo:{candidate.todo_id}", candidate.state)
+        todo = GaiaRef(kind=GaiaRefKind.TODO, id=candidate.todo_id)
+        return Sighting(GAIA_SOURCE, str(todo), candidate.state)
     if candidate.seen_as is not None:
-        return Sighting(GAIA_SOURCE, candidate.seen_as, candidate.state)
+        return Sighting(GAIA_SOURCE, str(candidate.seen_as), candidate.state)
     return None
 
 
@@ -53,8 +55,11 @@ async def remember_candidates(
     return remembered
 
 
-async def mark_placed_shown(user_id: str, placed: Sequence[BriefCandidate], now: datetime) -> None:
-    """Record that the brief showed every placed candidate memory keys, named in its message or not."""
-    await signal_memory_repository.mark_shown(
-        user_id, [seen for c in placed if (seen := sighting(c)) is not None], now
-    )
+def rests_today(candidate: BriefCandidate, clock: UserClock) -> bool:
+    """Whether a daily brief holds back an overdue item: past its first day overdue and shown too recently."""
+    memory = candidate.memory
+    if candidate.due_at is None or memory is None or memory.last_shown is None:
+        return False
+    first_overdue = clock.day_of(candidate.due_at) + timedelta(days=1)
+    shown_ago = (clock.today - clock.day_of(memory.last_shown)).days
+    return candidate.is_repeat and clock.today > first_overdue and shown_ago < OVERDUE_RESHOW_DAYS

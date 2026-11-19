@@ -4,17 +4,44 @@ import { Modal } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { AnimatePresence, useReducedMotion, type Variants } from "motion/react";
 import * as m from "motion/react-m";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LETTER_CONTROL_PROPS } from "@/components/shared/letterControlProps";
 import {
   LETTER_CLOSE_TRANSITION,
+  LETTER_EXIT_SCALE,
   LETTER_OPEN_TRANSITION,
   LETTER_REDUCED_TRANSITION,
-  LETTER_SHEET_VARIANTS,
 } from "@/components/shared/letterMotion";
+
+/**
+ * A sheet tilts and settles onto the screen, then leaves by fading and
+ * shrinking in place. Reduced motion gets a plain fade both ways.
+ */
+const LETTER_SHEET_VARIANTS: Record<"full" | "reduced", Variants> = {
+  full: {
+    arrive: { opacity: 0, scale: 0.95, rotate: 1, y: 22 },
+    enter: {
+      opacity: 1,
+      scale: 1,
+      rotate: 0,
+      y: 0,
+      transition: LETTER_OPEN_TRANSITION,
+    },
+    exit: {
+      opacity: 0,
+      scale: LETTER_EXIT_SCALE,
+      transition: LETTER_CLOSE_TRANSITION,
+    },
+  },
+  reduced: {
+    arrive: { opacity: 0 },
+    enter: { opacity: 1, transition: LETTER_REDUCED_TRANSITION },
+    exit: { opacity: 0, transition: LETTER_REDUCED_TRANSITION },
+  },
+};
 
 /** What the page behind a letter becomes: dimmed for a sheet, lightly frosted under a floating letter. */
 const BACKDROP_LOOKS = {
@@ -52,6 +79,29 @@ function backdropVariants(
         motion === "full" ? LETTER_CLOSE_TRANSITION : LETTER_REDUCED_TRANSITION,
     },
   };
+}
+
+interface LetterSheetProps {
+  className?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}
+
+/** A sheet that tilts and settles onto the screen, then leaves by fading and shrinking in place. */
+export function LetterSheet({ className, style, children }: LetterSheetProps) {
+  const motion = useReducedMotion() ? "reduced" : "full";
+  return (
+    <m.div
+      initial="arrive"
+      animate="enter"
+      exit="exit"
+      variants={LETTER_SHEET_VARIANTS[motion]}
+      className={className}
+      style={style}
+    >
+      {children}
+    </m.div>
+  );
 }
 
 interface LetterModalProps {
@@ -131,15 +181,7 @@ export function LetterModal({
                   </GaiaButton>
                 </div>
                 {presentation === "sheet" ? (
-                  <m.div
-                    initial="arrive"
-                    animate="enter"
-                    exit="exit"
-                    variants={LETTER_SHEET_VARIANTS[motion]}
-                    className="relative"
-                  >
-                    {children}
-                  </m.div>
+                  <LetterSheet className="relative">{children}</LetterSheet>
                 ) : (
                   children
                 )}

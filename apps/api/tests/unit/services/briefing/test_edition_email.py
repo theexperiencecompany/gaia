@@ -1,16 +1,13 @@
 """Unit tests for the edition-as-image briefing email.
 
-The rasterizer and the CDN upload are faked at the boundary this module imports
-them from; the edition renderer is faked so the assertions pin *this* module's
+The rasterizer is faked at the boundary this module imports it from; the edition renderer is faked so the assertions pin *this* module's
 contract (options, public id, escaping, the message as text) rather
-than the edition template's markup. The email wraps an already-hosted image, so
-its tests also prove it never rasterizes or uploads a second copy.
+than the edition template's markup. The email wraps an already-stored image, so
+its tests also prove it never rasterizes a second copy.
 """
 
 from typing import Any
-from uuid import uuid4
 
-import cloudinary
 from pydantic import ValidationError
 import pytest
 
@@ -18,32 +15,22 @@ from app.config.settings import settings
 from app.constants.briefing import (
     FOLD_MARKER_SELECTOR,
     PAPER_MARKER_SELECTOR,
-    EditionDeliveryFormat,
+    EditionFamily,
 )
-from app.constants.files import BlobKind
-from app.constants.notifications import (
-    NOTIFICATION_KIND_BRIEFING_DAILY,
-    NOTIFICATION_KIND_BRIEFING_WEEKLY,
-)
-from app.models.briefing_models import BriefingPayload
+from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing import edition_email
 from app.services.briefing.edition_email import (
-    HostedEditionImage,
-    edition_delivery_url,
-    host_edition_image,
-    is_edition_kind,
     render_edition_email,
+    render_edition_png,
 )
 from app.services.briefing.editions import EXPLORER_RENDERER
-from app.services.briefing.render import RenderedImage
+from app.services.render.image import RenderedImage
 
-USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
 BRIEFING_ID = "brief-1"
 BRIEF_URL = "https://heygaia.link/brief1short"
 UNSUBSCRIBE_URL = "https://heygaia.io/unsubscribe?t=abc"
 FRONTEND_URL = "https://app.example.com"
-CLOUD_NAME = "gaia-test"
 
 MESSAGE = "Priya's deck needs a yes.\nSequoia at 11:00.\n\nThe investor update went out."
 
@@ -104,12 +91,9 @@ class Harness:
         self.image = b"edition-png-bytes"
         self.fold: float | None = 0.31
         self.paper: tuple[float, float, float, float] | None = None
-        self.image_url = IMAGE_URL
         self.render_calls: list[dict[str, Any]] = []
         self.image_calls: list[dict[str, Any]] = []
-        self.upload_calls: list[dict[str, Any]] = []
         self.render_error: Exception | None = None
-        self.upload_error: Exception | None = None
 
 
 @pytest.fixture
@@ -129,23 +113,13 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
             raise h.render_error
         return RenderedImage(image=h.image, fold=h.fold, paper=h.paper)
 
-    async def fake_upload(owner_id: str, public_id: str, content: bytes, **kwargs: Any) -> str:
-        h.upload_calls.append(
-            {"owner_id": owner_id, "public_id": public_id, "file_data": content, **kwargs}
-        )
-        if h.upload_error is not None:
-            raise h.upload_error
-        return h.image_url
-
     monkeypatch.setattr(
         edition_email,
         "EXPLORER_RENDERER",
         {family: fake_renderer(family) for family in EXPLORER_RENDERER},
     )
     monkeypatch.setattr(edition_email, "render_html_to_image", fake_render_html_to_image)
-    monkeypatch.setattr(edition_email.EDITION_IMAGE_STORE, "put", fake_upload)
     monkeypatch.setattr(settings, "FRONTEND_URL", FRONTEND_URL)
-    monkeypatch.setattr(cloudinary.config(), "cloud_name", CLOUD_NAME)
     return h
 
 
@@ -159,26 +133,23 @@ def render(payload: BriefingPayload, **overrides: Any) -> str:
     return render_edition_email(payload, **kwargs)
 
 
-RENDER_KEY = uuid4().hex
-
-
-async def host(payload: BriefingPayload) -> HostedEditionImage:
-    return await host_edition_image(payload, owner_id="user-1", render_key=RENDER_KEY)
+async def host(payload: BriefingPayload) -> RenderedImage:
+    return await render_edition_png(payload, BRIEF_URL)
 
 
 @pytest.mark.unit
 class TestEditionRendering:
-    async def test_the_payloads_family_renders_with_the_edition_number_and_no_generation_time(
+    async def test_the_payloads_family_renders_with_its_link_and_edition_number(
         self, harness: Harness
     ) -> None:
-        await host(make_payload(date="2026-01-10", template_family="receipt"))
+        await host(make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT))
 
         assert harness.render_calls == [
             {
                 "renderer": "receipt",
-                "payload": make_payload(date="2026-01-10", template_family="receipt"),
+                "payload": make_payload(date="2026-01-10", template_family=EditionFamily.RECEIPT),
+                "link": BRIEF_URL,
                 "edition_no": 10,
-                "generated_local": "",
             }
         ]
         assert harness.image_calls[0]["html"] == "<edition>receipt</edition>"
@@ -190,14 +161,17 @@ class TestEditionRendering:
         with pytest.raises(ValidationError, match="template_family"):
             BriefingPayload.model_validate(data)
 
-    async def test_the_retired_classic_family_fails_the_render_instead_of_falling_back(
-        self, harness: Harness
-    ) -> None:
-        with pytest.raises(KeyError, match="edition"):
-            await host(make_payload(template_family="edition"))
+    def test_a_brief_cannot_name_the_retired_classic_family(self) -> None:
+        with pytest.raises(ValidationError, match="template_family"):
+            make_payload(template_family="edition")
+
+    async def test_a_quiet_note_has_no_edition_to_render(self, harness: Harness) -> None:
+        with pytest.raises(
+            ValueError, match="^a quiet note is drawn in no family, so it has no edition to render$"
+        ):
+            await host(make_payload(template_family=None))
 
         assert harness.render_calls == []
-        assert harness.upload_calls == []
 
     async def test_edition_epoch_makes_the_first_of_january_2026_edition_one(
         self, harness: Harness
@@ -213,13 +187,11 @@ class TestEditionRendering:
         with pytest.raises(ValueError, match="Invalid isoformat"):
             await host(make_payload(date=bad_date))
 
-        assert harness.upload_calls == []
-
 
 @pytest.mark.unit
-class TestImageAndUpload:
+class TestImage:
     async def test_a_paper_on_a_desk_is_trimmed_to_an_even_margin(self, harness: Harness) -> None:
-        await host(make_payload(template_family="memo"))
+        await host(make_payload(template_family=EditionFamily.MEMO))
 
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (636, 3)
@@ -235,9 +207,7 @@ class TestImageAndUpload:
         assert options.fold_selector == FOLD_MARKER_SELECTOR
         assert options.paper_selector == PAPER_MARKER_SELECTOR
 
-    async def test_the_paper_the_render_measured_is_what_hosting_returns(
-        self, harness: Harness
-    ) -> None:
+    async def test_the_paper_the_render_measured_is_what_it_returns(self, harness: Harness) -> None:
         harness.paper = (0.02, 0.03, 0.97, 0.9)
 
         hosted = await host(make_payload())
@@ -245,76 +215,18 @@ class TestImageAndUpload:
         assert hosted.paper == (0.02, 0.03, 0.97, 0.9)
 
     async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
-        await host(make_payload(template_family="swiss"))
+        await host(make_payload(template_family=EditionFamily.SWISS))
 
         options = harness.image_calls[0]["options"]
         assert (options.width, options.device_scale_factor) == (540, 3)
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", None)
         assert (options.clip_bleed_px, options.omit_background) == (0, False)
 
-    async def test_the_hosted_path_is_the_opaque_render_key_alone(self, harness: Harness) -> None:
-        """The URL goes out in emails and on public brief links: no user id, kind or date."""
-        await host(make_payload(date="2026-02-03"))
-
-        assert harness.upload_calls == [
-            {
-                "owner_id": "user-1",
-                "public_id": f"briefing/editions/{RENDER_KEY}",
-                "file_data": b"edition-png-bytes",
-                "resource_type": "image",
-                "kind": BlobKind.GENERATED_IMAGE,
-                "content_type": "image/png",
-            },
-        ]
-
-    async def test_hosting_returns_capped_delivery_urls_for_the_uploaded_original(
-        self, harness: Harness
-    ) -> None:
-        base = f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload"
-
-        assert await host(make_payload()) == HostedEditionImage(
-            display_url=f"{base}/c_limit,f_auto,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
-            chat_url=f"{base}/b_rgb:23262a,c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
-            fold=0.31,
-        )
-
-    async def test_render_failure_propagates_and_nothing_is_uploaded(
-        self, harness: Harness
-    ) -> None:
+    async def test_render_failure_propagates(self, harness: Harness) -> None:
         harness.render_error = RuntimeError("chromium died")
 
         with pytest.raises(RuntimeError, match="chromium died"):
             await host(make_payload())
-
-        assert harness.upload_calls == []
-
-    async def test_upload_failure_propagates(self, harness: Harness) -> None:
-        harness.upload_error = RuntimeError("cloudinary 500")
-
-        with pytest.raises(RuntimeError, match="cloudinary 500"):
-            await host(make_payload())
-
-
-@pytest.mark.unit
-class TestDeliveryUrl:
-    """The 2-6 MB original must never be what a surface downloads."""
-
-    @pytest.mark.parametrize(
-        ("fetch_format", "transformation"),
-        [
-            (EditionDeliveryFormat.AUTO, "c_limit,f_auto,q_auto,w_1080"),
-            (EditionDeliveryFormat.JPG, "b_rgb:23262a,c_limit,f_jpg,q_auto,w_1080"),
-        ],
-    )
-    def test_the_url_caps_width_and_compresses_without_upscaling(
-        self, harness: Harness, fetch_format: EditionDeliveryFormat, transformation: str
-    ) -> None:
-        url = edition_delivery_url("briefing/editions/k1", fetch_format)
-
-        assert url == (
-            f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload/"
-            f"{transformation}/v1/briefing/editions/k1"
-        )
 
 
 @pytest.mark.unit
@@ -330,7 +242,6 @@ class TestEmailBody:
         assert 'src="https://cdn.example.com/stored.png"' in html
         assert harness.render_calls == []
         assert harness.image_calls == []
-        assert harness.upload_calls == []
 
     def test_the_image_links_to_the_briefs_heygaia_link(self, harness: Harness) -> None:
         html = render(make_payload(), brief_url="https://heygaia.link/b9short")
@@ -395,7 +306,7 @@ class TestTextStrip:
         )
 
     def test_a_weekly_digest_says_weekly_digests_are_on(self, harness: Harness) -> None:
-        html = render(make_payload(template_family="weekly"))
+        html = render(make_payload(template_family=EditionFamily.WEEKLY))
 
         assert "You get this because weekly digests are on in GAIA. <a" in html
         assert "Open this week&#39;s digest in GAIA</a>" in html
@@ -436,16 +347,3 @@ class TestEditionNumber:
     def test_editions_count_days_from_the_epoch(self) -> None:
         assert edition_email._edition_no("2026-01-01") == 1
         assert edition_email._edition_no("2026-10-14") == 287
-
-
-@pytest.mark.unit
-class TestIsEditionKind:
-    @pytest.mark.parametrize(
-        "kind", [NOTIFICATION_KIND_BRIEFING_DAILY, NOTIFICATION_KIND_BRIEFING_WEEKLY]
-    )
-    def test_briefing_kinds_render_as_editions(self, kind: str) -> None:
-        assert is_edition_kind(kind) is True
-
-    @pytest.mark.parametrize("kind", [None, "", "reminder", "briefing", "briefing_monthly"])
-    def test_everything_else_does_not(self, kind: str | None) -> None:
-        assert is_edition_kind(kind) is False

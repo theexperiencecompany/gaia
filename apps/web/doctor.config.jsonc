@@ -61,7 +61,7 @@
         "files": ["src/app/styles/hero.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the
+      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompts.ts and the
       // openui pre-commit sync hook — consumed outside the scanned graph.
       {
         "files": ["src/config/openui/promptSpecs.ts"],
@@ -139,7 +139,7 @@
       // that cookieless per-file origin and the API's PDF CSP (frame-ancestors
       // the app). The other frame in this file (HTML and SVG) keeps its sandbox.
       {
-        "files": ["src/features/short-links/components/PublicSessionArtifactView.tsx"],
+        "files": ["src/features/short-links/components/PublicWorkspaceFileView.tsx"],
         "rules": ["react-doctor/iframe-missing-sandbox"]
       },
       // timezoneSearchText() returns a string; .includes(query) is substring

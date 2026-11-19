@@ -6,7 +6,8 @@ slice straight back and wait for tomorrow. The run's accounting books each model
 its reservation (ScoutSpend is the run's ledger), never into the user's budget windows, so
 the brief writer that runs after the scouts is never starved by them. A call that costs
 more than the slice books the difference; the learn's unspent slice is handed back when it
-ends, failed or not. The tally is whole micro-dollars per user per UTC day.
+ends, failed or not. Once the slice is booked the accounting wall stops the run's next call,
+so one learn overruns it by at most one call. The tally is whole micro-dollars per user per UTC day.
 """
 
 from dataclasses import dataclass
@@ -19,8 +20,7 @@ from app.constants.scouts import (
     SCOUT_SPEND_MICROS_PER_USD,
     SCOUT_SPEND_TTL_SECONDS,
 )
-from app.db.redis import AsyncRedisCommands, redis_cache
-from app.utils.errors import AppError
+from app.services.briefing.scouts.redis_client import scouts_redis
 
 
 def _micros(usd: float) -> int:
@@ -35,19 +35,12 @@ def _key(user_id: str) -> str:
     return SCOUT_SPEND_KEY.format(user_id=user_id, day=datetime.now(UTC).date().isoformat())
 
 
-def _client() -> AsyncRedisCommands:
-    client = redis_cache.redis
-    if client is None:
-        raise AppError(
-            message="scout spend cannot be read",
-            why="Redis is unavailable, so the daily scout ceiling cannot be enforced",
-            fix="restore Redis; scouts learn again on the next brief",
-        )
-    return client
-
-
 async def _add(key: str, micros: int) -> int:
-    pipe = _client().pipeline()
+    pipe = scouts_redis(
+        message="scout spend cannot be read",
+        why="Redis is unavailable, so the daily scout ceiling cannot be enforced",
+        fix="restore Redis; scouts learn again on the next brief",
+    ).pipeline()
     pipe.incrby(key, micros)
     pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
     total, _ttl_set = await pipe.execute()
@@ -68,6 +61,10 @@ class ScoutSpend:
         extra = max(self.booked - _RESERVATION, 0) - over_before
         if extra:
             await _add(self.key, extra)
+
+    def exhausted(self) -> bool:
+        """Whether the learn has booked its whole reservation, so the accounting wall stops it."""
+        return self.booked >= _RESERVATION
 
     async def release(self) -> None:
         """Hand back the part of the reservation the learn did not spend."""

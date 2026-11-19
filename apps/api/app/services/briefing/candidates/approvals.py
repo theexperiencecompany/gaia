@@ -6,13 +6,22 @@ are read. An approval a tracked todo parked on is that todo's, already a candida
 """
 
 from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
+from app.config.settings import settings
 from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction
+from app.constants.chat import CONVERSATION_PATH
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
-from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_candidate_models import (
+    BriefCandidate,
+    CandidateOrigin,
+    GaiaRef,
+    GaiaRefKind,
+)
+from app.models.brief_item_models import ItemState
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.tool_key import parse_hil_tool_key
 
@@ -30,17 +39,29 @@ def _ledger_app(row: ApprovalLedgerDocument) -> tuple[str, str]:
     return integration.id, integration.name
 
 
-def _candidate(
-    source: str, app: str, summary: str, tool_name: str, approval_id: str
-) -> BriefCandidate:
+@dataclass(frozen=True)
+class _Pending:
+    """One pending approval as either store holds it."""
+
+    approval_id: str
+    conversation_id: str
+    tool_name: str
+    summary: str
+
+
+def _candidate(source: str, app: str, pending: _Pending) -> BriefCandidate:
+    """Return the approval as a candidate that opens the conversation its card waits in."""
     return BriefCandidate(
+        origin=CandidateOrigin.APPROVAL,
         source=source,
         app=app,
-        seen_as=f"approval:{approval_id}",
-        state="you",
-        title=summary.strip() or f"Approve {tool_name}",
+        seen_as=GaiaRef(kind=GaiaRefKind.APPROVAL, id=pending.approval_id),
+        state=ItemState.YOU,
+        title=pending.summary.strip() or f"Approve {pending.tool_name}",
         detail="waiting for your approval",
         action=BriefAction.APPROVE,
+        url=settings.FRONTEND_URL
+        + CONVERSATION_PATH.format(conversation_id=pending.conversation_id),
     )
 
 
@@ -53,11 +74,23 @@ async def approval_candidates(
         if row.owner_id and row.owner_id in covered_todo_ids:
             continue
         source, app = _ledger_app(row)
-        candidates.append(_candidate(source, app, row.summary, row.tool_name, row.approval_id))
+        candidates.append(
+            _candidate(
+                source,
+                app,
+                _Pending(row.approval_id, row.conversation_id, row.tool_name, row.summary),
+            )
+        )
     for record in await hil_approval_repository.list_pending_for_user(user_id, now):
         app = record.integration_name or GAIA_APP_NAME
         source = GAIA_SOURCE if record.integration_name is None else app
         candidates.append(
-            _candidate(source, app, record.summary, record.tool_name, record.approval_id)
+            _candidate(
+                source,
+                app,
+                _Pending(
+                    record.approval_id, record.conversation_id, record.tool_name, record.summary
+                ),
+            )
         )
     return candidates

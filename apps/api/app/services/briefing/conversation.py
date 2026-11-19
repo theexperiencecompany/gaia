@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.db.repositories.conversations import conversation_repository
-from app.models.briefing_models import BriefingCardData
+from app.models.brief_view_models import BriefCard
 from app.models.chat_models import (
     MessageModel,
     SystemPurpose,
@@ -32,7 +32,7 @@ async def _briefing_conversation_id(user_id: str) -> str:
     return created.conversation_id
 
 
-async def post_brief_message(user_id: str, text: str, card: BriefingCardData | None) -> None:
+async def post_brief_message(user_id: str, text: str, card: BriefCard | None) -> None:
     """Append GAIA's brief message to the Briefings conversation: its text, with the folded edition attached.
 
     A quiet day's note has no edition, so it is the text alone.

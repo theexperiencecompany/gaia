@@ -111,10 +111,12 @@ class HILToolRiskRecord(MongoDocument):
 class ToolReadOnlyVerdict(MongoDocument):
     """The cheap model's cached read-only verdict on one tool (Mongo tool_read_only_verdicts).
 
-    Keyed by tool_hash over name, description and input schema: any change re-classifies.
+    Keyed by tool_hash over name, description and input schema, and by the classifier (model
+    and prompt) that judged it: a change to either re-classifies.
     """
 
     tool_hash: str
+    classifier: str
     tool_name: str
     read_only: bool
     rationale: str = ""

@@ -193,6 +193,18 @@
   }
 }
 
+@keyframes icon-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: rotate(var(--sway-deg));
+    opacity: 0.55;
+  }
+}
+
 @keyframes shake {
   0%,
   100% {
