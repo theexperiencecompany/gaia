@@ -183,8 +183,8 @@ async def get_stamp_art(slug: str) -> FileResponse:
     log.set(briefing={"operation": "stamp_art", "city_slug": slug})
     try:
         art = stamp_art(slug)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Stamp not found") from None
+    except KeyError as unknown:
+        raise HTTPException(status_code=404, detail="Stamp not found") from unknown
     return FileResponse(
         art,
         media_type=STAMP_ART_CONTENT_TYPE,

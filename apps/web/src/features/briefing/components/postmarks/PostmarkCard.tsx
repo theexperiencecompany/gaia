@@ -13,6 +13,8 @@ export function PostmarkCard({ postmark }: PostmarkCardProps) {
     <div className="flex items-center gap-3 rounded-2xl bg-zinc-800 p-2 pr-4 shadow-xl shadow-black/40">
       <Image
         src={postmark.stamp_url}
+        // served by this deployment's API, which the optimizer refuses on a private IP (self-host, local)
+        unoptimized
         alt={`${postmark.city} stamp`}
         width={44}
         height={56}

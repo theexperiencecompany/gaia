@@ -173,7 +173,9 @@ async def live_view_ws(
         return
     log.set(browser={"session_id": target.session_id})
     if not target.live_ws:
-        log.warning(f"{LogTag.BROWSER} browser live view has no host stream")
+        log.warning(
+            f"{LogTag.BROWSER} browser live view has no host stream", reason="no_host_stream"
+        )
         await websocket.close(code=_WS_SESSION_GONE)
         return
 

@@ -40,6 +40,8 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
               <span className="block aspect-[600/850] w-full transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:-rotate-2 group-active:scale-95">
                 <Image
                   src={postmark.stamp_url}
+                  // served by this deployment's API, which the optimizer refuses on a private IP (self-host, local)
+                  unoptimized
                   alt=""
                   width={200}
                   height={284}
