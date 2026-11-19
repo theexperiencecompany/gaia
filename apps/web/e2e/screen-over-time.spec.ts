@@ -256,6 +256,18 @@ test.describe("screen over time — chat", () => {
     expect(toolSections(live), "the work is one section").toBe(1);
     expect(botLinesReading(live, "sq-1")).toBe(1);
     expect(botLinesReading(live, "sq-2")).toBe(1);
+    // The result sits below the side question, so it quotes the message that asked for the
+    // work; the side answer sits right under its own question and quotes nothing.
+    const replyReading = (line: string) =>
+      live.find((i) => i.kind === "reply" && i.text.split("\n").includes(line))
+        ?.text ?? "";
+    expect(replyReading("Work done."), "the result quotes its ask").toMatch(
+      /^You\nwork /m,
+    );
+    expect(
+      replyReading("Side answer."),
+      "the side answer quotes nothing",
+    ).not.toMatch(/^You$/m);
   });
 
   test("stopping mid-work shows Stopped and nothing on screen vanishes", async ({
