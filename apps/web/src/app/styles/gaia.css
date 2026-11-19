@@ -475,8 +475,8 @@
   .modal__dialog.gaia-modal-5xl {
     max-width: var(--gaia-modal-5xl);
   }
-  /* modalVariants({ surface: "bare" }): a letter is its own surface and runs its
-     own enter and exit, so the dialog draws nothing and the overlay never animates. */
+  /* modalVariants({ surface: "bare" }) on Backdrop, Container and Dialog: a letter is its
+     own surface and runs its own enter and exit, so the dialog draws nothing and the overlay never animates. */
   .modal__dialog.gaia-modal-bare {
     width: auto;
     max-width: none;
@@ -486,11 +486,11 @@
     background-color: transparent;
     box-shadow: none;
   }
-  .modal__container:has(> .gaia-modal-bare) {
+  .modal__container.gaia-modal-bare {
     padding: 2rem 0.75rem;
   }
-  .modal__backdrop:has(.gaia-modal-bare),
-  .modal__container:has(> .gaia-modal-bare) {
+  .modal__backdrop.gaia-modal-bare,
+  .modal__container.gaia-modal-bare {
     animation: none;
   }
 
