@@ -6,12 +6,10 @@ import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
-import {
-  LETTER_CONTROL_PROPS,
-  LETTER_SHEET_VARIANTS,
-  LetterModal,
-} from "@/components/shared/LetterModal";
+import { LetterModal } from "@/components/shared/LetterModal";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { LETTER_CONTROL_PROPS } from "@/components/shared/letterControlProps";
+import { LETTER_SHEET_VARIANTS } from "@/components/shared/letterMotion";
 import { cn } from "@/lib/utils";
 
 import { BRIEF_LETTER_WIDTH } from "../constants";

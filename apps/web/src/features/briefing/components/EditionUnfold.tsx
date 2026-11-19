@@ -17,7 +17,7 @@ import {
   LETTER_EXIT_SCALE,
   LETTER_OPEN_TRANSITION,
   LETTER_REDUCED_TRANSITION,
-} from "@/components/shared/LetterModal";
+} from "@/components/shared/letterMotion";
 import { cn } from "@/lib/utils";
 
 import {
