@@ -36,7 +36,7 @@ from sentry_sdk.types import Event, Hint
 from app.config import sentry as sentry_config
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.sentry import _make_sentry_loguru_sink
-from app.config.sentry_scrub import UNROUTED
+from app.config.sentry_scrub import FILTERED, UNROUTED, scrub_request
 from app.config.settings import settings
 from app.constants.http import VIEWER_IP_HEADER
 from shared.py import logging as shared_logging
@@ -712,3 +712,95 @@ def test_a_trace_named_by_its_raw_url_is_renamed_unrouted() -> None:
     event = sentry_config._before_send_transaction(raw, {})
 
     assert event["transaction"] == UNROUTED
+
+
+def _routed_event(route: str, request: dict[str, object], **fields: object) -> Event:
+    return cast(
+        Event,
+        {
+            "transaction": route,
+            "transaction_info": {"source": "route"},
+            "request": request,
+            **fields,
+        },
+    )
+
+
+def test_only_capability_path_params_are_filtered_out_of_the_event() -> None:
+    route = "/api/v1/users/{user_id}/content/{content_id:path}/l/{slug}"
+    event = scrub_request(
+        _routed_event(
+            route,
+            {"url": "http://api.test/api/v1/users/u-visible-42/content/cid-secret/l/slug-secret"},
+            extra={"frame": ["u-visible-42 cid-secret", ("slug-secret",)]},
+        )
+    )
+
+    assert event["request"] == {"url": f"http://api.test{route}", "headers": {}}
+    assert event["extra"] == {"frame": [f"u-visible-42 {FILTERED}", [FILTERED]]}
+
+
+def test_every_long_query_value_is_filtered_and_short_ones_kept() -> None:
+    query = "t=abcdefgh&n=1234567"
+    event = scrub_request(
+        _routed_event(
+            "/x",
+            {"url": "http://api.test/x", "query_string": query},
+            extra={"locals": f"abcdefgh 1234567 {query}"},
+        )
+    )
+
+    assert event["request"] == {"url": "http://api.test/x", "headers": {}}
+    assert event["extra"] == {"locals": f"{FILTERED} 1234567 {FILTERED}"}
+
+
+def test_a_query_string_is_filtered_whole_though_its_value_sorts_after_it() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x",
+            {"url": "http://api.test/x", "query_string": "a=zzzzzzzz"},
+            extra={"v": "a=zzzzzzzz"},
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_a_query_only_in_the_url_is_still_filtered() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x", {"url": "http://api.test/x?t=url-token-secret"}, extra={"v": "url-token-secret"}
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_a_short_valued_query_string_is_filtered_whole() -> None:
+    event = scrub_request(
+        _routed_event(
+            "/x", {"url": "http://api.test/x", "query_string": "a=1&b=2"}, extra={"v": "a=1&b=2"}
+        )
+    )
+
+    assert event["extra"] == {"v": FILTERED}
+
+
+def test_an_unrouted_request_keeps_only_its_host() -> None:
+    raw = cast(Event, {"request": {"url": "http://api.test/raw/path?q=1", "headers": {}}})
+
+    assert scrub_request(raw)["request"] == {"url": "http://api.test", "headers": {}}
+
+
+def test_a_request_without_a_host_drops_its_url() -> None:
+    raw = cast(
+        Event, {"request": {"url": "/relative", "query_string": "q=1", "headers": {"a": "b"}}}
+    )
+
+    assert scrub_request(raw)["request"] == {"headers": {"a": "b"}}
+
+
+def test_a_span_without_a_query_keeps_its_data() -> None:
+    raw = cast(Event, {"spans": [{"op": "db", "data": {"db.system": "mongodb"}}]})
+
+    assert scrub_request(raw)["spans"] == [{"op": "db", "data": {"db.system": "mongodb"}}]

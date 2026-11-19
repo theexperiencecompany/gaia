@@ -11,10 +11,11 @@ import pytest
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
 from app.agents.llm.lane import ModelLane
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY, HIL_LLM_TIMEOUT_SECONDS
-from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
+from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName, ModelUse
 from app.models.hil_models import ToolReadOnlyVerdict
 from app.services.hil.read_only import (
     _ReadOnlyJudgement,
+    classifier_fingerprint,
     is_read_only,
     read_only_declaration,
     tool_shape_hash,
@@ -245,6 +246,20 @@ class TestToolShapeHash:
         )
 
         assert len(tool_shape_hash(tool)) == 64
+
+
+def test_the_classifier_is_named_by_the_structured_call_lane() -> None:
+    asked: list[ModelUse] = []
+
+    def lane(use: ModelUse) -> ModelLane:
+        asked.append(use)
+        return _judge_lane("judge-1")
+
+    with patch(f"{MODULE}.one_shot_lane", lane):
+        fingerprint = classifier_fingerprint()
+
+    assert asked == [StructuredCallOptions().use]
+    assert fingerprint.startswith(f"{LLMProviderName.GEMINI}:judge-1:")
 
 
 class TestIsReadOnly:

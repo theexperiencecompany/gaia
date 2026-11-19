@@ -8,7 +8,7 @@ locals, a span) is filtered, since send_default_pii does not know about them.
 """
 
 from typing import cast
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import SplitResult, parse_qsl, urlsplit
 
 from pydantic import BaseModel, ConfigDict
 from sentry_sdk.tracing import TransactionSource
@@ -77,14 +77,12 @@ def _path_capabilities(path: str, route: str) -> set[str]:
     """Return the values the path holds for the route's capability parameters."""
     return {
         value
-        for template, value in zip(route.split("/"), path.split("/"), strict=False)
-        if template.startswith("{")
-        and template.strip("{}").split(":")[0] in _CAPABILITY_PATH_PARAMS
+        for template, value in zip(route.split("/"), path.split("/"))
+        if template.startswith("{") and template[1:-1].split(":")[0] in _CAPABILITY_PATH_PARAMS
     }
 
 
-def _request_secrets(request: _Request, route: str | None) -> set[str]:
-    url = urlsplit(request.url or "")
+def _request_secrets(request: _Request, url: SplitResult, route: str | None) -> set[str]:
     secrets = {
         value
         for _, value in parse_qsl(request.query_string or url.query)
@@ -100,8 +98,7 @@ def _request_secrets(request: _Request, route: str | None) -> set[str]:
     return {secret for secret in secrets if secret}
 
 
-def _scrubbed_request(request: _Request, route: str | None) -> dict[str, object]:
-    url = urlsplit(request.url or "")
+def _scrubbed_request(request: _Request, url: SplitResult, route: str | None) -> dict[str, object]:
     request.url = f"{url.scheme}://{url.netloc}{route or ''}" if url.netloc else None
     request.query_string = None
     request.headers = {
@@ -112,7 +109,7 @@ def _scrubbed_request(request: _Request, route: str | None) -> dict[str, object]
     return request.model_dump(exclude_none=True)
 
 
-def _filtered(value: object, secrets: frozenset[str]) -> object:
+def _filtered(value: object, secrets: tuple[str, ...]) -> object:
     """Return value with every copy of a secret replaced, however deep it sits."""
     if isinstance(value, str):
         for secret in secrets:
@@ -143,6 +140,8 @@ def scrub_request(event: Event) -> Event:
         scrubbed["spans"] = [_without_query(span) for span in routed.spans]
     if routed.request is None:
         return cast(Event, scrubbed)
-    secrets = frozenset(_request_secrets(routed.request, route))
-    scrubbed["request"] = _scrubbed_request(routed.request, route)
+    url = urlsplit(routed.request.url or "")  # pragma: no mutate — any placeholder has no host
+    # longest first: a secret containing a shorter one (the whole query string) is filtered whole
+    secrets = tuple(sorted(_request_secrets(routed.request, url, route), key=len, reverse=True))
+    scrubbed["request"] = _scrubbed_request(routed.request, url, route)
     return cast(Event, _filtered(scrubbed, secrets))

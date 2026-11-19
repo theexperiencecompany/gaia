@@ -201,7 +201,7 @@ async def _open_context(
     except Exception as exc:
         if not _driver_died(exc):
             raise
-        log.warning(f"{LogTag.BROWSER} Render browser is dead; relaunching", error=str(exc))
+        log.warning(f"{LogTag.BROWSER} Render browser is dead; relaunching")
     launch = await _chromium.acquire()
     return launch, await _context_on(launch, viewport, device_scale_factor)
 

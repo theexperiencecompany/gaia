@@ -175,6 +175,10 @@ class TestTheDailyVoicePrompt:
         assert all(str(cap) in _SLOTS for cap in caps)
         assert _SLOTS in _daily() and _SLOTS in _weekly()
 
+    def test_the_slots_spell_each_fact_form_the_check_accepts(self) -> None:
+        for form in ("[[fact:N.time]]", "[[fact:N.count]]", "[[fact:N]]"):
+            assert f"``{form}``:" in _SLOTS
+
     def test_the_voice_is_told_every_frequency_word_it_may_not_claim(self) -> None:
         flat = " ".join(_daily().split())
 
@@ -268,6 +272,11 @@ class TestTheWeeklyVoicePrompt:
 
         assert goodbye in _weekly(goodbye=True)
         assert goodbye not in _weekly()
+
+    def test_a_weekly_that_is_not_a_goodbye_adds_nothing_before_the_data_note(self) -> None:
+        opening = f"for the week ending 2026-10-18.\n\n{UNTRUSTED_DATA_NOTE.format(fence=_FENCE)}"
+
+        assert opening in _weekly()
 
     def test_it_never_holds_the_dailys_own_blocks(self) -> None:
         prompt = _weekly()

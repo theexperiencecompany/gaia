@@ -25,6 +25,7 @@ from app.agents.llm.lane import AgentRole
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import AgentTag, TimeHorizon, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from tests.helpers import captured_wide_event
 from tests.tool_helpers import tool_coroutine
@@ -228,15 +229,28 @@ class TestRecordExecutorCancellation:
         content = graph.aupdate_state.await_args.args[1]["messages"][0].content
         assert "(unknown id)" in content
 
-    async def test_a_failed_record_does_not_stop_the_cancel_and_is_reported(self) -> None:
+    @pytest.mark.parametrize("record", ["cancellation", "report"])
+    async def test_a_failed_record_does_not_stop_the_caller_and_is_reported(
+        self, record: str
+    ) -> None:
         graph = _fake_comms_graph()
         graph.aupdate_state = AsyncMock(side_effect=RuntimeError("checkpoint down"))
         with _patch_graph(graph):
             async with captured_wide_event() as event:
-                await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
+                if record == "report":
+                    await record_executor_report(CONVERSATION_ID, RESULT_TEXT, "result")
+                else:
+                    await record_executor_cancellation(CONVERSATION_ID, "task-42", "send the email")
 
         (error,) = event["errors"]
-        assert (error["record"], error["error_type"]) == ("cancellation", "RuntimeError")
+        fields = ("msg", "conversation_id", "record", "error", "error_type")
+        assert {field: error[field] for field in fields} == {
+            "msg": f"{LogTag.AGENT} Failed to record an executor message in the comms thread",
+            "conversation_id": CONVERSATION_ID,
+            "record": record,
+            "error": "checkpoint down",
+            "error_type": "RuntimeError",
+        }
 
 
 class TestNarrationResolvesItsOwnCommsLane:

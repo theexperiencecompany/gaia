@@ -93,10 +93,9 @@ useful specific thing, named: the person, the decision, the time.
 """.strip()
 
 
-def _fact_form(field: FactField | None = None) -> str:
-    return value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER, None if field is None else field.value)
-
-
+_FACT_TITLE = value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER)
+_FACT_TIME = value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER, FactField.TIME.value)
+_FACT_COUNT = value_slot_text(SlotKind.FACT, FACT_PLACEHOLDER, FactField.COUNT.value)
 _SERIES_EXAMPLE = value_slot_text(SlotKind.SERIES, SERIES_PLACEHOLDER, SeriesField.PEAK.value)
 _SERIES_OTHER_FIELDS = ", ".join(
     f"``.{f.value}``"
@@ -109,15 +108,15 @@ system fills it in from the facts:
 - ``{CountSlot(CountName.NEEDS_YOU)}``: a count from [COUNTS], by its name there. Every figure the facts
   carry is listed beside the slot that writes it, as ``{FactSlot(9, FactField.TIME)} (11:00 AM)``: write
   the slot, never the figure in brackets.
-- ``{_fact_form(FactField.TIME)}``: fact N's time or date, when its line has one ("Sequoia at
+- ``{_FACT_TIME}``: fact N's time or date, when its line has one ("Sequoia at
   {FactSlot(9, FactField.TIME)}").
-- ``{_fact_form(FactField.COUNT)}``: how many requests fact N stands for, when its line says so.
+- ``{_FACT_COUNT}``: how many requests fact N stands for, when its line says so.
 - ``{_SERIES_EXAMPLE}`` (or {_SERIES_OTHER_FIELDS}): a figure of a
   series a chart in [ALSO IN THE BRIEF] draws, or a total [THE WEEK IN NUMBERS] lists, by the
   series id listed there.
 - ``{link_slot_text(PHRASE_PLACEHOLDER, FACT_PLACEHOLDER)}``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
-- ``{_fact_form()}``: fact N's title exactly as listed. Titles are written as to-dos
+- ``{_FACT_TITLE}``: fact N's title exactly as listed. Titles are written as to-dos
   ("Approve the Acme MSA renewal"), so "approve the {FactSlot(3)}" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
   "{LinkSlot("approve the Acme renewal", 3)}". It already says the title: never name the item in
