@@ -3,6 +3,7 @@ import type { paths } from "@shared/api/generated";
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import createClient from "openapi-fetch";
 import pRetry from "p-retry";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import { toApiOrigin } from "./origin";
 
@@ -10,14 +11,20 @@ import { toApiOrigin } from "./origin";
 const BUILD_FETCH_POLICY = { timeoutMs: 30_000, retries: 3 } as const;
 const REQUEST_FETCH_POLICY = { timeoutMs: 10_000, retries: 0 } as const;
 
-/** Fetch with the phase's per-attempt timeout, retrying timeouts and network errors. */
+/** Fetch the API with the phase's per-attempt timeout and the server's token, retrying timeouts and network errors. */
 export function serverFetch(request: Request): Promise<Response> {
   const { timeoutMs, retries } =
     process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
       ? BUILD_FETCH_POLICY
       : REQUEST_FETCH_POLICY;
   return pRetry(
-    () => fetch(request.clone(), { signal: AbortSignal.timeout(timeoutMs) }),
+    () => {
+      const attempt = request.clone();
+      for (const [name, value] of Object.entries(internalApiHeaders())) {
+        attempt.headers.set(name, value);
+      }
+      return fetch(attempt, { signal: AbortSignal.timeout(timeoutMs) });
+    },
     { retries },
   );
 }

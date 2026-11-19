@@ -15,6 +15,7 @@ export const VALID_SECTIONS = [
   "memory",
   "skills",
   "notifications",
+  "postmarks",
   "devices",
   "browser",
   "experimental",

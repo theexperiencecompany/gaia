@@ -19,6 +19,7 @@ from app.config.settings_validator import SettingsGroup, SettingsValidator
 from tests.helpers import captured_wide_event
 
 POSTHOG_GROUP = "Posthog Analytics"
+INTERNAL_API_TOKEN_GROUP = "Web server rate-limit token"
 SHARE_GROUP = "File Sharing"
 POSTHOG_FIELDS = {name for name in Settings.model_fields if name.startswith("POSTHOG_")}
 
@@ -194,6 +195,17 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
         True,
         True,
         "https://docs.llamaindex.ai/",
+        None,
+        False,
+    ),
+    _ExpectedGroup(
+        "Web server rate-limit token",
+        ["INTERNAL_API_TOKEN"],
+        "Shared secret the web app's server sends so the API counts it apart",
+        "Without it, server-rendered pages share the anonymous per-address ceiling",
+        True,
+        True,
+        None,
         None,
         False,
     ),
@@ -451,3 +463,16 @@ def test_self_host_setup_never_prompts_for_a_key_its_profile_cannot_use() -> Non
     ]
 
     assert prompted_but_unused == []
+
+
+async def test_gaia_cloud_without_the_internal_api_token_warns_critically_at_boot() -> None:
+    """Without it the edge web server's requests share one anonymous ceiling per Cloudflare address."""
+    validator = SettingsValidator()
+    validator.configure(show_warnings=True, profile=baseline_profile(DeploymentKind.PRODUCTION))
+    validator.validate_settings(SimpleNamespace())
+
+    async with captured_wide_event() as event:
+        validator.log_validation_results()
+
+    warned = {w["group_name"]: (w["severity"], w["missing_keys"]) for w in event["warnings"]}
+    assert warned[INTERNAL_API_TOKEN_GROUP] == ("CRITICAL", ["INTERNAL_API_TOKEN"])

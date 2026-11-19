@@ -223,6 +223,16 @@ class SettingsValidator:
             )
         )
 
+        self.register_group(
+            SettingsGroup(
+                name="Web server rate-limit token",
+                keys=["INTERNAL_API_TOKEN"],
+                description="Shared secret the web app's server sends so the API counts it apart",
+                affected_features="Without it, server-rendered pages share the anonymous per-address ceiling",
+                selfhost_setup=False,
+            )
+        )
+
         # Email Services
         self.register_group(
             SettingsGroup(

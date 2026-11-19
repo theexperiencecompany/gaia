@@ -33,6 +33,7 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.briefing import BriefItemSource
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
@@ -239,6 +240,10 @@ class _Harness:
                 self.completion_notification,
             ),
             patch(f"{COMPLETION}.pending_brief_items_repository.create", self.brief_create),
+            patch(
+                f"{MODULE}.workflow_repository.find_system_workflow",
+                AsyncMock(return_value=MagicMock(activated=True)),
+            ),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(f"{MODULE}.try_acquire_lock", self.acquire),
@@ -1043,11 +1048,19 @@ class TestReplayCompletionNotification:
         item = harness.brief_create.await_args.args[0]
         assert (
             item.user_id,
-            item.workflow_id,
-            item.workflow_title,
+            item.source,
+            item.source_id,
+            item.source_title,
             item.conversation_id,
             item.text,
-        ) == (workflow.user_id, workflow.id, workflow.title, "conv_1", "Agenda sent.")
+        ) == (
+            workflow.user_id,
+            BriefItemSource.WORKFLOW,
+            workflow.id,
+            workflow.title,
+            "conv_1",
+            "Agenda sent.",
+        )
 
     async def test_an_untrusted_replay_leaves_the_notification_to_the_agent(
         self,

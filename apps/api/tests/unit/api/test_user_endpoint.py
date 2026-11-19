@@ -25,7 +25,6 @@ from app.models.user_models import (
     OnboardingSubdocument,
     ProfilePictureUpload,
     UserDocument,
-    UserUpdate,
 )
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from shared.py.analytics import UserId
@@ -86,14 +85,18 @@ class TestQuietHours:
         read.assert_awaited_once_with(FAKE_USER_ID)
         assert (event["user"], event["operation"]) == ({"id": FAKE_USER_ID}, "read_quiet_hours")
 
-    async def test_saved_hours_are_stored_echoed_and_reported(self, client: AsyncClient):
+    async def test_saved_hours_are_stored_echoed_reported_and_move_the_brief(
+        self, client: AsyncClient
+    ):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
+        stored = UserDocument(id=FAKE_USER_ID)
         with (
             patch(
-                "app.services.user_service.user_repository.set_quiet_hours",
-                AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+                "app.services.user_quiet_hours.user_repository.set_quiet_hours",
+                AsyncMock(return_value=stored),
             ) as update,
-            patch("app.services.user_service.capture") as capture,
+            patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch("app.services.user_quiet_hours.capture") as capture,
         ):
             async with captured_wide_event() as live:
                 response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
@@ -108,6 +111,7 @@ class TestQuietHours:
         update.assert_awaited_once_with(
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
+        resync.assert_awaited_once_with(stored)
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),
@@ -117,15 +121,17 @@ class TestQuietHours:
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
         with (
             patch(
-                "app.services.user_service.user_repository.set_quiet_hours",
+                "app.services.user_quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=None),
             ),
-            patch("app.services.user_service.capture") as capture,
+            patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch("app.services.user_quiet_hours.capture") as capture,
         ):
             response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
 
         assert response.status_code == 404
         assert response.json()["message"] == "User not found"
+        resync.assert_not_awaited()
         capture.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -142,7 +148,7 @@ class TestQuietHours:
         self, client: AsyncClient, body: dict[str, object]
     ):
         with patch(
-            "app.services.user_service.user_repository.set_quiet_hours", AsyncMock()
+            "app.services.user_quiet_hours.user_repository.set_quiet_hours", AsyncMock()
         ) as update:
             response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
 
@@ -167,14 +173,14 @@ class TestGetMe:
     ):
         mock_onboarding.return_value = ONBOARDING_STATUS
         with patch(
-            "app.api.v1.dependencies.oauth_dependencies.user_repository.update", AsyncMock()
-        ) as update:
+            "app.api.v1.dependencies.oauth_dependencies.set_user_timezone", AsyncMock()
+        ) as store:
             response = await client.get(f"{USER_BASE}/me", headers={"x-timezone": "Asia/Kolkata"})
             await asyncio.sleep(0)
 
         assert response.status_code == 200
         assert response.json()["timezone"] == "Asia/Kolkata"
-        update.assert_awaited_once_with(FAKE_USER_ID, UserUpdate(timezone="Asia/Kolkata"))
+        store.assert_awaited_once_with(FAKE_USER_ID, "Asia/Kolkata")
 
     @patch(
         "app.api.v1.endpoints.user.get_user_onboarding_status",
@@ -410,7 +416,8 @@ class TestUpdateUserName:
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone."""
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
         with (
@@ -430,7 +437,8 @@ class TestUpdateTimezone:
             UserId(FAKE_USER.user_id), ProfileUpdated(changed_field_count=1)
         )
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_utc(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="UTC")
         response = await client.patch(
@@ -446,7 +454,8 @@ class TestUpdateTimezone:
         )
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_user_not_found(
         self, mock_update: AsyncMock, client: AsyncClient
     ):
@@ -461,7 +470,8 @@ class TestUpdateTimezone:
         response = await client.patch(f"{USER_BASE}/timezone")
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    @patch("app.services.user_timezone.resync_briefing_schedules", new=AsyncMock())
+    @patch("app.services.user_timezone.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_db_error(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.side_effect = Exception("db error")
         response = await client.patch(

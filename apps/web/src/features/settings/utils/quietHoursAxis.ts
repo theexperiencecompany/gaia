@@ -39,3 +39,12 @@ export function formatHour(hour: number, locale?: string): string {
   const at = new Date(2000, 0, 1, hour % HOURS_PER_DAY);
   return new Intl.DateTimeFormat(locale, { hour: "numeric" }).format(at);
 }
+
+/** Whether an hour on the user's clock falls inside their quiet hours; the end hour is outside. */
+export function isQuietHour(hours: QuietHours, hour: number): boolean {
+  if (!hours.enabled) return false;
+  if (hours.start_hour < hours.end_hour) {
+    return hours.start_hour <= hour && hour < hours.end_hour;
+  }
+  return hour >= hours.start_hour || hour < hours.end_hour;
+}

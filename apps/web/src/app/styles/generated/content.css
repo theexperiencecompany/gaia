@@ -41,6 +41,7 @@
 @source "../../../lib/hubMetadata.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
+@source "../../../lib/internalApiHeaders.ts";
 @source "../../../lib/marketingPages.ts";
 @source "../../../lib/queryClient.ts";
 @source "../../../lib/relatedInGroup.ts";

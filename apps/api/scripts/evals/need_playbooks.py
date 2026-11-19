@@ -37,7 +37,7 @@ from scripts.evals.core.live_chat import Turn, TurnOptions, open_conversation, s
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 RUN_ID = time.strftime("%H%M%S")
-USER_TEMPLATE = "np-{slug}-" + RUN_ID + "@gaia.local"
+USER_TEMPLATE = "delivered+np-{slug}-" + RUN_ID + "@resend.dev"
 #: The role a shared need is evaluated under; any listed role would do.
 SHARED_ROLE = "founder"
 #: A connect is delegated now, so either the executor handoff or the card the

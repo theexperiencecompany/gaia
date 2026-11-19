@@ -21,6 +21,7 @@ pytestmark = pytest.mark.unit
 
 USER_ID = "user-1"
 TODO_EXCLUSION = [{"is_todo_workflow": {"$exists": False}}, {"is_todo_workflow": False}]
+RHYTHM_EXCLUSION = {"$nin": ["daily_briefing", "weekly_digest"]}
 
 
 class _EmptyCursor:
@@ -73,7 +74,11 @@ class TestCountForUser:
         """System workflows are part of the default total, since the workflows page shows the auto-provisioned ones."""
         await repo.count_for_user(USER_ID)
 
-        assert _counted(collection) == {"user_id": USER_ID, "$or": TODO_EXCLUSION}
+        assert _counted(collection) == {
+            "user_id": USER_ID,
+            "system_workflow_key": RHYTHM_EXCLUSION,
+            "$or": TODO_EXCLUSION,
+        }
 
     async def test_drops_the_auto_provisioned_ones_when_asked(
         self, repo: WorkflowsRepository, collection: MagicMock
@@ -83,6 +88,7 @@ class TestCountForUser:
 
         assert _counted(collection) == {
             "user_id": USER_ID,
+            "system_workflow_key": RHYTHM_EXCLUSION,
             "$or": TODO_EXCLUSION,
             "is_system_workflow": {"$ne": True},
         }
@@ -102,7 +108,7 @@ class TestCountForUser:
             USER_ID, exclude_todo_workflows=False, exclude_system_workflows=False
         )
 
-        assert _counted(collection) == {"user_id": USER_ID}
+        assert _counted(collection) == {"user_id": USER_ID, "system_workflow_key": RHYTHM_EXCLUSION}
 
     async def test_reports_the_driver_s_count(
         self, repo: WorkflowsRepository, collection: MagicMock
@@ -119,4 +125,8 @@ class TestListForUser:
         """The system-workflow exclusion is count-side opt-in only; on the list default it would empty the page for provisioned-only users."""
         await repo.list_for_user(USER_ID)
 
-        assert _listed(collection) == {"user_id": USER_ID, "$or": TODO_EXCLUSION}
+        assert _listed(collection) == {
+            "user_id": USER_ID,
+            "system_workflow_key": RHYTHM_EXCLUSION,
+            "$or": TODO_EXCLUSION,
+        }

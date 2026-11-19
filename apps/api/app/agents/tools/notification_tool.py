@@ -415,11 +415,7 @@ async def send_notification(
             NotificationAgentSent(outcome="sent", **proactive_destination(target)),
         )
 
-        delivered_channels = [
-            ch.channel_type
-            for ch in record.channels
-            if ch.status == NotificationStatus.DELIVERED and not ch.skipped
-        ]
+        delivered_channels = [ch.channel_type for ch in record.channels if ch.reached_user]
 
         log.set(
             tool={

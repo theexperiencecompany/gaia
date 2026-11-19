@@ -7,7 +7,7 @@ playbook untouched. A write picks its steps from the run record by call id, so
 every step is a call this run really made, as it made it.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -70,7 +70,8 @@ from app.utils.workflow_utils import (
 )
 from shared.py.wide_events import log
 
-PlaybookResult: TypeAlias = WorkflowToolSuccess[dict[str, object]] | WorkflowToolError
+#: What every playbook tool returns: the workflow tools' shared error or success envelope.
+PlaybookToolResult: TypeAlias = WorkflowToolError | WorkflowToolSuccess[Mapping[str, object]]
 
 
 def _render_location(location: tuple[int | str, ...]) -> str:
@@ -169,7 +170,7 @@ async def _pickable_record(config: RunnableConfig) -> list[RecordEntry]:
     return record_entries(await read_recorded_calls(get_stream_id(config)), UNPICKABLE_TOOLS)
 
 
-def _refused(issues: list[PlaybookIssue], workflow_id: str) -> PlaybookResult:
+def _refused(issues: list[PlaybookIssue], workflow_id: str) -> PlaybookToolResult:
     """Return the refusal for a write, every issue with where it is."""
     record_write(PlaybookDecisionOutcome.REFUSED, issues[0].kind)
     problems = "; ".join(f"{issue.where}: {issue.problem}" for issue in issues)
@@ -187,7 +188,7 @@ def _refused(issues: list[PlaybookIssue], workflow_id: str) -> PlaybookResult:
 
 
 @tool
-async def read_run_record(config: RunnableConfig) -> PlaybookResult:
+async def read_run_record(config: RunnableConfig) -> PlaybookToolResult:
     """
     List the tool calls this run has made, each with its id, to pick a playbook's steps from.
 
@@ -228,7 +229,7 @@ async def write_playbook(
         "How to write the run's result for the user from the steps' results. "
         "Classification, judgement and summarising go here.",
     ],
-) -> PlaybookResult:
+) -> PlaybookToolResult:
     """
     Freeze calls this workflow run made as its playbook, so later runs replay
     them instead of reasoning the work out again. Pick the calls by their id in
@@ -313,7 +314,7 @@ write_playbook.handle_validation_error = _explain_validation_error
 @tool
 async def read_playbook(
     config: RunnableConfig,
-) -> PlaybookResult:
+) -> PlaybookToolResult:
     """
     Read back this workflow's playbook: the YAML as written, when it was written,
     and whether the most recent run replayed it or fell back to reasoning.
@@ -354,7 +355,7 @@ async def read_playbook(
 class _Decision:
     """What a well-formed decline answers, and whether that answer refuses it."""
 
-    response: PlaybookResult
+    response: PlaybookToolResult
     refused: bool = False
 
 
@@ -453,7 +454,7 @@ async def decline_playbook(
         "Required for order_branches: the ONE call that runs on some days and "
         "not others. If you cannot name such a call, the order does not branch.",
     ] = None,
-) -> PlaybookResult:
+) -> PlaybookToolResult:
     """
     Record that this run's sequence is not worth freezing as a playbook.
 
@@ -502,7 +503,7 @@ async def decline_playbook(
 
 def _decline_request_problem(
     kind: DeclineKind, integrations: list[str] | None, branch_on: str | None
-) -> PlaybookResult | None:
+) -> PlaybookToolResult | None:
     """The refusal for a decline whose kind needs a detail the call did not give."""
 
     if kind in INTEGRATION_DECLINE_KINDS and not integrations:
@@ -612,7 +613,7 @@ async def _record_decline(
 async def disable_playbook(
     config: RunnableConfig,
     reason: Annotated[str, "Why this sequence no longer holds. Be specific."],
-) -> PlaybookResult:
+) -> PlaybookToolResult:
     """
     Delete this workflow's playbook so its runs go back to being reasoned out.
 

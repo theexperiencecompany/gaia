@@ -26,9 +26,7 @@ from app.constants.todos import (
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
 
-BRIEFING_SECTIONS = [
-    "Needs you",
-    "Waiting on others",
+FINDING_KINDS = [
     "Today",
     "FYI",
     "Noticed",
@@ -66,8 +64,8 @@ def _class_rule(name: str) -> str:
     return _mail_step("d").split(f" {name}: ", 1)[1].split(". ", 1)[0]
 
 
-def test_the_briefing_is_its_sections_in_order() -> None:
-    assert _heads(_step(BRIEFING_STEP)[1:])[: len(BRIEFING_SECTIONS)] == BRIEFING_SECTIONS
+def test_the_findings_are_their_kinds_in_order() -> None:
+    assert _heads(_step(BRIEFING_STEP)[1:])[: len(FINDING_KINDS)] == FINDING_KINDS
 
 
 def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
@@ -75,9 +73,8 @@ def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
 
 
 @pytest.mark.parametrize("label", [NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
-def test_thread_todos_are_filed_and_briefed_under_the_label_constants(label: str) -> None:
+def test_thread_todos_are_filed_under_the_label_constants(label: str) -> None:
     assert f'["{label}"]' in "\n".join(_step(THREAD_TODO_STEP))
-    assert f"your {label} sub-todos" in "\n".join(_step(BRIEFING_STEP))
 
 
 def test_thread_todos_are_opened_as_the_desks_sub_todos() -> None:
@@ -189,66 +186,51 @@ def test_a_discarded_nudge_is_not_drafted_again_for_the_same_follow_up() -> None
     assert "unless Current State says the user discarded the nudge for it" in guidance
 
 
-def test_the_briefing_is_section_headings_and_items_never_a_log_of_the_run() -> None:
-    """Regression: a desk wrote "Inbox desk run completed. I checked 9 messages" instead of its sections."""
+def test_the_findings_are_lines_never_a_log_of_the_run() -> None:
+    """Regression: a desk wrote "Inbox desk run completed. I checked 9 messages" instead of its findings."""
     heading = _step(BRIEFING_STEP)[0]
 
     assert "never an account of the run" in heading
-    assert 'its name alone on one line, then one "- " line per item' in heading
-    assert "a blank line between sections, a section with no items left out" in heading
+    assert "no headings, counts line or blank lines" in heading
+    assert "never named in a line" in heading
 
 
 def _briefing_line(head: str) -> str:
     return _line(_step(BRIEFING_STEP)[1:], head)
 
 
-def test_the_briefing_opens_with_one_line_of_counts_and_repeats_nothing_unchanged() -> None:
+def test_the_scheduled_report_feeds_the_morning_brief_and_is_never_sent() -> None:
     heading = _step(BRIEFING_STEP)[0]
 
+    assert heading.startswith("Woken by your schedule, nobody is sent your final report")
+    assert "each of its lines into the user's morning brief as one item" in heading
     assert "read in under a minute" in heading
-    assert (
-        'Its first line counts what follows, zero parts left out, like "2 need you · 1 waiting '
-        '· 2 events"'
-    ) in heading
-    assert heading.startswith("Woken by your schedule, your final report is the user's briefing")
-    assert "every other section lists only what is new since the last briefing" in heading
     assert "your reasoning, ids or how you classified anything" in heading
-    assert "Nothing in any section: say only that nothing is new." in INBOX_DESK_RUN_GUIDANCE
+    assert "Nothing new: say only that nothing is new." in INBOX_DESK_RUN_GUIDANCE
 
 
-def test_what_the_user_still_owes_is_listed_in_every_briefing() -> None:
-    """Regression: a briefing counted "1 needs you" and left the item out as already reported."""
+def test_the_brief_lists_the_sub_todos_so_the_findings_never_repeat_them() -> None:
+    """The brief reads the desk's open sub-todos itself; a findings line for one would list it twice."""
     heading = _step(BRIEFING_STEP)[0]
 
     assert (
-        "Needs you and Waiting on others list what is open now, in every briefing, even when "
-        "an earlier one listed it"
-    ) in heading
-    assert "nothing an earlier briefing or alert reported" not in heading
-
-
-def test_each_item_that_needs_the_user_carries_a_short_summary() -> None:
-    """Regression: "Priya · pitch deck · by Fri" did not say what Priya wanted."""
-    needs_you = _briefing_line("Needs you")
-
-    assert (
-        "then, unless a Standing rule turns them off, a summary line under it indented two "
-        f"spaces, at most {todo_constants.INBOX_DESK_SUMMARY_MAX_WORDS} words: what they want "
-        "and the fact that decides it"
-    ) in needs_you
+        "the brief lists your open sub-todos by their titles itself, so never list a sub-todo"
+        in (heading)
+    )
+    assert "Needs you" not in INBOX_DESK_RUN_GUIDANCE
 
 
 def test_each_yes_the_desk_needs_is_asked_once_and_never_again() -> None:
-    briefing = "\n".join(_step(BRIEFING_STEP))
+    findings = "\n".join(_step(BRIEFING_STEP))
     asked = todo_constants.INBOX_DESK_ASKED_ONCE
 
     for ask in todo_constants.InboxDeskAsk:
-        assert f"{ask}: when" in briefing
+        assert f"{ask}: when" in findings
     assert (
-        f'Ask one only while no Standing rule settles it and Current State\'s "{asked}:" line '
+        f'Ask it only while no Standing rule settles it and Current State\'s "{asked}:" line '
         "does not name it, then add its name and today's date to that line"
-    ) in briefing
-    assert "Never ask it again." in briefing
+    ) in findings
+    assert "Never ask it again." in findings
     assert f'edit your canvas.md only for step 6 and the "{asked}:" line' in (
         INBOX_DESK_RUN_GUIDANCE
     )
@@ -310,7 +292,7 @@ def test_the_desk_never_does_a_subagents_step_itself() -> None:
     assert "never fetch, read or draft mail yourself. When one fails, spawn it once more" in (
         preamble
     )
-    assert "leave that account out and say so in the briefing's last line" in preamble
+    assert "leave that account out and say so in a finding" in preamble
 
 
 @pytest.mark.regression
@@ -365,9 +347,9 @@ def test_a_thread_todo_opens_with_its_draft_already_recorded() -> None:
 def test_filtered_says_what_was_filtered_not_only_how_much() -> None:
     """Regression: "18 filtered" left the user asking what those 18 were."""
     assert _briefing_line("Filtered") == (
-        "Filtered: what the sweeps counted that no section above lists: the number, then "
-        'the biggest kinds with counts, like "18 · 9 GitHub notifications · 5 newsletters · '
-        '4 promotions".'
+        "Filtered: what the sweeps counted that no line above names and no sub-todo owns: the "
+        'number filtered, then the biggest kinds with counts, like "18 filtered · 9 GitHub '
+        'notifications · 5 newsletters · 4 promotions".'
     )
 
 
@@ -378,31 +360,13 @@ def test_a_deadline_from_mail_is_a_reminder_line() -> None:
     )
 
 
-def test_each_item_is_one_short_line_in_one_shape() -> None:
+def test_each_finding_is_one_short_line() -> None:
     assert (
-        f'one "- " line per item of at most {todo_constants.INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} '
-        "words"
+        f"Each is one line of at most {todo_constants.INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} words"
     ) in _step(BRIEFING_STEP)[0]
-    assert '"<who> · <what> · <when> · <status>"' in _briefing_line("Needs you")
-    assert "in the same form" in _briefing_line("Waiting on others")
 
 
-def test_an_item_says_how_long_it_has_waited() -> None:
-    assert (
-        "ending with how long it has waited once that is more than a day, like "
-        '"Priya · pitch deck · by Fri · draft ready · 3 days"'
-    ) in _briefing_line("Needs you")
-
-
-def test_the_summary_says_what_the_draft_says() -> None:
-    assert "and what the draft says when one is ready" in _briefing_line("Needs you")
-
-
-def test_the_long_sections_are_capped() -> None:
-    assert (
-        f'at most {todo_constants.INBOX_DESK_NEEDS_YOU_MAX_ITEMS} items, then "+<n> more"'
-    ) in _briefing_line("Needs you")
-    assert "that are overdue or changed" in _briefing_line("Waiting on others")
+def test_the_fyi_lines_are_capped() -> None:
     assert (
         "grouped by kind, each line its count and a few words on what it was, like "
         '"3 product updates · Linear, Vercel pricing, Notion AI", at most '
@@ -420,12 +384,12 @@ def test_a_proposed_event_is_taken_by_name_not_by_a_bare_yes() -> None:
 
 
 @pytest.mark.regression
-def test_a_briefing_asks_at_most_one_yes_or_no_question() -> None:
+def test_the_findings_ask_at_most_one_yes_or_no_question() -> None:
     """Regression: one briefing asked three things at once, so a bare "yes" meant nothing certain."""
     (one,) = [line for line in _step(BRIEFING_STEP) if line.startswith("One question:")]
 
-    assert "a briefing asks at most one yes or no question" in one
-    assert "ask the Asking once question and keep the suggestion for a later briefing" in one
+    assert "your findings ask at most one yes or no question" in one
+    assert "ask the Asking once question and keep the suggestion for a later run" in one
 
 
 def test_a_meeting_request_is_answered_from_the_calendar_into_a_draft() -> None:
@@ -461,11 +425,10 @@ def test_an_event_proposed_from_mail_is_listed_whatever_its_date() -> None:
     )
 
 
-def test_the_briefing_lists_only_what_this_run_or_a_sub_todo_holds() -> None:
+def test_the_findings_list_only_what_this_run_or_the_calendar_holds() -> None:
     """Regression: a run listed Ravi under Needs you from observations.md, with no todo or mail."""
     assert (
-        "Every item comes from your sub-todos, this run's mail or the calendar; "
-        "observations.md never adds one."
+        "Every finding comes from this run's mail or the calendar; observations.md never adds one."
     ) in _step(BRIEFING_STEP)[0]
 
 
@@ -531,21 +494,14 @@ def test_every_gmail_account_is_worked_and_keeps_its_own_cursor() -> None:
     assert "Spawn every account's mail subagent" in _step(FETCH_STEP)[0]
     assert "pass account=<account id> to every Gmail call" in todo_prompts.INBOX_DESK_MAIL_TASK
     assert "holds the last processed time of each Gmail account, under its id" in guidance
-    assert "gmail_account=<its account id>" in "\n".join(_step(THREAD_TODO_STEP))
+    thread_step = "\n".join(_step(THREAD_TODO_STEP))
+    assert "gmail_account=<its account id>" in thread_step
+    assert "the line the user's morning brief lists it by, gmail_thread_id" in thread_step
     # Seen live: one account's failed sweep left every account's cursor where it was.
     assert (
         "Only an account whose fetch failed keeps its old time; a failed sweep does not "
         "stop its account's mail being triaged or its time advancing."
     ) in "\n".join(_step(CURSOR_STEP))
-
-
-def test_every_item_says_which_inbox_it_is_in() -> None:
-    heading = _step(BRIEFING_STEP)[0]
-
-    assert (
-        f"An item about one email ends with where it is: {todo_prompts.INBOX_MAIL_WHERE}"
-    ) in heading
-    assert "a grouped line (FYI, Filtered) has none" in heading
 
 
 def test_group_mail_needs_the_user_only_when_the_answer_is_theirs_to_give() -> None:
@@ -689,9 +645,15 @@ def test_observations_steer_the_triage_never_the_fetch() -> None:
 def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert _mail_step("b").startswith('Sweep "<window>" once, for counts only')
     assert _mail_step("a").startswith(f'Fetch "<window> {todo_constants.INBOX_DESK_MAIL_FILTER}"')
-    assert "Filtered: what the sweeps counted that no section above lists" in (
+    assert "Filtered: what the sweeps counted that no line above names" in (
         "\n".join(_step(BRIEFING_STEP))
     )
+
+
+def test_a_finding_about_one_email_says_which_inbox_it_is_in() -> None:
+    assert (
+        f"a line about one email ends with where it is: {todo_prompts.INBOX_MAIL_WHERE}"
+    ) in _step(BRIEFING_STEP)[0]
 
 
 def test_the_sweep_asks_the_fetch_for_headers_never_a_body_or_thread() -> None:
@@ -859,15 +821,6 @@ def test_an_action_todo_is_due_on_its_deadline_or_today_and_gets_no_draft() -> N
     assert _mail_step("e").startswith(
         "Save every draft in one turn, as parallel calls. For each TO_REPLY thread:"
     )
-
-
-def test_action_todos_open_needs_you_before_owed_replies() -> None:
-    needs_you = _briefing_line("Needs you")
-
-    assert needs_you.index(f"your {ACTION_NEEDED_LABEL} sub-todos") < needs_you.index(
-        f"your {NEEDS_REPLY_LABEL} sub-todos"
-    )
-    assert '"Kotak · card declined · today"' in needs_you
 
 
 def test_action_needed_is_the_users_move_not_a_block() -> None:

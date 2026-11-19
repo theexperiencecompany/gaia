@@ -47,6 +47,12 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
         unused_otherwise=True,
     ),
     CapabilityRequirement(
+        capability="edge_web_server: the web server's requests are told apart from viewers",
+        applies=lambda profile: profile.edge_web_server,
+        keys=("INTERNAL_API_TOKEN",),
+        unused_otherwise=True,
+    ),
+    CapabilityRequirement(
         capability="bills",
         applies=lambda profile: profile.bills,
         keys=("DODO_PAYMENTS_API_KEY", "DODO_WEBHOOK_PAYMENTS_SECRET"),

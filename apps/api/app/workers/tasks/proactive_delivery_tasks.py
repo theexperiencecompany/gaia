@@ -35,6 +35,7 @@ async def deliver_deferred_chat_message(
         text=message.text,
         origin=message.origin,
         message_class=message.message_class,
+        image=message.image,
     )
     return result.value
 

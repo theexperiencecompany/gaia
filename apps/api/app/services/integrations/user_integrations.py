@@ -30,6 +30,13 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import log
 
 
+class ConnectedIntegration(TypedDict):
+    """One connected integration: its id and its display name."""
+
+    id: str
+    name: str
+
+
 class UserIntegrationRecord(TypedDict, total=False):
     """Persisted user-integration fields read downstream (dumped document shape)."""
 
@@ -189,7 +196,7 @@ async def connected_tool_records(user_id: str) -> list[IntegrationToolsRecord]:
     return await integration_repository.tools_by_ids(connected) if connected else []
 
 
-async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]:
+async def get_connected_integrations_named(user_id: str) -> list[ConnectedIntegration]:
     """Return connected integration ids paired with their display name.
 
     Platform names resolve from the in-memory OAuth config; custom MCP names
@@ -214,7 +221,7 @@ async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]
             if custom.name:
                 names[custom.integration_id] = custom.name
 
-    return [{"id": iid, "name": names.get(iid, iid)} for iid in connected]
+    return [ConnectedIntegration(id=iid, name=names.get(iid, iid)) for iid in connected]
 
 
 async def invalidate_user_integration_caches(user_id: str) -> None:

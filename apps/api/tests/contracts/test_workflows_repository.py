@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.trigger_gates import SystemGatePreset
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.cache import CachePolicy
@@ -539,10 +540,35 @@ class TestWorkflowsTriggersAndSystem:
         )
         assert (await repo.find_system_workflow(owner, key)).id == sys_wf.id
         assert await repo.find_system_workflow("other", key) is None
+        assert [w.id for w in await repo.find_system_workflows(owner, [key, "absent"])] == [
+            sys_wf.id
+        ]
+        assert await repo.find_system_workflows("other", [key]) == []
         assert (await repo.get_system_workflow_for_user(sys_wf.id, owner)).id == sys_wf.id
         # a non-system workflow is not resettable
         plain = await repo.create(_workflow(user_id=owner))
         assert await repo.get_system_workflow_for_user(plain.id, owner) is None
+
+    async def test_the_dormancy_pause_set_leaves_out_the_briefs(self, repo):
+        """The sweep paused the brief of a user who read it in Telegram, so briefs stopped."""
+        owner = _uid("owner")
+        own = await repo.create(_workflow(user_id=owner, activated=True))
+        triage = await repo.create(
+            _workflow(
+                user_id=owner, activated=True, is_system_workflow=True, system_workflow_key="triage"
+            )
+        )
+        for key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
+            await repo.create(
+                _workflow(
+                    user_id=owner, activated=True, is_system_workflow=True, system_workflow_key=key
+                )
+            )
+        await repo.create(_workflow(user_id=owner, activated=False))
+
+        pausable = await repo.find_activated_for_user(owner)
+
+        assert sorted(w.id for w in pausable) == sorted([own.id, triage.id])
 
     async def test_reset_system_workflow(self, repo):
         wf = await repo.create(

@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
 from app.models.payment_models import PlanType
@@ -36,6 +37,7 @@ from shared.py.analytics.catalog.workflows import (
 )
 from shared.py.wide_events import WorkflowContext, log
 from tests.conftest import FAKE_USER
+from tests.helpers import briefs_off_users_get
 
 BASE_URL = "/api/v1/workflows"
 _LOG = "app.api.v1.endpoints.workflows.log"
@@ -378,6 +380,31 @@ class TestCreateWorkflow:
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
         assert response.status_code == 400
+
+    async def test_a_brief_workflow_while_briefs_are_off_is_a_409_naming_the_fix(
+        self, client: AsyncClient
+    ):
+        """Regression: with briefs off, POST saved a brief workflow (201) whose results were lost."""
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch("app.services.workflow.service.workflow_repository.create") as mock_create,
+        ):
+            response = await client.post(BASE_URL, json=_create_workflow_payload(delivery="brief"))
+
+        assert response.status_code == 409
+        body = response.json()
+        assert {key: body[key] for key in ("code", "message", "why", "fix")} == {
+            "code": BRIEFS_OFF,
+            "message": "Briefs are off, so a workflow cannot add its results to your brief",
+            "why": "With briefs off, its results would go nowhere",
+            "fix": "Choose Tell me now or Don't notify me, or turn briefs back on in Settings",
+        }
+        mock_create.assert_not_called()
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1348,6 +1375,24 @@ class TestUpdateWorkflow:
         assert response.status_code == 200
         assert response.json()["message"] == "Workflow updated successfully"
         assert _wide_event_users(mock_log) == [{"id": FAKE_USER.user_id}]
+
+    async def test_moving_a_workflow_onto_the_brief_while_briefs_are_off_is_a_409(
+        self, client: AsyncClient
+    ):
+        with (
+            patch(
+                f"{_WF_SERVICE}.get_workflow",
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
+            ),
+            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch("app.services.workflow.service.workflow_repository.update_for_user") as update,
+        ):
+            response = await client.put(f"{BASE_URL}/wf_abc123", json={"delivery": "brief"})
+
+        assert response.status_code == 409
+        assert response.json()["code"] == BRIEFS_OFF
+        update.assert_not_called()
 
     async def test_update_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(

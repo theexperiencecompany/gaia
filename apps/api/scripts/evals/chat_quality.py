@@ -50,7 +50,9 @@ DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:9330")
 # A fresh user per scenario AND per run: memory from an earlier run would leak
 # into "hey" and make small talk look more informed than it is.
 RUN_ID = time.strftime("%H%M%S")
-USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "cq-{slug}-" + RUN_ID + "@gaia.local")
+USER_TEMPLATE = os.environ.get(
+    "GAIA_DEV_USER_TEMPLATE", "delivered+cq-{slug}-" + RUN_ID + "@resend.dev"
+)
 #: Delegated turns ack on the SSE stream and deliver the real answer as a later
 #: bot message (executor cards on the stream, comms narration via WebSocket).
 #: The user sees both, so the judge must too: poll the saved conversation.

@@ -20,6 +20,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from prometheus_client import REGISTRY
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.core.background import (
@@ -38,6 +39,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -51,9 +53,11 @@ from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
@@ -441,6 +445,86 @@ class TestWorkflowResultReachesThePlatformDelivery:
                 "error_type": "ConnectionError",
             }
         ]
+
+
+class TestWorkflowResultCarriesTheRunLink:
+    """The run's heygaia.link rides the delivered workflow message itself.
+
+    So the web message and every bot platform show the same URL the run
+    history's copy button hands out.
+    """
+
+    RUN_URL = "https://heygaia.link/runlink1234"
+
+    async def _deliver_workflow(self, run: ExecutorRun) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="Triaged 12 emails.",
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                workflow_completion, "deliver_workflow_result", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
+            patch.object(
+                rd, "optional_short_link", new_callable=AsyncMock, return_value=self.RUN_URL
+            ) as mint,
+        ):
+            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
+        return save, deliver, mint
+
+    async def test_the_platform_and_saved_message_both_carry_the_run_link(self) -> None:
+        run = replace(_run(workflow=True), workflow_execution_id="exec-7")
+
+        save, deliver, mint = await self._deliver_workflow(run)
+
+        mint.assert_awaited_once_with(USER_ID, ShortLinkTargetType.WORKFLOW_RUN, "exec-7")
+        assert self.RUN_URL in deliver.await_args.kwargs["notification_text"]
+        saved = save.await_args.args[0].messages[0]
+        assert self.RUN_URL in saved.response
+
+    async def test_a_run_without_an_execution_record_gets_no_link(self) -> None:
+        save, deliver, mint = await self._deliver_workflow(_run(workflow=True))
+
+        mint.assert_not_awaited()
+        assert "heygaia.link" not in deliver.await_args.kwargs["notification_text"]
+
+    async def test_a_failed_link_mint_still_delivers_the_result(self) -> None:
+        """The link is optional: a Mongo error costs the link, never the message."""
+        run = replace(_run(workflow=True), workflow_execution_id="exec-7")
+        with (
+            patch.object(
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="Triaged 12 emails.",
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(
+                workflow_completion, "deliver_workflow_result", new_callable=AsyncMock
+            ) as deliver,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
+            patch(
+                "app.services.short_link_service.short_link_repository.get_latest_for_target",
+                new_callable=AsyncMock,
+                side_effect=ServerSelectionTimeoutError("no primary"),
+            ),
+        ):
+            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
+
+        assert deliver.await_args.kwargs["notification_text"] == "Triaged 12 emails."
+        assert save.await_args.args[0].messages[0].response == "Triaged 12 emails."
 
 
 class TestGetConversationSource:
@@ -2684,6 +2768,7 @@ class _Delivered:
     completed: AsyncMock
     failed: AsyncMock
     held: AsyncMock
+    daily_brief: AsyncMock
 
 
 @dataclass(frozen=True)
@@ -2694,6 +2779,7 @@ class _Seams:
     source: ConversationSource | None
     follow_ups: list[str] | None = None
     platform_id: str | None = None
+    daily_brief_live: bool = True
 
 
 async def _deliver_run(
@@ -2745,6 +2831,12 @@ async def _deliver_run(
             ) as completed,
             patch.object(pending_brief_items_repository, "create", new_callable=AsyncMock) as held,
             patch.object(
+                workflow_repository,
+                "find_system_workflow",
+                new_callable=AsyncMock,
+                return_value=MagicMock(activated=True) if seams.daily_brief_live else None,
+            ) as daily_brief,
+            patch.object(
                 rd, "send_workflow_failure_notification", new_callable=AsyncMock
             ) as failed,
         ):
@@ -2766,6 +2858,7 @@ async def _deliver_run(
         completed=completed,
         failed=failed,
         held=held,
+        daily_brief=daily_brief,
     )
 
 
@@ -2926,12 +3019,27 @@ class TestAWorkflowResult:
         delivered.to_platforms.assert_not_awaited()
         delivered.completed.assert_not_awaited()
         item = delivered.held.await_args.args[0]
-        assert (item.user_id, item.workflow_id, item.workflow_title) == (
+        assert (item.user_id, item.source, item.source_id, item.source_title) == (
             USER_ID,
+            BriefItemSource.WORKFLOW,
             "wf-1",
             "Morning digest",
         )
         assert (item.conversation_id, item.text) == ("conv-1", "Digest ready.")
+        assert delivered.event["workflow_delivery"] == "brief"
+
+    async def test_a_brief_workflow_with_no_daily_brief_to_carry_it_is_pushed_now(self) -> None:
+        """A weekly-only user's brief-delivery results were held for a daily that never ran."""
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.BRIEF)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="Digest ready.", source=None, daily_brief_live=False)
+        )
+
+        delivered.held.assert_not_awaited()
+        delivered.daily_brief.assert_awaited_once_with(USER_ID, DAILY_BRIEFING_WORKFLOW_KEY)
+        assert delivered.to_platforms.await_args.kwargs["notification_text"] == "Digest ready."
+        delivered.completed.assert_awaited_once()
         assert delivered.event["workflow_delivery"] == "brief"
 
     @pytest.mark.parametrize("delivery", list(WorkflowDelivery))

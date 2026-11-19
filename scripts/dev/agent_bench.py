@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 from datetime import UTC, datetime
 import json
+import os
 from pathlib import Path
 import re
 import statistics
@@ -438,7 +439,13 @@ def main() -> None:
         help="bookkeeping only: model id the server is pinned to (server-side config)",
     )
     runner.add_argument("--api", default="http://localhost:8000/api/v1/chat-stream")
-    runner.add_argument("--user", default="dev@gaia.local")
+    dev_user = os.environ.get("DEV_USER")
+    runner.add_argument(
+        "--user",
+        default=dev_user,
+        required=dev_user is None,
+        help="dev user email (default: $DEV_USER, set by mise.toml [env])",
+    )
     runner.add_argument("--timeout", type=int, default=400)
     runner.add_argument(
         "--suite",

@@ -14,7 +14,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     EXPO_TOKEN_PATTERN,
@@ -22,6 +22,11 @@ from app.constants.notifications import (
     NotificationChannel,
 )
 from app.db.repositories.users import user_repository
+from app.models.briefing_models import (
+    BriefDeliveryWorkflowsConflict,
+    BriefingSchedule,
+    BriefingScheduleUpdate,
+)
 from app.models.device_token_models import (
     PushTokenRequest,
     PushTokenResponse,
@@ -46,6 +51,7 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import capture
+from app.services.briefing.schedule import set_briefing_schedule
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -199,6 +205,38 @@ async def get_channel_preferences(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to get channel preferences") from e
+
+
+# evlog-map-disable-next-line audit -- read-only preference lookup, no state change to audit
+@router.get("/notifications/preferences/briefing-schedule")
+async def read_briefing_schedule(user_id: str = Depends(get_user_id)) -> BriefingSchedule:
+    """How often the user's briefs come, and the daily brief's hour on their clock."""
+    log.set(user={"id": user_id}, operation="read_briefing_schedule")
+    user = await user_repository.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user.briefing_schedule
+
+
+@router.put(
+    "/notifications/preferences/briefing-schedule",
+    responses={
+        409: {
+            "model": BriefDeliveryWorkflowsConflict,
+            "description": "Briefs cannot turn off while workflows deliver to the brief",
+        }
+    },
+)
+async def update_briefing_schedule(
+    body: BriefingScheduleUpdate,
+    user_id: str = Depends(get_user_id),
+) -> BriefingSchedule:
+    """Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored."""
+    log.set(user={"id": user_id}, operation="update_briefing_schedule")
+    user = await set_briefing_schedule(
+        user_id, body.schedule(), via="settings", workflow_deliveries=body.workflow_deliveries
+    )
+    return user.briefing_schedule
 
 
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)

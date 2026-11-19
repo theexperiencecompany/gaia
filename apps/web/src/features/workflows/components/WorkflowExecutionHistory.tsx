@@ -1,20 +1,17 @@
 "use client";
 
-import { Chip, Skeleton } from "@heroui/react";
-import {
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-  Clock04Icon,
-  Loading03Icon,
-} from "@icons";
+import { Skeleton } from "@heroui/react";
+import { Clock04Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
-import { shapeVariants } from "@/components/shared/shape";
+import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
+
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
+import { ExecutionStatusBadge } from "./ExecutionStatusBadge";
 import PanelHeader from "./workflow-modal/PanelHeader";
 
 interface WorkflowExecutionHistoryProps {
@@ -47,64 +44,6 @@ function formatDuration(seconds: number | undefined): string {
   if (seconds < 60) return `Ran for ${Math.round(seconds)}s`;
   if (seconds < 3600) return `Ran for ${Math.round(seconds / 60)}m`;
   return `Ran for ${Math.round(seconds / 3600)}h`;
-}
-
-function ExecutionStatusBadge({
-  status,
-}: {
-  status: WorkflowExecution["status"];
-}) {
-  switch (status) {
-    case "success":
-      return (
-        <Chip
-          className={shapeVariants({ shape: "sm" })}
-          size="sm"
-          color="success"
-          variant="soft"
-        >
-          <CheckmarkCircle02Icon className="h-3 w-3" />
-          <Chip.Label>Success</Chip.Label>
-        </Chip>
-      );
-    case "failed":
-      return (
-        <Chip
-          className={shapeVariants({ shape: "sm" })}
-          size="sm"
-          color="danger"
-          variant="soft"
-        >
-          <AlertCircleIcon className="h-3 w-3" />
-          <Chip.Label>Failed</Chip.Label>
-        </Chip>
-      );
-    case "skipped":
-      return (
-        <Chip
-          className={shapeVariants({ shape: "sm" })}
-          size="sm"
-          color="default"
-          variant="soft"
-        >
-          <Chip.Label>Skipped</Chip.Label>
-        </Chip>
-      );
-    case "running":
-      return (
-        <Chip
-          className={shapeVariants({ shape: "sm" })}
-          size="sm"
-          color="accent"
-          variant="soft"
-        >
-          <div className="animate-spin">
-            <Loading03Icon className="h-3 w-3" />
-          </div>
-          <Chip.Label>Running</Chip.Label>
-        </Chip>
-      );
-  }
 }
 
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
@@ -165,6 +104,13 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
         )}
       </div>
       <div className="flex items-center gap-2">
+        {execution.status !== "running" && (
+          <ShareLinkControls
+            iconOnly
+            targetType="workflow_run"
+            targetId={execution.execution_id}
+          />
+        )}
         <span className="text-xs text-zinc-500">
           {relativeLabel ??
             calendarDateFormat.format(new Date(execution.started_at))}

@@ -11,12 +11,14 @@ import asyncio
 from dataclasses import dataclass
 
 from app.agents.core.background.workflow_platform_delivery import deliver_workflow_result
+from app.constants.briefing import BriefItemSource
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.user_models import AuthenticatedUser
+from app.services.briefing.held import daily_brief_is_live
 from app.services.workflow.notifications import send_workflow_completion_notification
 from shared.py.wide_events import log
 
@@ -41,10 +43,18 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
     """Push, hold for the brief, or keep silent one finished run's narrated result.
 
     now sends it to the user's one proactive place and raises the in-app
-    heads-up; brief stores a pending brief item; silent sends nothing.
+    heads-up; brief stores a pending brief item, or goes now when no daily brief
+    will run to carry it; silent sends nothing.
     """
     log.set(workflow_delivery=run.delivery.value)
-    if run.delivery is WorkflowDelivery.NOW:
+    delivery = run.delivery
+    if delivery is WorkflowDelivery.BRIEF and not await daily_brief_is_live(user.user_id):
+        log.info(
+            f"{LogTag.WORKFLOW} Workflow result sent now: no daily brief will carry it",
+            workflow_id=run.workflow_id,
+        )
+        delivery = WorkflowDelivery.NOW
+    if delivery is WorkflowDelivery.NOW:
         # The in-app badge does not depend on where the chat message goes.
         await asyncio.gather(
             deliver_workflow_result(
@@ -61,12 +71,13 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
                 user_id=user.user_id,
             ),
         )
-    elif run.delivery is WorkflowDelivery.BRIEF:
+    elif delivery is WorkflowDelivery.BRIEF:
         await pending_brief_items_repository.create(
             PendingBriefItemDocument(
                 user_id=user.user_id,
-                workflow_id=run.workflow_id,
-                workflow_title=run.workflow_title,
+                source=BriefItemSource.WORKFLOW,
+                source_id=run.workflow_id,
+                source_title=run.workflow_title,
                 conversation_id=run.conversation_id,
                 text=run.text,
             )

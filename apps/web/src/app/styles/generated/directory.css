@@ -59,6 +59,7 @@
 @source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
+@source "../../../lib/internalApiHeaders.ts";
 @source "../../../lib/privateBlob.ts";
 @source "../../../lib/queryClient.ts";
 @source "../../../lib/selfhost.ts";

@@ -117,6 +117,7 @@ export const overlayVariants = tv({
       accent: "gaia-overlay-accent",
       foreground: "gaia-overlay-foreground",
       danger: "gaia-overlay-danger",
+      bare: "gaia-overlay-bare",
     },
     backdrop: { none: "", opaque: "gaia-overlay-opaque" },
   },

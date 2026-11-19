@@ -84,6 +84,7 @@
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/idle.ts";
 @source "../../../lib/imageDimensions.ts";
+@source "../../../lib/internalApiHeaders.ts";
 @source "../../../lib/privateBlob.ts";
 @source "../../../lib/queryClient.ts";
 @source "../../../lib/selfhost.ts";
@@ -128,6 +129,7 @@
 @source "../../../components/common/MarkdownViewerModal.tsx";
 @source "../../../components/dev/AgentationProvider.tsx";
 @source "../../../components/electron/ElectronRouteGuard.tsx";
+@source "../../../components/layout/StandalonePage.tsx";
 @source "../../../components/layout/StatusBanner.tsx";
 @source "../../../components/layouts/MainLayoutShell.tsx";
 @source "../../../components/layouts/PaidShellOverlays.tsx";
@@ -199,6 +201,7 @@
 @source "../../../config/registries/toolRegistry.ts";
 @source "../../../features/auth/constants.ts";
 @source "../../../features/bots/constants.ts";
+@source "../../../features/briefing/index.ts";
 @source "../../../features/browser/constants.ts";
 @source "../../../features/browser/utils.ts";
 @source "../../../features/chat/constants.tsx";
@@ -336,6 +339,7 @@
 @source "../../../../../../libs/shared/ts/src/workflows/index.ts";
 @source "../../../../../../libs/shared/ts/src/workflows/triggerDisplay.ts";
 @source "../../../../../../libs/shared/ts/src/workflows/triggers.ts";
+@source "../../[locale]/(brief)/layout.tsx";
 @source "../../[locale]/(desktop)/layout.tsx";
 @source "../../[locale]/(live)/layout.tsx";
 @source "../../[locale]/(main)/error.tsx";
@@ -344,6 +348,7 @@
 @source "../../[locale]/dev/layout.tsx";
 @source "../../[locale]/file-icons/page.tsx";
 @source "../../connect/[code]/route.ts";
+@source "../../../components/layout/headers/BriefingsHeader.tsx";
 @source "../../../components/layout/headers/CalendarHeader.tsx";
 @source "../../../components/layout/headers/ChatHeader.tsx";
 @source "../../../components/layout/headers/HeaderManager.tsx";
@@ -377,6 +382,7 @@
 @source "../../../components/ui/holo-card/utils.ts";
 @source "../../../components/ui/orb/GaiaOrb.tsx";
 @source "../../../config/openui/components/AudioPlayerView.tsx";
+@source "../../../config/openui/components/briefing.tsx";
 @source "../../../config/openui/components/content.tsx";
 @source "../../../config/openui/components/CopyableContentView.tsx";
 @source "../../../config/openui/components/document.tsx";
@@ -416,6 +422,16 @@
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
+@source "../../../features/briefing/api/briefingApi.ts";
+@source "../../../features/briefing/components/BriefingArchive.tsx";
+@source "../../../features/briefing/components/BriefingEdition.tsx";
+@source "../../../features/briefing/components/BriefingPage.tsx";
+@source "../../../features/briefing/components/StandaloneBriefing.tsx";
+@source "../../../features/briefing/hooks/useBriefingQuery.ts";
+@source "../../../features/briefing/hooks/useBriefingsQuery.ts";
+@source "../../../features/briefing/hooks/useGlobeSpin.ts";
+@source "../../../features/briefing/hooks/useNightGlobeBasemap.ts";
+@source "../../../features/briefing/hooks/usePostmarksQuery.ts";
 @source "../../../features/browser/api/browserApi.ts";
 @source "../../../features/browser/components/BrowserStatusChip.tsx";
 @source "../../../features/browser/components/BrowserTaskHistory.tsx";
@@ -492,6 +508,7 @@
 @source "../../../features/chat/utils/desktopToolBridge.ts";
 @source "../../../features/chat/utils/emojiUtils.ts";
 @source "../../../features/chat/utils/executorStreamProjection.ts";
+@source "../../../features/chat/utils/fileExtension.ts";
 @source "../../../features/chat/utils/loadingHints.ts";
 @source "../../../features/chat/utils/messageBreakUtils.ts";
 @source "../../../features/chat/utils/messageContentUtils.ts";
@@ -727,6 +744,8 @@
 @source "../../../features/settings/api/usageApi.ts";
 @source "../../../features/settings/api/voiceApi.ts";
 @source "../../../features/settings/components/AccountSettings.tsx";
+@source "../../../features/settings/components/BriefingScheduleSettings.tsx";
+@source "../../../features/settings/components/BriefsOffBlockedModal.tsx";
 @source "../../../features/settings/components/BrowserSettings.tsx";
 @source "../../../features/settings/components/CancelSubscriptionAction.tsx";
 @source "../../../features/settings/components/ChatChannelSettings.tsx";
@@ -765,6 +784,7 @@
 @source "../../../features/settings/config/sectionComponents.tsx";
 @source "../../../features/settings/config/sectionKeys.ts";
 @source "../../../features/settings/config/settingsConfig.tsx";
+@source "../../../features/settings/hooks/useBriefingScheduleSettings.ts";
 @source "../../../features/settings/hooks/useChatChannelSettings.ts";
 @source "../../../features/settings/hooks/useComposioSetup.ts";
 @source "../../../features/settings/hooks/useComposioToolkits.ts";
@@ -799,6 +819,18 @@
 @source "../../../features/setup-wizard/hooks/useAccountStepGate.ts";
 @source "../../../features/setup-wizard/utils/setupChecklist.ts";
 @source "../../../features/setup-wizard/utils/setupWizardRoute.ts";
+@source "../../../features/short-links/api/shortLinksApi.ts";
+@source "../../../features/short-links/components/LinkOpenBeacon.tsx";
+@source "../../../features/short-links/components/LinkUnavailable.tsx";
+@source "../../../features/short-links/components/PublicLinkView.tsx";
+@source "../../../features/short-links/components/PublicSessionArtifactView.tsx";
+@source "../../../features/short-links/components/PublicTodoDeliverableView.tsx";
+@source "../../../features/short-links/components/PublicWorkflowRunView.tsx";
+@source "../../../features/short-links/components/ShareLinkControls.tsx";
+@source "../../../features/short-links/components/shareLinkMenuItems.tsx";
+@source "../../../features/short-links/hooks/useShareLink.ts";
+@source "../../../features/short-links/utils/copyShortLink.ts";
+@source "../../../features/short-links/utils/sessionArtifactTargetId.ts";
 @source "../../../features/skills/api/skillsApi.ts";
 @source "../../../features/skills/components/BuiltinSkillsList.tsx";
 @source "../../../features/skills/components/SkillEditorModal.tsx";
@@ -868,7 +900,9 @@
 @source "../../../features/workflows/api/workflowApi.ts";
 @source "../../../features/workflows/components/CommunityBanner.tsx";
 @source "../../../features/workflows/components/CreateWorkflowModal.tsx";
+@source "../../../features/workflows/components/DeliverySegments.tsx";
 @source "../../../features/workflows/components/EditWorkflowModal.tsx";
+@source "../../../features/workflows/components/ExecutionStatusBadge.tsx";
 @source "../../../features/workflows/components/ScheduleBuilder.tsx";
 @source "../../../features/workflows/components/TimezoneAutocomplete.tsx";
 @source "../../../features/workflows/components/TriggerAutocomplete.tsx";
@@ -902,6 +936,7 @@
 @source "../../[locale]/(desktop)/desktop-popup/layout.tsx";
 @source "../../[locale]/(desktop)/desktop-popup/page.tsx";
 @source "../../[locale]/(desktop)/wake-listener/page.tsx";
+@source "../../[locale]/(main)/briefings/page.tsx";
 @source "../../[locale]/(main)/c/page.tsx";
 @source "../../[locale]/(main)/calendar/page.tsx";
 @source "../../[locale]/(main)/dashboard/page.tsx";
@@ -914,12 +949,19 @@
 @source "../../[locale]/(main)/todos/page.tsx";
 @source "../../[locale]/(main)/workflows/page.tsx";
 @source "../../[locale]/dev/tool-gallery/layout.tsx";
+@source "../../[locale]/l/[slug]/not-found.tsx";
+@source "../../[locale]/l/[slug]/page.tsx";
 @source "../../../components/layout/sidebar/right-variants/IntegrationSidebar.tsx";
 @source "../../../components/layout/sidebar/right-variants/TodoSidebar.tsx";
 @source "../../../components/layout/sidebar/variants/IntegrationsSidebar.tsx";
 @source "../../../components/layout/sidebar/variants/SettingsSidebar.tsx";
 @source "../../../components/layout/sidebar/variants/TodoSidebar.tsx";
 @source "../../../components/layout/sidebar/variants/WorkflowsSidebar.tsx";
+@source "../../../features/briefing/components/postmarks/PostmarkCard.tsx";
+@source "../../../features/briefing/components/postmarks/PostmarksGlobe.tsx";
+@source "../../../features/briefing/components/postmarks/PostmarksSettings.tsx";
+@source "../../../features/briefing/components/postmarks/StampCollection.tsx";
+@source "../../../features/chat/components/artifacts/FileViewerBody.tsx";
 @source "../../../features/chat/components/artifacts/FileViewerPanel.tsx";
 @source "../../../features/chat/components/banners/CreatedByGAIABanner.tsx";
 @source "../../../features/chat/components/browser/BrowserLivePanel.tsx";
@@ -963,6 +1005,7 @@
 @source "../../../features/chat/components/interface/LoadingIndicator.tsx";
 @source "../../../features/chat/components/interface/MarkdownRenderer.tsx";
 @source "../../../features/chat/components/interface/OpenUIRenderer.tsx";
+@source "../../../features/chat/components/interface/RichContentRenderer.tsx";
 @source "../../../features/chat/components/interface/StarterText.tsx";
 @source "../../../features/chat/components/memory/MemoryIndicator.tsx";
 @source "../../../features/chat/components/memory/MemoryModal.tsx";
@@ -1105,6 +1148,7 @@
 @source "../../../features/workflows/triggers/hooks/useTriggerOptions.ts";
 @source "../../../features/workflows/triggers/hooks/useTriggerSchemas.ts";
 @source "../../../features/workflows/triggers/types/index.ts";
+@source "../../[locale]/(brief)/brief/[id]/page.tsx";
 @source "../../[locale]/(desktop)/desktop-popup/feed/page.tsx";
 @source "../../[locale]/(live)/live/[code]/page.tsx";
 @source "../../[locale]/(main)/auth/link-platform/client.tsx";

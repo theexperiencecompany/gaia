@@ -77,6 +77,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_holo_card_conversation
+from app.utils.user_display import display_name
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
@@ -151,7 +152,7 @@ class OnboardingContext:
     """Shared per-user context threaded through the personalization helpers."""
 
     user_id: str
-    name: str
+    name: str | None
     profession: str = ""
     focus: str = ""
     user_email: str | None = None
@@ -228,7 +229,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     base_ctx = OnboardingContext(
         user_id=user_id,
-        name=user.name or "there",
+        name=display_name(user),
         profession=(onboarding.preferences.profession if onboarding.preferences else None)
         or "",  # pragma: no mutate — the default for a missing answer
         focus=onboarding.focus,
@@ -483,7 +484,7 @@ def _important_emails_for_client(triage: InboxTriage | None) -> list[TriageEmail
 
 async def _run_social_profiles(
     user_id: str,
-    user_name: str,
+    user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """Fetch email bodies, extract and persist social profiles, emit SOCIAL_PROFILES_READY."""

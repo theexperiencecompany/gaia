@@ -21,6 +21,8 @@ import {
 } from "@icons";
 import type { ComponentType } from "react";
 
+import { getExtension } from "@/features/chat/utils/fileExtension";
+
 interface FileTypeGlyphProps {
   size?: number;
   color?: string;
@@ -94,7 +96,7 @@ export function getFileTypeExtension(
 ): string {
   const mimeExt = MIME_TO_EXTENSION[fileType];
   if (mimeExt !== undefined) return mimeExt;
-  const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const extension = getExtension(fileName);
   return extension in FILE_TYPE_STYLES ? extension : "file";
 }
 

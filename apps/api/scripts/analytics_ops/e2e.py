@@ -24,6 +24,7 @@ from pydantic import ValidationError
 import redis
 
 from app.config.settings import settings
+from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.models.chat_models import SystemPurpose
 from app.workers.config.worker_settings import WorkerSettings
@@ -51,6 +52,11 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStarted,
 )
 from shared.py.analytics.catalog.reminders import ReminderCompleted
+from shared.py.analytics.catalog.settings import (
+    SettingsBriefingScheduleUpdated,
+    SettingsBriefsOffBlocked,
+    SettingsBriefsOffResolved,
+)
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
@@ -70,7 +76,6 @@ from .posthog_api import (
     reader,
 )
 
-DEFAULT_EMAIL = "analytics-e2e@gaia.local"
 # gaia-test receives each event within ~10s, but a query saw it only 6-10 min later (2026-10-09 runs).
 DEFAULT_TIMEOUT_S = 900
 POLL_INTERVAL_S = 10
@@ -258,6 +263,47 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 Expect(WorkflowCreated.event, BROWSER, True),
                 Expect(WorkflowExecuted.event, BROWSER, True),
                 *_workflow_run(),
+            ),
+        ),
+        Journey(
+            "briefing schedule",
+            journeys.briefing_schedule,
+            (
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (
+                        ("frequency", journeys.BRIEFING_SCHEDULE.frequency.value),
+                        ("hour", journeys.BRIEFING_SCHEDULE.hour),
+                        ("via", "settings"),
+                    ),
+                ),
+            ),
+        ),
+        Journey(
+            "briefs off guard",
+            journeys.briefs_off_guard,
+            (
+                Expect(WorkflowCreated.event, BROWSER, True),
+                Expect(
+                    SettingsBriefsOffBlocked.event,
+                    BROWSER,
+                    True,
+                    (("workflow_count", 1), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefsOffResolved.event,
+                    BROWSER,
+                    True,
+                    (("moved_to_now", 1), ("moved_to_silent", 0), ("via", "settings")),
+                ),
+                Expect(
+                    SettingsBriefingScheduleUpdated.event,
+                    BROWSER,
+                    True,
+                    (("frequency", BriefingFrequency.OFF.value), ("via", "settings")),
+                ),
             ),
         ),
         Journey(
@@ -510,7 +556,7 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         ),
         help="the local API the journeys drive",
     )
-    command.add_argument("--email", default=DEFAULT_EMAIL, help="the dev user each run recreates")
+    command.add_argument("--email", required=True, help="the dev user each run recreates")
     command.add_argument(
         "--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="ingestion wait, seconds"
     )

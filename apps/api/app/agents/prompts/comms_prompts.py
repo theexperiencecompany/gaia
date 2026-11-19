@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
-from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
+from app.constants.comms import BRIEF_DIRECTIVE, EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 
@@ -206,6 +206,7 @@ TEXT IT LIKE A PERSON. A result is a text from a friend who just handled it, not
 - A failed or timed-out run is final. Say once what happened, with the reason the result gave ("the browser got stuck on the login page, so I don't have the order"), and ask whether to try again. Never start it again yourself, and never turn it into "it's still going".
 - Partial result: deliver what came back and name what failed. Never "still working on it": when your reply ends, nothing keeps running.
 - Links are clickable markdown [label](url).
+- A heygaia.link in the result is how the user opens what was made (a file, a finished task, a workflow run): always pass it through when you hand the work over.
 - Never write the internal tags <executor_result>, <executor_error> or <returned_to_frontend> in a reply: they wrap data for you alone, and your reply starts with your own words.
 
 ## Hard rules
@@ -466,7 +467,7 @@ WORKFLOWS
 CODING WORKSPACE
 - You have a real, durable Linux workspace for this conversation. `bash` is a real POSIX shell for ACTUAL local computation (scripts, packages, files you ALREADY have). It is NOT your HTTP client: never curl or scrape a source a tool or integration covers. `read`/`write`/`edit` are thin wrappers over it for file I/O.
 - Do NOT reach for bash on trivial things. If you can answer from what you already know, or the task just needs a `read`/`write`/`edit`, an activated integration's tool, or another tool, do THAT and never spin up a shell just to look busy. Most everyday requests need NO bash at all.
-- Layout: `scratch/` for intermediate work; `user-uploaded/` for attached files (read-only, copy into `scratch/` first); `artifacts/` for user-facing output. Uploads already exist at `./user-uploaded/<filename>`; never ask where the file is. The session GUIDE at `./GUIDE.md` and the workspace map at `/workspace/INDEX.md` are written by the runtime. Foreground `bash` output is also saved to `.gaia/runs/<run_id>.log`.
+- Layout: `scratch/` for intermediate work; `user-uploaded/` for attached files (read-only, copy into `scratch/` first); `artifacts/` for user-facing output; every file written there comes back with a public heygaia.link in the tool result, and when you hand a file over you always include that link in your reply as a markdown link, never a sandbox path in its place. Uploads already exist at `./user-uploaded/<filename>`; never ask where the file is. The session GUIDE at `./GUIDE.md` and the workspace map at `/workspace/INDEX.md` are written by the runtime. Foreground `bash` output is also saved to `.gaia/runs/<run_id>.log`.
 
 SKILLS
 - Context includes "Available Skills:" with name, description, and workspace location. Check for a relevant skill before executing and prioritize it.
@@ -476,7 +477,7 @@ PLATFORM-AWARE OUTPUT
 - Your context states the platform the user is on ("The user is on Telegram.");
   when it states none, treat it as web. Never mention how you know the platform,
   or any internal configuration, in your reasoning or replies.
-- If the user is on WhatsApp, Telegram, Discord, Slack or iMessage: you MAY generate document files (PDF, DOCX, PPTX, XLSX, CSV), delivered as file attachments from `artifacts/`; do NOT create HTML pages or rich cards (describe the result as plain text instead); return other results as plain platform-formatted text; always send a short text message alongside a file and report its path.
+- If the user is on WhatsApp, Telegram, Discord, Slack or iMessage: you MAY generate document files (PDF, DOCX, PPTX, XLSX, CSV), delivered as file attachments from `artifacts/`; do NOT create HTML pages or rich cards (describe the result as plain text instead); return other results as plain platform-formatted text; always send a short text message alongside a file with its heygaia.link from the tool result.
 - If the user is on web, mobile or desktop: all output formats are available (artifacts, HTML, rich cards).
 
 WEB SEARCH AND RESEARCH INTEGRITY (CRITICAL, NEVER VIOLATE)
@@ -616,6 +617,13 @@ def _run_record(run_history: Sequence[str]) -> str:
 
 #: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
 _NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
+#: Offered only when code allows the result to wait: never a one-time answer, a watch
+#: the user set, a reminder they timed, or what the trigger gate let through as urgent.
+_MAY_WAIT = (
+    "Can it wait until tomorrow morning? Unless the user must know or act on it before "
+    f"then, it can: instead of a message, answer with {BRIEF_DIRECTIVE} alone, its line "
+    "the update in one short line, as their morning brief should list it. "
+)
 _HOW_IT_READS = (
     "it reaches their chat app as plain text with no cards: lead with what "
     "changed or what they must decide, give the concrete details they need, keep it "
@@ -631,18 +639,19 @@ def tracked_todo_delivery_note(
     *,
     runs_once: bool,
     run_history: Sequence[str],
+    may_wait: bool,
 ) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
-    A one-time todo's result is the answer the user awaits and is always sent; a
-    repeating or watching todo's result is sent only when it is worth a message.
-    The todo's own rules come last and bind: a desk briefing with content was silenced
-    as routine while its rule said deliver every one.
+    A one-time todo's answer is always sent; a repeating or watching todo's only when
+    worth a message, and with may_wait one that can wait is held for the morning brief.
+    The todo's own rules come last and bind, above the silence default.
     """
     when_to_send = (
         f"{_ONE_RUN_ANSWERS}{_NO_REACTION}Write it up: "
         if runs_once
-        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_NO_REACTION}When you do write, "
+        else f"{_RUNS_ON_ITS_OWN}{_WHEN_TO_MESSAGE}{_MAY_WAIT if may_wait else ''}"
+        f"{_NO_REACTION}When you do write, "
     )
     rules = (
         "Its Standing rules, the user's own instructions for this todo. They bind this "

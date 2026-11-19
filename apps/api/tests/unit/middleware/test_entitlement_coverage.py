@@ -177,6 +177,11 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/device/servers/server_key",
         "/api/v1/device/token",
         "/api/v1/integrations/connect-link",
+        "/api/v1/l/slug",
+        "/api/v1/l/slug/file",
+        "/api/v1/l/slug/opened",
+        "/api/v1/l/state",
+        "/api/v1/l/unshare",
         "/api/v1/mcp/oauth/callback",
         "/api/v1/notifications/unregister-device",
         "/api/v1/notifications/unsubscribe",
@@ -242,6 +247,25 @@ async def test_llm_spend_under_a_free_prefix_keeps_its_own_gate(gated_client: As
             json={"edited_summary": "short and warm", "profession": "founder"},
         )
     assert response.status_code == 402
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("free_caller")
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/l/abcdefghijk"),
+        ("GET", "/api/v1/l/abcdefghijk/file"),
+        ("POST", "/api/v1/l/abcdefghijk/opened"),
+    ],
+)
+async def test_a_shared_link_opens_by_its_capability_not_the_viewers_plan(
+    gated_client: AsyncClient, method: str, path: str
+) -> None:
+    """A signed-in viewer without a plan got the paywall for a link someone shared with them."""
+    response = await gated_client.request(method, path)
+
+    assert response.status_code != 402
 
 
 @pytest.mark.regression

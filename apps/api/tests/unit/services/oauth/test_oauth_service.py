@@ -321,22 +321,22 @@ class TestStoreUserInfo:
         assert mock_user_repo.create.call_args.args[0].picture == ""
 
     @pytest.mark.regression
-    async def test_new_user_without_a_workos_name_gets_one_derived_from_the_email(
+    async def test_new_user_without_a_workos_name_stores_none_rather_than_one_guessed_from_the_email(
         self,
         mock_user_repo,
         mock_track_signup,
         mock_redis_pool_manager,
     ):
-        """WorkOS sends no name for email-code signups; storing "" left the user nameless forever."""
+        """WorkOS sends no name for email-code signups; a name guessed from the address got greeted as theirs."""
         uid = str(ObjectId())
         mock_user_repo.get_by_email.return_value = None
         mock_user_repo.create.return_value = UserDocument(id=uid)
 
         await store_user_info("", "aryan.randeriya@test.com", None, auth_method=None)
 
-        assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
-        assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
-        # The derived name is what the queued delivery reads back off the row to greet the user.
+        assert mock_user_repo.create.call_args.args[0].name is None
+        assert mock_track_signup.call_args.kwargs["name"] is None
+        # The queued delivery reads the name back off the row, so it greets without one.
         # Not assert_awaited_once_with: enqueue_worker_job also attaches the caller's trace id,
         # which is not this test's subject.
         assert mock_redis_pool_manager.enqueue_job.await_args.args == (

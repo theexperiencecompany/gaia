@@ -82,5 +82,6 @@ After creating an artifact, briefly tell the user:
 - What file was created
 - What it contains
 - Why it is useful
+- Its heygaia.link from the tool result, as a markdown link, so they can open it anywhere
 
 Keep this concise and practical.

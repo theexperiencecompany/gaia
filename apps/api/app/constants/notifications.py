@@ -79,13 +79,19 @@ class ProactiveMessageClass(StrEnum):
     ROUTINE = "routine"
     #: A reminder the user set for this time: it arrives when they asked, quiet hours or not.
     USER_TIMED = "user_timed"
+    #: A reply to something the user just did (the hello after linking a chat app): expected now.
+    USER_TRIGGERED = "user_triggered"
     #: The result of a run the trigger gate let through quiet hours as urgent.
     URGENT = "urgent"
 
 
 #: Classes delivered even inside the user's quiet hours.
 QUIET_HOURS_EXEMPT: frozenset[ProactiveMessageClass] = frozenset(
-    {ProactiveMessageClass.USER_TIMED, ProactiveMessageClass.URGENT}
+    {
+        ProactiveMessageClass.USER_TIMED,
+        ProactiveMessageClass.USER_TRIGGERED,
+        ProactiveMessageClass.URGENT,
+    }
 )
 
 
@@ -129,3 +135,13 @@ def pick_workflow_done_copy(workflow_id: str, title: str, salt: str) -> tuple[st
     seed = sum(ord(c) for c in f"{workflow_id}{salt}")
     title_tmpl, body = WORKFLOW_DONE_COPY[seed % len(WORKFLOW_DONE_COPY)]
     return title_tmpl.format(title=title), body
+
+
+# A photo caption's limit on Telegram and WhatsApp; post_to_platform_chat carries
+# the rest of a longer caption as follow-up text.
+CHAT_CAPTION_MAX_CHARS = 1024
+
+# Daily brief / weekly recap notifications: the email channel renders the
+# edition from content.rich_content when metadata.kind names one of these.
+NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
+NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"

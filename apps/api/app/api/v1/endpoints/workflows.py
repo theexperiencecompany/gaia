@@ -139,6 +139,8 @@ async def create_workflow(
             workflow=as_read_view(workflow), message="Workflow created successfully"
         )
 
+    except AppError:
+        raise
     except TriggerRegistrationError as e:
         # Specific error for trigger registration failures
         raise HTTPException(

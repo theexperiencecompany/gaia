@@ -14,6 +14,7 @@
  * logic is unit-testable without any platform SDK. Adapters supply only a
  * platform-specific {@link IncomingMedia} descriptor and a download thunk.
  */
+import { imageSize } from "image-size";
 import type { GaiaClient } from "../api";
 import type { BotFileData, BotUserContext, PlatformName } from "../types";
 import { getHttpStatus } from "./logger";
@@ -51,6 +52,23 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   whatsapp: 100 * MB, // WhatsApp document limit
   imessage: 50 * MB, // Photon caps are undocumented; conservative floor
 };
+
+/**
+ * Long side over short side past which an outbound image goes as a document,
+ * not a photo. Telegram and WhatsApp recompress photos to roughly 1280-1600px
+ * on the long side, so a tall render (a 1620x5000 daily brief) comes out about
+ * 400px wide and its text is unreadable; a document keeps the original pixels.
+ * At 2:1 the short side still keeps 640px or more after that downscale.
+ */
+const PHOTO_MAX_ASPECT_RATIO = 2;
+
+/** Whether an image survives a messaging app's photo recompression legibly. */
+export function isLegibleAsPhoto(data: Uint8Array): boolean {
+  const { width, height } = imageSize(data);
+  return (
+    Math.max(width, height) / Math.min(width, height) <= PHOTO_MAX_ASPECT_RATIO
+  );
+}
 
 /** Normalised media kind, identical across platforms. */
 export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";

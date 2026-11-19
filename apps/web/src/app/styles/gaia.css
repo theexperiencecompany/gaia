@@ -751,6 +751,15 @@
   .popover [data-slot="popover-overlay-arrow"] {
     stroke: transparent;
   }
+  /* overlayVariants({ surface: "bare" }): an overlay whose content is its own
+     card, so it draws no body, padding or shadow of its own. */
+  .tooltip.gaia-overlay-bare,
+  .popover.gaia-overlay-bare {
+    --overlay: transparent;
+    background-color: transparent;
+    padding: 0;
+    box-shadow: none;
+  }
   /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
      tooltips, body and arrow alike. */
   .gaia-overlay-accent {

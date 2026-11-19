@@ -20,6 +20,7 @@ from app.config.deployment import (
     BlobStoreKind,
     DeploymentKind,
     DeploymentProfile,
+    LinkBase,
     deployment_profile,
 )
 from app.config.secrets import inject_infisical_secrets
@@ -40,6 +41,9 @@ from app.constants.search import (
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
 from shared.py.wide_events import log
+
+# The web app route a heygaia.link slug rewrites to.
+SHORTLINK_WEB_ROUTE = "/l"
 
 load_dotenv()
 
@@ -139,6 +143,11 @@ class Settings(BrowserHostSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
+    # Short-link base (heygaia.link/<slug> on GAIA Cloud). Unset elsewhere, it is
+    # FRONTEND_URL/l, the instance's own route. No trailing slash.
+    SHORTLINK_BASE_URL: str = "https://heygaia.link"
+    # Sender address for outbound briefing email; the same in every environment.
+    EMAIL_FROM: str = "brief@heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
@@ -170,7 +179,7 @@ class Settings(BrowserHostSettings):
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
 
-    @field_validator("HOST", "FRONTEND_URL", mode="after")
+    @field_validator("HOST", "FRONTEND_URL", "SHORTLINK_BASE_URL", mode="after")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
@@ -607,6 +616,11 @@ class Settings(BrowserHostSettings):
     # Bot Configuration
     # ----------------------------------------------
     GAIA_BOT_API_KEY: str | None = None
+    # Shared with the web app's server. Only rate limiting reads it: its requests count
+    # against the token's ceiling and the viewer they name. Never grants auth.
+    INTERNAL_API_TOKEN: str | None = None
+    # The value being rotated out, still accepted until every web server sends the new one.
+    INTERNAL_API_TOKEN_PREVIOUS: str | None = None
     DISCORD_BOT_TOKEN: str | None = None
     DISCORD_CLIENT_ID: str | None = None
     SLACK_BOT_TOKEN: str | None = None
@@ -653,6 +667,16 @@ class Settings(BrowserHostSettings):
         self.DISCORD_OAUTH_CLIENT_ID = self.DISCORD_OAUTH_CLIENT_ID or GAIA_CLOUD_DISCORD_CLIENT_ID
         self.SLACK_OAUTH_CLIENT_ID = self.SLACK_OAUTH_CLIENT_ID or GAIA_CLOUD_SLACK_CLIENT_ID
         self.TELEGRAM_BOT_USERNAME = self.TELEGRAM_BOT_USERNAME or GAIA_CLOUD_TELEGRAM_BOT_USERNAME
+        return self
+
+    @model_validator(mode="after")
+    def _short_links_on_the_instances_web_app(self) -> Self:
+        """Point minted links at this instance's web app /l route unless it resolves heygaia.link."""
+        if (
+            self.deployment.link_base is LinkBase.INSTANCE_WEB_ROUTE
+            and "SHORTLINK_BASE_URL" not in self.model_fields_set
+        ):
+            self.SHORTLINK_BASE_URL = f"{self.FRONTEND_URL}{SHORTLINK_WEB_ROUTE}"
         return self
 
     @model_validator(mode="before")

@@ -519,6 +519,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Briefings
+         * @description Archive of the user's briefings (daily + weekly), newest first.
+         */
+        get: operations["briefings_list_briefings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/{briefing_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Briefing
+         * @description Return one of the user's briefs; the first open marks it and emits briefing:opened.
+         */
+        get: operations["briefings_get_briefing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/briefings/postmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postmarks
+         * @description The Air Mail city stamps the user has collected, each linked to its brief.
+         */
+        get: operations["briefings_get_postmarks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/browser/handoffs/{handoff_id}/decision": {
         parameters: {
             query?: never;
@@ -2063,6 +2123,132 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/l": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Short Link Route
+         * @description Share an artifact the caller owns: return its heygaia.link, minting one.
+         *
+         *     Turns sharing back on for a target its owner had stopped sharing.
+         */
+        post: operations["short_links_create_short_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Short Link Route
+         * @description Resolve a capability slug to its target's public view. No auth.
+         */
+        get: operations["short_links_resolve_short_link_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Short Link File Route
+         * @description Stream the file behind a slug: raster images inline, everything else a download. No auth.
+         */
+        get: operations["short_links_get_short_link_file_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Open Route
+         * @description Count the link as opened, sent by the viewer's browser once the page shows.
+         *
+         *     Not the resolve: the page resolves during SSR, where neither the viewer's
+         *     session nor their browser is visible, and unfurl bots resolve it too.
+         */
+        post: operations["short_links_record_open_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Share State Route
+         * @description Say whether one of your artifacts is shared, with its live link. Never mints one.
+         */
+        get: operations["short_links_get_share_state_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/unshare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Sharing Route
+         * @description Stop sharing one of your artifacts: its link goes dead immediately, and GAIA
+         *     attaches no new one until you share it again. Idempotent; says whether a link died.
+         */
+        post: operations["short_links_stop_sharing_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lab/events": {
         parameters: {
             query?: never;
@@ -2762,6 +2948,30 @@ export interface paths {
          *     beyond the first page a paginated client has fetched.
          */
         post: operations["notification_mark_all_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/preferences/briefing-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Briefing Schedule
+         * @description How often the user's briefs come, and the daily brief's hour on their clock.
+         */
+        get: operations["notification_read_briefing_schedule"];
+        /**
+         * Update Briefing Schedule
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.
+         */
+        put: operations["notification_update_briefing_schedule"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6629,6 +6839,302 @@ export interface components {
             user_name?: string | null;
         };
         /**
+         * BriefDeliveryWorkflow
+         * @description A workflow whose results wait for the brief.
+         */
+        BriefDeliveryWorkflow: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefDeliveryWorkflowsConflict
+         * @description The 409 body when briefs cannot turn off: the workflows still delivering to the brief.
+         */
+        BriefDeliveryWorkflowsConflict: {
+            /**
+             * Code
+             * @description Machine-readable error code.
+             */
+            code?: string | null;
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+            /** Workflows */
+            workflows: components["schemas"]["BriefDeliveryWorkflow"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * BriefingEvent
+         * @description One calendar event on the user's own clock, read from their calendar.
+         */
+        BriefingEvent: {
+            /** Date */
+            date: string;
+            /** Location */
+            location?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingFrequency
+         * @description How often the user wants briefs: the one setting the briefing workflows follow.
+         * @enum {string}
+         */
+        BriefingFrequency: "daily" | "weekdays" | "weekly_only" | "off";
+        /**
+         * BriefingItem
+         * @description A single line inside a section, optionally bound to a todo.
+         */
+        BriefingItem: {
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /**
+             * Kind
+             * @default note
+             * @enum {string}
+             */
+            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** Link */
+            link: string | null;
+            /** Text */
+            text: string;
+            /** Todo Id */
+            todo_id: string | null;
+        };
+        /**
+         * BriefingListResponse
+         * @description Archive response shape (frontend is coded against this).
+         */
+        BriefingListResponse: {
+            /** Briefings */
+            briefings: components["schemas"]["BriefingModel"][];
+        };
+        /**
+         * BriefingModel
+         * @description Persisted briefing document (``briefings`` collection).
+         *
+         *     Doubles as the repository's document model (``BriefingsRepository`` in
+         *     ``app/db/repositories/briefings.py``) — one canonical model for the
+         *     persisted shape and every consumer (endpoints, ``BriefingListResponse``,
+         *     the archive/dashboard reads). Identity is the string business key ``id``,
+         *     persisted as Mongo's ``_id`` (``uses_object_id=False``).
+         */
+        BriefingModel: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Date */
+            date: string;
+            /** Delivered Channels */
+            delivered_channels: string[];
+            /** Edition Image Url */
+            edition_image_url: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @default daily
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            /** Opened At */
+            opened_at: string | null;
+            payload: components["schemas"]["BriefingPayload"];
+            /** Updated At */
+            updated_at: string | null;
+            /** User Id */
+            user_id: string;
+        };
+        /**
+         * BriefingPayload
+         * @description The structured briefing the run emits and every channel renders.
+         */
+        BriefingPayload: {
+            /**
+             * Calendar
+             * @description Today's calendar events, in start order.
+             */
+            calendar: components["schemas"]["BriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /**
+             * Generated At
+             * @description User-local generation time, e.g. "6:02 AM".
+             */
+            generated_at: string | null;
+            /** Headline */
+            headline: string;
+            /**
+             * Hue
+             * @default 0
+             */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Message
+             * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
+             */
+            message: string | null;
+            /**
+             * Mood
+             * @enum {string}
+             */
+            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /** @description Set when this brief's stamp is one the user had not collected before. */
+            new_stamp: components["schemas"]["NewStamp"] | null;
+            /**
+             * Recipient Name
+             * @description The user's name as the edition addresses them (an envelope, a memo's TO: line); None when unknown or on legacy rows.
+             */
+            recipient_name: string | null;
+            /** Sections */
+            sections: components["schemas"]["BriefingSection"][];
+            /**
+             * Stamp City
+             * @description Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.
+             */
+            stamp_city: string | null;
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+            tallies: components["schemas"]["BriefingTallies"] | null;
+            /**
+             * Template Family
+             * @description The edition template family this brief was drawn in. Persisted so the archive re-renders identically forever.
+             */
+            template_family: string;
+            week: components["schemas"]["BriefingWeek"] | null;
+        };
+        /**
+         * BriefingSchedule
+         * @description When the user wants their briefs: how often, and the daily brief's local hour.
+         */
+        BriefingSchedule: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+        };
+        /**
+         * BriefingScheduleUpdate
+         * @description A new briefing schedule; turning briefs off also says where brief-delivery workflows go.
+         */
+        BriefingScheduleUpdate: {
+            /** @default daily */
+            frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Hour
+             * @default 8
+             */
+            hour?: number;
+            /**
+             * Workflow Deliveries
+             * @description New delivery per workflow id, for workflows that deliver to the brief
+             */
+            workflow_deliveries?: {
+                [key: string]: "now" | "silent";
+            };
+        };
+        /**
+         * BriefingSection
+         * @description A Roman-numeraled section of the briefing.
+         */
+        BriefingSection: {
+            /** Items */
+            items: components["schemas"]["BriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BriefingStat
+         * @description One tuple in the stat row (e.g. value="12" label="drafts staged").
+         */
+        BriefingStat: {
+            /** Delta */
+            delta: string | null;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * BriefingTallies
+         * @description Completed-todo counts behind the brief, computed from the todos store —
+         *     never parsed back out of stat labels, so every renderer agrees with them.
+         */
+        BriefingTallies: {
+            /** Done By Gaia */
+            done_by_gaia: number;
+            /** Done By You */
+            done_by_you: number;
+        };
+        /**
+         * BriefingWeek
+         * @description The real week the weekly edition draws: Monday-to-Sunday completions,
+         *     what shipped, what GAIA handled, and the calendar ahead. Every field is
+         *     counted or read, never estimated.
+         */
+        BriefingWeek: {
+            /** Ahead */
+            ahead?: components["schemas"]["BriefingEvent"][];
+            /** Days */
+            days: components["schemas"]["BriefingWeekDay"][];
+            /** Handled */
+            handled?: string[];
+            /** Shipped */
+            shipped?: string[];
+        };
+        /**
+         * BriefingWeekDay
+         * @description Todos completed on one day of the week, by owner.
+         */
+        BriefingWeekDay: {
+            /** Gaia */
+            gaia: number;
+            /** You */
+            you: number;
+        };
+        /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
          *     storage_state (cookies + localStorage), split per host on the server.
@@ -9276,6 +9782,8 @@ export interface components {
             htmlLink?: string | null;
             /** Id */
             id?: string | null;
+            /** Location */
+            location?: string | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -11294,6 +11802,26 @@ export interface components {
              */
             total: number;
         };
+        /**
+         * NewStamp
+         * @description A city stamp the user collected for the first time with this brief.
+         */
+        NewStamp: {
+            /** City */
+            city: string;
+            /**
+             * Collected
+             * @description Stamps collected, this one included.
+             */
+            collected: number;
+            /** Country */
+            country: string;
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
         /** NoteModel */
         NoteModel: {
             /** Content */
@@ -12297,6 +12825,47 @@ export interface components {
             status: "pending" | "approved" | "expired";
         };
         /**
+         * Postmark
+         * @description One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+         */
+        Postmark: {
+            /**
+             * Briefing Id
+             * @description The brief that first carried the stamp.
+             */
+            briefing_id: string;
+            /** City */
+            city: string;
+            /** City Slug */
+            city_slug: string;
+            /** Country */
+            country: string;
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD the stamp first arrived.
+             */
+            date: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Stamp Url */
+            stamp_url: string;
+        };
+        /**
+         * PostmarksResponse
+         * @description The user's stamp collection, first arrival first.
+         */
+        PostmarksResponse: {
+            /** Postmarks */
+            postmarks: components["schemas"]["Postmark"][];
+            /**
+             * Total
+             * @description How many city stamps can be collected.
+             */
+            total: number;
+        };
+        /**
          * Priority
          * @enum {string}
          */
@@ -12306,7 +12875,7 @@ export interface components {
          * @description What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.
          * @enum {string}
          */
-        ProactiveMessageClass: "routine" | "user_timed" | "urgent";
+        ProactiveMessageClass: "routine" | "user_timed" | "user_triggered" | "urgent";
         /**
          * ProjectCreate
          * @description Model for creating projects
@@ -12567,6 +13136,92 @@ export interface components {
             ok: boolean;
         };
         /**
+         * PublicBriefing
+         * @description A persisted daily/weekly brief: its rendered edition image and payload,
+         *     shaped like the ``BriefingModel`` fields ``StandaloneBriefing`` renders.
+         */
+        PublicBriefing: {
+            /** Edition Image Url */
+            edition_image_url: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "daily" | "weekly";
+            payload: components["schemas"]["PublicBriefingPayload"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "briefing";
+        };
+        /**
+         * PublicBriefingEvent
+         * @description A calendar entry on the brief: when and what, never where.
+         */
+        PublicBriefingEvent: {
+            /** Date */
+            date: string;
+            /** Start */
+            start: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * PublicBriefingItem
+         * @description An item as the brief page lists it. ``link`` is the item's own public
+         *     heygaia.link; the todo id it is bound to stays private.
+         */
+        PublicBriefingItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gaia" | "you" | "lookback" | "failed" | "note";
+            /** Link */
+            link: string | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PublicBriefingPayload
+         * @description The brief fields the standalone brief page reads (``BriefingEdition``).
+         */
+        PublicBriefingPayload: {
+            /** Calendar */
+            calendar: components["schemas"]["PublicBriefingEvent"][];
+            /** Caption */
+            caption: string;
+            /** Date */
+            date: string;
+            /** Headline */
+            headline: string;
+            /** Hue */
+            hue: number;
+            /** Kicker */
+            kicker: string;
+            /** Lede */
+            lede: string;
+            /**
+             * Mood
+             * @enum {string}
+             */
+            mood: "clear" | "packed" | "idle" | "winback" | "weekly";
+            /** Sections */
+            sections: components["schemas"]["PublicBriefingSection"][];
+            /** Stats */
+            stats: components["schemas"]["BriefingStat"][];
+        };
+        /** PublicBriefingSection */
+        PublicBriefingSection: {
+            /** Items */
+            items: components["schemas"]["PublicBriefingItem"][];
+            /** Numeral */
+            numeral: string;
+            /** Title */
+            title: string;
+        };
+        /**
          * PublicHoloCardResponse
          * @description Public-facing subset of a user's profile, keyed by user id (``card_id``).
          *
@@ -12660,6 +13315,26 @@ export interface components {
             tools?: components["schemas"]["IntegrationTool"][];
         };
         /**
+         * PublicSessionArtifact
+         * @description A file GAIA produced in a session's sandbox. ``content`` is the text of a
+         *     text file; binary files carry ``None`` and render as a metadata card.
+         */
+        PublicSessionArtifact: {
+            /** Content */
+            content: string | null;
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "session_artifact";
+        };
+        /**
          * PublicSupportRequestCreate
          * @description A contact-form request that may come from a visitor with no GAIA session.
          */
@@ -12691,6 +13366,24 @@ export interface components {
             turnstile_token: string;
             /** @description Type of request (support or feature) */
             type: components["schemas"]["SupportRequestType"];
+        };
+        /**
+         * PublicTodoDeliverable
+         * @description A tracked todo's result: its title and the deliverable facet of its
+         *     canvas (``canvas_markdown.deliverable_markdown``), never the working sections.
+         */
+        PublicTodoDeliverable: {
+            /** Completed */
+            completed: boolean;
+            /** Content */
+            content: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "todo_deliverable";
+            /** Title */
+            title: string;
         };
         /**
          * PublicWorkflowCard
@@ -12732,6 +13425,33 @@ export interface components {
             /** Total Executions */
             total_executions: number | null;
             trigger_config: components["schemas"]["TriggerConfig"] | null;
+        };
+        /**
+         * PublicWorkflowRun
+         * @description One workflow execution's outcome.
+         */
+        PublicWorkflowRun: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "success" | "failed" | "skipped";
+            /** Summary */
+            summary: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            target_type: "workflow_run";
+            /** Workflow Title */
+            workflow_title: string;
         };
         /**
          * PublicWorkflowsResponse
@@ -13621,6 +14341,37 @@ export interface components {
             wizard_dismissed: boolean;
         };
         /**
+         * ShortLinkResponse
+         * @description A minted heygaia.link URL.
+         */
+        ShortLinkResponse: {
+            /** Url */
+            url: string;
+        };
+        /**
+         * ShortLinkShareState
+         * @description Whether one of the owner's artifacts is shared: its live heygaia.link, or None.
+         */
+        ShortLinkShareState: {
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * ShortLinkTargetRequest
+         * @description One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing.
+         */
+        ShortLinkTargetRequest: {
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+        };
+        /**
+         * ShortLinkTargetType
+         * @description Every kind of artifact a heygaia.link can point at.
+         * @enum {string}
+         */
+        ShortLinkTargetType: "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+        /**
          * SignupRequest
          * @description Body of POST /api/v1/auth/signup; invite is the token from an invite link.
          */
@@ -14004,6 +14755,14 @@ export interface components {
              * @description Notification title: short and human-readable, like a phone notification header (e.g. 'Drink water'). Shown directly to the user.
              */
             title: string;
+        };
+        /**
+         * StopSharingResult
+         * @description Whether stopping killed a live link; False when the artifact was not shared.
+         */
+        StopSharingResult: {
+            /** Revoked */
+            revoked: boolean;
         };
         /**
          * StoredIntegrationTool
@@ -16509,6 +17268,21 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
+export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefingEvent = components['schemas']['BriefingEvent'];
+export type BriefingFrequency = components['schemas']['BriefingFrequency'];
+export type BriefingItem = components['schemas']['BriefingItem'];
+export type BriefingListResponse = components['schemas']['BriefingListResponse'];
+export type BriefingModel = components['schemas']['BriefingModel'];
+export type BriefingPayload = components['schemas']['BriefingPayload'];
+export type BriefingSchedule = components['schemas']['BriefingSchedule'];
+export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
+export type BriefingSection = components['schemas']['BriefingSection'];
+export type BriefingStat = components['schemas']['BriefingStat'];
+export type BriefingTallies = components['schemas']['BriefingTallies'];
+export type BriefingWeek = components['schemas']['BriefingWeek'];
+export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
@@ -16764,6 +17538,7 @@ export type ModalConfig = components['schemas']['ModalConfig'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
+export type NewStamp = components['schemas']['NewStamp'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
@@ -16821,6 +17596,8 @@ export type PlatformLinkEntry = components['schemas']['PlatformLinkEntry'];
 export type PlatformType = components['schemas']['PlatformType'];
 export type PollPairingRequest = components['schemas']['PollPairingRequest'];
 export type PollPairingResponse = components['schemas']['PollPairingResponse'];
+export type Postmark = components['schemas']['Postmark'];
+export type PostmarksResponse = components['schemas']['PostmarksResponse'];
 export type Priority = components['schemas']['Priority'];
 export type ProactiveMessageClass = components['schemas']['ProactiveMessageClass'];
 export type ProjectCreate = components['schemas']['ProjectCreate'];
@@ -16834,10 +17611,18 @@ export type ProviderListResponse = components['schemas']['ProviderListResponse']
 export type ProviderPreset = components['schemas']['ProviderPreset'];
 export type ProviderTestFailure = components['schemas']['ProviderTestFailure'];
 export type ProviderTestResponse = components['schemas']['ProviderTestResponse'];
+export type PublicBriefing = components['schemas']['PublicBriefing'];
+export type PublicBriefingEvent = components['schemas']['PublicBriefingEvent'];
+export type PublicBriefingItem = components['schemas']['PublicBriefingItem'];
+export type PublicBriefingPayload = components['schemas']['PublicBriefingPayload'];
+export type PublicBriefingSection = components['schemas']['PublicBriefingSection'];
 export type PublicHoloCardResponse = components['schemas']['PublicHoloCardResponse'];
 export type PublicIntegrationDetailResponse = components['schemas']['PublicIntegrationDetailResponse'];
+export type PublicSessionArtifact = components['schemas']['PublicSessionArtifact'];
 export type PublicSupportRequestCreate = components['schemas']['PublicSupportRequestCreate'];
+export type PublicTodoDeliverable = components['schemas']['PublicTodoDeliverable'];
 export type PublicWorkflowCard = components['schemas']['PublicWorkflowCard'];
+export type PublicWorkflowRun = components['schemas']['PublicWorkflowRun'];
 export type PublicWorkflowsResponse = components['schemas']['PublicWorkflowsResponse'];
 export type PublicWorkflowStep = components['schemas']['PublicWorkflowStep'];
 export type PublishIntegrationResponse = components['schemas']['PublishIntegrationResponse'];
@@ -16889,6 +17674,10 @@ export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailW
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
+export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
+export type ShortLinkShareState = components['schemas']['ShortLinkShareState'];
+export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
+export type ShortLinkTargetType = components['schemas']['ShortLinkTargetType'];
 export type SignupRequest = components['schemas']['SignupRequest'];
 export type Skill = components['schemas']['Skill'];
 export type SkillInlineCreateRequest = components['schemas']['SkillInlineCreateRequest'];
@@ -16909,6 +17698,7 @@ export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
+export type StopSharingResult = components['schemas']['StopSharingResult'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
@@ -18342,6 +19132,151 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_list_briefings: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_briefing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                briefing_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_postmarks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostmarksResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -22675,6 +23610,328 @@ export interface operations {
             };
         };
     };
+    short_links_create_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_resolve_short_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_short_link_file_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace storage offline */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_record_open_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Short link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_get_share_state_route: {
+        parameters: {
+            query: {
+                target_id: string;
+                target_type: components["schemas"]["ShortLinkTargetType"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkShareState"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_stop_sharing_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopSharingResult"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     lab_report_lab_event: {
         parameters: {
             query?: never;
@@ -24641,6 +25898,113 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationResponse_MarkAllReadSummary_"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_read_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingSchedule"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notification_update_briefing_schedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BriefingScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefingSchedule"];
+                };
+            };
+            /** @description Briefs cannot turn off while workflows deliver to the brief */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefDeliveryWorkflowsConflict"];
                 };
             };
             /** @description Unprocessable Entity */

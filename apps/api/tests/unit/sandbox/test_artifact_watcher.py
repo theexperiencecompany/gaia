@@ -15,11 +15,14 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 from e2b import AsyncSandbox
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
+from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
+from app.services.artifact_events import ArtifactFileEvent, upsert_event
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
 from app.services.storage import JuiceFSUnavailable
@@ -83,6 +86,17 @@ def stat_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aw, "stat_artifact", stat)
 
 
+@pytest.fixture(autouse=True)
+def link_store(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Stand in for the short-link store, which the watcher must never touch.
+
+    A rescan re-lists every historical artifact; minting there would share them all.
+    """
+    store = MagicMock()
+    monkeypatch.setattr("app.services.short_link_service.short_link_repository", store)
+    return store
+
+
 @pytest.fixture
 def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     """Record every upsert_event construction, including invalid ones.
@@ -92,9 +106,9 @@ def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     from the guard working.
     """
     calls: list[tuple[str, Any]] = []
-    real = aw.upsert_event
+    real = upsert_event
 
-    def record(session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
+    def record(session_id: str, art: Any, **kw: Any) -> ArtifactFileEvent:
         calls.append((session_id, art))
         return real(session_id, art, **kw)
 
@@ -129,7 +143,7 @@ async def test_a_temp_file_write_publishes_nothing(
     # Atomic writes land as `<name>.gaia-tmp` then rename. Publishing the temp
     # file makes a half-written artifact flash in the user's panel.
     w = ArtifactWatcher(USER, fake_sandbox())
-    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{aw.WORKSPACE_TMP_SUFFIX}"))
+    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{WORKSPACE_TMP_SUFFIX}"))
     assert published == []
 
 
@@ -188,7 +202,7 @@ async def test_a_file_deleted_between_the_event_and_the_stat_publishes_nothing(
 
 
 async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation(
-    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+    published: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch, link_store: MagicMock
 ) -> None:
     async def stat(user_id: str, conv: str, rel: str) -> ArtifactInfo:
         return info(rel, size=42, mtime=7.0)
@@ -197,10 +211,18 @@ async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation
     w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/nested/a.md"))
 
-    assert len(published) == 1
-    assert published[0]["user_id"] == USER
-    assert published[0]["session_id"] == CONV
-    assert "nested/a.md" in str(published[0])
+    assert published == [
+        {
+            "user_id": USER,
+            "event": "upsert",
+            "session_id": CONV,
+            "path": "nested/a.md",
+            "size_bytes": 42,
+            "mtime": 7.0,
+            "content_type": "text/plain",
+        }
+    ]
+    assert link_store.mock_calls == []
 
 
 @pytest.mark.parametrize("etype", ["REMOVE", "RENAME"])
@@ -337,11 +359,26 @@ def stub_scan(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 async def test_a_new_artifact_is_published_on_the_first_scan(
-    watcher: ArtifactWatcher, published: list[dict[str, Any]], stub_scan: dict[str, Any]
+    watcher: ArtifactWatcher,
+    published: list[dict[str, Any]],
+    stub_scan: dict[str, Any],
+    link_store: MagicMock,
 ) -> None:
     stub_scan["artifacts"] = {CONV: [info("a.md")]}
     await watcher._rescan_each([CONV])
-    assert len(published) == 1
+    assert published == [
+        {
+            "user_id": USER,
+            "event": "upsert",
+            "session_id": CONV,
+            "path": "a.md",
+            "size_bytes": 10,
+            "mtime": 100.0,
+            "content_type": "text/plain",
+        }
+    ]
+    # The first full rescan re-lists every historical file: none may be shared.
+    assert link_store.mock_calls == []
 
 
 async def test_an_unchanged_artifact_is_not_republished(

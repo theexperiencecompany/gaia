@@ -1,9 +1,10 @@
-"""Parse comms' narration output into a turn outcome: reply, silence, or reaction.
+"""Parse comms' narration output into a turn outcome: reply, silence, reaction, or brief.
 
 A turn not worth a full message is a single control tag instead of prose:
 
     <SILENCE>reason</SILENCE>  → deliver nothing (the reason is logged, not shown)
     <EMOJI>👍</EMOJI>          → deliver a one-emoji acknowledgment
+    <BRIEF>one line</BRIEF>    → hold the line for the user's next morning brief
 
 Only a turn made of directives alone becomes one, so prose never triggers a
 directive. A whole reply that is one bare emoji is the reaction it was meant to
@@ -18,6 +19,7 @@ import unicodedata
 from pydantic import TypeAdapter, ValidationError
 
 from app.constants.comms import (
+    BRIEF_TAG,
     EMOJI_TAG,
     LEGACY_REACT_KEYWORD,
     REACTION_TAG_ALIASES,
@@ -53,7 +55,7 @@ _UNCLOSED_SILENCE_RE = re.compile(rf"<[ \t]*{_SPACED_SILENCE}[ \t]*>([^\n]*)(\n?
 # a payload whose closing has not arrived. Only a directive name is held back.
 _OPENING_TAIL_RE = re.compile(r"<[ \t]*([A-Za-z \t]*)\Z")
 _UNCLOSED_TAG_TAIL_RE = re.compile(rf"<[ \t]*({_TAG_NAME})[ \t]*>[^\n]*\Z")
-_DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG, *REACTION_TAG_ALIASES})
+_DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG, BRIEF_TAG, *REACTION_TAG_ALIASES})
 _SPACES_RE = re.compile(r"[ \t]")
 # The opening of a tag still being written, its spaces dropped.
 _SPACED_OPENING_RE = re.compile(r"^<[ \t]*([A-Za-z \t]*)")
@@ -62,6 +64,7 @@ _LEGACY_LINE_RE = re.compile(rf"^({SILENCE_TAG}|{LEGACY_REACT_KEYWORD}):([^\n]*)
 _DIRECTIVE_OPENINGS = (
     f"<{SILENCE_TAG}>",
     f"<{EMOJI_TAG}>",
+    f"<{BRIEF_TAG}>",
     *(f"<{alias}>" for alias in sorted(REACTION_TAG_ALIASES)),
     f"{SILENCE_TAG}:",
     f"{LEGACY_REACT_KEYWORD}:",
@@ -117,6 +120,9 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
         keyword, payload = legacy.group(1).upper(), legacy.group(2).strip()
     if keyword == SILENCE_TAG:
         return CommsDirective(CommsDirectiveKind.SILENCE, payload)
+    if keyword == BRIEF_TAG:
+        # A brief line with nothing in it holds nothing: the bubble stays text.
+        return CommsDirective(CommsDirectiveKind.BRIEF, payload) if payload else None
     # A reaction that is not one emoji (empty, or a word) is meaningless: the bubble stays text.
     return CommsDirective(CommsDirectiveKind.REACT, payload) if _is_emoji(payload) else None
 

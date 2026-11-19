@@ -364,6 +364,26 @@
     ]
   },
   {
+    "name": "Web server rate-limit token",
+    "description": "Shared secret the web app's server sends so the API counts it apart",
+    "affectedFeatures": "Without it, server-rendered pages share the anonymous per-address ceiling",
+    "requiredInProd": true,
+    "allRequired": true,
+    "docsUrl": null,
+    "alternativeGroup": null,
+    "selfhostSetup": false,
+    "variables": [
+      {
+        "name": "INTERNAL_API_TOKEN",
+        "required": false,
+        "category": "Web server rate-limit token",
+        "description": "Shared secret the web app's server sends so the API counts it apart",
+        "affectedFeatures": "Without it, server-rendered pages share the anonymous per-address ceiling",
+        "docsUrl": null
+      }
+    ]
+  },
+  {
     "name": "Resend Email Service",
     "description": "Resend email delivery service",
     "affectedFeatures": "Email notifications and communication",
