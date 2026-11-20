@@ -11,6 +11,9 @@ does, because the Chroma vector ids are derived from it after the insert.
 from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
+import itertools
+import random
+import threading
 from types import SimpleNamespace
 from typing import Any, TypedDict, Unpack, cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -606,6 +609,40 @@ class TestStoreConversationChunks:
 
 
 class TestAppendEpisodeEntries:
+    def test_the_quick_bounds_never_change_which_pairs_are_duplicates(self) -> None:
+        """The pre-check is only a shortcut: every pair gets the plain ratio rule's answer."""
+        rng = random.Random(7)
+        words = ["gym", "call", "mom", "review", "q3", "budget", "trip", "draft", "email"]
+        lines = [" ".join(rng.choices(words, k=rng.randint(1, 8))) for _ in range(60)]
+        for candidate, prior in itertools.product(lines, repeat=2):
+            plain = (
+                candidate == prior
+                or SequenceMatcher(None, candidate, prior).ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+            )
+            assert ingestion._is_near_duplicate(candidate, [prior]) is plain
+
+    @pytest.mark.regression
+    async def test_the_dedupe_runs_off_the_event_loop(self, boundaries: Boundaries) -> None:
+        """Quadratic in a busy day's entries, it would stall a reply sharing the loop."""
+        loop_thread = threading.get_ident()
+        dedupe_threads: list[int] = []
+        novel = ingestion._novel_entries
+
+        def tracked(entries: list[str], seen: list[str]) -> list[str]:
+            dedupe_threads.append(threading.get_ident())
+            return novel(entries, seen)
+
+        with patch.object(ingestion, "_novel_entries", side_effect=tracked):
+            count, deduped = await ingestion._append_episode_entries(
+                USER,
+                ["drafted the email", "drafted the email!"],
+                source_type=MemorySourceType.TOOL,
+                local_now=datetime(2026, 3, 5, 9, 0, tzinfo=UTC),
+            )
+
+        assert (count, deduped) == (1, 1)
+        assert dedupe_threads and loop_thread not in dedupe_threads
+
     async def test_no_entries_writes_nothing(self, boundaries: Boundaries) -> None:
         count, deduped = await ingestion._append_episode_entries(
             USER, [], source_type=MemorySourceType.CONVERSATION, local_now=datetime.now(UTC)
@@ -2356,6 +2393,14 @@ class TestJournalNearDuplicateGate:
         prior = "a" * 18 + "bc"
         # This pair sits exactly ON the threshold (2*17 matching / 40 chars).
         assert SequenceMatcher(None, candidate, prior).ratio() == EPISODE_ENTRY_DEDUPE_RATIO
+        assert ingestion._is_near_duplicate(candidate, [prior]) is True
+
+    def test_a_length_bound_exactly_at_the_dedupe_ratio_still_compares(self) -> None:
+        candidate = "a" * 17
+        prior = "a" * 17 + "b" * 6
+        # The lengths alone cap the ratio at 2*17/40, and the full match reaches it.
+        matcher = SequenceMatcher(None, candidate, prior)
+        assert matcher.real_quick_ratio() == matcher.ratio() == EPISODE_ENTRY_DEDUPE_RATIO
         assert ingestion._is_near_duplicate(candidate, [prior]) is True
 
     async def test_a_stored_entry_without_text_never_masks_new_entries(

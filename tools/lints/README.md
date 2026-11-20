@@ -347,6 +347,9 @@ a registration, not a read. A read on a name annotated with a TypedDict
 declared shape that mypy key-checks — Type Safety item 6 — so it is exempt too:
 TypedDicts are discovered from `class X(TypedDict)` across the scan, and the
 library ones (`ToolCall`, `RunnableConfig`) are named in `EXTERNAL_TYPEDDICTS`.
+A TypeVar bound to a TypedDict (`T = TypeVar("T", bound=SomeTypedDict)`) counts
+as one within the module that declares it: mypy key-checks a read through it
+against the bound.
 The check is syntactic: a TypedDict reached through an attribute chain or an
 unannotated loop variable is still flagged — bind it to an annotated local.
 

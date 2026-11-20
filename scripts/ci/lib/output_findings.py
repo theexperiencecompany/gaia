@@ -277,18 +277,43 @@ _READERS = (_workflow_commands, _pytest, _vitest, _playwright, _bandit, _ruff, _
 _ERRORISH = re.compile(
     r"(?i)(\berr(or)?s?\b|\bfailed\b|\bfailure\b|\bfatal\b|exception|traceback|violation|✗|×|❌|^E\s)"
 )
+_TRACEBACK = "Traceback (most recent call last):"
 _NOISE = re.compile(r"^(::(?!error)|##\[(?!error)|Process completed with exit code)")
 
 
+def _raised_at(lines: list[str]) -> int | None:
+    """Index of the line the last Python traceback ended with: its first line back at the header's indent."""
+    headers = [index for index, line in enumerate(lines) if line.strip() == _TRACEBACK]
+    if not headers:
+        return None
+    header = lines[headers[-1]]
+    indent = len(header) - len(header.lstrip())
+    for index in range(headers[-1] + 1, len(lines)):
+        line = lines[index]
+        if line.strip() and len(line) - len(line.lstrip()) <= indent:
+            return index
+    return None
+
+
 def _fallback(lines: list[str], fallback: str | None) -> list[Finding]:
-    body = [line.strip() for line in lines if line.strip() and not _NOISE.match(line.strip())]
+    body = [
+        (index, line.strip())
+        for index, line in enumerate(lines)
+        if line.strip() and not _NOISE.match(line.strip())
+    ]
     if not body:
         return []
-    errorish = [line for line in body if _ERRORISH.search(line)]
-    shown = [
-        _unescape(_COMMAND.sub(r"\g<message>", line)) for line in (errorish or body[-DETAIL_LINES:])
-    ]
-    return [_finding(fallback or "", 1 if fallback else 0, shown[0], shown)]
+    raised = _raised_at(lines)
+    errorish = [(i, line) for i, line in body if i == raised or _ERRORISH.search(line)]
+    picked = errorish or body[-DETAIL_LINES:]
+    shown = [_unescape(_COMMAND.sub(r"\g<message>", line)) for _, line in picked]
+    if raised is None:
+        return [_finding(fallback or "", 1 if fallback else 0, shown[0], shown)]
+    at = [i for i, _ in picked].index(raised)
+    message = shown[at]
+    if at >= DETAIL_LINES:
+        shown = [*shown[: DETAIL_LINES - 1], message]
+    return [_finding(fallback or "", 1 if fallback else 0, message, shown)]
 
 
 def read(text: str, *, fallback: str | None = None, path_prefix: str = "") -> list[Finding]:

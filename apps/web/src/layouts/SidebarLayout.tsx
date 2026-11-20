@@ -102,8 +102,8 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
 
       <SidebarFooter className="relative z-[4] p-2 px-3 pb-3">
         <WhatsNewCard />
-        <UserContainer />
         <ContactSupport />
+        <UserContainer />
       </SidebarFooter>
     </Sidebar>
   );
