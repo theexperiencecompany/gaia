@@ -10,7 +10,6 @@ import { WorkflowIconElementsProvider } from "@/features/workflows/components/sh
 import { DEFAULT_WORKFLOW_ICON_COLOR } from "@/features/workflows/constants/workflowIconStyle";
 import {
   COMMUNITY_PAGE_SIZE,
-  getAllCommunityWorkflowsServer,
   getCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
@@ -23,7 +22,6 @@ import {
   workflowIconElement,
   workflowIconElements,
 } from "@/features/workflows/lib/workflowIconElements";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -42,23 +40,12 @@ interface PageProps {
 /** The hero tile draws the workflow's icon at this size. */
 const HERO_ICON_SIZE = 26;
 
-export const revalidate = 3600; // Revalidate every hour
+export const revalidate = 3600;
 
-async function allStaticParams() {
-  const [explore, community] = await Promise.all([
-    getExploreWorkflowsServer(1000),
-    getAllCommunityWorkflowsServer(),
-  ]);
-  return [...explore, ...community].flatMap((w) =>
-    w.slug ? [{ slug: w.slug }] : [],
-  );
-}
-
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
+  return [];
 }
-
-export const dynamicParams = true;
 
 export async function generateMetadata({
   params,

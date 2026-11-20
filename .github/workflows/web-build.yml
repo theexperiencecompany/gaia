@@ -94,7 +94,7 @@ jobs:
           node scripts/ci/strip-source-maps.mjs apps/web/.open-next/assets
       - name: Verify prerendered detail pages
         # A notFound() during prerender keeps the build green but ships a 404
-        # for a fallback:false page (learn/compare/automate) that populateCache
+        # for a fallback:false page (learn) that populateCache
         # would then upload to R2 as the canonical response. Fail here instead.
         run: pnpm --filter ./apps/web verify-prerender
 

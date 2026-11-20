@@ -3,30 +3,18 @@
 import { Tooltip } from "@heroui/react";
 import { GlobalIcon } from "@icons";
 import Image from "next/image";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
 import { toneVariants } from "@/components/shared/tone";
 import { type Tool, toolFaviconUrl } from "@/data/tools";
 
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
-
 interface ToolCardProps {
   tool: Tool;
-  metadata?: ToolMetadata;
 }
 
-const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
+const ToolCard = memo(({ tool }: ToolCardProps) => {
   const elementRef = useRef<HTMLAnchorElement>(null);
-  const [imageError, setImageError] = useState(false);
   const [isDarkFavicon, setIsDarkFavicon] = useState(false);
-  const [faviconIndex, setFaviconIndex] = useState(0);
 
   const checkImageBrightness = (imgElement: HTMLImageElement) => {
     try {
@@ -68,20 +56,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
     }
   };
 
-  // Prefer the API's favicon, then fall back to the favicon service so a tool
-  // always renders a logo even when metadata is unavailable.
-  const faviconSources = useMemo(
-    () =>
-      [metadata?.favicon, toolFaviconUrl(tool.url)].filter(
-        (src): src is string => Boolean(src),
-      ),
-    [metadata?.favicon, tool.url],
-  );
-  const favicon = faviconSources[faviconIndex] ?? null;
-  const handleFaviconError = () => setFaviconIndex((index) => index + 1);
-
-  const websiteImage =
-    metadata?.website_image && !imageError ? metadata.website_image : null;
+  // The favicon service draws every tool's logo; a failed load falls back to the globe.
+  const [faviconFailed, setFaviconFailed] = useState(false);
+  const favicon = faviconFailed ? null : toolFaviconUrl(tool.url);
+  const handleFaviconError = () => setFaviconFailed(true);
 
   return (
     <Tooltip delay={0} closeDelay={0}>
@@ -125,18 +103,6 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
         })}
       >
         <div className="flex w-full flex-col rounded-3xl">
-          {websiteImage && (
-            <div className="relative aspect-video w-full overflow-hidden">
-              <Image
-                src={websiteImage}
-                alt={`${tool.name} preview`}
-                fill
-                sizes="320px"
-                className="object-cover"
-                onError={() => setImageError(true)}
-              />
-            </div>
-          )}
           <div className="flex flex-col gap-2 p-4">
             <div className="flex items-center gap-2">
               {favicon ? (

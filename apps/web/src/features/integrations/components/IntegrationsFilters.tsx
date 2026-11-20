@@ -129,7 +129,8 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
               labelPlacement: "inside",
               className: "w-40",
             })}
-            aria-label="Sort by"
+            // Carries the visible value, so a voice user can say what they see.
+            aria-label={`Sort by: ${SORT_OPTIONS.find((option) => option.key === sort)?.label ?? ""}`}
           >
             <Select.Trigger>
               <GaiaSelectValue />

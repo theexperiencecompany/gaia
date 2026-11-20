@@ -14,7 +14,6 @@ import {
   comparisonCategoryGroups,
   comparisonCategoryOf,
 } from "@/features/comparisons/data/comparisonCategories";
-import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
   getTranslatedComparison,
   getTranslatedComparisons,
@@ -27,7 +26,6 @@ import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { COMPARE_DOCS_LINKS } from "@/lib/docs-links";
 import { hubPageHref, hubPageOf } from "@/lib/hubPagination";
 import { relatedInGroup } from "@/lib/relatedInGroup";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -47,16 +45,12 @@ interface PageProps {
   }>;
 }
 
-async function allStaticParams() {
-  const slugs = await getAllComparisonSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
+export const revalidate = 3600;
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
+  return [];
 }
-
-export const dynamicParams = false;
 
 export async function generateMetadata({
   params,

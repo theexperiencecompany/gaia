@@ -10,7 +10,6 @@ import { LinkCard } from "@/components/seo/LinkCard";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
-import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
   getTranslatedAlternative,
   getTranslatedAlternatives,
@@ -26,7 +25,6 @@ import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import { ALTERNATIVE_DOCS_LINKS, type DocsGuideLink } from "@/lib/docs-links";
 import { relatedInGroup } from "@/lib/relatedInGroup";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -43,13 +41,11 @@ interface PageProps {
   }>;
 }
 
-async function allStaticParams() {
-  const slugs = await getAllAlternativeSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
+export const revalidate = 3600;
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
+  return [];
 }
 
 export async function generateMetadata({

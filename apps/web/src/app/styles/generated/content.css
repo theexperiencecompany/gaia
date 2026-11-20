@@ -211,6 +211,7 @@
 @source "../../../features/auth/hooks/useCurrentUser.ts";
 @source "../../../features/auth/hooks/useFetchUser.ts";
 @source "../../../features/auth/hooks/useLoginModal.ts";
+@source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/chat/api/chatApi.ts";

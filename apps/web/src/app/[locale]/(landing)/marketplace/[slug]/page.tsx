@@ -9,10 +9,7 @@ import {
   marketplaceDirectoryHref,
   marketplaceDirectoryPages,
 } from "@/features/integrations/lib/marketplaceDirectoryPages";
-import {
-  marketplacePath,
-  marketplaceSlug,
-} from "@/features/integrations/lib/marketplaceSlug";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { relatedIntegrations } from "@/features/integrations/lib/relatedIntegrations";
 import {
   getAllCommunityIntegrations,
@@ -29,7 +26,6 @@ import {
   getMarketplaceFallbackGuides,
   MARKETPLACE_DOCS_LINKS,
 } from "@/lib/docs-links";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -48,30 +44,13 @@ import {
 
 export const revalidate = 60;
 
-/**
- * Generate static params for all public integrations (community + native).
- * This enables search engines to crawl and index all integration pages.
- * Uses slug for SEO-friendly URLs.
- */
-async function allStaticParams() {
-  const [native, community] = await Promise.all([
-    getNativeIntegrations(),
-    getAllCommunityIntegrations(),
-  ]);
-  const slugs = new Set(
-    [...native, ...community].map((item) => marketplaceSlug(item.slug)),
-  );
-  return [...slugs].map((slug) => ({ slug }));
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
-}
-
-export const dynamicParams = true;
-
 interface Props {
   readonly params: Promise<{ readonly slug: string }>;
+}
+
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
 }
 
 /** The integration a marketplace URL slug names; the API is keyed by its own slug. */

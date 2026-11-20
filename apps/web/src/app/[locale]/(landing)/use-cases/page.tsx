@@ -1,5 +1,6 @@
 import "../../../styles/marketing.css";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
@@ -34,13 +35,13 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 3600; // Revalidate every hour
-
 const COMMUNITY_LISTING_SIZE = 8;
 // Every official template, as the sitemap reads them, so no copy slips through.
 const EXPLORE_TEMPLATE_LIMIT = 1000;
 
 export default async function UseCasesPage() {
+  // Rendered per request from cached listings, so the build never reads the API.
+  await connection();
   const [community, templates] = await Promise.all([
     getAllCommunityWorkflowsServer(),
     getExploreWorkflowsServer(EXPLORE_TEMPLATE_LIMIT),

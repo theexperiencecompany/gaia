@@ -23,9 +23,11 @@ import {
   comboAppGroups,
   comboAppsOf,
 } from "@/features/integrations/lib/comboApps";
+import { marketplaceDirectoryPages } from "@/features/integrations/lib/marketplaceDirectoryPages";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import { locales, stripLocalePrefix } from "@/i18n/config";
 import { isTranslatedPath } from "@/i18n/translatedRoutes";
+import { laterHubPageParams } from "@/lib/hubPagination";
 import { siteConfig } from "@/lib/seo";
 import { intlRequest, readMessages } from "./helpers/nextIntlServer";
 
@@ -75,6 +77,12 @@ vi.mock(
   }),
 );
 
+/** The hub renders outside a Next request, where connection() would throw; the request it waits for has already arrived. */
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  connection: async (): Promise<void> => undefined,
+}));
+
 /** The filterable grid reads useSearchParams, so the prerendered HTML holds its Suspense fallback: nothing. */
 vi.mock("@/app/[locale]/(landing)/marketplace/client", () => ({
   IntegrationsPageClient: () => null,
@@ -103,6 +111,8 @@ interface Hub {
   readonly children?: () => Promise<string[]>;
   /** How many distinct group pages must link each child, or how many a given child needs. */
   readonly minGroupLinks?: number | ((child: string) => number);
+  /** The group pages' params, for a group route that reads the API and so prerenders no paths. */
+  readonly groupParams?: () => Params[];
 }
 
 const COMBOS = await getAllCombos();
@@ -144,6 +154,10 @@ const HUBS: readonly Hub[] = [
   {
     path: "/marketplace",
     groupRoute: "page/[page]",
+    groupParams: () =>
+      laterHubPageParams(
+        marketplaceDirectoryPages(MARKETPLACE.native, MARKETPLACE.community),
+      ),
     children: async () =>
       [...MARKETPLACE.native, ...MARKETPLACE.community].map(
         (integration) => `/marketplace/${integration.slug}`,
@@ -250,7 +264,9 @@ async function renderHubPages(
   if (!hub.groupRoute) return pages;
   const group =
     await GROUP_PAGES[moduleKey(hub.path, `${hub.groupRoute}/page.tsx`)]();
-  for (const params of (await group.generateStaticParams?.()) ?? []) {
+  const groupParams =
+    hub.groupParams?.() ?? (await group.generateStaticParams?.()) ?? [];
+  for (const params of groupParams) {
     pages.push(
       await renderPage(
         group,
