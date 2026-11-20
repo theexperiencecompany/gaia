@@ -168,9 +168,15 @@ MEMORY_SEARCH_CACHE_PATTERN = "user:{user_id}:memories:*"
 CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 
 # Comms fast lane: hosted query embed (started at request arrival) + in-process
-# vector match + one Postgres query for vector hits, pins and OR-matched words.
+# vector match, with a Postgres read of pins and OR-matched words alongside it.
 # Covers the query embed's p95 (306ms from prod) less the setup it overlaps.
 FAST_RECALL_BUDGET_SECONDS = 0.25
+# The reads left after the semantic wait: its hits by id, then their entities and
+# parents (5-45ms in prod). The word search overlaps the wait instead (65-90ms).
+FAST_RECALL_READ_RESERVE_SECONDS = 0.06
+# Past this the lane answers with pins and word matches, so a late embedding
+# costs only the vector hits, never the whole section.
+FAST_RECALL_SEMANTIC_BUDGET_SECONDS = FAST_RECALL_BUDGET_SECONDS - FAST_RECALL_READ_RESERVE_SECONDS
 # The worker tiers' deep recall, off the reply path: its rerank alone was 2.3s p50
 # in prod, so this only cuts off a hung store, never a slow-but-working recall.
 MEMORY_RECALL_BUDGET_SECONDS = 10.0

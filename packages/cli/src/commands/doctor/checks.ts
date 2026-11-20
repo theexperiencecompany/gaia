@@ -28,6 +28,7 @@ import {
 } from "../../lib/docker-access.js";
 import type { SetupMode } from "../../lib/env-parser.js";
 import { readPinnedGaiaVersion } from "../../lib/env-writer.js";
+import { probeGaia } from "../../lib/gaia-health.js";
 import {
   getDockerRootDir,
   judgeDisk,
@@ -353,18 +354,19 @@ export async function checkApiHealth(
     severity: "blocker",
   };
 
-  try {
-    const res = await fetchWithTimeout(`${apiUrl}/ping`);
-    if (res.ok) {
-      return { ...base, state: "ok", detail: `answering at ${apiUrl}` };
-    }
+  const probe = await probeGaia(apiUrl);
+  if (probe.kind === "gaia" && !probe.degraded) {
+    return { ...base, state: "ok", detail: `answering at ${apiUrl}` };
+  }
+  if (probe.kind === "gaia") {
     return {
       ...base,
       state: "fail",
-      detail: `answered HTTP ${res.status} at ${apiUrl}/ping`,
+      detail: `answering at ${apiUrl}, but degraded (the event loop is lagged)`,
       fix: `See why with 'gaia logs', then restart it with '${startCommand}'.`,
     };
-  } catch {
+  }
+  if (probe.kind === "unreachable") {
     return {
       ...base,
       state: "fail",
@@ -372,6 +374,20 @@ export async function checkApiHealth(
       fix: `Start GAIA with '${startCommand}'.`,
     };
   }
+  if (probe.redirectedTo) {
+    return {
+      ...base,
+      state: "fail",
+      detail: `answered at ${apiUrl}/ping through a redirect to ${probe.redirectedTo}, a different origin`,
+      fix: "Something else may hold that port: free it, and check 'gaia status' and 'gaia logs'.",
+    };
+  }
+  return {
+    ...base,
+    state: "fail",
+    detail: `answered HTTP ${probe.status} (${probe.contentType}) at ${apiUrl}/ping, but not with GAIA's health body`,
+    fix: "Something else may hold that port: free it, and check 'gaia status' and 'gaia logs'.",
+  };
 }
 
 /**

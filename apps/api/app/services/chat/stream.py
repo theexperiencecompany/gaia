@@ -45,7 +45,6 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import sse_payload, stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.memory.fast_recall import start_query_embedding
 from app.models.chat_models import (
     ConversationSource,
     MessageKind,
@@ -89,10 +88,12 @@ from app.services.latency_metrics import (
     observe_chat_ttft,
     observe_chat_turn_total,
     observe_turn_overhead,
+    observe_turn_steps,
 )
 from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnStep, render_reports, turn_step
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
@@ -311,9 +312,6 @@ async def _run_chat_stream(
     source: str | None = None,
     clock: TurnClock | None = None,
 ) -> None:
-    # First thing: the memory lane's query embedding is a network call, so it
-    # overlaps the turn's setup instead of starting when the context is built.
-    start_query_embedding(body.message)
     state = _StreamState(turn_id=body.turn_id)
     state.t0_perf = clock.marks[TurnMark.T0] if clock is not None else time.perf_counter()
     is_new_conversation = body.conversation_id is None
@@ -328,7 +326,8 @@ async def _run_chat_stream(
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
-        presence = await _capture_presence(user_id, source)
+        with turn_step(TurnStep.PRESENCE):
+            presence = await _capture_presence(user_id, source)
 
         # The todo lookup overlaps the user-message save, two Mongo round trips the
         # reply would otherwise wait on in turn. A new conversation is never a
@@ -338,18 +337,23 @@ async def _run_chat_stream(
             if is_new_conversation
             else [conversation_repository.get_todo_id(conversation_id, user_id=user_id)]
         )
-        _, *todo_ids = await asyncio.gather(
-            _publish_init_chunk(body, user, conversation_id, stream_id, state, is_new_conversation),
-            *todo_lookup,
-        )
+        with turn_step(TurnStep.INIT_CHUNK):
+            _, *todo_ids = await asyncio.gather(
+                _publish_init_chunk(
+                    body, user, conversation_id, stream_id, state, is_new_conversation
+                ),
+                *todo_lookup,
+            )
         todo_id = todo_ids[0] if todo_ids else None
 
         # A HIL approval can be answered via chat reply only on button-less bot
         # channels (WhatsApp/Telegram/Slack/Discord); web/mobile/desktop use real
         # Approve/Deny buttons. A resolving reply ends this turn; the paused run continues on its stream.
-        if await _resolve_pending_approval_turn(
-            body, user, conversation_id, stream_id, state, source
-        ):
+        with turn_step(TurnStep.APPROVAL_CHECK):
+            resolved_by_approval = await _resolve_pending_approval_turn(
+                body, user, conversation_id, stream_id, state, source
+            )
+        if resolved_by_approval:
             return
 
         forwarder_subscribed = asyncio.Event()
@@ -874,17 +878,20 @@ def _record_turn_overhead(stream_id: str, state: _StreamState, *, source: str | 
         log.set(latency={"missing_marks": clock.missing()})
         return
     observe_turn_overhead(overhead, source=source or "unknown")
-    log.set(
-        latency={
-            "ingress_ms": round(overhead.ingress * 1000.0, 2),
-            "prep_ms": round(overhead.prep * 1000.0, 2),
-            "egress_ms": round(overhead.egress * 1000.0, 2),
-            "total_ms": round(overhead.total * 1000.0, 2),
-            "provider_ttft_ms": round(overhead.provider_ttft * 1000.0, 2),
-            "path": overhead.path.value,
-            "comms_calls_before_text": clock.comms_calls_before_text,
-        }
-    )
+    latency: dict[str, object] = {
+        "ingress_ms": round(overhead.ingress * 1000.0, 2),
+        "prep_ms": round(overhead.prep * 1000.0, 2),
+        "egress_ms": round(overhead.egress * 1000.0, 2),
+        "total_ms": round(overhead.total * 1000.0, 2),
+        "provider_ttft_ms": round(overhead.provider_ttft * 1000.0, 2),
+        "path": overhead.path.value,
+        "comms_calls_before_text": clock.comms_calls_before_text,
+    }
+    if clock.timings is not None:
+        reports = clock.timings.reports(ingress=overhead.ingress, prep=overhead.prep)
+        observe_turn_steps(reports, source=source or "unknown")
+        latency["steps"] = render_reports(reports)
+    log.set(latency=latency)
 
 
 def _close_turn_timings(
