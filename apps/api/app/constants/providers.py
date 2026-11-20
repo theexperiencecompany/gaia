@@ -102,24 +102,31 @@ LLM_MODEL_PROFILES: dict[LLMProviderName, LLMModelProfile] = {
     ),
 }
 
+# Configured providers listed here take every role ahead of the tables below; credentials
+# alone never reroute. List LLMProviderName.CLOUDFLARE to put every role on Workers AI.
+OVERRIDE_PROVIDERS: tuple[LLMProviderName, ...] = ()
+
 # The order configured providers are taken in: the default chat lane, its
 # fallback, and (outside production) every one-shot role after its hosted provider.
 LLM_PROVIDER_PRIORITY: tuple[LLMProviderName, ...] = (
-    LLMProviderName.CLOUDFLARE,
-    LLMProviderName.OPENROUTER,
-    LLMProviderName.GEMINI,
-    LLMProviderName.OPENAI,
-    LLMProviderName.OLLAMA,
-    LLMProviderName.CUSTOM,
+    *OVERRIDE_PROVIDERS,
+    *(
+        provider
+        for provider in (
+            LLMProviderName.OPENROUTER,
+            LLMProviderName.GEMINI,
+            LLMProviderName.OPENAI,
+            LLMProviderName.OLLAMA,
+            LLMProviderName.CUSTOM,
+            LLMProviderName.CLOUDFLARE,
+        )
+        if provider not in OVERRIDE_PROVIDERS
+    ),
 )
 
 # Production runs these on comms' own lane only, selected by name and on the
 # catalog model: never a default lane, a fallback, or a stored model choice.
 HOSTED_COMMS_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
-
-# A configured provider here takes every role, comms and one-shots included, ahead of
-# the tables below; unset its credential and those tables serve again.
-OVERRIDE_PROVIDER = LLMProviderName.CLOUDFLARE
 
 # Where a failing lane on a provider goes instead of the next one in priority order.
 # The target serves the fallback even where HOSTED_COMMS_ONLY_PROVIDERS holds it back.
@@ -452,7 +459,7 @@ __all__ = [
     "FeatureSpec",
     "HOSTED_COMMS_ONLY_PROVIDERS",
     "HOSTED_ONE_SHOT_PROVIDERS",
-    "OVERRIDE_PROVIDER",
+    "OVERRIDE_PROVIDERS",
     "PINNED_FALLBACKS",
     "LLM_MODEL_PROFILES",
     "LLM_PROVIDER_PRIORITY",

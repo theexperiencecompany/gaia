@@ -43,7 +43,7 @@ from app.constants.llm import (
     OpenRouterReasoning,
 )
 from app.constants.log_tags import LogTag
-from app.constants.providers import OVERRIDE_PROVIDER
+from app.constants.providers import OVERRIDE_PROVIDERS
 from app.models.agent_models import AgentConfigurable
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
@@ -222,9 +222,9 @@ def _default_lane() -> ModelLane:
 
 
 def _comms_lane() -> ModelLane | None:
-    """Return comms' own lane: the override provider, else direct OpenAI; None when neither is configured."""
+    """Return comms' own lane: a configured override, else direct OpenAI; None when neither is configured."""
     provider = next(
-        (p for p in (OVERRIDE_PROVIDER, LLMProviderName.OPENAI) if provider_configured(p)), None
+        (p for p in (*OVERRIDE_PROVIDERS, LLMProviderName.OPENAI) if provider_configured(p)), None
     )
     if provider is None:
         return None
@@ -295,7 +295,7 @@ async def resolve_lane(
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
     Comms runs its own lane on every plan, otherwise free runs the default model
-    and paid the paid model; a configured OVERRIDE_PROVIDER serves both.
+    and paid the paid model; a configured OVERRIDE_PROVIDERS entry serves both.
     In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
     of it: every top-level run, not only chat, starts on it.
     """
@@ -322,7 +322,7 @@ async def resolve_lane(
     if (
         plan == PlanType.FREE
         or not settings.deployment.enforces_plans
-        or provider_configured(OVERRIDE_PROVIDER)
+        or any(provider_configured(p) for p in OVERRIDE_PROVIDERS)
     ):
         return _default_lane(), plan
 
