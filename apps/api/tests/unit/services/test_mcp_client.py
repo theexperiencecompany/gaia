@@ -14,7 +14,7 @@ import copy
 from datetime import UTC, datetime, timedelta
 import json
 from typing import Any, ClassVar
-from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
+from unittest.mock import AsyncMock, MagicMock, call, create_autospec, patch
 from urllib.parse import parse_qs, urlparse
 
 from langchain_core.tools import BaseTool
@@ -38,6 +38,7 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import ToolsSetup
 from app.constants.log_tags import LogTag
 from app.constants.mcp import MCP_RENAMED_TOOL_NOTE, MCP_UNLISTED_CONNECT_MAX
 from app.db.repositories.integrations import IntegrationsRepository
@@ -60,6 +61,7 @@ from app.services.mcp.mcp_client import (
     _spawn_background,
     drop_local_sessions,
     get_mcp_client,
+    mcp_tool_owner,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_errors import (
@@ -4834,13 +4836,21 @@ class TestRecordConnectionExact:
 
 
 class TestPersistAndIndexToolsExact:
+    @pytest.fixture(autouse=True)
+    def no_running_setup(self) -> Iterator[None]:
+        """Run each test as a connect outside OAuth: no tools setup is running, so storing only re-announces."""
+        with patch(
+            "app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=False)
+        ):
+            yield
+
     def _resolved(self) -> MagicMock:
         resolved = MagicMock()
         resolved.source = "platform"
         resolved.custom_doc = None
         return resolved
 
-    async def test_stores_server_names_indexes_then_busts_the_user_caches_last(self):
+    async def test_stores_server_names_indexes_busts_the_user_caches_then_announces(self):
         """Mongo is shared by every user, so it holds the server's names, never one user's prefixed ones."""
         client = MCPClient(user_id=USER_ID)
         order: list[str] = []
@@ -4859,6 +4869,11 @@ class TestPersistAndIndexToolsExact:
                 new_callable=AsyncMock,
                 side_effect=lambda *_: order.append("invalidate"),
             ) as mock_invalidate,
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed",
+                new_callable=AsyncMock,
+                side_effect=lambda *_: order.append("announce"),
+            ) as mock_announce,
             patch("app.services.mcp.mcp_client.log"),
         ):
             await client._persist_and_index_tools(
@@ -4870,7 +4885,33 @@ class TestPersistAndIndexToolsExact:
         )
         client._index_platform_mcp_tools.assert_awaited_once_with(INTEGRATION_ID, [tool])
         mock_invalidate.assert_awaited_once_with(USER_ID)
-        assert order[-1] == "invalidate"
+        mock_announce.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
+        assert order[-2:] == ["invalidate", "announce"]
+
+    async def test_a_connect_after_oauth_ends_its_running_setup_instead_of_re_announcing(self):
+        client = MCPClient(user_id=USER_ID)
+        client._index_platform_mcp_tools = AsyncMock()
+        publish = AsyncMock(return_value=True)
+        with (
+            patch("app.services.mcp.mcp_client.publish_tools_setup", publish),
+            patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock),
+            patch(
+                "app.services.mcp.mcp_client.invalidate_user_integration_caches",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
+            ) as mock_announce,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            await client._persist_and_index_tools(
+                self._resolved(), _make_mcp_config(), INTEGRATION_ID, []
+            )
+
+        publish.assert_awaited_once_with(
+            USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+        )
+        mock_announce.assert_not_awaited()
 
     async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
         resolved = MagicMock()
@@ -4885,6 +4926,10 @@ class TestPersistAndIndexToolsExact:
             patch(
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
+            ),
+            # The announce publishes on the real websocket bus, bound to another test's loop.
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
             ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
@@ -4925,6 +4970,9 @@ class TestPersistAndIndexToolsExact:
             patch(
                 "app.services.mcp.mcp_client.invalidate_user_integration_caches",
                 new_callable=AsyncMock,
+            ),
+            patch(
+                "app.services.mcp.mcp_client.announce_integration_changed", new_callable=AsyncMock
             ),
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
@@ -7083,7 +7131,10 @@ class TestConnectAfterOauth:
         def _no_loop(coro: Any, label: str) -> None:
             coro.close()
 
-        with patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop):
+        with (
+            patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop),
+            patch("app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=True)),
+        ):
             yield
 
     async def test_connects_the_authorized_integration(
@@ -7099,6 +7150,22 @@ class TestConnectAfterOauth:
 
         connect.assert_awaited_once_with(INTEGRATION_ID)
         reset_to_disconnected.assert_not_awaited()
+
+    async def test_tools_already_in_memory_end_the_running_setup_as_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client._tools[INTEGRATION_ID] = []
+        monkeypatch.setattr(client, "connect", AsyncMock(return_value=[]))
+        publish = AsyncMock(return_value=True)
+        monkeypatch.setattr(mcp_client, "publish_tools_setup", publish)
+
+        await client.connect_after_oauth(INTEGRATION_ID)
+
+        assert publish.await_args_list == [
+            call(USER_ID, INTEGRATION_ID, ToolsSetup.RUNNING),
+            call(USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING),
+        ]
 
     @pytest.mark.parametrize(
         "error", [RuntimeError("401 Unauthorized"), RuntimeError("authentication rejected")]
@@ -7175,3 +7242,21 @@ class TestSpawnBackground:
 
         assert task.get_name() == "mcp:reconnect"
         assert seen["task"] == "mcp:reconnect"
+
+
+async def test_a_tool_owner_lookup_without_an_mcp_client_logs_the_tool_and_finds_none() -> None:
+    with (
+        patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            AsyncMock(side_effect=ConnectionError("pool down")),
+        ),
+        patch("app.services.mcp.mcp_client.log") as mock_log,
+    ):
+        assert await mcp_tool_owner(USER_ID, "posthog_search") is None
+
+    mock_log.warning.assert_called_once_with(
+        f"{LogTag.MCP} MCP client unavailable for a tool owner lookup",
+        user_id=USER_ID,
+        tool_name="posthog_search",
+        error_type="ConnectionError",
+    )

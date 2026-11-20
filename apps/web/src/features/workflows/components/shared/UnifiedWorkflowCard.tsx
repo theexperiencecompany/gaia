@@ -291,7 +291,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
 
   return showDescriptionAsTooltip ? (
     <Tooltip delay={200} closeDelay={0}>
-      <Tooltip.Trigger>{cardContent}</Tooltip.Trigger>
+      <Tooltip.Trigger className="block w-full">{cardContent}</Tooltip.Trigger>
       <Tooltip.Content
         placement="top"
         showArrow

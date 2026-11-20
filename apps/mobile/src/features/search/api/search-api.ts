@@ -1,3 +1,4 @@
+import type { MessageSearchResult } from "@gaia/shared/api/generated";
 import { apiService } from "@/lib/api";
 
 export interface SearchConversationResult {
@@ -5,15 +6,7 @@ export interface SearchConversationResult {
   description: string;
 }
 
-export interface SearchMessageResult {
-  conversation_id: string;
-  message: {
-    message_id: string;
-    type: "bot" | "user";
-    date: string;
-  };
-  snippet: string;
-}
+export type SearchMessageResult = MessageSearchResult;
 
 export interface SearchNoteResult {
   id: string;

@@ -9,11 +9,13 @@ from langchain_core.tools import StructuredTool
 import pytest
 
 from app.agents.core.subagents.integration_resolution import (
-    CustomMcpSubagent,
     check_integration_connection,
     check_mcp_connection,
-    get_integration_target,
     is_per_user_mcp,
+)
+from app.agents.core.subagents.integration_target import (
+    CustomMcpSubagent,
+    get_integration_target,
 )
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.db.repositories.user_integrations import user_integration_repository
@@ -23,6 +25,7 @@ from app.models.subagent_models import Subagent
 from app.services.mcp.custom_mcp_index import CustomMcpIndexRequest, index_custom_mcp_as_subagent
 
 RESOLUTION = "app.agents.core.subagents.integration_resolution"
+TARGET = "app.agents.core.subagents.integration_target"
 
 
 def _integration(integration_id: str, name: str, **overrides: object) -> Integration:
@@ -158,8 +161,8 @@ class TestGetIntegrationTarget:
     async def test_platform_integration_comes_from_the_registry_without_touching_the_cache(self):
         subagent = _make_subagent()
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=subagent) as lookup,
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock()) as get_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=subagent) as lookup,
+            patch(f"{TARGET}.get_cache", new=AsyncMock()) as get_cache,
         ):
             result = await get_integration_target("  GMAIL ")
 
@@ -169,9 +172,9 @@ class TestGetIntegrationTarget:
 
     async def test_returns_cached_custom_integration(self):
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
             patch(
-                f"{RESOLUTION}.get_cache",
+                f"{TARGET}.get_cache",
                 new=AsyncMock(return_value={"id": "abc123", "name": "Custom MCP"}),
             ) as get_cache,
         ):
@@ -186,8 +189,8 @@ class TestGetIntegrationTarget:
             "mcp_config": {"server_url": "https://example.com", "requires_auth": True},
         }
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=cached)),
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value=cached)),
         ):
             result = await get_integration_target("abc123")
 
@@ -196,9 +199,9 @@ class TestGetIntegrationTarget:
 
     async def test_returns_none_for_negative_cache(self):
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value={})),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value={})),
+            patch(f"{TARGET}.integration_repository") as repo,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock()
             assert await get_integration_target("missing") is None
@@ -212,10 +215,10 @@ class TestGetIntegrationTarget:
             icon_url="https://example.com/icon.png",
         )
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value=None)),
+            patch(f"{TARGET}.integration_repository") as repo,
+            patch(f"{TARGET}.set_cache", new=AsyncMock()) as set_cache,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=custom)
             result = await get_integration_target("abc")
@@ -244,11 +247,11 @@ class TestGetIntegrationTarget:
             source="user_integrations",
         )
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.IntegrationResolver") as resolver,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value=None)),
+            patch(f"{TARGET}.integration_repository") as repo,
+            patch(f"{TARGET}.IntegrationResolver") as resolver,
+            patch(f"{TARGET}.set_cache", new=AsyncMock()) as set_cache,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
             resolver.resolve = AsyncMock(return_value=resolved)
@@ -269,11 +272,11 @@ class TestGetIntegrationTarget:
 
     async def test_a_miss_everywhere_is_negatively_cached(self):
         with (
-            patch(f"{RESOLUTION}.get_subagent_by_id", return_value=None),
-            patch(f"{RESOLUTION}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{RESOLUTION}.integration_repository") as repo,
-            patch(f"{RESOLUTION}.IntegrationResolver") as resolver,
-            patch(f"{RESOLUTION}.set_cache", new=AsyncMock()) as set_cache,
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
+            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value=None)),
+            patch(f"{TARGET}.integration_repository") as repo,
+            patch(f"{TARGET}.IntegrationResolver") as resolver,
+            patch(f"{TARGET}.set_cache", new=AsyncMock()) as set_cache,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
             resolver.resolve = AsyncMock(return_value=None)

@@ -27,6 +27,16 @@ export function toErrorEnvelope(body: unknown): ErrorEnvelope | undefined {
   return body as ErrorEnvelope;
 }
 
+/**
+ * The media type of a response, without its parameters: "text/html; charset=utf-8"
+ * reads best as "text/html" in an error, and it is the tell for a body that a
+ * proxy or a web server wrote rather than the API.
+ */
+export function mediaType(res: Response): string {
+  const header = res.headers.get("content-type") ?? "";
+  return header.split(";")[0]?.trim() || "no content type";
+}
+
 interface ApiErrorInit {
   /** The parsed envelope, when the body was one. */
   envelope?: ErrorEnvelope | undefined;

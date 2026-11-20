@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import {
   type ComposioIntegrationSetup,
   composioSetupApi,
@@ -68,7 +68,7 @@ export function useComposioSetup() {
     onSuccess: (data) => {
       queryClient.setQueryData(setupKeys.composio, data);
       setEdits({});
-      void queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      invalidateIntegrationCaches(queryClient);
       toast.success("Integrations saved");
     },
   });

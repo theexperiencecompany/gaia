@@ -1,13 +1,15 @@
 """Ask the model again when it answered with nothing at all.
 
 A comms turn can come back with no content (reasoning only, bare message breaks,
-a content filter, a dropped body), which stream.py turns into a fixed apology.
-A reply streaming only breaks is stopped at MAX_LEADING_MESSAGE_BREAKS instead
-of running to the output limit, and counts as empty too.
+a content filter, a dropped body), which settles as a failed reply with its Retry
+(_final_reply in app/services/conversation/step.py). A reply streaming only breaks
+is stopped at MAX_LEADING_MESSAGE_BREAKS instead of running to the output limit,
+and counts as empty too.
 
 Innermost in the comms wrap_model_call chain; repeats the call ONCE. NOT retried:
 errors (they own the turn's error path), cancellations and tool calls. The retry
-drops the breaks-only replies the model may be copying and adds one notice.
+drops the breaks-only replies the model may be copying and adds one notice. If the
+retry is also empty, the reply fails.
 """
 
 from __future__ import annotations

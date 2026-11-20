@@ -65,6 +65,10 @@ on:
 # listener's 5-minute cancellation timeout (#1131). select-runner cancels the
 # superseded runs through the API instead (`runner.py cancel-superseded`), so a
 # new push starts at once. A merge group's ref is unique to that group.
+# One push can still start two runs on one SHA: a push that moves a stacked
+# PR's base and head together gets two pull_request events from GitHub, with
+# the same before/after. This group cancels the older run, whose gate then
+# fails on lanes that never ran; `mise ci:remote` reads each workflow's newest run only.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -274,12 +278,22 @@ jobs:
       # anywhere, and every lane below runs under `!cancelled()` on the outputs
       # already written. Diff-based, so a push or dispatch plans nothing. Both
       # tiers: the PR finds a survivor before the queue would eject it.
+      # What this PR's earlier runs measured per module, so the plan packs by real cost.
+      - name: Fetch the mutation durations this PR measured before
+        if: contains(fromJSON(steps.affected.outputs.jobs), 'test-mutation')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref }}
+          MUTATION_HISTORY_DIR: ${{ runner.temp }}/mutation-history
+        run: python3 scripts/ci/mutation.py history
+
       - name: Plan the mutation shards (one per changed module)
         id: plan
         if: contains(fromJSON(steps.affected.outputs.jobs), 'test-mutation')
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          MUTATION_HISTORY_DIR: ${{ runner.temp }}/mutation-history
         run: python3 scripts/ci/mutation.py plan
 
       - name: Upload the verdict
@@ -442,7 +456,7 @@ jobs:
       # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
       # Under the API's environment livekit resolves only partly and reads as Any.
       - name: Heal the voice-agent venv
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check')
+        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:test')
         run: python3 scripts/ci/runner.py heal-venv .venv-voice-agent
 
       # Grafana's alert rules are managed objects, not Prometheus rule files; the
@@ -585,7 +599,8 @@ jobs:
 
   # ── repo-policy: the checks that hold for the whole tree, not one language ─
   # The secret scan runs on every change (a key can land in a README), so the
-  # job always starts; it needs a checkout and python3, nothing installed.
+  # job always starts; it needs a checkout, node for bot-handles and uv for
+  # tool-pins, which parses the prek configs as YAML.
   repo-policy:
     name: repo-policy
     needs: [select-runner, detect]
@@ -614,6 +629,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/task-files
+      - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
 
       # Every check detect picked for this job, through nx (tools/ci/project.json and
@@ -1144,6 +1160,82 @@ jobs:
         slice: ${{ fromJSON(needs.detect.outputs.engine_slices) }}
     steps: *test-python-steps
 
+  # ── web-e2e-screen: the chat recorded at every DOM change, on the sim stack ─
+  # The API, ARQ worker and web dev server against the scripted LLM stub
+  # (scripts/ci/sim-stack.sh), driven by web:e2e-screen and the bot harness
+  # scenarios (bot-harness:e2e). GitHub-hosted: the
+  # stack binds fixed ports and the dev user's Redis keys, which the box's
+  # shared services and parallel runners cannot give one job alone.
+  web-e2e-screen:
+    needs: [detect]
+    if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'web-e2e-screen') }}
+    runs-on: ubuntu-latest
+    # Boot (models, a cold Turbopack compile) plus the web suite, measured 8-15 min
+    # locally; the bot scenarios add about 10.
+    timeout-minutes: 50
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+      SIM_STACK_LOGS: ${{ github.workspace }}/sim-stack
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Install Chromium for Playwright
+        run: pnpm --filter ./apps/web exec playwright install --with-deps chromium
+      - name: Boot the sim stack
+        id: stack
+        shell: python3 scripts/ci/verdict.py check -- bash -e {0}
+        env:
+          OUT_DIR: ${{ env.SIM_STACK_LOGS }}
+        run: bash scripts/ci/sim-stack.sh up
+      - name: Run the screen-over-time flows
+        id: suite
+        if: contains(fromJSON(needs.detect.outputs.job_tasks)['web-e2e-screen'], 'web:e2e-screen')
+        shell: python3 scripts/ci/verdict.py check --path-prefix apps/web/ -- bash -e {0}
+        env:
+          CI: "true"
+        run: pnpm nx run web:e2e-screen
+      # The same stack, driven through the real bot pipeline on emulated platforms.
+      - name: Run the bot harness scenarios
+        id: bots
+        if: ${{ !cancelled() && steps.stack.outcome == 'success' && contains(fromJSON(needs.detect.outputs.job_tasks)['web-e2e-screen'], 'bot-harness:e2e') }}
+        shell: python3 scripts/ci/verdict.py check --path-prefix apps/bots/ -- bash -e {0}
+        run: pnpm nx run bot-harness:e2e
+      - name: Upload the verdict so far (a step above failed)
+        if: always() && env.GAIA_VERDICT_PENDING == '1'
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: web-e2e-screen
+          partial: "true"
+      - name: Upload timelines, traces and the stack's logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-e2e-screen
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+            apps/bots/harness/test-results
+            ${{ env.SIM_STACK_LOGS }}
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Release the test services
+        if: always()
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/embedding-sidecar.sh stop
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          status: ${{ job.status }}
+          name: web-e2e-screen
+
   # ── Coverage gate — master/dispatch only, off the test lanes' critical path ─
   # A PR HAS NO COVERAGE GATE, deliberately: its slices run a test-impact
   # SELECTION, and a coverage total over a subset fails honest PRs and passes
@@ -1280,8 +1372,7 @@ jobs:
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}
-      # A mutant is killed or not by the same examples on every run.
-      HYPOTHESIS_PROFILE: ci
+      # Hypothesis runs its "mutation" profile under mutmut (apps/api/tests/hypothesis_profiles.py).
     # Above the step timeout below, so a slow shard is failed by the step (which
     # keeps its log artifact) rather than cancelled by the job (which retains
     # nothing).
@@ -1289,8 +1380,10 @@ jobs:
     strategy:
       # Every module reports: this gate's value is the complete list.
       fail-fast: false
-      # Every shard at once (`mutation.py plan` packs at most 6). A wave of 4
-      # held shards 5-6 back a whole wave (~13 min, run 40206323992) on
+      # One wave of shards at once, equal to MUTATION_WAVE in mutation.py. The
+      # plan sizes the shard count by cost (up to MAX_SHARDS), so a costly diff
+      # queues further waves here instead of overloading a shard or the box. A
+      # wave of 4 held shards 5-6 back ~13 min (run 40206323992) on
       # GitHub-hosted runners; on the box the CPU governor queues what it cannot fit.
       max-parallel: 6
       matrix:
@@ -1319,6 +1412,9 @@ jobs:
         env:
           GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
           SHARD_LANE: mutation/shard-${{ strategy.job-index }}
+          # Under the job's own temp dir: the home runner keeps the checkout, so
+          # a shard file there could be an earlier job's.
+          SHARD_LOG: ${{ runner.temp }}/shard.log
         run: python3 scripts/ci/mutation.py shard
       - name: Upload the verdicts so far (a module failed)
         if: always() && env.GAIA_VERDICT_PENDING == '1'
@@ -1345,9 +1441,18 @@ jobs:
           # shard.verdict.json is the replay artifact every failing mutation
           # verdict's advice points at.
           path: |
-            shard.log
-            shard.verdict.json
+            ${{ runner.temp }}/shard.log
+            ${{ runner.temp }}/shard.verdict.json
           retention-days: 3
+          if-no-files-found: ignore
+      - name: Upload the module durations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # mutation.py history reads these on the PR's next run; tiny, unlike the log.
+          name: mutation-durations-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/shard.durations.json
+          retention-days: 14
           if-no-files-found: ignore
       - name: Upload the verdict
         if: always()
@@ -1443,6 +1548,7 @@ jobs:
       - test-mutation
       - web-build
       - desktop-build
+      - web-e2e-screen
       # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
     # Required status check: it must report in seconds, so it rides the same
     # control-plane runner as the dispatcher, and it never waits on anything.
@@ -1482,7 +1588,7 @@ jobs:
           # the family the shards report under and how many detect planned, so
           # a shard cancelled before its upload cannot be spoken for by another.
           EXPECT: >-
-            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }}
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }},web-e2e-screen=${{ needs.web-e2e-screen.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --out "$RUNNER_TEMP/gate-verdict"
       # Its own directory: the one above holds every lane's verdict, which this
       # job does not own.

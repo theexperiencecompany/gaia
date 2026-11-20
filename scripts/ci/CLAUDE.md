@@ -20,6 +20,7 @@ lane without grepping the workflow first.
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
+| The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
@@ -110,6 +111,45 @@ record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
 path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
 prints that view on failure — the local proof step, with no lane and nothing
 to poll.
+
+Shards are sized by estimated cost, not by module count. The detector stamps
+each module with `mutants`, its count of mutable AST nodes inside functions on
+the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).
+A module's `cost` is `20 s + mutants x 0.30 s` in the unit pool, and
+`20 s + mutants x (0.19 s + test files x 0.061 s)` in services (one mutant
+worker, because contract tests share a Redis DB). `plan` picks the shard COUNT
+from the cost: each pool gets the fewest shards whose packing keeps every shard
+within `SHARD_BUDGET_SECONDS` (600). The budget is a third of the deadline on
+purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
+mutants, took 245 s on one run and 563 s on the next), and replaying both #1799
+runs' measured durations kept the worst 600 s shard at 1133 s. Measured beats
+estimated: each shard uploads `mutation-durations-N` (`shard.durations.json`,
+the seconds every started module took), `detect` runs `mutation.py history` to
+download those from the PR's five newest earlier runs, and `plan` costs a
+measured module at its newest measurement, falling back to the estimate. A
+plan below one wave is topped up to `MUTATION_WAVE` (6), because shards that
+run at once cost no wall clock. A plan above `MAX_SHARDS` (24, four waves, far
+under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
+each shard over budget. Concurrency stays at `max-parallel: 6`, so the shards
+past the first wave queue. Spare shards go to the pool with the most cost per
+shard, and inside a pool the costliest module goes first onto the cheapest shard.
+Each module's mutmut cap is 3x its cost, never under 720 s and never past the
+deadline less wrap-up. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
+30-minute step timeout). Caps shrink to fit the time left, and a module the
+deadline has no room for gets a `timed_out` verdict with no run. So the step
+timeout can no longer kill a shard before it reports. Memory is capped the same
+way: on Linux mutmut gets an `RLIMIT_DATA` of `MUTANT_MEMORY_SHARE` (80%) of the
+shard's cgroup limit (else RAM) split over itself and its workers, inherited by
+every forked mutant. A mutant that loops while a test fake grows then dies of
+`MemoryError`, or as a segfault (counted as detected on Linux beside real verdicts,
+and named in the verdict's reason). Before the cap, `conversation/step.py` went
+from 1.1 GB to 8 GB in 50 s and the OOM killer took the whole hosted runner,
+which GitHub reports as "the runner has received a shutdown signal". The constants were fitted
+to PR #1799 (runs 43665639573 and 43677307541), where packing by count left shard 3/6 with 54
+modules and a 30-minute timeout. The same run stopped
+`repositories/conversations.py` and `conversation/mongo_log.py` at the fixed
+720 s cap with 452/519 and 383/521 mutants graded. Refit them from a later
+run's `shard.log` phases when the lane's machines or worker counts change.
 
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second

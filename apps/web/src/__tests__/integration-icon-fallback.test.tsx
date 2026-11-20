@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
@@ -40,5 +40,38 @@ describe("IntegrationIcon", () => {
       <IntegrationIcon integrationId="x" iconUrl={null} />,
     );
     expect(device.container.innerHTML).not.toBe(generic.container.innerHTML);
+  });
+});
+
+describe("IntegrationIcon with an icon URL", () => {
+  const url = "https://example.com/favicon.png";
+
+  it("shows the image when the URL loads", () => {
+    const { container } = render(
+      <IntegrationIcon integrationId="custom-mcp-id" iconUrl={url} />,
+    );
+    expect(container.querySelector("img")).not.toBeNull();
+  });
+
+  it("swaps the image for the fallback glyph when the URL fails to load", () => {
+    const { container } = render(
+      <IntegrationIcon integrationId="custom-mcp-id" iconUrl={url} />,
+    );
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
+  });
+
+  it("swaps the image for the fallback glyph on a background tile", () => {
+    const { container } = render(
+      <IntegrationIcon
+        integrationId="custom-mcp-id"
+        iconUrl={url}
+        showBackground
+      />,
+    );
+    fireEvent.error(container.querySelector("img") as HTMLImageElement);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });

@@ -17,13 +17,9 @@ from app.services.workflow.scheduler import WorkflowScheduler
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
-    ):
-        svc = WorkflowScheduler(redis_settings=MagicMock())
-        svc.arq_pool = AsyncMock()
-        return svc
+    svc = WorkflowScheduler(redis_settings=MagicMock())
+    svc.arq_pool = AsyncMock()
+    return svc
 
 
 @pytest.mark.unit

@@ -8,6 +8,8 @@ contributor development - use local .env files instead.
 Local environment variables take precedence over Infisical secrets.
 
 Resolution:
+- ENV unset -> raise: every deployment sets it, so a missing ENV is a local run
+  that must never fall through to the production vault
 - ENV=selfhost -> skip always (self-host resolves configuration locally)
 - All machine-identity vars set -> fetch remote secrets
 - None set in dev -> skip (local .env only); in prod -> raise
@@ -45,7 +47,14 @@ def inject_infisical_secrets() -> None:
     ENV doubles as the Infisical environment slug (development/staging/
     production).
     """
-    env = os.getenv("ENV", "production")
+    env = os.getenv("ENV")
+    if not env:
+        raise InfisicalConfigError(
+            "ENV is not set, so there is no telling which Infisical environment to load. "
+            "Deployments set ENV=production or ENV=selfhost. For a local run set "
+            "ENV=development: `mise run wt:env` writes it to .env.worktree, which every "
+            "mise task loads, and `mise infisical <task>` adds the team secrets."
+        )
     if env == SELFHOST_ENV:
         # Even with identity vars present (a dotenv fallback can leak them in).
         log.info("Infisical skipped: self-host mode uses local configuration")

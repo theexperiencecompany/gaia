@@ -13,7 +13,7 @@ never the per-call row uuid.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 import contextlib
 import time
 from typing import Final
@@ -21,7 +21,7 @@ from typing import Final
 from prometheus_client import Counter, Histogram
 
 from app.services.storage.metrics import _register_once
-from app.services.turn_clock import TurnOverhead
+from app.services.turn_timings import StepReport, Store, StoreTally, TurnPhase, TurnStep
 from shared.py.wide_events import log
 
 #: Sub-second steps where the overhead work moves things, edges at the 5s and
@@ -47,6 +47,9 @@ _TTFT_BUCKETS: Final[tuple[float, ...]] = (
 )
 
 #: Overhead is budgeted at 120ms p50 / 200ms p90, so resolution sits there.
+#: Round trips per turn phase: a handful when cached, dozens when a step fans out.
+_STORE_CALL_BUCKETS: Final[tuple[float, ...]] = (0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89)
+
 _OVERHEAD_BUCKETS: Final[tuple[float, ...]] = (
     0.01,
     0.02,
@@ -85,7 +88,7 @@ _CHAT_TTFT_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_ttft_seconds",
         documentation="Time to first comms response text per chat turn in seconds",
-        labelnames=("source", "voice_mode", "status"),
+        labelnames=("source", "status"),
         buckets=_TTFT_BUCKETS,
     ),
 )
@@ -95,7 +98,7 @@ _CHAT_E2E_ACK_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_e2e_ack_seconds",
         documentation="Request accepted to comms ack complete per chat turn in seconds",
-        labelnames=("source", "voice_mode", "delegated", "status"),
+        labelnames=("source", "delegated", "status"),
         buckets=_TURN_BUCKETS,
     ),
 )
@@ -105,20 +108,40 @@ _CHAT_E2E_FULL_SECONDS = _register_once(
     lambda: Histogram(
         name="chat_e2e_full_seconds",
         documentation="Request accepted to stream DONE per chat turn in seconds",
-        labelnames=("source", "voice_mode", "delegated", "status"),
+        labelnames=("source", "delegated", "status"),
         buckets=_TURN_BUCKETS,
     ),
 )
 
-_TURN_OVERHEAD_SECONDS = _register_once(
-    "turn_overhead_seconds",
+_TURN_STEP_SECONDS = _register_once(
+    "turn_step_seconds",
     lambda: Histogram(
-        name="turn_overhead_seconds",
+        name="turn_step_seconds",
         documentation=(
-            "Chat turn latency that is ours, not the provider's, by stage "
-            "(ingress, prep, egress, total) in seconds"
+            "Chat turn ingress/prep time by named step; step=other is the phase's "
+            "time no named step covers, so a phase's steps sum to it"
         ),
-        labelnames=("source", "stage", "path"),
+        labelnames=("source", "phase", "step"),
+        buckets=_OVERHEAD_BUCKETS,
+    ),
+)
+
+_TURN_STORE_CALLS = _register_once(
+    "turn_store_calls",
+    lambda: Histogram(
+        name="turn_store_calls",
+        documentation="Store round trips one chat turn made in a phase, by store",
+        labelnames=("source", "phase", "store"),
+        buckets=_STORE_CALL_BUCKETS,
+    ),
+)
+
+_TURN_STORE_SECONDS = _register_once(
+    "turn_store_seconds",
+    lambda: Histogram(
+        name="turn_store_seconds",
+        documentation="Wall time one chat turn spent on store round trips in a phase, by store",
+        labelnames=("source", "phase", "store"),
         buckets=_OVERHEAD_BUCKETS,
     ),
 )
@@ -233,26 +256,6 @@ _HIL_DISPATCH_LAG_SECONDS = _register_once(
     ),
 )
 
-_DELIVERY_NARRATION_SECONDS = _register_once(
-    "delivery_narration_seconds",
-    lambda: Histogram(
-        name="delivery_narration_seconds",
-        documentation="Executor result narration duration in seconds",
-        labelnames=("status",),
-        buckets=_TURN_BUCKETS,
-    ),
-)
-
-_DELIVERY_PERSIST_SECONDS = _register_once(
-    "delivery_persist_seconds",
-    lambda: Histogram(
-        name="delivery_persist_seconds",
-        documentation="Result persistence write duration in seconds",
-        labelnames=("op",),
-        buckets=_TTFT_BUCKETS,
-    ),
-)
-
 _TRANSPORT_REDIS_PUBLISH_SECONDS = _register_once(
     "transport_redis_publish_seconds",
     lambda: Histogram(
@@ -311,6 +314,14 @@ _CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
     ),
 )
 
+_MEMORY_FAST_RECALL_SEMANTIC_MISSED = _register_once(
+    "memory_fast_recall_semantic_missed",
+    lambda: Counter(
+        name="memory_fast_recall_semantic_missed",
+        documentation="Comms fast-lane turns answered without semantic hits: the embedding was late",
+    ),
+)
+
 _EXECUTOR_RUN_TOTAL = _register_once(
     "executor_run_total",
     lambda: Counter(
@@ -341,6 +352,18 @@ _TRIGGER_GATE_DECISION_TOTAL = _register_once(
     ),
 )
 
+_REACTION_ACK_DECISION_TOTAL = _register_once(
+    "reaction_ack_decision_total",
+    lambda: Counter(
+        name="reaction_ack_decision_total",
+        documentation=(
+            "Lifetime instant reaction decisions; jev_error, jev_timeout and jev_malformed over every "
+            "reason that asked JEV is the instant reaction's JEV error rate"
+        ),
+        labelnames=("outcome", "reason"),
+    ),
+)
+
 _HIL_PAUSE_TOTAL = _register_once(
     "hil_pause_total",
     lambda: Counter(
@@ -365,6 +388,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
     _CONTEXT_SECTION_BUDGET_EXCEEDED,
+    _MEMORY_FAST_RECALL_SEMANTIC_MISSED,
     _EXECUTOR_QUEUE_WAIT_SECONDS,
     _EXECUTOR_TTFT_SECONDS,
     _EXECUTOR_ACTIVE_SECONDS,
@@ -373,8 +397,6 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _SUBAGENT_RUN_SECONDS,
     _HIL_USER_WAIT_SECONDS,
     _HIL_DISPATCH_LAG_SECONDS,
-    _DELIVERY_NARRATION_SECONDS,
-    _DELIVERY_PERSIST_SECONDS,
     _TRANSPORT_REDIS_PUBLISH_SECONDS,
     _SSE_DELIVERY_SECONDS,
     _LLM_CALL_SECONDS,
@@ -383,6 +405,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _EXECUTOR_RUN_TOTAL,
     _TOOL_CALL_TOTAL,
     _TRIGGER_GATE_DECISION_TOTAL,
+    _REACTION_ACK_DECISION_TOTAL,
     _HIL_PAUSE_TOTAL,
 )
 
@@ -424,40 +447,33 @@ def span() -> Iterator[Callable[[], float]]:
     yield lambda: time.perf_counter() - start
 
 
-def observe_chat_ttft(seconds: float, *, source: str, voice_mode: bool, status: str) -> None:
+def observe_chat_ttft(seconds: float, *, source: str, status: str) -> None:
     """Record time to first comms response text for a chat turn."""
     _observe(
         _CHAT_TTFT_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         status=status,
     )
 
 
-def observe_chat_e2e_ack(
-    seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
-) -> None:
+def observe_chat_e2e_ack(seconds: float, *, source: str, delegated: bool, status: str) -> None:
     """Record request-accepted to comms-ack-complete for a chat turn."""
     _observe(
         _CHAT_E2E_ACK_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         delegated=_bool_label(delegated),
         status=status,
     )
 
 
-def observe_chat_e2e_full(
-    seconds: float, *, source: str, voice_mode: bool, delegated: bool, status: str
-) -> None:
+def observe_chat_e2e_full(seconds: float, *, source: str, delegated: bool, status: str) -> None:
     """Record request-accepted to stream-DONE for a chat turn."""
     _observe(
         _CHAT_E2E_FULL_SECONDS,
         seconds,
         source=source,
-        voice_mode=_bool_label(voice_mode),
         delegated=_bool_label(delegated),
         status=status,
     )
@@ -478,21 +494,39 @@ def observe_context_section_budget_exceeded(*, section: str) -> None:
     _inc(_CONTEXT_SECTION_BUDGET_EXCEEDED, section=section)
 
 
-def observe_turn_overhead(overhead: TurnOverhead, *, source: str) -> None:
-    """Record one turn's overhead stretches and their total."""
-    for stage, seconds in (
-        ("ingress", overhead.ingress),
-        ("prep", overhead.prep),
-        ("egress", overhead.egress),
-        ("total", overhead.total),
-    ):
-        _observe(
-            _TURN_OVERHEAD_SECONDS,
-            seconds,
-            source=source,
-            stage=stage,
-            path=overhead.path.value,
-        )
+def observe_fast_recall_semantic_missed() -> None:
+    """Count a fast-lane turn that answered without semantic hits because the embedding was late."""
+    _inc(_MEMORY_FAST_RECALL_SEMANTIC_MISSED)
+
+
+def observe_turn_steps(
+    reports: Mapping[TurnPhase, Mapping[TurnStep, StepReport]], *, source: str
+) -> None:
+    """Record each phase's step times, and its round trips and time per store (zero included)."""
+    for phase, steps in reports.items():
+        totals = {store: StoreTally() for store in Store}
+        for step, report in steps.items():
+            _observe(
+                _TURN_STEP_SECONDS,
+                report.seconds,
+                source=source,
+                phase=phase.value,
+                step=step.value,
+            )
+            for store, tally in report.stores.items():
+                totals[store].calls += tally.calls
+                totals[store].seconds += tally.seconds
+        for store, tally in totals.items():
+            _observe(
+                _TURN_STORE_CALLS, tally.calls, source=source, phase=phase.value, store=store.value
+            )
+            _observe(
+                _TURN_STORE_SECONDS,
+                tally.seconds,
+                source=source,
+                phase=phase.value,
+                store=store.value,
+            )
 
 
 def observe_llm_ttft(seconds: float, *, model: str, lane: str, agent: str) -> None:
@@ -556,6 +590,11 @@ def observe_trigger_gate_decision(*, owner: str, outcome: str, reason: str) -> N
     _inc(_TRIGGER_GATE_DECISION_TOTAL, owner=owner, outcome=outcome, reason=reason)
 
 
+def observe_reaction_ack_decision(*, outcome: str, reason: str) -> None:
+    """Count one instant reaction decision."""
+    _inc(_REACTION_ACK_DECISION_TOTAL, outcome=outcome, reason=reason)
+
+
 def observe_hil_pause() -> None:
     """Increment the lifetime HIL-pause counter."""
     _inc(_HIL_PAUSE_TOTAL)
@@ -569,16 +608,6 @@ def observe_hil_user_wait(seconds: float) -> None:
 def observe_hil_dispatch_lag(seconds: float) -> None:
     """Record HIL approval resumed_at minus decided_at."""
     _observe(_HIL_DISPATCH_LAG_SECONDS, seconds)
-
-
-def observe_delivery_narration(seconds: float, *, status: str) -> None:
-    """Record executor result narration duration."""
-    _observe(_DELIVERY_NARRATION_SECONDS, seconds, status=status)
-
-
-def observe_delivery_persist(seconds: float, *, op: str) -> None:
-    """Record result persistence write duration for one op."""
-    _observe(_DELIVERY_PERSIST_SECONDS, seconds, op=op)
 
 
 def observe_transport_redis_publish(seconds: float) -> None:
@@ -610,8 +639,7 @@ __all__ = [
     "observe_comms_graph",
     "observe_context_assemble",
     "observe_context_section_budget_exceeded",
-    "observe_delivery_narration",
-    "observe_delivery_persist",
+    "observe_fast_recall_semantic_missed",
     "observe_executor_active",
     "observe_executor_e2e",
     "observe_executor_queue_wait",
@@ -623,9 +651,11 @@ __all__ = [
     "observe_hil_user_wait",
     "observe_llm_call",
     "observe_llm_ttft",
+    "observe_reaction_ack_decision",
     "observe_sse_delivery",
     "observe_subagent_run",
     "observe_tool_call",
+    "observe_turn_steps",
     "observe_trigger_gate_decision",
     "observe_transport_redis_publish",
     "span",

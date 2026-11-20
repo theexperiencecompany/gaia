@@ -61,7 +61,7 @@ describe("writeBotsEnv", () => {
     expect(readEnv(repo, "bots")).toMatchObject({
       TELEGRAM_BOT_TOKEN: "123:abc",
       GAIA_BOT_API_KEY: "bot-api-key",
-      GAIA_FRONTEND_URL: "https://gaia.example.com",
+      FRONTEND_URL: "https://gaia.example.com",
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/", // pragma: allowlist secret
     });
   });
@@ -93,9 +93,16 @@ describe("writeBotsEnv", () => {
     updateApiEnv(repo, { set: { FRONTEND_URL: "https://new.example.com" } });
     writeBotsEnv(repo);
 
-    expect(readEnv(repo, "bots").GAIA_FRONTEND_URL).toBe(
-      "https://new.example.com",
-    );
+    expect(readEnv(repo, "bots").FRONTEND_URL).toBe("https://new.example.com");
+  });
+
+  it("drops the web URL key the bots read before they shared FRONTEND_URL with the API", () => {
+    const repo = makeRepo();
+    writeBotsEnv(repo, { set: { GAIA_FRONTEND_URL: "http://localhost:3000" } });
+
+    writeBotsEnv(repo);
+
+    expect(readEnv(repo, "bots")).not.toHaveProperty("GAIA_FRONTEND_URL");
   });
 
   it("gives an install from before the bots one bot key, shared with the API", () => {

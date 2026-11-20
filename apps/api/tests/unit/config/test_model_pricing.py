@@ -29,6 +29,7 @@ from app.constants.llm import (
     MEMORY_MODEL_NAME,
     OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT,
     PAID_MODEL_NAME,
+    SIM_STUB_MODEL_NAME,
     VISION_MODEL_NAME,
     LLMProviderName,
 )
@@ -161,6 +162,15 @@ class TestEveryRuntimeModelIsPriced:
             get_model_pricing("gpt-6-luna")
 
         mock_log.error.assert_called_once()
+
+    @pytest.mark.regression
+    def test_the_sim_stub_model_is_free_and_does_not_log(self) -> None:
+        """Every call under GAIA_SIM_MODE names the stub's model; each one logged an ERROR."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(SIM_STUB_MODEL_NAME)
+
+        assert pricing == ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0)
+        mock_log.error.assert_not_called()
 
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)

@@ -93,19 +93,24 @@ class NxFailedError(RuntimeError):
 
 
 def _nx(*args: str) -> str:
-    done = subprocess.run(
-        ["pnpm", "exec", "nx", *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # A file, not a pipe: nx exits before a macOS pipe drains and cut --explain at 512 bytes.
+    with tempfile.TemporaryFile(mode="w+") as stdout:
+        done = subprocess.run(
+            ["pnpm", "exec", "nx", *args],
+            cwd=REPO_ROOT,
+            env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        stdout.seek(0)
+        out = stdout.read()
     if done.returncode == 0:
-        return done.stdout
+        return out
     # A fresh worktree has no node_modules: nx then fails to load the repo's own plugins.
     hint = "" if (REPO_ROOT / "node_modules").is_dir() else "\nNo node_modules: run `pnpm install`."
-    said = (done.stderr + done.stdout).strip()
+    said = (done.stderr + out).strip()
     raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}{hint}")
 
 

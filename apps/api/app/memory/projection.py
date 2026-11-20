@@ -20,10 +20,11 @@ from __future__ import annotations
 from datetime import date as date_type
 import hashlib
 from pathlib import Path
-from typing import TypedDict
 
+from app.memory.pg_store.episodes import EpisodeEntry
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
+    VfsProjection,
     matches_text,
     write_readonly_body,
     write_rw_if_changed,
@@ -37,10 +38,9 @@ JOURNAL_DIRNAME = "journal"
 FACTS_DIRNAME = "facts"
 
 
-class MemoryFileProjection(TypedDict):
+class MemoryFileProjection(VfsProjection):
     """One projected file: stable id, path under memory/, full content."""
 
-    id: str
     path: str
     content: str
 
@@ -68,7 +68,7 @@ def memory_marker_path(user_root: Path) -> Path:
 # ====================================================================
 
 
-def render_journal_page(date: date_type, entries: list[dict[str, str]], summary: str | None) -> str:
+def render_journal_page(date: date_type, entries: list[EpisodeEntry], summary: str | None) -> str:
     """One journal day: timestamped lines plus the rollover summary when set."""
     lines = [f"# {date.isoformat()}", ""]
     lines.extend(f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in entries)

@@ -4,10 +4,6 @@ export type { ErrorEnvelope } from "./apiError";
 export { ApiError, REQUEST_ID_HEADER, toErrorEnvelope } from "./apiError";
 export type {
   BatchSyncConversationsParams,
-  ChatStreamFileData,
-  ChatStreamMessage,
-  ChatStreamParams,
-  ChatStreamReplyTo,
   ConversationListParams,
   ConversationSyncItem,
   GenerateImageParams,

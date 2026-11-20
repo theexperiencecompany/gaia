@@ -1,9 +1,10 @@
 import { TextArea } from "@heroui/react";
-import React, { useCallback, useImperativeHandle } from "react";
+import type React from "react";
+import { useCallback } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { useAutosizeTextarea } from "@/features/chat/hooks/useAutosizeTextarea";
-import { useSlashCommandDropdownState } from "@/features/chat/hooks/useSlashCommandDropdownState";
+import type { SlashCommandDropdownController } from "@/features/chat/hooks/useSlashCommandDropdownState";
 
 import SlashCommandDropdown from "./SlashCommandDropdown";
 
@@ -14,145 +15,112 @@ interface SearchbarInputProps {
   handleKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
   hasMessages: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
-  onSlashCommandSelect?: (toolName: string, toolCategory: string) => void;
+  slashCommand: SlashCommandDropdownController;
   onIntegrationClick?: (integrationId: string) => void;
 }
 
-export interface ComposerInputRef {
-  toggleSlashCommandDropdown: () => void;
-  isSlashCommandDropdownOpen: () => boolean;
-}
+const ComposerInput: React.FC<SearchbarInputProps> = ({
+  searchbarText,
+  onSearchbarTextChange,
+  handleFormSubmit,
+  handleKeyDown,
+  inputRef,
+  hasMessages: _hasMessages,
+  slashCommand,
+  onIntegrationClick,
+}) => {
+  const {
+    slashCommandState,
+    closeDropdown,
+    updateSlashCommandDetection,
+    handleSlashCommandSelect,
+    handleSlashCommandKeyDown,
+    navigateUp,
+    navigateDown,
+    selectCategory,
+  } = slashCommand;
 
-const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
-  (
-    {
-      searchbarText,
-      onSearchbarTextChange,
-      handleFormSubmit,
-      handleKeyDown,
-      inputRef,
-      hasMessages: _hasMessages,
-      onSlashCommandSelect,
-      onIntegrationClick,
+  useAutosizeTextarea(inputRef, searchbarText);
+
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const text = e.target.value;
+      onSearchbarTextChange(text);
+
+      // Update slash command detection immediately without setTimeout
+      if (inputRef.current) {
+        const cursorPosition = inputRef.current.selectionStart || 0;
+        updateSlashCommandDetection(text, cursorPosition);
+      }
     },
-    ref,
-  ) => {
-    const {
-      slashCommandState,
-      openOrToggleDropdown,
-      closeDropdown,
-      updateSlashCommandDetection,
-      handleSlashCommandSelect,
-      handleSlashCommandKeyDown,
-      navigateUp,
-      navigateDown,
-      selectCategory,
-    } = useSlashCommandDropdownState({
-      inputRef,
-      searchbarText,
-      onSearchbarTextChange,
-      onSlashCommandSelect,
-    });
+    [onSearchbarTextChange, updateSlashCommandDetection, inputRef],
+  );
 
-    useAutosizeTextarea(inputRef, searchbarText);
+  const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLTextAreaElement> =
+    useCallback(
+      (e) => {
+        // First, handle slash command navigation
+        const wasHandledBySlashCommand = handleSlashCommandKeyDown(e);
 
-    // Expose methods to parent component
-    useImperativeHandle(
-      ref,
-      () => ({
-        toggleSlashCommandDropdown: openOrToggleDropdown,
-        isSlashCommandDropdownOpen: () => slashCommandState.isActive,
-      }),
-      [openOrToggleDropdown, slashCommandState.isActive],
-    );
-
-    const handleTextChange = useCallback(
-      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
-        onSearchbarTextChange(text);
-
-        // Update slash command detection immediately without setTimeout
-        if (inputRef.current) {
-          const cursorPosition = inputRef.current.selectionStart || 0;
-          updateSlashCommandDetection(text, cursorPosition);
+        // If not handled by slash command, pass to original handler
+        if (!wasHandledBySlashCommand) {
+          handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>);
         }
       },
-      [onSearchbarTextChange, updateSlashCommandDetection, inputRef],
+      [handleSlashCommandKeyDown, handleKeyDown],
     );
 
-    const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLTextAreaElement> =
-      useCallback(
-        (e) => {
-          // First, handle slash command navigation
-          const wasHandledBySlashCommand = handleSlashCommandKeyDown(e);
+  // Update cursor position tracking
+  const handleCursorPositionChange = useCallback(() => {
+    // Use requestAnimationFrame for better performance
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        const cursorPosition = inputRef.current.selectionStart || 0;
+        updateSlashCommandDetection(searchbarText, cursorPosition);
+      }
+    });
+  }, [searchbarText, updateSlashCommandDetection, inputRef]);
 
-          // If not handled by slash command, pass to original handler
-          if (!wasHandledBySlashCommand) {
-            handleKeyDown(
-              e as unknown as React.KeyboardEvent<HTMLInputElement>,
-            );
-          }
-        },
-        [handleSlashCommandKeyDown, handleKeyDown],
-      );
-
-    // Update cursor position tracking
-    const handleCursorPositionChange = useCallback(() => {
-      // Use requestAnimationFrame for better performance
-      requestAnimationFrame(() => {
-        if (inputRef.current) {
-          const cursorPosition = inputRef.current.selectionStart || 0;
-          updateSlashCommandDetection(searchbarText, cursorPosition);
-        }
-      });
-    }, [searchbarText, updateSlashCommandDetection, inputRef]);
-
-    return (
-      <>
-        {/* v2's 48px field: one line centres, more lines grow inside an 8px inset */}
-        <form
-          className="flex min-h-12 items-center"
-          onSubmit={handleFormSubmit}
-        >
-          <TextArea
-            ref={inputRef}
-            autoFocus
-            className={inputVariants({
-              variant: "bare",
-              placeholder: "muted",
-              className:
-                "max-h-82 w-full resize-none px-3 py-2 text-base leading-6 font-light shadow-none focus:ring-0",
-            })}
-            rows={1}
-            placeholder="What can I do for you today? (Type '/' for tools)"
-            value={searchbarText}
-            onKeyDown={handleKeyDownWithSlashCommands}
-            onChange={handleTextChange}
-            onSelect={handleCursorPositionChange}
-            onClick={handleCursorPositionChange}
-          />
-        </form>
-
-        <SlashCommandDropdown
-          matches={slashCommandState.matches}
-          selectedIndex={slashCommandState.selectedIndex}
-          onSelect={handleSlashCommandSelect}
-          onClose={closeDropdown}
-          position={slashCommandState.dropdownPosition}
-          isVisible={slashCommandState.isActive}
-          openedViaButton={slashCommandState.openedViaButton}
-          selectedCategory={slashCommandState.selectedCategory}
-          categories={slashCommandState.categories}
-          onCategoryChange={selectCategory}
-          onNavigateUp={navigateUp}
-          onNavigateDown={navigateDown}
-          onIntegrationClick={onIntegrationClick}
+  return (
+    <>
+      {/* v2's 48px field: one line centres, more lines grow inside an 8px inset */}
+      <form className="flex min-h-12 items-center" onSubmit={handleFormSubmit}>
+        <TextArea
+          ref={inputRef}
+          autoFocus
+          className={inputVariants({
+            variant: "bare",
+            placeholder: "muted",
+            className:
+              "max-h-82 w-full resize-none px-3 py-2 text-base leading-6 font-light shadow-none focus:ring-0",
+          })}
+          rows={1}
+          placeholder="What can I do for you today? (Type '/' for tools)"
+          value={searchbarText}
+          onKeyDown={handleKeyDownWithSlashCommands}
+          onChange={handleTextChange}
+          onSelect={handleCursorPositionChange}
+          onClick={handleCursorPositionChange}
         />
-      </>
-    );
-  },
-);
+      </form>
 
-ComposerInput.displayName = "ComposerInput";
+      <SlashCommandDropdown
+        matches={slashCommandState.matches}
+        selectedIndex={slashCommandState.selectedIndex}
+        onSelect={handleSlashCommandSelect}
+        onClose={closeDropdown}
+        position={slashCommandState.dropdownPosition}
+        isVisible={slashCommandState.isActive}
+        openedViaButton={slashCommandState.openedViaButton}
+        selectedCategory={slashCommandState.selectedCategory}
+        categories={slashCommandState.categories}
+        onCategoryChange={selectCategory}
+        onNavigateUp={navigateUp}
+        onNavigateDown={navigateDown}
+        onIntegrationClick={onIntegrationClick}
+      />
+    </>
+  );
+};
 
 export default ComposerInput;

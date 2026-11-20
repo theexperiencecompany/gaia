@@ -8,7 +8,7 @@ nobody can earn a badge for ~30 days (the percentile compares trailing-30-day
 totals, and everyone would be at zero).
 
 This script reconstructs history from the durable data we already have: the
-`messages` arrays embedded in `conversations`. Each *user-role* message counts
+messages stored in `conversation_entries`. Each *user-role* message counts
 as one action on its UTC day, and each `tool_data` entry on a bot message (one
 persisted tool execution) counts as one more — matching what the live
 `record_activity()` path meters from deploy day onward.
@@ -33,10 +33,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymongo import UpdateOne
 
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb.collections import get_async_collection
 from app.services.usage_activity import sync_activity_tiers
 
-conversations_collection = get_async_collection("conversations")
+entries_collection = get_async_collection(CONVERSATION_ENTRIES_COLLECTION)
 usage_daily_collection = get_async_collection("usage_daily")
 
 _USER_ROLES = {"user", "human"}
@@ -54,52 +55,51 @@ def _parse_ts(raw: object) -> datetime | None:
 async def backfill(days: int, dry_run: bool) -> None:
     since = datetime.now(UTC) - timedelta(days=days)
     counts: Counter[tuple[str, str]] = Counter()  # (user_id, YYYY-MM-DD) -> n
-    conversations = 0
+    scanned = 0
 
-    cursor = conversations_collection.find(
+    cursor = entries_collection.find(
         {},
         {
             "user_id": 1,
-            "messages.role": 1,
-            "messages.type": 1,
-            "messages.timestamp": 1,
-            "messages.date": 1,
-            "messages.tool_data.timestamp": 1,
-            "messages.tool_data.tool_name": 1,
+            "role": 1,
+            "type": 1,
+            "timestamp": 1,
+            "date": 1,
+            "tool_data.timestamp": 1,
+            "tool_data.tool_name": 1,
         },
     )
-    async for conv in cursor:
-        conversations += 1
-        user_id = conv.get("user_id")
+    async for message in cursor:
+        scanned += 1
+        user_id = message.get("user_id")
         if not user_id:
             continue
-        for message in conv.get("messages") or []:
-            # Production messages carry `type` + `date`; newer code paths write
-            # `role` + `timestamp`. Accept both shapes (verified against prod).
-            message_dt = _parse_ts(message.get("timestamp") or message.get("date"))
+        # Production messages carry `type` + `date`; newer code paths write
+        # `role` + `timestamp`. Accept both shapes (verified against prod).
+        message_dt = _parse_ts(message.get("timestamp") or message.get("date"))
 
-            # Every user-role message is one action on its day.
-            if (message.get("role") or message.get("type")) in _USER_ROLES:
-                if message_dt is not None and message_dt >= since:
-                    counts[(user_id, message_dt.astimezone(UTC).strftime("%Y-%m-%d"))] += 1
+        # Every user-role message is one action on its day.
+        if (message.get("role") or message.get("type")) in _USER_ROLES:
+            if message_dt is not None and message_dt >= since:
+                counts[(user_id, message_dt.astimezone(UTC).strftime("%Y-%m-%d"))] += 1
+            continue
+
+        # Bot messages carry the turn's tool executions in `tool_data`.
+        # Only `tool_calls_data` entries are counted (one per invocation,
+        # emitted when a call's args complete) — the other variants are
+        # result payloads of those same calls and would double-count.
+        for entry in message.get("tool_data") or []:
+            if entry.get("tool_name") != "tool_calls_data":
                 continue
-
-            # Bot messages carry the turn's tool executions in `tool_data`.
-            # Only `tool_calls_data` entries are counted (one per invocation,
-            # emitted when a call's args complete) — the other variants are
-            # result payloads of those same calls and would double-count.
-            for entry in message.get("tool_data") or []:
-                if entry.get("tool_name") != "tool_calls_data":
-                    continue
-                dt = _parse_ts(entry.get("timestamp")) or message_dt
-                if dt is None or dt < since:
-                    continue
-                counts[(user_id, dt.astimezone(UTC).strftime("%Y-%m-%d"))] += 1
+            dt = _parse_ts(entry.get("timestamp")) or message_dt
+            if dt is None or dt < since:
+                continue
+            counts[(user_id, dt.astimezone(UTC).strftime("%Y-%m-%d"))] += 1
 
     users = len({uid for uid, _ in counts})
     total = sum(counts.values())
     print(
-        f"scanned {conversations} conversations -> {total} user messages "
+        f"scanned {scanned} conversation entries -> {total} user messages "
         f"across {users} users / {len(counts)} user-days (window: {days}d)"
     )
     if dry_run:

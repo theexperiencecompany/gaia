@@ -80,13 +80,9 @@ class ConcreteSchedulerService(BaseSchedulerService):
 
 @pytest.fixture
 def service():
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
-    ):
-        svc = ConcreteSchedulerService(redis_settings=MagicMock())
-        svc.arq_pool = AsyncMock()
-        return svc
+    svc = ConcreteSchedulerService(redis_settings=MagicMock())
+    svc.arq_pool = AsyncMock()
+    return svc
 
 
 @pytest.fixture
@@ -146,10 +142,6 @@ def recurring_task_stop_after():
 class TestInitializeClose:
     async def test_initialize_creates_pool(self):
         with (
-            patch(
-                "app.services.scheduler_service.settings",
-                MagicMock(REDIS_URL="redis://localhost:6379/0"),
-            ),
             patch(
                 "app.services.scheduler_service.create_pool",
                 new_callable=AsyncMock,

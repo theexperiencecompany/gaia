@@ -1,3 +1,4 @@
+import asyncio
 from http import HTTPStatus
 from typing import Literal, TypedDict
 from urllib.parse import urlsplit
@@ -8,8 +9,9 @@ import tldextract
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
-from app.config.workos import get_async_workos_client
+from app.config.workos import get_async_workos_client, with_shared_signing_keys
 from app.constants.auth import DEV_USER_HEADER, SESSION_HINT_COOKIE
+from app.constants.cache import BOT_USER_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
@@ -220,6 +222,11 @@ def build_user_context(
     )
 
 
+def bot_user_cache_key(platform: str, platform_user_id: str) -> str:
+    """Return the cache key holding a bot-platform account's resolved user context."""
+    return f"{BOT_USER_CACHE_PREFIX}:{platform}:{platform_user_id}"
+
+
 async def resolve_bot_user(platform: str, platform_user_id: str) -> AuthenticatedUser | None:
     """Resolve a bot-platform account to its user context, or None when unlinked.
 
@@ -269,12 +276,17 @@ async def authenticate_workos_session(
 
     try:
         # Load and authenticate the WorkOS session
-        session = await workos.user_management.load_sealed_session(
-            sealed_session=session_token,
-            cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+        session = with_shared_signing_keys(
+            await workos.user_management.load_sealed_session(
+                sealed_session=session_token,
+                cookie_password=settings.WORKOS_COOKIE_PASSWORD,
+            )
         )
 
-        auth_response = session.authenticate()
+        # Sync SDK verification fetches keys on a cache miss: off the shared loop.
+        # session.refresh below still verifies on the loop (cache hit except at
+        # expiry/rotation, bounded by WORKOS_JWKS_FETCH_TIMEOUT_SECONDS).
+        auth_response = await asyncio.to_thread(session.authenticate)
         new_session = None
         workos_user = None
 

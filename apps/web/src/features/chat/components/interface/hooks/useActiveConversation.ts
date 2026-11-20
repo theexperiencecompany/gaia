@@ -40,12 +40,11 @@ export const useActiveConversation = (convoIdParam: string): void => {
       if (conversation?.isUnread) {
         useChatStore
           .getState()
-          .upsertConversation({ ...conversation, isUnread: false });
+          .upsertConversations([{ ...conversation, isUnread: false }]);
         db.updateConversationFields(convoIdParam, { isUnread: false });
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
-      // Freshness sync happens in useStreamResume, sequenced after the
-      // live-turn discovery so it can't sweep an in-flight optimistic message.
+      // The freshness sync is useConversationSync's, mounted beside this hook.
     }
 
     return () => {
@@ -56,7 +55,7 @@ export const useActiveConversation = (convoIdParam: string): void => {
     setActiveConversationId,
     voiceModeActive,
     storeDiscoveredId,
-    // NOTE: Not including conversations or upsertConversation in deps
+    // NOTE: Not including conversations or upsertConversations in deps
     // to avoid re-triggering when manually toggling read/unread status
   ]);
 };

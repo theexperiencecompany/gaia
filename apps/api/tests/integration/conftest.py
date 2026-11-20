@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 import os
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +14,9 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 import pytest
 from redis.asyncio import Redis
+from redis.asyncio.client import PubSub
 
+from app.constants.websocket import WEBSOCKET_BROADCAST_CHANNEL
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
 from tests.helpers import pg_advisory_lock, worker_redis_url
@@ -140,6 +143,16 @@ async def real_redis(monkeypatch):
 
     await client.flushdb()
     await client.aclose()
+
+
+@pytest.fixture
+async def broadcast_channel(real_redis: Redis) -> AsyncIterator[PubSub]:
+    """Subscribe to the real WebSocket broadcast channel, to see every push the app publishes."""
+    pubsub = real_redis.pubsub()
+    await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
+    yield pubsub
+    await pubsub.unsubscribe(WEBSOCKET_BROADCAST_CHANNEL)
+    await pubsub.aclose()
 
 
 # Pre-created so later default-settings EphemeralClient calls reuse it. Opt-in

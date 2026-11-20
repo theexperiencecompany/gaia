@@ -1,12 +1,12 @@
 """Reminder task handlers for static reminders only."""
 
-import asyncio
-
-from app.agents.core.background.result_delivery import deliver_message_to_conversation
-from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
-from app.db.repositories.conversations import conversation_repository
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    notification_id,
+)
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -14,17 +14,8 @@ from app.models.reminder_models import (
 )
 from app.models.scheduler_models import TaskOutcome
 from app.services.analytics_service import capture
-from app.services.delivery.chat_channel import (
-    ChatChannel,
-    ProactiveTarget,
-    is_active_place,
-    proactive_destination,
-    resolve_proactive_target,
-)
+from app.services.delivery.chat_channel import ProactiveTarget, proactive_destination
 from app.services.notification_service import notification_service
-from app.services.platform_message_service import is_bot_platform
-from app.utils.auth_utils import load_user_context
-from app.utils.notification.sources import AIProactiveNotificationSource
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
@@ -44,10 +35,9 @@ def _reminder_result_text(payload: StaticReminderPayload) -> str:
 
 
 async def _execute_static_reminder(reminder: ReminderModel) -> ProactiveTarget | None:
-    """Fire a static reminder: raise the in-app badge and deliver it to the user's platforms.
+    """Fire a static reminder through the one notify pipeline; return where routing found the user.
 
-    Delivery is recorded into the conversation's langgraph thread so later turns can backtrack.
-    Returns where the platform delivery routed it, or None when that delivery did not happen.
+    The id is the reminder's occurrence, so a retried job sends nothing twice.
     """
     if not isinstance(reminder.payload, StaticReminderPayload):
         raise ValueError("Invalid payload type for static reminder")
@@ -55,93 +45,22 @@ async def _execute_static_reminder(reminder: ReminderModel) -> ProactiveTarget |
     if not reminder.id:
         raise ValueError("Reminder must have an ID")
 
-    notification = AIProactiveNotificationSource.create_reminder_notification(
-        title=reminder.payload.title,
-        body=reminder.payload.body,
-        reminder_id=reminder.id,
-        user_id=reminder.user_id,
-        actions=[],
+    notified = await notification_service.notify(
+        NotificationRequest(
+            id=notification_id(
+                reminder.user_id, "reminder", reminder.id, str(reminder.occurrence_count)
+            ),
+            user_id=reminder.user_id,
+            source=NotificationSourceEnum.AI_REMINDER,
+            priority=1,
+            content=NotificationContent(title=reminder.payload.title, body=reminder.payload.body),
+            metadata={"reminder_id": reminder.id},
+            conversation_id=reminder.source_conversation_id,
+            message=_reminder_result_text(reminder.payload),
+        )
     )
-
-    # Independent sends. The badge is pinned to in-app, so the platform send is the only one.
-    _, target = await asyncio.gather(
-        notification_service.create_notification(notification),
-        _deliver_reminder_to_platforms(reminder),
-    )
-
     log.info("Static reminder sent notification", reminder_id=reminder.id, user_id=reminder.user_id)
-    return target
-
-
-async def _lands_in_source_chat(
-    target: ProactiveTarget, conversation_id: str, user_id: str
-) -> bool:
-    """Whether the reminder goes back into the chat it was set in: yes, unless the user is active elsewhere."""
-    if not is_active_place(target):
-        return True
-    source = await conversation_repository.get_source(conversation_id, user_id=user_id)
-    if isinstance(target, ChatChannel):
-        return source is target.source
-    # Web chats are stored without a source; anything not a chat app's conversation is an app chat.
-    return not is_bot_platform(source)
-
-
-async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> ProactiveTarget | None:
-    """Deliver a fired reminder to the one place the user is active, else its source chat and first chat app.
-
-    Side channel behind the in-app badge: swallows every failure — including
-    load_user_context's HTTPException on a transient error — so it never fails the
-    reminder or skips the recurring re-arm. Returns the target it routed by, None when skipped or failed.
-    """
-    if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
-        return None
-    try:
-        # Independent reads: who the user is and where they are reachable right now.
-        user, target = await asyncio.gather(
-            load_user_context(reminder.user_id), resolve_proactive_target(reminder.user_id)
-        )
-        if user is None:
-            log.warning(
-                "Reminder platform delivery skipped: user not found",
-                reminder_id=reminder.id,
-                user_id=reminder.user_id,
-            )
-            return None
-        text = _reminder_result_text(reminder.payload)
-        title = reminder.payload.title
-        origin = (
-            f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
-        )
-
-        delivered_source: ConversationSource | None = None
-        if reminder.source_conversation_id and await _lands_in_source_chat(
-            target, reminder.source_conversation_id, reminder.user_id
-        ):
-            delivered_source = await deliver_message_to_conversation(
-                conversation_id=reminder.source_conversation_id,
-                user=user,
-                text=text,
-                origin=origin,
-            )
-
-        await deliver_result_to_platforms(
-            user=user,
-            user_id=reminder.user_id,
-            notification_text=text,
-            origin=origin,
-            target=target,
-            exclude_source=delivered_source,
-        )
-    except Exception as e:  # side channel; the in-app badge already delivered
-        log.error(
-            "Reminder platform delivery failed",
-            reminder_id=reminder.id,
-            user_id=reminder.user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-    return target
+    return notified.target
 
 
 async def execute_reminder_by_agent(
