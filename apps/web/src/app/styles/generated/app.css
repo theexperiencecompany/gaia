@@ -410,6 +410,7 @@
 @source "../../../features/auth/hooks/useLogout.ts";
 @source "../../../features/auth/hooks/useOnboardingGuard.ts";
 @source "../../../features/auth/utils/firstName.ts";
+@source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
@@ -904,7 +905,6 @@
 @source "../../[locale]/(main)/onboarding/page.tsx";
 @source "../../[locale]/(main)/pins/page.tsx";
 @source "../../[locale]/(main)/redirect/page.tsx";
-@source "../../[locale]/(main)/settings/page.tsx";
 @source "../../[locale]/(main)/setup/page.tsx";
 @source "../../[locale]/(main)/todos/page.tsx";
 @source "../../[locale]/(main)/workflows/page.tsx";
