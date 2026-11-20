@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
 import sys
 from typing import Literal
@@ -264,6 +265,42 @@ def typeddict_names(trees: list[ast.AST]) -> set[str]:
         names |= found
         grew = bool(found)
     return names - {"TypedDict"}
+
+
+def _typevar_bounds(nodes: Iterable[ast.AST]) -> list[tuple[str, ast.expr | None]]:
+    """(name, bound) of each ``X = TypeVar(...)`` among ``nodes``."""
+    return [
+        (
+            node.targets[0].id,
+            next((kw.value for kw in node.value.keywords if kw.arg == "bound"), None),
+        )
+        for node in nodes
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and isinstance(node.value, ast.Call)
+        and _base_name(node.value.func) == "TypeVar"
+    ]
+
+
+def _typeddict_bound_typevars(tree: ast.Module, typeddicts: set[str]) -> set[str]:
+    """Module-level ``X = TypeVar(..., bound=SomeTypedDict)`` names in one module.
+
+    Mypy key-checks a read through one against its bound. Per module, and only
+    names no other TypeVar in the module rebinds: the check is name-based, so a
+    shadowed name stays flagged rather than borrowing the wrong bound.
+    """
+    typed = {
+        name
+        for name, bound in _typevar_bounds(tree.body)
+        if bound is not None and _base_name(bound) in typeddicts
+    }
+    other = {
+        name
+        for name, bound in _typevar_bounds(ast.walk(tree))
+        if bound is None or _base_name(bound) not in typeddicts
+    }
+    return typed - other
 
 
 def _imported_external_typeddicts(trees: list[ast.AST]) -> set[str]:
@@ -510,7 +547,10 @@ def scan(
         tree = parsed[path]
         for rule, lines in (
             (LOOSE_ANNOTATION, _loose_annotations(tree)),
-            (STRING_KEY_READ, _string_key_reads(tree, typeddicts)),
+            (
+                STRING_KEY_READ,
+                _string_key_reads(tree, typeddicts | _typeddict_bound_typevars(tree, typeddicts)),
+            ),
         ):
             if lines:
                 out[(relative, rule)] = sorted(lines)

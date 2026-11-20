@@ -38,6 +38,18 @@ def query_embeds_to(vector: Sequence[float]) -> Iterator[None]:
 
 pytestmark = pytest.mark.memory
 
+#: These judge what the semantic step finds; a shared CI runner can miss the
+#: 0.19s production deadline. The deadline is unit-tested in tests/unit/memory.
+_PATIENT_SEMANTIC_BUDGET_SECONDS = 30.0
+
+
+@pytest.fixture(autouse=True)
+def patient_semantic_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the lane's semantic step a budget no shared runner can miss."""
+    monkeypatch.setattr(
+        fast_recall, "FAST_RECALL_SEMANTIC_BUDGET_SECONDS", _PATIENT_SEMANTIC_BUDGET_SECONDS
+    )
+
 
 async def test_a_single_shared_word_is_enough_to_match(memory_user: str) -> None:
     """websearch_to_tsquery ANDs every term, so a conversational turn matched nothing."""
