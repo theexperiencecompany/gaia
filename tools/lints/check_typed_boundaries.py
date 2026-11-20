@@ -244,7 +244,7 @@ def _decorator_ids(tree: ast.AST) -> set[int]:
 
 
 def typeddict_names(trees: list[ast.AST]) -> set[str]:
-    """Every TypedDict class name in ``trees``, subclasses included, plus the external ones."""
+    """Every TypedDict class name in ``trees``, subclasses included, the external ones, and TypeVars bound to one."""
     classes = [node for tree in trees for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
     names = {"TypedDict", *EXTERNAL_TYPEDDICTS, *_imported_external_typeddicts(trees)}
     grew = True
@@ -256,7 +256,25 @@ def typeddict_names(trees: list[ast.AST]) -> set[str]:
         }
         names |= found
         grew = bool(found)
-    return names - {"TypedDict"}
+    return (names | _typeddict_bound_typevars(trees, names)) - {"TypedDict"}
+
+
+def _typeddict_bound_typevars(trees: list[ast.AST], typeddicts: set[str]) -> set[str]:
+    """Names of ``X = TypeVar(..., bound=SomeTypedDict)``: mypy key-checks reads against the bound."""
+    return {
+        node.targets[0].id
+        for tree in trees
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and isinstance(node.value, ast.Call)
+        and _base_name(node.value.func) == "TypeVar"
+        and any(
+            keyword.arg == "bound" and _base_name(keyword.value) in typeddicts
+            for keyword in node.value.keywords
+        )
+    }
 
 
 def _imported_external_typeddicts(trees: list[ast.AST]) -> set[str]:

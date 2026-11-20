@@ -170,6 +170,26 @@ def test_a_loop_over_a_typeddict_collection_binds_a_typed_target(
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [15, 16, 19, 21]
 
 
+def test_a_typevar_bound_to_a_typeddict_is_a_declared_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mypy key-checks a read through a TypeVar against its TypedDict bound."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Mapping\n"
+        "from typing import Any, TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "DocT = TypeVar('DocT', bound=Doc)\n"
+        "LooseT = TypeVar('LooseT', bound=Mapping[str, Any])\n"
+        "def f(doc: DocT, docs: list[DocT], loose: LooseT) -> None:\n"
+        "    a = doc['id']\n"
+        "    b = [d['id'] for d in docs]\n"
+        "    c = loose['id']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [10]
+
+
 def test_a_loop_over_a_typeddict_mapping_binds_its_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
