@@ -14,9 +14,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
-import time_machine
-
 import pytest
+import time_machine
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.models.notification.notification_models import (
