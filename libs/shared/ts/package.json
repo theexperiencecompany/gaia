@@ -33,6 +33,7 @@
     "./types/subscription": "./src/types/subscription.ts",
     "./types/models": "./src/types/models.ts",
     "./api": "./src/api/index.ts",
+    "./api/apiError": "./src/api/apiError.ts",
     "./api/generated": "./src/api/generated/index.ts",
     "./api/apiClient": "./src/api/apiClient.ts",
     "./api/workflows": "./src/api/workflowsApi.ts",

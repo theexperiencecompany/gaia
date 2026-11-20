@@ -52,6 +52,12 @@ _SLUG_INVALID_RE = re.compile(r"[^a-z0-9]+")
 _UNTITLED = "untitled"
 
 
+class VfsProjection(TypedDict):
+    """What every VFS area's projection carries: the stable id its signature is keyed by."""
+
+    id: str
+
+
 class TodoProjectionMeta(TypedDict):
     """The meta.json fields every todo projection carries, as its Mongo glue builds them from a TodoDocument."""
 
