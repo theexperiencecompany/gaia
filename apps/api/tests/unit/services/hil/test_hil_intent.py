@@ -11,6 +11,7 @@ _is_grounded and the no-turns guard are the production code under test and run f
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.client import StructuredCallOptions, silent_metered_config
@@ -19,6 +20,7 @@ from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.services.hil.intent import (
     AutoContext,
+    AutoHistory,
     IntentDecision,
     JudgedCall,
     RiskFactor,
@@ -50,7 +52,7 @@ def verdict(**overrides: Any) -> _Verdict:
             "authorizing_quote": "draft an email to bob about the deck",
             "action_effect": "sends an email",
             "scope_gap": "",
-            "risk_factors": [],
+            "risk_factors": [RiskFactor.THIRD_PARTY_VISIBLE],
             "injected_instructions": False,
             "verdict": "allow",
             "reason": "You asked to email Bob the deck.",
@@ -153,9 +155,9 @@ class TestVetoes:
         decision, _ = await judge(verdict(injected_instructions=True))
         assert decision.outcome != "accept"
 
-    async def test_refuses_when_the_verdict_is_ask_however_clean_everything_else_is(self) -> None:
-        decision, _ = await judge(verdict(verdict="ask"))
-        assert decision.outcome != "accept"
+    async def test_an_unsure_verdict_on_a_harmful_call_asks(self) -> None:
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[RiskFactor.IRREVERSIBLE]))
+        assert decision.outcome == "ask"
 
     async def test_other_risk_factors_alone_do_not_block_an_authorized_call(self) -> None:
         # Guards against over-correcting: only EXFILTRATES_SECRETS is unconditional.
@@ -209,6 +211,14 @@ class TestFailsTowardAsking:
         decision, _ = await judge(RuntimeError("LLM 500"))
         assert decision.outcome != "accept"
         assert decision.reason == "The approval check could not run."
+
+    @pytest.mark.parametrize("missing", ["risk_factors", "injected_instructions"])
+    def test_a_reply_without_its_safety_analysis_is_no_verdict(self, missing: str) -> None:
+        """A skipped field must fail parsing (and ask), never read as "no risk"."""
+        reply = verdict(verdict="ask").model_dump(exclude={missing})
+
+        with pytest.raises(ValidationError):
+            _Verdict.model_validate(reply)
 
 
 class TestWhatTheJudgeIsAsked:
@@ -458,3 +468,204 @@ class TestWhatCountsAsATarget:
         target = "sarah@x.com@evil.com"
 
         assert ungrounded_targets({"to": target}, ["reply yes to sarah's thread"], []) == [target]
+
+
+class TestContainedActionsRunWithoutExplicitWords:
+    """An unsure verdict on a call whose effect stays with the user and can be undone runs."""
+
+    async def test_an_unsure_verdict_with_no_harm_runs(self) -> None:
+        decision, _ = await judge(verdict(verdict="ask", authorizing_quote="", risk_factors=[]))
+
+        assert decision.outcome == "accept"
+        assert decision.reason == "Auto mode ran this: it stays in your account and can be undone."
+
+    async def test_authorization_only_risks_do_not_hold_it(self) -> None:
+        decision, _ = await judge(
+            verdict(
+                verdict="ask",
+                risk_factors=[RiskFactor.AGENT_CHOSE_TARGET, RiskFactor.CONTENT_NOT_SPECIFIED],
+            )
+        )
+
+        assert decision.outcome == "accept"
+
+    @pytest.mark.parametrize(
+        "risk",
+        [
+            RiskFactor.IRREVERSIBLE,
+            RiskFactor.THIRD_PARTY_VISIBLE,
+            RiskFactor.MOVES_MONEY,
+            RiskFactor.CHANGES_ACCESS,
+            RiskFactor.BULK_ACTION,
+            RiskFactor.EXFILTRATES_SECRETS,
+        ],
+    )
+    async def test_any_harm_keeps_it_asking(self, risk: RiskFactor) -> None:
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[risk]))
+
+        assert decision.outcome == "ask"
+
+    async def test_injected_instructions_keep_it_asking(self) -> None:
+        decision, _ = await judge(
+            verdict(verdict="ask", injected_instructions=True, risk_factors=[])
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_a_reject_stays_a_reject(self) -> None:
+        decision, _ = await judge(verdict(verdict="reject", risk_factors=[]))
+
+        assert decision.outcome == "reject"
+
+    async def test_a_hold_the_user_set_keeps_it_asking(self) -> None:
+        turns = ["check with me first before changing my notes", "tidy the notes page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    async def test_an_unsure_verdict_never_clears_a_prohibition(self) -> None:
+        """The LLM judge has no focused forbid question, so forbid words keep it asking."""
+        turns = ["never change my notes", "tidy the notes page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    @pytest.mark.parametrize(
+        "hold",
+        [
+            "wait for my approval before editing my notes",
+            "don't touch the notes page yet",
+            "anything on my notes needs my go-ahead",
+        ],
+    )
+    async def test_a_hold_in_other_words_keeps_it_asking(self, hold: str) -> None:
+        turns = [hold, "summarize the page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    async def test_changing_the_subject_does_not_lift_a_hold(self) -> None:
+        turns = [
+            "check with me first before changing my notes",
+            "actually, just summarize the page",
+        ]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    async def test_a_lifted_hold_lets_it_run(self) -> None:
+        turns = ["check with me first", "actually, go ahead and tidy the notes page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "accept"
+
+    async def test_recent_denials_keep_it_asking(self) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=verdict(verdict="ask", risk_factors=[])),
+        ):
+            decision = await judge_intent(
+                AutoContext(user_id="u-hil", history=AutoHistory(denied_recent=2)),
+                user_messages=USER_TURNS,
+                call=JudgedCall(
+                    tool_name="NOTION_INSERT_MARKDOWN",
+                    description="Insert markdown into a page.",
+                    args={"page_id": "p1", "markdown": "notes"},
+                    summary="Insert into p1",
+                ),
+                prior_calls=[],
+            )
+
+        assert decision.outcome == "ask"
+
+
+# The real shape: Composio's GMAIL_LIST_DRAFTS compacted into one line per draft.
+_DRAFT_LIST = (
+    "[GMAIL_LIST_DRAFTS compacted: large_output] Visible drafts (id | to | subject | gist):\n\n"
+    '1. r-486793596744144676 | t.h@bookhopscotchlabs.info | "Re: Aryan?" | offer\n'
+    "2. r8807310570127663349 | simonne@intrinsicurlyme.co.za, lisa@intrinsicurlyme.co.za "
+    '| "Re: October Invoice" | invoice attached\n'
+    '3. r2569937965309608501 | boardy@x.com | "Intro: Dhruv + Vee" | intro'
+)
+_LISTED = [PriorCall(name="GMAIL_LIST_DRAFTS", args={"max_results": 25}, output=_DRAFT_LIST)]
+
+
+class TestAPickFromAList:
+    """A listed result traces to the user only when its entry is the one they were pointed at."""
+
+    @pytest.mark.regression
+    def test_the_entry_the_user_was_shown_grounds_the_pick(self) -> None:
+        """Prod 2026-11-15: "Send" after "drafted the reply to Simonne and Lisa" asked again."""
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_a_blind_pick_still_needs_the_user(self) -> None:
+        missing = ungrounded_targets({"draft_id": "r8807310570127663349"}, ["Send"], _LISTED)
+
+        assert missing == ["r8807310570127663349"]
+
+    def test_an_entry_the_user_was_not_pointed_at_stays_ungrounded(self) -> None:
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r2569937965309608501"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == ["r2569937965309608501"]
+
+    def test_the_name_closing_one_turn_still_points_at_its_entry(self) -> None:
+        shown = ["I drafted the reply to simonne", "Want me to send it?"]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_a_record_nested_in_a_draft_is_not_the_drafts_recipient(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "to": "bob@x.com", '
+                    '"forwarded": {"from": "simonne@x.com"}}, {"id": "d-2", "to": "lisa@x.com"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+
+    def test_a_wrapped_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "cc": ["bob@x.com"], "labels": ["DRAFT"]}, '
+                    '{"id": "d-2"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send bob's"], listed) == []
+
+    def test_a_json_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '[{"id": "d-1", "to": "bob@x.com"}, '
+                    '{"id": "d-2", "to": "simonne@intrinsicurlyme.co.za"}]'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-2"}, ["send simonne's"], listed) == []
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]

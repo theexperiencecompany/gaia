@@ -30,6 +30,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
+    HIL_JUDGE_MAX_ASSISTANT_TURNS,
     HIL_STATUS_KWARG,
     SUBAGENT_RESUME_CONFIG_KEY,
     HILToolMessageStatus,
@@ -126,6 +127,9 @@ class GateContext:
     # filed on every approval it raises so a decision can resume it from anywhere.
     subagent_thread_id: str | None = None
     subagent_resume: SubagentResumeItem | None = None
+    # What the user was shown before their turn, inherited from comms: the context a
+    # bare "send it" refers to, which a run started by that turn never said itself.
+    assistant_turns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -363,6 +367,7 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     # subagent the local task is an agent-authored paraphrase, never the user's words.
     raw = configurable.get("user_messages")
     turns = [text for text in raw if isinstance(text, str)] if isinstance(raw, list) else []
+    shown = configurable.get("assistant_turns") or []
     # Background owner for the resume driver: stamped on any approval this run
     # registers so the verdict can wake the right unit of work. Live runs leave
     # it empty — they resume through the executor inbox, never re-enqueueing.
@@ -385,6 +390,7 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
         owner_id,
         subagent_thread_id=configurable.get("thread_id") if subagent_resume else None,
         subagent_resume=subagent_resume,
+        assistant_turns=tuple(shown),
     )
 
 
@@ -554,7 +560,9 @@ async def _judge(
         # Prior actions and recent assistant words are provenance for arguments,
         # never authorization — only the user's turns authorize.
         prior_calls=prior_tool_calls(request.state, call.id),
-        assistant_turns=recent_assistant_turns(request.state),
+        assistant_turns=_shown_first(
+            list(context.assistant_turns), recent_assistant_turns(request.state)
+        ),
     )
     if decision.outcome != "ask":
         # A settled auto decision has no card and no ledger row; this is its only record.
@@ -567,6 +575,17 @@ async def _judge(
             ),
         )
     return decision
+
+
+def _shown_first(shown: list[str], run: list[str]) -> list[str]:
+    """Fit the replies the user saw before their turn first; this run's messages fill what is left.
+
+    A child run's internal messages were never shown to the user, so they must not push
+    out the reply a bare "send it" refers to.
+    """
+    kept = shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+    room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
+    return [*kept, *run[-room:]] if room else kept
 
 
 async def _never_auto_tools(user_id: str) -> frozenset[str]:

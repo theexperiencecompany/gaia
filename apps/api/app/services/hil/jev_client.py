@@ -20,7 +20,10 @@ class JevUnconfiguredError(RuntimeError):
 
 
 async def post_decisions(
-    state: Mapping[str, object], questions: Mapping[str, Mapping[str, object]]
+    state: Mapping[str, object],
+    questions: Mapping[str, Mapping[str, object]],
+    *,
+    model: str = HIL_JEV_MODEL_NAME,
 ) -> JevDecisionsResponse:
     """One Decisions call on the saved or env OpenRouter key; raises on a missing key, transport failure, or a malformed body."""
     config: ProviderConfig | None = await resolve(CredentialProviderName.OPENROUTER)
@@ -30,7 +33,7 @@ async def post_decisions(
     async with httpx.AsyncClient(timeout=HIL_JEV_TIMEOUT_SECONDS) as client:
         resp = await client.post(
             HIL_JEV_URL,
-            json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},
+            json={"model": model, "state": state, "questions": questions},
             headers={"Authorization": f"Bearer {key}"},
         )
         resp.raise_for_status()

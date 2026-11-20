@@ -28,7 +28,12 @@ from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
 from app.constants.general import COMMS_AGENT_NAME
-from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
+from app.constants.hil import (
+    HIL_JUDGE_MAX_ASSISTANT_CHARS,
+    HIL_JUDGE_MAX_ASSISTANT_TURNS,
+    HIL_JUDGE_MAX_TURN_CHARS,
+    HIL_JUDGE_MAX_USER_TURNS,
+)
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DevModelOption,
@@ -253,6 +258,7 @@ class _TurnScope:
     active_todo_id: str | None
     conversation_source: str | None
     user_messages: list[str] | None
+    assistant_turns: list[str] | None
     user_request: str | None
     user_preferences: dict[str, object] | None
     writing_style: dict[str, object] | None
@@ -289,6 +295,14 @@ def _inherit_from_parent_configurable(
         # by comms. A child's own "task" is an agent-authored paraphrase, and the HIL
         # intent judge must check the tool call against what the user actually asked.
         user_messages=parent.user_messages or current.user_messages,
+        # Same rule: what the user was shown before their turn. A child's own run
+        # never said it, and a bare "send it" refers to it.
+        # An explicit empty list means the user was shown nothing; it still overrides.
+        assistant_turns=(
+            parent.assistant_turns
+            if parent.assistant_turns is not None
+            else current.assistant_turns
+        ),
         user_request=parent.user_request or current.user_request,
         # Same rule, same reason: established once wherever the root call site had the
         # full user document in hand, and a child never has its own copy to prefer.
@@ -337,6 +351,24 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     if current and (not turns or turns[-1] != current):
         turns.append(current)
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
+
+
+def recent_assistant_replies(history: list[MessageDict]) -> list[str]:
+    """Return the assistant's latest non-blank replies the user saw, oldest first.
+
+    Context for what a shorthand ("send it") refers to; the judge never reads them
+    as authorization.
+    """
+    replies = [
+        text
+        for message in history
+        if (turn := _HistoryTurn.model_validate(message)).role == "assistant"
+        and (text := (turn.content or "").strip())
+    ]
+    return [
+        clip_text(text, HIL_JUDGE_MAX_ASSISTANT_CHARS)
+        for text in replies[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+    ]
 
 
 def background_authorization(
@@ -461,6 +493,11 @@ class AgentTurn:
     paraphrases. The HIL intent judge checks gated tool calls against these, so they
     must be the user's words — not a restatement."""
 
+    assistant_turns: list[str] | None = None
+    """The assistant's replies the user saw before this turn (see
+    :func:`recent_assistant_replies`). Same inheritance rule as ``user_messages``; the
+    HIL judge reads them as context for a shorthand, never as authorization."""
+
     user_request: str | None = None
     """The live turn's request exactly as typed, unclipped. Same inheritance rule as
     ``user_messages``; ``call_executor`` folds it into the executor brief so the
@@ -562,6 +599,7 @@ async def build_agent_config(
         execution_mode,
         source,
         user_messages,
+        assistant_turns,
         user_request,
         user_preferences,
         writing_style,
@@ -573,6 +611,7 @@ async def build_agent_config(
         turn.execution_mode,
         turn.source,
         turn.user_messages,
+        turn.assistant_turns,
         turn.user_request,
         turn.user_preferences,
         turn.writing_style,
@@ -617,6 +656,7 @@ async def build_agent_config(
         active_todo_id=active_todo_id,
         conversation_source=source,
         user_messages=user_messages,
+        assistant_turns=assistant_turns,
         user_request=user_request,
         user_preferences=user_preferences,
         writing_style=writing_style,
@@ -675,6 +715,7 @@ async def build_agent_config(
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved.user_messages,
+        "assistant_turns": resolved.assistant_turns,
         "user_request": resolved.user_request,
         "user_preferences": resolved.user_preferences,
         "writing_style": resolved.writing_style,

@@ -10,7 +10,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
 
-from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_TURNS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -709,6 +709,40 @@ class TestLedgerAutoMode:
         assert kwargs["assistant_turns"] == ["Your draft to b@x is ready."]
         assert kwargs["judge"] is None
         assert kwargs["user_messages"] == ["send it to b@x"]
+
+    @pytest.mark.regression
+    async def test_the_conversations_replies_reach_the_judge_before_the_runs_own(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """A bare "Send" refers to what the user was last shown, which a fresh run never said."""
+        gate_seams.policy.return_value = "auto"
+        messages = [AIMessage(content="Fetched both drafts.")]
+
+        await gate.decide_tool_call(
+            gated_request(
+                messages=messages,
+                assistant_turns=["Drafted the reply to Simonne with the invoice attached."],
+            )
+        )
+
+        assert gate_seams.judge.await_args.kwargs["assistant_turns"] == [
+            "Drafted the reply to Simonne with the invoice attached.",
+            "Fetched both drafts.",
+        ]
+
+    async def test_a_child_runs_own_messages_never_push_out_what_the_user_saw(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.policy.return_value = "auto"
+        internal = [AIMessage(content=f"step {i}") for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS)]
+        shown = "Drafted the reply to Simonne with the invoice attached."
+
+        await gate.decide_tool_call(gated_request(messages=internal, assistant_turns=[shown]))
+
+        turns = gate_seams.judge.await_args.kwargs["assistant_turns"]
+        assert turns[0] == shown
+        assert len(turns) == HIL_JUDGE_MAX_ASSISTANT_TURNS
+        assert turns[-1] == f"step {HIL_JUDGE_MAX_ASSISTANT_TURNS - 1}"
 
     async def test_the_judge_is_told_which_account_the_call_acts_as(
         self, gate_seams: GateSeams

@@ -50,14 +50,24 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, endpoint, decision lines. Lines come
-# from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
-# scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
+# JEV Decisions transport (OpenRouter). The trigger gates, mail verdicts and the
+# approval-reply classifier ask HIL_JEV_MODEL_NAME, the model their lines were tuned
+# on; auto mode's judge asks HIL_JEV_JUDGE_MODEL_NAME.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
+HIL_JEV_JUDGE_MODEL_NAME = "typesafe/jev-1.14"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
-HIL_JEV_ACCEPT_LINE = 0.50
+# Judge lines from the hil-judge sweep (scripts/evals/sweep_hil_judge.py) on
+# HIL_JEV_JUDGE_MODEL_NAME: accept 0.80 was the lowest line with zero dangerous accepts
+# across runs of 161 cases (137-138 correct). Retune via the eval, never by hand.
+HIL_JEV_ACCEPT_LINE = 0.80
 HIL_JEV_REJECT_FLOOR = 0.50
+# P(contained) at or above which a call runs without the user's explicit words.
+HIL_JEV_CONTAINED_LINE = 0.80
+# ...and only while P(forbidden) stays under this: any real argument against the call
+# (quiet hours, "fetch it quietly") holds it, even when another choice wins.
+HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
+JEV_CONTAINED_QUESTION_KEY = "contained"
 
 
 # The forbid double-check itself failed; the verdict asks rather than trusting either way.
