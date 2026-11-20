@@ -21,38 +21,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis.aioredis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from hypothesis import HealthCheck, settings as _hypothesis_settings
 from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
-# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
-# differing_executors: mutmut's in-process runner reinstantiates the @given class.
-_hypothesis_settings.register_profile(
-    "ci",
-    max_examples=25,
-    deadline=None,
-    derandomize=True,
-    database=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.register_profile(
-    "ci-full",
-    max_examples=200,
-    deadline=None,
-    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
-    derandomize=False,
-    database=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.register_profile(
-    "default",
-    max_examples=200,
-    deadline=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
+from tests.hypothesis_profiles import load_profile as load_hypothesis_profile
+
+load_hypothesis_profile()
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
@@ -66,7 +41,6 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 # pulling in app.config.settings which instantiates settings at import
 # time; without ENV set first it boots as production and fails.
 from app.config.posthog import init_posthog
-from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.db.redis import redis_cache
 from app.models.payment_models import (
@@ -917,12 +891,6 @@ def owned_conversations() -> Iterator[set[tuple[str, str]]]:
         "app.db.repositories.conversations.conversation_repository.exists", side_effect=_exists
     ):
         yield owned
-
-
-@pytest.fixture
-def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
-    monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
 
 
 #: What inner code runs under in production: the agent acting in a user's web turn.

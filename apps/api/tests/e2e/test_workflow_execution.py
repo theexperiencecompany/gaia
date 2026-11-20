@@ -24,7 +24,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 import pytest
 
-from app.agents.core import agent as agent_module
 from app.agents.core.graph_builder.build_graph import (
     EXECUTOR_INITIAL_TOOL_IDS,
     build_comms_graph,
@@ -37,7 +36,14 @@ from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.agent_models import SilentRunResult
+from app.models.conversation_log_models import (
+    Reply,
+    ReplySettled,
+    WorkFinished,
+    WorkflowFired,
+    WorkOutcome,
+)
+from app.models.notification.notification_models import NotificationSourceEnum
 from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import (
     RecordedCall,
@@ -51,11 +57,14 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
+from app.services.conversation.outcome import EntryOutcome
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from shared.py.conversation_wire import ReplyOutcome
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel, users_get
+from tests.unit.services.conversation.log_helpers import EMPTY
 
 
 @pytest.mark.e2e
@@ -523,9 +532,7 @@ class TestWorkflowExecutionFailurePropagation:
         async def _create_notification(request):
             notifications.append(request)
 
-        monkeypatch.setattr(
-            workflow_tasks.notification_service, "create_notification", _create_notification
-        )
+        monkeypatch.setattr(workflow_tasks.notification_service, "notify", _create_notification)
 
         monkeypatch.setattr(WorkflowScheduler, "initialize", AsyncMock())
         monkeypatch.setattr(WorkflowScheduler, "close", AsyncMock())
@@ -534,22 +541,30 @@ class TestWorkflowExecutionFailurePropagation:
             "get_or_create_workflow_conversation",
             AsyncMock(return_value="conv-workflow-1"),
         )
-        # The fire claims that conversation before it spends anything. Stubbed
-        # so the tier stays offline: the claim is Redis, and its own behaviour
-        # is proven in tests/unit/agents/test_executor_queue.py.
-        monkeypatch.setattr(workflow_tasks, "try_acquire_lock", AsyncMock(return_value=True))
-        monkeypatch.setattr(workflow_tasks, "release_lock_if_owned", AsyncMock())
+        # The fire is admitted to that conversation before it spends anything. Stubbed
+        # so the tier stays offline: the admission is Redis and the log, and its own
+        # behaviour is proven in tests/unit/workers/test_workflow_tasks_playbook.py.
         monkeypatch.setattr(
-            workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)
+            workflow_tasks,
+            "redis_cache",
+            MagicMock(
+                client=MagicMock(
+                    set=AsyncMock(return_value=True),
+                    get=AsyncMock(return_value=None),
+                    delete=AsyncMock(),
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            workflow_tasks,
+            "runtime_ports",
+            MagicMock(return_value=MagicMock(log=MagicMock(state=AsyncMock(return_value=EMPTY)))),
         )
         monkeypatch.setattr(
             workflow_tasks, "get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         )
         # The owner check reads the users collection; every owner here is a real user.
         monkeypatch.setattr(user_repository, "get", users_get)
-        # The checkpoint reset is Postgres; its own behaviour is proven in
-        # tests/unit/services/workflow/test_thread_reset.py.
-        monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
@@ -565,44 +580,54 @@ class TestWorkflowExecutionFailurePropagation:
 
     @staticmethod
     def _install_stepwise_agent(monkeypatch, failing_step_title: str | None) -> list[str]:
-        """Replace the agent turn with one that walks the workflow's steps in order.
+        """Replace the conversation step with one that walks the workflow's steps in order.
 
-        Returns the list the stand-in appends each completed step title to, so a
+        The fire is appended and its outcome awaited as in production; the stand-in answers
+        it the way the step does when its work ends: done with a reply, or failed with the
+        executor's report. Returns the list each completed step title is appended to, so a
         test can prove the run stopped *partway* rather than after every step.
         """
-
         completed: list[str] = []
         recorded: list[RecordedCall] = []
+        outcomes: list[EntryOutcome] = []
 
-        async def _run_steps(request, conversation_id, user, options=None, *, stream_id=None):
-            tool_data: list[dict[str, object]] = []
+        async def _fire(_ports, _conversation_id, _user_id, fired: WorkflowFired) -> MagicMock:
             recorded.clear()
-            for step in request.selectedWorkflow.steps:
+            outcome = WorkOutcome.DONE
+            report = "all steps done"
+            for step in fired.run.workflow.steps:
                 if step.title == failing_step_title:
-                    raise RuntimeError(
+                    outcome = WorkOutcome.FAILED
+                    report = (
                         f"Step '{step.title}' failed: Gmail API returned 503 Service Unavailable"
                     )
+                    break
                 completed.append(step.title)
                 recorded.append(RecordedCall(tool_name=step.title, args={"step_id": step.id}))
-                tool_data.append(
-                    {
-                        "tool_name": "tool_calls_data",
-                        "data": {
-                            "tool_name": step.title,
-                            "inputs": {"step_id": step.id},
-                            "output": "ok",
-                        },
-                    }
-                )
-            return SilentRunResult(message="", tool_data=tool_data, stream_id="stream-e2e-stepwise")
+            settled = ReplySettled(
+                id="settled",
+                reply_id="t1",
+                outcome=ReplyOutcome.ANSWERED,
+                answers=(fired.id,),
+                through=3,
+                quote_target=None,
+            )
+            reply = Reply(id="reply", reply_id="t1", attempt_id="a1", text=report)
+            finished = WorkFinished(id="f", task_id="t1", outcome=outcome, report=report)
+            outcomes.append(EntryOutcome(settled=settled, reply=reply, work=(finished,)))
+            return MagicMock()
 
-        monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
+        async def _outcome(*_args: object) -> EntryOutcome:
+            return outcomes[-1]
+
+        monkeypatch.setattr(workflow_tasks, "accept", _fire)
+        monkeypatch.setattr(workflow_tasks, "await_outcome", _outcome)
         # The record is written by the invocation layer inside the real run; the
         # stand-in seeds it, so the run trace still reads back what it did.
         monkeypatch.setattr(
             workflow_tasks,
             "read_run_record",
-            AsyncMock(side_effect=lambda _stream_id: list(recorded)),
+            AsyncMock(side_effect=lambda _record_id: list(recorded)),
         )
         return completed
 
@@ -687,8 +712,9 @@ class TestWorkflowExecutionFailurePropagation:
         )
         assert execution.trace[0].args == {"step_id": "s1"}
         assert workflow_execution_env["recorded_stats"] == [True]
-        assert workflow_execution_env["notifications"] == [], (
-            "A successful run must not raise a failure notification"
+        sources = [n.source for n in workflow_execution_env["notifications"]]
+        assert sources == [NotificationSourceEnum.WORKFLOW_COMPLETED], (
+            "A successful run raises its completion heads-up, never a failure notification"
         )
         assert "executed successfully" in result
 
@@ -703,7 +729,7 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
         monkeypatch.setattr(
             workflow_tasks.notification_service,
-            "create_notification",
+            "notify",
             AsyncMock(side_effect=RuntimeError("notification backend unreachable")),
         )
 

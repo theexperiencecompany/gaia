@@ -34,7 +34,6 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import { useChatStore } from "@/stores/chat-store";
 import { useChatQueryClient } from "../../api/queries";
 import { useChatContext } from "../../hooks/use-chat-context";
 import {
@@ -42,6 +41,7 @@ import {
   groupConversationsByDate,
   useConversations,
 } from "../../hooks/use-conversations";
+import { useBusyConversationIds } from "../../live/use-live-chat";
 
 interface ChatHistoryProps {
   onSelectChat: (chatId: string) => void;
@@ -588,7 +588,7 @@ interface SectionProps {
   title: string;
   items: Conversation[];
   activeChatId: string | null;
-  streamingConversationId: string | null;
+  busyConversationIds: ReadonlySet<string>;
   onSelectChat: (chatId: string) => void;
   onRename: (id: string, currentTitle: string) => void;
   onDelete: (id: string) => void;
@@ -601,7 +601,7 @@ function Section({
   title,
   items,
   activeChatId,
-  streamingConversationId,
+  busyConversationIds,
   onSelectChat,
   onRename,
   onDelete,
@@ -656,7 +656,7 @@ function Section({
             key={item.id}
             item={item}
             isActive={activeChatId === item.id}
-            isStreaming={streamingConversationId === item.id}
+            isStreaming={busyConversationIds.has(item.id)}
             onPress={() => onSelectChat(item.id)}
             onRename={onRename}
             onDelete={onDelete}
@@ -718,9 +718,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
   } = useConversations();
   const { spacing, fontSize } = useResponsive();
   const { invalidateConversations } = useChatQueryClient();
-  const streamingConversationId = useChatStore(
-    (state) => state.streamingState.conversationId,
-  );
+  const busyConversationIds = useBusyConversationIds();
 
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
@@ -859,7 +857,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
       <ChatItem
         item={item}
         isActive={activeChatId === item.id}
-        isStreaming={streamingConversationId === item.id}
+        isStreaming={busyConversationIds.has(item.id)}
         onPress={() => handleSelectChat(item.id)}
         onRename={handleRename}
         onDelete={handleDelete}
@@ -869,7 +867,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
     ),
     [
       activeChatId,
-      streamingConversationId,
+      busyConversationIds,
       handleSelectChat,
       handleRename,
       handleDelete,
@@ -1029,7 +1027,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Starred"
           items={groupedChats.starred}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -1041,7 +1039,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Today"
           items={groupedChats.today}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -1053,7 +1051,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Yesterday"
           items={groupedChats.yesterday}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -1065,7 +1063,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Previous 7 days"
           items={groupedChats.lastWeek}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -1077,7 +1075,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Previous 30 days"
           items={groupedChats.last30Days}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -1089,7 +1087,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           title="Older"
           items={groupedChats.older}
           activeChatId={activeChatId}
-          streamingConversationId={streamingConversationId}
+          busyConversationIds={busyConversationIds}
           onSelectChat={handleSelectChat}
           onRename={handleRename}
           onDelete={handleDelete}

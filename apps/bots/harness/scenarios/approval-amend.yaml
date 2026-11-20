@@ -1,0 +1,34 @@
+# "Yes, but change this" to a pending approval on Telegram, where there are no
+# buttons. The reply classifier (JEV, scripted by [[jev:amend]]) reads it as an
+# approval with a change: the call as it stood never runs, nobody says "Got it"
+# before the change is made, and GAIA asks again with the change; a plain yes
+# then runs the changed call and reports once (bugs 13 and 20).
+#
+# The reply is the change the work receives, so under the stub it also scripts
+# the work's next step.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/approval-amend.yaml
+name: approval amend
+emulate: telegram
+user: bot-approval-amend-scenario@gaia.local
+askBefore: [create_todo]
+settleMs: 5000
+turns:
+  - send: 'add it [[tool:create_todo {"title":"am-plain"}]] [[say:Added am-plain.]]'
+    expect:
+      - eventTypes: [awaiting-approval]
+      - bubbles: ["Want me to add “am-plain”"]
+  - send: 'yes but call it am-changed [[jev:amend]] [[tool:create_todo {"title":"am-changed"}]] [[say:Added am-changed.]]'
+    settleMs: 15000
+    expect:
+      - eventTypes: [awaiting-approval]
+      # The re-ask says what changed (bug 20: it once hid the change behind an early "Got it").
+      - bubbles: ["Updated title to am-changed — still OK to add it?"]
+      - excludes: ["Got it", "Added am-plain.", "Added am-changed."]
+  - send: "yes"
+    settleMs: 15000
+    expect:
+      - bubbles: ["Got it", "Added am-changed."]
+      - excludes: ["am-plain"]
+      - noTakeBacks: true

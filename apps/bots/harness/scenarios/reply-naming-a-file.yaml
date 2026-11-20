@@ -1,0 +1,20 @@
+# A reply that names a file the work saved, by its sandbox path. Telegram shows
+# the file's name linked to the conversation in the web app, never the
+# /workspace/ path, and the streamed bubble is never cut back while the path
+# resolves (bugs 26 and 27). The sim stack has no file storage, so the next
+# turn proves the follow goes on with it down.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/reply-naming-a-file.yaml
+name: reply naming a file
+emulate: telegram
+user: bot-file-scenario@gaia.local
+turns:
+  - send: "save it [[pace:40]] [[say:Saved it to /workspace/sessions/s1/artifacts/notes.txt for you.]]"
+    expect:
+      - bubbles: ["notes.txt</a> for you."]
+      - excludes: ["/workspace/"]
+      - noTakeBacks: true
+  - send: "and next? [[say:Next one.]]"
+    expect:
+      - bubbles: ["Next one."]

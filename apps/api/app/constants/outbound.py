@@ -11,7 +11,7 @@ RabbitMQ rejects a redeclare whose arguments differ from the existing queue.
 
 from __future__ import annotations
 
-from typing import Any
+from pamqp.common import FieldTable
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 
@@ -37,18 +37,15 @@ def dlq_name(queue_name: str) -> str:
     return f"{queue_name}.dlq"
 
 
-def work_queue_arguments(queue_name: str) -> dict[str, Any]:
-    """Return declaration arguments for a work queue: dead-letter to the shared DLX.
-
-    Typed dict[str, Any] to satisfy aio-pika's FieldTable argument.
-    """
+def work_queue_arguments(queue_name: str) -> FieldTable:
+    """Return declaration arguments for a work queue: dead-letter to the shared DLX."""
     return {
         "x-dead-letter-exchange": OUTBOUND_DLX,
         "x-dead-letter-routing-key": dlq_name(queue_name),
     }
 
 
-# Every aio-pika await MUST be bounded: chat-stream is exempt from the
+# Every aio-pika await MUST be bounded: background work runs outside the
 # request-timeout middleware, so an unbounded await against a stalled broker
 # hangs forever (observed: a 35-minute hang in dev).
 

@@ -646,14 +646,22 @@
     align-items: flex-end;
   }
 
-  /* iMessage-style chat bubbles */
+  /*
+   * iMessage-style chat bubbles. A one-line bubble is a capsule exactly
+   * 2 × radius tall; Inter's metrics centre the cap height in a 24px line, so
+   * the glyphs sit optically centred and multi-line bubbles keep a 24px rhythm.
+   * The 16px inline padding matches the ~14px from cap top to the bubble edge.
+   */
   .imessage-bubble {
+    --bubble-radius: 20px;
+    --bubble-line-height: 24px;
     word-wrap: break-word;
-    line-height: 24px;
+    line-height: var(--bubble-line-height);
     position: relative;
-    padding: 8px 20px;
+    padding: calc(var(--bubble-radius) - var(--bubble-line-height) / 2)
+      --spacing(4);
     max-width: 60vw;
-    border-radius: 20px;
+    border-radius: var(--bubble-radius);
   }
 
   /*

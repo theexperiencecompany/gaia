@@ -8,7 +8,7 @@
  *
  * 1. It maps a Kapso media descriptor onto an {@link IncomingMedia} shape and
  *    calls resolveIncomingMedia with a working download thunk.
- * 2. A "chat" outcome is dispatched to handleStreamingChat with fileIds/fileData.
+ * 2. A "chat" outcome is posted through postAndFollow with fileIds/fileData.
  * 3. A "reply" outcome is sent verbatim via sendWhatsAppText.
  * 4. The download thunk actually downloads the right Kapso media bytes.
  * 5. A thrown error from the shared pipeline produces a friendlyMediaError reply.
@@ -88,12 +88,12 @@ vi.mock("@gaia/shared/bots", async () => {
 // ---------------------------------------------------------------------------
 
 import {
-  handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
   readResponseBytesCapped,
 } from "@gaia/shared/bots";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 import type { ExtractedMedia } from "../../whatsapp/src/webhook.types";
+import { postAndFollowSpy } from "../shared/mocks/postAndFollow";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -108,18 +108,16 @@ const MOCK_CONFIG = {
 };
 
 /** Outcome returned by the shared media pipeline (overridable per-test). */
-type MediaOutcome =
-  | {
-      action: "chat";
-      text: string;
-      attachments: {
-        fileId: string;
-        url: string;
-        filename: string;
-        type: string;
-      }[];
-    }
-  | { action: "reply"; text: string };
+interface MediaOutcome {
+  notice: string;
+  text: string;
+  attachments: {
+    fileId: string;
+    url: string;
+    filename: string;
+    type: string;
+  }[];
+}
 
 interface MediaInternals {
   waClient: typeof mockWaClientInstance;
@@ -228,8 +226,9 @@ function getChatRequest(): {
   platformUserId: string;
   receivedAt: number;
 } {
-  const mocked = vi.mocked(handleStreamingChat);
-  return mocked.mock.calls.at(-1)![1] as ReturnType<typeof getChatRequest>;
+  const call = postAndFollowSpy.mock.calls.at(-1);
+  if (!call) throw new Error("postAndFollow was not called");
+  return call[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +251,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("builds an IncomingMedia descriptor from the Kapso media for an image with a caption", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -266,7 +265,7 @@ describe("WhatsAppAdapter - media routing", () => {
     );
 
     expect(resolveCalls(adapter)).toHaveBeenCalledTimes(1);
-    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    const incoming = resolveCalls(adapter).mock.calls[0][0][0].media;
     expect(incoming).toMatchObject({
       kind: "image",
       isVoiceNote: false,
@@ -278,7 +277,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("preserves the voice-note flag and audio mime type in the descriptor", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -290,7 +289,7 @@ describe("WhatsAppAdapter - media routing", () => {
       }),
     );
 
-    const incoming = resolveCalls(adapter).mock.calls[0][0];
+    const incoming = resolveCalls(adapter).mock.calls[0][0][0].media;
     expect(incoming).toMatchObject({
       kind: "audio",
       isVoiceNote: true,
@@ -300,7 +299,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("passes a download thunk that fetches the correct Kapso media bytes", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(
       adapter,
@@ -309,7 +308,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
     // The adapter must hand resolveIncomingMedia a thunk, not pre-downloaded
     // bytes — unsupported kinds must be able to skip the download entirely.
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
     expect(mockMediaDownload).not.toHaveBeenCalled();
@@ -326,11 +325,11 @@ describe("WhatsAppAdapter - media routing", () => {
 
   it("forwards the Kapso-declared media size so an oversize file skips the download", async () => {
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "reply", text: "too large" });
+    setOutcome(adapter, { notice: "too large", text: "", attachments: [] });
 
     await callHandle(adapter, media({ sizeBytes: 12_582_912 }));
 
-    expect(resolveCalls(adapter).mock.calls[0][0]).toMatchObject({
+    expect(resolveCalls(adapter).mock.calls[0][0][0].media).toMatchObject({
       sizeBytes: 12_582_912,
     });
     expect(mockMediaDownload).not.toHaveBeenCalled();
@@ -341,11 +340,11 @@ describe("WhatsAppAdapter - media routing", () => {
     const { response, produced, cancelled } = endlessMediaResponse(chunk);
     mockMediaDownload.mockResolvedValue(response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-huge" }));
 
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
     const bytes = await thunk(1000);
@@ -365,21 +364,21 @@ describe("WhatsAppAdapter - media routing", () => {
       body: null,
     } as unknown as Response);
     const adapter = buildAdapter();
-    setOutcome(adapter, { action: "chat", text: "x", attachments: [] });
+    setOutcome(adapter, { notice: "", text: "x", attachments: [] });
 
     await callHandle(adapter, media({ mediaId: "wa-media-gone" }));
 
-    const thunk = resolveCalls(adapter).mock.calls[0][1] as (
+    const thunk = resolveCalls(adapter).mock.calls[0][0][0].download as (
       maxBytes: number,
     ) => Promise<Uint8Array>;
 
     await expect(thunk(1000)).rejects.toMatchObject({ status: 410 });
   });
 
-  it("dispatches a 'chat' outcome to handleStreamingChat with fileIds and fileData", async () => {
+  it("posts a 'chat' outcome with fileIds and fileData", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "chat",
+      notice: "",
       text: "Please describe this image.",
       attachments: [
         {
@@ -393,7 +392,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
     await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
 
-    expect(handleStreamingChat).toHaveBeenCalledTimes(1);
+    expect(postAndFollowSpy).toHaveBeenCalledTimes(1);
     const req = getChatRequest();
     expect(req.platform).toBe("whatsapp");
     expect(req.platformUserId).toBe(WA_ID);
@@ -407,7 +406,7 @@ describe("WhatsAppAdapter - media routing", () => {
   it("dispatches a transcript 'chat' outcome with no attachments", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "chat",
+      notice: "",
       text: "this is the transcribed voice note",
       attachments: [],
     });
@@ -426,13 +425,15 @@ describe("WhatsAppAdapter - media routing", () => {
   it("sends a 'reply' outcome verbatim and does NOT start a chat turn", async () => {
     const adapter = buildAdapter();
     setOutcome(adapter, {
-      action: "reply",
-      text: "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+      notice:
+        "That file is too large to process (limit: 10 MB). Please share a smaller file.",
+      text: "",
+      attachments: [],
     });
 
     await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(lastSentBody()).toBe(
       "That file is too large to process (limit: 10 MB). Please share a smaller file.",
     );
@@ -447,7 +448,7 @@ describe("WhatsAppAdapter - media routing", () => {
 
     await callHandle(adapter, media({ kind: "image", mimeType: "image/png" }));
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     // friendlyMediaError("image", 401) → link-account copy.
     expect(lastSentBody()).toBe(friendlyMediaError("image", err));
     expect(lastSentBody()).toMatch(/link your GAIA account/i);
@@ -534,7 +535,7 @@ describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () =
 
     expect(lastSentBody()).toBe(unsupportedMediaMessage("contacts"));
     expect(lastSentBody()).toMatch(/contact cards/i);
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(mockMediaDownload).not.toHaveBeenCalled();
   });
 
@@ -552,7 +553,7 @@ describe("WhatsAppAdapter - unsupported media (extractMedia returns null)", () =
     await flushQueue();
 
     expect(lastSentBody()).toBe(unsupportedMediaMessage("image"));
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(mockMediaDownload).not.toHaveBeenCalled();
   });
 });

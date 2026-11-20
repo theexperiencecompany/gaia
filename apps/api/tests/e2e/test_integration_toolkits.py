@@ -514,12 +514,22 @@ class TestGmailFetchThroughTheExecutor:
             patch(f"{build}.get_tools_store", AsyncMock(return_value=InMemoryStore())),
             patch(f"{build}.get_retrieve_tools_function", return_value=no_retrieval),
             patch(f"{build}.get_checkpointer_manager", AsyncMock(return_value=None)),
+            # The classifier needs Mongo and an LLM; reading the inbox is not destructive.
+            patch("app.services.hil.policy.is_tool_destructive", AsyncMock(return_value=False)),
         ):
             model = _InboxAgent(responses=[])
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="what is in my inbox?")]},
-                    config={"configurable": {"thread_id": str(uuid4()), "user_id": USER_OBJECT_ID}},
+                    # A real run carries its stream and conversation; the approval gate refuses one without.
+                    config={
+                        "configurable": {
+                            "thread_id": str(uuid4()),
+                            "user_id": USER_OBJECT_ID,
+                            "stream_id": "inbox-stream",
+                            "conversation_id": "inbox-conversation",
+                        }
+                    },
                 )
 
         replies = {m.tool_call_id: m for m in result["messages"] if isinstance(m, ToolMessage)}

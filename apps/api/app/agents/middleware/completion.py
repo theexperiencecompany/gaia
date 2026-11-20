@@ -23,7 +23,7 @@ from app.agents.core.delegation_window import (
     is_playbook_nudge,
 )
 from app.agents.core.outcome_review import is_successful_work
-from app.agents.core.subagents.call_record import is_error_envelope, parsed_result
+from app.agents.core.subagents.call_record import tool_call_failed
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_TOOL_NAMES
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_PROMISE_MARKERS
@@ -113,7 +113,6 @@ def playbook_decision_pending(state: State) -> bool:
     return not any(
         isinstance(m, ToolMessage)
         and m.name in PLAYBOOK_DECISION_TOOL_NAMES
-        and m.status != "error"
-        and not is_error_envelope(parsed_result(m))
+        and not tool_call_failed(m)
         for m in delegation
     )

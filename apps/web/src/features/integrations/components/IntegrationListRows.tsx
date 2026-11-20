@@ -1,9 +1,11 @@
 import { Chip } from "@heroui/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { chipVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
@@ -90,10 +92,8 @@ export function IntegrationRow({
 }
 
 /** Add a community integration to the user's account, following its OAuth redirect when it needs one. */
-function useAddSuggested(
-  suggestion: SuggestedIntegration,
-  onConnected: () => Promise<unknown>,
-) {
+function useAddSuggested(suggestion: SuggestedIntegration) {
+  const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
 
   const add = async () => {
@@ -105,7 +105,7 @@ function useAddSuggested(
         toast.success(`${suggestion.name} connected successfully`, {
           id: toastId,
         });
-        await onConnected();
+        invalidateIntegrationCaches(queryClient);
       } else if (result.status === "redirect" && result.redirectUrl) {
         toast.dismiss(toastId);
         window.location.href = result.redirectUrl;
@@ -127,16 +127,14 @@ function useAddSuggested(
 
 interface SuggestedIntegrationRowProps {
   suggestion: SuggestedIntegration;
-  onConnected: () => Promise<unknown>;
 }
 
 /** A community integration the user can add: opens its marketplace page, with Add. */
 export function SuggestedIntegrationRow({
   suggestion,
-  onConnected,
 }: SuggestedIntegrationRowProps) {
   const router = useRouter();
-  const { isAdding, add } = useAddSuggested(suggestion, onConnected);
+  const { isAdding, add } = useAddSuggested(suggestion);
 
   return (
     <div className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700">

@@ -34,18 +34,30 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
+from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
     SUBSCRIPTION_PLAN_CACHE_PREFIX,
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
-from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.db.mongodb.indexes import (
+    CONVERSATION_ENTRY_INDEXES,
+    CONVERSATION_SWEEP_KEYS,
+    CONVERSATION_SWEEP_OPTIONS,
+    TODO_OPEN_EXTERNAL_REF_KEYS,
+    TODO_OPEN_EXTERNAL_REF_OPTIONS,
+)
 from app.db.redis import delete_cache, redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
+from app.models.conversation_models import ConversationDocument
 from app.models.payment_models import PlanType
+from shared.py.wide_events import _spawned_tasks
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
+    log_history,
     pg_advisory_lock,
     pick_free_port,
 )
@@ -57,9 +69,11 @@ from tests.integration.real.db_fixtures import (
     real_redis,
     redis_url,
 )
+from tests.integration.real.ledger_fixtures import edges
 from tests.real_services import mark_real_services
 
 __all__ = [
+    "edges",
     "hil_approvals_collection",
     "mongo_db",
     "mongodb_url",
@@ -87,13 +101,20 @@ async def _autouse_hil_approvals_collection(hil_approvals_collection) -> None:
 
 @pytest.fixture
 async def conversations_collection(mongo_db):
-    """Return the real conversations collection production code reads, emptied around each test."""
+    """Return the real conversations collection production code reads, emptied around each test with its entries."""
     coll = mongo_db["conversations"]
+    entries = mongo_db[CONVERSATION_ENTRIES_COLLECTION]
+    for keys, options in CONVERSATION_ENTRY_INDEXES:
+        await entries.create_index(keys, **options)
+    await coll.create_index(CONVERSATION_SWEEP_KEYS, **CONVERSATION_SWEEP_OPTIONS)
     await coll.delete_many({})
+    await entries.delete_many({})
 
     yield coll
 
+    await asyncio.gather(*_spawned_tasks, return_exceptions=True)
     await coll.delete_many({})
+    await entries.delete_many({})
 
 
 @asynccontextmanager
@@ -232,26 +253,28 @@ async def clean_bridge_tables(
 
 @pytest.fixture
 def make_conversation(conversations_collection):
-    """Seed a conversation document in real MongoDB.
+    """Seed a conversation in real MongoDB through the repository: its head, then any messages as entries.
 
-    Writes the legacy timestamp pair as production does: createdAt an ISO string, updatedAt a BSON date. A datetime passed for createdAt is normalized to ISO here — seeding it raw would fail the repository's read-boundary validation.
+    A datetime passed for createdAt is normalized to the ISO string production stores.
     """
 
     async def _make(user_id: str, conv_id: str | None = None, **overrides):
         conv_id = conv_id or f"conv_{ObjectId()}"
+        messages = overrides.pop("messages", [])
         created_at = overrides.pop("createdAt", datetime.now(UTC))
         if isinstance(created_at, datetime):
             created_at = created_at.isoformat()
         doc = {
             "user_id": user_id,
             "conversation_id": conv_id,
-            "messages": [],
             "description": "Test conversation",
+            "source": "web",
             "createdAt": created_at,
             "updatedAt": datetime.now(UTC),
             **overrides,
         }
-        await conversations_collection.insert_one(doc)
+        await conversation_repository.create(ConversationDocument.model_validate(doc))
+        await log_history(conv_id, user_id, messages)
         return conv_id
 
     return _make
@@ -316,3 +339,12 @@ async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
     await mongo_db["projects"].delete_many({"user_id": str(owner)})
     await mongo_db["users"].delete_many({"_id": owner})
     await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))
+
+
+@pytest.fixture
+async def manager(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
+    """Yield a real Postgres checkpointer for a comms graph built in the test."""
+    mgr = CheckpointerManager(conninfo=postgres_url)
+    await mgr.setup()
+    yield mgr
+    await mgr.close()

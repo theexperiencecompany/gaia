@@ -22,10 +22,6 @@ from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 class AgentTag(StrEnum):
     """Tag names framing an internal payload passed between agent tiers."""
 
-    EXECUTOR_RESULT = "executor_result"
-    EXECUTOR_ERROR = "executor_error"
-    EXECUTOR_CANCELLED = "executor_cancelled"
-    RETURNED_TO_FRONTEND = "returned_to_frontend"
     PLATFORM_DELIVERY = "platform_delivery"
     DELIVERY_INSTRUCTIONS = "delivery_instructions"
     SUBAGENT_RESULT = "subagent_result"
@@ -68,14 +64,6 @@ def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> st
     return f"<{tag}{attribution}>\n{body.strip()}\n</{tag}>\n"
 
 
-# Every internal tag, open or close, with or without attributes. Stripped
-# deterministically before delivery (see ``strip_internal_agent_tags``) as the
-# hard backstop for a weak model echoing its context into the reply.
-INTERNAL_AGENT_TAG_PATTERN = re.compile(
-    rf"</?(?:{'|'.join(tag.value for tag in AgentTag)})(?:\s[^>]*)?>",
-    flags=re.IGNORECASE,
-)
-
 #: Tags that frame someone actually asking for something. Every other internal
 #: tag frames a result, instruction or status the graph wrote, so it must never
 #: be mistaken for the request the turn is working on.
@@ -98,6 +86,8 @@ def leading_agent_tag(text: str) -> AgentTag | None:
 # agent run that takes over. Named once here because a drift between the
 # writer (workflow worker) and reader (format_workflow_execution_message) is silent.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
+# A replay's stream id, which is also the task id its logged work carries, so a Stop can name it.
+PLAYBOOK_REPLAY_STREAM_ID_PREFIX = "playbook_"
 #: Calls a playbook never replays: delegation, whose children are in the run
 #: record themselves, and tool discovery and binding, which do no work.
 PLAYBOOK_UNPICKABLE_TOOLS = frozenset(
@@ -126,11 +116,6 @@ EXECUTOR_SPAWN_EXCLUDED_TOOLS = frozenset(
 #: model call of the turn, so the agent that can spawn is pointed at spawns for
 #: any further reading of that size.
 LARGE_TOOL_RESULT_CHARS = 25_000
-
-# The trigger-context key carrying the busy-lock value a workflow fire reserved.
-# Written by the workflow worker, read by call_executor so the dispatched
-# executor takes the reservation over instead of queueing behind a stale lock.
-WORKFLOW_LOCK_CONTEXT_KEY = "executor_lock_reservation"
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2

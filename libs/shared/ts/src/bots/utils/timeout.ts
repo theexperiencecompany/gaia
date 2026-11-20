@@ -18,3 +18,8 @@ export async function withTimeout<T>(
     clearTimeout(timer);
   }
 }
+
+/** Resolves after `ms`. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

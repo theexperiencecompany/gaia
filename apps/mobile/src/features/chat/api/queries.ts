@@ -2,8 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Conversation } from "@/features/chat/types";
 import { apiService } from "@/lib/api";
 import { chatDb } from "@/lib/db/chatDb";
-import type { Message } from "./chat-api";
-import { chatApi } from "./chat-api";
 
 interface ApiConversation {
   _id: string;
@@ -54,38 +52,9 @@ export const chatKeys = {
   all: ["chat"] as const,
   conversations: () => [...chatKeys.all, "conversations"] as const,
   conversation: (id: string) => [...chatKeys.all, "conversation", id] as const,
-  messages: (id: string) => [...chatKeys.all, "messages", id] as const,
+  /** The newest page of a conversation's log, folded into its live view. */
+  page: (id: string) => [...chatKeys.all, "page", id] as const,
 };
-
-async function fetchMessagesFromApi(
-  conversationId: string,
-): Promise<Message[]> {
-  // Always hit the API: cached messages (pre-warmed from AsyncStorage) stay on
-  // screen while this background-revalidation fetch runs, and React Query swaps
-  // in fresh data seamlessly; the new messages persist for the next launch.
-  const messages = await chatApi.fetchMessages(conversationId);
-  if (messages.length > 0) {
-    chatDb.saveMessages(conversationId, messages).catch((err) => {
-      console.warn(
-        "[queries] Failed to persist messages to AsyncStorage:",
-        err,
-      );
-    });
-  }
-  return messages;
-}
-
-export function useConversationQuery(conversationId: string | null) {
-  return useQuery({
-    queryKey: chatKeys.messages(conversationId!),
-    queryFn: () => fetchMessagesFromApi(conversationId!),
-    enabled: !!conversationId && !conversationId.startsWith("temp-"),
-    // Short staleness window: the cache-first seed still renders instantly,
-    // but revisiting a conversation revalidates against the API quickly
-    // enough that messages sent from other devices actually appear.
-    staleTime: 15_000,
-  });
-}
 
 export function useConversationsQuery() {
   return useQuery({
@@ -98,26 +67,8 @@ export function useConversationsQuery() {
 export function useChatQueryClient() {
   const queryClient = useQueryClient();
 
-  const setMessagesCache = (conversationId: string, messages: Message[]) => {
-    queryClient.setQueryData(chatKeys.messages(conversationId), messages);
-  };
-
   const invalidateConversations = () => {
     queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
-  };
-
-  const invalidateMessages = (conversationId: string) => {
-    queryClient.invalidateQueries({
-      queryKey: chatKeys.messages(conversationId),
-    });
-  };
-
-  const prefetchMessages = async (conversationId: string) => {
-    await queryClient.prefetchQuery({
-      queryKey: chatKeys.messages(conversationId),
-      queryFn: () => chatApi.fetchMessages(conversationId),
-      staleTime: 5 * 60 * 1000,
-    });
   };
 
   const updateConversationInCache = (
@@ -157,10 +108,7 @@ export function useChatQueryClient() {
   };
 
   return {
-    setMessagesCache,
     invalidateConversations,
-    invalidateMessages,
-    prefetchMessages,
     updateConversationInCache,
     removeConversationFromCache,
   };

@@ -8,13 +8,15 @@ and pause logic run for real.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import time
 from types import SimpleNamespace, TracebackType
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from arq.connections import ArqRedis
+import fakeredis.aioredis
 import pytest
 import time_machine
 
@@ -153,22 +155,11 @@ class _FakeAcquire:
         return False
 
 
-class _FakePool:
-    """Minimal stand-in for the ARQ redis pool (exists/set only)."""
-
-    def __init__(self) -> None:
-        self.store: dict[str, str] = {}
-        self.sets: list[tuple[str, str, int | None]] = []
-
-    async def exists(self, key: str) -> int:
-        return 1 if key in self.store else 0
-
-    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool:
-        if nx and key in self.store:
-            return False
-        self.store[key] = value
-        self.sets.append((key, value, ex))
-        return True
+def _fake_pool() -> ArqRedis:
+    """Build an ARQ pool over fakeredis, for real set/exists/TTL semantics."""
+    return ArqRedis(
+        connection_pool=fakeredis.aioredis.FakeRedis(decode_responses=True).connection_pool
+    )
 
 
 class _Tick:
@@ -184,9 +175,9 @@ class _Tick:
         self.notify = AsyncMock()
         self.lookup = AsyncMock()
         self.log_info = MagicMock()
-        self.pool = _FakePool()
+        self.pool = _fake_pool()
 
-    def cap_logs(self) -> list[dict[str, object]]:
+    def cap_logs(self) -> list[Mapping[str, object]]:
         return [
             call.kwargs for call in self.log_info.call_args_list if call.args == (CAP_LOG_MESSAGE,)
         ]
@@ -228,9 +219,7 @@ class _Tick:
             ):
                 stack.enter_context(patch(f"{TASKS_MODULE}.{target}", value))
             # On the singleton, so a notification sent through any import path is seen.
-            stack.enter_context(
-                patch.object(notification_service, "create_notification", self.notify)
-            )
+            stack.enter_context(patch.object(notification_service, "notify", self.notify))
             stack.enter_context(
                 patch(
                     "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
@@ -252,7 +241,7 @@ class TestKeepWarmTick:
 
     async def test_no_agent_lab_template_means_nothing_to_keep(self) -> None:
         with patch(f"{TASKS_MODULE}.settings.E2B_AGENT_LAB_TEMPLATE_ID", None):
-            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _fake_pool()})
         assert result == "Agent-lab template not configured; nothing to keep warm"
 
     async def test_a_live_run_is_kept_warm_and_saved_not_paused(self) -> None:
@@ -319,7 +308,9 @@ class TestKeepWarmTick:
                 "outcome": LabTickOutcome.PAUSED.value,
             }
         ]
-        assert tick.pool.sets == [("lab:cap_logged:lab", "1", SANDBOX_LAB_MAX_RUN_SECONDS)]
+        assert await tick.pool.keys() == ["lab:cap_logged:lab"]
+        assert await tick.pool.get("lab:cap_logged:lab") == "1"
+        assert await tick.pool.ttl("lab:cap_logged:lab") == SANDBOX_LAB_MAX_RUN_SECONDS
 
     async def test_the_cap_log_records_a_sandbox_left_running_when_it_was_not_idle(self) -> None:
         tick = _Tick()

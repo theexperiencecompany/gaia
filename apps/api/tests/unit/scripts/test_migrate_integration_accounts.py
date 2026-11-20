@@ -15,6 +15,7 @@ import pytest
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import ComposioAuthConfigSource
+from app.db.repositories.approval_ledger import LIVE_ROW_FILTER
 from app.models.integration_models import IntegrationAccount
 from app.models.oauth_models import OAuthIntegration
 from app.scripts import migrate_integration_accounts as migration
@@ -381,7 +382,7 @@ async def test_live_connect_approvals_are_rewritten_with_a_matching_fingerprint(
     approvals.find.assert_called_once_with(
         {
             "tool_name": "connect_integration",
-            "state": {"$in": ["approved", "pending"]},
+            **LIVE_ROW_FILTER,
             "args.force_reconnect": {"$exists": True},
         }
     )

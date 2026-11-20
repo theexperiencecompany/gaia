@@ -1,6 +1,7 @@
 """A user's edit to a gate: what it stores, what it refuses, and the event that names it."""
 
 from datetime import UTC, datetime
+from typing import Literal
 from unittest.mock import patch
 
 import pytest
@@ -136,7 +137,11 @@ class TestGateEditAction:
         ids=["removed", "rewritten_from_a_preset"],
     )
     def test_the_event_names_the_gate_the_write_left(
-        self, before: TriggerGate, after: TriggerGate | None, action: str, gate_kind: str
+        self,
+        before: TriggerGate,
+        after: TriggerGate | None,
+        action: Literal["added", "edited", "disabled", "enabled", "removed"],
+        gate_kind: Literal["authored", "system"],
     ) -> None:
         with patch("app.services.triggers.gate_edits.capture") as capture:
             report_gate_edit(USER_ID, GateOwner.TODO, before, after)

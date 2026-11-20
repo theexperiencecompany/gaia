@@ -104,6 +104,9 @@ LOCAL_ONLY_KEYS = {
     "security_opt",
 }
 
+#: The restart policy that marks a one-shot compose service (the pre-boot migration).
+ONE_SHOT_RESTART = "no"
+
 #: Backend variables that need extra_hosts (host.docker.internal), which no platform template sets.
 HOST_GATEWAY_ENV = {"LOOPBACK_HOST_ALIAS"}
 
@@ -153,6 +156,7 @@ COOLIFY_HEADER = """# documentation: https://docs.heygaia.io/self-hosting/one-cl
 COOLIFY_SERVICES = {
     "proxy": "proxy",
     "gaia-web": "gaia-web",
+    "gaia-migrate": "gaia-migrate",
     "gaia-backend": "gaia-backend",
     "arq_worker": "arq-worker",
     "chromadb": "chromadb",
@@ -161,7 +165,7 @@ COOLIFY_SERVICES = {
     "mongo": "mongo",
     "rabbitmq": "rabbitmq",
 }
-COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker"}
+COOLIFY_APP_SERVICES = {"gaia-migrate", "gaia-backend", "arq_worker"}
 COOLIFY_VOLUMES = {
     "models_cache": "models-cache",
     "workspace": "workspace",
@@ -248,7 +252,15 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
         out["depends_on"] = {
             COOLIFY_SERVICES[dep]: cond for dep, cond in service["depends_on"].items()
         }
-    out["healthcheck"] = {**service["healthcheck"], "test": Flow(service["healthcheck"]["test"])}
+    if "healthcheck" in service:
+        out["healthcheck"] = {
+            **service["healthcheck"],
+            "test": Flow(service["healthcheck"]["test"]),
+        }
+    if service.get("restart") == ONE_SHOT_RESTART:
+        # Coolify restarts every service unless told not to, and counts an exited one as down.
+        out["restart"] = ONE_SHOT_RESTART
+        out["exclude_from_hc"] = True
     unhandled = set(service) - LOCAL_ONLY_KEYS - set(out) - {"environment"}
     if unhandled:
         raise SystemExit(
@@ -367,6 +379,8 @@ RENDER_SERVICES = {
     "gaia-web",
     "gaia-backend",
     "arq_worker",
+    # Render has no one-shot service: it runs as the backend's pre-deploy command.
+    "gaia-migrate",
     *RENDER_DATASTORES,
     "redis",
     "postgres",
@@ -532,6 +546,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                     RENDER_PLANS["gaia-backend"],
                 ),
                 "envVars": _render_app_env(services, "gaia-backend"),
+                "preDeployCommand": " ".join(services["gaia-migrate"]["command"]),
             },
             {
                 "type": "worker",

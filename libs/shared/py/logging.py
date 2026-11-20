@@ -62,7 +62,7 @@ raw loguru logger outside the wide-event lifecycle.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 import functools
@@ -142,7 +142,7 @@ _CORE_KEYS = frozenset(
 )
 _COLLIDING_KEY_PREFIX = "ctx_"
 # Extra keys consumed into the core entry (never re-emitted as extra fields).
-_CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker"})
+_CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker", "fields"})
 # A structure that contains itself cannot be serialized; this marker keeps the
 # rest of the line intact instead of the sanitize fallback dropping it.
 _CIRCULAR_MARKER = "<circular reference>"
@@ -239,7 +239,7 @@ LOG_CONFIG: _LogConfig = {
             "<level>{level: <4}</level> | "
             "<blue>{extra[logger_name]: <7}</blue> | "
             "<dim>{extra[worker]: <5}</dim> | "
-            "<level>{message}</level> "
+            "<level>{message}</level>{extra[fields]} "
             "<dim><cyan>({file.name}:{line})</cyan></dim>"
         ),
         "file": (
@@ -247,7 +247,7 @@ LOG_CONFIG: _LogConfig = {
             "{level: <4} | "
             "{extra[logger_name]: <7} | "
             "{extra[worker]: <5} | "
-            "{message} | "
+            "{message}{extra[fields]} | "
             "{file.name}:{function}:{line}"
         ),
         "json": "{time} {level} {extra[logger_name]} {message} {file.name} {function} {line}{extra}",
@@ -621,13 +621,21 @@ def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
     return _sink
 
 
+def _render_fields(extra: Mapping[str, object]) -> str:
+    """Render a record's structured fields as ' key=value' pairs for the readable sinks."""
+    return "".join(
+        f" {key}={value!r}" for key, value in extra.items() if key not in _CONSUMED_EXTRA_KEYS
+    )
+
+
 def _worker_name_patcher(record: Record) -> None:
-    """Derive a short worker label from the OS process name.
+    """Derive a short worker label from the OS process name and render the line's fields.
 
     uvicorn --workers spawns processes named SpawnProcess-1, SpawnProcess-2, etc.
     This collapses them to w1, w2 so log lines are easy to diff between workers.
     Single-process / dev mode shows 'main'.
     """
+    record["extra"]["fields"] = _render_fields(record["extra"])
     name: str = record["process"].name
     if name.startswith("SpawnProcess-"):
         record["extra"]["worker"] = "w" + name.rsplit("-", maxsplit=1)[-1]
@@ -710,7 +718,7 @@ def configure_loguru() -> Logger:
     # Set global defaults for extra fields used in format strings so they
     # never raise KeyError on records that bypass InterceptHandler or bind().
     logger.configure(
-        extra={"logger_name": "APP", "worker": "main"},
+        extra={"logger_name": "APP", "worker": "main", "fields": ""},
         patcher=_worker_name_patcher,
     )
 

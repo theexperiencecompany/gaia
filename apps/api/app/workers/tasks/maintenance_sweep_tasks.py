@@ -19,6 +19,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.canvas_markdown import bounded_canvas
@@ -546,8 +547,9 @@ async def _send_user_dormant_digest(
     )
 
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(user_id, "dormant_digest", "", now.date().isoformat()),
                 user_id=user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.INFO,
@@ -623,8 +625,11 @@ async def _send_individual_notification(
 ) -> None:
     """Send a single notification for a specific todo across the user's enabled channels."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    user_id, "todo_health", todo_id, datetime.now(UTC).date().isoformat()
+                ),
                 user_id=user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=notification_type,

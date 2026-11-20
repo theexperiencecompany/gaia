@@ -1,7 +1,7 @@
 """Unit tests for the agent-JWT fallback inside AUTH_MODE local dispatch.
 
 The WorkOS branch accepts an AGENT_SECRET-signed JWT on agent-only paths (how
-LiveKit voice authenticates chat-stream turns); the local-session branch must
+LiveKit voice authenticates its conversation calls); the local-session branch must
 behave identically or self-hosted voice breaks with 401s. verify_agent_token
 is faked at the same seam the WorkOS-mode suite uses.
 """
@@ -50,7 +50,7 @@ def _session_token(user_id: str) -> str:
 def _build_local_app() -> FastAPI:
     """Build a minimal app behind WorkOSAuthMiddleware in local mode.
 
-    One agent-eligible route (/api/v1/chat-stream) and one ordinary protected
+    One agent-eligible route (a voice send) and one ordinary protected
     route, both reporting what request.state carries after dispatch.
     """
     from app.api.v1.middleware.auth import WorkOSAuthMiddleware
@@ -69,7 +69,7 @@ def _build_local_app() -> FastAPI:
         }
 
     app = FastAPI()
-    app.post("/api/v1/chat-stream")(probe)
+    app.post("/api/v1/conversations/conv-1/messages")(probe)
     app.get("/api/v1/protected")(probe)
     app.add_middleware(WorkOSAuthMiddleware, workos_client=MagicMock())
     return app
@@ -99,7 +99,7 @@ class TestLocalModeAgentTokenFallback:
             client = TestClient(_build_local_app())
             client.cookies.set("gaia_session", _session_token(ADMIN_ID))
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
 
@@ -113,7 +113,7 @@ class TestLocalModeAgentTokenFallback:
         # Only the session's user was ever loaded.
         fake_repo_get.assert_called_once_with(ADMIN_ID)
 
-    def test_agent_jwt_authenticates_chat_stream_in_local_mode(self, monkeypatch) -> None:
+    def test_agent_jwt_authenticates_a_voice_send_in_local_mode(self, monkeypatch) -> None:
         """Fall back to verify_agent_token on an agent-only path with no cookie, like the WorkOS branch."""
         monkeypatch.setattr(settings, "AUTH_MODE", "local")
         monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
@@ -134,7 +134,7 @@ class TestLocalModeAgentTokenFallback:
         ):
             client = TestClient(_build_local_app())
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
 
@@ -184,7 +184,8 @@ class TestLocalModeRealAgentTokens:
             "app.api.v1.middleware.auth.user_repository.get", return_value=user_doc
         ) as fake_repo_get:
             resp = TestClient(_build_local_app()).post(
-                "/api/v1/chat-stream", headers={"Authorization": f"Bearer {token}"}
+                "/api/v1/conversations/conv-1/messages",
+                headers={"Authorization": f"Bearer {token}"},
             )
         assert resp.status_code == 200
         return resp.json(), fake_repo_get

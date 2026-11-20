@@ -49,6 +49,10 @@ class TestToAgentState:
         agent_state = to_agent_state(_state(structured_response={"answer": 42}))
         assert agent_state["structured_response"] == {"answer": 42}
 
+    def test_the_messages_kept_verbatim_are_carried_through(self) -> None:
+        agent_state = to_agent_state(_state(verbatim_message_ids=["m1"]))
+        assert agent_state == {"messages": [SYSTEM, HUMAN], "verbatim_message_ids": ["m1"]}
+
 
 class TestCreateModelRequest:
     def test_system_message_is_extracted_from_messages(self) -> None:

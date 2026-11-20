@@ -492,10 +492,7 @@ class TestTriggerRegistration:
                 trigger_config=trigger_config,
             )
 
-        # _register_integration_triggers now returns (trigger_ids, integration_connected)
-        trigger_ids, connected = result
-        assert trigger_ids == ["trigger_id_1", "trigger_id_2"]
-        assert connected is True
+        assert result == ["trigger_id_1", "trigger_id_2"]
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
             # The parameter is `owner_id` now: registration serves tracked todos
@@ -508,7 +505,7 @@ class TestTriggerRegistration:
         )
 
     async def test_register_skips_non_integration_triggers(self):
-        """_register_integration_triggers returns ([], True) for manual triggers."""
+        """_register_integration_triggers returns [] for manual triggers."""
         trigger_config = _make_trigger_config(trigger_type=TriggerType.MANUAL)
 
         result = await WorkflowService._register_integration_triggers(
@@ -517,8 +514,7 @@ class TestTriggerRegistration:
             trigger_config=trigger_config,
         )
 
-        # Non-integration triggers return ([], True) — trigger_ids empty, integration_connected True
-        assert result == ([], True)
+        assert result == []
 
     async def test_register_raises_when_trigger_name_missing(self):
         """_register_integration_triggers raises when integration trigger has no name."""

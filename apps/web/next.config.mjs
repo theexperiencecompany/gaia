@@ -93,6 +93,9 @@ const nextConfig = {
           }
         : false,
   },
+  // next dev otherwise rewrites the tracked CLAUDE.md (AGENTS.md symlink) whenever its
+  // managed block's text differs; the docs pointer lives there as plain text instead.
+  agentRules: false,
   reactStrictMode: true,
   // next dev otherwise writes a managed block into the tracked CLAUDE.md (AGENTS.md links to it).
   agentRules: false,

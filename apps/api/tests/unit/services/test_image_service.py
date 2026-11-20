@@ -10,7 +10,6 @@ import pytest
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.config.settings import settings
 from app.constants.files import BlobKind
-from app.models.chat_models import ImageData
 from app.services.blob_store import LocalBlobMeta
 from app.services.image_service import (
     api_generate_image,
@@ -23,6 +22,7 @@ from app.utils.image_utils import (
     IMAGE_GENERATION_NOT_CONFIGURED_MESSAGE,
     ImageGenerationNotConfiguredError,
 )
+from shared.py.conversation_wire import ImageData
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------

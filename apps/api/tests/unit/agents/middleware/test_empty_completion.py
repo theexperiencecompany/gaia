@@ -22,8 +22,8 @@ from app.agents.middleware.empty_completion import (
     EmptyCompletionRetryMiddleware,
     is_empty_completion,
 )
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 EMPTY = AIMessage(content="")
 WHITESPACE = AIMessage(content="\n  \n")

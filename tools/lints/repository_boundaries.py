@@ -92,7 +92,7 @@ _CACHE_ALLOWED_DIRS = ("db/", "decorators/")
 CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/ + utils/ — custom-MCP target resolution and display metadata (name/icon)
-        "agents/core/subagents/integration_resolution.py",
+        "agents/core/subagents/integration_target.py",
         "utils/agent_utils.py",
         # external-data / derived caches (web, weather, favicon, research)
         "agents/tools/research_tool.py",

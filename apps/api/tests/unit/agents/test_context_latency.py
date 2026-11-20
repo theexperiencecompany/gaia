@@ -11,7 +11,6 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import Section, SectionId
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from tests.helpers import captured_wide_event
 
 
@@ -148,16 +147,3 @@ async def test_either_memory_section_marks_the_turn_as_having_memories(
             await assemble._gather_sections(_ctx())
 
     assert event["dynamic_context"]["has_memories"] is True
-
-
-async def test_assembly_is_timed_as_the_turns_context_step() -> None:
-    fast = _stub_section(SectionId.USER_PREFS, 0.0, PromptSlot.DYNAMIC_STABLE)
-    timings = begin_turn_timings()
-
-    def _fake_sections_for(tier: AgentTier, slot: PromptSlot) -> list[Section]:
-        return [fast] if slot == PromptSlot.DYNAMIC_STABLE else []
-
-    with patch.object(assemble, "sections_for", side_effect=_fake_sections_for):
-        await assemble._gather_sections(_ctx())
-
-    assert list(timings.steps) == [(TurnPhase.INGRESS, TurnStep.CONTEXT)]

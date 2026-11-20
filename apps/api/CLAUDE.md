@@ -41,21 +41,13 @@ The agent system uses two compiled LangGraph graphs registered via `GraphManager
 
 Both graphs are built in `app/agents/core/graph_builder/build_graph.py` and registered during startup via `build_graphs()`.
 
-### Agent Execution Modes
+### Conversation runtime
 
-`app/agents/core/agent.py` exposes two entry points that share `_core_agent_logic()`:
+A conversation is an append-only log run by one step (`app/services/conversation/`, design in the plan `conversation-runtime.md`):
 
-- `call_agent()` — returns `AsyncGenerator` for SSE streaming (chat endpoint)
-- `call_agent_silent()` — returns `(message, tool_data)` tuple (workflows, background tasks)
-
-### Streaming Architecture
-
-Chat streaming is **decoupled from the HTTP connection** (see `app/api/v1/endpoints/chat.py`):
-
-1. Endpoint launches an `asyncio.Task` that runs LangGraph and publishes SSE chunks to a Redis channel.
-2. The HTTP response subscribes to that Redis channel and forwards chunks.
-3. If the client disconnects, the background task keeps running and saves the conversation to MongoDB.
-4. Stream cancellation via `POST /api/v1/cancel-stream/{stream_id}` sets a Redis flag that the background task checks.
+1. `POST /api/v1/conversations/{id}/messages` appends the user's message and returns 202 with its `seq`; the step answers it in the background.
+2. `GET /api/v1/conversations/{id}/events?after=<seq|stream id>` streams every frame (entries, reply and work deltas, state) as SSE, replaying from the log, so a client attaches at any point.
+3. `POST /api/v1/conversations/{id}/stop` logs a Stop; the step cancels the reply and the work it covers.
 
 ### Lazy Provider System
 
@@ -199,8 +191,7 @@ and the OpenAPI schema:
   request and an unpaid shell load would mint a pile of single-use links nobody
   asked for. Clients mint on user intent, from
   `POST /api/v1/payments/checkout-session`. The bots do not read this body at
-  all — the bot chat turn renders its own paywall notice with its own link
-  (`endpoints/bot.py::_bot_upgrade_url`).
+  all — `POST /bot/messages` refuses an unentitled turn with its own 402.
 - **A plan read that fails is a 503, not a 402.** "We could not read your plan"
   is not "you are not subscribed", and answering 402 there showed every paying
   user a paywall during a Redis blip.
@@ -613,7 +604,6 @@ All of these call `_require_mount()` in `app/services/storage/juicefs.py`:
 - `write_session_file` — user file uploads from the chat UI
 - `ensure_user_workspace` — first-time workspace bootstrap for a user
 - `write_skill_file` / `ensure_user_skills_dir` — installing skills to the user's workspace
-- The artifact watcher in `app/services/sandbox/artifact_watcher.py` — needs to tail `/mnt/jfs/.accesslog`
 - Any service path under `app/services/storage/sessions/` that touches the FS
 
 If you hit `JuiceFSUnavailable` while running natively, **that is expected** — the fix is to switch to `mise dev:vm`, not to "fix" the error. Do not silence the exception, do not add a no-op fallback, do not stub `_is_mounted` to return `True`. The mount being missing is a load-bearing signal that JuiceFS-dependent features need the dockered API.

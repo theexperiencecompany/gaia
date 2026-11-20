@@ -83,7 +83,6 @@ def boundary(monkeypatch):
     monkeypatch.setattr(f"{p}_write_canary", AsyncMock(return_value="canary-ts"))
     monkeypatch.setattr(f"{p}_seed_user_subtrees", AsyncMock())
     monkeypatch.setattr(f"{p}_enforce_creation_limit", AsyncMock())
-    monkeypatch.setattr(f"{p}_ensure_watcher", AsyncMock())
     monkeypatch.setattr(f"{p}_schedule_pause", lambda user_id, entry: None)
     return counters
 
