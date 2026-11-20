@@ -1021,21 +1021,14 @@ describe("SlackAdapter - inbound files", () => {
       sizeBytes: 2048,
       caption: "summarize this",
     });
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "summarize this",
         channelId: "D123",
         fileIds: ["file-1"],
         fileData: [UPLOADED],
       }),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "slack" }),
-      expect.any(Promise),
-      expect.any(Function),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
     );
   });
@@ -1059,7 +1052,7 @@ describe("SlackAdapter - inbound files", () => {
 
     expect(resolveMedia).toHaveBeenCalledTimes(1);
     expect(resolveMedia.mock.calls[0][0][0].media.caption).toBeUndefined();
-    expect(handleStreamingChat).toHaveBeenCalled();
+    expect(postAndFollowSpy).toHaveBeenCalled();
   });
 
   it("downloads a Slack file with the bot token, since url_private needs auth", async () => {
@@ -1122,7 +1115,7 @@ describe("SlackAdapter - inbound files", () => {
       channel: "D123",
       text: "Up to 5 files per message. Read the first 5, skipped 1.",
     });
-    expect(handleStreamingChat).toHaveBeenCalled();
+    expect(postAndFollowSpy).toHaveBeenCalled();
   });
 
   it("reads the files on an @mention", async () => {
@@ -1146,16 +1139,9 @@ describe("SlackAdapter - inbound files", () => {
       filename: "report.pdf",
       caption: "what does this say?",
     });
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ channelId: "C111", fileIds: ["file-1"] }),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "slack" }),
-      expect.any(Promise),
-      expect.any(Function),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
     );
   });
