@@ -106,6 +106,7 @@ def _requested_calendar_ids(call_mock: AsyncMock) -> list[str]:
 
 
 class TestCalendarSelectionResolution:
+    @pytest.mark.regression
     async def test_stored_primary_alias_reads_the_primary_calendar_and_is_rewritten(
         self, mock_proxy, mock_calendar_repo, mock_fetch_events
     ):
@@ -170,6 +171,16 @@ class TestCalendarSelectionResolution:
             USER_ID, None, [TEAM_CALENDAR_ID, TEAMMATE_PRIMARY_ID]
         )
 
+    async def test_an_empty_calendar_list_never_rewrites_the_stored_selection(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = {"items": []}
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        await get_calendar_events(USER_ID)
+
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
+
     async def test_a_valid_stored_selection_is_not_rewritten(
         self, mock_proxy, mock_calendar_repo, mock_fetch_events
     ):
@@ -226,6 +237,7 @@ class TestCalendarSelectionResolution:
         assert result.selected_calendars == []
         mock_calendar_repo.get_for_user.assert_not_awaited()
 
+    @pytest.mark.regression
     async def test_search_resolves_the_stored_primary_alias(self, mock_proxy, mock_calendar_repo):
         mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
         mock_calendar_repo.get_for_user.return_value = _prefs(["primary"])

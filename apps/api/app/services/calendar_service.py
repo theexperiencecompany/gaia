@@ -295,7 +295,7 @@ async def _resolve_selected_calendars(
     resolved = matched or calendars
 
     resolved_ids = [cal.id for cal in resolved]
-    if set(resolved_ids) != set(loaded or []):
+    if calendars and set(resolved_ids) != set(loaded or []):
         await calendar_repository.repair_selected_calendars(user_id, loaded, resolved_ids)
     return resolved
 
