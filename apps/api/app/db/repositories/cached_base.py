@@ -58,10 +58,7 @@ class _CachedRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
     async def _cache_store(self, scope: str, doc: TDoc) -> None:
         policy = self.cache_policy
         await set_cache(
-            policy.entity_key(scope, self._doc_identity(doc)),
-            doc,
-            ttl=policy.entity_ttl,
-            model=self.document_model,
+            policy.entity_key(scope, self._doc_identity(doc)), doc, ttl=policy.entity_ttl
         )
 
     async def _cache_evict(self, scope: str, doc_id: str) -> None:
@@ -91,7 +88,7 @@ class _CachedRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
             return cast(TDoc, cached)
         doc = await super()._fetch(doc_id, extra_filter)
         if doc is not None:
-            await set_cache(key, doc, ttl=policy.entity_ttl, model=self.document_model)
+            await set_cache(key, doc, ttl=policy.entity_ttl)
         return doc
 
     async def _apply_update(
@@ -172,7 +169,7 @@ class _CachedRepository(_BaseRepository[TDoc, TUpdate], abstract=True):
         result = await self._update_one(
             filter_, update, extra_filter=extra_filter, array_filters=array_filters, upsert=upsert
         )
-        if result.matched_count or (upsert and result.upserted_id is not None):
+        if result.matched_count or result.upserted_id is not None:
             await self._evict_filtered(
                 self._filter_scope({**filter_, **(extra_filter or {})}), filter_
             )
@@ -297,17 +294,17 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
     """
 
     def decorator(fn: _TFinder) -> _TFinder:
-        signature = inspect.signature(fn)
+        finder_params = list(inspect.signature(fn).parameters.values())[1:]
+        signature = inspect.Signature(finder_params)
 
         @functools.wraps(fn)
         async def wrapper(
             self: _CachedRepository[MongoDocument, BaseModel], *args: object, **kwargs: object
         ) -> object:
             policy = self.cache_policy
-            bound = signature.bind(self, *args, **kwargs)
+            bound = signature.bind(*args, **kwargs)
             bound.apply_defaults()
             call_args = dict(bound.arguments)
-            call_args.pop("self", None)
             scope = str(call_args.get("user_id", REPO_GLOBAL_SCOPE))
             generation = await read_generation(policy, scope)
             if generation is None:
@@ -318,7 +315,7 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
                 return cached
             result = await fn(self, *args, **kwargs)
             if result is not None:
-                await set_cache(key, result, ttl=policy.query_ttl, model=result_model)
+                await set_cache(key, result, ttl=policy.query_ttl)
             return result
 
         return cast(_TFinder, wrapper)
