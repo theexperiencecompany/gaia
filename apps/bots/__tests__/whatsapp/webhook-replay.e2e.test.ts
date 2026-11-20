@@ -33,8 +33,8 @@ vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
   WhatsAppClient: vi.fn(() => ({})),
 }));
 
-import type { IncomingAttachment } from "../../../../libs/shared/ts/src/bots/utils/media.types";
 import { createDeliveryFailureReporter } from "../../../../libs/shared/ts/src/bots/delivery-failures";
+import type { IncomingAttachment } from "../../../../libs/shared/ts/src/bots/utils/media.types";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 const SECRET = "conformance-webhook-secret-0123456789abcdef";
@@ -262,11 +262,13 @@ describe("WhatsApp webhook replay (real Hono webhook, in-process)", () => {
   it("routes an image message through the shared media pipeline", async () => {
     // Short-circuit the media decision so no real download/upload runs; we only
     // assert the webhook extracted the media and routed it to resolveIncomingMedia.
-    const resolveIncomingMedia = vi.fn(async (_items: IncomingAttachment[]) => ({
-      notice: "I see your image.",
-      text: "",
-      attachments: [],
-    }));
+    const resolveIncomingMedia = vi.fn(
+      async (_items: IncomingAttachment[]) => ({
+        notice: "I see your image.",
+        text: "",
+        attachments: [],
+      }),
+    );
     (
       h.adapter as unknown as { resolveIncomingMedia: unknown }
     ).resolveIncomingMedia = resolveIncomingMedia;
