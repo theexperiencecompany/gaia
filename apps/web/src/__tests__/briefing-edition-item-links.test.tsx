@@ -242,7 +242,6 @@ describe("brief item links", () => {
               goal: {
                 id: "g1",
                 statement: "Fill eight roles",
-                origin: "memory",
                 done: 5,
                 done_by_gaia: 3,
                 done_by_you: 2,
