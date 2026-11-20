@@ -28,7 +28,7 @@ export default function CreatedByGAIABanner({
 
           <div className="text-2xl font-medium">New chat unlocked!</div>
 
-          <p className="max-w-xl text-center leading-relaxed font-light text-foreground-500">
+          <p className="max-w-xl text-center leading-relaxed font-light text-zinc-400">
             {reason || defaultReason}
           </p>
         </div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
 import { useRef } from "react";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const INTEGRATIONS = [
@@ -45,6 +46,7 @@ export default function IntegrationsDemo() {
             width: 14,
             height: 14,
             showBackground: false,
+            loading: index === 0 ? "eager" : undefined,
           });
           return (
             <m.div
@@ -61,16 +63,14 @@ export default function IntegrationsDemo() {
             >
               <Chip
                 size="sm"
-                variant="flat"
-                classNames={{
-                  base: "bg-zinc-800 border-0",
-                  content: "text-zinc-300 text-xs font-medium",
-                }}
-                startContent={
-                  icon ? <span className="ml-1">{icon}</span> : undefined
-                }
+                variant="secondary"
+                className={toneVariants({
+                  tone: "dim",
+                  className: "border-0 text-xs font-medium",
+                })}
               >
-                {integration.name}
+                {icon ? <span className="ml-1">{icon}</span> : undefined}
+                <Chip.Label>{integration.name}</Chip.Label>
               </Chip>
             </m.div>
           );

@@ -209,16 +209,19 @@ class TestEnforceTieredLimit:
     """enforce_tiered_limit is what non-decorated callers use to meter a feature — a dropped feature_key silently meters the wrong bucket."""
 
     @pytest.mark.asyncio
-    async def test_forwards_user_feature_and_resolved_plan_to_the_limiter(self) -> None:
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_forwards_user_feature_and_resolved_plan_to_the_limiter(
+        self, plan: PlanType
+    ) -> None:
+        """The limiter meters exactly the tier get_cached_plan_type resolved — no second plan decision here."""
         from app.decorators.rate_limiting import enforce_tiered_limit
 
-        subscription = MagicMock(plan_type=PlanType.PRO)
         with (
             patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
                 new_callable=AsyncMock,
-                return_value=subscription,
-            ) as mock_status,
+                return_value=plan,
+            ) as mock_plan,
             patch(
                 "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
                 new_callable=AsyncMock,
@@ -226,46 +229,24 @@ class TestEnforceTieredLimit:
         ):
             await enforce_tiered_limit(USER_ID, "fake_feature")
 
-        mock_status.assert_awaited_once_with(USER_ID)
+        mock_plan.assert_awaited_once_with(USER_ID)
         mock_check.assert_awaited_once_with(
             user_id=USER_ID,
             feature_key="fake_feature",
-            user_plan=PlanType.PRO,
+            user_plan=plan,
             origin=LimitHitOrigin.INTERACTIVE,
         )
-
-    @pytest.mark.asyncio
-    async def test_a_planless_subscription_meters_as_free(self) -> None:
-        """No plan on the subscription record means FREE limits, not None — passing None through would blow up limit lookup."""
-        from app.decorators.rate_limiting import enforce_tiered_limit
-
-        subscription = MagicMock(plan_type=None)
-        with (
-            patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-                new_callable=AsyncMock,
-                return_value=subscription,
-            ),
-            patch(
-                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-                new_callable=AsyncMock,
-            ) as mock_check,
-        ):
-            await enforce_tiered_limit(USER_ID, "fake_feature")
-
-        assert mock_check.await_args.kwargs["user_plan"] == PlanType.FREE
 
     @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
     async def test_re_raises_without_recording_the_hit_a_second_time(self, plan: PlanType) -> None:
         """The limiter records the hit before raising; a second event here double-counts every wall."""
         from app.decorators.rate_limiting import enforce_tiered_limit
 
-        subscription = MagicMock(plan_type=plan)
         with (
             patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
                 new_callable=AsyncMock,
-                return_value=subscription,
+                return_value=plan,
             ),
             patch(
                 "app.decorators.rate_limiting.tiered_limiter.check_and_increment",

@@ -6,7 +6,6 @@ routing, status codes, response bodies, auth, and validation.
 
 import asyncio
 from collections.abc import Callable
-from http.cookies import SimpleCookie
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,6 +14,8 @@ import pytest
 
 from app.api.v1.endpoints.user import get_me
 from app.config.settings import settings
+from app.config.workos import workos_signing_keys
+from app.constants.auth import SESSION_HINT_COOKIE
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     AuthenticatedUser,
@@ -31,7 +32,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import UserLoggedOut
 from shared.py.analytics.catalog.settings import ProfileUpdated, SettingsQuietHoursUpdated
 from tests.conftest import FAKE_USER
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, session_cookie_morsel
 
 USER_BASE = "/api/v1/user"
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -583,6 +584,10 @@ class TestUpdateHoloCardColors:
 # ---------------------------------------------------------------------------
 
 
+# The shared signing-key cache is keyed by the session client's JWKS URL.
+_JWKS_URL = "https://api.workos.com/sso/jwks/client_test"
+
+
 class TestLogout:
     """POST /api/v1/user/logout."""
 
@@ -605,10 +610,12 @@ class TestLogout:
 
         assert response.status_code == 200
         assert response.json() == {"logout_url": None}
-        cleared = SimpleCookie(response.headers["set-cookie"])["gaia_session"]
+        cleared = session_cookie_morsel(response.headers.get_list("set-cookie"), "gaia_session")
         assert cleared.value == ""
         assert (cleared["max-age"], cleared["path"], cleared["samesite"]) == ("0", "/", "lax")
         assert (cleared["httponly"], cleared["secure"]) == (True, secure)
+        hint = session_cookie_morsel(response.headers.get_list("set-cookie"), SESSION_HINT_COOKIE)
+        assert (hint.value, hint["max-age"]) == ("", "0")
         assert event["operation"] == "logout"
         assert event["outcome"] == "success"
         assert event["audit"] == [{"msg": "logged out", "actor": FAKE_USER_ID, "mode": "local"}]
@@ -616,6 +623,7 @@ class TestLogout:
     @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_success(self, mock_workos: MagicMock, client: AsyncClient):
         session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")
@@ -624,6 +632,11 @@ class TestLogout:
         assert response.status_code == 200
         assert response.json()["logout_url"] == "https://auth.example.com/logout"
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
+        mock_workos.return_value.user_management.load_sealed_session.assert_called_once_with(
+            sealed_session="sealed_token", cookie_password=settings.WORKOS_COOKIE_PASSWORD
+        )
+        # Verified against the process's cached signing keys, not a fresh per-session fetch.
+        assert session.jwks is workos_signing_keys(_JWKS_URL)
 
     @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(
@@ -637,6 +650,7 @@ class TestLogout:
         posthog_client.capture.side_effect = RuntimeError("ph down")
         posthog_provider(available=True, client=posthog_client)
         session = MagicMock()
+        session.user_management.get_jwks_url.return_value = _JWKS_URL
         session.get_logout_url.return_value = "https://auth.example.com/logout"
         mock_workos.return_value.user_management.load_sealed_session.return_value = session
         client.cookies.set("wos_session", "sealed_token")

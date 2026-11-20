@@ -174,7 +174,7 @@ class TestCoreAgentLogic:
         patches = _common_patches()
         with (
             patches["construct"],
-            patches["get_graph"],
+            patches["get_graph"] as get_graph,
             patches["build_state"],
             patches["build_config"],
             patches["log"],
@@ -185,6 +185,7 @@ class TestCoreAgentLogic:
                 user=_make_user(),
             )
 
+        get_graph.assert_awaited_once_with("comms_agent")
         assert graph is FAKE_GRAPH
         assert state is FAKE_STATE
         assert config is FAKE_CONFIG
@@ -481,16 +482,11 @@ class TestCallAgent:
         assert build_config.call_args.kwargs["turn"].source == "web"
 
     @pytest.mark.asyncio
-    async def test_stream_id_added_to_config(self):
-        """When stream_id is provided, it should appear in config."""
+    async def test_stream_id_is_bound_when_the_config_is_built(self):
+        """The turn's stream is an input to build_agent_config, so configurable and LLM metadata carry it together."""
 
         async def _fake_stream(*args, **kwargs):
             yield "data: [DONE]\n\n"
-
-        def capture_config():
-            original_return = FAKE_CONFIG.copy()
-            original_return["configurable"] = FAKE_CONFIG["configurable"].copy()
-            return original_return
 
         patches = _common_patches()
         # Use a side_effect on build_agent_config to capture the config
@@ -507,12 +503,12 @@ class TestCallAgent:
                         "model_name": "gpt-4o",
                     }
                 },
-            ),
+            ) as build_config,
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
                 return_value=_fake_stream(),
-            ) as mock_exec,
+            ),
         ):
             await _drain(
                 call_agent(
@@ -523,10 +519,7 @@ class TestCallAgent:
                 )
             )
 
-            # The config passed to execute_graph_streaming should have stream_id
-            call_args = mock_exec.call_args
-            passed_config = call_args[0][2]  # third positional arg
-            assert passed_config["configurable"]["stream_id"] == "stream-abc"
+        assert build_config.call_args.kwargs["turn"].stream_id == "stream-abc"
 
     @pytest.mark.asyncio
     async def test_no_stream_id_when_not_provided(self):
@@ -547,12 +540,12 @@ class TestCallAgent:
                         "model_name": "gpt-4o",
                     }
                 },
-            ),
+            ) as build_config,
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_streaming",
                 return_value=_fake_stream(),
-            ) as mock_exec,
+            ),
         ):
             await _drain(
                 call_agent(
@@ -562,8 +555,7 @@ class TestCallAgent:
                 )
             )
 
-            passed_config = mock_exec.call_args[0][2]
-            assert "stream_id" not in passed_config["configurable"]
+        assert build_config.call_args.kwargs["turn"].stream_id is None
 
     @pytest.mark.asyncio
     async def test_bot_message_id_added_to_config(self):
@@ -976,7 +968,7 @@ class TestCallAgentSilent:
                 "app.agents.core.agent.build_agent_config",
                 new_callable=AsyncMock,
                 return_value=config,
-            ),
+            ) as build_config,
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -991,7 +983,7 @@ class TestCallAgentSilent:
                 stream_id="seeded-run",
             )
 
-        assert (config["configurable"]["stream_id"], result.stream_id) == (
+        assert (build_config.call_args.kwargs["turn"].stream_id, result.stream_id) == (
             "seeded-run",
             "seeded-run",
         )
@@ -1010,7 +1002,7 @@ class TestCallAgentSilent:
                 "app.agents.core.agent.build_agent_config",
                 new_callable=AsyncMock,
                 return_value=config,
-            ),
+            ) as build_config,
             patches["log"],
             patch(
                 "app.agents.core.agent.execute_graph_silent",
@@ -1029,7 +1021,7 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        stream_id = config["configurable"]["stream_id"]
+        stream_id = build_config.call_args.kwargs["turn"].stream_id
         assert UUID(stream_id).version == 4
         register.assert_called_once_with(stream_id)
         execute.assert_awaited_once_with(FAKE_GRAPH, FAKE_STATE, config)
@@ -1940,7 +1932,7 @@ class TestTheOptionsEachEntryPointDerives:
                 return_value=("Hello!", {"tool": "data"}),
             ),
         ):
-            await call_agent_silent(
+            result = await call_agent_silent(
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
@@ -1962,6 +1954,7 @@ class TestTheOptionsEachEntryPointDerives:
                     source="cron",
                     langfuse_trace_id=None,
                     langfuse_tags=None,
+                    stream_id=result.stream_id,
                 ),
             )
         ]

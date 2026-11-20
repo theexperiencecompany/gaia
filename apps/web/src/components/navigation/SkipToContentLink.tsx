@@ -9,7 +9,7 @@ export function SkipToContentLink() {
     // land back in the navigation instead of the content.
     <a
       href={`#${MAIN_CONTENT_ID}`}
-      className="fixed top-4 left-4 z-100 rounded-full bg-primary px-4 py-2 text-sm font-medium text-black not-focus:sr-only"
+      className="fixed top-4 left-4 z-100 rounded-full bg-accent px-4 py-2 text-sm font-medium text-black not-focus:sr-only"
     >
       Skip to content
     </a>

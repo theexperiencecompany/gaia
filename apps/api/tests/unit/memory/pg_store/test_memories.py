@@ -17,6 +17,7 @@ import uuid
 import pytest
 from sqlalchemy import Select, Update
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql import ClauseElement
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
@@ -30,6 +31,7 @@ from app.memory.pg_store.memories import (
     _not_expired_clause,
     backfill_agenda_expiry,
     count_live_memories,
+    fast_candidates,
     fts_search,
     get_agenda_memories,
     get_all_live_memories,
@@ -56,10 +58,8 @@ def make_record(
     memory_id: uuid.UUID | None = None,
     user_id: str = USER,
     version: int = 1,
-    parent_id: uuid.UUID | None = None,
     root_id: uuid.UUID | None = None,
     relation_type: str | None = None,
-    is_latest: bool = True,
 ) -> MemoryRecord:
     """Build a detached MemoryRecord — no session, no DB."""
     now = datetime.now(UTC)
@@ -71,10 +71,10 @@ def make_record(
         category_path="work",
         importance=0.5,
         version=version,
-        parent_id=parent_id,
+        parent_id=None,
         root_id=root_id,
         relation_type=relation_type,
-        is_latest=is_latest,
+        is_latest=True,
         is_forgotten=False,
         forget_after=None,
         mentioned_at=now,
@@ -116,7 +116,7 @@ def _scalar_one_result(value: Any) -> MagicMock:
     return result
 
 
-def _compiled(stmt: Select | Update) -> tuple[str, dict[str, Any]]:
+def _compiled(stmt: ClauseElement) -> tuple[str, dict[str, Any]]:
     """Compile a statement against Postgres: (sql text, bound params)."""
     compiled = stmt.compile(dialect=postgresql.dialect())
     return str(compiled), dict(compiled.params)
@@ -962,3 +962,58 @@ class TestBackfillAgendaExpiry:
         assert "memories.category_path = %(category_path_1)s" in sql
         assert "memories.forget_after IS NULL" in sql
         assert params["category_path_1"] == AGENDA_CATEGORY_PATH
+
+
+class TestFastCandidates:
+    """The fast lane's one query: semantic hits, then pins, then OR-matched words."""
+
+    SEMANTIC = uuid.UUID(int=1)
+    PINNED = uuid.UUID(int=2)
+
+    async def test_matches_any_source_ranks_semantic_then_pinned_then_words(self) -> None:
+        record = make_record()
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([(record, "0.4")]))
+        with _patched_memory_session(session):
+            hits = await fast_candidates(
+                USER, ["flight", "berlin"], [str(self.PINNED)], 7, semantic_ids=[str(self.SEMANTIC)]
+            )
+
+        assert hits == [(record, 0.4)]
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert sql.startswith("SELECT memories.id, memories.user_id")
+        assert "ts_rank_cd(memories.search_tsv, to_tsquery(" in sql.split("FROM")[0]
+        assert params["to_tsquery_1"] == "english"
+        assert params["to_tsquery_2"] == "flight | berlin"
+        assert params["id_1"] == [self.SEMANTIC]
+        assert params["id_2"] == [self.PINNED]
+        assert params["param_1"] == self.SEMANTIC
+        assert params["param_2"] == 7
+        assert params["user_id_1"] == USER
+        assert (
+            "(memories.id IN (__[POSTCOMPILE_id_1]) OR memories.id IN (__[POSTCOMPILE_id_2]) "
+            "OR (memories.search_tsv @@ to_tsquery(" in sql
+        )
+        assert (
+            "ORDER BY array_position(CAST(ARRAY[%(param_1)s::UUID] AS UUID[]), memories.id) "
+            "ASC NULLS LAST, memories.id IN (__[POSTCOMPILE_id_2]) DESC, "
+            "ts_rank_cd(memories.search_tsv, to_tsquery(" in sql
+        )
+        assert "memories.user_id = %(user_id_1)s" in sql
+        assert "memories.is_latest IS true AND memories.is_forgotten IS false" in sql
+        assert "memories.forget_after IS NULL OR memories.forget_after >" in sql
+        assert sql.rstrip().endswith("memories.importance DESC \n LIMIT %(param_2)s")
+
+    async def test_without_words_or_semantic_hits_only_pins_match_unranked(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        with _patched_memory_session(session):
+            assert await fast_candidates(USER, [], [], 3, semantic_ids=[]) == []
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "to_tsquery" not in sql
+        assert "array_position" not in sql
+        assert params["param_1"] == 0.0
+        assert "ORDER BY memories.id IN (__[POSTCOMPILE_id_2]) DESC, %(param_1)s DESC" in sql

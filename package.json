@@ -42,7 +42,7 @@
     "jscpd": "^4.2.5",
     "jsdom": "^30.0.1",
     "knip": "^6.43.0",
-    "next": "16.4.2",
+    "next": "16.4.5",
     "npm-package-json-lint": "^10.4.1",
     "nx": "^24.0.0",
     "publint": "^0.3.24",
@@ -139,8 +139,7 @@
       }
     },
     "patchedDependencies": {
-      "sileo@0.1.4": "patches/sileo@0.1.4.patch",
-      "@react-aria/label@3.7.23": "patches/@react-aria__label@3.7.23.patch"
+      "sileo@0.1.4": "patches/sileo@0.1.4.patch"
     }
   }
 }

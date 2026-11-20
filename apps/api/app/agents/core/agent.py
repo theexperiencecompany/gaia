@@ -34,6 +34,7 @@ from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -115,6 +116,8 @@ class AgentRunOptions:
     #: The tracked todo whose own chat an interactive turn is in, so the turn knows
     #: which todo "this" is; a background run names its todo in trigger_context.
     active_todo_id: str | None = None
+    #: The stream this run publishes to, bound into the run config at build time.
+    stream_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -191,7 +194,7 @@ async def _core_agent_logic(
                 trigger_context=trigger_context,
             ),
         ),
-        GraphManager.get_graph("comms_agent"),
+        GraphManager.get_graph(COMMS_AGENT_NAME),
     )
 
     initial_state = build_initial_state(
@@ -217,7 +220,7 @@ async def _core_agent_logic(
         identity=AgentIdentity(
             conversation_id=conversation_id,
             user=agent_user_context(user),
-            agent_name="comms_agent",
+            agent_name=COMMS_AGENT_NAME,
         ),
         lane=AgentLane(role=AgentRole.COMMS, dev_option=dev_option),
         turn=AgentTurn(
@@ -239,6 +242,7 @@ async def _core_agent_logic(
             writing_style=writing_style,
             workflow_id=trigger.workflow_id,
             presence=presence,
+            stream_id=options.stream_id,
         ),
         tracing=AgentTracing(
             usage_metadata_callback=usage_metadata_callback,
@@ -328,7 +332,8 @@ async def call_agent(
                     langfuse_trace_id=(
                         trace_id_for_message(ids.bot_message_id) if ids.bot_message_id else None
                     ),
-                    langfuse_tags=["comms_agent", settings.ENV],
+                    langfuse_tags=[COMMS_AGENT_NAME, settings.ENV],
+                    stream_id=ids.stream_id,
                 ),
             )
         except Exception as exc:
@@ -345,10 +350,6 @@ async def call_agent(
         # The live bag (see the same cast in _core_agent_logic) — mutated, so
         # indexed rather than read through agent_configurable.
         configurable = cast(AgentConfigurable, config[CONF])
-
-        # Add stream_id to config for cancellation checking
-        if ids.stream_id:
-            configurable["stream_id"] = ids.stream_id
 
         # Add user_message_id so executor can link notifications back
         if ids.user_message_id:
@@ -394,13 +395,13 @@ async def call_agent_silent(
                     trigger_context=options.trigger_context,
                     source=options.source,
                     presence=options.presence,
+                    stream_id=stream_id,
                 ),
             )
 
             # Mirror the live-chat path: wait for the detached executor and fold
-            # its tool_data onto this message. Bind stream_id + register the
-            # collector before the graph runs so tool events are captured.
-            cast(AgentConfigurable, config[CONF])["stream_id"] = stream_id
+            # its tool_data onto this message. Register the collector before the
+            # graph runs so tool events are captured.
             register_executor_capture(stream_id)
 
             complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)

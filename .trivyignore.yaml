@@ -1,7 +1,15 @@
 # Findings trivy may ignore, each pinned to its path. Vulnerabilities: no fixed
 # release and a reason it cannot reach us (the same reasons as PIP_AUDIT_IGNORED
 # in scripts/ci/audit.sh); drop the entry once a fix exists.
-vulnerabilities: []
+vulnerabilities:
+  - id: CVE-2026-112366
+    paths: ["pnpm-lock.yaml"]
+    expired_at: 2027-01-02
+    statement: >-
+      picomatch ReDoS through single-branch repeated extglobs (GHSA-fc5q-39xc-vjpf);
+      no fixed release exists (4.0.7 is still affected). Reached only through build
+      tooling matching our own glob patterns, never untrusted input. Mirrors the
+      config/pnpm-audit-allowlist.json entry; drop both once a fix ships.
 secrets:
   - id: stripe-secret-token
     paths: [".gitleaks.toml"]
