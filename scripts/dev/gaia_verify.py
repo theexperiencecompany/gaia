@@ -310,4 +310,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except nx_affected.NxFailedError as exc:
+        _die(f"ci:local: {exc}")

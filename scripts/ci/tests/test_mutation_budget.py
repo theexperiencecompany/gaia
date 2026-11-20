@@ -119,31 +119,33 @@ def test_mutmut_and_its_workers_split_the_memory_share(monkeypatch: pytest.Monke
     assert mutation.mutant_memory_cap(2) == int(16 * GIB * mutation.MUTANT_MEMORY_SHARE / 3)
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="RLIMIT_DATA is enforced on Linux only")
 def test_a_mutant_that_outgrows_the_cap_gets_memory_error_not_the_oom_killer() -> None:
-    # conversation/step.py on #1799: one looping mutant took a runner from 1.1 GB to 8 GB in
-    # 50 s, and the OOM killer took the whole VM ("the runner received a shutdown signal").
-    # The hog waits for stdin so the cap is on before it allocates, set from the
-    # parent the way run_mutmut sets it.
-    hog = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            "import sys\nsys.stdin.read()\nchunks = []\n"
-            "while True: chunks.append(bytearray(1 << 26))",
-        ],
-        stdin=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    try:
-        resource.prlimit(hog.pid, resource.RLIMIT_DATA, (GIB, GIB))
-        _, stderr = hog.communicate(input=b"", timeout=60)
-    finally:
-        hog.kill()
-        hog.wait()
+    # A sys.platform branch, not a skipif mark: mypy only drops Linux-only prlimit under one.
+    if sys.platform != "linux":
+        pytest.skip("RLIMIT_DATA is enforced on Linux only")
+    else:
+        # conversation/step.py on #1799: one looping mutant took a runner from 1.1 GB to 8 GB
+        # in 50 s, and the OOM killer took the whole VM ("the runner received a shutdown
+        # signal"). The hog waits for stdin so the cap is on before it allocates.
+        hog = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys\nsys.stdin.read()\nchunks = []\n"
+                "while True: chunks.append(bytearray(1 << 26))",
+            ],
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            resource.prlimit(hog.pid, resource.RLIMIT_DATA, (GIB, GIB))
+            _, stderr = hog.communicate(input=b"", timeout=60)
+        finally:
+            hog.kill()
+            hog.wait()
 
-    assert hog.returncode == 1
-    assert b"MemoryError" in stderr
+        assert hog.returncode == 1
+        assert b"MemoryError" in stderr
 
 
 def test_a_measured_module_is_capped_from_its_measured_cost() -> None:
