@@ -18,11 +18,13 @@ one (a todo's chat background, a workflow's workflow_system, any other web), and
 fails while any head still has none.
 
 Cutover, in this order:
-  1. --apply while the old build serves; repeat until it reports 0 raced, refused or failed.
+  1. --apply, then --verify, while the old build serves; repeat until both exit 0.
   2. Stop the old build, so nothing writes an embedded array.
-  3. --apply again, then --verify; both must exit 0.
+  3. python -m scripts.migrate_conversations: it migrates, then verifies, only the heads the
+     old build wrote since their pass (and any recorded failure), then runs the boot check.
   4. Deploy the new build. It refuses to boot while any conversation has an embedded array
-     no pass marked, message-shaped entries, a head with no source, or a failed pass or verify.
+     the log does not match, message-shaped entries, a head with no source, or a failed pass
+     or verify.
 
 The migration copies and never deletes: the arrays stay as they were, so rollback is
 redeploying the old build after --restore-archived --apply has put every archived array back
@@ -42,7 +44,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from scripts.migrate_conversation_entries.migration import (
@@ -116,27 +118,43 @@ async def migrate_one(ref: HeadRef, *, apply: bool) -> MigrationOutcome:
     return outcome
 
 
+async def _walk(*, every_embedded: bool) -> AsyncIterator[HeadRef]:
+    """Walk both sources' heads: every embedded array, or only the ones the log lags."""
+    for scan in _scans(every_embedded=every_embedded):
+        async for ref in _heads(scan):
+            yield ref
+
+
+async def _listed(refs: Iterable[HeadRef]) -> AsyncIterator[HeadRef]:
+    for ref in refs:
+        yield ref
+
+
 async def migrate_all(*, apply: bool) -> int:
     """Migrate every head the log lags; 1 while any conversation raced or was refused."""
+    return await _migrate(_walk(every_embedded=False), apply=apply)
+
+
+async def _migrate(refs: AsyncIterator[HeadRef], *, apply: bool) -> int:
+    """Migrate each head, then give every sourceless head its source; 1 while any raced or was refused."""
     actions: Counter[MigrationAction] = Counter()
     totals = _Totals()
-    for scan in _scans(every_embedded=False):
-        async for ref in _heads(scan):
-            outcome = await migrate_one(ref, apply=apply)
-            actions[outcome.action] += 1
-            totals.written += outcome.written
-            totals.rewritten += outcome.rewritten
-            totals.identified += outcome.identified
-            totals.folded += outcome.folded
-            totals.not_kept += outcome.not_kept
-            if outcome.action in _FAILED:
-                print(f"  [{outcome.action}] {ref.conversation_id}: {outcome.reason or 're-run'}")
-            elif outcome.action is not MigrationAction.UNCHANGED:
-                moved = "; array moved to the archive" if outcome.relocated else ""
-                print(
-                    f"  [{outcome.action}] {ref.conversation_id}: {outcome.written} written, "
-                    f"{outcome.rewritten} rewritten, {outcome.identified} given an id{moved}"
-                )
+    async for ref in refs:
+        outcome = await migrate_one(ref, apply=apply)
+        actions[outcome.action] += 1
+        totals.written += outcome.written
+        totals.rewritten += outcome.rewritten
+        totals.identified += outcome.identified
+        totals.folded += outcome.folded
+        totals.not_kept += outcome.not_kept
+        if outcome.action in _FAILED:
+            print(f"  [{outcome.action}] {ref.conversation_id}: {outcome.reason or 're-run'}")
+        elif outcome.action is not MigrationAction.UNCHANGED:
+            moved = "; array moved to the archive" if outcome.relocated else ""
+            print(
+                f"  [{outcome.action}] {ref.conversation_id}: {outcome.written} written, "
+                f"{outcome.rewritten} rewritten, {outcome.identified} given an id{moved}"
+            )
     counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items())) or "nothing to migrate"
     print(
         f"Summary: {counts}; {totals.written} entries written, {totals.rewritten} "
@@ -178,15 +196,29 @@ async def verify_one(ref: HeadRef) -> VerifyReport:
 
 async def verify_all() -> int:
     """Verify every head with an embedded array or message entries, printing and recording each mismatch."""
+    return await _verify(_walk(every_embedded=True))
+
+
+async def catch_up() -> int:
+    """Migrate, then verify, only what the boot check refuses: heads written since their pass, message-shaped entries and recorded failures."""
+    refused = {ref.head_id: ref async for ref in _walk(every_embedded=False)}
+    refused.update(
+        (ref.head_id, ref) for ref in await conversation_entries_migration.failed_heads()
+    )
+    heads = sorted(refused.values(), key=lambda ref: ref.head_id)
+    return await _migrate(_listed(heads), apply=True) or await _verify(_listed(heads))
+
+
+async def _verify(refs: AsyncIterator[HeadRef]) -> int:
+    """Verify each head, printing and recording each mismatch; 1 while any mismatched or a head has no source."""
     verified = failed = 0
-    for scan in _scans(every_embedded=True):
-        async for ref in _heads(scan):
-            report = await verify_one(ref)
-            verified += 1
-            if not report.ok:
-                failed += 1
-                for mismatch in report.mismatches:
-                    print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
+    async for ref in refs:
+        report = await verify_one(ref)
+        verified += 1
+        if not report.ok:
+            failed += 1
+            for mismatch in report.mismatches:
+                print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
     print(f"Verified {verified} conversations: {failed} with mismatches.")
     sourceless = await conversation_source_backfill.count_sourceless()
     print(f"{sourceless} conversations have no source.")

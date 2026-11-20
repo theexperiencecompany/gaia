@@ -267,7 +267,7 @@ async def create_user_indexes() -> None:
 # Only chats bound to a todo are in the filter. Shared with the contract suite.
 CONVERSATION_ID_UNIQUE_KEYS: IndexKeys = [("conversation_id", 1)]
 CONVERSATION_ID_UNIQUE_OPTIONS: IndexOptions = {"unique": True, "name": "conversation_id_unique"}
-# The boot check: a head whose embedded messages array no migration pass marked.
+# The boot check: a head whose embedded messages array no pass marked, or the old build wrote since.
 UNMIGRATED_HEAD_KEYS: IndexKeys = [("migrated_fingerprint", 1)]
 UNMIGRATED_HEAD_OPTIONS: IndexOptions = {
     "name": "embedded_messages_migrated",

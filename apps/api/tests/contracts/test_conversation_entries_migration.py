@@ -30,8 +30,8 @@ from app.db.mongodb.indexes import (
 from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversation_migration_guard import (
     MESSAGE_SHAPED,
-    NEVER_MIGRATED_HEADS,
     SOURCELESS_HEADS,
+    UNMIGRATED_HEADS,
     refuse_unmigrated_conversations,
 )
 from app.db.repositories.conversations import ConversationRepository
@@ -565,10 +565,11 @@ async def test_the_boot_check_refuses_an_unmarked_array_cheaply_and_passes_once_
 
     await raw_collection.create_index(UNMIGRATED_HEAD_KEYS, **UNMIGRATED_HEAD_OPTIONS)
     plans = [
-        await raw_collection.find(NEVER_MIGRATED_HEADS).explain(),
+        await raw_collection.find(UNMIGRATED_HEADS).explain(),
         await entries_collection.find(MESSAGE_SHAPED).explain(),
     ]
-    assert all("IXSCAN" in str(plan["queryPlanner"]["winningPlan"]) for plan in plans)
+    winning = [str(plan["queryPlanner"]["winningPlan"]) for plan in plans]
+    assert all("IXSCAN" in w and "COLLSCAN" not in w for w in winning)
 
 
 async def test_a_dry_run_writes_nothing_and_reports_what_it_would_do(

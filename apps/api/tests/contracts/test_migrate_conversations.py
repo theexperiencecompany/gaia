@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+import re
+import time
 from typing import Any
 import uuid
 
@@ -13,6 +15,7 @@ from scripts.migrate_approval_vocabulary import LEDGER
 from scripts.migrate_conversation_entries import __main__ as entries
 from scripts.migrate_conversations import migrate_conversations
 
+from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
 from app.db.repositories.conversation_migration_guard import refuse_unmigrated_conversations
 from app.utils.errors import UnmigratedConversationError
 from tests.helpers import worker_mongo_db_name
@@ -21,6 +24,10 @@ pytestmark = pytest.mark.usefixtures("entries_collection")
 
 USER = "u-cutover"
 _DATE = datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+#: Enough heads that verifying all of them takes minutes, so a pass over every head cannot pass.
+_GENERATED_HEADS = 2000
+#: A catch-up of three heads among the generated ones finishes well inside this.
+_CATCH_UP_SECONDS = 10
 
 
 @pytest.fixture
@@ -110,3 +117,63 @@ async def test_a_conversation_a_verify_found_wrong_fails_the_run_until_it_verifi
     await entries_collection.update_one(entry, {"$set": {"text": "hi"}})
     assert await migrate_conversations(db) == 0
     await refuse_unmigrated_conversations()
+
+
+async def test_messages_the_old_build_pushes_onto_a_migrated_head_refuse_the_boot_until_merged(
+    raw_collection: AsyncIOMotorCollection,
+    entries_collection: AsyncIOMotorCollection,
+    db: AsyncIOMotorDatabase,
+) -> None:
+    conversation_id = await _legacy(raw_collection)
+    assert await migrate_conversations(db) == 0
+    pushed = [
+        {"type": "user", "response": "still there?", "message_id": "m2", "date": _DATE},
+        {"type": "bot", "response": "yes", "message_id": "m3", "date": _DATE},
+    ]
+    await raw_collection.update_one(
+        {"conversation_id": conversation_id}, {"$push": {"messages": {"$each": pushed}}}
+    )
+
+    with pytest.raises(UnmigratedConversationError, match=conversation_id):
+        await refuse_unmigrated_conversations()
+    assert await migrate_conversations(db) == 0
+
+    await refuse_unmigrated_conversations()
+    ids = await entries_collection.distinct("id", {"conversation_id": conversation_id})
+    assert {"m1", "m2", "m3"} <= set(ids)
+
+
+async def test_the_catch_up_after_a_full_pass_visits_only_the_heads_written_since(
+    raw_collection: AsyncIOMotorCollection,
+    db: AsyncIOMotorDatabase,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    await raw_collection.create_index(UNMIGRATED_HEAD_KEYS, **UNMIGRATED_HEAD_OPTIONS)
+    message = {"type": "user", "response": "hi", "message_id": "m1", "date": _DATE}
+    heads = [
+        {
+            "conversation_id": f"c-{n}",
+            "user_id": USER,
+            "createdAt": _DATE,
+            "messages": [message],
+            "source": "web",
+        }
+        for n in range(_GENERATED_HEADS)
+    ]
+    await raw_collection.insert_many(heads)
+    assert await entries.migrate_all(apply=True) == 0
+    written = [f"c-{n}" for n in (0, _GENERATED_HEADS // 2, _GENERATED_HEADS - 1)]
+    late = {"type": "bot", "response": "late", "message_id": "m2", "date": _DATE}
+    await raw_collection.update_many(
+        {"conversation_id": {"$in": written}}, {"$push": {"messages": late}}
+    )
+    capsys.readouterr()
+
+    started = time.perf_counter()
+    assert await migrate_conversations(db) == 0
+    elapsed = time.perf_counter() - started
+
+    out = capsys.readouterr().out
+    assert sorted(re.findall(r"\[merged\] (c-\d+)", out)) == sorted(written)
+    assert f"Verified {len(written)} conversations: 0 with mismatches." in out
+    assert elapsed < _CATCH_UP_SECONDS

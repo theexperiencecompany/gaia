@@ -39,8 +39,10 @@ from app.db.repositories.conversation_entries import (
     stored_at,
 )
 from app.db.repositories.conversation_migration_guard import (
+    EMBEDDED_FINGERPRINT,
     MESSAGE_SHAPED,
     MIGRATED_FINGERPRINT_FIELD,
+    UNMIGRATED_HEADS,
     ConversationMigrationGuard,
 )
 from app.models.chat_models import ReactionBy
@@ -74,16 +76,6 @@ from scripts.migrate_conversation_entries.legacy import (
 from scripts.migrate_conversation_entries.oracle import imported_messages, is_imported
 from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
-#: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
-EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
-#: Heads whose embedded array the log does not match: never migrated, or written since.
-UNMIGRATED_HEADS: dict[str, object] = {
-    "messages.0": {"$exists": True},
-    "$or": [
-        {MIGRATED_FINGERPRINT_FIELD: {"$exists": False}},
-        {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
-    ],
-}
 _ACK_KIND = "emoji_ack"
 #: The old message fields the log keeps nowhere; a pass counts the messages that carry one.
 NOT_KEPT_FIELDS = tuple(NotKeptFields.model_fields)
@@ -119,7 +111,6 @@ _HEAD_REF_STAGE: dict[str, object] = {
 }
 _BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _ID_FIELD = "message_id"
-_FOUND = "_found"
 #: Mongo's BSON document limit: a head write that would pass it fails the whole update.
 MAX_HEAD_BYTES = 16 * 1024 * 1024
 #: The fingerprint of the embedded array a pass moved to the archive collection to make room for the log.
@@ -557,35 +548,23 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
         self, *, after_head_id: str | None, batch: int
     ) -> list[HeadRef]:
         """Return the next batch of heads whose stored entries still include message-shaped ones."""
-        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name
-        match: dict[str, object] = (
-            {} if after_head_id is None else {"_id": {"$gt": ObjectId(after_head_id)}}
-        )
-        pipeline: list[Mapping[str, object]] = [
-            {"$match": match},
-            _BY_HEAD_ID,
-            {
-                "$lookup": {
-                    "from": entries,
-                    "localField": "conversation_id",
-                    "foreignField": "conversation_id",
-                    "let": {"owner": "$user_id"},
-                    "pipeline": [
-                        {"$match": {**MESSAGE_SHAPED, "$expr": {"$eq": ["$user_id", "$$owner"]}}},
-                        # only whether one exists is read
-                        {"$limit": 1},  # pragma: no mutate
-                        {"$project": {"_id": 1}},  # pragma: no mutate
-                    ],
-                    "as": _FOUND,
-                }
-            },
-            {"$match": {f"{_FOUND}.0": {"$exists": True}}},
-            {"$limit": batch},
-            _HEAD_REF_STAGE,
-        ]
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         with store_errors("migration scan"):  # pragma: no mutate — error label only
-            rows = await self._aggregate(pipeline, HeadRefRow)
-        return [HeadRef(row.head_id, row.conversation_id, row.user_id) for row in rows]
+            shaped = await entries.distinct("conversation_id", MESSAGE_SHAPED)
+        if not shaped:
+            return []
+        match: dict[str, object] = {"conversation_id": {"$in": shaped}}
+        return await self._scan(match, after_head_id=after_head_id, batch=batch)
+
+    async def failed_heads(self) -> list[HeadRef]:
+        """Return every head the last pass or verify recorded a failure for."""
+        failures = self._sibling_collection(CONVERSATION_MIGRATION_FAILURES_COLLECTION)
+        with store_errors("migration scan"):  # pragma: no mutate — error label only
+            rows = await failures.find({}, {"_id": 0, "reason": 0}).to_list(None)
+        return [
+            HeadRef(row.head_id, row.conversation_id, row.user_id)
+            for row in map(HeadRefRow.model_validate, rows)
+        ]
 
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         """Rewrite one conversation's old messages as log entries (report only unless apply)."""
