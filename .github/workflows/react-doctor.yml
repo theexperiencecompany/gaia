@@ -55,7 +55,7 @@ jobs:
 
       # v2 = 736abc183ac491b4e954fc6bedec3a9a1b73d38b (immutable pin: the
       # action runs with PR/issues/statuses write scopes)
-      - uses: millionco/react-doctor@736abc183ac491b4e954fc6bedec3a9a1b73d38b
+      - uses: millionco/react-doctor@8177197ade847406a800ddf5a103ac342a3618f9
         # Gate is ACTIVE: fails the check on any warning-or-worse finding a PR
         # introduces relative to the merge base (default `changed` scope).
         # Full reference: https://www.react.doctor/ci
