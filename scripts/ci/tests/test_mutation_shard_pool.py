@@ -37,6 +37,7 @@ def _group(testfile: str) -> str:
                 "module": "app/does_not_exist.py",
                 "testfiles": json.dumps([testfile]),
                 "ranges": "[[1,2]]",
+                "mutants": "1",
             }
         ],
         separators=(",", ":"),

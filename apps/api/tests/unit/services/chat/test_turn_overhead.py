@@ -12,6 +12,7 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.services.chat import stream as stream_module
 from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import Store, TurnPhase, TurnStep, TurnTimings
 from tests.helpers import captured_wide_event
 
 _STREAM_ID = "turn-overhead-test-stream"
@@ -134,3 +135,68 @@ async def test_an_incomplete_clock_records_no_overhead_and_names_what_is_missing
 
     assert _overhead_count("total") == before
     assert event["latency"] == {"missing_marks": ["llm_first_chunk", "frame_written"]}
+
+
+def _sample(name: str, **labels: str) -> float:
+    return REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+async def test_turn_close_reports_the_steps_and_store_round_trips_of_each_phase(
+    clock: TurnClock,
+) -> None:
+    timings = TurnTimings()
+    timings.add_step(TurnPhase.INGRESS, TurnStep.SESSION, 0.004)
+    timings.add_store_call(TurnStep.SESSION, Store.MONGO, 0.003)
+    timings.enter(TurnPhase.PREP)
+    timings.add_step(TurnPhase.PREP, TurnStep.CONTEXT, 0.05)
+    clock.timings = timings
+    clock.marks[TurnMark.LLM_REQUEST] = 100.110
+    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.0
+    clock.marks[TurnMark.FRAME_WRITTEN] = 101.01
+    labels = {"source": "telegram", "phase": "ingress"}
+    steps_before = _sample("turn_step_seconds_count", **labels, step="session")
+    mongo_before = _sample("turn_store_calls_sum", **labels, store="mongo")
+    redis_count_before = _sample("turn_store_calls_count", **labels, store="redis")
+
+    async with captured_wide_event() as event:
+        stream_module._close_turn_timings(
+            _STREAM_ID,
+            stream_module._StreamState(turn_id=None),
+            source="telegram",
+            voice_mode=False,
+            status="success",
+        )
+
+    assert event["latency"]["steps"] == {
+        "ingress": {
+            "session": {"ms": 4.0, "mongo_calls": 1, "mongo_ms": 3.0},
+            "other": {"ms": 6.0},
+        },
+        "prep": {"context": {"ms": 50.0}, "other": {"ms": 50.0}},
+    }
+    assert _sample("turn_step_seconds_count", **labels, step="session") == steps_before + 1
+    assert _sample("turn_store_calls_sum", **labels, store="mongo") == mongo_before + 1
+    # A store the phase never touched still counts the turn, as zero round trips.
+    assert _sample("turn_store_calls_count", **labels, store="redis") == redis_count_before + 1
+
+
+async def test_a_turn_with_no_source_reports_its_steps_under_unknown(clock: TurnClock) -> None:
+    timings = TurnTimings()
+    timings.add_step(TurnPhase.INGRESS, TurnStep.CHARGE, 0.002)
+    clock.timings = timings
+    clock.marks[TurnMark.LLM_REQUEST] = 100.110
+    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.0
+    clock.marks[TurnMark.FRAME_WRITTEN] = 101.01
+    labels = {"source": "unknown", "phase": "ingress", "step": "charge"}
+    before = _sample("turn_step_seconds_count", **labels)
+
+    async with captured_wide_event():
+        stream_module._close_turn_timings(
+            _STREAM_ID,
+            stream_module._StreamState(turn_id=None),
+            source=None,
+            voice_mode=False,
+            status="success",
+        )
+
+    assert _sample("turn_step_seconds_count", **labels) == before + 1

@@ -186,7 +186,6 @@ apps/api/tests/unit/db/test_chroma_store.py	union-attr
 apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	arg-type
 apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	dict-item
 apps/api/tests/unit/db/test_chroma_triggers_store_hash.py	list-item
-apps/api/tests/unit/db/test_postgresql.py	func-returns-value
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	attr-defined
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	method-assign
 apps/api/tests/unit/db/test_rabbitmq_outbound.py	syntax

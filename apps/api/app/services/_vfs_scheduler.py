@@ -17,13 +17,14 @@ area slots in via the same HashedSyncSpec.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 import contextlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from app.services.storage._vfs_common import (
+    VfsProjection,
     catalog_signature,
     read_marker,
     write_marker,
@@ -33,10 +34,9 @@ from app.services.storage.metrics import fs_timer
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import UserContext, log, wide_task
 
-# Generic over each module's projection TypedDict. Mapping[str, Any] is the
-# right bound: TypedDicts structurally satisfy Mapping, so callers pass their
-# concrete TypedDict here without a cast, while the helper still gets d["id"].
-ProjectionT = TypeVar("ProjectionT", bound=Mapping[str, Any])
+# Generic over each module's projection TypedDict; the bound is the id every
+# projection carries, which keys the catalog signature.
+ProjectionT = TypeVar("ProjectionT", bound=VfsProjection)
 
 
 @dataclass(frozen=True)
@@ -69,15 +69,17 @@ async def run_hashed_sync(user_id: str, spec: HashedSyncSpec[ProjectionT]) -> in
     if not _is_mounted():
         return 0
     async with fs_timer(spec.fs_op):
-        docs = await spec.fetch_fn(user_id)
+        docs: list[ProjectionT] = await spec.fetch_fn(user_id)
         per_doc = {d["id"]: spec.per_doc_sig_fn(d) for d in docs}
         expected = catalog_signature(per_doc)
         u_root = user_workspace_path(user_id)
         marker_path = spec.catalog_marker_path_fn(u_root)
-        if read_marker(marker_path) == expected:
+        # Off the loop like the writes: the mount is JuiceFS, so one small file
+        # read or write is a network round trip (3.4s of loop time in 17min, prod).
+        if await asyncio.to_thread(read_marker, marker_path) == expected:
             return 0
         written = await asyncio.to_thread(spec.materialize_fn, u_root, docs, spec.guide_md)
-        write_marker(marker_path, expected)
+        await asyncio.to_thread(write_marker, marker_path, expected)
         log.set(vfs_sync={"name": spec.log_name, "written": written, "total": len(docs)})
         return written
 
