@@ -25,6 +25,7 @@ from app.services.storage._vfs_common import (
     INDEX_FILENAME,
     META_FILENAME,
     TodoProjectionMeta,
+    VfsProjection,
     folder_name as common_folder_name,
     hash_meta_only,
     meta_body,
@@ -62,10 +63,9 @@ class UserTodoMeta(TodoProjectionMeta):
     workflow_id: str | None
 
 
-class UserTodoProjection(TypedDict):
+class UserTodoProjection(VfsProjection):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
-    id: str
     meta: UserTodoMeta
 
 

@@ -22,6 +22,18 @@ class EpisodeEntry(TypedDict, total=False):
     source: str
 
 
+def journal_entries(episode: MemoryEpisode | None) -> list[EpisodeEntry]:
+    """Return a day's stored journal entries in the shape declared above.
+
+    MemoryEpisode.entries is a JSONB column arriving as untyped mappings; the
+    shape is named once here so every reader shares one declaration instead of
+    re-guessing keys.
+    """
+    if episode is None:
+        return []
+    return typing_cast(list[EpisodeEntry], episode.entries)
+
+
 def entry_text(entry: EpisodeEntry) -> str:
     """Return the journal line of an entry row; empty when the key is absent."""
     return entry.get("text", "")

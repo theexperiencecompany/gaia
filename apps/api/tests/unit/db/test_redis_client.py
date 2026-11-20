@@ -194,7 +194,7 @@ class TestRedisCacheInit:
     """Tests for RedisCache constructor."""
 
     @patch("app.db.redis.settings")
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_init_with_valid_url(
         self, mock_log: MagicMock, mock_from_url: MagicMock, mock_settings: MagicMock
@@ -221,7 +221,7 @@ class TestRedisCacheInit:
         mock_log.warning.assert_called()
 
     @patch("app.db.redis.settings")
-    @patch("app.db.redis.redis.from_url", side_effect=Exception("conn refused"))
+    @patch("app.db.redis.TimedRedis.from_url", side_effect=Exception("conn refused"))
     @patch("app.db.redis.log")
     def test_init_connection_error(
         self, mock_log: MagicMock, mock_from_url: MagicMock, mock_settings: MagicMock
@@ -234,7 +234,7 @@ class TestRedisCacheInit:
         mock_log.error.assert_called()
 
     @patch("app.db.redis.settings")
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_default_ttl(
         self, mock_log: MagicMock, mock_from_url: MagicMock, mock_settings: MagicMock
@@ -247,7 +247,7 @@ class TestRedisCacheInit:
         assert cache.default_ttl == 3600
 
     @patch("app.db.redis.settings")
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_custom_ttl(
         self, mock_log: MagicMock, mock_from_url: MagicMock, mock_settings: MagicMock
@@ -260,7 +260,7 @@ class TestRedisCacheInit:
         assert cache.default_ttl == 7200
 
     @patch("app.db.redis.settings")
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_settings_url_overrides_param(
         self, mock_log: MagicMock, mock_from_url: MagicMock, mock_settings: MagicMock
@@ -641,7 +641,7 @@ class TestRedisCacheDelete:
 class TestRedisCacheClientProperty:
     """Tests for RedisCache.client property."""
 
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_client_returns_existing_redis(
         self, mock_log: MagicMock, mock_from_url: MagicMock
@@ -656,7 +656,7 @@ class TestRedisCacheClientProperty:
         assert result is mock_client
         mock_from_url.assert_not_called()
 
-    @patch("app.db.redis.redis.from_url")
+    @patch("app.db.redis.TimedRedis.from_url")
     @patch("app.db.redis.log")
     def test_client_reinitializes_when_none(
         self, mock_log: MagicMock, mock_from_url: MagicMock
