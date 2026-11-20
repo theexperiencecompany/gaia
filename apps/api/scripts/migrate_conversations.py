@@ -2,12 +2,13 @@
 """Bring every conversation into the shape this build reads, before it boots; exit 1 on any failure.
 
 Runs each one-time migration only while its data is still in the old shape, then that
-migration's verify: the entries migration while the boot check names it (an unmarked array, a
-message-shaped entry, a head with no source, or a recorded failed pass or verify), then the
-approval vocabulary while any old value is left. It ends with the boot check itself, so it exits
-0 exactly when the build will boot. With nothing to do it is a few indexed reads, so it runs on every start.
-Run it with the old build stopped: the self-host compose runs it as gaia-migrate, which the
-API and the worker wait on.
+migration's verify: the entries migration while the boot check names it (an array the log does
+not match, a message-shaped entry, a head with no source, or a recorded failed pass or verify),
+migrating and verifying only the conversations it names, then the approval vocabulary while any
+old value is left. It ends with the boot check itself, so it exits 0 exactly when the build will
+boot. With nothing to do it is the boot check's reads, so it runs on every start, and after a
+full pass it is the cutover's catch-up. Run it with the old build stopped: the self-host compose
+runs it as gaia-migrate, which the API and the worker wait on.
 
 Usage::
 
@@ -35,7 +36,7 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
     refusal = await first_refusal()
     if refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT:
         print("Moving conversations into the conversation log...")
-        failed = await entries.migrate_all(apply=True) or await entries.verify_all()
+        failed = await entries.catch_up()
     if not failed and (await vocabulary.verify(db)).left:
         print("Rewriting stored approvals...")
         await vocabulary.rewrite_all(db, apply=True)
