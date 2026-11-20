@@ -219,6 +219,14 @@ Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The API emi
 
 In tests, assert the whole call: `mock_capture.assert_called_once_with(UserId(USER_ID), EmailSent(...))`. Models compare by value, so the id and every property are checked.
 
+## Debt Guardrails (API)
+
+The repo-wide rules are in the root `CLAUDE.md` ("Debt Guardrails"). In the API, the design note and the `debt-review` skill check these three things in particular:
+
+- **Every new query names its index.** A new repository finder ships with its index in `app/db/mongodb/indexes.py`, in the same PR. The index is `user_id` first, then the equality filters, then the sort (ESR). A finder that reads every user (a cron, a fan-out) has a `limit` or a cursor and projects only the fields it uses. It is never a query per user.
+- **A rule the web, bots or CLI also apply is sent, not copied.** The API owns it, and the other surfaces read it through a response field or an enum in OpenAPI. They never keep their own copy of the constant or re-derive the decision (for example, which items were left out, or the state labels).
+- **New stateful data has its whole lifecycle in the design note.** That covers what deletes it with the account or the chat, what a retry does after a killed worker (idempotent, keyed per side effect), and what a plan change or a timezone/DST change does to it.
+
 ## Service Layer
 
 Services are async module-level functions, not classes.
