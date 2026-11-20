@@ -4,7 +4,10 @@ These apply across the entire monorepo — frontend, backend, bots, and shared l
 
 ## DRY — Search Before You Build
 
-Before writing any utility, type, hook, service, or model, grep the codebase for it.
+Before writing any utility, type, hook, service, model, constant, query, prompt fragment or test fixture, search the whole repo for it — not just the feature folder.
+
+- **Extend, never add a rival.** When something close exists, extend it (a parameter, a spec object, a new field on the existing model) or fold yours into it in the same PR. "The existing one didn't quite fit" is how the briefing stack ended up with two copies of one pipeline, already drifting apart.
+- **One rule, one owner, every surface reads it.** A value or rule that the API, web, bots, Worker or CLI all need lives in one place and reaches the others through OpenAPI fields, generated types or config. Never through a hand-synced copy, and never through a test that regex-parses another runtime's source to keep two copies equal.
 
 - Shared Python logic belongs in `libs/shared/py/` — import it via `gaia-shared`, never copy it into app code
 - Shared TypeScript logic belongs in `libs/shared/ts/src/` — consumed as `@gaia/shared`

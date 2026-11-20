@@ -44,6 +44,8 @@ SCOPED_FILES_MAX = 300
 # an env var or job output: Linux refuses one env string over 128 KiB
 # (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
 TASK_FILES_ENV = "TASK_FILES_PATH"
+# pnpm records a finished install here; the workspace's nx and its plugins are in it.
+PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
 
 
 @dataclass(frozen=True)
@@ -89,10 +91,15 @@ def _target(task: str) -> str:
 
 
 class NxFailedError(RuntimeError):
-    """Raised when an nx command fails, carrying what nx said and how to recover."""
+    """nx gave no answer: the workspace is not installed, or the command failed and says why."""
 
 
 def _nx(*args: str) -> str:
+    if not PNPM_INSTALL_MARKER.is_file():
+        raise NxFailedError(
+            f"node_modules is not installed in {REPO_ROOT}, so nx cannot run. "
+            "Run: pnpm install --frozen-lockfile"
+        )
     done = subprocess.run(
         ["pnpm", "exec", "nx", *args],
         cwd=REPO_ROOT,
@@ -103,10 +110,8 @@ def _nx(*args: str) -> str:
     )
     if done.returncode == 0:
         return done.stdout
-    # A fresh worktree has no node_modules: nx then fails to load the repo's own plugins.
-    hint = "" if (REPO_ROOT / "node_modules").is_dir() else "\nNo node_modules: run `pnpm install`."
     said = (done.stderr + done.stdout).strip()
-    raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}{hint}")
+    raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}")
 
 
 def _json_after_banner(out: str, opener: str) -> object:

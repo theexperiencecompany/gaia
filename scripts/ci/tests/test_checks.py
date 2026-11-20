@@ -1340,3 +1340,48 @@ def test_skills_symlink_fails_when_either_end_is_missing(tmp_path: Path, missing
     process = _run(repo, "skills-symlink")
 
     assert process.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# A checkout with no node_modules: a fresh worktree, before `pnpm install`
+# ---------------------------------------------------------------------------
+
+
+def _run_uninstalled(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a copy of checks.mjs that sits in `repo`, where no node_modules resolves."""
+    shutil.copytree(
+        REPO_ROOT / "scripts" / "ci",
+        repo / "scripts" / "ci",
+        ignore=shutil.ignore_patterns("tests", "__pycache__"),
+    )
+    return subprocess.run(
+        [NODE, str(repo / "scripts" / "ci" / "checks.mjs"), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": os.environ["PATH"], "CHANGED_FILES": ""},
+    )
+
+
+def test_bot_handles_runs_before_node_modules_is_installed(tmp_path: Path) -> None:
+    """Regression: this always-run commit hook crashed every commit in a fresh worktree."""
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[WhatsApp](https://wa.me/12038429512)\n")
+
+    process = _run_uninstalled(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_check_that_needs_node_modules_names_the_install_command(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, "src/a.ts", "export const a = 1;\n")
+
+    process = _run_uninstalled(repo, "doc-comments", "src/a.ts")
+
+    assert process.returncode == 1
+    assert process.stderr.strip().splitlines() == [
+        "❌ checks.mjs doc-comments: node_modules is not installed in this checkout. "
+        "Run: pnpm install --frozen-lockfile"
+    ]

@@ -950,6 +950,30 @@
         }
       }
     },
+    "baseline-growth": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python3 scripts/ci/baselines.py growth"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/tools/lints/*_baseline.txt",
+        "{workspaceRoot}/apps/api/tests/meta/*_baseline.txt",
+        "{workspaceRoot}/tools/lints/*.py",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "baseline-growth",
+          "area": "contracts",
+          "events": ["pull_request", "merge_group"]
+        }
+      }
+    },
     "tool-pins": {
       "executor": "nx:run-commands",
       "options": {
