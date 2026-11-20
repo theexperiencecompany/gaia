@@ -567,6 +567,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#34d399",
     isImage: false,
   },
+  approvals: {
+    icon: "ShieldIcon",
+    bgColor: "bg-amber-500/20 backdrop-blur",
+    iconColor: "text-amber-400",
+    bgColorRaw: "rgba(245, 158, 11, 0.2)",
+    iconColorRaw: "#fbbf24",
+    isImage: false,
+  },
   skills: {
     icon: "BodyPartMuscleIcon",
     bgColor: "bg-rose-500/20 backdrop-blur",

@@ -4,20 +4,23 @@ The ledger repository and the card settlement are the mocked seams; the ticket
 routing, the redeem and the tool invocation are production code.
 """
 
-from typing import TypedDict
+from typing import Any, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamMode
 import pytest
 
 from app.agents.tools.execute import dispatch as dispatch_module
 from app.agents.tools.execute.dispatch import ToolExecutionResult, dispatch_tool
 from app.agents.tools.execute.resolver import ResolvedTool
-from app.models.hil_models import LedgerState
+from app.models.conversation_log_models import ApprovalDecided
 from app.services.hil import ledger_decide
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CARD_FRAME = {"integration_connection_required": {"integration_id": "gmail"}}
@@ -50,7 +53,8 @@ def _approved_row() -> MagicMock:
     row.tool_name = "show_card"
     row.args = {}
     row.account = None
-    row.state = LedgerState.APPROVED
+    row.outcome = ApprovalOutcome.APPROVED
+    row.action = None
     row.owner_agent = "executor_conv-1"
     return row
 
@@ -62,14 +66,17 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     repo = MagicMock()
     repo.get_by_approval_id = AsyncMock(return_value=_approved_row())
     repo.claim_executing = AsyncMock(return_value=True)
-    repo.transition = AsyncMock(return_value=True)
-    graph = (
+    repo.settle = AsyncMock(return_value=True)
+    repo.finish_action = AsyncMock(return_value=True)
+    graph: CompiledStateGraph = (
         StateGraph(_State)
         .add_node("redeem", _redeem_node)
         .add_edge(START, "redeem")
         .add_edge("redeem", END)
         .compile()
     )
+    initial: _State = {"result": None}
+    modes: list[StreamMode] = ["custom", "values"]
     config: RunnableConfig = {
         "configurable": {
             "thread_id": "executor_conv-1",
@@ -81,19 +88,28 @@ async def test_an_approved_tool_streams_its_card_on_the_run_that_redeems_it() ->
     with (
         patch.object(ledger_decide, "approval_ledger_repository", new=repo),
         patch.object(ledger_decide, "_settle_terminal", new=AsyncMock()),
-        patch.object(ledger_decide, "sync_conversation_approval_flag", new=AsyncMock()),
+        patch.object(
+            ledger_decide,
+            "logged_decision",
+            new=AsyncMock(
+                return_value=ApprovalDecided(
+                    id="approval:ap_card:decided",
+                    approval_id="ap_card",
+                    outcome=ApprovalOutcome.APPROVED,
+                )
+            ),
+        ),
         patch.object(
             dispatch_module,
             "resolve_tool",
             new=AsyncMock(return_value=ResolvedTool("show_card", show_card, is_integration=False)),
         ),
     ):
-        chunks = [
-            c
-            async for c in graph.astream({"result": None}, config, stream_mode=["custom", "values"])
-        ]
+        chunks: list[tuple[str, Any]] = []
+        async for mode, payload in graph.astream(initial, config, stream_mode=modes):
+            chunks.append((mode, payload))
 
     assert ("custom", CARD_FRAME) in chunks
     final = chunks[-1][1]["result"]
     assert final.output == "Executed 'ap_card' (executed): card shown"
-    repo.transition.assert_awaited_once_with("ap_card", LedgerState.EXECUTING, LedgerState.EXECUTED)
+    repo.finish_action.assert_awaited_once_with("ap_card", ActionResult.EXECUTED)

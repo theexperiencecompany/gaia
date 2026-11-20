@@ -130,23 +130,64 @@ describe("outboundMessageEnvelopeSchemaFor", () => {
     expect(schema.safeParse(withNeither).success).toBe(false);
   });
 
-  it("accepts a reaction-only envelope (no text body)", () => {
+  it("rejects an envelope whose only content is a reaction", () => {
     const { text: _text, ...noText } = valid;
     expect(
       schema.safeParse({
         ...noText,
         reaction: { target_platform_message_id: "wamid.123", emoji: "👍" },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
+  });
+});
+
+describe("follow wake partial_reply (mirrors bot_models.PartialReply)", () => {
+  const { text: _text, ...noText } = valid;
+  function wake(partial_reply: unknown) {
+    return {
+      ...noText,
+      follow: {
+        conversation_id: "conv-1",
+        platform_user_id: "u1",
+        channel_id: null,
+        is_dm: true,
+        after_seq: 4,
+        partial_reply,
+      },
+    };
+  }
+
+  it("keeps the open bubble's message ids so a restarted follower edits instead of reposting", () => {
+    const parsed = schema.safeParse(
+      wake({ reply_id: "r1", bubbles: 1, open_message_ids: ["m7", "m8"] }),
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.follow?.partial_reply?.open_message_ids).toEqual([
+      "m7",
+      "m8",
+    ]);
   });
 
-  it("rejects a reaction without a target", () => {
-    const { text: _text, ...noText } = valid;
+  it("accepts a reply cut off inside its first bubble", () => {
+    const parsed = schema.safeParse(
+      wake({ reply_id: "r1", bubbles: 0, open_message_ids: ["m7"] }),
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.follow?.partial_reply).toEqual({
+      reply_id: "r1",
+      bubbles: 0,
+      open_message_ids: ["m7"],
+    });
+  });
+
+  it("rejects a partial reply that delivered nothing, as the server does", () => {
+    expect(schema.safeParse(wake({ reply_id: "r1", bubbles: 0 })).success).toBe(
+      false,
+    );
     expect(
-      schema.safeParse({
-        ...noText,
-        reaction: { target_platform_message_id: "", emoji: "👍" },
-      }).success,
+      schema.safeParse(
+        wake({ reply_id: "r1", bubbles: -1, open_message_ids: ["m"] }),
+      ).success,
     ).toBe(false);
   });
 });

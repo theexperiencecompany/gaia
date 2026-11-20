@@ -20,6 +20,7 @@ lane without grepping the workflow first.
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch`, `selection-path` |
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
+| The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |

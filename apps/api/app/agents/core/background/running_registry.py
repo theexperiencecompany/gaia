@@ -10,9 +10,11 @@ live runs. Claimed when a run starts, released when it finishes or parks — run
 only. A parked subagent is not here; its resume claims it again.
 """
 
+from collections.abc import Collection
 from dataclasses import asdict
 import json
 
+from app.agents.core.background.run_stop import request_stop, stop_requested
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.constants.cache import (
     RUNNING_SUBAGENT_THREAD_PREFIX,
@@ -20,7 +22,6 @@ from app.constants.cache import (
     RUNNING_SUBAGENTS_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from shared.py.wide_events import log
@@ -59,13 +60,6 @@ class RunningSubagents:
             await client.hdel(self._key, subagent.subagent_id)
             await client.delete(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{subagent.subagent_thread_id}")
 
-    async def holds_thread(self, subagent_thread_id: str) -> bool:
-        """Whether a live run is on this checkpoint thread right now."""
-        client = redis_cache.client
-        return bool(
-            client and await client.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{subagent_thread_id}")
-        )
-
     async def live(self) -> list[RunningSubagent]:
         """Every currently-running subagent for this conversation."""
         if not redis_cache.client:
@@ -102,34 +96,38 @@ class RunningSubagents:
                     parents.append(subagent.stream_id)
         return stopped
 
-    async def stop_all(self) -> list[RunningSubagent]:
-        """Stop every live run in the conversation."""
-        live = await self.live()
-        for subagent in live:
-            await _stop(subagent)
-        return live
+    async def stop_streams(self, stream_ids: Collection[str]) -> list[RunningSubagent]:
+        """Stop the runs on these streams and every run they dispatched; return the ones this call stopped."""
+        stopped: list[RunningSubagent] = []
+        for subagent in await self.live():
+            if subagent.stream_id in stream_ids and await _stop(subagent):
+                stopped.append(subagent)
+                stopped.extend(await self.stop_dispatched_by(subagent.stream_id))
+        return stopped
 
 
 async def stop_stream(conversation_id: str, stream_id: str) -> list[RunningSubagent]:
     """Stop a stream and every subagent it dispatched, however deep; the one way to stop a run."""
-    await stream_manager.cancel_stream(stream_id)
+    await request_stop(stream_id)
     return await RunningSubagents(conversation_id).stop_dispatched_by(stream_id)
 
 
-async def _stop(subagent: RunningSubagent) -> None:
-    """Stop the run's own stream; a run sharing its dispatcher's stream stops with it."""
+async def _stop(subagent: RunningSubagent) -> bool:
+    """Stop the run's own stream, a shared one stopping with its dispatcher; False when already stopped."""
     if not subagent.stream_id:
         # Recorded before runs carried a stream (an older replica, mid-rollout): the
         # thread's cancel flag is the stop that replica still reads.
         await SubagentCancel(subagent.subagent_thread_id).request()
-        return
-    if not await stream_manager.is_cancelled(subagent.stream_id):
-        await stream_manager.cancel_stream(subagent.stream_id)
+    elif await stop_requested(subagent.stream_id):
+        return False
+    else:
+        await request_stop(subagent.stream_id)
         log.info(
             f"{LogTag.AGENT} Stopped a running subagent",
             subagent_id=subagent.subagent_id,
             stream_id=subagent.stream_id,
         )
+    return True
 
 
 def _decode(value: str) -> RunningSubagent | None:

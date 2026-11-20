@@ -103,8 +103,8 @@ const SHARED_ENTRY_POINTS = [
     kind: "dispatch",
   },
   {
-    file: "libs/shared/ts/src/bots/utils/streaming.ts",
-    name: "handleStreamingChat",
+    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    name: "postAndFollow",
     kind: "dispatch",
   },
 ];

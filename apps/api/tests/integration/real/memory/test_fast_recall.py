@@ -17,15 +17,21 @@ from tests.integration.real.memory.store import seed_memories
 GIRLFRIEND, DOG, MOTHER = [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]
 CELLO = [0.0, 0.0, 0.0, 1.0]
 NEAR_GIRLFRIEND = [0.95, 0.05, 0.0, 0.0]
+# Far past any stall a loaded CI worker shows (16s seen), and still a bound on a hung step.
+_NO_DEADLINE_SECONDS = 60.0
 
 
 @contextmanager
 def query_embeds_to(vector: Sequence[float]) -> Iterator[None]:
-    """Report OpenAI configured and make the hosted query embedding return vector."""
+    """Report OpenAI configured, make the query embedding return vector, and lift the semantic deadline.
+
+    The deadline is the unit tests' subject; on a shared runner it cut off these plumbing checks.
+    """
     fast_recall._inflight.clear()
     with (
         patch.object(hosted_embeddings, "configured", return_value=True),
         patch.object(hosted_embeddings, "embed_query", new=AsyncMock(return_value=list(vector))),
+        patch.object(fast_recall, "FAST_RECALL_SEMANTIC_BUDGET_SECONDS", _NO_DEADLINE_SECONDS),
     ):
         yield
 

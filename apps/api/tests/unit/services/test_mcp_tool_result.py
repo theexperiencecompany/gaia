@@ -23,11 +23,13 @@ from mcp.types import (
     TextResourceContents,
 )
 from PIL import Image
+from pydantic import AnyUrl
 
 from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_UNSUPPORTED_CONTENT_NOTICE
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
-from app.helpers.agent_helpers import _json_safe_tool_result
+from app.services.conversation.graph_payloads import _json_safe_tool_result
 from app.services.mcp.langchain_adapter import _tool_result_to_content
+from app.utils.multimodal import MessageContent
 
 
 def _png_b64(color: str = "red") -> str:
@@ -58,7 +60,7 @@ class TestToolResultToContent:
         """str(item) on an EmbeddedResource gives a repr, not its text — must extract the text."""
         embedded = EmbeddedResource(
             type="resource",
-            resource=TextResourceContents(uri="file:///a.sql", text="SELECT 1;"),
+            resource=TextResourceContents(uri=AnyUrl("file:///a.sql"), text="SELECT 1;"),
         )
 
         out = await _tool_result_to_content(_result(_text("rows: 2"), embedded))
@@ -70,7 +72,7 @@ class TestToolResultToContent:
     async def test_an_embedded_binary_resource_is_named_not_dumped(self) -> None:
         embedded = EmbeddedResource(
             type="resource",
-            resource=BlobResourceContents(uri="file:///a.bin", blob="AAAA"),
+            resource=BlobResourceContents(uri=AnyUrl("file:///a.bin"), blob="AAAA"),
         )
 
         out = await _tool_result_to_content(_result(embedded))
@@ -98,6 +100,7 @@ class TestToolResultToContent:
     async def test_images_beyond_the_budget_are_dropped(self) -> None:
         over = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT + 2
         out = await _tool_result_to_content(_result(*[_image() for _ in range(over)]))
+        assert isinstance(out, list)
 
         assert len([b for b in out if b["type"] == "image"]) == MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
 
@@ -105,6 +108,7 @@ class TestToolResultToContent:
         """One notice per dropped image spams the context with identical lines."""
         over = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT + 3
         out = await _tool_result_to_content(_result(*[_image() for _ in range(over)]))
+        assert isinstance(out, list)
 
         notices = [b for b in out if b["type"] == "text"]
         assert len(notices) == 1
@@ -113,6 +117,7 @@ class TestToolResultToContent:
     async def test_exactly_at_the_budget_nothing_is_dropped(self) -> None:
         at = MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
         out = await _tool_result_to_content(_result(*[_image() for _ in range(at)]))
+        assert isinstance(out, list)
 
         assert len([b for b in out if b["type"] == "image"]) == at
         assert not [b for b in out if b["type"] == "text"]
@@ -134,7 +139,7 @@ class TestJsonSafeToolResult:
     def test_a_media_block_list_is_stripped_to_its_text(self) -> None:
         """Media blocks are plain dicts, so json.dumps would embed a megabyte of base64 unstripped."""
         big = "QUJD" * 50_000
-        content = [
+        content: MessageContent = [
             {"type": "text", "text": "Image file shot.png"},
             {"type": "image", "base64": big, "mime_type": "image/png"},
         ]
@@ -147,23 +152,16 @@ class TestJsonSafeToolResult:
     def test_a_plain_string_is_returned_unchanged(self) -> None:
         assert _json_safe_tool_result("some tool output") == "some tool output"
 
-    def test_a_serializable_dict_is_preserved_for_the_iframe(self) -> None:
-        """The MCP-UI iframe renders structured data — it must not be flattened."""
-        payload = {"rows": [{"id": 1}], "total": 1}
-
-        assert _json_safe_tool_result(payload) == payload
-
     def test_a_text_only_block_list_is_preserved(self) -> None:
         """No media, so nothing to strip — the iframe still gets its structure."""
-        content = [{"type": "text", "text": "hi"}]
+        content: MessageContent = [{"type": "text", "text": "hi"}]
 
         assert _json_safe_tool_result(content) == content
 
-    def test_a_non_serializable_object_is_coerced_rather_than_raising(self) -> None:
+    def test_a_non_serializable_block_is_coerced_rather_than_raising(self) -> None:
         class Weird:
-            def __init__(self) -> None:
-                self.a = 1
+            pass
 
-        out = _json_safe_tool_result(Weird())
+        content: MessageContent = [{"type": "text", "text": "hi", "extra": Weird()}]
 
-        assert out == {"a": 1}
+        assert _json_safe_tool_result(content) == str(content)

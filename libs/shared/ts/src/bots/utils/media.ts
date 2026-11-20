@@ -111,7 +111,7 @@ export class MediaReadTimeoutError extends Error {
 /**
  * Maps an upload/transcribe failure to a user-facing reply. Pass `pricingUrl`
  * so the rate-limit (429) reply can point users at the upgrade page, matching
- * the chat-stream rate-limit notice.
+ * the chat rate-limit notice.
  */
 export function friendlyMediaError(
   kind: MediaKind,

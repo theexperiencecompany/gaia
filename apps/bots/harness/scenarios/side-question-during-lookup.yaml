@@ -1,0 +1,22 @@
+# A side question while GAIA is still looking something up itself (comms' own
+# lookup tool, not work handed to the executor): the side question is answered,
+# and the lookup is not thrown away, its write-up arrives too (bugs 1 and 15).
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/side-question-during-lookup.yaml
+name: side question during lookup
+emulate: telegram
+user: bot-side-lookup-scenario@gaia.local
+turns:
+  - burst:
+      - send: 'research artemis [[tool:web_search_tool {"query_text":"artemis news"}]] [[wait:15000]] [[say:Research summary.]]'
+      - send: "quick side question: what's 15% of 240? [[say:36.]]"
+        afterMs: 4000
+    settleMs: 30000
+    # Which comes first depends on whether the question lands in the lookup or in the write-up
+    # call after it; either way each is answered once and nothing shown is taken back.
+    expect:
+      - bubbleCount: 2
+      - contains: "36."
+      - contains: "Research summary."
+      - noTakeBacks: true

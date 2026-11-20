@@ -5,16 +5,14 @@
  * required for full integration testing. We isolate the adapter logic by:
  *
  * 1. Mocking @slack/bolt so no real WebSocket connection is established.
- * 2. Mocking @gaia/shared to control handleStreamingChat.
+ * 2. Mocking @gaia/shared so postAndFollow records its request and surface.
  * 3. Exercising the adapter's private methods directly via TypeScript casts.
  *
  * Covered behaviors:
  * - platform property value
  * - createCommandTarget — send, sendEphemeral, sendRich, startTyping
- * - registerGaiaCommand / handleSlackStreaming:
- *     - posts "Thinking..." alongside the streaming request, not ahead of it
- *     - falls back to ephemeral (and fails the turn) when postMessage returns no ts
- *     - delegates to handleStreamingChat with correct request shape
+ * - postSlackMessage — the posted request, the conversation surface (quoted
+ *   replies thread and broadcast), and the account-link prompt
  * - registerCommands — ack() called immediately (Slack's 3-second rule)
  * - registerEvents — app_mention strips bot mention, skips bots/subtypes
  * - dispatchCommand — unknown command sends ephemeral error
@@ -84,14 +82,14 @@ vi.mock("@gaia/shared/bots", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import {
-  handleStreamingChat,
-  type OutboundFile,
-  type ReactionOutcome,
-} from "@gaia/shared/bots";
-import { isMessageGoneError } from "../../../../libs/shared/ts/src/bots/utils/delivery-errors";
+import type { OutboundFile, ReactionOutcome } from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
+import {
+  lastAuthHandler,
+  lastSurface,
+  postAndFollowSpy,
+} from "../shared/mocks/postAndFollow";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,8 +103,12 @@ function makeSlackClient(tsOverride?: string) {
         .fn()
         .mockResolvedValue({ ts: tsOverride ?? "1234567890.123456" }),
       update: vi.fn().mockResolvedValue({}),
-      postEphemeral: vi.fn().mockResolvedValue({}),
       delete: vi.fn().mockResolvedValue({}),
+      postEphemeral: vi.fn().mockResolvedValue({}),
+    },
+    reactions: {
+      add: vi.fn().mockResolvedValue({}),
+      remove: vi.fn().mockResolvedValue({}),
     },
   };
 }
@@ -148,8 +150,8 @@ describe("SlackAdapter - createCommandTarget.send", () => {
         createCommandTarget: (
           userId: string,
           channelId: string,
-          client: typeof client,
-          respond: typeof respond,
+          clientParam: typeof client,
+          respondParam: typeof respond,
           userName?: string,
         ) => {
           send: (
@@ -331,247 +333,236 @@ describe("SlackAdapter - createCommandTarget.startTyping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleSlackStreaming — posts "Thinking..." and delegates to handleStreamingChat
+// postSlackMessage — posts the message and follows it in the channel
 // ---------------------------------------------------------------------------
 
-describe("SlackAdapter - handleSlackStreaming", () => {
-  let adapter: SlackAdapter;
+type SlackPoster = {
+  app: { client: ReturnType<typeof makeSlackClient> };
+  postSlackMessage: (
+    client: ReturnType<typeof makeSlackClient>,
+    channelId: string,
+    userId: string,
+    message: string,
+    isDm: boolean,
+    receivedAt: number,
+    inboundTs?: string,
+  ) => Promise<void>;
+};
+
+describe("SlackAdapter - postSlackMessage", () => {
+  let adapter: SlackPoster;
+  let appClient: ReturnType<typeof makeSlackClient>;
+  let eventClient: ReturnType<typeof makeSlackClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    adapter = new SlackAdapter();
-    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
-    (adapter as unknown as { gaia: object }).gaia = {};
+    adapter = new SlackAdapter() as unknown as SlackPoster;
+    appClient = makeSlackClient("ts-sent");
+    adapter.app = { client: appClient };
+    eventClient = makeSlackClient();
   });
 
-  it("posts 'Thinking...' and streams the turn", async () => {
-    const client = makeSlackClient("ts-start");
-
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: typeof client,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(
-      client,
-      "C789",
+  it("posts the request with the inbound ts as the platform message id", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "D123",
       "U456",
       "Plan my day",
-      false,
+      true,
       RECEIVED_AT,
+      "111.222",
     );
 
-    expect(client.chat.postMessage).toHaveBeenCalledWith({
-      channel: "C789",
-      text: "Thinking...",
-    });
-    expect(handleStreamingChat).toHaveBeenCalled();
-  });
-
-  it("starts the chat request without waiting for the Thinking... placeholder", async () => {
-    // chat.postMessage is a Slack round-trip; the API request used to queue
-    // behind it, adding that round-trip to every reply's latency.
-    const client = makeSlackClient();
-    let placePlaceholder: (posted: { ts: string }) => void = () => {
-      throw new Error("chat.postMessage was never called");
-    };
-    client.chat.postMessage = vi.fn(
-      () =>
-        new Promise<{ ts: string }>((resolve) => {
-          placePlaceholder = resolve;
-        }),
-    );
-
-    const turn = (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: ReturnType<typeof makeSlackClient>,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(
-      client,
-      "C789",
-      "U456",
-      "Plan my day",
-      false,
-      RECEIVED_AT,
-    );
-
-    await vi.waitFor(() => expect(handleStreamingChat).toHaveBeenCalled());
-    // The first update lands on the placeholder, so it waits for it to exist.
-    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
-    const edit = editMessage("partial reply");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(client.chat.update).not.toHaveBeenCalled();
-
-    placePlaceholder({ ts: "ts-placeholder" });
-    await edit;
-    await turn;
-
-    expect(client.chat.update).toHaveBeenCalledWith({
-      channel: "C789",
-      ts: "ts-placeholder",
-      text: "partial reply",
-    });
-  });
-
-  it("keeps the turn going when the placeholder cannot be posted, so the reply opens its own message", async () => {
-    // The chat request is already running when the placeholder fails; failing the turn
-    // here used to strand its reply while the agent still did the user's work.
-    const client = makeSlackClient();
-    client.chat.postMessage = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("ratelimited"));
-
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: ReturnType<typeof makeSlackClient>,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(client, "C789", "U456", "Hi", false, RECEIVED_AT);
-
-    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
-    const editError = await editMessage("the reply").then(
-      () => null,
-      (error: unknown) => error,
-    );
-    // The streamer answers a gone message by sending the reply as a new one.
-    expect(isMessageGoneError(editError)).toBe(true);
-    expect(client.chat.update).not.toHaveBeenCalled();
-  });
-
-  it("does not tell the user to try again when the placeholder comes back without a ts", async () => {
-    // The turn is already running and its reply is on the way; "try again" would
-    // have them send the same request twice.
-    const client = makeSlackClient();
-    client.chat.postMessage = vi.fn().mockResolvedValueOnce({});
-
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: ReturnType<typeof makeSlackClient>,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(client, "C789", "U456", "Hi", false, RECEIVED_AT);
-
-    expect(client.chat.postEphemeral).not.toHaveBeenCalled();
-    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
-    const editError = await editMessage("the reply").then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect(isMessageGoneError(editError)).toBe(true);
-  });
-
-  it("calls handleStreamingChat with correct request shape", async () => {
-    const client = makeSlackClient("ts-stream");
-
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: typeof client,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(
-      client,
-      "C789",
-      "U456",
-      "Plan my day",
-      false,
-      RECEIVED_AT,
-    );
-
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.any(Object), // gaia client
-      expect.objectContaining({
+    expect(postAndFollowSpy).toHaveBeenCalledExactlyOnceWith(
+      {
         message: "Plan my day",
         platform: "slack",
         platformUserId: "U456",
-        channelId: "C789",
+        channelId: "D123",
+        isDm: true,
+        platformMessageId: "111.222",
         receivedAt: RECEIVED_AT,
-      }),
-      expect.any(Function), // editMessage callback
-      expect.any(Function), // sendNewMessage callback
-      expect.any(Function), // onAuthError callback
-      expect.any(Function), // onGenericError callback
-      expect.objectContaining({ platform: "slack" }),
-      expect.any(Promise),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
+      },
+      expect.objectContaining({ send: expect.any(Function) }),
+      expect.any(Function),
     );
   });
-});
 
-// ---------------------------------------------------------------------------
-// handleSlackStreaming — editMessage callback updates via chat.update
-// ---------------------------------------------------------------------------
-
-describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
-  it("the editMessage callback calls client.chat.update with the text it receives", async () => {
-    vi.clearAllMocks();
-    const adapter = new SlackAdapter();
-    const client = makeSlackClient("ts-edit");
-
-    let capturedEditMessage: ((text: string) => Promise<void>) | undefined;
-
-    // Intercept handleStreamingChat to capture the editMessage callback.
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, editMessage) => {
-        capturedEditMessage = editMessage;
-      },
+  it("posts an unquoted message without threading it", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
     );
 
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          cl: typeof client,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(client, "C789", "U456", "Hello", false, RECEIVED_AT);
+    await lastSurface().send("the answer", null);
 
-    expect(capturedEditMessage).toBeDefined();
-
-    // Conversion now happens inside handleStreamingChat (mocked here), so the
-    // adapter callback forwards whatever text it is given straight to chat.update.
-    await capturedEditMessage!("Streamed response text");
-
-    expect(client.chat.update).toHaveBeenCalledWith({
+    expect(appClient.chat.postMessage).toHaveBeenCalledExactlyOnceWith({
       channel: "C789",
-      ts: "ts-edit",
-      text: "Streamed response text",
+      text: "the answer",
     });
+  });
+
+  it("posts a quoted reply in the thread and broadcasts it to the channel", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    await lastSurface().send("the answer", "111.222");
+
+    expect(appClient.chat.postMessage).toHaveBeenCalledExactlyOnceWith({
+      channel: "C789",
+      text: "the answer",
+      thread_ts: "111.222",
+      reply_broadcast: true,
+    });
+  });
+
+  it("edits the message it posted by its ts", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    const sent = await lastSurface().send("draft", null);
+    await sent.edit("final");
+
+    expect(appClient.chat.update).toHaveBeenCalledWith({
+      channel: "C789",
+      ts: "ts-sent",
+      text: "final",
+    });
+  });
+
+  it("fails the send when Slack returns no ts", async () => {
+    appClient.chat.postMessage.mockResolvedValueOnce({});
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    await expect(lastSurface().send("the answer", null)).rejects.toThrow(
+      "chat.postMessage returned no ts",
+    );
+  });
+
+  it("marks the user's message with eyes while a reply is prepared, and takes the mark off once GAIA stops", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    const stopTyping = lastSurface().startTyping("111.222");
+    stopTyping();
+
+    await vi.waitFor(() =>
+      expect(appClient.reactions.remove).toHaveBeenCalledExactlyOnceWith({
+        channel: "C789",
+        timestamp: "111.222",
+        name: "eyes",
+      }),
+    );
+    expect(appClient.reactions.add).toHaveBeenCalledExactlyOnceWith({
+      channel: "C789",
+      timestamp: "111.222",
+      name: "eyes",
+    });
+    expect(appClient.chat.postMessage).not.toHaveBeenCalled();
+    expect(appClient.chat.delete).not.toHaveBeenCalled();
+  });
+
+  it("shows no typing mark when there is no user message to put it on", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    lastSurface().startTyping(null)();
+
+    expect(appClient.reactions.add).not.toHaveBeenCalled();
+    expect(appClient.chat.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("reacts to a message in the conversation's channel", async () => {
+    const react = vi
+      .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+    await adapter.postSlackMessage(
+      eventClient,
+      "D123",
+      "U456",
+      "hi",
+      true,
+      RECEIVED_AT,
+    );
+
+    await expect(lastSurface().react("111.222", "👍", "🔎")).resolves.toBe(
+      "attached",
+    );
+    expect(react).toHaveBeenCalledWith("D123", "111.222", "👍", true, "🔎");
+  });
+
+  it("sends the account link straight into a DM", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "D123",
+      "U456",
+      "hi",
+      true,
+      RECEIVED_AT,
+    );
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(eventClient.chat.postMessage).toHaveBeenCalledExactlyOnceWith({
+      channel: "D123",
+      text: "Link your account to GAIA: https://gaia.test/link",
+    });
+    expect(eventClient.chat.postEphemeral).not.toHaveBeenCalled();
+  });
+
+  it("sends the account link as an ephemeral in a public channel", async () => {
+    await adapter.postSlackMessage(
+      eventClient,
+      "C789",
+      "U456",
+      "hi",
+      false,
+      RECEIVED_AT,
+    );
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(eventClient.chat.postEphemeral).toHaveBeenCalledExactlyOnceWith({
+      channel: "C789",
+      user: "U456",
+      text: "Link your account to GAIA: https://gaia.test/link",
+    });
+    expect(eventClient.chat.postMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -756,7 +747,7 @@ describe("SlackAdapter - /gaia command with no message", () => {
       user: "U1",
       text: "Please provide a message. Usage: /gaia <your message>",
     });
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -797,7 +788,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       .calls[0][1] as typeof mentionHandler;
   });
 
-  it("strips bot mention from event text before streaming", async () => {
+  it("strips bot mention from event text before posting", async () => {
     const client = makeSlackClient("ts-mention");
 
     await mentionHandler({
@@ -810,22 +801,15 @@ describe("SlackAdapter - app_mention event handling", () => {
       context: { botUserId: "BOTID" },
     });
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "What should I do today?",
         platform: "slack",
         platformUserId: "U999",
         channelId: "C111",
       }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "slack" }),
-      expect.any(Promise),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
     );
   });
 
@@ -842,7 +826,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       channel: "C111",
       text: "How can I help you?",
     });
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("skips event when userId is missing", async () => {
@@ -856,7 +840,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       context: { botUserId: "BOTID" },
     });
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(client.chat.postMessage).not.toHaveBeenCalled();
   });
 });
@@ -884,7 +868,7 @@ describe("SlackAdapter - DM message event handling", () => {
       .calls[0][0] as typeof dmHandler;
   });
 
-  it("streams for valid IM message", async () => {
+  it("posts a valid IM message", async () => {
     const client = makeSlackClient("ts-dm");
 
     await dmHandler({
@@ -897,22 +881,15 @@ describe("SlackAdapter - DM message event handling", () => {
       client,
     });
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "Hello GAIA",
         platform: "slack",
         platformUserId: "U555",
         channelId: "D123",
       }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "slack" }),
-      expect.any(Promise),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
     );
   });
 
@@ -930,7 +907,7 @@ describe("SlackAdapter - DM message event handling", () => {
       client,
     });
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("ignores message that is not in an IM channel", async () => {
@@ -946,7 +923,7 @@ describe("SlackAdapter - DM message event handling", () => {
       client,
     });
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("ignores message with missing text, user, or channel", async () => {
@@ -957,7 +934,7 @@ describe("SlackAdapter - DM message event handling", () => {
       client,
     });
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -1206,7 +1183,10 @@ describe("SlackAdapter - dispatchCommand unknown command", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("mystery", target);
 
@@ -1413,12 +1393,16 @@ type SlackReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<ReactionOutcome>;
   app: unknown;
 };
 
 describe("SlackAdapter - reactToMessage", () => {
-  function makeReactor(reactionsAdd: unknown) {
+  function makeReactor(
+    reactionsAdd: unknown,
+    reactionsRemove: unknown = vi.fn().mockResolvedValue({}),
+  ) {
     const adapter = new SlackAdapter() as unknown as SlackReactor;
     adapter.app = {
       client: {
@@ -1426,7 +1410,7 @@ describe("SlackAdapter - reactToMessage", () => {
         conversations: {
           open: vi.fn().mockResolvedValue({ channel: { id: "D-dm" } }),
         },
-        reactions: { add: reactionsAdd },
+        reactions: { add: reactionsAdd, remove: reactionsRemove },
       },
     };
     return adapter;
@@ -1444,6 +1428,52 @@ describe("SlackAdapter - reactToMessage", () => {
     vi.clearAllMocks();
   });
 
+  it("takes GAIA's earlier reaction off before adding the new one", async () => {
+    const order: string[] = [];
+    const add = vi.fn(async ({ name }: { name: string }) => {
+      order.push(`add ${name}`);
+      return {};
+    });
+    const remove = vi.fn(async ({ name }: { name: string }) => {
+      order.push(`remove ${name}`);
+      return {};
+    });
+    const adapter = makeReactor(add, remove);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "👍",
+      true,
+      "🔎",
+    );
+
+    expect(attached).toBe("attached");
+    expect(order).toEqual(["remove mag_right", "add +1"]);
+    expect(remove).toHaveBeenCalledWith({
+      channel: "C-group",
+      timestamp: "123.456",
+      name: "mag_right",
+    });
+  });
+
+  it("still adds the new reaction when the old one cannot be taken off", async () => {
+    const add = vi.fn().mockResolvedValue({});
+    const remove = vi.fn().mockRejectedValue(new Error("no_reaction"));
+    const adapter = makeReactor(add, remove);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "👍",
+      true,
+      "🔎",
+    );
+
+    expect(attached).toBe("attached");
+    expect(add).toHaveBeenCalledOnce();
+  });
+
   it("attaches via reactions.add with the shortcode in a channel", async () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
@@ -1453,6 +1483,7 @@ describe("SlackAdapter - reactToMessage", () => {
       "123.456",
       "👍",
       true,
+      null,
     );
 
     expect(attached).toBe("attached");
@@ -1467,7 +1498,7 @@ describe("SlackAdapter - reactToMessage", () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
 
-    await adapter.reactToMessage("U-user", "123.456", "✅", false);
+    await adapter.reactToMessage("U-user", "123.456", "✅", false, null);
 
     expect(add).toHaveBeenCalledWith({
       channel: "D-dm",
@@ -1485,6 +1516,7 @@ describe("SlackAdapter - reactToMessage", () => {
       "123.456",
       "😅",
       true,
+      null,
     );
 
     expect(attached).toBe("attached");
@@ -1504,6 +1536,7 @@ describe("SlackAdapter - reactToMessage", () => {
       "123.456",
       "🫡",
       true,
+      null,
     );
 
     expect(attached).toBe("unmapped_emoji");
@@ -1520,6 +1553,7 @@ describe("SlackAdapter - reactToMessage", () => {
       "123.456",
       "👍",
       true,
+      null,
     );
 
     expect(attached).toBe("attach_failed");
@@ -1527,95 +1561,32 @@ describe("SlackAdapter - reactToMessage", () => {
   });
 });
 
-describe("SlackAdapter - live turn reaction", () => {
-  type Streamer = {
-    handleSlackStreaming: (
-      client: ReturnType<typeof makeSlackClient>,
-      channelId: string,
-      userId: string,
-      message: string,
-      isDm: boolean,
-      receivedAt: number,
-      inboundTs?: string,
-    ) => Promise<void>;
-  };
-
-  beforeEach(() => {
+describe("SlackAdapter - /gaia command with a message", () => {
+  it("posts it without a platform message id, since a slash command has no message to react to", async () => {
     vi.clearAllMocks();
-  });
-
-  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
-    return vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
-      emoji: string,
-    ) => Promise<ReactionOutcome>;
-  }
-
-  it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
     const adapter = new SlackAdapter();
-    const react = vi
-      .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
-      .mockResolvedValue("attached");
-    const client = makeSlackClient("ts-placeholder");
+    (adapter as unknown as { app: typeof mockApp }).app = { ...mockApp };
+    (
+      adapter as unknown as { registerGaiaCommand: () => void }
+    ).registerGaiaCommand();
+    const handlerFn = vi.mocked(mockApp.command).mock.calls[0][1] as (args: {
+      command: { user_id: string; channel_id: string; text: string };
+      ack: () => Promise<void>;
+      client: ReturnType<typeof makeSlackClient>;
+    }) => Promise<void>;
 
-    await (adapter as unknown as Streamer).handleSlackStreaming(
-      client,
-      "D123",
-      "U456",
-      "thanks!",
-      true,
-      RECEIVED_AT,
-      "111.222",
-    );
-
-    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("D123", "111.222", "👍", true);
-    expect(client.chat.delete).toHaveBeenCalledWith({
-      channel: "D123",
-      ts: "ts-placeholder",
+    await handlerFn({
+      command: { user_id: "U1", channel_id: "D42", text: "plan my day" },
+      ack: vi.fn().mockResolvedValue(undefined),
+      client: makeSlackClient(),
     });
-  });
 
-  it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
-    const adapter = new SlackAdapter();
-    vi.spyOn(
-      adapter as unknown as SlackReactor,
-      "reactToMessage",
-    ).mockResolvedValue("unmapped_emoji");
-    const client = makeSlackClient("ts-placeholder");
-
-    await (adapter as unknown as Streamer).handleSlackStreaming(
-      client,
-      "D123",
-      "U456",
-      "thanks!",
-      true,
-      RECEIVED_AT,
-      "111.222",
-    );
-
-    await expect(lastReactionHook()("👍")).resolves.toBe("unmapped_emoji");
-    expect(client.chat.delete).not.toHaveBeenCalled();
-  });
-
-  it("falls back to text for a slash command, which has no message to react to", async () => {
-    const adapter = new SlackAdapter();
-    const react = vi.spyOn(
-      adapter as unknown as SlackReactor,
-      "reactToMessage",
-    );
-    const client = makeSlackClient("ts-placeholder");
-
-    await (adapter as unknown as Streamer).handleSlackStreaming(
-      client,
-      "C789",
-      "U456",
-      "thanks!",
-      false,
-      RECEIVED_AT,
-    );
-
-    await expect(lastReactionHook()("👍")).resolves.toBe("no_target");
-    expect(react).not.toHaveBeenCalled();
-    expect(client.chat.delete).not.toHaveBeenCalled();
+    const request = postAndFollowSpy.mock.calls[0][0];
+    expect(request).toMatchObject({
+      message: "plan my day",
+      channelId: "D42",
+      isDm: true,
+    });
+    expect(request.platformMessageId).toBeUndefined();
   });
 });

@@ -93,6 +93,9 @@ const nextConfig = {
           }
         : false,
   },
+  // next dev otherwise rewrites the tracked CLAUDE.md (AGENTS.md symlink) whenever its
+  // managed block's text differs; the docs pointer lives there as plain text instead.
+  agentRules: false,
   reactStrictMode: true,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies

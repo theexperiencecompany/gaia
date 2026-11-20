@@ -19,16 +19,13 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
+from app.agents.tools.execute.unwrap import execute_call_note, unwrap_execute_call
 from app.constants.hil import (
-    HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_TURNS,
-    HIL_JUDGE_MAX_PRIOR_ARGS_CHARS,
     HIL_JUDGE_MAX_PRIOR_CALLS,
     HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS,
-    HIL_JUDGE_MAX_SCHEMA_CHARS,
     HIL_JUDGE_NONCE_BYTES,
 )
 from app.models.agent_models import AgentConfigurable, runtime_configurable
@@ -44,6 +41,23 @@ class GatedCall:
     args: dict[str, object]
     # The connected account an execute call acts as; None is the primary.
     account: str | None = None
+    # The approval this call redoes after the user approved it with a change.
+    amends: str | None = None
+
+
+@dataclass(frozen=True)
+class GatedApproval:
+    """Identity of a gated call being surfaced — shared by request and receipt."""
+
+    approval_id: str
+    stream_id: str
+    user_id: str
+    conversation_id: str
+    tool_call: GatedCall
+    summary: str
+    #: What a single-action prompt asks, the sentence a chat app shows the user.
+    question: str
+    integration_name: str | None
 
 
 @dataclass(frozen=True)
@@ -105,7 +119,11 @@ def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
     raw = raw_tool_call(request)
     name, args = unwrap_execute_call(raw.name, raw.args)
     return GatedCall(
-        name=name, id=raw.id, args=args, account=execute_call_account(raw.name, raw.args)
+        name=name,
+        id=raw.id,
+        args=args,
+        account=execute_call_note(raw.name, raw.args, "account"),
+        amends=execute_call_note(raw.name, raw.args, "amends"),
     )
 
 
@@ -123,19 +141,6 @@ def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
 
 
 # --- reading the graph state -----------------------------------------------------------
-
-
-def current_tool_calls(state: object) -> list[ToolCall]:
-    """Return the tool calls of the AI message this node is executing (its last one).
-
-    These are the pending call's *siblings* — what else the model asked for in the same
-    turn. The gate needs them because a sibling that pauses re-runs this whole node.
-    """
-    for message in reversed(_messages_of(state)):
-        calls = getattr(message, "tool_calls", None)
-        if calls:
-            return list(calls)
-    return []
 
 
 def prior_tool_calls(state: object, exclude_id: str) -> list[PriorCall]:
@@ -265,26 +270,6 @@ def args_preview(args: dict[str, object]) -> str:
     return clip_text(json.dumps(args or {}, default=str), HIL_JUDGE_MAX_ARGS_CHARS)
 
 
-def render_prior_calls(calls: list[PriorCall]) -> str:
-    lines = []
-    for call in calls:
-        line = f"- {call.name}({clip_text(json.dumps(call.args, default=str), HIL_JUDGE_MAX_PRIOR_ARGS_CHARS)})"
-        if call.output.strip():
-            # JSON-encoded like args: a result containing a quote or newline
-            # must not break out of its line and read as prompt structure.
-            line += (
-                f" => {clip_text(json.dumps(call.output), HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS + 2)}"
-            )
-        lines.append(line)
-    return "\n".join(lines) or "(none)"
-
-
-def render_assistant_turns(turns: list[str]) -> str:
-    """Numbered recent assistant messages for a prompt — labeled, never quoted as authority."""
-    lines = [f"{index + 1}. {turn}" for index, turn in enumerate(turns) if turn.strip()]
-    return "\n".join(lines) or "(none)"
-
-
 def tool_schema(tool: BaseTool | None) -> dict[str, object] | None:
     """Read the pending tool's argument contract, or None when it cannot be read.
 
@@ -298,28 +283,6 @@ def tool_schema(tool: BaseTool | None) -> dict[str, object] | None:
     if not isinstance(schema, dict) or not schema:
         return None
     return cast(dict[str, object], schema)
-
-
-def render_tool_schema(schema: dict[str, object] | None) -> str:
-    """Clip the arg contract for a prompt — schemas bloat, and JEV is cheap but not free."""
-    if not schema:
-        return "(no schema)"
-    return clip_text(json.dumps(schema, default=str), HIL_JUDGE_MAX_SCHEMA_CHARS)
-
-
-def approval_window_label() -> str:
-    """How long the gate waited, in words, for the expiry message to the model.
-
-    The configured window, not a measured elapsed time: the sweep resolves an
-    approval within a tick of expires_at, so the two agree to within a minute
-    out of hours. Threading a real duration through the resume payload would buy
-    nothing the user could notice.
-    """
-    hours, seconds = divmod(HIL_APPROVAL_TIMEOUT_SECONDS, 3600)
-    if hours:
-        return "1 hour" if hours == 1 else f"{hours} hours"
-    minutes = max(1, seconds // 60)
-    return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
 def untrusted_fence() -> str:

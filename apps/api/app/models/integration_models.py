@@ -14,9 +14,9 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
-from app.db.repositories.base import MongoDocument, UserScopedDocument
+from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode, ToolsSetup
 from app.helpers.slug_helpers import generate_integration_slug
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
@@ -290,6 +290,8 @@ class UserIntegrationDocument(UserScopedDocument):
     connected_at: datetime | None = None
     expired_at: datetime | None = None
     expired_reason: str | None = None
+    # The post-connect tool discovery of an MCP; None when no connect ever reported one.
+    tools_setup: ToolsSetup | None = None
     # Composio integrations only: every connected account, oldest first, and the
     # GAIA id of the one tools act as when the caller names none.
     accounts: list[IntegrationAccount] = Field(default_factory=list)
@@ -465,6 +467,7 @@ class UserIntegrationResponse(BaseModel):
     created_at: datetime
     connected_at: datetime | None = None
     expired_at: datetime | None = None
+    tools_setup: ToolsSetup | None = None
 
     # Hydrated integration details
     integration: IntegrationResponse

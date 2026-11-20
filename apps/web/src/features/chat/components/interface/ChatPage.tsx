@@ -18,10 +18,12 @@ import { ChatWithMessages } from "@/features/chat/components/interface/layouts/C
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
 import { VoiceControlBarPending } from "@/features/chat/components/voice-agent/VoiceControlBarPending";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
-import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
+import { useConversationSync } from "@/features/chat/hooks/useConversationSync";
+import { useOpenConversation } from "@/features/chat/live/useLiveChat";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { toast } from "@/lib/toast";
+import { useChatStore } from "@/stores/chatStore";
 
 // LiveKit (~125 KB gzip) loads only when the user starts voice mode.
 const VoiceSession = lazy(() =>
@@ -45,11 +47,13 @@ const MainChat = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // Reload-mid-stream recovery: re-attach to a still-running turn's event
-  // log. Also owns the on-open freshness sync, sequenced AFTER resume —
-  // syncing first would race live-turn discovery and sweep the optimistic message.
-  useStreamResume(convoIdParam || null);
+  useConversationSync(convoIdParam || null);
   useActiveConversation(convoIdParam);
+  // The store's id, not the route's: a new chat's minted id never reaches useParams.
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  useOpenConversation(activeConversationId);
 
   // Imperative scroll control from the message scroller — used by the
   // composer to snap to the live edge on send. Instant, not smooth: bubbles

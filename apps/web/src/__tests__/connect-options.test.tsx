@@ -12,6 +12,12 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 vi.mock("@/features/chat/utils/toolIcons", () => ({
   getToolCategoryIcon: (id: string) => <span data-testid={`icon-${id}`} />,
 }));
+vi.mock("@/features/integrations/hooks/useIntegrationLookup", () => ({
+  useIntegrationLookup: () => ({
+    getIntegrationName: () => undefined,
+    getIntegrationIconUrl: () => undefined,
+  }),
+}));
 
 import ConnectOptions from "@/features/chat/components/bubbles/bot/ConnectOptions";
 

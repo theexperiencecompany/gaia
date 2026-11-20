@@ -164,6 +164,35 @@ has no allowlist (the layer is new — it starts clean).
 
 ---
 
+## comms-graph-owner
+
+**Rule:** outside `app/services/conversation/comms_runner.py` (the owner: the
+conversation runtime's comms runner, which the step drives) and
+`app/agents/core/graph_builder/` (which builds and registers the graph but runs
+no conversation on it), a module under `app/` must not:
+
+1. name the comms graph: `GraphName.COMMS`, or the string `"comms_agent"` passed
+   to `GraphManager.get_graph` / `providers.get` / `providers.aget`;
+2. call a comms graph constructor (`COMMS_ENTRY_FUNCTIONS`: `build_comms_graph`,
+   `build_comms_agent`);
+3. in a module that does either, call `astream` / `ainvoke` / `aget_state` /
+   `aupdate_state` or their siblings (`GRAPH_THREAD_METHODS`).
+
+**Why:** the comms graph checkpoints each conversation on a thread whose id is
+the conversation id. Two pieces of code running or writing that thread at once
+fork it, and one side's messages vanish from the model's memory. The runner is
+the one owner, and only the step starts it; this rule stops a second writer
+appearing.
+
+**Fix:** run or write the conversation through the comms runner, driven by the
+conversation step. Executor and subagent threads (prefixed thread ids,
+`GraphName.EXECUTOR`) are not in scope.
+
+**Limitation:** check 3 is syntactic, not data flow: a graph handed to a module
+that names neither the symbol nor a constructor is not seen.
+
+---
+
 ## ignore-whys
 
 Not an AST rule — a config check on the root ``pyproject.toml``:
@@ -580,6 +609,32 @@ sectioned, and the banner *is* the section.
 **Fix:** keep the numbers, limits and constraints; delete the sentences around
 them. If a block genuinely cannot fit in three lines of facts, the surprise is
 big enough to be a named helper or a paragraph in the PR — not a comment.
+
+**No allowlist**, no `noqa`.
+
+---
+
+## mutation-pragmas
+
+**Rule:** a `# pragma: no mutate` under `app/` must sit where mutmut 3 reads it.
+mutmut honours a trailing pragma for the expressions that start on its line (and,
+after a statement's last line, for the statement's first line), and a comment-only
+`start` / `end` / `block` only between statements. Reported placements:
+
+1. a comment-only pragma inside brackets (a list, dict or call spread over lines);
+2. a comment-only pragma with no `start` / `end` / `block` token;
+3. a trailing pragma on a closing-bracket line that does not end the statement;
+4. a trailing pragma on a plain name argument of a call opened on an earlier line, or
+   on a keyword argument whose value holds nothing mutmut mutates (names, attributes,
+   subscripts, f-strings) when the call's own line has no pragma: `kw=None` and the
+   dropped argument are mutants of the call node, positioned on the call's line.
+
+**Why:** mutmut ignores all four silently, so the mutant the pragma was written for
+survives and reds the mutation lane, often a whole CI round later.
+
+**Fix:** put the pragma on the line where the mutated expression starts (a call's
+first line for its arguments), or wrap the statement in
+`# pragma: no mutate start` / `# pragma: no mutate end`.
 
 **No allowlist**, no `noqa`.
 

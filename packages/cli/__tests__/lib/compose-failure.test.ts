@@ -109,6 +109,18 @@ describe("explainComposeFailure", () => {
     expect(failure.service).toBe("mongo");
   });
 
+  // Verbatim from Compose v5.5 when a one-shot dependency exits non-zero.
+  it("names a one-shot service that exited with an error", () => {
+    const failure = explainComposeFailure(
+      [`service "gaia-migrate" didn't complete successfully: exit 1`],
+      [],
+      UP,
+    );
+
+    expect(failure.cause).toBe("GAIA's data migration didn't finish.");
+    expect(failure.service).toBe("gaia-migrate");
+  });
+
   it.each([
     ["write /var/lib/docker/tmp: no space left on device", "The disk is full."],
     [

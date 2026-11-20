@@ -1,0 +1,15 @@
+# A reminder set in chat fires later on its own: the worker runs it on time and
+# the bot delivers it to the chat it was set from, exactly once.
+#
+#   mise dev --sim   (plus `nx worker api` for the scheduler)
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/reminder-delivery.yaml
+name: reminder delivery
+emulate: telegram
+user: bot-reminder-scenario@gaia.local
+turns:
+  - send: 'remind me to stretch in 20 seconds [[tool:create_reminder_tool {"payload":{"title":"Stretch","body":"Time to stretch."},"delay_seconds":20}]] [[say:I will remind you.]]'
+    # The reminder fires 20 s after it is set; the outbound consumer waits for it.
+    settleMs: 60000
+    expect:
+      # Once, as its own message, and never a second time through the queue.
+      - delivered: ["I will remind you.", "<b>Stretch</b>\nTime to stretch."]

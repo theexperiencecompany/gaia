@@ -211,8 +211,7 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     """
     await verify_composio_webhook_signature(request)
 
-    # pragma: no mutate — Starlette header lookup is case-insensitive, so a
-    # case change to the header name is a provable no-op.
+    # Starlette header lookup is case-insensitive, so a case change to the name is a no-op.
     webhook_id = request.headers.get("webhook-id", "")  # pragma: no mutate
     if webhook_id:
         already_processed = not await redis_cache.client.set(

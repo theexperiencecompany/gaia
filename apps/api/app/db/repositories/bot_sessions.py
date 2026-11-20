@@ -7,7 +7,7 @@ under the unique index, so two racing first-messages can never fork a session.
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
-from app.models.bot_models import BotSessionDocument, BotSessionUpdate
+from app.models.bot_models import BotSessionDocument, BotSessionUpdate, PartialReply
 from app.utils.errors import AppError
 
 #: Suffix a retired key derivation gave channel-less sessions; only pre-fix rows carry it.
@@ -111,10 +111,68 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         """Point an existing session at a different conversation; False when unmatched."""
         matched = await self._apply_raw_update_unfetched(
             {"session_key": session_key},
-            {"$set": {"conversation_id": conversation_id}},
+            {"$set": {"conversation_id": conversation_id}, "$unset": {"delivery": ""}},
             scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
+
+    async def owe_delivery(
+        self, conversation_id: str, *, first_seq: int, last_seq: int
+    ) -> BotSessionDocument | None:
+        """Record entries first_seq..last_seq as logged for the conversation's bot to render; None for a non-bot one.
+
+        The first entry ever owed starts the bot's cursor just before it.
+        """
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "delivery": {"$exists": False}},
+            {"$set": {"delivery": {"delivered_seq": first_seq - 1, "owed_seq": last_seq}}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return await self._apply_raw_update(
+            {"conversation_id": conversation_id},
+            {"$max": {"delivery.owed_seq": last_seq}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+
+    async def record_delivered(
+        self,
+        conversation_id: str,
+        *,
+        platform: str,
+        delivered_seq: int,
+        partial_reply: PartialReply | None,
+    ) -> bool:
+        """Move the bot's cursor to what it delivered; False for a report behind the recorded one."""
+        matched = await self._apply_raw_update_unfetched(
+            {
+                "conversation_id": conversation_id,
+                "platform": platform,
+                "$or": [
+                    {"delivery": {"$exists": False}},
+                    {"delivery.delivered_seq": {"$lte": delivered_seq}},
+                ],
+            },
+            {
+                "$set": {
+                    "delivery.delivered_seq": delivered_seq,
+                    "delivery.partial_reply": (
+                        None if partial_reply is None else partial_reply.model_dump()
+                    ),
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return matched > 0
+
+    async def list_owed(self, platform: str, limit: int) -> list[BotSessionDocument]:
+        """Return the platform's sessions whose bot has not delivered everything logged for it."""
+        return await self._find(
+            {
+                "platform": platform,
+                "$expr": {"$gt": ["$delivery.owed_seq", "$delivery.delivered_seq"]},
+            },
+            limit=limit,
+        )
 
     async def delete_by_session_key(self, session_key: str) -> int:
         """Remove the session on this key, returning how many rows were deleted."""

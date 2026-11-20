@@ -26,6 +26,18 @@
       }
     ],
     "python": ["{workspaceRoot}/pyproject.toml", "{workspaceRoot}/uv.lock"],
+    "simStack": [
+      "{workspaceRoot}/apps/api/app/**/*",
+      "{workspaceRoot}/apps/api/pyproject.toml",
+      "{workspaceRoot}/libs/shared/py/**/*",
+      "{workspaceRoot}/pyproject.toml",
+      "{workspaceRoot}/uv.lock",
+      "{workspaceRoot}/tools/llm-stub/**/*",
+      "{workspaceRoot}/scripts/ci/sim-stack.sh",
+      "{workspaceRoot}/scripts/ci/test-services.sh",
+      "{workspaceRoot}/scripts/ci/lib/**/*",
+      "{workspaceRoot}/.github/actions/setup-python-test-env/**/*"
+    ],
     "ciHarness": [
       "{workspaceRoot}/scripts/ci/**/*",
       "!{workspaceRoot}/scripts/ci/**/*.md",

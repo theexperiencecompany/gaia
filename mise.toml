@@ -233,8 +233,8 @@ API_PORT=$api_port
 # so the URLs below hold whichever way this worktree boots the API.
 API_HOST_PORT=$api_port
 WEB_PORT=$web_port
-# The API redirects here after login/OAuth and builds notification links from it,
-# so it must point at THIS worktree's web server, not the default :3000.
+# The API redirects here after login/OAuth and builds notification links from it, and
+# the bots link users to it, so it must point at THIS worktree's web server, not :3000.
 FRONTEND_URL=http://localhost:$web_port
 NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
@@ -315,6 +315,10 @@ bash "$harness/run.sh" after "$head"
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"
+
+[tasks."e2e:web:screen"]
+description = "Run the screen-over-time Playwright flows: scripted chats whose rendered items are recorded at every DOM change and must never reorder, vanish or double, and must match after a reload. Needs a running sim stack (`mise dev --sim`) plus the ARQ worker (`nx worker api`, same env) for the approval-expiry sweep. One worker: the flows share the dev user and flip its approval preferences."
+run = "pnpm nx run web:e2e-screen"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS
