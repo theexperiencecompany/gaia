@@ -24,6 +24,7 @@ from app.constants.hil import (
     JevChoice,
 )
 from app.constants.providers import CredentialProviderName
+from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
     AutoHistory,
     IntentDecision,
@@ -882,6 +883,32 @@ class TestTheJudgeAroundTheWire:
             "accept", "Auto mode matched this to your request (authorized 0.90)."
         )
         assert client.post.await_count == 1
+
+
+class TestAContainedCallWithForbidWordsAsksThroughItsOwnTransport:
+    """An unclear call can still run on containment, so containment alone earns the forbid check."""
+
+    async def test_both_questions_go_through_the_transport_the_judge_was_given(self) -> None:
+        transport = AsyncMock(
+            side_effect=[
+                JevDecisionsResponse.model_validate(_answer("unclear", 0.6, contained=0.95)),
+                JevDecisionsResponse.model_validate(_forbid_answer("permitted", 0.9)),
+            ]
+        )
+
+        decision = await JevIntentJudge(fallback=AsyncMock(), transport=transport).decide(
+            user_id="u",
+            user_messages=["don't worry about the formatting", "tidy my notes page"],
+            call=_call(tool_name="NOTION_INSERT_MARKDOWN", args={"page_id": "p1"}),
+            prior_calls=[],
+            history=AutoHistory(),
+        )
+
+        assert transport.await_count == 2
+        assert decision == IntentDecision(
+            "accept",
+            "Auto mode ran this: it stays in your account and can be undone (contained 0.95).",
+        )
 
 
 def _verdict_case(

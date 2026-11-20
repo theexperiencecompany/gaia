@@ -297,7 +297,12 @@ def _inherit_from_parent_configurable(
         user_messages=parent.user_messages or current.user_messages,
         # Same rule: what the user was shown before their turn. A child's own run
         # never said it, and a bare "send it" refers to it.
-        assistant_turns=parent.assistant_turns or current.assistant_turns,
+        # An explicit empty list means the user was shown nothing; it still overrides.
+        assistant_turns=(
+            parent.assistant_turns
+            if parent.assistant_turns is not None
+            else current.assistant_turns
+        ),
         user_request=parent.user_request or current.user_request,
         # Same rule, same reason: established once wherever the root call site had the
         # full user document in hand, and a child never has its own copy to prefer.

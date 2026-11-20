@@ -30,6 +30,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
+    CONTAINED_RUN_REASON,
     AutoHistory,
     AutoOutcome,
     IntentDecision,
@@ -360,9 +361,7 @@ def decide_from_verdict(
         and not user_held_or_denied(case.user_messages, case.history)
     ):
         return IntentDecision(
-            "accept",
-            "Auto mode ran this: it stays in your account and can be undone "
-            f"(contained {verdict.contained:.2f}).",
+            "accept", f"{CONTAINED_RUN_REASON} (contained {verdict.contained:.2f})."
         )
     return decision
 

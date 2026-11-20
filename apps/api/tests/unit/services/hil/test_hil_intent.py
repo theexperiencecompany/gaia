@@ -11,6 +11,7 @@ _is_grounded and the no-turns guard are the production code under test and run f
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.client import StructuredCallOptions, silent_metered_config
@@ -210,6 +211,14 @@ class TestFailsTowardAsking:
         decision, _ = await judge(RuntimeError("LLM 500"))
         assert decision.outcome != "accept"
         assert decision.reason == "The approval check could not run."
+
+    @pytest.mark.parametrize("missing", ["risk_factors", "injected_instructions"])
+    def test_a_reply_without_its_safety_analysis_is_no_verdict(self, missing: str) -> None:
+        """A skipped field must fail parsing (and ask), never read as "no risk"."""
+        reply = verdict(verdict="ask").model_dump(exclude={missing})
+
+        with pytest.raises(ValidationError):
+            _Verdict.model_validate(reply)
 
 
 class TestWhatTheJudgeIsAsked:
@@ -468,7 +477,7 @@ class TestContainedActionsRunWithoutExplicitWords:
         decision, _ = await judge(verdict(verdict="ask", authorizing_quote="", risk_factors=[]))
 
         assert decision.outcome == "accept"
-        assert "undone" in decision.reason
+        assert decision.reason == "Auto mode ran this: it stays in your account and can be undone."
 
     async def test_authorization_only_risks_do_not_hold_it(self) -> None:
         decision, _ = await judge(
@@ -514,11 +523,35 @@ class TestContainedActionsRunWithoutExplicitWords:
 
         assert decision.outcome == "ask"
 
-    async def test_casual_forbid_words_leave_the_judgment_to_the_judge(self) -> None:
-        turns = ["for MCP we can't generate a link?", "ok check the flags in posthog"]
+    async def test_an_unsure_verdict_never_clears_a_prohibition(self) -> None:
+        """The LLM judge has no focused forbid question, so forbid words keep it asking."""
+        turns = ["never change my notes", "tidy the notes page"]
         decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
 
-        assert decision.outcome == "accept"
+        assert decision.outcome == "ask"
+
+    @pytest.mark.parametrize(
+        "hold",
+        [
+            "wait for my approval before editing my notes",
+            "don't touch the notes page yet",
+            "anything on my notes needs my go-ahead",
+        ],
+    )
+    async def test_a_hold_in_other_words_keeps_it_asking(self, hold: str) -> None:
+        turns = [hold, "summarize the page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    async def test_changing_the_subject_does_not_lift_a_hold(self) -> None:
+        turns = [
+            "check with me first before changing my notes",
+            "actually, just summarize the page",
+        ]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
 
     async def test_a_lifted_hold_lets_it_run(self) -> None:
         turns = ["check with me first", "actually, go ahead and tidy the notes page"]
@@ -584,6 +617,43 @@ class TestAPickFromAList:
         )
 
         assert missing == ["r2569937965309608501"]
+
+    def test_the_name_closing_one_turn_still_points_at_its_entry(self) -> None:
+        shown = ["I drafted the reply to simonne", "Want me to send it?"]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_a_record_nested_in_a_draft_is_not_the_drafts_recipient(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "to": "bob@x.com", '
+                    '"forwarded": {"from": "simonne@x.com"}}, {"id": "d-2", "to": "lisa@x.com"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+
+    def test_a_wrapped_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '{"drafts": [{"id": "d-1", "cc": ["bob@x.com"], "labels": ["DRAFT"]}, '
+                    '{"id": "d-2"}]}'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send bob's"], listed) == []
 
     def test_a_json_list_grounds_by_the_record_holding_the_id(self) -> None:
         listed = [

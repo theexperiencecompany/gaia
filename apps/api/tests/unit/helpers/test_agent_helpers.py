@@ -473,6 +473,25 @@ class TestBuildAgentConfig:
 
         assert configurable["assistant_turns"] == ["Your draft to Simonne is ready."]
 
+    async def test_a_parent_that_showed_nothing_still_overrides_the_child(self):
+        """An empty list is "the user was shown nothing", not "unknown"."""
+
+        configurable = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id="executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"conversation_id": "conv-1", "assistant_turns": []},
+                ),
+                turn=AgentTurn(assistant_turns=["the executor's own words"]),
+            )
+        )["configurable"]
+
+        assert configurable["assistant_turns"] == []
+
     async def test_parent_overrides_child_for_the_verbatim_user_request(self):
         """Same rule as user_messages: comms establishes the verbatim request once, and a child's paraphrase must not overwrite it."""
 
@@ -877,6 +896,14 @@ class TestRecentAssistantReplies:
         ]
 
         assert recent_assistant_replies(history) == ["Drafted the reply to Simonne with the PDF."]
+
+    def test_a_reply_with_no_content_is_skipped(self):
+        history = [
+            {"role": "assistant", "content": None},
+            {"role": "assistant", "content": "Done."},
+        ]
+
+        assert recent_assistant_replies(history) == ["Done."]
 
     def test_only_the_latest_replies_are_kept_each_clipped(self):
         history = [{"role": "assistant", "content": f"reply {i} " + "x" * 2000} for i in range(9)]

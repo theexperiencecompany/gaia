@@ -4,9 +4,8 @@ httpx is mocked — the network boundary. The question translation and the answe
 parsing are the production code under test and run for real.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +29,7 @@ NOUL_QUESTION: dict[str, object] = {
 
 
 @contextmanager
-def _serving(body: dict[str, Any]) -> Iterator[AsyncMock]:
+def _serving(body: Mapping[str, object]) -> Iterator[AsyncMock]:
     response = MagicMock()
     response.json.return_value = body
     client = AsyncMock()

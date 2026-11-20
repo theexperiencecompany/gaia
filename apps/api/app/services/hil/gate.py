@@ -560,9 +560,9 @@ async def _judge(
         # Prior actions and recent assistant words are provenance for arguments,
         # never authorization — only the user's turns authorize.
         prior_calls=prior_tool_calls(request.state, call.id),
-        assistant_turns=[*context.assistant_turns, *recent_assistant_turns(request.state)][
-            -HIL_JUDGE_MAX_ASSISTANT_TURNS:
-        ],
+        assistant_turns=_shown_first(
+            list(context.assistant_turns), recent_assistant_turns(request.state)
+        ),
     )
     if decision.outcome != "ask":
         # A settled auto decision has no card and no ledger row; this is its only record.
@@ -575,6 +575,17 @@ async def _judge(
             ),
         )
     return decision
+
+
+def _shown_first(shown: list[str], run: list[str]) -> list[str]:
+    """Fit the replies the user saw before their turn first; this run's messages fill what is left.
+
+    A child run's internal messages were never shown to the user, so they must not push
+    out the reply a bare "send it" refers to.
+    """
+    kept = shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+    room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
+    return [*kept, *run[-room:]] if room else kept
 
 
 async def _never_auto_tools(user_id: str) -> frozenset[str]:
