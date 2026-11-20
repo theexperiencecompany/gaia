@@ -7,6 +7,7 @@ readers the suites assert on. Every test reads the real keys the base wrote, nev
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Protocol
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
@@ -97,7 +98,17 @@ def user_repository_with_finders() -> UserCacheRepository:
     return UserFinders()
 
 
-def global_repository_with_finders() -> GlobalCacheRepository:
+class GlobalFinderRepository(Protocol):
+    """The global repository with its cached finder, as the query tests use it."""
+
+    finder_runs: int
+
+    async def create(self, doc: GlobalItem) -> GlobalItem: ...
+
+    async def named(self, name: str) -> list[GlobalItem]: ...
+
+
+def global_repository_with_finders() -> GlobalFinderRepository:
     class GlobalFinders(GlobalCacheRepository):
         @cached_query(list[GlobalItem])
         async def named(self, name: str) -> list[GlobalItem]:
