@@ -206,6 +206,7 @@ export function listBubbles(page: Page): Promise<BubbleSnapshot[]> {
         {
           messageId: item.dataset.messageId ?? "",
           role: user ? "user" : "bot",
+          // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
           text: bubble.innerText.trim(),
         },
       ];
@@ -222,6 +223,7 @@ export function botBubbleParts(page: Page): Promise<string[][]> {
       ),
     ].map((message) =>
       [...message.querySelectorAll<HTMLElement>(".imessage-bubble")].map(
+        // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
         (bubble) => bubble.innerText.trim(),
       ),
     ),
@@ -278,6 +280,7 @@ export function watchConversation(
           '[data-slot="message-scroller-content"]',
         );
         const onScreen = new Set(
+          // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
           (content?.innerText ?? "").split("\n").map((line) => line.trim()),
         );
         return {

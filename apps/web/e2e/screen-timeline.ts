@@ -53,9 +53,11 @@ function readScreen(): ScreenItem[] {
         id: item.dataset.screenItemId ?? "",
         kind,
         role: kind === "user" ? "user" : "bot",
+        // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
         text: bubble.innerText.trim(),
         bubbles: [
           ...bubble.querySelectorAll<HTMLElement>(".imessage-bubble"),
+          // biome-ignore lint/performance/useDomNodeTextContent: the e2e reads the text as rendered (block line breaks, CSS-hidden text excluded), which textContent does not give
         ].map((part) => part.innerText.trim()),
       },
     ];
