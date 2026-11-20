@@ -45,24 +45,26 @@ _ALLOWED_BASE_NAMES = frozenset(
     }
 )
 
-# Ratchet allowlist of stateful *Service classes that predate the lint. Remove an
-# entry when the class is converted to module functions; never add one.
-ALLOWLIST: frozenset[str] = frozenset(
+# Ratchet allowlist of stateful *Service classes that predate the lint, keyed by
+# the file under app/services/ that defines each, so an entry shields that one
+# class and not a new class reusing its name. Remove an entry when the class is
+# converted to module functions; never add one.
+ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
     {
         # Documented in-memory singleton (see apps/api/CLAUDE.md Database table).
-        "ComposioService",
+        ("composio/composio_service.py", "ComposioService"),
         # Wraps the authenticated Dodo Payments SDK client (holds SDK state).
-        "DodoPaymentService",
+        ("payments/payment_service.py", "DodoPaymentService"),
         # Holds the webhook verifier + per-event handler registry.
-        "PaymentWebhookService",
+        ("payments/payment_webhook_service.py", "PaymentWebhookService"),
         # Holds channel-adapter + action-handler registries.
-        "NotificationService",
-        # Legacy DI shape (mongodb passed in) — convertible follow-up.
-        "DeviceTokenService",
+        ("notification_service.py", "NotificationService"),
         # Holds a Chroma collection name — thin state, convertible follow-up.
-        "GaiaKnowledgeService",
+        ("gaia_knowledge_service.py", "GaiaKnowledgeService"),
     }
 )
+
+_SERVICES_MARKER = "/app/services/"
 
 
 def _base_names(cls: ast.ClassDef) -> set[str]:
@@ -101,15 +103,17 @@ def _instance_methods(cls: ast.ClassDef) -> list[str]:
 def check(files: list[Path]) -> list[Violation]:
     violations: list[Violation] = []
     for path in files:
-        if "/app/services/" not in path.as_posix():
+        posix = path.as_posix()
+        if _SERVICES_MARKER not in posix:
             continue
+        services_rel = posix[posix.rindex(_SERVICES_MARKER) + len(_SERVICES_MARKER) :]
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.ClassDef) or not node.name.endswith("Service"):
                 continue
             if _base_names(node) & _ALLOWED_BASE_NAMES:
                 continue
-            if node.name in ALLOWLIST:
+            if (services_rel, node.name) in ALLOWLIST:
                 continue
             methods = _instance_methods(node)
             if not methods:
