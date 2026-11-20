@@ -25,7 +25,6 @@ from app.models.brief_document_models import BriefingModel
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingMood
 from app.models.briefing_state_models import (
-    BriefingBootstrap,
     BriefingStateDocument,
     BriefingWindDown,
 )
@@ -155,12 +154,6 @@ class TestBriefWillCarry:
 
         assert not await held.brief_will_carry(seams.user.id)
 
-    @pytest.mark.regression
-    async def test_a_first_brief_held_for_a_goal_does_not(self, seams: _Seams) -> None:
-        seams.state.bootstrap = BriefingBootstrap(pending=True, since=_NOW)
-
-        assert not await held.brief_will_carry(seams.user.id)
-
     async def test_a_workflow_whose_user_is_gone_fails_loud(
         self, seams: _Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -198,16 +191,6 @@ class TestReleaseAfterDailyRun:
             "Digest: Three new leads",
         )
         seams.consume.assert_awaited_once_with(seams.user.id, ["h1"])
-
-    async def test_a_first_brief_held_for_a_goal_releases_what_was_held(
-        self, seams: _Seams
-    ) -> None:
-        seams.state.bootstrap = BriefingBootstrap(pending=True, since=_NOW)
-
-        await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.BOOTSTRAP_PENDING)
-
-        seams.notify.assert_awaited_once()
-        seams.consume.assert_awaited_once()
 
     async def test_a_sent_brief_on_a_live_loop_leaves_the_rest_for_tomorrow(
         self, seams: _Seams

@@ -367,7 +367,7 @@ absolute: if the user's replies above ALREADY answered this with a yes, never as
 it again in any wording. Acknowledge their yes plainly instead ("you said go
 ahead on the investor list, that's in motion") and say nothing more about it. Only when
 the knowledge above is truly empty, ask ONE short question for what they are working
-toward, grounded in what you DO know (profession, onboarding focus, recent activity).
+toward, grounded in what you DO know (profession, recent activity).
 Offer no options: choices you make up are guesses dressed as their goals.
 Never ask an open-ended "what can I help with".
 """.strip()

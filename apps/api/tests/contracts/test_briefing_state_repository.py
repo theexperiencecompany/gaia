@@ -52,7 +52,6 @@ class TestAUserWithNoRow:
     async def test_clearing_what_was_never_set_creates_no_row(
         self, repo: BriefingStateRepository, raw_collection: AsyncIOMotorCollection
     ) -> None:
-        await repo.clear_bootstrap(USER)
         await repo.clear_wind_down(USER)
 
         assert await raw_collection.count_documents({}) == 0
@@ -68,7 +67,6 @@ class TestOneRowPerUser:
         await repo.upsert(USER, BriefingStateUpdate(schedule=schedule))
         await repo.upsert(USER, BriefingStateUpdate(editions={"menu": EditionChoice.OFF}))
         await repo.set_bag(USER, BriefingBag.EDITION_FAMILY, bag)
-        await repo.hold_for_goal(USER)
         await repo.set_idle_day(USER, idle_days=1, date_str="2026-11-18")
         await repo.mark_day_zero_hello_sent(USER, "telegram")
         await repo.upsert(OTHER, BriefingStateUpdate(schedule=BriefingSchedule(hour=9)))
@@ -81,7 +79,6 @@ class TestOneRowPerUser:
             {"menu": EditionChoice.OFF},
             {BriefingBag.EDITION_FAMILY: bag},
         )
-        assert stored.bootstrap is not None
         assert stored.wind_down == BriefingWindDown(idle_days=1, date="2026-11-18")
         assert stored.day_zero_hello is not None
         assert (await repo.state_for(OTHER)).schedule == BriefingSchedule(hour=9)
@@ -116,42 +113,6 @@ class TestSettings:
         stored = await repo.state_for(USER)
         assert stored.schedule.frequency is BriefingFrequency.OFF
         assert stored.editions == {"menu": EditionChoice.OFF}
-
-
-class TestTheGoalHold:
-    async def test_the_hold_is_stamped_in_utc_then_cleared(
-        self, repo: BriefingStateRepository, local_time_offset_from_utc: None
-    ) -> None:
-        before = _just_before()
-
-        await repo.hold_for_goal(USER)
-
-        held = (await repo.state_for(USER)).bootstrap
-        assert held is not None and held.pending is True
-        assert _stamped_now(held.since, before)
-        await repo.clear_bootstrap(USER)
-        assert (await repo.state_for(USER)).bootstrap is None
-
-    async def test_a_second_hold_never_restarts_the_grace_window(
-        self, repo: BriefingStateRepository
-    ) -> None:
-        await repo.hold_for_goal(USER)
-        first = (await repo.state_for(USER)).bootstrap
-
-        await repo.hold_for_goal(USER)
-
-        assert (await repo.state_for(USER)).bootstrap == first
-
-    async def test_a_row_without_a_hold_takes_one_and_keeps_the_rest(
-        self, repo: BriefingStateRepository
-    ) -> None:
-        await repo.upsert(USER, BriefingStateUpdate(schedule=BriefingSchedule(hour=6)))
-
-        await repo.hold_for_goal(USER)
-
-        stored = await repo.state_for(USER)
-        assert stored.bootstrap is not None and stored.bootstrap.pending is True
-        assert stored.schedule == BriefingSchedule(hour=6)
 
 
 class TestShuffleBags:

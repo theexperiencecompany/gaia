@@ -24,7 +24,7 @@ from app.services.briefing.candidates.pool import GatheredCandidates
 from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.goals import StatedGoal, format_goal_block, stated_goals
-from app.services.briefing.lifecycle import bootstrap_should_skip, wake_or_skip
+from app.services.briefing.lifecycle import wake_or_skip
 from app.services.briefing.lookback import (
     Lookback,
     WinbackState,
@@ -179,10 +179,9 @@ class DailyStanding(Standing):
 
     @override
     def settlement(self) -> BriefSettlement:
-        """Clear the bootstrap, record a goal question that went out, and wind down after the goodbye."""
+        """Record a goal question that went out, and wind down after the goodbye."""
         ladder = self._ladder
         return BriefSettlement(
-            clears_bootstrap=self.state.bootstrap is not None,
             asked_goal=ladder.goal_question is not wind_down.GoalQuestion.ASKED,
             winds_down=ladder.wind_down is WindDown.FINAL,
         )
@@ -195,10 +194,7 @@ async def stand_daily(
     dstate = await wake_or_skip(state)
     if dstate is None:
         return BriefingRunOutcome.DORMANT
-    goals = await stated_goals(user.id, user)
-    if bootstrap_should_skip(state, bool(goals)):
-        log.info("briefing.bootstrap_pending_skip", user_id=user.id)
-        return BriefingRunOutcome.BOOTSTRAP_PENDING
+    goals = await stated_goals(user.id)
     last = await last_brief(user.id, clock, BriefingKind.DAILY)
     winback = await compute_winback_state(user)
     # Gone-quiet backoff: a winback already went out and the user is still silent.

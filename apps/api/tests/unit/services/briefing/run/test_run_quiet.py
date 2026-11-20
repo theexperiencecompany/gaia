@@ -46,10 +46,8 @@ from app.models.brief_payload_models import (
     BriefingMood,
     UnreadSource,
 )
-from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.brief_view_models import BriefNoteNotification
-from app.models.briefing_state_models import BriefingBootstrap
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.scout_models import (
     ScoutSkipReason,
@@ -89,17 +87,6 @@ class TestAQuietDay:
         world.brief_message.assert_awaited_once_with(USER, payload.message, None)
         assert world.capture.call_args.args[1].form == "quiet_note"
         assert world.bags == bags_before
-
-    async def test_a_quiet_note_settles_the_released_goal_hold_it_went_out_under(
-        self, world: World
-    ) -> None:
-        quiet_day(world)
-        world.state.bootstrap = BriefingBootstrap(pending=False, since=NOW)
-
-        assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.SENT
-
-        assert world.stored().form is BriefForm.QUIET_NOTE
-        assert world.state.bootstrap is None
 
     async def test_the_note_says_what_the_run_could_not_read_and_what_is_overdue(
         self, world: World
@@ -289,7 +276,7 @@ class TestAQuietWeek:
         """Replay: a quiet week dropped the stalled growth goal the old weekly recapped."""
         world.calendar = []
         world.todos.rows.clear()
-        goal = StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        goal = StatedGoal("Launch Atlas", terms=("Atlas",))
         world.goals = [goal]
         world.todos.add(
             own("a2", "Atlas pricing", updated_at=NOW - timedelta(days=9)),

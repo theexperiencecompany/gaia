@@ -25,7 +25,6 @@ from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.brief_document_models import BriefCardRecord, BriefingModel, DeliveryStep
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_state_models import (
-    BriefingBootstrap,
     BriefingStateDocument,
     BriefingWindDown,
     ShuffleBag,
@@ -267,14 +266,6 @@ class InMemoryBriefingState(Store):
 
     async def set_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         self.row(user_id).shuffle_bags[BriefingBag(bag)] = state.model_copy(deep=True)
-
-    async def hold_for_goal(self, user_id: str) -> None:
-        state = self.row(user_id)
-        if state.bootstrap is None:
-            state.bootstrap = BriefingBootstrap(pending=True, since=datetime.now(UTC))
-
-    async def clear_bootstrap(self, user_id: str) -> None:
-        self.row(user_id).bootstrap = None
 
     async def set_idle_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
         marker = self._wind_down(user_id)

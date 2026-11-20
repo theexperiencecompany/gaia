@@ -273,11 +273,6 @@ GOAL_WORK_STALLED_AFTER: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 
-# Existing-user rollout: a briefing whose user still lacks a derivable goal is
-# held (bootstrap interview pending) until a goal memory arrives or this many
-# days pass, after which a triage-derived best-effort briefing fires.
-BOOTSTRAP_GRACE_DAYS: Final[int] = 3
-
 # Deterministic per-day hue rotation of the bands-gradient hero. Coprime step
 # over 360 so consecutive days are visually distinct but the sequence is stable.
 HUE_ROTATION_STEP: Final[int] = 137
@@ -395,7 +390,6 @@ class BriefingRunOutcome(StrEnum):
     SENT = "sent"
     ALREADY_DELIVERED = "already_delivered"
     DORMANT = "dormant"
-    BOOTSTRAP_PENDING = "bootstrap_pending"
     WINBACK_BACKOFF = "winback_backoff"
     #: Another quiet day after a quiet note: nothing is sent until something real happens.
     SILENT = "silent"
@@ -406,7 +400,6 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
     BriefingRunOutcome.SENT: "Briefing delivered",
     BriefingRunOutcome.ALREADY_DELIVERED: "Skipped: this briefing was already delivered today",
     BriefingRunOutcome.DORMANT: "Skipped: briefings are paused until the user is active again",
-    BriefingRunOutcome.BOOTSTRAP_PENDING: "Skipped: held until the user's goal is known",
     BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
     BriefingRunOutcome.SILENT: "Skipped: still quiet since the last quiet note",
 }

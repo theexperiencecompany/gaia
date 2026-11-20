@@ -437,7 +437,6 @@ class OnboardingSubdocument(BaseModel):
     completed_at: datetime | None = None
     phase: OnboardingPhase | None = None
     preferences: OnboardingPreferences | None = None
-    focus: str = ""
     clarify_answers: list[dict[str, Any]] = Field(default_factory=list)
     #: When each wizard step was first reached this run; the stamp is what makes its event fire once.
     steps_reached: dict[OnboardingStep, datetime] = Field(default_factory=dict)

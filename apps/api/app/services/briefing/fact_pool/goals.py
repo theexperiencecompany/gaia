@@ -51,7 +51,6 @@ def goal_states(
             GoalState(
                 id=f"g{len(states) + 1}",
                 statement=goal.statement,
-                origin=goal.origin,
                 done=len(done),
                 done_by_gaia=by.count(TodoCompleter.GAIA),
                 done_by_you=by.count(TodoCompleter.USER),

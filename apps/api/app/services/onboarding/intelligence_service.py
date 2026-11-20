@@ -155,7 +155,6 @@ class OnboardingContext:
     user_id: str
     name: str | None
     profession: str = ""
-    focus: str = ""
     user_email: str | None = None
     triage: InboxTriage | None = None
     writing_style: WritingStyleProfile | None = None
@@ -233,7 +232,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         name=display_name(user),
         profession=(onboarding.preferences.profession if onboarding.preferences else None)
         or "",  # pragma: no mutate — the default for a missing answer
-        focus=onboarding.focus,
         user_email=user.email,
         clarify_answers=cast(list[ClarifyAnswerRecord], onboarding.clarify_answers),
     )
@@ -243,7 +241,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     t_gather = time.monotonic()
     triage, writing_style = await asyncio.gather(
-        _run_triage(user_id, inbox_ctx, base_ctx.profession, base_ctx.focus),
+        _run_triage(user_id, inbox_ctx, base_ctx.profession),
         _run_writing_style(user_id, base_ctx.profession),
     )
     log.info(
@@ -406,7 +404,6 @@ async def _run_triage(
     user_id: str,
     inbox_ctx: InboxScanContext,
     profession: str,
-    focus: str,
 ) -> InboxTriage | None:
     await inbox_ctx.first_batch_ready.wait()
     emails = list(inbox_ctx.emails)
@@ -428,7 +425,7 @@ async def _run_triage(
 
     t0 = time.monotonic()
     try:
-        result = await triage_inbox(user_id, emails, profession=profession, focus=focus)
+        result = await triage_inbox(user_id, emails, profession=profession)
     except Exception as e:
         log.error(
             f"{LogTag.ONBOARDING} triage failed",
@@ -567,8 +564,6 @@ async def _run_holo_card(
         if social_profiles:
             platforms = ", ".join(f"{p.platform}: {p.url}" for p in social_profiles)
             context_parts.append(f"Social profiles: {platforms}")
-        if ctx.focus:
-            context_parts.append(f"Current focus: {ctx.focus}")
         clarify_answers: list[ClarifyAnswerRecord] = ctx.clarify_answers or []
         for answer in clarify_answers:
             value = (answer.get("value") or "").strip()

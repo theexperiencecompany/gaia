@@ -165,7 +165,7 @@ The receipt is noise, the weekly sync is routine, and two invoices read fine wit
 
 2. A quiet day for a writer with a goal. Pool, in part: 3. [GAIA] done: Agent query letter
 feedback | outcome finished · 4. [Google Calendar] calendar event: Call with Ines | at 2:00 PM ·
-g1 | "Finish the novel's first draft by spring" (from memory) | linked todos: 4 finished in the
+g1 | "Finish the novel's first draft by spring" | linked todos: 4 finished in the
 window, 1 open: Chapter 7; Chapter 8; Chapter 9 outline; Research trip notes; Chapter 9 draft
 {"blocks": [
   {"kind": "progress", "goal_id": "g1"},

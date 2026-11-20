@@ -68,7 +68,6 @@ from app.models.brief_composition_models import BriefComposition
 from app.models.brief_document_models import BriefDelivery, BriefingModel, DeliveryStep
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingEvent, BriefingPayload, BriefVoice
-from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown, ShuffleBag
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.chat_models import ConversationSource
@@ -88,7 +87,7 @@ from app.models.scout_models import (
 )
 from app.models.short_link_models import RecordTarget, ShortLink
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingSubdocument, UserDocument
+from app.models.user_models import UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.briefing import (
@@ -174,7 +173,7 @@ DORMANT_SINCE = datetime(2026, 10, 1, tzinfo=UTC)
 LAST_SEEN = NOW - timedelta(days=6)
 #: When an idle reader was last active: past the week that keeps a reader active.
 IDLE_SINCE = NOW - timedelta(days=8)
-SHIP_V2 = StatedGoal("Ship v2", GoalOrigin.ONBOARDING)
+SHIP_V2 = StatedGoal("Ship v2")
 
 # ---- The stand-in model ------------------------------------------------------------------
 
@@ -617,7 +616,7 @@ class World:
         default_factory=lambda: MagicMock(wraps=build_weekly_voice_prompt)
     )
     #: What memory recalls of the user's goals: their facts, each one a goal.
-    memory_goals: list[StatedGoal] = field(default_factory=list)
+    goals: list[StatedGoal] = field(default_factory=lambda: [SHIP_V2])
     #: When the user mentioned the goals memory recalls; None when memory kept no date.
     goals_mentioned_at: datetime | None = None
     chat: ChatChannel | None = CHAT
@@ -681,19 +680,6 @@ class World:
     def briefs(self) -> dict[str, BriefingModel]:
         """The briefings collection: each stored brief by id, as the run left it."""
         return self.briefings.rows
-
-    @property
-    def goals(self) -> list[StatedGoal]:
-        focus = self.user.onboarding.focus if self.user.onboarding else None
-        stated = [StatedGoal(focus, GoalOrigin.ONBOARDING)] if focus else []
-        return stated + self.memory_goals
-
-    @goals.setter
-    def goals(self, goals: list[StatedGoal]) -> None:
-        """Have the user state these goals: one in onboarding, the rest as memory recalls them."""
-        stated = [g.statement for g in goals if g.origin is GoalOrigin.ONBOARDING]
-        self.user.onboarding = OnboardingSubdocument(focus=stated[0] if stated else "")
-        self.memory_goals = [g for g in goals if g.origin is not GoalOrigin.ONBOARDING]
 
     def track(self, work: TrackedWork) -> None:
         """Store GAIA's tracked work as the todos collection holds it, each todo in its state."""
@@ -775,6 +761,7 @@ class World:
 def dormant(world: World) -> None:
     """Have the loop wound down since DORMANT_SINCE, its reader stating no goal and never active since."""
     world.user = UserDocument(id=USER, timezone=TZ, email="a@b.c")
+    world.goals = []
     world.state = BriefingStateDocument(
         user_id=USER, wind_down=BriefingWindDown(idle_days=3, wound_down_since=DORMANT_SINCE)
     )
@@ -940,7 +927,7 @@ def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
 
     async def recall(user_id: str, _query: str, *, limit: int) -> MemorySearchResult:
         facts = (
-            [_memory_fact(g, w.goals_mentioned_at) for g in w.memory_goals][:limit]
+            [_memory_fact(g, w.goals_mentioned_at) for g in w.goals][:limit]
             if user_id == USER
             else []
         )
@@ -988,7 +975,6 @@ def run_world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
                 email="a@b.c",
                 name="Ada",
                 last_active_at=LAST_SEEN,
-                onboarding=OnboardingSubdocument(focus=SHIP_V2.statement),
             )
         )
     )

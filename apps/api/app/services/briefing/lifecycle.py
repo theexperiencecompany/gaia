@@ -1,41 +1,17 @@
-"""The gates a run passes before any model cost: once per day, the bootstrap hold and the wind-down."""
+"""The gates a run passes before any model cost: once per day and the wind-down."""
 
-from datetime import UTC, datetime, timedelta
-
-from app.constants.briefing import (
-    BOOTSTRAP_GRACE_DAYS,
-    BriefingKind,
-)
+from app.constants.briefing import BriefingKind
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefSettlement
 from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
 from app.services.briefing import wind_down
 from app.services.briefing.clock import UserClock
-from app.utils.timezone import as_utc
 from shared.py.wide_events import log
 
 
-def bootstrap_holds(state: BriefingStateDocument) -> bool:
-    """Whether an existing user's first brief is held for a goal: marked, inside the grace window."""
-    marker = state.bootstrap
-    if marker is None or not marker.pending:
-        return False
-    return datetime.now(UTC) - as_utc(marker.since) < timedelta(days=BOOTSTRAP_GRACE_DAYS)
-
-
-def bootstrap_should_skip(state: BriefingStateDocument, has_goal: bool) -> bool:
-    """Existing-user rollout gate: skip the run while the hold stands and no goal has arrived.
-
-    Past the grace window the run proceeds as a best-effort brief, re-asking for a goal.
-    """
-    return not has_goal and bootstrap_holds(state)
-
-
 async def settle_brief(user_id: str, settlement: BriefSettlement) -> None:
-    """Settle the reader's state for a brief that went out: its bootstrap hold, goal question and goodbye."""
-    if settlement.clears_bootstrap:
-        await briefing_state_repository.clear_bootstrap(user_id)
+    """Settle the reader's state for a brief that went out: its goal question and goodbye."""
     if settlement.asked_goal:
         await briefing_state_repository.record_goal_question(user_id)
     if settlement.winds_down:

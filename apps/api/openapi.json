@@ -8992,15 +8992,6 @@
         "title": "GmailPollInboxConfig",
         "type": "object"
       },
-      "GoalOrigin": {
-        "description": "Where GAIA learned the goal.",
-        "enum": [
-          "onboarding",
-          "memory"
-        ],
-        "title": "GoalOrigin",
-        "type": "string"
-      },
       "GoalState": {
         "description": "A goal the user stated, and the work linked to it, counted from their todos.",
         "properties": {
@@ -9037,9 +9028,6 @@
             "title": "Open",
             "type": "integer"
           },
-          "origin": {
-            "$ref": "#/components/schemas/GoalOrigin"
-          },
           "since": {
             "anyOf": [
               {
@@ -9067,7 +9055,6 @@
         "required": [
           "id",
           "statement",
-          "origin",
           "done",
           "done_by_gaia",
           "done_by_you",

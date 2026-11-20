@@ -130,6 +130,6 @@ async def stand_weekly(
         user=user,
         state=state,
         clock=clock,
-        goals=await stated_goals(user.id, user),
+        goals=await stated_goals(user.id),
         prior=dstate,
     )

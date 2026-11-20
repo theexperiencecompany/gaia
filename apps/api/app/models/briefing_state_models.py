@@ -9,13 +9,6 @@ from app.db.repositories.base import MongoDocument
 from app.models.brief_settings_models import BriefingSchedule
 
 
-class BriefingBootstrap(BaseModel):
-    """An existing user's briefs held until a goal is known (see briefing.rollout)."""
-
-    pending: bool
-    since: datetime
-
-
 class BriefingWindDown(BaseModel):
     """The idle ladder: consecutive idle days, the last day counted, when the brief
     wound down (None while it is still running), and when it last asked about a goal."""
@@ -63,7 +56,6 @@ class BriefingStateDocument(MongoDocument):
     schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
     #: Daily edition families taken out of the rotation or favourited; an absent family is on.
     editions: dict[str, EditionChoice] = Field(default_factory=dict)
-    bootstrap: BriefingBootstrap | None = None
     wind_down: BriefingWindDown | None = None
     day_zero_hello: DayZeroHello | None = None
     shuffle_bags: dict[BriefingBag, ShuffleBag] = Field(default_factory=dict)

@@ -21,7 +21,6 @@ from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefPoolItem
 from app.models.brief_pool_models import (
     DataSeries,
-    GoalOrigin,
     GoalState,
     QuoteSpan,
     SeriesPoint,
@@ -56,7 +55,7 @@ _QUOTE = QuoteSpan(
     app="Gmail",
     item_id=1,
 )
-_GOAL = GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2, open=1)
+_GOAL = GoalState(id="g1", statement="Ship v3", done=2, open=1)
 POOL = FactPool(
     items={
         1: BriefCandidate(

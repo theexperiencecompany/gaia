@@ -2,10 +2,8 @@
 """Idempotent existing-user briefing rollout; a dry run unless --apply.
 
 For every onboarded user: provision the daily-briefing + weekly-digest system workflows
-and fit them to the user's schedule and plan. Users we can derive a goal for get a real
-first briefing next morning; sparse users with no derivable goal have their briefings
-held (bootstrap marker) until a goal arrives or the grace window elapses. A user still
-in the wizard is left to it. Safe to re-run: provisioning is idempotent by
+and fit them to the user's schedule and plan. Every user gets a first briefing next
+morning, goal or not. A user still in the wizard is left to it. Safe to re-run: provisioning is idempotent by
 system_workflow_key and the path taken is printed.
 
 Run: uv run python -m scripts.provision_daily_briefings [--apply]

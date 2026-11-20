@@ -10375,12 +10375,6 @@ export interface components {
             trigger_name: "gmail_poll_inbox";
         };
         /**
-         * GoalOrigin
-         * @description Where GAIA learned the goal.
-         * @enum {string}
-         */
-        GoalOrigin: "onboarding" | "memory";
-        /**
          * GoalState
          * @description A goal the user stated, and the work linked to it, counted from their todos.
          */
@@ -10403,7 +10397,6 @@ export interface components {
             linked: string[];
             /** Open */
             open: number;
-            origin: components["schemas"]["GoalOrigin"];
             /** Since */
             since: string | null;
             /** Stalled */
@@ -18580,7 +18573,6 @@ export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
 export type GmailPersonalizedNotification = components['schemas']['GmailPersonalizedNotification'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
-export type GoalOrigin = components['schemas']['GoalOrigin'];
 export type GoalState = components['schemas']['GoalState'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];

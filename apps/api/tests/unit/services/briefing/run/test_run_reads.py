@@ -113,7 +113,7 @@ class TestTheDailyRunReads:
         assert prompt_args["date_local"] == DATE
         blocks = prompt_args["blocks"]
         assert (blocks.goal, blocks.replies) == (
-            "Stated goal: Ship v2",
+            "- Ship v2",
             "No replies since the last brief.",
         )
         # The look-back reads the run's own read of what got done: the user's Gym.

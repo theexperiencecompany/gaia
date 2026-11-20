@@ -27,7 +27,6 @@ from app.models.brief_composition_models import BriefComposition, ComposedItems
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import (
     DataSeries,
-    GoalOrigin,
     GoalState,
     QuoteSpan,
     SeriesPoint,
@@ -132,7 +131,7 @@ POOL = FactPool(
             item_id=1,
         )
     ],
-    goals=[GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2, open=1)],
+    goals=[GoalState(id="g1", statement="Ship v3", done=2, open=1)],
     context=PoolContext(
         reader="Ada",
         clock=user_clock("UTC", date(2026, 11, 11)),

@@ -14,7 +14,6 @@ from tests.factories import make_user_id
 from tests.helpers import user_clock
 
 from app.constants.memory import MemoryKind
-from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_state_models import BriefingStateDocument, BriefingWindDown
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.user_models import UserDocument
@@ -51,6 +50,6 @@ async def test_a_running_loops_digest_stands_on_the_users_goals_and_its_ladder(
         user=user,
         state=state,
         clock=CLOCK,
-        goals=[StatedGoal("Ship v3 by December", GoalOrigin.MEMORY)],
+        goals=[StatedGoal("Ship v3 by December")],
         prior=ladder,
     )

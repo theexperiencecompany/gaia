@@ -470,7 +470,6 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "held_for_goal": boolean;
   };
   "briefing:sent": {
     "actor": "user" | "agent";

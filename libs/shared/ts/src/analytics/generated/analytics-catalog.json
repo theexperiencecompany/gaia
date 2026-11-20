@@ -1605,15 +1605,7 @@
       "properties": {
         "additionalProperties": false,
         "description": "The daily brief and weekly recap schedules were created for a user.",
-        "properties": {
-          "held_for_goal": {
-            "title": "Held For Goal",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "held_for_goal"
-        ],
+        "properties": {},
         "title": "BriefingProvisioned",
         "type": "object"
       }

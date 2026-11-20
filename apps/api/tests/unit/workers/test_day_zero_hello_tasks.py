@@ -22,7 +22,6 @@ from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
-from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import BriefingStateDocument, DayZeroHello
 from app.models.user_models import UserDocument
@@ -59,9 +58,7 @@ class Seams:
         self.get_user = AsyncMock(return_value=_user())
         self.mark_sent = AsyncMock()
         self.state = AsyncMock(return_value=BriefingStateDocument(user_id=_USER))
-        self.goal = AsyncMock(
-            return_value=[StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
-        )
+        self.goal = AsyncMock(return_value=[StatedGoal("raise a seed round")])
         self.agent = AsyncMock(return_value=SimpleNamespace(message='["Hi Ada!", "Brief at 8."]'))
         self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         self.capture = MagicMock()
@@ -219,11 +216,11 @@ class TestDelivery:
     async def test_the_agent_writes_from_the_users_first_name_and_goal(self, seams: Seams) -> None:
         await seams.send()
 
-        seams.goal.assert_awaited_once_with(_USER, seams.get_user.return_value)
+        seams.goal.assert_awaited_once_with(_USER)
         run = seams.agent.await_args.kwargs
         prompt = run["request"].message
         assert "texting Ada for the first time" in prompt
-        assert "Stated goal: raise a seed round" in prompt
+        assert "- raise a seed round" in prompt
         assert "OFFER one specific" in prompt
         assert [m["content"] for m in run["request"].messages] == [prompt]
         assert [m["role"] for m in run["request"].messages] == ["user"]

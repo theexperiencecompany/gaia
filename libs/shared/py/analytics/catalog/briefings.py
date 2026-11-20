@@ -73,8 +73,6 @@ class BriefingProvisioned(ServerEvent):
     event: ClassVar[str] = "briefing:provisioned"
     budget_per_user_day: ClassVar[int] = 2
 
-    held_for_goal: bool
-
 
 class BriefingDayZeroHelloSent(ServerEvent):
     """GAIA's first text reached a freshly linked chat platform."""

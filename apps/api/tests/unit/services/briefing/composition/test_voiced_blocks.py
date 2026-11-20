@@ -10,7 +10,6 @@ from app.models.brief_composition_models import (
 )
 from app.models.brief_pool_models import (
     DataSeries,
-    GoalOrigin,
     GoalState,
     QuoteSpan,
     SeriesPoint,
@@ -54,7 +53,6 @@ PROGRESS = ProgressBlock(
     goal=GoalState(
         id="g1",
         statement="Ship v3",
-        origin=GoalOrigin.MEMORY,
         done=2,
         done_by_gaia=1,
         done_by_you=1,

@@ -249,8 +249,8 @@ class _Harness:
                 f"{MODULE}.workflow_repository.find_system_workflow",
                 AsyncMock(return_value=MagicMock(activated=True)),
             ),
-            # brief_will_carry's state and winback reads: no goal hold or dormancy, and no
-            # brief has gone unanswered.
+            # brief_will_carry's state and winback reads: no dormancy, and no brief
+            # has gone unanswered.
             patch(
                 "app.services.briefing.held.briefing_state_repository.state_for",
                 AsyncMock(side_effect=lambda user_id: BriefingStateDocument(user_id=user_id)),

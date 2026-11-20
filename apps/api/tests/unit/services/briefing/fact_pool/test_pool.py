@@ -30,7 +30,6 @@ from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import UnreadSource
 from app.models.brief_pool_models import (
     DataSeries,
-    GoalOrigin,
     GoalState,
     SeriesPoint,
     SeriesShape,
@@ -191,7 +190,7 @@ async def _reads() -> PoolReads:
         items=items,
         signals=[_MAYA, _INVOICE],
         calendar=[meeting],
-        goals=[StatedGoal("Launch the GAIA mobile app", GoalOrigin.MEMORY, ("GAIA",))],
+        goals=[StatedGoal("Launch the GAIA mobile app", ("GAIA",))],
         criteria={"Gmail": "a person waiting on a reply"},
         work=await read_work(USER_ID, WINDOW.start),
     )
@@ -305,7 +304,7 @@ class TestThePoolAsTheComposerReadsIt:
         ) in block
         assert 'q1 | Maya Chen, in Gmail, on item 1: "Can you confirm the preference' in block
         assert (
-            'g1 | "Launch the GAIA mobile app" (from memory) | linked todos: 1 finished since '
+            'g1 | "Launch the GAIA mobile app" | linked todos: 1 finished since '
             "Thu Nov 5 (1 by GAIA), 1 open: GAIA privacy labels; GAIA beta invite email"
         ) in block
 
@@ -898,15 +897,14 @@ class TestSeriesAndGoalLines:
         )
 
     def test_a_goal_with_no_linked_todo_says_so(self) -> None:
-        goal = GoalState(id="g1", statement="Ship", origin=GoalOrigin.MEMORY, done=0, open=0)
+        goal = GoalState(id="g1", statement="Ship", done=0, open=0)
 
-        assert goal_line(goal) == 'g1 | "Ship" (from memory) | no todo names what it is about'
+        assert goal_line(goal) == 'g1 | "Ship" | no todo names what it is about'
 
     def test_a_goal_says_who_finished_its_work_and_what_is_stuck(self) -> None:
         goal = GoalState(
             id="g2",
             statement="Close the Atlas round",
-            origin=GoalOrigin.MEMORY,
             done=4,
             done_by_gaia=1,
             done_by_you=2,
@@ -916,7 +914,7 @@ class TestSeriesAndGoalLines:
         )
 
         assert goal_line(goal) == (
-            'g2 | "Close the Atlas round" (from memory) | linked todos: 4 finished (1 by GAIA,'
+            'g2 | "Close the Atlas round" | linked todos: 4 finished (1 by GAIA,'
             " 2 by the user, 1 by an event, or no one recorded), 2 open: Atlas deck; Atlas model;"
             " Atlas memo; Atlas data room; Atlas pricing | stuck a week or more: Atlas pricing;"
             " Atlas press"
@@ -926,7 +924,6 @@ class TestSeriesAndGoalLines:
         goal = GoalState(
             id="g1",
             statement="Ship",
-            origin=GoalOrigin.MEMORY,
             done=0,
             since="2026-11-05",
             open=1,
@@ -934,6 +931,5 @@ class TestSeriesAndGoalLines:
         )
 
         assert goal_line(goal) == (
-            'g1 | "Ship" (from memory) | linked todos: 0 finished since Thu Nov 5, 1 open:'
-            " Ship the beta"
+            'g1 | "Ship" | linked todos: 0 finished since Thu Nov 5, 1 open: Ship the beta'
         )

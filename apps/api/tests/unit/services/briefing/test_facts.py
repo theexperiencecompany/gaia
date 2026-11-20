@@ -27,7 +27,6 @@ from app.models.brief_payload_models import (
 )
 from app.models.brief_pool_models import (
     DataSeries,
-    GoalOrigin,
     GoalState,
     SeriesPoint,
     SeriesShape,
@@ -780,15 +779,12 @@ class TestTheWeekRecap:
             GoalState(
                 id="g1",
                 statement="Ship Atlas",
-                origin=GoalOrigin.MEMORY,
                 done=2,
                 open=2,
                 linked=["Atlas v11 build", "Atlas docs", "Atlas pricing", "Atlas press"],
                 stalled=["Atlas pricing", "Atlas press"],
             ),
-            GoalState(
-                id="g2", statement="Run a marathon", origin=GoalOrigin.ONBOARDING, done=0, open=0
-            ),
+            GoalState(id="g2", statement="Run a marathon", done=0, open=0),
         ]
         sources = FactSources(
             artifacts={},
@@ -832,7 +828,6 @@ class TestTheWeekRecap:
         goal = GoalState(
             id="g1",
             statement="Ship Atlas",
-            origin=GoalOrigin.MEMORY,
             done=0,
             open=2,
             linked=["Atlas pricing", "Atlas press"],
@@ -871,7 +866,6 @@ class TestTheWeekRecap:
         goal = GoalState(
             id="g1",
             statement="Ship Atlas",
-            origin=GoalOrigin.MEMORY,
             done=0,
             open=2,
             linked=["Atlas pricing", "Atlas press"],

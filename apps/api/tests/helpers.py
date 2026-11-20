@@ -104,7 +104,7 @@ def briefs_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[Briefin
 
 @contextmanager
 def brief_loop_awake() -> Iterator[None]:
-    """Serve brief_will_carry's reads past the workflow: a user with no goal hold, dormancy or winback."""
+    """Serve brief_will_carry's reads past the workflow: a user with no dormancy or winback."""
     with (
         patch.object(
             user_repository, "get", new=AsyncMock(side_effect=lambda uid: UserDocument(id=uid))

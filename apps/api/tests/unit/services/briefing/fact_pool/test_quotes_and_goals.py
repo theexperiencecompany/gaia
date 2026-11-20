@@ -9,7 +9,7 @@ from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUO
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
-from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
+from app.models.brief_pool_models import GoalState, QuoteSpan
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.quotes import quote_spans, verbatim_span
@@ -164,8 +164,8 @@ _SINCE = date(2026, 11, 9)
 class TestGoalStates:
     def test_todos_naming_what_a_goal_is_about_are_its_linked_work(self) -> None:
         goals = [
-            StatedGoal("Launch the GAIA mobile app by December", GoalOrigin.MEMORY, ("GAIA",)),
-            StatedGoal("Raise a seed round", GoalOrigin.MEMORY, ("Accel", "Sequoia")),
+            StatedGoal("Launch the GAIA mobile app by December", ("GAIA",)),
+            StatedGoal("Raise a seed round", ("Accel", "Sequoia")),
         ]
         todos = [
             make_todo(
@@ -187,7 +187,6 @@ class TestGoalStates:
         assert mobile == GoalState(
             id="g1",
             statement="Launch the GAIA mobile app by December",
-            origin=GoalOrigin.MEMORY,
             done=2,
             done_by_gaia=1,
             done_by_you=1,
@@ -209,7 +208,7 @@ class TestGoalStates:
         )
 
     def test_open_work_untouched_a_week_or_more_is_stuck_and_the_rest_is_not(self) -> None:
-        goal = StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        goal = StatedGoal("Launch Atlas", terms=("Atlas",))
         todos = [
             make_todo("Atlas pricing", updated_at=_NOW - GOAL_WORK_STALLED_AFTER),
             make_todo(
@@ -225,14 +224,13 @@ class TestGoalStates:
 
     def test_a_goal_that_names_nothing_has_no_linked_work(self) -> None:
         [goal] = goal_states(
-            [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)],
+            [StatedGoal("Close 10 customers")],
             [make_todo("Customer call")],
             _NOW,
             _SINCE,
         )
 
-        assert (goal.origin, goal.done, goal.open, goal.linked) == (
-            GoalOrigin.ONBOARDING,
+        assert (goal.done, goal.open, goal.linked) == (
             0,
             0,
             [],

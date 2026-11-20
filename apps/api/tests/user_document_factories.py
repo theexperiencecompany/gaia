@@ -14,7 +14,7 @@ _USER_SAMPLE_STAMP = datetime(2024, 5, 1, tzinfo=UTC)
 # the first type name found in the field's annotation (order matters: the nested
 # models are named before the primitives their annotations also mention).
 _USER_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
-    ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
+    ("OnboardingSubdocument", OnboardingSubdocument(completed=True)),
     ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_USER_SAMPLE_STAMP)),
     ("QuietHours", QuietHours(enabled=True, start_hour=1, end_hour=6)),
     ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),

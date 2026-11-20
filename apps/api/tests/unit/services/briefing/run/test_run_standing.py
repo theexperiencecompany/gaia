@@ -1,8 +1,8 @@
-"""Where the reader stands: the goal hold, the idle ladder, the first week, a lighter cadence."""
+"""Where the reader stands: the idle ladder, the first week, a lighter cadence."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from tests.briefing_run_world import (
@@ -33,14 +33,11 @@ from app.constants.briefing import (
     BriefForm,
     BriefingFrequency,
     BriefingKind,
-    BriefingRunOutcome,
     WindDown,
 )
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.brief_pool_models import GoalOrigin
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import (
-    BriefingBootstrap,
     BriefingStateDocument,
     BriefingWindDown,
 )
@@ -79,69 +76,6 @@ class TestWhereTheDailyStarts:
 
         assert isinstance(standing, DailyStanding)
         assert standing.lookback == Lookback(last=earlier, since=DAY_START - timedelta(days=1))
-
-
-class TestTheGoalHold:
-    """An existing user's first brief waits for a goal, but only through the grace window."""
-
-    @staticmethod
-    def _pending(world: World, since: datetime) -> None:
-        world.user = UserDocument(id=USER, timezone=TZ, email="a@b.c")
-        world.state = BriefingStateDocument(
-            user_id=USER, bootstrap=BriefingBootstrap(pending=True, since=since)
-        )
-
-    @pytest.mark.parametrize(
-        "since", [NOW - timedelta(days=1), (NOW - timedelta(days=1)).replace(tzinfo=None)]
-    )
-    async def test_inside_the_grace_window_without_a_goal_nothing_is_sent(
-        self, world: World, since: datetime
-    ) -> None:
-        self._pending(world, since)
-        world.goals = []
-
-        assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.BOOTSTRAP_PENDING
-
-        world.voice.assert_not_awaited()
-        world.nothing_sent()
-
-    @pytest.mark.parametrize("age", [timedelta(days=3), timedelta(days=4)])
-    async def test_once_the_grace_window_has_passed_the_brief_goes_out(
-        self, world: World, age: timedelta
-    ) -> None:
-        self._pending(world, NOW - age)
-        world.goals = []
-
-        await run_brief(USER, BriefingKind.DAILY)
-
-        assert world.today() is not None
-        assert world.state.bootstrap is None
-
-    async def test_a_known_goal_releases_the_hold_and_clears_it(self, world: World) -> None:
-        self._pending(world, NOW - timedelta(hours=1))
-        world.memory_goals = [StatedGoal("Ship v2", GoalOrigin.MEMORY)]
-
-        await run_brief(USER, BriefingKind.DAILY)
-
-        assert world.today() is not None
-        assert world.state.bootstrap is None
-
-    async def test_a_hold_already_released_does_not_wait(self, world: World) -> None:
-        world.user = UserDocument(id=USER, timezone=TZ)
-        world.state = BriefingStateDocument(
-            user_id=USER, bootstrap=BriefingBootstrap(pending=False, since=NOW)
-        )
-        world.goals = []
-
-        await run_brief(USER, BriefingKind.DAILY)
-
-        assert world.today() is not None
-
-    async def test_a_user_never_held_has_nothing_to_clear(self, world: World) -> None:
-        await run_brief(USER, BriefingKind.DAILY)
-
-        assert world.today() is not None
-        assert world.states.calls_to("clear_bootstrap") == []
 
 
 class TestTheIdleLadder:
@@ -190,7 +124,7 @@ class TestTheIdleLadder:
         idle: bool,
     ) -> None:
         world.held = held
-        goals = [StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if has_goal else []
+        goals = [StatedGoal("Ship v2")] if has_goal else []
         world.goals = goals
         world.track(work)
 
@@ -229,7 +163,7 @@ class TestTheIdleLadder:
         world.state = BriefingStateDocument(
             user_id=USER, wind_down=BriefingWindDown(goal_asked_at=asked_at)
         )
-        goals = [StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if has_goal else []
+        goals = [StatedGoal("Ship v2")] if has_goal else []
         world.goals = goals
         world.user.last_active_at = NOW - timedelta(hours=1)
 

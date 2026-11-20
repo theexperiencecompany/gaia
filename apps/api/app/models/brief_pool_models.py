@@ -66,13 +66,6 @@ class QuoteSpan(BaseModel):
     item_id: int
 
 
-class GoalOrigin(StrEnum):
-    """Where GAIA learned the goal."""
-
-    ONBOARDING = "onboarding"
-    MEMORY = "memory"
-
-
 class GoalState(BaseModel):
     """A goal the user stated, and the work linked to it, counted from their todos."""
 
@@ -80,7 +73,6 @@ class GoalState(BaseModel):
 
     id: str
     statement: str = Field(min_length=1)
-    origin: GoalOrigin
     #: Linked todos completed in the brief's window, by anyone.
     done: int = Field(ge=0)
     #: Of those, the ones GAIA finished and the ones the user did.

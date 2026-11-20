@@ -217,7 +217,7 @@ def goal_progress(goal: GoalState) -> str:
 
 
 def goal_line(goal: GoalState) -> str:
-    line = f'{goal.id} | "{goal.statement}" (from {goal.origin.value})'
+    line = f'{goal.id} | "{goal.statement}"'
     if not goal.linked:
         return f"{line} | no todo names what it is about"
     line = f"{line} | linked todos: {goal_progress(goal)}: " + "; ".join(goal.linked)

@@ -47,7 +47,6 @@ async def triage_inbox(
     user_id: str,
     emails: list[dict[str, Any]],
     profession: str = "",
-    focus: str = "",
 ) -> InboxTriage | None:
     """Triage a list of emails to surface what's important."""
     if not emails:
@@ -80,7 +79,6 @@ async def triage_inbox(
         prompt = INBOX_TRIAGE_PROMPT.format(
             email_list=email_list_text,
             profession=profession or "not specified",
-            focus=focus or "not specified",
         )
         t_llm = time.monotonic()
         result: InboxTriageOutput = await ainvoke_structured(

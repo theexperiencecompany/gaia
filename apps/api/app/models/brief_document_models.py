@@ -60,8 +60,6 @@ class DeliveryStep(StrEnum):
 class BriefSettlement(BaseModel):
     """What the brief's run owes the reader's briefing state once the brief went out."""
 
-    #: The hold an existing user's first brief waited under for a goal is cleared.
-    clears_bootstrap: bool = False
     #: The brief asked about the user's goal, or for one.
     asked_goal: bool = False
     #: The brief said the idle ladder's goodbye: the loop winds down.

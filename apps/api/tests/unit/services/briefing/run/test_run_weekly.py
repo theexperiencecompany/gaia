@@ -352,7 +352,7 @@ class TestAWeeklyDigest:
         context = world.pool.context
         assert (context.reader, str(context.clock.tz), context.calendar) == ("Ada", TZ, 1)
         assert context.calendar_span == WEEK_AHEAD.words
-        assert world.weekly_prompt.call_args.kwargs["blocks"].goal == "Stated goal: Ship v2"
+        assert world.weekly_prompt.call_args.kwargs["blocks"].goal == "- Ship v2"
         payload = world.stored()
         assert [b.kind for b in payload.blocks] == ["items"]
         assert payload.uncomposed == []

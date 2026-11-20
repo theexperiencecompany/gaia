@@ -111,7 +111,6 @@ def _user(**overrides: Any) -> UserDocument:
         "email": "ann@x.com",
         "onboarding": {
             "preferences": {"profession": "lawyer"},
-            "focus": "close Q3",
             "clarify_answers": [{"kind": "goal", "value": "grow"}],
         },
     }
@@ -125,7 +124,6 @@ def _expected_ctx() -> OnboardingContext:
         user_id=USER,
         name="Ann",
         profession="lawyer",
-        focus="close Q3",
         user_email="ann@x.com",
         clarify_answers=[{"kind": "goal", "value": "grow"}],
     )
@@ -414,7 +412,7 @@ class TestProcessOnboardingIntelligenceHappyPath:
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["triage"].await_args.args[0] == USER
-        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
+        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer",)
         assert pipeline_stack["style"].await_args.args == (USER, "lawyer")
         assert pipeline_stack["social"].await_args.args == (USER, "Ann", "ann@x.com")
         assert pipeline_stack["holo"].await_args.args[0] == replace(

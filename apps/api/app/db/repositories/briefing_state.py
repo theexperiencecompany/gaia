@@ -11,7 +11,6 @@ from app.constants.briefing import BriefingBag
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.briefing_state_models import (
-    BriefingBootstrap,
     BriefingStateDocument,
     BriefingStateUpdate,
     DayZeroHello,
@@ -49,23 +48,6 @@ class BriefingStateRepository(MongoRepository[BriefingStateDocument, BriefingSta
     async def set_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         """Persist one shuffle bag's advanced state (see shuffle_bag.draw)."""
         await self._set(user_id, {f"shuffle_bags.{bag.value}": state.model_dump()})
-
-    async def hold_for_goal(self, user_id: str) -> None:
-        """Hold the user's briefs until a goal arrives or the grace window elapses.
-
-        Only a user with no hold yet is stamped, so a re-run never restarts a running window.
-        """
-        hold = BriefingBootstrap(pending=True, since=datetime.now(UTC)).model_dump()
-        await self._apply_pipeline_update_unfetched(
-            {"user_id": user_id},
-            [{"$set": {"bootstrap": {"$ifNull": ["$bootstrap", {"$literal": hold}]}}}],
-            scope=None,
-            upsert=True,
-        )
-
-    async def clear_bootstrap(self, user_id: str) -> None:
-        """Clear the goal hold once a real brief goes out."""
-        await self._unset(user_id, "bootstrap")
 
     async def set_idle_day(self, user_id: str, *, idle_days: int, date_str: str) -> None:
         """Persist today's idle/active outcome on the idle ladder."""
