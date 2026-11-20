@@ -2140,6 +2140,9 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
             patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(eq, "websocket_manager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
+            patch.object(
+                er.BotService, "load_conversation_history", new=AsyncMock(return_value=[])
+            ),
         ):
             await _deliver_ticket(_doc())
         return spawn

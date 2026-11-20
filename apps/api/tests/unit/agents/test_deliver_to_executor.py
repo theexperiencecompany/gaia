@@ -37,6 +37,7 @@ from app.constants.cache import (
 from app.constants.executor import EXECUTOR_CARRY_TASK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
+from app.models.message_models import MessageDict
 from app.models.user_models import AuthenticatedUser
 from tests.helpers import captured_wide_event
 
@@ -44,6 +45,14 @@ pytestmark = pytest.mark.unit
 
 CONVERSATION = "conv-1"
 TASK = "summarize the thread"
+HISTORY_LOADER = "app.services.bot_service.BotService.load_conversation_history"
+
+
+@pytest.fixture(autouse=True)
+def _no_conversation_history() -> Iterator[AsyncMock]:
+    """Stub the conversation history a started run reads: these tests store none."""
+    with patch(HISTORY_LOADER, new=AsyncMock(return_value=[])) as loader:
+        yield loader
 
 
 def _seams(*, busy: list[bool], started: bool):
@@ -218,6 +227,28 @@ class TestTheRunAnIdleConversationGets:
         assert configurable["user_timezone"] == "Asia/Kolkata"
         assert configurable["thread_id"] == CONVERSATION
         assert configurable["execution_mode"] == "interactive"
+
+    @pytest.mark.regression
+    async def test_it_carries_the_users_recent_turns_for_the_approval_judge(
+        self, fake_redis, _no_conversation_history: AsyncMock
+    ) -> None:
+        history = [
+            MessageDict(role="user", content="how many users signed up in the last 9 days"),
+            MessageDict(role="assistant", content="Checking PostHog now."),
+            MessageDict(role="user", content="okay"),
+        ]
+        _no_conversation_history.side_effect = lambda conversation_id, user_id: (
+            history if (conversation_id, user_id) == (CONVERSATION, "u1") else []
+        )
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        configurable = h.spawn.call_args.args[0].configurable
+        assert configurable["user_messages"] == [
+            "how many users signed up in the last 9 days",
+            "okay",
+        ]
 
     async def test_a_user_with_no_email_or_name_gets_empty_ones(self, fake_redis) -> None:
         with _real_lifecycle() as h:

@@ -427,8 +427,8 @@ async def _decide(
         summary = build_summary(call.name, call.args, integration_name, call.account)
 
         decision: IntentDecision | None = None
-        if policy == "auto":
-            decision = await _judge(request, context, call, record, summary)
+        if policy == "auto" and await _may_auto_decide_on_barrier(request, context, call, record):
+            decision = await _judge(request, context, call, summary)
 
         approval = GatedApproval(
             approval_id=approval_id,
@@ -506,25 +506,33 @@ async def _apply(
     return _refusal_message(call, outcome)
 
 
-async def _judge(
+async def _may_auto_decide_on_barrier(
     request: ToolCallRequest,
     context: GateContext,
     call: GatedCall,
     record: HILApprovalRecord | None,
-    summary: str,
-) -> IntentDecision | None:
-    """Ask the intent judge whether the user's request authorizes this call.
+) -> bool:
+    """Whether auto mode may rule on a call that would park the run at the barrier.
 
-    None means "don't auto-approve, don't spend a judge call": either a record
-    already exists (a card is up, the answer is the user's to give, and re-judging
-    would re-run a non-deterministic LLM call on every replay), or a sibling call
-    will pause, and the judge is the one thing in this node that isn't idempotent.
+    The barrier replays: an existing record means the user already has a card,
+    and a pausing sibling would run an auto-approved call twice. The ledger path
+    never pauses, so neither guard applies there.
     """
     if record is not None:
-        return None
+        return False
     if await has_pausing_sibling(request, context.user_id, call.id):
         log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
-        return None
+        return False
+    return True
+
+
+async def _judge(
+    request: ToolCallRequest,
+    context: GateContext,
+    call: GatedCall,
+    summary: str,
+) -> IntentDecision:
+    """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
@@ -676,9 +684,7 @@ async def _auto_ledger_verdict(
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
     summary = build_summary(call.name, call.args, integration_name, call.account)
-    decision = await _judge(request, context, call, None, summary)
-    if decision is None:
-        return _AutoVerdict()
+    decision = await _judge(request, context, call, summary)
     if decision.outcome == "accept":
         log.info(
             f"{LogTag.HIL} auto-approved (ledger path)",

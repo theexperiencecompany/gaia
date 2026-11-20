@@ -386,13 +386,8 @@ class TestWhatTheIntentJudgeIsAskedAbout:
         call = GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"})
         allowed = IntentDecision(outcome="accept", reason="You asked me to send Bob the deck.")
 
-        with (
-            patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
-            patch(f"{MODULE}.judge_intent", new=AsyncMock(return_value=allowed)) as judge,
-        ):
-            decision = await _judge(
-                request, context, call, None, "Send email — to: bob@example.com"
-            )
+        with patch(f"{MODULE}.judge_intent", new=AsyncMock(return_value=allowed)) as judge:
+            decision = await _judge(request, context, call, "Send email — to: bob@example.com")
 
         assert decision is allowed
         assert judge.await_args.kwargs["call"] == JudgedCall(
@@ -445,6 +440,18 @@ def barrier(gate_seams: GateSeams) -> GateSeams:
 
 
 class TestBarrierAutoMode:
+    async def test_a_pausing_sibling_withholds_auto_approval(self, barrier: GateSeams) -> None:
+        """A sibling that pauses replays this node, so a call auto mode ran would run twice."""
+        barrier.policy.return_value = "auto"
+        barrier.pausing_sibling.return_value = True
+        barrier.judge.return_value = IntentDecision("accept", "asked")
+
+        await decide_tool_call(gated_request())
+
+        barrier.judge.assert_not_awaited()
+        barrier.publish_auto.assert_not_awaited()
+        barrier.publish_request.assert_awaited()
+
     async def test_an_auto_refusal_without_words_is_repeated_as_auto(
         self, barrier: GateSeams
     ) -> None:

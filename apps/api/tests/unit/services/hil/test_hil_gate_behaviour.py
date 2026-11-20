@@ -128,7 +128,7 @@ class TestLedgerPathResolvesForTheRunsUser:
             )
 
         assert verdict.settled is True
-        assert judged.await_args.args[4] == SUMMARY
+        assert judged.await_args.args[3] == SUMMARY
 
 
 def _call() -> GatedCall:
@@ -175,13 +175,12 @@ class TestLivePathResolvesForTheRunsUser:
             return never_auto if user_id == USER_ID else frozenset()
 
         with (
-            patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}._auto_history", new=AsyncMock(return_value=MagicMock())),
             patch(f"{MODULE}._never_auto_tools", new=deny_list_of),
             patch(f"{MODULE}.is_jev_judge_enabled", new=AsyncMock(return_value=False)),
             patch(f"{MODULE}.judge_intent", new=judge),
         ):
-            await gate._judge(_execute_request(), _context(), _call(), None, SUMMARY)
+            await gate._judge(_execute_request(), _context(), _call(), SUMMARY)
 
         auto_context: AutoContext = judge.await_args.args[0]
         assert auto_context.never_auto is expected

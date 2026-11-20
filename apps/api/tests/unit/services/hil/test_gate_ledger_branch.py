@@ -767,15 +767,17 @@ class TestLedgerAutoMode:
             c.kwargs["event"] for c in posthog.capture.call_args_list
         ]
 
-    async def test_a_pausing_sibling_withholds_auto_approval(self, gate_seams: GateSeams) -> None:
+    @pytest.mark.regression
+    async def test_a_gated_sibling_does_not_withhold_auto_approval(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """Nothing on the ledger path pauses, so no sibling can replay an auto-run call."""
         gate_seams.policy.return_value = "auto"
         gate_seams.pausing_sibling.return_value = True
         gate_seams.judge.return_value = IntentDecision("accept", "asked")
 
-        result = await gate.decide_tool_call(gated_request())
-
-        _assert_pending(result)
-        gate_seams.judge.assert_not_awaited()
+        assert await gate.decide_tool_call(gated_request()) is None
+        gate_seams.ledger.register.assert_not_awaited()
 
     async def test_an_unsure_judge_explains_itself_on_the_card(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
