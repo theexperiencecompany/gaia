@@ -1,9 +1,12 @@
 """TurnClock: the per-turn stage stamps that turn_overhead_seconds is built from."""
 
+from contextvars import copy_context
+
 import pytest
 from starlette.requests import Request
 
 from app.services.turn_clock import TurnClock, TurnMark, TurnPath, stamp_received
+from app.services.turn_timings import TurnPhase, TurnTimings, current_turn_timings
 
 
 def _clock_with(**offsets: float) -> TurnClock:
@@ -120,3 +123,45 @@ def test_missing_lists_absent_stamps_in_turn_order() -> None:
     clock.mark(TurnMark.LLM_REQUEST)
 
     assert clock.missing() == ["received", "t0", "llm_first_chunk", "frame_written"]
+
+
+def test_arrival_begins_the_turns_timings_in_ingress() -> None:
+    def arrive() -> TurnTimings | None:
+        stamp_received(Request({"type": "http", "state": {}}))
+        return current_turn_timings()
+
+    timings = copy_context().run(arrive)
+
+    assert timings is not None
+    assert timings.phase is TurnPhase.INGRESS
+
+
+def test_acceptance_adopts_the_requests_timings_and_moves_them_to_prep() -> None:
+    def accept() -> tuple[TurnClock, TurnTimings | None]:
+        request = Request({"type": "http", "state": {}})
+        stamp_received(request)
+        return TurnClock.accepted(request), current_turn_timings()
+
+    clock, timings = copy_context().run(accept)
+
+    assert clock.timings is timings
+    assert timings is not None
+    assert timings.phase is TurnPhase.PREP
+
+
+def test_the_first_model_request_closes_the_timings() -> None:
+    timings = TurnTimings()
+    clock = TurnClock(received=0.0, timings=timings)
+    clock.mark(TurnMark.T0)
+
+    clock.mark(TurnMark.LLM_REQUEST)
+
+    assert timings.phase is TurnPhase.CLOSED
+
+
+def test_a_clock_without_timings_still_stamps() -> None:
+    clock = TurnClock(received=0.0)
+
+    clock.mark(TurnMark.LLM_REQUEST)
+
+    assert TurnMark.LLM_REQUEST in clock.marks
