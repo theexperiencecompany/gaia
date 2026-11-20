@@ -31,7 +31,7 @@ from shared.py.analytics import is_user_id
 from shared.py.analytics.catalog import CATALOG
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.catalog.auth import UserActive, UserLoggedIn, UserLoggedOut, UserSignedUp
+from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.billing import (
     PaymentSucceeded,
     PaywallBlocked,
@@ -44,22 +44,16 @@ from shared.py.analytics.catalog.chat import (
     ChatMessageCompleted,
     ChatMessageSubmitted,
 )
-from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from shared.py.analytics.catalog.onboarding import (
     OnboardingCompleted,
     OnboardingPhaseCompleted,
     OnboardingStarted,
 )
-from shared.py.analytics.catalog.reminders import ReminderCompleted
-from shared.py.analytics.catalog.todos import TodosRunResultDelivered
-from shared.py.analytics.catalog.workflows import (
-    WorkflowCreated,
-    WorkflowExecuted,
-    WorkflowResultDelivered,
-)
+from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
 from shared.py.analytics.context import POSTHOG_SESSION_PROPERTY
 
 from . import e2e_journeys as journeys
+from .e2e_coverage import UNCOVERED, Gap
 from .mongo import ground_truth_db
 from .posthog_api import (
     ENVELOPE_PROPERTIES,
@@ -103,21 +97,6 @@ STRAY_EVENTS_HOGQL = (
     "WHERE timestamp >= toDateTime({since}, 'UTC') AND distinct_id != {user} "
     "AND NOT startsWith(event, '$') "
     "GROUP BY event, distinct_id LIMIT {limit}"
-)
-
-# Journeys a dev-bypass stack cannot reach, and why; printed on every run, never silently skipped.
-NOT_DRIVABLE = (
-    f"{UserSignedUp.event}: /dev/users mints through store_user_info with external side "
-    "effects off; only the WorkOS callback emits it",
-    f"{UserLoggedIn.event}: emitted only by the WorkOS callbacks, which need a real code exchange",
-    f"{UserLoggedOut.event}: POST /user/logout needs a sealed WorkOS session cookie",
-    "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
-    "the ledger row is asserted in Mongo instead",
-    f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "
-    "sim comms replies itself, so the run never reaches the executor's result delivery",
-    f"{ReminderCompleted.event}, {TodosRunResultDelivered.event} (destination, destination_basis): "
-    "no journey fires a reminder or a tracked todo run",
-    f"{NotificationAgentSent.event}: no journey's sim script calls send_notification",
 )
 
 
@@ -483,8 +462,9 @@ def run(args: argparse.Namespace) -> int:
     )
     verdict = Verdict()
     verdict.failures += ledger_failures(stack, started)
-    for line in NOT_DRIVABLE:
-        print(f"NOT COVERED {line}")
+    for gap in Gap:
+        names = sorted(name for name, why in UNCOVERED.items() if why is gap)
+        print(f"NOT COVERED ({len(names)}, {gap.value}): {', '.join(names)}")
     if read is None:
         print("--no-assert: journeys driven, nothing asserted")
         return EXIT_NOT_ASSERTED

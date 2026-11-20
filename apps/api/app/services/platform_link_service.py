@@ -425,6 +425,7 @@ async def disconnect_platform_account(user_id: str, platform: str) -> Disconnect
     log.audit(
         "platform account unlinked",
         actor=user_id,
+        resource=platform_user_id,
         provider=platform,
     )
     capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))

@@ -1453,7 +1453,6 @@ export interface EventProperties {
     "has_due_date"?: boolean;
     "is_subtask"?: boolean;
     "bulk_count"?: number;
-    "count"?: number;
   };
   "todos:trigger_fired": {
     "actor": "user" | "agent";

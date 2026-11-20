@@ -768,6 +768,13 @@ class TodoService:
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
+            # As in the single update: a completion either way is a toggle, anything else an edit.
+            capture(
+                UserId(user_id),
+                TodosToggled(completed=update.completed, bulk_count=len(succeeded))
+                if update.completed is not None
+                else TodosUpdated(bulk_count=len(succeeded)),
+            )
 
         return BulkOperationResponse(
             success=succeeded,

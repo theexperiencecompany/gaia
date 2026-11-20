@@ -203,9 +203,7 @@ async def bulk_update_todos(
         todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids)},
     )
     try:
-        result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture(UserId(user.user_id), TodosUpdated(bulk_count=len(request.todo_ids)))
-        return result
+        return await TodoService.bulk_update_todos(request, user.user_id)
     except AppError:
         raise
     except Exception as e:
@@ -278,9 +276,7 @@ async def bulk_complete_todos(
         updates=TodoUpdateRequest(completed=True),
     )
     try:
-        result = await TodoService.bulk_update_todos(request, user.user_id)
-        capture(UserId(user.user_id), TodosToggled(bulk_count=len(todo_ids)))
-        return result
+        return await TodoService.bulk_update_todos(request, user.user_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
