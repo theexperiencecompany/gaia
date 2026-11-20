@@ -23,8 +23,8 @@ from app.agents.middleware.empty_completion import (
     RunawayMessageBreaksError,
 )
 from app.constants.chat import EMPTY_COMPLETION_RETRY_NOTICE, MAX_LEADING_MESSAGE_BREAKS
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 ANSWER = AIMessage(content="you have two meetings.")
 
