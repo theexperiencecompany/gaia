@@ -18,6 +18,7 @@ from app.config.settings import settings
 from app.constants.db import SCHEMA_BOOTSTRAP_LOCK_ID
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.store_timing import instrument_postgres
 from shared.py.wide_events import log
 
 # Create a SQLAlchemy base class for declarative models
@@ -169,6 +170,7 @@ async def init_postgresql_engine() -> AsyncEngine:
         # A DBAPIError's text otherwise carries the bound values: user queries, verbatim.
         hide_parameters=True,
     )
+    instrument_postgres(engine)
 
     async with engine.begin() as conn:
         await bootstrap_schema(conn)

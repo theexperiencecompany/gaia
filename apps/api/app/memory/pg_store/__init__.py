@@ -12,6 +12,7 @@ from app.memory.pg_store.episodes import (
     get_episode,
     get_episodes_range,
     get_unsummarized_episode_dates,
+    journal_entries,
     search_episode_entries,
     set_episode_summary,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "get_overview_counts",
     "get_recent_facts",
     "get_unsummarized_episode_dates",
+    "journal_entries",
     "insert_edges",
     "insert_memories",
     "link_entities",
