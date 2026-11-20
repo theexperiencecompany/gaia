@@ -2,7 +2,6 @@
 
 from typing import Annotated
 
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -263,12 +262,7 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         resource=integration_id,
     )
 
-    # Self-managed (Google) connectors use email as an OAuth login hint; others
-    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
-    user_email = ""
-    try:
-        user_doc = await user_repository.get(user_id)
-    except InvalidId as e:
+    if not user_repository.is_valid_id(user_id):
         # A server-issued code that carries a non-ObjectId user_id means the
         # stored binding is corrupt — same opaque bounce for the client, but a
         # distinct failure in telemetry.
@@ -276,16 +270,18 @@ async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) 
         log.warning(
             f"{LogTag.INTEGRATION} Connect link redemption rejected",
             failure="malformed_user_id",
-            error_type=type(e).__name__,
         )
         log.audit(
             "connect link redemption rejected",
             actor=user_id,
             resource=integration_id,
             reason="malformed_user_id",
-            error_type=type(e).__name__,
         )
         return _connect_link_error("invalid_or_expired_link")
+    # Self-managed (Google) connectors use email as an OAuth login hint; others
+    # ignore it. user_id is trusted (it came from a server-bound, single-use code).
+    user_email = ""
+    user_doc = await user_repository.get(user_id)
     if user_doc:
         user_email = user_doc.email or ""
 

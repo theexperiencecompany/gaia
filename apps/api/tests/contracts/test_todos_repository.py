@@ -13,13 +13,13 @@ from datetime import UTC, datetime, timedelta
 import time
 
 from bson import ObjectId
-from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import BLOCKING_LABEL, GAIA_TRACKED_LABEL
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT, GateAuthor, SystemGatePreset
 from app.db.mongodb import indexes
 from app.db.repositories import todos as todos_repository_module
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.todos import TodosRepository
 from app.models import todo_models
 from app.models.scheduler_models import DeactivationReason
@@ -1514,7 +1514,7 @@ class TestOpenExternalRefIndex:
 
     async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
         await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
 
     async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):

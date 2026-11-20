@@ -4,20 +4,21 @@ from datetime import UTC, datetime
 import json
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
-from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_tool import get_tool_schema
 from app.agents.tools.execute.tool_info import ToolContract, _args_schema_of, full_tool_info
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.tool_shapes import tool_shapes_repository
 from app.models.tool_shape_models import ToolOutputShapeDocument
 from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.schema_tool"
 INFO = "app.agents.tools.execute.tool_info"
-CONFIG = {"configurable": {"user_id": "u1"}}
+CONFIG = RunnableConfig(configurable={"user_id": "u1"})
 
 
 def _info(**overrides: object) -> ToolContract:
@@ -126,8 +127,12 @@ def _observed(schema: dict[str, object], calls: int) -> ToolOutputShapeDocument:
     )
 
 
-PROVIDER = {"type": "object", "properties": {"data": {"type": "object"}}, "required": ["data"]}
-OBSERVED = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+PROVIDER: dict[str, object] = {
+    "type": "object",
+    "properties": {"data": {"type": "object"}},
+    "required": ["data"],
+}
+OBSERVED: dict[str, object] = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
 
 
 @pytest.mark.unit
@@ -195,7 +200,7 @@ class TestFullToolInfo:
 
     async def test_a_shape_store_outage_leaves_the_provider_contract(self) -> None:
         resolved = ResolvedTool("GMAIL_FETCH_EMAILS", _catalog_tool(PROVIDER), True)
-        outage = AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down"))
+        outage = AsyncMock(side_effect=RepositoryError("mongo down"))
         with (
             patch(f"{INFO}.resolve_tool", new=AsyncMock(return_value=resolved)),
             patch.object(tool_shapes_repository, "get_shape", new=outage),
@@ -210,7 +215,7 @@ class TestFullToolInfo:
         (warning,) = event["warnings"]
         assert warning["msg"].endswith("tool contract: observed shape unavailable")
         assert warning["tool_name"] == "GMAIL_FETCH_EMAILS"
-        assert warning["error_type"] == "ServerSelectionTimeoutError"
+        assert warning["error_type"] == "RepositoryError"
 
     async def test_a_never_observed_undocumented_tool_has_no_return_shape(self) -> None:
         resolved = ResolvedTool("GMAIL_FETCH_EMAILS", _catalog_tool(None), True)
@@ -287,7 +292,11 @@ class TestArgsSchemaOf:
         }
         schema = _args_schema_of(tool)
         assert schema["required"] == cleaned
-        assert schema["properties"]["required"]["required"] == cleaned
+        properties = schema["properties"]
+        assert isinstance(properties, dict)
+        nested = properties["required"]
+        assert isinstance(nested, dict)
+        assert nested["required"] == cleaned
 
     def test_a_tool_without_a_schema_takes_no_args(self) -> None:
         tool = _catalog_tool(None)

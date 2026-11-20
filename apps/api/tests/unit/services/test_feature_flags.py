@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 import time_machine
 
@@ -22,6 +21,7 @@ from app.constants.feature_flags import (
     FEATURE_USER_NOT_FOUND_MESSAGE,
     FEATURE_USER_NOT_FOUND_WHY,
 )
+from app.db.repositories.errors import RepositoryError
 from app.models.user_models import UserDocument
 from app.services.feature_flags import (
     _get_posthog_client,
@@ -591,7 +591,7 @@ class TestEvaluationOrder:
     async def test_a_choice_that_cannot_be_read_falls_back_to_the_rollout_and_is_logged(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        stored_user.side_effect = ServerSelectionTimeoutError("mongo down")
+        stored_user.side_effect = RepositoryError("mongo down")
         _posthog_serves(mock_client, {"BROWSER_OBSCURA_KILL": False, "BROWSER_OBSCURA": True})
 
         with patch("app.services.feature_flags.log") as mock_log:
@@ -600,7 +600,7 @@ class TestEvaluationOrder:
             "Feature flag stored choice unreadable, the rollout decides",
             flag="BROWSER_OBSCURA",
             error="mongo down",
-            error_type="ServerSelectionTimeoutError",
+            error_type="RepositoryError",
         )
 
 

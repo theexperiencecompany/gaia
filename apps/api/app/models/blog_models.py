@@ -1,4 +1,3 @@
-from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import MongoDocument
@@ -25,14 +24,9 @@ class BlogPostBase(BaseModel):
 
 
 class BlogPost(BlogPostBase):
-    """Blog post response model with proper ID handling."""
+    """Blog post response model."""
 
-    model_config = ConfigDict(
-        json_encoders={ObjectId: str},
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        from_attributes=True,
-    )
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
 
     slug: str
     id: str = Field(description="Unique identifier for the blog post")

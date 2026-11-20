@@ -4,7 +4,7 @@
 repositories; raw ``ObjectId``, Mongo filters, and dict-shaped documents never
 cross that boundary. mypy strictness alone cannot catch a leak (a strict module
 can still hand a ``dict[str, Any]`` outward), so this AST rule mechanically holds
-five lines:
+six lines:
 
 1. ``app.db.mongodb.collections`` may be imported only inside ``app/db/repositories/``
    and ``app/db/mongodb/`` — everywhere else goes through a repository.
@@ -26,8 +26,11 @@ five lines:
    ``init_mongodb``) and any ``.get_collection(...)`` call — stays inside
    ``app/db/`` and ``app/scripts/``. A service handed a ``MongoDB`` builds its own
    collection handle and never imports ``collections``, so check 1 cannot see it.
+6. ``pymongo`` / ``motor`` may be imported only inside ``app/db/`` and ``app/scripts/``
+   — a repository raises its own ``RepositoryError`` / ``AlreadyExistsError``
+   (``app/db/repositories/errors.py``), so no caller names a driver type.
 
-Checks 1, 2 and 4 carry ratchet ``ALLOWLIST``s of the call sites that predate the
+Checks 1, 4 and 5 carry ratchet ``ALLOWLIST``s of the call sites that predate the
 repository layer. Entries are removed as each domain is migrated — never added. A
 new violation cannot be allowlisted away; it must be fixed, which is the point.
 Check 5's two allowlists are not debt: they name the startup caller and the
@@ -55,6 +58,8 @@ _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
 # a request path) deliberately works on raw documents across every store, so the
 # repository boundary does not apply there.
 _BSON_ALLOWED_DIRS = ("db/", "scripts/")
+_DRIVER_ALLOWED_DIRS = _BSON_ALLOWED_DIRS
+_DRIVER_ROOTS = frozenset({"pymongo", "motor"})
 
 # Ratchet allowlist: files importing app.db.mongodb.collections from outside the
 # repository layer. Every domain is migrated and the per-collection module
@@ -67,20 +72,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # the supported ``get_async_collection`` accessor; it predates the
         # repository and is run manually, not part of any request path.
         "scripts/backfill_public_workflow_descriptions.py",
-    }
-)
-
-# Ratchet allowlist: files importing bson/ObjectId that predate the repository
-# layer. Removed when the domain migrates its id-codec into its repository.
-BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # api/
-        "api/v1/endpoints/integrations/config.py",
-        "api/v1/endpoints/user.py",
-        # models/
-        "models/blog_models.py",
-        # utils/
-        "utils/profile_card.py",
     }
 )
 
@@ -197,14 +188,15 @@ def _get_collection_calls(tree: ast.Module) -> list[int]:
     ]
 
 
-def _bson_imports(tree: ast.Module) -> list[tuple[int, str]]:
+def _package_imports(tree: ast.Module, roots: frozenset[str]) -> list[tuple[int, str]]:
+    """Return imports of any module under the top-level packages in roots."""
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "bson":
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] in roots:
             hits.append((node.lineno, f"from {node.module} import ..."))
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[0] == "bson":
+                if alias.name.split(".")[0] in roots:
                     hits.append((node.lineno, f"import {alias.name}"))
     return hits
 
@@ -344,8 +336,6 @@ def _client_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Viola
 def _bson_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
     if any(app_rel.startswith(d) for d in _BSON_ALLOWED_DIRS):
         return []
-    if app_rel in BSON_IMPORT_ALLOWLIST:
-        return []
     return [
         Violation(
             path=path,
@@ -353,7 +343,22 @@ def _bson_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violati
             detail=f"imports bson/ObjectId outside app/db/ ({detail})",
             fix="keep ObjectId conversion inside the repository (ids are str above it)",
         )
-        for line, detail in _bson_imports(tree)
+        for line, detail in _package_imports(tree, frozenset({"bson"}))
+    ]
+
+
+def _driver_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
+    if any(app_rel.startswith(d) for d in _DRIVER_ALLOWED_DIRS):
+        return []
+    return [
+        Violation(
+            path=path,
+            line=line,
+            detail=f"imports pymongo/motor outside app/db/ ({detail})",
+            fix="catch RepositoryError / AlreadyExistsError from app.db.repositories.errors; "
+            "only the repository layer talks to the driver",
+        )
+        for line, detail in _package_imports(tree, _DRIVER_ROOTS)
     ]
 
 
@@ -386,6 +391,7 @@ def check(files: list[Path]) -> list[Violation]:
         violations.extend(_collections_violations(path, app_rel, tree))
         violations.extend(_bson_violations(path, app_rel, tree))
         violations.extend(_client_violations(path, app_rel, tree))
+        violations.extend(_driver_violations(path, app_rel, tree))
 
         if app_rel.startswith("db/repositories/"):
             for line, detail, fix in _signature_violations(tree):

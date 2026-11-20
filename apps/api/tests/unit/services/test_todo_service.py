@@ -15,12 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from bson import ObjectId
 from fastapi import HTTPException
 from pydantic import ValidationError
-from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.constants.vfs import SYSTEM_USER_ID
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
@@ -502,7 +502,7 @@ class TestCreateTodoWithExternalRef:
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
         winner = _make_todo_doc(title="Reply to Sam")
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=winner)
 
         with pytest.raises(ExternalRefTakenError) as raised:
@@ -517,9 +517,9 @@ class TestCreateTodoWithExternalRef:
     async def test_a_duplicate_key_with_no_open_holder_is_not_disguised(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.create_todo(
                 TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
             )
@@ -527,9 +527,9 @@ class TestCreateTodoWithExternalRef:
     async def test_a_duplicate_key_without_a_ref_propagates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.create = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock()
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID)
         mock_todo_repo.find_open_by_external_ref.assert_not_awaited()
 
@@ -2017,7 +2017,7 @@ class TestReopenOfATakenRef:
         reopened.external_ref = _THREAD
         holder = _make_todo_doc(title="Reply to Sam")
         mock_todo_repo.get = AsyncMock(return_value=reopened)
-        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
 
         with pytest.raises(ExternalRefTakenError) as raised:
@@ -2042,10 +2042,10 @@ class TestReopenOfATakenRef:
         reopened = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
         reopened.external_ref = _THREAD
         mock_todo_repo.get = AsyncMock(return_value=reopened)
-        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
         mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
             )
@@ -2118,9 +2118,7 @@ class TestReopenOfATakenRef:
         holder = _make_todo_doc(title="Reply to Sam")
         mock_todo_repo.find_by_ids = AsyncMock(return_value=[reopened])
         mock_todo_repo.find_open_by_external_ref = AsyncMock(side_effect=[None, holder])
-        mock_todo_repo.bulk_update = AsyncMock(
-            side_effect=BulkWriteError({"writeErrors": [{"code": 11000}]})
-        )
+        mock_todo_repo.bulk_update = AsyncMock(side_effect=AlreadyExistsError("E11000"))
 
         created: list[TriggerSubscription] = []
 
@@ -2155,10 +2153,10 @@ class TestReopenOfATakenRef:
     async def test_a_bulk_write_that_fails_for_another_reason_propagates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        failure = BulkWriteError({"writeErrors": [{"code": 2}]})
+        failure = RepositoryError("BulkWriteError: batch op errors occurred")
         mock_todo_repo.bulk_update = AsyncMock(side_effect=failure)
 
-        with pytest.raises(BulkWriteError) as raised:
+        with pytest.raises(RepositoryError) as raised:
             await TodoService.bulk_update_todos(
                 BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
                 FAKE_USER_ID,

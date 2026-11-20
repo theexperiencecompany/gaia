@@ -20,7 +20,6 @@ from datetime import UTC, datetime
 from typing import NamedTuple
 
 from posthog import Posthog
-from pymongo.errors import PyMongoError
 
 from app.config.feature_flags import (
     FEATURE_FLAGS,
@@ -42,6 +41,7 @@ from app.constants.feature_flags import (
     FEATURE_USER_NOT_FOUND_WHY,
 )
 from app.core.lazy_loader import providers
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.users import user_repository
 from app.schemas.feature_flags import UserFeatureFlagListResponse, UserFeatureFlagResponse
 from app.services.analytics_service import analytics_day_start, capture, identify_user
@@ -88,7 +88,7 @@ async def _stored_choice(flag: FeatureFlag, user_id: str) -> bool | None:
     """Return the user's own choice for the flag, or None when they never made one or it cannot be read."""
     try:
         user = await user_repository.get(user_id)
-    except PyMongoError as e:
+    except RepositoryError as e:
         log.warning(
             "Feature flag stored choice unreadable, the rollout decides",
             flag=flag.value,

@@ -77,6 +77,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------------------- reads
 
+    def id_created_at(self, user_id: str) -> datetime:
+        """When user_id was minted, read from the timestamp its ObjectId carries."""
+        return ObjectId(user_id).generation_time
+
     @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
         """Return a user by email — the authentication hot path."""

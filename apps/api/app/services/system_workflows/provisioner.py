@@ -11,9 +11,8 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 
 from collections.abc import Callable
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.log_tags import LogTag
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
@@ -120,7 +119,7 @@ async def provision_system_workflows(
             # Last: the workflow runs without its recipe (the agent authors one), so a
             # failed install is logged below and costs only the shortcut.
             await install_recipe(key, workflow.id, user_id, workflow.prompt, workflow.steps)
-        except DuplicateKeyError:
+        except AlreadyExistsError:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow already exists for user (concurrent creation), skipping",
                 key=key,
