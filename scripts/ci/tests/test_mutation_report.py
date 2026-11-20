@@ -1193,3 +1193,30 @@ def test_mutation_py_exposes_survivors() -> None:
 def test_change_summary_names_the_edit(removed: list[str], added: list[str], expected: str) -> None:
     """The one-line change is the whole point: a name plus `→` beats a diff to scan."""
     assert report_lib.change_summary(removed, added) == expected
+
+
+def test_replay_keeps_each_replacement_lines_own_indent_in_a_mixed_removal_run() -> None:
+    source = 'class C:\n    def text(self) -> str:\n        return """a\nb"""\n'
+    diff = (
+        "--- app/c.py\n+++ app/c.py\n@@ -1,3 +1,3 @@\n"
+        " def text(self) -> str:\n"
+        '-    return """a\n'
+        '-b"""\n'
+        '+    return """XXa\n'
+        '+bXX"""'
+    )
+
+    patched, _ = report_lib.apply_hunk(source.splitlines(), diff, 3)
+
+    assert patched == source.replace("a\nb", "XXa\nbXX").splitlines()
+
+
+def test_replay_breaks_a_tie_by_the_edited_line_not_the_block_start() -> None:
+    source = "a\nb\nc\nd\n\nclass K:\n    a\n    b\n    c\n    d\n".splitlines()
+    diff = "--- app/k.py\n+++ app/k.py\n@@ -1,4 +1,4 @@\n a\n b\n c\n-d\n+D"
+
+    patched, line = report_lib.apply_hunk(source, diff, 4)
+
+    assert line == 4
+    assert patched[3] == "D"
+    assert patched[9] == "    d"

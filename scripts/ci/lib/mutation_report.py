@@ -349,6 +349,8 @@ def _block_indent(block: list[str], before: list[str]) -> str | None:
 def locate_hunk(source: list[str], before: list[str], hint: int | None) -> tuple[int, str]:
     """Index in `source` where this diff's before-block starts, and the indent mutmut stripped.
 
+    `hint` is the line the block should start on.
+
     mutmut's `@@ -15,7 +15,7 @@` counts lines of its own per-function rewrite,
     not of the real file, so the hunk header cannot be trusted for a line
     number — the text is the only honest anchor. `hint` (the classifier's real
@@ -377,25 +379,33 @@ def locate_hunk(source: list[str], before: list[str], hint: int | None) -> tuple
 def apply_hunk(source: list[str], diff: str, hint: int | None) -> tuple[list[str], int]:
     """Return the file's lines with this mutation applied, and the mutated line number."""
     before, _ = diff_hunk(diff)
-    start, indent = locate_hunk(source, before, hint)
+    body = _hunk_lines(diff)
+    leading_context = next((i for i, (marker, _) in enumerate(body) if marker != " "), 0)
+    start, indent = locate_hunk(source, before, None if hint is None else hint - leading_context)
     file_lines = iter(source[start : start + len(before)])
     block: list[str] = []
     consumed = 0
     mutated: int | None = None
-    prefix = indent
-    for marker, text in _hunk_lines(diff):
+    prefixes: list[str] = []
+    added = 0
+    for marker, text in body:
         if marker == "+":
+            prefix = prefixes[min(added, len(prefixes) - 1)] if prefixes else indent
+            added += 1
             block.append(prefix + text if text.strip() else text)
             continue
         file_line = next(file_lines)
         consumed += 1
         if marker == " ":
             block.append(file_line)
+            prefixes, added = [], 0
             continue
         if mutated is None:
             mutated = start + consumed
+        if added:
+            prefixes, added = [], 0
         # A line inside a multi-line string was printed at its file column, so its replacement is too.
-        prefix = "" if file_line.rstrip() == text.rstrip() else indent
+        prefixes.append("" if file_line.rstrip() == text.rstrip() else indent)
     return source[:start] + block + source[start + len(before) :], mutated or start + 1
 
 

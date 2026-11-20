@@ -401,6 +401,8 @@ def _detector_output(paths: Sequence[str]) -> str:
         check=False,
         cwd=REPO_ROOT,
     )
+    if detector.returncode < 0:
+        raise SystemExit(f"mutation: the detector was killed by signal {-detector.returncode}")
     if detector.returncode != 0:
         # The detector has already said why on stderr.
         raise SystemExit(detector.returncode)
