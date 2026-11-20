@@ -244,7 +244,7 @@ def _decorator_ids(tree: ast.AST) -> set[int]:
 
 
 def typeddict_names(trees: list[ast.AST]) -> set[str]:
-    """Every TypedDict class name in ``trees``, subclasses included, the external ones, and TypeVars bound to one."""
+    """Every TypedDict class name in ``trees``, subclasses included, plus the external ones."""
     classes = [node for tree in trees for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
     names = {"TypedDict", *EXTERNAL_TYPEDDICTS, *_imported_external_typeddicts(trees)}
     grew = True
@@ -256,14 +256,17 @@ def typeddict_names(trees: list[ast.AST]) -> set[str]:
         }
         names |= found
         grew = bool(found)
-    return (names | _typeddict_bound_typevars(trees, names)) - {"TypedDict"}
+    return names - {"TypedDict"}
 
 
-def _typeddict_bound_typevars(trees: list[ast.AST], typeddicts: set[str]) -> set[str]:
-    """Names of ``X = TypeVar(..., bound=SomeTypedDict)``: mypy key-checks reads against the bound."""
+def _typeddict_bound_typevars(tree: ast.AST, typeddicts: set[str]) -> set[str]:
+    """Names of ``X = TypeVar(..., bound=SomeTypedDict)`` in one module.
+
+    Mypy key-checks a read through one against its bound. Per module: another
+    module's TypeVar of the same name is a different TypeVar.
+    """
     return {
         node.targets[0].id
-        for tree in trees
         for node in ast.walk(tree)
         if isinstance(node, ast.Assign)
         and len(node.targets) == 1
@@ -513,7 +516,10 @@ def scan(files: list[Path]) -> dict[tuple[str, str], list[int]]:
         tree = parsed[path]
         for rule, lines in (
             (LOOSE_ANNOTATION, _loose_annotations(tree)),
-            (STRING_KEY_READ, _string_key_reads(tree, typeddicts)),
+            (
+                STRING_KEY_READ,
+                _string_key_reads(tree, typeddicts | _typeddict_bound_typevars(tree, typeddicts)),
+            ),
         ):
             if lines:
                 out[(relative, rule)] = sorted(lines)

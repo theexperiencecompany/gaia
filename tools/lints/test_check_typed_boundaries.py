@@ -190,6 +190,35 @@ def test_a_typevar_bound_to_a_typeddict_is_a_declared_shape(
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [10]
 
 
+def test_a_typevar_exemption_stays_in_the_module_that_binds_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another module's T of the same name is its own TypeVar, with its own bound."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    package = tmp_path / "apps" / "api" / "app" / "services"
+    package.mkdir(parents=True)
+    typed, loose = package / "typed.py", package / "loose.py"
+    typed.write_text(
+        "from typing import TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "T = TypeVar('T', bound=Doc)\n"
+        "def f(doc: T) -> str:\n"
+        "    return doc['id']\n"
+    )
+    loose.write_text(
+        "from collections.abc import Mapping\n"
+        "from typing import TypeVar\n"
+        "T = TypeVar('T', bound=Mapping[str, str])\n"
+        "def g(value: T) -> str:\n"
+        "    return value['id']\n"
+    )
+    found = scan([typed, loose])
+    assert {path: lines for (path, rule), lines in found.items() if rule == STRING_KEY_READ} == {
+        "apps/api/app/services/loose.py": [5]
+    }
+
+
 def test_a_loop_over_a_typeddict_mapping_binds_its_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
