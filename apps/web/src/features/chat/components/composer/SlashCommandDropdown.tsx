@@ -98,7 +98,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
       >
         <button
           type="button"
-          className={`relative mx-2 mb-1 block w-full cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
+          className={`relative mx-2 mb-1 block w-[calc(100%_-_1rem)] cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             track("chat:slash_command_selected", {
               tool_name: match.tool.name,
@@ -419,7 +419,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           {/* Tool List */}
           <div
             ref={scrollContainerRef}
-            className={`relative z-1 h-fit ${maxHeight} overflow-y-auto`}
+            className={`relative z-1 h-fit ${maxHeight} overflow-x-hidden overflow-y-auto`}
           >
             <div className="py-2">
               {/* Single virtualized container for everything */}
