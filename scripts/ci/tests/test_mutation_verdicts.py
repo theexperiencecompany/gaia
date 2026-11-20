@@ -223,6 +223,7 @@ def _group(*modules: str) -> str:
                 "module": module,
                 "testfiles": json.dumps([f"tests/unit/test_{Path(module).stem}.py"]),
                 "ranges": "[[2,2]]",
+                "mutants": "1",
             }
             for module in modules
         ]
@@ -324,7 +325,7 @@ OUTCOMES = [
     ),
     ("results-unreadable", Run(results={KILLED: "killed"}, results_rc=1), "error", 1),
     ("run-interrupted", Run(results={KILLED: "killed", OTHER: "not checked"}), "error", 1),
-    ("child-segfaulted", Run(results={KILLED: "killed", OTHER: "segfault"}), "error", 1),
+    ("every-mutant-crashed", Run(results={KILLED: "segfault", OTHER: "segfault"}), "error", 1),
     (
         "status-outside-every-bucket",
         Run(results={KILLED: "killed", OTHER: "check was interrupted by user"}),
@@ -371,6 +372,25 @@ def test_the_gate_reads_each_mutmut_outcome_as(
     assert (outcome.status, outcome.returncode) == (status, returncode), outcome.output
 
 
+CRASHED_BESIDE_A_KILL = Run(results={KILLED: "killed", OTHER: "segfault"})
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="crashes count only where the memory cap runs")
+def test_a_mutant_that_crashes_its_test_process_counts_as_detected(tmp_path: Path) -> None:
+    """A runaway mutant under the memory cap can die as a segfault: the suite failed, so it is caught."""
+    outcome = _shard(tmp_path, CRASHED_BESIDE_A_KILL)
+
+    assert (outcome.status, outcome.returncode) == ("pass", 0), outcome.output
+    assert "1 mutant(s) crashed their test process (segfault)" in outcome.output
+
+
+@pytest.mark.skipif(sys.platform == "linux", reason="off Linux a segfault is the fork crash")
+def test_off_linux_a_crashed_mutant_leaves_the_run_incomplete(tmp_path: Path) -> None:
+    outcome = _shard(tmp_path, CRASHED_BESIDE_A_KILL)
+
+    assert (outcome.status, outcome.returncode) == ("error", 1), outcome.output
+
+
 def test_a_surviving_line_is_a_finding_on_that_line(tmp_path: Path) -> None:
     outcome = _shard(tmp_path, Run(results=SURVIVOR, classify={OTHER: "CHANGED:2"}))
     findings = outcome.verdict["findings"]
@@ -409,7 +429,9 @@ def test_a_module_that_refuses_to_run_is_an_error(
     tmp_path: Path, ranges: str, testfiles: str
 ) -> None:
     root = _sandbox(tmp_path)
-    group = json.dumps([{"module": MODULE, "testfiles": testfiles, "ranges": ranges}])
+    group = json.dumps(
+        [{"module": MODULE, "testfiles": testfiles, "ranges": ranges, "mutants": "1"}]
+    )
     result = subprocess.run(
         _command(root, "shard"),
         cwd=root,
@@ -450,6 +472,10 @@ def test_a_shard_reports_every_module_and_fails_on_any(tmp_path: Path) -> None:
     assert f"mutation failed for: {second}" in result.stdout
     replay = json.loads((root / "shard.verdict.json").read_text())
     assert [m["module"] for m in replay["modules"]] == [MODULE, second]
+    # The next plan packs from these: every module the shard ran, timed.
+    durations = json.loads((root / "shard.durations.json").read_text())
+    assert sorted(durations) == [MODULE, second]
+    assert all(isinstance(seconds, float) and seconds > 0 for seconds in durations.values())
 
 
 def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) -> None:
@@ -469,6 +495,7 @@ def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) 
             "module": m,
             "testfiles": [f"tests/unit/test_{Path(m).stem}.py"],
             "changed_lines": [[2, 2]],
+            "mutants": 1,
         }
         for m in (MODULE, second)
     ]
@@ -500,6 +527,7 @@ def test_local_names_the_refusal_when_a_shard_never_ran(tmp_path: Path) -> None:
             "module": MODULE,
             "testfiles": [f"tests/contracts/test_{Path(MODULE).stem}.py"],
             "changed_lines": [[2, 2]],
+            "mutants": 1,
         }
     ]
     detector = root / "scripts" / "ci" / "lib" / "mutation_matrix.py"
@@ -604,7 +632,9 @@ def test_a_group_whose_testfiles_is_not_a_path_list_is_unreadable(tmp_path: Path
     time; the plan never emits one, so either way it is a broken plan job.
     """
     root = _sandbox(tmp_path)
-    group = json.dumps([{"module": MODULE, "testfiles": '"tests/unit/test_x.py"', "ranges": "[]"}])
+    group = json.dumps(
+        [{"module": MODULE, "testfiles": '"tests/unit/test_x.py"', "ranges": "[]", "mutants": "1"}]
+    )
     result = subprocess.run(
         _command(root, "shard"),
         cwd=root,

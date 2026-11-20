@@ -1,4 +1,10 @@
 {
   "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Only an advisory with no fixed release reachable from our consumers belongs here \u2014 anything with a fix is pinned through pnpm.overrides in the root package.json instead (CLAUDE.md \u00a79).",
-  "allow": []
+  "allow": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "reason": "picomatch ReDoS through single-branch repeated extglobs; no fixed release exists upstream (latest 4.0.7 is still vulnerable). Reached only through build tooling (Expo CLI, babel codegen, the Sentry rollup commonjs plugin) matching our own local glob patterns, never untrusted input. Re-check on every picomatch release.",
+      "expires": "2027-01-02"
+    }
+  ]
 }

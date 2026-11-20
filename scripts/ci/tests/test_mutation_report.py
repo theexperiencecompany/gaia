@@ -564,7 +564,14 @@ def repo_verdicts_untouched() -> Iterator[None]:
 
 def _run_shard(root: Path, module: str = "app/services/x.py") -> subprocess.CompletedProcess[str]:
     group = json.dumps(
-        [{"module": module, "testfiles": '["tests/unit/test_x.py"]', "ranges": "[[2,2]]"}]
+        [
+            {
+                "module": module,
+                "testfiles": '["tests/unit/test_x.py"]',
+                "ranges": "[[2,2]]",
+                "mutants": "1",
+            }
+        ]
     )
     return subprocess.run(
         [sys.executable, str(root / "scripts" / "ci" / "mutation.py"), "shard"],
@@ -721,6 +728,7 @@ def _shard_with_env(root: Path, **env: str) -> subprocess.CompletedProcess[str]:
                 "module": "app/services/x.py",
                 "testfiles": '["tests/unit/test_x.py"]',
                 "ranges": "[[2,2]]",
+                "mutants": "1",
             }
         ]
     )
@@ -795,6 +803,7 @@ def test_the_shard_falls_back_to_the_runner_temp_rung(tmp_path: Path) -> None:
                         "module": "app/services/x.py",
                         "testfiles": '["tests/unit/test_x.py"]',
                         "ranges": "[[2,2]]",
+                        "mutants": "1",
                     }
                 ]
             ),
