@@ -78,6 +78,9 @@
  *   bot-handles         Every WhatsApp / Telegram / Discord link matches
  *                       libs/shared/bot-identity.json. Runs without
  *                       node_modules (lib/bot-handles.mjs).
+ *   skills-symlink      .claude/skills is a symlink to .agents/skills, not a
+ *                       second copy. Runs without node_modules too
+ *                       (lib/skills-symlink.mjs).
  *
  * Every other subcommand lives in lib/checks-commands.mjs and needs
  * node_modules; without it this exits 1 naming the install command.
@@ -89,10 +92,14 @@
  */
 import { existsSync } from "node:fs";
 import { runBotHandles } from "./lib/bot-handles.mjs";
+import { runSkillsSymlink } from "./lib/skills-symlink.mjs";
 
-// bot-handles is an always-run commit hook that reads only the tree, so a
-// fresh worktree runs it before anyone has installed node_modules.
-const WITHOUT_NODE_MODULES = { "bot-handles": runBotHandles };
+// These commit hooks read only the tree, so a fresh worktree runs them before
+// anyone has installed node_modules.
+const WITHOUT_NODE_MODULES = {
+  "bot-handles": runBotHandles,
+  "skills-symlink": runSkillsSymlink,
+};
 // pnpm records a finished install here.
 const PNPM_INSTALL_MARKER = new URL(
   "../../node_modules/.modules.yaml",

@@ -980,6 +980,7 @@ function usage() {
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
       "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
+      "  skills-symlink                         .claude/skills is a symlink to .agents/skills, not a second copy",
     ].join("\n"),
   );
 }

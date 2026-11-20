@@ -1286,6 +1286,63 @@ def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# skills-symlink: .claude/skills is a view of .agents/skills, never a copy
+# ---------------------------------------------------------------------------
+
+
+def _skills_repo(tmp_path: Path) -> Path:
+    repo = _repo(tmp_path)
+    _add_text(repo, ".agents/skills/demo/SKILL.md", "# demo\n")
+    (repo / ".claude").mkdir()
+    return repo
+
+
+def test_skills_symlink_passes_on_the_symlink(tmp_path: Path) -> None:
+    repo = _skills_repo(tmp_path)
+    (repo / ".claude/skills").symlink_to("../.agents/skills")
+
+    process = _run(repo, "skills-symlink")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_skills_symlink_fails_on_a_copied_directory(tmp_path: Path) -> None:
+    repo = _skills_repo(tmp_path)
+    shutil.copytree(repo / ".agents/skills", repo / ".claude/skills")
+
+    process = _run(repo, "skills-symlink")
+
+    assert process.returncode == 1
+    assert "is a real directory, not a symlink" in process.stderr
+
+
+def test_skills_symlink_fails_when_it_points_elsewhere(tmp_path: Path) -> None:
+    repo = _skills_repo(tmp_path)
+    (repo / "other").mkdir()
+    (repo / ".claude/skills").symlink_to("../other")
+
+    process = _run(repo, "skills-symlink")
+
+    assert process.returncode == 1
+    assert "not .agents/skills" in process.stderr
+
+
+@pytest.mark.parametrize("missing", [".claude/skills", ".agents/skills"])
+def test_skills_symlink_fails_when_either_end_is_missing(tmp_path: Path, missing: str) -> None:
+    repo = _skills_repo(tmp_path)
+    (repo / ".claude/skills").symlink_to("../.agents/skills")
+    target = repo / missing
+    if target.is_symlink():
+        target.unlink()
+    else:
+        shutil.rmtree(target)
+
+    process = _run(repo, "skills-symlink")
+
+    assert process.returncode == 1
+
+
+# ---------------------------------------------------------------------------
 # A checkout with no node_modules: a fresh worktree, before `pnpm install`
 # ---------------------------------------------------------------------------
 
