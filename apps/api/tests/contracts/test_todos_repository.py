@@ -168,6 +168,27 @@ class TestTodosRepository(UserScopedRepositoryContract):
         page = await repo.list_page(user_id=user_id, params=_all_params(), inbox_project_id=None)
         return page.items
 
+    @pytest.mark.parametrize("write", ["add_labels", "bulk_update", "delete_all_for_user"])
+    async def test_each_write_path_orphans_only_its_users_query_caches(
+        self, repo, make_doc, raw_collection, write
+    ):
+        mine = await repo.create(make_doc(user_id="writer"))
+        await repo.create(make_doc(user_id="bystander"))
+        writer_before = await self.list_via_cache(repo, "writer")
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+        for user in ("writer", "bystander"):
+            await raw_collection.insert_one(make_doc(user_id=user).model_dump(exclude={"id"}))
+
+        if write == "add_labels":
+            await repo.add_labels(mine.id, user_id="writer", labels=["x"])
+        elif write == "bulk_update":
+            await repo.bulk_update("writer", [mine.id], TodoUpdate(title="renamed"))
+        else:
+            await repo.delete_all_for_user("writer")
+
+        assert await self.list_via_cache(repo, "writer") != writer_before
+        assert len(await self.list_via_cache(repo, "bystander")) == 1
+
     # ---- list_page ---------------------------------------------------------
 
     async def test_list_page_filters_and_paginates(self, repo, make_doc):

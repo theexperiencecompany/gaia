@@ -16,7 +16,6 @@ import pytest
 from app.constants import chat as chat_constants
 from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
     ConversationSource,
@@ -336,70 +335,6 @@ class TestLiveApprovalFlag:
 
     async def test_refresh_of_a_missing_conversation_reports_false(self, repo):
         assert await repo.refresh_live_approval_flag(_cid(), user_id=_uid(), live=True) is False
-
-
-class _CachedConversationRepository(ConversationRepository):
-    cache_policy = CachePolicy(prefix="contract:conversations")
-
-
-class TestInPlaceWritesUnderACachePolicy:
-    """The module promises a cache policy can be switched on with no call-site changes; these writes must then evict what get() cached."""
-
-    @pytest.fixture
-    def cached_repo(self, raw_collection) -> _CachedConversationRepository:
-        return _CachedConversationRepository()
-
-    async def test_marking_evicts_the_cached_conversation(self, cached_repo):
-        # A real channel skips the source stamp, so the flag write's eviction stands alone.
-        doc = _doc(source=ConversationSource.WEB)
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id=doc.user_id
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is True
-
-    async def test_refreshing_evicts_the_cached_conversation(self, cached_repo):
-        doc = _doc()
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=True
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is True
-
-    async def test_extending_a_subagent_group_evicts_the_cached_conversation(self, cached_repo):
-        doc = _doc()
-        mid = await _seed_subagent_group(cached_repo, doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.extend_subagent_group(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            group=SavedSubagentGroup(subagent_id="row-1", duration_ms=1200),
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None and fetched.messages[0].tool_data is not None
-        assert fetched.messages[0].tool_data[0]["data"]["duration_ms"] == 1200
-
-    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
-        doc = _doc(todo_id="todo-1")
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
-
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
 
 
 class TestMessages:

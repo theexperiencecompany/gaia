@@ -6,7 +6,7 @@ re-runs from the top of the node on every resume replay, and the unique _id
 is what makes record creation naturally once-only — a replay's duplicate insert
 is the idempotency guarantee working, not an error.
 
-Uncached (cache_policy = None): approvals are decision state read at
+Uncached: approvals are decision state read at
 low volume around pauses, and the pending → decided transition is a conditional
 write the entity cache could only misrepresent.
 """
@@ -15,7 +15,6 @@ from datetime import UTC, datetime, timedelta
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.hil_models import (
     HILApprovalRecord,
@@ -31,7 +30,6 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     document_model = HILApprovalRecord
     update_model = HILApprovalUpdate
     uses_object_id = False
-    cache_policy = None
 
     async def create_if_absent(self, record: HILApprovalRecord) -> bool:
         """Insert the record unless its approval_id already exists.
@@ -74,7 +72,6 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
                     "decided_at": datetime.now(UTC),
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None
@@ -126,7 +123,6 @@ class HilToolRiskRepository(MongoRepository[HILToolRiskRecord, HILToolRiskUpdate
     document_model = HILToolRiskRecord
     update_model = HILToolRiskUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def find_classification(
         self, key: str, description_hash: str

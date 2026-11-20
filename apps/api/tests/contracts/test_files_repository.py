@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
 import uuid
 
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -219,23 +218,3 @@ class TestFilesRepository:
         assert renamed is not None
         assert renamed.sandbox_path == "/workspace/sessions/conv-1/user-uploaded/report.pdf"
         assert renamed.conversation_id == "conv-1"
-
-    async def test_apply_metadata_update_invalidates_the_user_scope(self, repo):
-        fid = uuid.uuid4().hex
-        await repo.create(_file(file_id=fid, user_id="u"))
-
-        with patch.object(FilesRepository, "_invalidate", AsyncMock()) as invalidate:
-            await repo.apply_metadata_update(
-                fid, user_id="u", update=FileUpdate(filename="renamed.pdf")
-            )
-
-        invalidate.assert_awaited_once_with("u")
-
-    async def test_delete_by_file_id_invalidates_the_user_scope(self, repo):
-        fid = uuid.uuid4().hex
-        await repo.create(_file(file_id=fid, user_id="u"))
-
-        with patch.object(FilesRepository, "_invalidate", AsyncMock()) as invalidate:
-            assert await repo.delete_by_file_id(fid, "u") is True
-
-        invalidate.assert_awaited_once_with("u")

@@ -32,9 +32,9 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
             "$unset": _LEASE_CLEARED,
         }
         try:
-            await self._apply_raw_update(key.model_dump(), write, scope=None, upsert=True)
+            await self._apply_raw_update(key.model_dump(), write, upsert=True)
         except DuplicateKeyError:
-            await self._apply_raw_update(key.model_dump(), write, scope=None, upsert=True)
+            await self._apply_raw_update(key.model_dump(), write, upsert=True)
 
     async def find_met(
         self, user_id: str, condition: WaitCondition, subject_id: str
@@ -69,7 +69,6 @@ class WaitsRepository(UserScopedRepository[WaitDocument, WaitUpdate]):
                 ],
             },
             {"$set": {"claimed_by": job_id, "claimed_at": now}},
-            scope=None,
         )
 
     async def settle(self, wait_id: str, *, job_id: str) -> None:

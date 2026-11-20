@@ -9,12 +9,18 @@ from app.db.repositories.base import (
     MongoRepository,
     UserScopedDocument,
     UserScopedRepository,
-    cached_query,
 )
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import (
+    CachedMongoRepository,
+    CachedUserScopedRepository,
+    cached_query,
+)
 
 __all__ = [
     "CachePolicy",
+    "CachedMongoRepository",
+    "CachedUserScopedRepository",
     "MongoDocument",
     "MongoRepository",
     "UserScopedDocument",

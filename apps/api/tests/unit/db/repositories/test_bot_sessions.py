@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.bot_sessions import (
     LEGACY_DM_SESSION_KEY_SUFFIX,
     BotSessionsRepository,
@@ -161,44 +160,6 @@ class TestDeleteBySessionKey:
         assert collection.delete_many.await_args.args[0] == {"session_key": LEGACY_KEY}
 
 
-class TestSessionWritesBustTheGlobalCache:
-    """These rows are keyed by session_key, not by user, so they live in the global cache scope.
-
-    Invalidating any other scope leaves the pre-migration session cached and
-    brings back the fork the migration just merged.
-    """
-
-    async def test_rename_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.rename_session_key(
-                session_key=LEGACY_KEY, new_session_key=CANONICAL_KEY, channel_id=TELEGRAM_USER
-            )
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-    async def test_repoint_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.repoint_conversation(
-                session_key=CANONICAL_KEY, conversation_id="conv-winner"
-            )
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-    async def test_delete_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
-
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.delete_by_session_key(LEGACY_KEY)
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
-
-
 class TestDeleteForPlatformUser:
     async def test_it_deletes_by_platform_and_account_and_reports_the_count(
         self, repo: BotSessionsRepository, collection: MagicMock
@@ -214,16 +175,6 @@ class TestDeleteForPlatformUser:
             "platform": "telegram",
             "platform_user_id": TELEGRAM_USER,
         }
-
-    async def test_it_invalidates_the_global_scope(
-        self, repo: BotSessionsRepository, collection: MagicMock
-    ) -> None:
-        collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=1))
-
-        with patch.object(repo, "_invalidate", new_callable=AsyncMock) as invalidate:
-            await repo.delete_for_platform_user(platform="telegram", platform_user_id=TELEGRAM_USER)
-
-        invalidate.assert_awaited_once_with(REPO_GLOBAL_SCOPE)
 
 
 class TestListSessions:

@@ -124,6 +124,20 @@ class TestCacheFreshness:
         assert await repo.get(created.id) is None
         assert await repo.get_by_email("gone@y.com") is None
 
+    async def test_one_users_write_leaves_anothers_cached_record_alone(
+        self, repo, make_user, raw_collection
+    ):
+        writer = await repo.create(make_user(email="writer@y.com", name="Writer"))
+        bystander = await repo.create(make_user(email="bystander@y.com", name="Bystander"))
+        await repo.get(writer.id)
+        await repo.get(bystander.id)
+        await raw_collection.update_many({}, {"$set": {"name": "written-behind-the-repo"}})
+
+        await repo.update(writer.id, UserUpdate(name="Renamed"))
+
+        assert (await repo.get(writer.id)).name == "Renamed"
+        assert (await repo.get(bystander.id)).name == "Bystander"
+
     async def test_touch_last_active_does_not_bump_the_generation(self, repo, make_user):
         # The one cache-exempt write: it fires on every authenticated request, so
         # bumping here would invalidate the whole cache on every request.

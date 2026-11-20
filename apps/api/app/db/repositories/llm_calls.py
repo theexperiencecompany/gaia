@@ -194,7 +194,6 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
     uses_object_id = True
     # No cache: the ledger is write-heavy and append-only, and nothing reads a
     # call back by id — it is queried in ranges by the indexes below.
-    cache_policy = None
 
     async def insert_backfilled(self, docs: Sequence[LLMCallDocument]) -> int:
         """Insert reconstructed rows, skipping any already present.

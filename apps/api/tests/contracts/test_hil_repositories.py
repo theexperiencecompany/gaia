@@ -154,7 +154,6 @@ class TestHilApprovalRepository:
         await repo._apply_raw_update(
             {"_id": "parked"},
             {"$set": {"decided_at": datetime.now(UTC) - timedelta(minutes=10)}},
-            scope="global",
             return_document=False,
         )
 
@@ -184,7 +183,6 @@ class TestHilApprovalRepository:
             await repo._apply_raw_update(
                 {"_id": approval_id},
                 {"$set": {"decided_at": datetime.now(UTC) - timedelta(minutes=10)}},
-                scope="global",
                 return_document=False,
             )
         await repo.update("crashed", HILApprovalUpdate(resume_item={"task": "t"}))
@@ -255,7 +253,6 @@ class TestAutoApprovalRecords:
         await repo._apply_raw_update(
             {"_id": "auto-1"},
             {"$set": {"decided_at": datetime.now(UTC) - timedelta(minutes=10)}},
-            scope="global",
             return_document=False,
         )
 

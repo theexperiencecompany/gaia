@@ -9,13 +9,12 @@ in the base repository goes through.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ToolDataEntry
 
@@ -23,7 +22,7 @@ CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
 MESSAGE_ID = "msg-1"
 APPROVAL_ID = "appr-1"
-CACHE_POLICY = CachePolicy(prefix="test-conversations")
+
 TOOL_DATA_ENTRIES: list[ToolDataEntry] = [{"tool_name": "search", "data": {"ok": True}}]
 
 
@@ -238,85 +237,6 @@ class TestSetMessageApprovalStatus:
             )
             is False
         )
-
-
-async def _write_response(repo: ConversationRepository) -> None:
-    await repo.set_message_response(
-        CONVERSATION_ID, user_id=USER_ID, message_id=MESSAGE_ID, response="the answer"
-    )
-
-
-async def _write_tool_data(repo: ConversationRepository) -> None:
-    await repo.set_message_tool_data(
-        CONVERSATION_ID,
-        user_id=USER_ID,
-        message_id=MESSAGE_ID,
-        entries=[{"tool_name": "search", "data": {}}],
-    )
-
-
-async def _write_approval_status(repo: ConversationRepository) -> None:
-    await repo.set_message_approval_status(
-        CONVERSATION_ID, user_id=USER_ID, approval_id=APPROVAL_ID, status="approved"
-    )
-
-
-class TestSettlementWritesRefreshTheCache:
-    """Every settlement write names its cache scope (the owning user) and the document it touched.
-
-    The repository ships with cache_policy = None, so these arguments are
-    inert today; these tests switch the policy on for the duration and
-    observe the Redis calls the base makes, pinning them correct for when a
-    policy is turned on later.
-    """
-
-    @pytest.fixture
-    def cache(self) -> Iterator[tuple[AsyncMock, AsyncMock]]:
-        with (
-            patch.object(ConversationRepository, "cache_policy", CACHE_POLICY),
-            patch("app.db.repositories.base.delete_cache", AsyncMock()) as delete_cache,
-            patch("app.db.repositories.base.bump_generation", AsyncMock()) as bump_generation,
-        ):
-            yield delete_cache, bump_generation
-
-    @pytest.mark.parametrize(
-        "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
-    )
-    async def test_evicts_the_conversation_and_bumps_the_user_generation(
-        self,
-        write: Callable[[ConversationRepository], Awaitable[None]],
-        repo: ConversationRepository,
-        collection: MagicMock,
-        cache: tuple[AsyncMock, AsyncMock],
-    ) -> None:
-        delete_cache, bump_generation = cache
-
-        await write(repo)
-
-        delete_cache.assert_awaited_once_with(f"test-conversations:{USER_ID}:{CONVERSATION_ID}")
-        bump_generation.assert_awaited_once_with(CACHE_POLICY, USER_ID)
-
-    @pytest.mark.parametrize(
-        "write",
-        [_write_response, _write_tool_data, _write_approval_status],
-        ids=["set_message_response", "set_message_tool_data", "set_message_approval_status"],
-    )
-    async def test_leaves_the_cache_alone_when_nothing_matched(
-        self,
-        write: Callable[[ConversationRepository], Awaitable[None]],
-        repo: ConversationRepository,
-        collection: MagicMock,
-        cache: tuple[AsyncMock, AsyncMock],
-    ) -> None:
-        _matched(collection, 0)
-        delete_cache, bump_generation = cache
-
-        await write(repo)
-
-        delete_cache.assert_not_awaited()
-        bump_generation.assert_not_awaited()
 
 
 class TestHasSentMessage:

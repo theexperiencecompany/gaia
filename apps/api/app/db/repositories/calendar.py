@@ -4,7 +4,6 @@ Global, keyed by user_id (one preferences doc per user). Stores the ids of
 the calendars a user has selected to surface in the app.
 """
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.calendar_models import (
     CalendarPreferencesDocument,
@@ -17,7 +16,6 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
     document_model = CalendarPreferencesDocument
     update_model = CalendarPreferencesUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_for_user(self, user_id: str) -> CalendarPreferencesDocument | None:
         return await self._find_one({"user_id": user_id})
@@ -30,7 +28,6 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
         await self._apply_raw_update(
             {"user_id": user_id},
             {"$set": {"selected_calendars": selected_calendars}},
-            scope=REPO_GLOBAL_SCOPE,
             upsert=True,
         )
         return True

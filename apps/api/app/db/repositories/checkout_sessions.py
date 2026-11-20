@@ -18,7 +18,6 @@ class CheckoutSessionsRepository(
     document_model = CheckoutSessionDocument
     update_model = CheckoutSessionDocument
     uses_object_id = True
-    cache_policy = None
 
     async def list_recent_for_user(
         self, user_id: str, *, limit: int
