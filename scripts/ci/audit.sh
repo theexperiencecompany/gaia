@@ -5,7 +5,7 @@
 #   pnpm               Fail-loud `pnpm audit` gate for the JS workspace, with
 #                      an allowlist that requires an owner, a reason and an
 #                      expiry (an expired entry fails).
-#   pip                Fail-loud `pip-audit` gate over the uv.lock export.
+#   pip                Fail-loud `pip-audit` gate over every package in uv.lock.
 #   playwright-pin     apps/api/Dockerfile's PLAYWRIGHT_VERSION must equal the
 #                      playwright version in uv.lock.
 #   model-pin          apps/api/Dockerfile's baked EMBEDDING_MODEL/RERANKER_MODEL
@@ -167,7 +167,8 @@ cmd_pip() {
   tmp="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/pip-audit.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
 
-  (cd "$ROOT" && uv export --frozen --no-emit-workspace -o "$tmp/requirements.txt" > /dev/null)
+  # Every package uv.lock resolves, so no image's group (the api's backend) goes unaudited.
+  (cd "$ROOT" && uv export --frozen --all-packages --all-groups --no-emit-workspace -o "$tmp/requirements.txt" > /dev/null)
   for id in "${PIP_AUDIT_IGNORED[@]}"; do ignore+=(--ignore-vuln "$id"); done
   # pip-audit exits 1 whenever it found anything; the verdict is decided below.
   set +e
