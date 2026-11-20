@@ -475,8 +475,8 @@ description = "Run the hermetic browser stack (API, worker, Chrome and Obscura h
 run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -n 2 --tb=short -q"
 
 [tasks."test:one"]
-description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
-run = "cd apps/api && uv run --group backend --group dev pytest -p no:xdist -q {{arg(name=\"paths\", var=true)}}"
+description = "Run one or more test files exactly as CI does, minus xdist: `mise test:one apps/api/tests/unit/x.py scripts/ci/tests/test_runner.py` (paths relative to where you run it; keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
+run = "bash scripts/dev/test-one.sh {{arg(name=\"paths\", var=true)}}"
 
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
