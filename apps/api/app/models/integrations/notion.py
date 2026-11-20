@@ -9,7 +9,7 @@ References:
 - https://docs.composio.dev/toolkits/notion
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,19 +42,33 @@ class NotionPropertyValue(BaseModel):
     title: list[NotionRichTextSegment] = Field(default_factory=list)
 
 
-class NotionSearchResult(BaseModel):
-    """A page or database as ``POST /v1/search`` lists it.
+class NotionPageSearchResult(BaseModel):
+    """A page as ``POST /v1/search`` lists it; its title is the property with ``type: "title"``."""
 
-    Databases carry their ``title`` at the top level; pages carry it inside
-    the ``properties`` map under whichever property has ``type: "title"``.
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    object: Literal["page"]
+    properties: dict[str, NotionPropertyValue] = Field(default_factory=dict)
+
+
+class NotionDatabaseSearchResult(BaseModel):
+    """A database as ``POST /v1/search`` lists it; its title is at the top level.
+
+    A database's ``properties`` map is its column schema (a title column is
+    ``{}``, not a list of segments), so it is not read.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
-    object: Literal["page", "database"]
+    object: Literal["database"]
     title: list[NotionRichTextSegment] = Field(default_factory=list)
-    properties: dict[str, NotionPropertyValue] = Field(default_factory=dict)
+
+
+NotionSearchResult = Annotated[
+    NotionPageSearchResult | NotionDatabaseSearchResult, Field(discriminator="object")
+]
 
 
 class NotionSearchResponse(BaseModel):
@@ -67,6 +81,8 @@ class NotionSearchResponse(BaseModel):
 
 
 class NotionSearchFilter(BaseModel):
+    """``POST /v1/search`` filter; Notion filters search only on ``object``."""
+
     property: Literal["object"] = "object"
     value: Literal["page", "database"]
 
@@ -170,6 +186,8 @@ class NotionTable(BaseModel):
 
 
 class NotionAppendTableBlocksArgs(BaseModel):
+    """``NOTION_APPEND_TABLE_BLOCKS`` arguments; the tables go under ``block_id``."""
+
     block_id: str
     tables: list[NotionTable]
 
@@ -183,16 +201,22 @@ class NotionAddPageContentArgs(BaseModel):
 
 
 class NotionGetPagePropertyArgs(BaseModel):
+    """``NOTION_GET_PAGE_PROPERTY_ACTION`` arguments; ``property_id="title"`` reads the page title."""
+
     page_id: str
     property_id: str
 
 
 class NotionFetchBlockContentsArgs(BaseModel):
+    """``NOTION_FETCH_ALL_BLOCK_CONTENTS`` arguments; the reply parses as ``NotionBlockChildren``."""
+
     block_id: str
     recursive: bool
     page_size: int
 
 
 class NotionSearchToolArgs(BaseModel):
+    """``NOTION_SEARCH_NOTION_PAGE`` arguments; the reply parses as ``NotionSearchToolData``."""
+
     query: str
     page_size: int
