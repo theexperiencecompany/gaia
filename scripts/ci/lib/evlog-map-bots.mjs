@@ -98,7 +98,7 @@ const SHARED_ENTRY_POINTS = [
     kind: "lifecycle",
   },
   {
-    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    file: "libs/shared/ts/src/bots/adapter/incoming-media.ts",
     name: "resolveIncomingMedia",
     kind: "dispatch",
   },
