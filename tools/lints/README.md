@@ -347,6 +347,9 @@ a registration, not a read. A read on a name annotated with a TypedDict
 declared shape that mypy key-checks — Type Safety item 6 — so it is exempt too:
 TypedDicts are discovered from `class X(TypedDict)` across the scan, and the
 library ones (`ToolCall`, `RunnableConfig`) are named in `EXTERNAL_TYPEDDICTS`.
+A TypeVar bound to a TypedDict (`T = TypeVar("T", bound=SomeTypedDict)`) counts
+as one within the module that declares it: mypy key-checks a read through it
+against the bound.
 The check is syntactic: a TypedDict reached through an attribute chain or an
 unannotated loop variable is still flagged — bind it to an annotated local.
 
@@ -617,6 +620,12 @@ file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
 `.python-version`, or a `python:3.x` / `rust:1.x` image tag all fail the guard —
 `apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
 drift that motivated it.
+
+A pin only holds where mise resolves the binary. A prek hook inherits the PATH
+of whatever shell ran `git commit`, so every `repo: local` hook in every
+tracked `.pre-commit-config.yaml` starts with `mise exec --` (or `mise run`, or
+an explicit path). The guard fails on an entry that names a bare program: an
+agent shell with uv 0.10.6 first on PATH broke the lint-imports hook that way.
 
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an

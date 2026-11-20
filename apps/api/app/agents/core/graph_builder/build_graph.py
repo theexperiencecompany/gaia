@@ -51,7 +51,7 @@ from app.agents.tools.todo_tools import create_todo_tools
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import COMMS_AGENT_NAME, FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -264,7 +264,7 @@ async def build_comms_graph(
                 memory_node,
             ],
         ),
-        agent_config=AgentConfig(agent_name="comms_agent", middleware=middleware),
+        agent_config=AgentConfig(agent_name=COMMS_AGENT_NAME, middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -307,7 +307,7 @@ def comms_tools() -> dict[str, BaseTool]:
 
 
 @lazy_provider(
-    name="comms_agent",
+    name=COMMS_AGENT_NAME,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,

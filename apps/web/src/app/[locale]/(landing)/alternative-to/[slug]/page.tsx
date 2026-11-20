@@ -1,3 +1,4 @@
+import "../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -5,6 +6,7 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { LinkCard } from "@/components/seo/LinkCard";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
@@ -206,7 +208,7 @@ function AlternativeArticle({
               {
                 key: "gaia",
                 label: t("alternatives.gaia_column"),
-                headerClassName: "text-primary",
+                headerClassName: "text-accent",
                 cellClassName: "text-emerald-400",
               },
               {
@@ -279,7 +281,7 @@ function AlternativeArticle({
           </p>
           <SiteLink
             href={marketplacePath}
-            className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
+            className="inline-flex items-center rounded-full bg-accent px-6 py-3 text-sm font-medium text-black transition-opacity hover:opacity-90"
           >
             Connect {data.name}
           </SiteLink>
@@ -299,7 +301,7 @@ function AlternativeArticle({
                 href={`/alternative-to/${alt.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
                   {t("alternatives.best_alternative", { name: alt.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{alt.tagline}</p>
@@ -322,7 +324,7 @@ function AlternativeArticle({
                 href={`/compare/${comp.slug}`}
                 className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
               >
-                <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                <h3 className="mb-1 text-base font-medium text-white group-hover:text-accent">
                   {t("alternatives.gaia_vs_name", { name: comp.name })}
                 </h3>
                 <p className="text-xs text-zinc-400">{comp.tagline}</p>
@@ -357,29 +359,23 @@ function AlternativeArticle({
         <h2 className="mb-6 text-3xl font-semibold text-white">
           {t("common.explore_more")}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SiteLink
+        <div className="grid gap-4 sm:grid-cols-3">
+          <LinkCard
+            href="/alternative-to"
+            title={t("alternatives.hub_title")}
+            description={t("alternatives.hub_subtitle")}
+            clamp
+          />
+          <LinkCard
             href="/compare"
-            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-          >
-            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-              {t("alternatives.gaia_vs_competitors")}
-            </h3>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              {t("alternatives.gaia_vs_competitors_desc")}
-            </p>
-          </SiteLink>
-          <SiteLink
+            title={t("alternatives.gaia_vs_competitors")}
+            description={t("alternatives.gaia_vs_competitors_desc")}
+          />
+          <LinkCard
             href="/for"
-            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-          >
-            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-              {t("alternatives.gaia_for_role")}
-            </h3>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              {t("alternatives.gaia_for_role_desc")}
-            </p>
-          </SiteLink>
+            title={t("alternatives.gaia_for_role")}
+            description={t("alternatives.gaia_for_role_desc")}
+          />
         </div>
       </section>
     </article>

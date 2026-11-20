@@ -54,6 +54,7 @@
       "!**/.DS_Store",
       "!**/*.generated.ts",
       "!**/*.generated.json",
+      "!libs/shared/ts/src/analytics/generated/analytics-catalog.json",
       "!apps/web/src/**/i18n/*.json"
     ]
   },
@@ -287,6 +288,7 @@
     {
       "includes": [
         "apps/web/src/components/seo/JsonLd.tsx",
+        "apps/web/src/components/shared/HydrateOnVisible.tsx",
         "apps/web/src/components/ui/chart.tsx",
         "apps/web/src/features/whats-new/components/WhatsNewContent.tsx"
       ],

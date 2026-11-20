@@ -17,7 +17,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   return (
     <button
       type="button"
-      className="group relative mx-2 mb-1 block w-full cursor-pointer text-left"
+      className="group relative mx-2 mb-1 block w-[calc(100%_-_1rem)] cursor-pointer text-left"
       onClick={onConnect}
     >
       {/* Overlay */}
@@ -34,7 +34,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
           {/* Content */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate text-sm text-foreground-600 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
+              <span className="truncate text-sm text-zinc-300 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
                 {formatToolName(tool.name)}
               </span>
 

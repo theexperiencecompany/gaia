@@ -30,7 +30,7 @@ from app.constants.streaming import (
     STREAM_DONE_SIGNAL,
     STREAM_ERROR_SIGNAL,
 )
-from app.core.stream_manager import StreamManager, StreamProgress
+from app.core.stream_manager import StreamManager, StreamProgress, sse_payload
 from app.utils.message_breaks import split_message_bubbles
 from tests.helpers import captured_wide_event
 
@@ -941,3 +941,16 @@ class TestTouchLiveness:
         with patcher:
             await StreamManager._touch_liveness("s1")
         client.expire.assert_not_awaited()
+
+
+class TestSsePayload:
+    """Readers match on "data:"; an id-tagged replay frame must reach them as one."""
+
+    def test_an_id_tagged_frame_loses_exactly_its_id_line(self) -> None:
+        frame = 'id: 1700000000000-0\ndata: {"response": "hi"}\n\n'
+
+        assert sse_payload(frame) == 'data: {"response": "hi"}\n\n'
+
+    def test_an_untagged_frame_passes_through_unchanged(self) -> None:
+        assert sse_payload(": keepalive\n\n") == ": keepalive\n\n"
+        assert sse_payload('data: {"id: x": 1}\n\n') == 'data: {"id: x": 1}\n\n'

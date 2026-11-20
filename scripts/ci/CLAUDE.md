@@ -21,8 +21,7 @@ lane without grepping the workflow first.
 | What this PR changed | `changes.sh` | `base`, `base-rev`, `files`, `py-source`, `affected` |
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
-| The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
+| The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
@@ -59,6 +58,10 @@ answer; a caller with a safe fallback catches it at the call site), `log.sh` (th
 convention), `runner-host.sh` (`ci_on_the_box`: whether this job is on the home
 box, read from the runner name `gaia-home-<n>` and never from
 `RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`),
+`webhook.sh` (`post_webhook`, the one Discord/Slack webhook sender: `deploy.sh
+notify` sources it and `analytics.py csp-soak` runs it through bash),
+`csp_soak.py` (the CSP soak's header classification, HogQL query and Slack
+message behind `analytics.py csp-soak`, kept out of the catalog checks' file),
 `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
@@ -67,7 +70,7 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
@@ -107,6 +110,45 @@ record dir | shard.log> [--json]` (`mise mutation:survivors`), never by parsing
 path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
 prints that view on failure — the local proof step, with no lane and nothing
 to poll.
+
+Shards are sized by estimated cost, not by module count. The detector stamps
+each module with `mutants`, its count of mutable AST nodes inside functions on
+the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).
+A module's `cost` is `20 s + mutants x 0.30 s` in the unit pool, and
+`20 s + mutants x (0.19 s + test files x 0.061 s)` in services (one mutant
+worker, because contract tests share a Redis DB). `plan` picks the shard COUNT
+from the cost: each pool gets the fewest shards whose packing keeps every shard
+within `SHARD_BUDGET_SECONDS` (600). The budget is a third of the deadline on
+purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
+mutants, took 245 s on one run and 563 s on the next), and replaying both #1799
+runs' measured durations kept the worst 600 s shard at 1133 s. Measured beats
+estimated: each shard uploads `mutation-durations-N` (`shard.durations.json`,
+the seconds every started module took), `detect` runs `mutation.py history` to
+download those from the PR's five newest earlier runs, and `plan` costs a
+measured module at its newest measurement, falling back to the estimate. A
+plan below one wave is topped up to `MUTATION_WAVE` (6), because shards that
+run at once cost no wall clock. A plan above `MAX_SHARDS` (24, four waves, far
+under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
+each shard over budget. Concurrency stays at `max-parallel: 6`, so the shards
+past the first wave queue. Spare shards go to the pool with the most cost per
+shard, and inside a pool the costliest module goes first onto the cheapest shard.
+Each module's mutmut cap is 3x its cost, never under 720 s and never past the
+deadline less wrap-up. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
+30-minute step timeout). Caps shrink to fit the time left, and a module the
+deadline has no room for gets a `timed_out` verdict with no run. So the step
+timeout can no longer kill a shard before it reports. Memory is capped the same
+way: on Linux mutmut gets an `RLIMIT_DATA` of `MUTANT_MEMORY_SHARE` (80%) of the
+shard's cgroup limit (else RAM) split over itself and its workers, inherited by
+every forked mutant. A mutant that loops while a test fake grows then dies of
+`MemoryError`, or as a segfault (counted as detected on Linux beside real verdicts,
+and named in the verdict's reason). Before the cap, `conversation/step.py` went
+from 1.1 GB to 8 GB in 50 s and the OOM killer took the whole hosted runner,
+which GitHub reports as "the runner has received a shutdown signal". The constants were fitted
+to PR #1799 (runs 43665639573 and 43677307541), where packing by count left shard 3/6 with 54
+modules and a 30-minute timeout. The same run stopped
+`repositories/conversations.py` and `conversation/mongo_log.py` at the fixed
+720 s cap with 452/519 and 383/521 mutants graded. Refit them from a later
+run's `shard.log` phases when the lane's machines or worker counts change.
 
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second

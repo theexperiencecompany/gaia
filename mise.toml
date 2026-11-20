@@ -285,6 +285,33 @@ else
 fi
 """
 
+[tasks."web:primitive-parity"]
+description = "Compare every HeroUI primitive GAIA renders (the dev-only /dev/primitive-parity fixture) against v2's computed styles in apps/web/e2e/primitive-parity/v2-snapshot.json: borders, outline, shadow, corners, insets, size, type, colour, opacity, fades and tooltip delay, at rest, hover, keyboard focus, pressed and open. Starts `next dev` unless PARITY_BASE_URL points at a server already running the fixture; intended differences go in approved.json with a reason. Run it after any HeroUI bump or gaia.css change."
+dir = "apps/web"
+run = "pnpm exec playwright test -c playwright.parity.config.ts"
+
+[tasks."web:visual:review"]
+description = "Whole-app before/after visual review: seed one local API, production-build and screenshot every app route and UI state at <base> and at [head] (default HEAD), then write review.html with each diff. Run it before merging a UI-heavy change. Wraps the review harness in tools/heroui-migration/review/ (run.sh before/after over stack.sh); refs must exist in GIT_SOURCE (default: this checkout)"
+usage = '''
+arg "<base>" help="The ref to capture as the before side (e.g. origin/master)"
+arg "[head]" default="HEAD" help="The ref to capture as the after side"
+'''
+run = '''
+set -eu
+harness=tools/heroui-migration/review
+for entry in run.sh stack.sh; do
+  if [ ! -f "$harness/$entry" ]; then
+    echo "web:visual:review: $harness/$entry is missing; this checkout predates the review harness." >&2
+    exit 1
+  fi
+done
+export GIT_SOURCE="${GIT_SOURCE:-$PWD}"
+base=$(git -C "$GIT_SOURCE" rev-parse --verify "${usage_base}^{commit}")
+head=$(git -C "$GIT_SOURCE" rev-parse --verify "${usage_head}^{commit}")
+bash "$harness/run.sh" before "$base"
+bash "$harness/run.sh" after "$head"
+'''
+
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"
@@ -586,7 +613,7 @@ run = "nx affected -t format --parallel=3"
 # These run CI's exact command, from the root, at CI's exact pin, so a clean
 # local run means a clean lane. Keep the ruff version in lockstep with
 # .github/workflows/ci.yml, .pre-commit-config.yaml and uv.lock —
-# `python3 tools/lints/check_tool_pins.py` enforces that.
+# `mise ci:local --only tool-pins` enforces that.
 [tasks."lint:py"]
 description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
 run = "uv run --frozen --no-build --isolated --only-group lint ruff check . && uv run --frozen --no-build --isolated --only-group lint ruff format --check ."
@@ -785,7 +812,7 @@ description = "Why a PR is red: each failing lane's verdict artifact or error-an
 run = "uv run python scripts/dev/ci_remote.py"
 
 [tasks."ci:watch"]
-description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+description = "Wait on CI: `mise ci:watch <PR|branch>` (a branch with no PR, such as master, at its head commit) polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
 run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
 
 [tasks."ci:status"]

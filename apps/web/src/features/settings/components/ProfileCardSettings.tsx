@@ -1,14 +1,13 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { ButtonGroup, Skeleton, Tooltip } from "@heroui/react";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import {
   CONNECT_ACTION_LABEL,
   integrationConnectionState,
 } from "@shared/utils";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -101,25 +100,29 @@ export default function ProfileCardSettings() {
           <p className="mt-0.5 text-xs text-zinc-500">A tiny window into you</p>
         </div>
         <ButtonGroup>
-          <Tooltip content="Copy profile link">
-            <Button
+          <Tooltip>
+            <GaiaButton
+              aria-label="Copy profile link"
               isIconOnly
-              variant="flat"
+              variant="default-soft"
               onPress={handleCopyLink}
               size="sm"
             >
               <Copy01Icon size={16} />
-            </Button>
+            </GaiaButton>
+            <Tooltip.Content>Copy profile link</Tooltip.Content>
           </Tooltip>
-          <Tooltip content="View full profile">
-            <Button
+          <Tooltip>
+            <GaiaButton
+              aria-label="Open profile"
               isIconOnly
-              variant="flat"
+              variant="default-soft"
               onPress={handleOpenProfile}
               size="sm"
             >
               <LinkSquare02Icon size={16} />
-            </Button>
+            </GaiaButton>
+            <Tooltip.Content>View full profile</Tooltip.Content>
           </Tooltip>
         </ButtonGroup>
       </div>
@@ -140,10 +143,10 @@ export default function ProfileCardSettings() {
                 displayData.user_bio.startsWith("Processing")) &&
               // Only show button if Gmail is not connected
               gmailState !== "connected" && (
-                <Button color="primary" onPress={handleConnectGmail}>
+                <GaiaButton onPress={handleConnectGmail} variant="primary">
                   {CONNECT_ACTION_LABEL[gmailState]} Gmail for a more
                   personalized bio
-                </Button>
+                </GaiaButton>
               )}
           </div>
         ) : null}

@@ -11,10 +11,13 @@ import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+import { ComparisonCardGrid } from "@/app/[locale]/(landing)/compare/ComparisonCardGrid";
 import InboxZeroAiClient from "@/app/[locale]/(landing)/inbox-zero-ai/InboxZeroAiClient";
+import { GlossaryTermGrid } from "@/app/[locale]/(landing)/learn/GlossaryTermGrid";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import LandingLayoutShell from "@/components/layouts/LandingLayoutShell";
 import Footer from "@/components/navigation/Footer";
+import { CategoryHubPage } from "@/components/seo/CategoryHubPage";
 import { BlogList } from "@/features/blog/components/BlogList";
 import ContactSidebar from "@/features/contact/components/ContactSidebar";
 import type { BlogPostMeta } from "@/lib/blog";
@@ -41,6 +44,7 @@ vi.mock("@/i18n/navigation", () => ({
   Link: ({ href, children }: { href: string; children: ReactNode }) => (
     <a href={href}>{children}</a>
   ),
+  getPathname: ({ href }: { href: string }) => href,
   usePathname: () => "/",
   useRouter: () => ({ push: vi.fn() }),
 }));
@@ -135,11 +139,23 @@ function nameMismatches(doc: Document): string[] {
   });
 }
 
+// Link names squirrelscan's a11y/link-text-generic flags: they say nothing of where the link goes.
+const GENERIC_LINK_NAMES = new Set([
+  "click here",
+  "here",
+  "read more",
+  "learn more",
+  "more",
+  "link",
+  "download",
+]);
+
 const AUTHOR = { name: "Aryan", role: "Founder", avatar: "/a.png" };
 
 const blog = (slug: string, featured: boolean): BlogPostMeta => ({
   slug,
   title: `Post ${slug}`,
+  description: `What post ${slug} covers.`,
   date: "2026-01-01",
   authors: [AUTHOR],
   category: "Engineering",
@@ -165,6 +181,13 @@ describe("landing markup accessibility", () => {
   it("names every footer and contact social link with its visible text", () => {
     expect(nameMismatches(parse(<Footer />))).toEqual([]);
     expect(nameMismatches(parse(<ContactSidebar />))).toEqual([]);
+  });
+
+  it("names no footer link with text that is generic out of context", () => {
+    const names = [...parse(<Footer />).querySelectorAll("a")].map((link) =>
+      normalize(link.getAttribute("aria-label") ?? link.textContent),
+    );
+    expect(names.filter((name) => GENERIC_LINK_NAMES.has(name))).toEqual([]);
   });
 
   it("gives the landing shell one main, reached by a leading skip link", () => {
@@ -233,6 +256,56 @@ describe("landing markup accessibility", () => {
       />,
     );
     expect(doc.querySelector("h1")?.textContent).toBe("Morning briefing");
+    expect(headingSkips(doc)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "glossary",
+      <GlossaryTermGrid
+        key="glossary"
+        headingLevel="h2"
+        terms={[
+          { slug: "ai-agent", term: "AI agent", definition: "Acts for you." },
+          { slug: "rag", term: "RAG", definition: "Retrieval first." },
+        ]}
+      />,
+    ],
+    [
+      "comparison",
+      <ComparisonCardGrid
+        key="comparison"
+        vsLabel={(name) => `GAIA vs ${name}`}
+        headingLevel="h2"
+        section={0}
+        comparisons={[
+          {
+            slug: "notion",
+            name: "Notion",
+            domain: "notion.so",
+            tagline: "Docs",
+            description: "A workspace.",
+          },
+        ]}
+      />,
+    ],
+  ])("does not skip heading levels on a %s category page", (_, grid) => {
+    const doc = parse(
+      <CategoryHubPage
+        title="Productivity"
+        breadcrumbLabel="Productivity"
+        subtitle="Every productivity page."
+        pageUrl="https://heygaia.io/learn/category/productivity"
+        homeLabel="Home"
+        hubLabel="Glossary"
+        hubHref="/learn"
+        categoryLabel="Productivity"
+        items={[]}
+      >
+        {grid}
+      </CategoryHubPage>,
+    );
+    expect(doc.querySelectorAll("h2").length).toBeGreaterThan(0);
     expect(headingSkips(doc)).toEqual([]);
   });
 

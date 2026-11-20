@@ -12,7 +12,6 @@
 # keep a touched file's known violation from failing until that date (CI
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
-apps/api/app/agents/core/nodes/adapt_media.py	TB002
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
 apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-12-31; the 4 remaining Any are LangChain's own contract — two ainvoke/invoke returns and **_kwargs overriding Runnable/BaseCallbackHandler signatures typed Any upstream, plus _requested_model taking any Runnable shape (CLAUDE.md Type Safety item 14). Every TB002 in the file was fixed in #1194 (decided 2026-09-20)
@@ -51,7 +50,6 @@ apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/extraction.py	TB002
 apps/api/app/memory/mappers.py	TB002
 apps/api/app/memory/pg_store/_session.py	TB001
-apps/api/app/memory/projection.py	TB002
 apps/api/app/models/composio_schemas/github_tools.py	TB001
 apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
@@ -59,7 +57,6 @@ apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/sync_user_workspaces.py	TB002
-apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/chat/artifact_forwarder.py	TB001
 apps/api/app/services/chat/artifact_forwarder.py	TB002
 apps/api/app/services/chat/artifacts_registry.py	TB001
@@ -73,7 +70,6 @@ apps/api/app/services/device/revoke_listener.py	TB002
 apps/api/app/services/device/up_listener.py	TB002
 apps/api/app/services/device_token_service.py	TB002
 apps/api/app/services/files/summaries.py	TB002
-apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15; master's #1240 reads chromadb's GetResult TypedDict with .get, a shape chromadb owns; a typed wrapper over the Chroma client is its own change (decided 2026-09-16)
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
 apps/api/app/services/llm_metering.py	TB001	deferred-until=2026-12-31; resolve_channel takes the raw configurable Mapping[str, Any]; touched by the llm-cost single-source fix, which leaves it as it was (decided 2026-10-08)

@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass, replace
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -59,6 +60,7 @@ REACT_ID = re.compile(r"react-aria-[\w-]+")
 # the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
 CRAWL_RELATIVE_RULES = frozenset(
     {
+        "content/title-pattern-outlier",
         "links/orphan-pages",
         "links/weak-internal-links",
         "links/no-contextual-inbound",
@@ -70,9 +72,29 @@ SHORT_PAGES = frozenset({"/download", "/contact"})
 MARKETPLACE_PAGE = re.compile(r"^/marketplace/[^/]+$")
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
-SYNCED_DOC_RULES = frozenset(
-    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+# Pages whose first viewport holds fewer than three images, so squirrel's first-three
+# lazy-above-fold rule reaches ones far below it: a combo, glossary term, persona,
+# integration or blog post (one segment under its hub), and three standalone pages.
+LAZY_BELOW_FOLD_PAGES = re.compile(
+    r"^/(?:automate|learn|for|marketplace|blog)/[^/]+$|^/(?:pricing|inbox-zero-ai|ai-chief-of-staff)$"
 )
+# Images that sit below the first viewport on every page that renders them: the closing
+# section's wallpaper, the use cases' publish-a-workflow banner, and /brand's wordmarks.
+# Matched on the unquoted item: Next serves /_next/image?url=%2Fimages..., Cloudflare
+# /cdn-cgi/image/<options>/images...
+LAZY_BELOW_FOLD_IMAGES = re.compile(
+    r"/images/wallpapers/(?:creation_of_adam|blueprint)\.|/brand/gaia_wordmark_"
+)
+# The checks an integration page fails on its tools' synced docs, not on our copy.
+SYNCED_DOC_RULES = frozenset(
+    {
+        "content/placeholder-contact",
+        "content/placeholder-text",
+        "content/keyword-stuffing",
+    }
+)
+# Of the size checks, only the one that counts the synced tool rows; the page shell's stay checked.
+SYNCED_DOC_CHECKS = frozenset({"perf/dom-size/dom-max-children"})
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -117,8 +139,11 @@ class Finding:
 
 @dataclass(frozen=True)
 class Observed:
+    """A finding as one page's check reported it; page stays that page when the finding is site-wide."""
+
     finding: Finding
     item: Item
+    page: str
 
 
 @dataclass(frozen=True)
@@ -149,7 +174,8 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
     page = SITE_LOCALE.sub("", seen.finding.page)
-    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_PAGE.match(page))
+    synced = seen.finding.rule in SYNCED_DOC_RULES or seen.finding.check in SYNCED_DOC_CHECKS
+    return synced and bool(MARKETPLACE_PAGE.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -159,6 +185,14 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/word-count" and (index or listing)
 
 
+def _lazy_below_fold(seen: Observed, _pages: frozenset[str]) -> bool:
+    page = SITE_LOCALE.sub("", seen.page) or "/"
+    below = LAZY_BELOW_FOLD_PAGES.match(page) or LAZY_BELOW_FOLD_IMAGES.search(
+        urllib.parse.unquote(seen.finding.item)
+    )
+    return seen.finding.rule == "perf/lazy-above-fold" and bool(below)
+
+
 # Only squirrel's own bugs, and one design decision: everything else is a finding.
 IGNORED = (
     Ignore(
@@ -166,7 +200,10 @@ IGNORED = (
         "characters, so CJK prose reads thin, a Latin product name in it as stuffing, and a "
         "title or description too short",
         "/ja/compare/asana has 2,726 CJK characters, reported as 107 words and 'asana' at "
-        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short",
+        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short; "
+        "its 120-character description minimum overflows a CJK snippet, which shows ~70-80 "
+        "characters on mobile and ~90-120 on desktop (sungrove.co.jp, xserver.ne.jp, 2025), "
+        "where ours run 70-129 (ja median 82, ko median 87)",
         _cjk_length,
     ),
     Ignore(
@@ -183,12 +220,13 @@ IGNORED = (
     ),
     Ignore(
         "an integration page shows its tools' documentation as the API syncs it from the "
-        "provider (Composio), sample addresses included; it changes with no deploy of ours, "
-        "so no baseline can pin it",
+        "provider (Composio), sample addresses and the tool names they repeat included, one row "
+        "per tool; its text and size change with no deploy of ours, so no baseline can pin them",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
         "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
         "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "
-        "two CI runs on 2026-11-15, and /marketplace/twitter's [social] appeared on a CI-only change",
+        "two CI runs on 2026-11-15, /marketplace/twitter's [social] appeared on a CI-only change, "
+        "and /marketplace/gmail's dom-max-children read fixed, then new, on two runs of one commit",
         _synced_tool_docs,
     ),
     Ignore(
@@ -198,6 +236,23 @@ IGNORED = (
         "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193; #1701 "
         "shortened their intros on purpose",
         _hub_word_count,
+    ),
+    Ignore(
+        "squirrel's lazy-above-fold rule takes the first three visible <img> in DOM order as "
+        "above the fold, with no layout; on these pages and for these images the ones it "
+        "names are below the first viewport, where lazy is right and eager would spend "
+        "bandwidth on the LCP's competition",
+        "squirrelscan 0.0.133 rule source: first 3 <img> outside aria-hidden/hidden/inert/"
+        "footer, flagged when loading=lazy. Rendered top of the first lazy image it names on "
+        "the production build at 1440x900 / 390x844 (Playwright, 2026-11-15): "
+        "/automate/asana-zoom 3005/5440, /learn/api-integration 2485/4283, "
+        "/de/for/adhd-professionals 2432/4412, /marketplace/code-interpreter-mcp-developer "
+        "2204/3191 (its hero icon is eager), /blog/how-tool-calling-works 1845/2175 (its "
+        "cover is priority), /pricing 1474/1833, /ai-chief-of-staff 1241/1337, "
+        "/inbox-zero-ai 1260/1374; the closing wallpaper at least 940/1124 "
+        "(/marketplace/page/2), the publish banner 1361/2459 (/use-cases/rent-reminder), "
+        "/brand's wordmark 1468/1672",
+        _lazy_below_fold,
     ),
 )
 
@@ -236,21 +291,21 @@ def _observe(
         for item in items:
             named = "" if item["id"] == page_url else _stable(item["id"], site)
             where = SITE_WIDE if BUILD_PATH.search(named) else page
-            yield Observed(Finding(where, name, named), item)
+            yield Observed(Finding(where, name, named), item, page)
         if not items:
-            yield Observed(Finding(page, name), Item(label=message))
+            yield Observed(Finding(page, name), Item(label=message), page)
         return
     for item in items:
         if item["id"] in crawled:
-            yield Observed(Finding(_path(item["id"], site), name), item)
+            path = _path(item["id"], site)
+            yield Observed(Finding(path, name), item, path)
         else:
-            yield Observed(Finding(SITE_WIDE, name, _stable(item["id"], site)), item)
+            yield Observed(Finding(SITE_WIDE, name, _stable(item["id"], site)), item, SITE_WIDE)
     listed = json.loads(raw_pages) if raw_pages else []
     if not items:
         for url in listed or [""]:
-            yield Observed(
-                Finding(_path(url, site) if url else SITE_WIDE, name), Item(label=message)
-            )
+            path = _path(url, site) if url else SITE_WIDE
+            yield Observed(Finding(path, name), Item(label=message), path)
 
 
 def project_db(home: Path) -> Path:
@@ -545,6 +600,9 @@ def cmd_drop(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # squirrel's binary leaves the stdout it shares with us O_NONBLOCK, so a long verdict
+    # died mid-print with BlockingIOError (master run 43763653900).
+    os.set_blocking(sys.stdout.fileno(), True)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     drop = sub.add_parser("drop", help="apply the fixes a ratchet run printed to the baseline")
