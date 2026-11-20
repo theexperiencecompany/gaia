@@ -219,6 +219,30 @@ def test_a_typevar_exemption_stays_in_the_module_that_binds_it(
     }
 
 
+def test_a_typevar_name_bound_two_ways_in_one_module_is_never_exempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A class-scoped TypeVar shadows nothing at module level, and is no exemption either."""
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from collections.abc import Mapping\n"
+        "from typing import Generic, TypedDict, TypeVar\n"
+        "class Doc(TypedDict):\n"
+        "    id: str\n"
+        "T = TypeVar('T', bound=Mapping[str, str])\n"
+        "class Box(Generic[T]):\n"
+        "    T = TypeVar('T', bound=Doc)\n"
+        "def f(value: T) -> str:\n"
+        "    return value['id']\n"
+        "U = TypeVar('U', bound=Doc)\n"
+        "class Shadow:\n"
+        "    U = TypeVar('U', bound=Mapping[str, str])\n"
+        "def g(value: U) -> str:\n"
+        "    return value['id']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [9, 14]
+
+
 def test_a_loop_over_a_typeddict_mapping_binds_its_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
