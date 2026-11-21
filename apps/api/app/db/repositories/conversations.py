@@ -895,19 +895,21 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return found[0] if found else None
 
     async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
-        """Delete the user's conversations matching match and their entries, returning their ids."""
-        query = {"user_id": user_id, **match}
-        ids = await self._distinct("conversation_id", query)
+        """Delete the user's conversations matching match and their entries, returning their ids.
+
+        Heads, entries and the result are the one set read up front, so a chat created
+        meanwhile is neither deleted nor left without its entries.
+        """
+        ids = await self._distinct("conversation_id", {"user_id": user_id, **match})
         if not ids:
             return []
+        these = {"user_id": user_id, "conversation_id": {"$in": ids}}
         with store_errors("delete"):  # pragma: no mutate — error label only
             # Entries first: a delete that dies between the two leaves the head, which the user can
             # delete again, never entries a later head under the same id would inherit.
-            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
-                {"user_id": user_id, "conversation_id": {"$in": ids}}
-            )
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(these)
             # Conversations are uncached (cache_policy None): there is no cache entry to evict.
-            await self._raw_collection().delete_many(query)
+            await self._raw_collection().delete_many({**match, **these})
         return ids
 
     async def _with_page(self, head: Head) -> StoredConversation:

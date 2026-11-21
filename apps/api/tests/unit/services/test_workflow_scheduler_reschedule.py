@@ -58,7 +58,7 @@ def _onboarded_user():
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    svc = WorkflowScheduler(redis_settings=MagicMock())
+    svc = WorkflowScheduler()
     svc.arq_pool = AsyncMock()
     return svc
 

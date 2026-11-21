@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from arq import ArqRedis, create_pool
-from arq.connections import RedisSettings
 
 from app.config.arq_redis import arq_redis_settings
 from app.models.scheduler_models import (
@@ -58,14 +57,13 @@ class BaseSchedulerService(ABC):
     Subclasses must implement task-specific operations like CRUD and execution.
     """
 
-    def __init__(self, redis_settings: RedisSettings | None = None):
+    def __init__(self) -> None:
         """Initialize the scheduler service."""
-        self.redis_settings = redis_settings or arq_redis_settings()
         self.arq_pool: ArqRedis | None = None
 
     async def initialize(self) -> None:
         """Initialize ARQ pool connection."""
-        self.arq_pool = await create_pool(self.redis_settings)
+        self.arq_pool = await create_pool(arq_redis_settings())
         log.info("initialized", self_class_name=self.__class__.__name__)
 
     async def close(self) -> None:

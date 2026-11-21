@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.arq_redis import arq_redis_settings
+from app.constants.db import ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
 from app.utils.redis_utils import RedisPoolManager
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,15 @@ class TestGetPool:
             pool = await RedisPoolManager.get_pool()
 
         assert pool is mock_pool
+
+    async def test_the_pool_connects_with_the_shared_arq_redis_settings(self) -> None:
+        create_pool = AsyncMock(return_value=AsyncMock())
+
+        with patch("arq.create_pool", create_pool):
+            await RedisPoolManager.get_pool()
+
+        create_pool.assert_awaited_once_with(arq_redis_settings())
+        assert create_pool.await_args.args[0].conn_timeout == ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
 
     async def test_returns_cached_pool_on_second_call(self) -> None:
         """If _pool is already set, get_pool returns it immediately."""
