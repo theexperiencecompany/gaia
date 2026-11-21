@@ -29,13 +29,11 @@ from langchain_core.runnables import RunnableConfig
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
-from app.constants.cache import STREAM_ACTIVE_PREFIX
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.graphs import GraphName
 from app.core.provider_registration import boot_process
-from app.db.redis import redis_cache
 from app.utils.message_breaks import normalize_message_breaks
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
-COMMS_GRAPH = "comms_agent"
 IDLE_BEFORE_REPAIR = timedelta(minutes=10)
 # Comms threads are keyed by the bare conversation uuid; executor/subagent threads carry a prefix.
 CANDIDATE_THREADS_SQL = """
@@ -90,26 +88,14 @@ async def candidate_threads() -> list[str]:
         return sorted(str(row[0]) for row in await cursor.fetchall())
 
 
-async def live_conversation_ids() -> frozenset[str]:
-    """Conversations with a chat turn in flight, from the stream manager's active index."""
-    if redis_cache.redis is None:
-        raise RuntimeError("redis is not connected; cannot tell which conversations are live")
-    keys = [
-        key
-        async for key in redis_cache.redis.scan_iter(match=f"{STREAM_ACTIVE_PREFIX}*", count=1000)
-    ]
-    return frozenset(str(key).rsplit(":", 1)[-1] for key in keys)
-
-
 async def repair_thread(
     graph: CompiledAgentGraph,
     thread_id: str,
     *,
     apply: bool,
     now: datetime,
-    live: frozenset[str],
 ) -> ThreadReport:
-    """Repair one thread unless a turn is live or it was written inside the idle window.
+    """Repair one thread unless it was written inside the idle window, as a live turn writes it.
 
     The write lands on the latest checkpoint, so a turn that finished in between is kept. A
     turn that started after the read would supersede the repair, so the write is verified to
@@ -119,7 +105,7 @@ async def repair_thread(
     state = await graph.aget_state(config)
     writes = repair_writes(state.values.get("messages", []))
     removed = sum(isinstance(write, RemoveMessage) for write in writes)
-    busy = thread_id in live or (
+    busy = (
         state.created_at is not None
         and now - datetime.fromisoformat(state.created_at) < IDLE_BEFORE_REPAIR
     )
@@ -141,12 +127,11 @@ async def _run(*, apply: bool) -> None:
     boot_process("arq_worker")
     manager = await get_checkpointer_manager()
     try:
-        graph = await GraphManager.get_graph(COMMS_GRAPH)
+        graph = await GraphManager.get_graph(GraphName.COMMS)
         now = datetime.now(UTC)
         print("APPLIED" if apply else "DRY RUN: nothing was written")
-        live = await live_conversation_ids()
         for thread_id in await candidate_threads():
-            print(await repair_thread(graph, thread_id, apply=apply, now=now, live=live))
+            print(await repair_thread(graph, thread_id, apply=apply, now=now))
         if not apply:
             print("\nRe-run with --apply to rewrite them.")
     finally:

@@ -63,6 +63,7 @@ from contextlib import contextmanager, suppress
 import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
+import fcntl
 import json
 import math
 import os
@@ -142,6 +143,8 @@ PLUGIN_FENCE = (
 )
 PLAIN_RUN_ADDOPTS = f"addopts={PLUGIN_FENCE} --timeout=300"
 LOCAL_LOG_DIR = Path("verify-logs/mutation")
+# Held for a whole local run: each run clears LOCAL_LOG_DIR, which a second one would do mid-run.
+LOCAL_LOCK = Path("verify-logs/mutation.lock")
 SHARD_LOG_TAIL_BYTES = 200_000
 TMPFS = Path("/dev/shm")
 TMPFS_MIN_FREE_BYTES = 1 << 30
@@ -890,6 +893,21 @@ def _local_status(work: ModuleWork, rc: int, log_dir: Path) -> str:
 
 def cmd_local(args: list[str]) -> int:
     os.chdir(REPO_ROOT)
+    LOCAL_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCAL_LOCK.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(
+                f"ERROR: another `mutation.py local` run is using {LOCAL_LOG_DIR}/ in this "
+                "checkout; wait for it, or pass every module to one run.",
+                file=sys.stderr,
+            )
+            return 2
+        return _run_local(args)
+
+
+def _run_local(args: list[str]) -> int:
     shutil.rmtree(LOCAL_LOG_DIR, ignore_errors=True)
     LOCAL_LOG_DIR.mkdir(parents=True)
     # Cleared once, and only this lane's subtree: a stale module from an earlier

@@ -11,15 +11,9 @@ vi.mock("@/features/chat/api/chatApi", () => ({
   chatApi: { postApprovalDecision: vi.fn() },
 }));
 
-vi.mock("@/features/chat/hooks/useMarkApprovalDecided", () => ({
-  useMarkApprovalDecided: () => vi.fn(),
-}));
-
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn() },
 }));
-
-const noop = (): void => undefined;
 
 const card = (
   overrides: Partial<ApprovalRequestData> = {},
@@ -28,13 +22,25 @@ const card = (
   tool_call_id: "call-1",
   gated_tool_name: "GMAIL_SEND_EMAIL",
   integration_name: "gmail",
-  summary: "Send email",
-  args_preview: { to: "b@x" },
-  status: "pending",
+  description: {
+    action: "Send an email",
+    headline: 'Send an email to b@x: "Q3 numbers"',
+    confirm: "send it",
+    details: [
+      { label: "To", value: "b@x" },
+      { label: "Subject", value: '"Q3 numbers"' },
+    ],
+  },
+  args_preview: { to: "b@x", thread_id: "th_42" },
+  status: "waiting",
+  outcome: null,
   feedback: null,
-  timeout_seconds: 300,
+  auto_reason: null,
   ...overrides,
 });
+
+const askedAgo = (seconds: number): string =>
+  new Date(Date.now() - seconds * 1000).toISOString();
 
 describe("ApprovalRequestSection ledger UX", () => {
   beforeEach(() => {
@@ -43,22 +49,93 @@ describe("ApprovalRequestSection ledger UX", () => {
       .mockResolvedValue({ success: true });
   });
 
-  it("shows the card age when the ledger provides it", () => {
+  it("leads with the server's headline and labelled details, raw arguments behind a tap", () => {
     render(
       <ApprovalRequestSection
-        data={card({ age_seconds: 172800 })}
-        onDecided={noop}
+        data={card({ auto_reason: "GAIA isn't sure you asked for this." })}
       />,
+    );
+    expect(
+      screen.getByText('Send an email to b@x: "Q3 numbers"'),
+    ).toBeDefined();
+    expect(screen.getByText("Subject")).toBeDefined();
+    expect(screen.getByText('"Q3 numbers"')).toBeDefined();
+    expect(
+      screen.getByText("GAIA isn't sure you asked for this."),
+    ).toBeDefined();
+    expect(screen.queryByText("th_42")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /show all details/i }));
+    expect(screen.getByText("th_42")).toBeDefined();
+  });
+
+  it("shows every argument when the server has no labelled details", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            action: "Run a tool",
+            headline: "Run a tool",
+            confirm: "do it",
+            details: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("th_42")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /show all details/i }),
+    ).toBeNull();
+  });
+
+  it("says the server's re-ask sentence on a card asked again after a yes with a change", () => {
+    const question = "Updated subject to “Q4 numbers” — still OK to send it?";
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            ...card().description,
+            question,
+            change_note: "Updated subject to “Q4 numbers”",
+            changes: [{ label: "Subject", value: "“Q4 numbers”" }],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(question)).toBeDefined();
+  });
+
+  it("does not repeat the plain question on a first ask", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            ...card().description,
+            question: "OK to send an email to b@x?",
+          },
+        })}
+      />,
+    );
+    expect(screen.queryByText("OK to send an email to b@x?")).toBeNull();
+  });
+
+  it("names the action it will stop asking about", () => {
+    render(<ApprovalRequestSection data={card()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /more approval options/i }),
+    );
+    expect(screen.getByText("Don't ask again to send an email")).toBeDefined();
+  });
+
+  it("shows how long ago the card was asked", () => {
+    render(
+      <ApprovalRequestSection data={card({ asked_at: askedAgo(172800) })} />,
     );
     expect(screen.getByText("asked 2d ago")).toBeDefined();
   });
 
   it("asks in place before submitting a day-old approval", async () => {
     render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 259200 })}
-        onDecided={noop}
-      />,
+      <ApprovalRequestSection data={card({ asked_at: askedAgo(259200) })} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // Re-confirm appears; nothing submitted yet.
@@ -71,12 +148,7 @@ describe("ApprovalRequestSection ledger UX", () => {
   });
 
   it("submits immediately on approve tap — no waiting room", async () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5 })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // No "Sending your approval" interstitial, no cancel button.
     expect(screen.queryByText(/sending your approval/i)).toBeNull();
@@ -86,96 +158,60 @@ describe("ApprovalRequestSection ledger UX", () => {
     );
   });
 
-  it("submits the rendered row version with the decision", async () => {
-    const onDecided = vi.fn();
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5, ledger_version: 4 })}
-        onDecided={onDecided}
-      />,
+  it("sends the note typed on the card with an approve, as the change to make", async () => {
+    // Regression: the note was dropped on Approve, so the call ran as it stood.
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "  change the subject to Q4  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await vi.waitFor(() =>
+      expect(chatApi.postApprovalDecision).toHaveBeenCalledWith("ap_1", {
+        decision: "approve",
+        feedback: "change the subject to Q4",
+        scope: "once",
+      }),
     );
+  });
+
+  it("says an already-decided approval was decided and re-enables the card", async () => {
+    vi.mocked(chatApi.postApprovalDecision)
+      .mockReset()
+      .mockResolvedValueOnce({ success: false, outcome: null });
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await vi.waitFor(() =>
       expect(chatApi.postApprovalDecision).toHaveBeenCalledWith("ap_1", {
         decision: "approve",
         feedback: undefined,
         scope: "once",
-        v: 4,
       }),
     );
-  });
-
-  it("drops the version on the retry after a stale-v conflict", async () => {
-    vi.mocked(chatApi.postApprovalDecision)
-      .mockReset()
-      .mockResolvedValueOnce({ success: false, status: "pending" })
-      .mockResolvedValueOnce({ success: true });
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5, ledger_version: 4 })}
-        onDecided={noop}
-      />,
-    );
-    // First tap carries the rendered version.
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await vi.waitFor(() =>
-      expect(chatApi.postApprovalDecision).toHaveBeenNthCalledWith(1, "ap_1", {
-        decision: "approve",
-        feedback: undefined,
-        scope: "once",
-        v: 4,
-      }),
+      expect(toast.error).toHaveBeenCalledWith(
+        "That approval was already decided",
+      ),
     );
-    // The conflict toast means the card re-enabled (submitting reset).
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
-    const approve = () => screen.getByRole("button", { name: /^approve$/i });
     await vi.waitFor(() =>
-      expect(approve().hasAttribute("disabled")).toBe(false),
+      expect(
+        screen
+          .getByRole("button", { name: /^approve$/i })
+          .hasAttribute("disabled"),
+      ).toBe(false),
     );
-    // The card stayed pending; the second tap omits v so the CAS decides.
-    fireEvent.click(approve());
-    await vi.waitFor(() =>
-      expect(chatApi.postApprovalDecision).toHaveBeenNthCalledWith(2, "ap_1", {
-        decision: "approve",
-        feedback: undefined,
-        scope: "once",
-        v: undefined,
-      }),
-    );
-  });
-
-  it("settles immediately on approve with no loading state", async () => {
-    const onDecided = vi.fn();
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5 })}
-        onDecided={onDecided}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
-    await vi.waitFor(() =>
-      expect(onDecided).toHaveBeenCalledWith("approved", null),
-    );
-    // No spinner, no running row, no waiting room anywhere.
-    expect(screen.queryByText(/running/i)).toBeNull();
   });
 });
 
 describe("ApprovalRequestSection always-allow menu", () => {
   it("offers always-allow on a card the user can waive", () => {
-    render(<ApprovalRequestSection data={card()} onDecided={noop} />);
+    render(<ApprovalRequestSection data={card()} />);
     expect(
       screen.getByRole("button", { name: /more approval options/i }),
     ).toBeDefined();
   });
 
   it("hides always-allow on a card that asks every time", () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ always_asks: true })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ always_asks: true })} />);
     expect(
       screen.queryByRole("button", { name: /more approval options/i }),
     ).toBeNull();

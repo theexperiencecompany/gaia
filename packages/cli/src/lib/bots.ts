@@ -42,9 +42,12 @@ export const BOT_API_ENV_KEYS = {
 /** apps/bots/.env key → the apps/api/.env key it is copied from. */
 const BOT_ENV_FROM_API_ENV = {
   GAIA_BOT_API_KEY: "GAIA_BOT_API_KEY",
-  GAIA_FRONTEND_URL: "FRONTEND_URL",
+  FRONTEND_URL: "FRONTEND_URL",
   RABBITMQ_URL: "RABBITMQ_URL",
 } as const;
+
+/** apps/bots/.env keys an older CLI wrote that no bot reads any more. */
+const RETIRED_BOT_ENV_KEYS = ["GAIA_FRONTEND_URL"] as const;
 
 /** HMAC key the bots hash platform user ids with before logging them. */
 const BOT_LOG_HASH_SECRET_KEY = "BOT_LOG_HASH_SECRET";
@@ -157,7 +160,10 @@ export function writeBotsEnv(repoPath: string, change: EnvChange = {}): void {
   }
 
   const dir = botsEnvDir(repoPath);
-  const values = applyEnvChange(readEnvValues(dir), change);
+  const values = applyEnvChange(
+    applyEnvChange(readEnvValues(dir), { unset: RETIRED_BOT_ENV_KEYS }),
+    change,
+  );
   values[BOT_LOG_HASH_SECRET_KEY] ??= generateMachineSecret();
   writeEnvFile(dir, { ...values, ...copied });
 }

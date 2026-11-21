@@ -2,8 +2,8 @@
  * Desktop tool bridge types — shared between the web renderer (which relays
  * requests) and the Electron desktop app (which executes them).
  *
- * The backend publishes a `desktop_tool_request` frame on the chat SSE
- * stream; the renderer hands it to the Electron main process over IPC and
+ * The backend pushes a `desktop_tool_request` message to the user's
+ * WebSocket; the renderer hands it to the Electron main process over IPC and
  * POSTs the result back to `/api/v1/desktop/tool-result`.
  */
 
@@ -21,13 +21,6 @@ export type DesktopToolName = (typeof DESKTOP_TOOL_NAMES)[number];
 export function isDesktopToolName(value: string): value is DesktopToolName {
   return (DESKTOP_TOOL_NAMES as readonly string[]).includes(value);
 }
-
-/**
- * Fallback bridge timeout used when a `desktop_tool_request` frame omits
- * `timeout_ms`. Mirrors the API's `DESKTOP_TOOL_TIMEOUT_SECONDS` (30s) — the
- * backend always sends an explicit value, so this only guards malformed frames.
- */
-export const DESKTOP_TOOL_DEFAULT_TIMEOUT_MS = 30_000;
 
 export interface DesktopToolRequest {
   request_id: string;

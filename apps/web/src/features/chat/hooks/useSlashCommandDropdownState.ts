@@ -210,7 +210,7 @@ export function useSlashCommandDropdownState({
   }, []);
 
   // Open the dropdown programmatically — used by the toolbar button, banner
-  // and '/' hotkey via the parent's imperative ref.
+  // and '/' hotkey.
   const openOrToggleDropdown = useCallback(() => {
     if (slashCommandState.isActive) {
       // Close the dropdown
@@ -425,3 +425,7 @@ export function useSlashCommandDropdownState({
     selectCategory,
   };
 }
+
+export type SlashCommandDropdownController = ReturnType<
+  typeof useSlashCommandDropdownState
+>;

@@ -1,9 +1,9 @@
 """Unit tests for app.agents.tools.todo_tool."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import inspect
-from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any, ClassVar, cast
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from langchain_core.tools import StructuredTool
 from pydantic import ValidationError
@@ -16,18 +16,25 @@ from app.agents.tools.todo_tool import (
     update_checklist_item,
 )
 from app.constants.log_tags import LogTag
+from app.constants.todos import TODO_STATS_LABEL_LIMIT
 from app.models.agent_models import RunUserMissingError
 from app.models.todo_models import (
     BulkOperationResponse,
+    PaginationMeta,
     Priority,
+    SearchMode,
     SubTask,
+    TodoDayWindow,
     TodoLabelCount,
+    TodoListResponse,
     TodoResponse,
+    TodoSearchParams,
     TodoStats,
     TodoUpdateRequest,
 )
 from app.services.todos.errors import TodoNotFoundError
 from app.services.todos.todo_bulk_service import BulkCompletion
+from app.utils.timezone import Timezone
 from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
@@ -51,9 +58,8 @@ MODULE = "app.agents.tools.todo_tool"
 class _UTCOnlyDateTime(datetime):
     """datetime stand-in whose now(None) (local time) reads a different date than now(UTC).
 
-    The todo tools' day boundaries must follow the UTC calendar; this clock makes a non-UTC read
-    produce a wrong window the exact-boundary assertions can see, without depending on the run
-    machine's own timezone differing from UTC.
+    The todo tools read the UTC clock and place it on the user's home timezone; this clock makes
+    a host-local read produce a wrong window the exact-boundary assertions can see.
     """
 
     @classmethod
@@ -64,8 +70,15 @@ class _UTCOnlyDateTime(datetime):
 
 
 def _make_config(user_id: str = FAKE_USER_ID) -> dict[str, Any]:
-    """Return a minimal RunnableConfig-like dict naming the run user."""
-    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
+    """Return a minimal RunnableConfig-like dict naming the run user and their IST home zone."""
+    return {
+        "configurable": {"user_id": user_id, "user_timezone": "Asia/Kolkata"},
+        "metadata": {"user_id": user_id},
+    }
+
+
+# The fake clock's 2026-06-15 02:00 UTC is 07:30 IST, so the user's today starts 18:30 UTC the day before.
+_IST_TODAY_START = datetime(2026, 6, 14, 18, 30, tzinfo=UTC)
 
 
 def _make_todo_response(**overrides: Any) -> MagicMock:
@@ -117,6 +130,83 @@ def _make_project_response(**overrides: Any) -> MagicMock:
 
 def _writer_mock() -> MagicMock:
     return MagicMock()
+
+
+_IST_WINDOW = TodoDayWindow.for_timezone(
+    Timezone.parse("Asia/Kolkata"), datetime(2026, 6, 15, 2, 0, tzinfo=UTC)
+)
+
+
+def _summary_todo(title: str) -> TodoResponse:
+    return TodoResponse(
+        id=f"id-{title}",
+        user_id=FAKE_USER_ID,
+        title=title,
+        created_at=datetime(2026, 6, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+
+
+class _SummaryPages:
+    """Serves each summary bucket's page, refusing any search the summary should not make."""
+
+    # bucket -> (total over every todo, titles on the preview page)
+    PAGES: ClassVar[dict[str, tuple[int, list[str]]]] = {
+        "today": (7, ["t1"]),
+        "overdue": (1, ["o1"]),
+        "upcoming": (0, []),
+        "high": (2, ["h1", "h2"]),
+        "completed": (3, ["c1"]),
+    }
+
+    def __init__(self) -> None:
+        self.served: list[str] = []
+
+    def _which(self, params: TodoSearchParams) -> str:
+        open_preview = TodoSearchParams(
+            mode=SearchMode.TEXT, per_page=5, completed=False, day_window=_IST_WINDOW
+        )
+        searches = {
+            "today": open_preview.model_copy(
+                update={
+                    "due_date_start": _IST_WINDOW.today.start,
+                    "due_date_end": _IST_WINDOW.today.end,
+                }
+            ),
+            "overdue": open_preview.model_copy(update={"overdue": True}),
+            "upcoming": open_preview.model_copy(
+                update={
+                    "due_date_start": _IST_WINDOW.upcoming.start,
+                    "due_date_end": _IST_WINDOW.upcoming.end,
+                }
+            ),
+            "high": open_preview.model_copy(update={"priority": Priority.HIGH}),
+            "completed": open_preview.model_copy(
+                update={"completed": True, "completed_after": _IST_WINDOW.today_start}
+            ),
+        }
+        for name, search in searches.items():
+            if params.model_dump() == search.model_dump():
+                return name
+        raise AssertionError(f"unexpected summary search: {params!r}")
+
+    def dumped(self, name: str) -> list[dict[str, Any]]:
+        return [_summary_todo(t).model_dump(mode="json") for t in self.PAGES[name][1]]
+
+    def bucket(self, name: str, *, has_more: bool) -> dict[str, Any]:
+        return {"count": self.PAGES[name][0], "todos": self.dumped(name), "has_more": has_more}
+
+    async def serve(self, user_id: str, params: TodoSearchParams) -> TodoListResponse:
+        assert user_id == FAKE_USER_ID
+        name = self._which(params)
+        self.served.append(name)
+        total, titles = self.PAGES[name]
+        return TodoListResponse(
+            data=[_summary_todo(t) for t in titles],
+            meta=PaginationMeta(
+                total=total, page=1, per_page=5, pages=1, has_next=False, has_prev=False
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +350,24 @@ class TestCreateTodo:
 
 class TestListTodos:
     """Tests for the list_todos tool."""
+
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
+    async def test_overdue_is_judged_on_the_users_day(
+        self,
+        mock_service: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.return_value = []
+
+        from app.agents.tools.todo_tool import list_todos
+
+        await list_todos.coroutine(config=_make_config(), overdue=True)  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+
+        assert mock_service.await_args.kwargs["overdue"] is True
+        assert mock_service.await_args.kwargs["day_window"] == _IST_WINDOW
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
@@ -566,8 +674,9 @@ class TestSemanticSearchTodos:
 class TestGetTodoStatistics:
     """Tests for the get_todo_statistics tool."""
 
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.get_todo_stats_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.todo_repository.compute_stats", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
@@ -582,6 +691,7 @@ class TestGetTodoStatistics:
 
         assert result["error"] is None
         assert result["stats"]["total"] == 10
+        mock_service.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
 
 
 # ---------------------------------------------------------------------------
@@ -609,13 +719,10 @@ class TestGetTodayTodos:
 
         assert result["error"] is None
         assert result["count"] == 1
-        # The query window is the full day "now" falls on, as naive datetimes (datetime.combine
-        # keeps time.min/max's null tzinfo) on the UTC clock's calendar date — pinned exactly so a
-        # local-time or None bound cannot slip through.
         (user_arg, start, end), _ = mock_service.await_args
         assert user_arg == FAKE_USER_ID
-        assert start == datetime(2026, 6, 15, 0, 0)
-        assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
+        assert start == _IST_TODAY_START
+        assert end == _IST_TODAY_START + timedelta(days=1, microseconds=-1)
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
@@ -659,6 +766,7 @@ class TestGetUpcomingTodos:
         assert result["error"] is None
         assert result["count"] == 2
 
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
     async def test_custom_days(
@@ -678,6 +786,11 @@ class TestGetUpcomingTodos:
 
         assert result["error"] is None
         assert result["count"] == 0
+        (user_arg, start, end), _ = mock_service.await_args
+        assert user_arg == FAKE_USER_ID
+        tomorrow_start = _IST_TODAY_START + timedelta(days=1)
+        assert start == tomorrow_start
+        assert end == tomorrow_start + timedelta(days=14, microseconds=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -859,7 +972,7 @@ class TestGetTodosByLabel:
 class TestGetAllLabels:
     """Tests for the get_all_labels tool."""
 
-    @patch(f"{MODULE}.get_all_labels_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.todo_repository.top_labels", new_callable=AsyncMock)
     async def test_happy_path(
         self,
         mock_service: AsyncMock,
@@ -876,6 +989,7 @@ class TestGetAllLabels:
 
         assert result["error"] is None
         assert len(result["labels"]) == 3
+        mock_service.assert_awaited_once_with(user_id=FAKE_USER_ID, limit=TODO_STATS_LABEL_LIMIT)
 
 
 # ---------------------------------------------------------------------------
@@ -1258,56 +1372,115 @@ class TestGetTodosSummary:
 
     @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
     @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_responses", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
-    async def test_happy_path(
+    @patch(f"{MODULE}.todo_repository")
+    @patch(f"{MODULE}.TodoService.list_todos", new_callable=AsyncMock)
+    async def test_summary_is_built_from_counts_over_every_todo(
         self,
-        mock_date_range: AsyncMock,
-        mock_all_todos: AsyncMock,
+        mock_list: AsyncMock,
+        mock_repo: MagicMock,
         mock_all_projects: AsyncMock,
+        mock_todo_responses: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        pages = _SummaryPages()
+        mock_list.side_effect = pages.serve
+        mock_repo.compute_stats = AsyncMock(
+            return_value=TodoStats(
+                total=10,
+                completed=4,
+                pending=6,
+                overdue=1,
+                completion_rate=40.0,
+                by_project={"p1": 5, "p2": 2},
+                pending_by_project={"p1": 3},
+            )
+        )
+        next_doc = object()
+        mock_repo.next_due = AsyncMock(return_value=next_doc)
+        deadline = _summary_todo("deadline")
+        mock_todo_responses.return_value = [deadline]
+        mock_all_projects.return_value = [
+            _make_project_response(id="p1", name="Work"),
+            _make_project_response(id="p2", name="Home"),
+            _make_project_response(id="p3", name="Empty"),
+        ]
+
+        from app.agents.tools.todo_tool import get_todos_summary
+
+        result = await get_todos_summary.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+
+        expected = {
+            "today": pages.bucket("today", has_more=True),
+            "overdue": pages.bucket("overdue", has_more=False),
+            "upcoming_week": pages.bucket("upcoming", has_more=False),
+            "high_priority": pages.bucket("high", has_more=False),
+            "recently_completed": {"count": 3, "todos": pages.dumped("completed")},
+            "next_deadline": deadline.model_dump(mode="json"),
+            "stats": {
+                "total": 10,
+                "completed": 4,
+                "pending": 6,
+                "completed_today": 3,
+                "overdue": 1,
+                "completion_rate": 40.0,
+            },
+            "by_project": {
+                "Work": {"total": 5, "completed": 2, "pending": 3},
+                "Home": {"total": 2, "completed": 2, "pending": 0},
+                "Empty": {"total": 0, "completed": 0, "pending": 0},
+            },
+        }
+        assert result == {"summary": expected, "error": None}
+        writer.assert_called_once_with(
+            {"todo_data": {"summary": expected, "action": "summary", "message": ANY}}
+        )
+        assert sorted(pages.served) == ["completed", "high", "overdue", "today", "upcoming"]
+        mock_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_IST_WINDOW)
+        mock_repo.next_due.assert_awaited_once_with(
+            FAKE_USER_ID, after=datetime(2026, 6, 15, 2, 0, tzinfo=UTC)
+        )
+        mock_todo_responses.assert_awaited_once_with(FAKE_USER_ID, [next_doc])
+        mock_all_projects.assert_awaited_once_with(FAKE_USER_ID)
+
+    @patch(f"{MODULE}.datetime", _UTCOnlyDateTime)
+    @patch(f"{MODULE}.current_stream_writer")
+    @patch(f"{MODULE}.todo_responses", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.todo_repository")
+    @patch(f"{MODULE}.TodoService.list_todos", new_callable=AsyncMock)
+    async def test_no_open_deadline_reads_as_none(
+        self,
+        mock_list: AsyncMock,
+        mock_repo: MagicMock,
+        mock_all_projects: AsyncMock,
+        mock_todo_responses: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        todo = _make_todo_response(
-            due_date=datetime(2026, 6, 15, 9, 0, tzinfo=UTC),
-            completed=False,
-            priority=Priority.HIGH,
-            completed_at=None,
-        )
-        mock_date_range.return_value = [todo]
-        mock_all_todos.return_value = [todo]
+        mock_list.side_effect = _SummaryPages().serve
+        mock_repo.compute_stats = AsyncMock(return_value=TodoStats())
+        mock_repo.next_due = AsyncMock(return_value=None)
         mock_all_projects.return_value = []
 
         from app.agents.tools.todo_tool import get_todos_summary
 
         result = await get_todos_summary.coroutine(config=_make_config())  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
 
-        assert result["error"] is None
-        assert "summary" in result
-        summary = result["summary"]
-        assert "today" in summary
-        assert "stats" in summary
-        assert "by_project" in summary
-        # Same day-window contract as get_today_todos, pinned against the same
-        # fake clock: the first gather call fetches today's bounds.
-        (user_arg, start, end), _ = mock_date_range.await_args_list[0]
-        assert user_arg == FAKE_USER_ID
-        assert start == datetime(2026, 6, 15, 0, 0)
-        assert end == datetime(2026, 6, 15, 23, 59, 59, 999999)
+        assert result["summary"]["next_deadline"] is None
+        mock_todo_responses.assert_not_awaited()
 
     @patch(f"{MODULE}.current_stream_writer")
-    @patch(f"{MODULE}.get_all_projects_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_all_todos_service", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_todos_by_date_range", new_callable=AsyncMock)
+    @patch(f"{MODULE}.TodoService.list_todos", new_callable=AsyncMock)
     async def test_service_failure(
         self,
-        mock_date_range: AsyncMock,
-        mock_all_todos: AsyncMock,
-        mock_all_projects: AsyncMock,
+        mock_list: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_date_range.side_effect = Exception("DB down")
+        mock_list.side_effect = Exception("DB down")
 
         from app.agents.tools.todo_tool import get_todos_summary
 

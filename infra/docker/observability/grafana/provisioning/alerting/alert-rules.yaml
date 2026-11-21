@@ -1009,8 +1009,7 @@ groups:
             One chat turn in twenty takes over thirty seconds to complete its
             comms reply. Split delegated vs direct via the delegated label, then
             executor_active_seconds (executor work) vs HIL wait
-            (hil_user_wait_seconds) vs delivery (delivery_narration_seconds,
-            delivery_persist_seconds). No latency dashboard panel exists for
+            (hil_user_wait_seconds). No latency dashboard panel exists for
             these metrics yet — query /metrics histograms directly.
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95
         labels:
@@ -1061,62 +1060,6 @@ groups:
           runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-chat-e2e-p95-critical
         labels:
           severity: critical
-          service: api
-
-      # 30. Our overhead on a direct comms reply, p90 >200ms for 15m. Provider time is
-      # excluded by construction: the stages run from request receipt to the model
-      # request, and from the model's first chunk to the frame written.
-      # The 30m window outlasts `for`, so on a quiet night one slow turn among a
-      # handful would hold the p90 over budget long enough to fire alone. Below 20
-      # direct turns in the window the query returns nothing (NoData -> OK): a p90
-      # needs at least three slow turns behind it before it can cross 200ms.
-      - uid: gaia-turn-overhead-p90
-        title: Replies spend too long in our own code
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange: { from: 1800, to: 0 }
-            datasourceUid: prometheus
-            model:
-              refId: A
-              expr: |
-                histogram_quantile(0.9, sum by (le) (rate(turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct"}[30m])))
-                and on ()
-                (sum(increase(turn_overhead_seconds_count{job="gaia-api",stage="total",path="direct"}[30m])) >= 20)
-              instant: true
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              refId: B
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              refId: C
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator: { type: gt, params: [0.2] }
-        noDataState: OK
-        execErrState: Error
-        for: 15m
-        annotations:
-          summary: >-
-            {{ if $values.B }}Our p90 overhead on direct replies is
-            {{ humanizeDuration $values.B.Value }} (budget 200ms){{ else }}Unable
-            to read the turn overhead p90 — this rule could not be evaluated, which
-            almost always means Prometheus is down or unreachable.{{ end }}
-          description: >-
-            One direct reply in ten spends over 200ms in our code on top of the
-            model's own time to first token. Split turn_overhead_seconds by stage:
-            ingress (auth, rate limits, before the turn is accepted), prep (context
-            assembly before the model request; per-section times are in
-            context_assemble_seconds) or egress (first token to frame written).
-          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-turn-overhead-p90
-        labels:
-          severity: warning
           service: api
 
       # 20. Postgres itself is refusing connections. `up{job="postgres"}` (rule
@@ -1863,3 +1806,51 @@ groups:
         labels:
           severity: critical
           service: arq_worker
+
+      # 29. A comms model call ran over a minute. A chat reply that long is a
+      # runaway: the 3,998-break replies of October ran ~100 s to the output
+      # limit. Counted per call, not as a p95, so a single one shows up. The slow-call
+      # counter is derived before increase(), which extrapolates two counters apart.
+      - uid: gaia-comms-reply-runaway
+        title: A chat reply ran to an abnormal length
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase((llm_call_seconds_count{agent="comms_agent"} - ignoring(le) llm_call_seconds_bucket{agent="comms_agent",le="60.0"})[15m:1m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        # Rides out the counter reset of a Prometheus restart; one slow call
+        # stays in the 15m window long past it.
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} chat model calls
+            ran over 60s in the last 15 minutes (threshold: the first one){{ else }}Unable
+            to read the comms model call durations — this rule could not be evaluated,
+            which almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The front chat model took over a minute on one reply, which in practice
+            means it generated to its output limit (a loop of repeated text or bubble
+            breaks) while the user waited. Find the call in the llm_calls ledger
+            (comms_agent, duration_ms over 60000) and read its output tokens and
+            finish reason.
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-comms-reply-runaway
+        labels:
+          severity: warning
+          service: api

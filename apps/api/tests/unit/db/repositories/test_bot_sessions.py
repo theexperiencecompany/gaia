@@ -129,7 +129,7 @@ class TestRenameSessionKey:
 
 
 class TestRepointConversation:
-    async def test_it_sets_only_the_conversation_id(
+    async def test_it_sets_the_conversation_id_and_clears_the_delivery_cursor(
         self, repo: BotSessionsRepository, collection: MagicMock
     ) -> None:
         assert await repo.repoint_conversation(
@@ -138,7 +138,7 @@ class TestRepointConversation:
 
         filter_, update = collection.update_one.await_args.args
         assert filter_ == {"session_key": CANONICAL_KEY}
-        assert update == {"$set": {"conversation_id": "conv-winner"}}
+        assert update == {"$set": {"conversation_id": "conv-winner"}, "$unset": {"delivery": ""}}
 
     async def test_it_reports_a_filter_that_matched_nothing(
         self, repo: BotSessionsRepository, collection: MagicMock

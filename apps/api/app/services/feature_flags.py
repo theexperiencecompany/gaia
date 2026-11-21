@@ -282,21 +282,6 @@ async def is_code_mode_enabled(user_id: str | None) -> bool:
     return await is_enabled(FeatureFlag.CODE_MODE, user_id)
 
 
-async def is_hil_ledger_enabled(user_id: str | None) -> bool:
-    """Whether the user's gated calls register PENDING in the approval ledger instead of parking the run; off keeps the barrier."""
-    return await is_enabled(FeatureFlag.HIL_LEDGER, user_id)
-
-
-async def is_jev_judge_enabled(user_id: str | None) -> bool:
-    """Whether the user's auto mode classifies with JEV first (LLM fallback on transport failure); off keeps the LLM judge."""
-    return await is_enabled(FeatureFlag.HIL_JEV_JUDGE, user_id)
-
-
-async def is_jev_reply_enabled(user_id: str | None) -> bool:
-    """Whether the user's chat replies to pending approvals are classified by JEV first (LLM fallback on transport failure)."""
-    return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
-
-
 async def is_trigger_gates_enforced(user_id: str | None) -> bool:
     """Whether the user's trigger gates may skip a run; off records each verdict and runs anyway."""
     return await is_enabled(FeatureFlag.TRIGGER_GATES, user_id)

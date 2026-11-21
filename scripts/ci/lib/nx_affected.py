@@ -127,20 +127,54 @@ def _nx(*args: str, stdin: str | None = None) -> str:
     raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}")
 
 
-def _json_after_banner(out: str, opener: str) -> object:
-    """Parse nx's JSON, which a plugin's deprecation notice may precede on stdout."""
-    return json.loads(out[out.index(opener) :])
+class CiMetadata(TypedDict, total=False):
+    """A target's `metadata.ci`, which makes it a CI check."""
+
+    job: str
+    check: str
+    area: str
+    events: list[str]
+    branch: str
+    reuse: bool
+    runner: str
+    fallback: str
+
+
+class TargetMetadata(TypedDict, total=False):
+    ci: CiMetadata
+
+
+class Target(TypedDict, total=False):
+    options: dict[str, str]
+    metadata: TargetMetadata
+    parallelism: bool
+    dependsOn: list[object]
+
+
+class NodeData(TypedDict, total=False):
+    targets: dict[str, Target]
+    tags: list[str]
+
+
+class Node(TypedDict):
+    data: NodeData
+
+
+@functools.cache
+def _graph() -> dict[str, Node]:
+    """Read the project graph's nodes from a file nx writes, never a pipe its exit can cut."""
+    with tempfile.TemporaryDirectory() as scratch:
+        graph = Path(scratch) / "graph.json"
+        _nx("graph", f"--file={graph}")
+        nodes: dict[str, Node] = json.loads(graph.read_text())["graph"]["nodes"]
+    return nodes
 
 
 @functools.cache
 def checks() -> dict[str, Check]:
     """Every CI check in the workspace, by task, read from the project graph."""
-    with tempfile.TemporaryDirectory() as scratch:
-        graph = Path(scratch) / "graph.json"
-        _nx("graph", f"--file={graph}")
-        nodes = json.loads(graph.read_text())["graph"]["nodes"]
     found: dict[str, Check] = {}
-    for project, node in nodes.items():
+    for project, node in _graph().items():
         for target, spec in node["data"]["targets"].items():
             ci = (spec.get("metadata") or {}).get("ci") or {}
             if not ci.get("job"):
@@ -323,17 +357,23 @@ def release_groups(selection: Selection) -> list[str]:
     if not built:
         return []
 
-    def members(patterns: list[str]) -> list[str]:
-        # nx resolves a group's projects (names or tag: patterns) the way -p does.
-        out = _json_after_banner(
-            _nx("show", "projects", "--projects", ",".join(patterns), "--json"), "["
-        )
-        assert isinstance(out, list)
-        return [str(p) for p in out]
+    def members(patterns: list[str]) -> set[str]:
+        return {project for pattern in patterns for project in _matching(pattern)}
 
     return sorted(
         name for name, group in groups.items() if built.intersection(members(group["projects"]))
     )
+
+
+def _matching(pattern: str) -> list[str]:
+    """Resolve a release group's project pattern: a project name or `tag:<tag>`."""
+    nodes = _graph()
+    if pattern.startswith("tag:"):
+        tag = pattern.removeprefix("tag:")
+        return [p for p, node in nodes.items() if tag in node["data"].get("tags", [])]
+    if pattern in nodes:
+        return [pattern]
+    raise ValueError(f"release group pattern {pattern!r} is neither a project nor tag:<tag>")
 
 
 def task_files(selection: Selection) -> dict[str, str | list[str]]:

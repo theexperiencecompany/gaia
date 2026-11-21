@@ -12,8 +12,9 @@ External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import patch
@@ -28,7 +29,12 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import (
+    MessageAttachments,
+    MessageScope,
+    build_turn_context,
+    human_content,
+)
 from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
@@ -37,7 +43,7 @@ from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_
 from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
-from app.config.settings import settings
+from app.constants.chat import ConversationSource
 from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -51,6 +57,7 @@ from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.override.langgraph_bigtool.hooks import HookType, execute_hooks
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow import workflow_subagent
+from app.utils.artifact_utils import FILE_LINKS
 from tests._harness.context_sources import ContextSources, fake_context_sources
 
 #: A fixed instant so ``build_current_time_message`` renders the same bytes on
@@ -58,10 +65,13 @@ from tests._harness.context_sources import ContextSources, fake_context_sources
 #: rolls the local date and turns a stable assertion into a flaky one.
 FIXED_NOW = datetime(2026, 3, 17, 14, 30, tzinfo=UTC)
 
-#: The public backend host the artifact-URL banner renders. Pinned for the
-#: same reason as the clock: settings.HOST is read straight into the seeded
-#: text, so an unpinned one bakes whatever apps/api/.env sets on the recording machine.
-FIXED_HOST = "https://api.heygaia.io"
+#: The file links the artifact-URL banner renders. Pinned for the same reason as the
+#: clock: FILE_LINKS takes settings.HOST at import, so an unpinned one bakes whatever
+#: apps/api/.env sets on the recording machine.
+FIXED_FILE_LINKS = replace(FILE_LINKS, api_host="https://api.heygaia.io")
+
+#: The surface a comms turn is read on, as the comms step sets it: its prompt cannot be built without one.
+HARNESS_SURFACE = ConversationSource.WEB
 
 #: The spawned-subagent tier builds its static prompt from the spawning caller's
 #: text rather than a template, so the harness supplies a stable stand-in.
@@ -185,6 +195,7 @@ async def build_configurable(
             vfs_session_id="conv-1",
         ),
         turn=AgentTurn(
+            source=HARNESS_SURFACE.value if tier is AgentTier.COMMS else None,
             user_preferences=user.preferences or None,
             writing_style=user.writing_style or None,
         ),
@@ -245,14 +256,14 @@ async def _seed_comms(
             {"preferences": user.preferences, "writing_style": user.writing_style}
         ),
     )
-    return await construct_langchain_messages(
+    return await comms_turn_messages(
         query=query,
         scope=MessageScope(
             user_id=user.user_id,
             user_name=user.name,
             user_dict=user_dict,
             conversation_id="conv-1",
-            source=configurable.get("conversation_source"),
+            source=ConversationSource(configurable.get("conversation_source")),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode=configurable.get("execution_mode") or "interactive",
             presence=configurable.get("presence"),
@@ -316,7 +327,7 @@ async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) ->
 
     with (
         time_machine.travel(spec.now, tick=False),
-        patch.object(settings, "HOST", FIXED_HOST),
+        patch("app.agents.context.fetchers.FILE_LINKS", FIXED_FILE_LINKS),
         fake_context_sources(resolved_sources),
     ):
         config, configurable = await build_configurable(
@@ -353,8 +364,21 @@ async def seed_only(
     resolved_user = user or HarnessUser()
     with (
         time_machine.travel(now, tick=False),
-        patch.object(settings, "HOST", FIXED_HOST),
+        patch("app.agents.context.fetchers.FILE_LINKS", FIXED_FILE_LINKS),
         fake_context_sources(sources or ContextSources()),
     ):
         _, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         return await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
+
+
+async def comms_turn_messages(
+    query: str, scope: MessageScope | None = None, attachments: MessageAttachments | None = None
+) -> list[AnyMessage]:
+    """Lay out one user turn's comms input as the step does: its context, the framed words, the clock."""
+    scope = scope or MessageScope()
+    attachments = attachments or MessageAttachments()
+    context, content = await asyncio.gather(
+        build_turn_context(query, scope), human_content(scope, attachments, query.strip())
+    )
+    presence = [context.presence] if context.presence is not None else []
+    return [*context.chain, *presence, HumanMessage(content=content), context.clock]

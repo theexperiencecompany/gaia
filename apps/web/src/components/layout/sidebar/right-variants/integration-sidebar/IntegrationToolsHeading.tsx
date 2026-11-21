@@ -10,8 +10,13 @@ interface IntegrationToolsHeadingProps {
   isConnected: boolean;
   showToolsSkeleton: boolean;
   isSettling: boolean;
+  /** The server's tool discovery failed, so no tools are coming. */
+  setupFailed: boolean;
   onOpenPermissions: () => void;
 }
+
+const TOOLS_SETUP_FAILED =
+  "Couldn't load this integration's tools. Try reconnecting it.";
 
 /** The "Available tools" heading: the tool count and Permissions button, or a placeholder title while tools load. */
 export function IntegrationToolsHeading({
@@ -19,6 +24,7 @@ export function IntegrationToolsHeading({
   isConnected,
   showToolsSkeleton,
   isSettling,
+  setupFailed,
   onOpenPermissions,
 }: IntegrationToolsHeadingProps) {
   if (showToolsSkeleton) {
@@ -28,7 +34,14 @@ export function IntegrationToolsHeading({
       </h2>
     );
   }
-  if (toolCount === 0) return null;
+  if (toolCount === 0) {
+    if (!setupFailed) return null;
+    return (
+      <p className="mt-3 text-xs text-red-400 relative right-1">
+        {TOOLS_SETUP_FAILED}
+      </p>
+    );
+  }
 
   return (
     <div className="relative right-1 mt-3">

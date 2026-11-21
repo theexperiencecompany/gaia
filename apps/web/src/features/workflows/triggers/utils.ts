@@ -11,7 +11,7 @@ import {
 import type { Integration } from "@/features/integrations/types";
 
 import type { Workflow } from "../api/workflowApi";
-import { getScheduleDescription } from "../utils/cronUtils";
+import { describeCron } from "../utils/cronUtils";
 import type { TriggerConfigDraft, TriggerSchema } from "./types";
 
 /**
@@ -80,7 +80,7 @@ export function getTriggerDisplayInfo(
   ) {
     const cronExpression = trigger_config.cron_expression;
     if (typeof cronExpression === "string") {
-      const cronDesc = getScheduleDescription(cronExpression);
+      const cronDesc = describeCron(cronExpression);
       if (cronDesc) {
         displayInfo.label = cronDesc;
       }
