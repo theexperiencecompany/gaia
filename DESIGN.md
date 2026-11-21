@@ -560,6 +560,19 @@ Add it once: a value on the owning variant function in `src/components/shared/`,
 
 GAIA composes from **HeroUI v3** (`@heroui/react`) for every control and overlay, the GAIA wrappers and variant functions in `src/components/shared/` that give it GAIA's look, and GAIA-native cards built directly to the dark card contract. **Shadcn** (`src/components/ui/`) remains for what HeroUI lacks (sidebar, chart, calendar, input-otp, context menu); its copies of HeroUI primitives are legacy, not for new code. Start with "How to write frontend code" above.
 
+### Chat Bubbles
+
+`.imessage-bubble` (`apps/web/src/app/styles/globals.css`) is shared by bot (`imessage-from-them`, zinc-800) and user (`imessage-from-me`, primary) bubbles. Never override its padding per call site.
+
+| Property | Value | Why |
+|---|---|---|
+| Radius | `20px` (`--bubble-radius`) | A one-line bubble is a capsule exactly `2 × radius` tall |
+| Line height | `24px` (`--bubble-line-height`) at 16px Inter | Inter centres the cap height in a 24px line, so text sits optically centred |
+| Block padding | `radius − line-height / 2` = `8px` | One line = 40px; each further line adds 24px |
+| Inline padding | `16px` (`lg`) | Matches the ~14px from cap top to the bubble edge |
+
+The last block inside a bubble carries no bottom margin (`p` and `li` use `last:mb-0`), and a reply that is only a list marker ("42.") renders as text, not as an empty list.
+
 ### Dark Card Styling Contract
 
 Most data cards, tool sections, and info panels follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it.

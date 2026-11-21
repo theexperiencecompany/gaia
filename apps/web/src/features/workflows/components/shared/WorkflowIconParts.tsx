@@ -2,7 +2,7 @@
 
 import type { ImageProps } from "next/image";
 import type { ReactNode } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { WORKFLOW_ICON_BG_ALPHA } from "../../constants/workflowIconStyle";
 
@@ -71,17 +71,7 @@ export function StepCategoryIcons({
   return (
     <div className={`flex min-h-8 items-center ${spacing} ${className}`}>
       {displayIcons.map((category, index) => {
-        const IconComponent = getToolCategoryIcon(
-          category,
-          {
-            width: iconSize,
-            height: iconSize,
-            showBackground: showBackground,
-            loading,
-          },
-          getIntegrationIconUrl(category),
-        );
-        return IconComponent ? (
+        return (
           <div
             key={category}
             className="relative flex min-w-8 items-center justify-center"
@@ -95,9 +85,15 @@ export function StepCategoryIcons({
               zIndex: index,
             }}
           >
-            {IconComponent}
+            <IntegrationIcon
+              integrationId={category}
+              iconUrl={getIntegrationIconUrl(category)}
+              size={iconSize}
+              showBackground={showBackground}
+              loading={loading}
+            />
           </div>
-        ) : null;
+        );
       })}
       {categories.length > maxIcons && (
         <div

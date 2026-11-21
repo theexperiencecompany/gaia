@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.services.conversation import runtime
 from app.workers.config.worker_settings import (
     ARQ_BACKSTOP_GRACE_SECONDS,
     WORKER_JOB_TIMEOUT_SECONDS,
@@ -36,6 +37,15 @@ def browser_worker_calls() -> Iterator[list[str]]:
         patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
     ):
         yield calls
+
+
+@pytest.fixture(autouse=True)
+def built_runtime_ports(monkeypatch: pytest.MonkeyPatch) -> Iterator[MagicMock]:
+    """Stand in for the runtime's ports: they build an LLM, and the stubbed startup registered no provider."""
+    monkeypatch.setattr(runtime._Installed, "ports", None)
+    built = MagicMock()
+    with patch("app.workers.lifecycle.startup.build_runtime_ports", return_value=built):
+        yield built
 
 
 class TestWorkerStartup:
@@ -103,6 +113,16 @@ class TestWorkerStartup:
         assert "startup_time" in ctx
         assert isinstance(ctx["startup_time"], float)
         mock_unified.assert_awaited_once_with("arq_worker")
+
+    async def test_startup_installs_the_conversation_runtimes_ports(
+        self, ctx, built_runtime_ports: MagicMock
+    ):
+        from app.workers.lifecycle.startup import startup
+
+        with patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock):
+            await startup(ctx)
+
+        assert runtime.runtime_ports() is built_runtime_ports
 
     async def test_startup_calls_unified_startup_with_arq_worker_context(self, ctx):
         """unified_startup is called with the 'arq_worker' context literal."""
@@ -186,7 +206,7 @@ class TestWorkerShutdown:
         async def _stop(ctx: dict) -> None:
             stopped.append(ctx)
 
-        ctx = {"startup_time": 0}
+        ctx: dict[str, object] = {"startup_time": 0}
         with (
             patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
             patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),

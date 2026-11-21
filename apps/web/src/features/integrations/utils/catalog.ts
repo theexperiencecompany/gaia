@@ -5,6 +5,13 @@ import {
 } from "@shared/utils";
 import type { Integration, IntegrationStatus } from "../types";
 
+/** Whether a connected integration is still discovering its tools, as the server reports it. */
+export function isSettingUpTools(integration: Integration): boolean {
+  return (
+    integration.status === "connected" && integration.toolsSetup === "running"
+  );
+}
+
 /**
  * One entry of the personalized catalog in the shape the app consumes.
  *
@@ -29,6 +36,7 @@ export function toIntegration(item: MyIntegrationItem): Integration {
     instanceSetupRequired: item.instanceSetupRequired,
     origin: item.origin,
     toolCount: item.toolCount,
+    toolsSetup: item.toolsSetup ?? undefined,
     iconUrl: item.iconUrl ?? undefined,
     isPublic: item.isPublic ?? undefined,
     createdBy: item.createdBy ?? undefined,

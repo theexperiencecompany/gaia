@@ -2,7 +2,6 @@
  * Why a bot operation failed, as one closed code set shared by every platform,
  * so `| json | reason="account_not_linked"` finds the same failure on each.
  */
-import { BOT_STREAM_ERROR } from "../api/chat-stream";
 import { getApiErrorCode, getHttpStatus } from "./logger";
 import { wideLog } from "./wide-events";
 
@@ -86,6 +85,7 @@ const HTTP_UNAUTHORIZED = 401;
 const HTTP_PAYMENT_REQUIRED = 402;
 const HTTP_FORBIDDEN = 403;
 const HTTP_NOT_FOUND = 404;
+const HTTP_REQUEST_TIMEOUT = 408;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_SERVER_ERROR = 500;
 
@@ -112,6 +112,7 @@ function reasonFromStatus(
       : BOT_FAILURE_REASON.UNAUTHORIZED;
   }
   if (status === HTTP_PAYMENT_REQUIRED) return BOT_FAILURE_REASON.PLAN_REQUIRED;
+  if (status === HTTP_REQUEST_TIMEOUT) return BOT_FAILURE_REASON.TIMEOUT;
   if (status === HTTP_FORBIDDEN) return BOT_FAILURE_REASON.UNAUTHORIZED;
   if (status === HTTP_NOT_FOUND) return BOT_FAILURE_REASON.NOT_FOUND;
   if (status === HTTP_TOO_MANY_REQUESTS) return BOT_FAILURE_REASON.RATE_LIMITED;
@@ -120,15 +121,18 @@ function reasonFromStatus(
   return undefined;
 }
 
+/** Whether a platform send failed because the chat itself is gone or refuses the bot: every later send fails too. */
+export function isChatGone(error: unknown): boolean {
+  const reason = classifyBotFailure(error);
+  return (
+    reason === BOT_FAILURE_REASON.DESTINATION_BLOCKED ||
+    reason === BOT_FAILURE_REASON.DESTINATION_NOT_FOUND
+  );
+}
+
 /** Classifies a failed GAIA API call, stream or platform send into one reason. */
 export function classifyBotFailure(error: unknown): BotFailureReason {
   const text = errorText(error);
-  if (text === BOT_STREAM_ERROR.notAuthenticated) {
-    return BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED;
-  }
-  if (text === BOT_STREAM_ERROR.planRequired) {
-    return BOT_FAILURE_REASON.PLAN_REQUIRED;
-  }
   if (DESTINATION_BLOCKED_PATTERNS.some((p) => p.test(text))) {
     return BOT_FAILURE_REASON.DESTINATION_BLOCKED;
   }

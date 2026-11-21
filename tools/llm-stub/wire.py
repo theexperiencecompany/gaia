@@ -11,8 +11,10 @@ each parsed chunk itself, so the stub emits plain OpenAI chunks.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import AsyncIterator, Iterator
 import json
+import re
 import time
 from typing import Any
 from uuid import uuid4
@@ -68,7 +70,7 @@ def prompt_tokens(messages: list[dict[str, Any]]) -> int:
 def _usage(prompt_tokens: int, response: Response) -> dict[str, int]:
     """OpenAI usage block: the request's size in, the scripted reply's size out."""
     if isinstance(response, ToolCallResponse):
-        output = response.name + json.dumps(response.args, ensure_ascii=False)
+        output = response.text + response.name + json.dumps(response.args, ensure_ascii=False)
     else:
         output = response.text
     completion_tokens = estimate_tokens(output)
@@ -84,7 +86,7 @@ def build_chat_completion(model: str, response: Response, prompt_tokens: int) ->
     if isinstance(response, ToolCallResponse):
         message = {
             "role": "assistant",
-            "content": None,
+            "content": response.text or None,
             "tool_calls": [_tool_call_block(response, call_id=_tool_call_id())],
         }
         finish_reason = "tool_calls"
@@ -122,11 +124,23 @@ def _chunk(
     }
 
 
+def _words(text: str) -> list[str]:
+    """Split text into words, each keeping the whitespace after it, so the pieces rejoin exactly."""
+    words = re.findall(r"\S+\s*", text)
+    leading = text[: len(text) - len(text.lstrip())]
+    return [leading + words[0], *words[1:]] if words else [text]
+
+
 def _split(text: str, pieces: int) -> list[str]:
     if not text:
         return [""]
     size = max(1, -(-len(text) // pieces))  # ceil division
     return [text[i : i + size] for i in range(0, len(text), size)]
+
+
+def _content_pieces(text: str, pace_ms: int) -> list[str]:
+    """Split text a word per chunk when paced, else into a few even pieces."""
+    return _words(text) if pace_ms else _split(text, _STREAM_PIECES)
 
 
 def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterator[dict[str, Any]]:
@@ -137,6 +151,8 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
     yield _chunk(model, completion_id, created, {"role": "assistant"}, None)
 
     if isinstance(response, ToolCallResponse):
+        for piece in _content_pieces(response.text, response.pace_ms) if response.text else ():
+            yield _chunk(model, completion_id, created, {"content": piece}, None)
         call_id = _tool_call_id()
         arguments = json.dumps(response.args, ensure_ascii=False)
         yield _chunk(
@@ -165,7 +181,7 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
             )
         finish_reason = "tool_calls"
     else:
-        for piece in _split(response.text, _STREAM_PIECES):
+        for piece in _content_pieces(response.text, response.pace_ms):
             yield _chunk(model, completion_id, created, {"content": piece}, None)
         if response.fail is not None:
             # Raising inside the body generator makes uvicorn drop the connection
@@ -185,8 +201,11 @@ def stream_chunks(model: str, response: Response, prompt_tokens: int) -> Iterato
     }
 
 
-def sse_lines(model: str, response: Response, prompt_tokens: int) -> Iterator[str]:
-    """Serialize streaming chunks as SSE ``data:`` lines terminated by ``[DONE]``."""
+async def sse_lines(model: str, response: Response, prompt_tokens: int) -> AsyncIterator[str]:
+    """Serialize streaming chunks as SSE ``data:`` lines terminated by ``[DONE]``, paced if asked."""
+    pace_s = response.pace_ms / 1000
     for chunk in stream_chunks(model, response, prompt_tokens):
+        if pace_s and chunk["choices"] and "content" in chunk["choices"][0]["delta"]:
+            await asyncio.sleep(pace_s)
         yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"

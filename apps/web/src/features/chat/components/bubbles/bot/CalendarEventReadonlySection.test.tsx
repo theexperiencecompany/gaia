@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { CalendarOptions } from "@/types/features/calendarTypes";
 
 import { CalendarEventReadonlySection } from "./CalendarEventReadonlySection";
+import { renderTool } from "./TextBubble/ToolRenderers";
 
 const event: CalendarOptions = {
   summary: "Quarterly review",
@@ -26,6 +27,12 @@ describe("CalendarEventReadonlySection", () => {
     expect(screen.getByText((text) => text.includes(" to "))).toBeDefined();
     expect(screen.getByText("Work")).toBeDefined();
     expect(screen.getByText("2 guests")).toBeDefined();
+  });
+
+  it("draws a stored calendar_options card from the tool renderers", () => {
+    render(<div>{renderTool("calendar_options", [event])}</div>);
+
+    expect(screen.getByText("Quarterly review")).toBeDefined();
   });
 
   it("is read-only — no confirm or add action", () => {

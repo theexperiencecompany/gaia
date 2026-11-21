@@ -81,6 +81,8 @@ class State(_BigtoolState):
     todos: Annotated[list, _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
+    # Message ids summarization never folds; comms sets its open requests each run.
+    verbatim_message_ids: list[str]
     # LangGraph-managed countdown of supersteps left before the recursion
     # limit. acall_model reads it to warn the model to wrap up before the
     # hard GraphRecursionError.
@@ -114,6 +116,9 @@ def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
 # PRUNED_MESSAGE_IDS_KEY): a hook's return shapes one model call then is discarded,
 # so a message pulled in from outside the graph would show once and be lost.
 INJECTED_MESSAGES_KEY = "_injected_messages"
+
+#: Graph node that sends a stopped agent back to work; the stop it answers was not the end.
+NUDGE_CONTINUE_NODE = "nudge_continue"
 
 
 def pop_injected_messages(state: State) -> list[AnyMessage]:

@@ -93,13 +93,15 @@ async def _observed_shape(resolved: ResolvedTool) -> ToolOutputShapeDocument | N
 
 
 def _args_schema_of(tool: BaseTool) -> dict[str, JsonValue]:
-    schema = tool.args_schema
+    """Return the args the model supplies: tool_call_schema hides injected ones, and the contract carries the description."""
+    schema = tool.tool_call_schema
     if isinstance(schema, type) and issubclass(schema, BaseModel):
         raw = schema.model_json_schema()
     elif isinstance(schema, dict):
         raw = dict(schema)
     else:
         raw = {"type": "object", "properties": {}}
+    raw.pop("description", None)
     return _compact_schema(raw)
 
 

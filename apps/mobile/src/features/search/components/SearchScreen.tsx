@@ -526,13 +526,13 @@ export function SearchScreen() {
                   />
                   {filteredMessages.map((msg) => (
                     <SearchResultItem
-                      key={msg.message.message_id}
+                      key={msg.item.id}
                       conversationId={msg.conversation_id}
                       title={msg.conversation_id}
                       snippet={msg.snippet}
                       query={debouncedQuery}
                       type="message"
-                      timestamp={msg.message.date}
+                      timestamp={msg.item.at}
                       onPress={(id) => void handleResultPress(id)}
                     />
                   ))}

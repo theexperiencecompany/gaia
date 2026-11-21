@@ -1,0 +1,18 @@
+# A thank-you is answered with a reaction on that message and no words, and a
+# reply written in markdown reaches Telegram as its formatting (bold, code, a
+# link), never as raw markdown syntax.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/reaction-and-formatting.yaml
+name: reaction and formatting
+emulate: telegram
+user: bot-reaction-scenario@gaia.local
+turns:
+  - send: "thanks! [[react:❤]]"
+    expect:
+      - reactedTo: [1]
+      - bubbles: []
+  - send: "format it [[say:Use **Python** and run `pip install gaia`, docs at [the guide](https://example.com/guide).]]"
+    expect:
+      - bubbles: ['Use <b>Python</b> and run <code>pip install gaia</code>, docs at <a href="https://example.com/guide">the guide</a>.']
+      - excludes: ["**", "`"]

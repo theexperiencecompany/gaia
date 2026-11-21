@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from scripts.evals.core.types import Case
 from scripts.evals.suites.livechat import SuiteChatTransport
-from scripts.evals.suites.quality import ChatStreamTransport
+from scripts.evals.suites.quality import ChatTransport
 
 
 def _case(case_id: str) -> Case:
@@ -22,9 +22,9 @@ def _case(case_id: str) -> Case:
 
 @pytest.mark.parametrize(
     "transport",
-    [ChatStreamTransport(), SuiteChatTransport("comms"), SuiteChatTransport("safety")],
+    [ChatTransport(), SuiteChatTransport("comms"), SuiteChatTransport("safety")],
 )
-def test_each_case_gets_its_own_identity(transport: ChatStreamTransport) -> None:
+def test_each_case_gets_its_own_identity(transport: ChatTransport) -> None:
     first = transport.case_email(_case("case-one"))
     second = transport.case_email(_case("case-two"))
     assert first != second

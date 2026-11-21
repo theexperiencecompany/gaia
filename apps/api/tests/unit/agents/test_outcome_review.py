@@ -15,6 +15,7 @@ from app.agents.core.outcome_review import (
 )
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
+from app.agents.tools.finish_task_tool import finish_task
 from app.constants.agents import OutcomeState
 from app.constants.general import FINISH_TASK_NAME
 
@@ -172,6 +173,50 @@ class TestReviewOutcome:
 
     def test_an_unknown_outcome_counts_as_undeclared(self) -> None:
         assert review_outcome([_task(), *_finish("finished")]).declared is None
+
+
+def _finish_saying(nothing_for_user: object, call_id: str = "finish") -> list[AnyMessage]:
+    args = {"result": "nothing new", "outcome": "ask", "nothing_for_user": nothing_for_user}
+    return _call(FINISH_TASK_NAME, args, call_id)
+
+
+class TestTheRunSaysItFoundNothingForTheUser:
+    """A declaration no tool call can back: read as said, and only when said plainly."""
+
+    def test_the_declaration_is_read_off_the_finish_call(self) -> None:
+        review = review_outcome([_task(), *_finish_saying(True)])
+
+        assert review == OutcomeReview(OutcomeState.ASK, None, nothing_for_user=True)
+
+    @pytest.mark.parametrize("sent", [False, None, "true", 1], ids=repr)
+    def test_anything_but_a_plain_true_is_not_the_declaration(self, sent: object) -> None:
+        assert review_outcome([_task(), *_finish_saying(sent)]).nothing_for_user is False
+
+    def test_a_finish_that_leaves_it_out_declares_nothing(self) -> None:
+        assert review_outcome([_task(), *_finish("ask")]).nothing_for_user is False
+
+    def test_a_run_that_never_finished_declares_nothing(self) -> None:
+        review = review_outcome([_task(), *_call("read", {"path": "canvas.md"}, "c1")])
+
+        assert review == OutcomeReview(None, None, nothing_for_user=False)
+
+    def test_the_last_finish_speaks_for_the_run(self) -> None:
+        """A nudged run finishes twice; the result delivered is the second one's."""
+        nudged = [_task(), *_finish_saying(True, "first"), *_finish_saying(False, "second")]
+
+        assert review_outcome(nudged).nothing_for_user is False
+
+    def test_an_unbacked_outcome_does_not_take_the_declaration_away(self) -> None:
+        args = {"result": "nothing new", "outcome": "done", "nothing_for_user": True}
+
+        review = review_outcome([_task(), *_call(FINISH_TASK_NAME, args, "finish")])
+
+        assert review == OutcomeReview(
+            OutcomeState.DONE, "done was declared but no work call succeeded", nothing_for_user=True
+        )
+
+    def test_the_tool_takes_the_argument_the_review_reads(self) -> None:
+        assert finish_task.args["nothing_for_user"]["type"] == "boolean"
 
 
 class TestReviewRun:
