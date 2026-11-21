@@ -229,6 +229,38 @@ class TestAVoiceThatLinksFactsByCause:
         assert voice == grounded
 
 
+@pytest.mark.regression
+async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Founder replay: the churned-subscriber email, linked to no goal, was voiced as goal work."""
+    values = SlotValues(
+        facts={
+            1: BriefFact(title="Reply to Dan"),
+            2: BriefFact(title="Churned-subscriber email"),
+            3: BriefFact(title="Old-user discount email", goal_work=True),
+        },
+        counts={},
+    )
+    claimed = _voice(
+        message="[Reply to Dan](fact:1) first. [The churn email](fact:2) is your goal work."
+    )
+    mended = _voice(message="[Reply to Dan](fact:1) first. [The email](fact:3) is goal work.")
+    asked = AsyncMock(side_effect=[claimed, mended])
+    monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+    voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+    problem = (
+        "the message ties facts 2 to a goal, but they are not linked to one; only a goal's "
+        "linked todos are its work, so say them apart"
+    )
+    assert asked.await_args_list[1].args[1] == (
+        f"PROMPT\n\n{voice_correction_note([problem], claimed.model_dump_json(indent=2))}"
+    )
+    assert voice == mended
+
+
 class TestAVoiceThatSaysATitleTwice:
     """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
 

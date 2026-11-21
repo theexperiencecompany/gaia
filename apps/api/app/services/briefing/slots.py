@@ -53,6 +53,8 @@ class BriefFact:
     app: str | None = None
     #: Who finished a done item, as its line says it; None for anything else.
     done_by: TodoCompleter | None = None
+    #: A todo linked to a stated goal: only such work may be called the goal's.
+    goal_work: bool = False
 
 
 def candidate_fact(
@@ -62,6 +64,7 @@ def candidate_fact(
     title: str | None = None,
     kind: ItemState | None = None,
     words: str | None = None,
+    goal_work: bool = False,
 ) -> BriefFact:
     """Return what a pool item's slots render: its title or the brief's words for it, its time, due or back day, its count."""
     due = due_on(candidate.due_at, clock) if candidate.due_at is not None else None
@@ -75,6 +78,7 @@ def candidate_fact(
         words=words,
         app=candidate.app,
         done_by=candidate.finished_by,
+        goal_work=goal_work,
     )
 
 

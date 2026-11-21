@@ -7,7 +7,8 @@ another app's item a GAIA todo; nor may it type a figure (a date, a time, an amo
 another fact's time or words hold. A figure in another fact's title names that fact ("the
 Mercury 2FA setup"), so it is never pinned on this one. A sentence that negates ("not yet",
 "hasn't") is left alone: it may be saying the item is not there yet. Prose may say one thing
-causes, blocks or gates another only in a word a fact itself uses.
+causes, blocks or gates another only in a word a fact itself uses, and may tie to a goal only
+the todos linked to it.
 """
 
 import re
@@ -42,6 +43,7 @@ _CREDITS: dict[TodoCompleter, re.Pattern[str]] = {
 _CREDITED_AS = {TodoCompleter.GAIA: "GAIA", TodoCompleter.USER: "the user"}
 _SAY_CREDITED = {TodoCompleter.GAIA: "GAIA finished them", TodoCompleter.USER: "they finished them"}
 _DEPENDENCY_RE = re.compile(rf"\b({'|'.join(DEPENDENCY_CLAIMS)})\b", re.IGNORECASE)
+_SAYS_GOAL = re.compile(r"\bgoals?\b", re.IGNORECASE)
 _NEGATES = re.compile(r"\b(?:not|no longer|never|yet)\b|n't\b", re.IGNORECASE)
 
 #: The claims each item state cannot carry, as the pattern that finds them.
@@ -145,3 +147,18 @@ def dependency_problems(field: str, text: str, grounds: str) -> list[str]:
         for claim in dict.fromkeys(c.casefold() for c in _DEPENDENCY_RE.findall(text))
         if claim not in grounded
     ]
+
+
+def goal_problems(field: str, text: str, values: SlotValues) -> list[str]:
+    """Name each sentence that speaks of a goal and of an item that is not the goal's linked work."""
+    problems: list[str] = []
+    for sentence in sentences(text):
+        if not _SAYS_GOAL.search(sentence):
+            continue
+        unlinked = sorted(i for i in _named(sentence, values) if not values.facts[i].goal_work)
+        if unlinked:
+            problems.append(
+                f"the {field} ties facts {', '.join(map(str, unlinked))} to a goal, but they are "
+                "not linked to one; only a goal's linked todos are its work, so say them apart"
+            )
+    return problems

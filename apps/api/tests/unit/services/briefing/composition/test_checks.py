@@ -1,6 +1,7 @@
 """The composition contract: ids only and each once, charts that fit their series, the page budget, slots."""
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from pydantic import ValidationError
@@ -600,6 +601,37 @@ def test_a_note_linking_two_facts_by_a_cause_no_fact_states_is_sent_back() -> No
         "another, and no fact says so; state each fact on its own, as its line does"
     ]
     assert _problems({"kind": "note", "text": "Clear [[fact:1]], then [[fact:2]]."}) == []
+
+
+@pytest.mark.regression
+def test_only_a_goals_linked_todo_may_be_called_its_work() -> None:
+    """Founder replay: the churned-subscriber email, linked to no goal, was named goal work."""
+    pool = replace(
+        POOL,
+        items={
+            1: _item("Email old users a discount code", todo_id="t1"),
+            2: _item("Send emails to churned subscribers", todo_id="t2"),
+        },
+        goals=[
+            GoalState(
+                id="g1",
+                statement="300 users",
+                done=0,
+                open=1,
+                linked=["Email old users a discount code"],
+            )
+        ],
+    )
+
+    def problems(text: str) -> list[str]:
+        composition = BriefComposition.model_validate({"blocks": [{"kind": "note", "text": text}]})
+        return composition_problems(composition, pool, pool_values(pool))
+
+    assert problems("[[fact:1]] is the work on the goal today.") == []
+    assert problems("[[fact:2]] is the work on the goal today.") == [
+        "the block 1 (note) text ties facts 2 to a goal, but they are not linked to one; only "
+        "a goal's linked todos are its work, so say them apart"
+    ]
 
 
 _LONG_FACT = "[[fact:14]]"

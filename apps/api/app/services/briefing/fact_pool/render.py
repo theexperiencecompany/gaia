@@ -9,6 +9,7 @@ from app.agents.prompts.brief_fact_prompts import (
     CALENDAR_LISTED_IN,
     CALENDAR_UNAVAILABLE,
     DONE_BY,
+    GOAL_WORK,
     ITEM_STATES_LEGEND,
     LINKABLE,
     NO_CALENDAR_CONNECTED,
@@ -162,6 +163,7 @@ def _what_it_asks(item_id: int, item: BriefCandidate, voiced: Voiced | None) -> 
     if item.outcome is not None:
         parts.append(f"outcome {item.outcome.value}")
     if voiced is not None:
+        parts += [GOAL_WORK] if voiced.fact.goal_work else []
         return [*parts, LINKABLE] if voiced.linkable else parts
     if item.url or item.todo_id:
         parts.append(LINKABLE)

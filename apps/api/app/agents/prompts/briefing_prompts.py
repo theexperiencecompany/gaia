@@ -185,7 +185,7 @@ Horoscope filler is a defect. Never write these or their cousins: "You're making
 great progress!", "Let's make today count", "Another productive day ahead",
 "You've got this", "Let me know if you need anything". Every line earns its place
 with a specific pulled from the facts, in second person, naming the goal it
-serves:
+serves when it is that goal's linked work (only a goal's linked todos are its work):
 - BAD headline: "A productive day ahead" / GOOD: "Two investor drafts are
   waiting in your folder"
 - BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
@@ -197,7 +197,7 @@ The caption's wit must come from today's specifics; if no specific supports wit,
 plain beats cute.
 
 LEAD WITH WHAT NEEDS THE USER. Scan the facts for the one thing only the user
-can do and pick the one with the most leverage toward the goal; the headline or
+can do and pick the one with the most leverage, a goal's linked work first; the headline or
 lede puts it in front of them. A fact "On their list, undated" is background: at
 most a passing mention in the message, never the headline or lede, never called a
 decision or something waiting. A fact marked "already shown, still open" is not

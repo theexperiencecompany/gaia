@@ -31,7 +31,7 @@ from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
 from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
-from app.services.briefing.claims import claim_problems, dependency_problems
+from app.services.briefing.claims import claim_problems, dependency_problems, goal_problems
 from app.services.briefing.facts import Facts
 from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
@@ -168,6 +168,11 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         for problem in slot_problems(name, getattr(voice, name), writing.values)
     ]
     problems += claim_problems("message", voice.message, writing.values)
+    problems += [
+        problem
+        for name in _VOICED_FIELDS
+        for problem in goal_problems(name, getattr(voice, name), writing.values)
+    ]
     lead = writing.lead
     if lead is not None and lead not in referenced_facts(voice.message):
         problems.append(
