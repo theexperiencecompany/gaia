@@ -2,10 +2,11 @@
 
 The query's embedding starts when the request arrives, on a hosted model, so it
 runs alongside the rest of the turn's setup. It is matched against the user's
-vectors held in process, and one Postgres query then returns the semantic hits,
-the memories pinned by the background recall of the conversation's previous
-exchange, and any memory sharing a word with the message. No rerank: it lowered
-retrieval quality on LongMemEval and cost 2.3s p50 in prod.
+vectors held in process. Meanwhile one Postgres query reads the memories pinned
+by the background recall of the conversation's previous exchange and any memory
+sharing a word with the message; the semantic hits, read by id once they land,
+rank first. No rerank: it lowered retrieval quality on LongMemEval and cost
+2.3s p50 in prod.
 """
 
 import asyncio
@@ -30,6 +31,7 @@ from app.db.redis import redis_cache
 from app.memory import hosted_embeddings, pg_store, vector_index
 from app.memory.engine import memory_engine
 from app.memory.retrieval import build_entries, tokenize
+from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.services.latency_metrics import observe_fast_recall_semantic_missed
 from app.utils.background_tasks import spawn_background_task
@@ -129,19 +131,38 @@ async def _pinned_ids(user_id: str, conversation_id: str | None) -> list[str]:
     return _PINNED_IDS.validate_json(raw) if raw else []
 
 
+async def _semantic_rows(user_id: str, query: str) -> list[tuple[MemoryRecord, float]]:
+    semantic = await _semantic_in_time(user_id, query)
+    if not semantic:
+        return []
+    return await pg_store.fast_candidates(user_id, [], [], len(semantic), semantic_ids=semantic)
+
+
+async def _pinned_and_word_rows(
+    user_id: str, query: str, conversation_id: str | None
+) -> list[tuple[MemoryRecord, float]]:
+    pinned = await _pinned_ids(user_id, conversation_id)
+    tokens = fts_tokens(query)
+    if not (pinned or tokens):
+        return []
+    return await pg_store.fast_candidates(
+        user_id, tokens, pinned, MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=[]
+    )
+
+
 async def fast_recall(
     user_id: str, query: str, *, conversation_id: str | None
 ) -> list[MemoryEntry]:
-    """Return the turn's memories: semantic matches, then pinned, then any sharing a word."""
-    semantic, pinned = await asyncio.gather(
-        _semantic_in_time(user_id, query), _pinned_ids(user_id, conversation_id)
+    """Return the turn's memories: semantic matches, then pinned, then any sharing a word.
+
+    The word search (tens of ms on a large memory set) runs during the semantic
+    wait, so only the by-id read of the semantic hits is left after it.
+    """
+    semantic, rest = await asyncio.gather(
+        _semantic_rows(user_id, query), _pinned_and_word_rows(user_id, query, conversation_id)
     )
-    tokens = fts_tokens(query)
-    if not (semantic or pinned or tokens):
-        return []
-    rows = await pg_store.fast_candidates(
-        user_id, tokens, pinned, MEMORY_RECALL_BLOCK_LIMIT, semantic_ids=semantic
-    )
+    seen = {row.id for row, _ in semantic}
+    rows = [*semantic, *(hit for hit in rest if hit[0].id not in seen)][:MEMORY_RECALL_BLOCK_LIMIT]
     return await build_entries(rows) if rows else []
 
 

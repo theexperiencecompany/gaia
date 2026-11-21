@@ -48,3 +48,36 @@ class TestCalendarRepository:
 
         assert (await repo.get_for_user(a)).selected_calendars == ["cal-a"]
         assert (await repo.get_for_user(b)).selected_calendars == ["cal-b"]
+
+    async def test_repair_rewrites_the_selection_the_read_loaded(self, repo):
+        user = f"u-{uuid.uuid4().hex}"
+        await repo.set_selected_calendars(user, ["primary"])
+
+        await repo.repair_selected_calendars(user, ["primary"], ["me@x.com"])
+
+        assert (await repo.get_for_user(user)).selected_calendars == ["me@x.com"]
+
+    async def test_repair_keeps_a_selection_saved_after_the_read_loaded(self, repo):
+        user = f"u-{uuid.uuid4().hex}"
+        await repo.set_selected_calendars(user, ["primary"])
+        await repo.set_selected_calendars(user, ["team@x.com"])
+
+        await repo.repair_selected_calendars(user, ["primary"], ["me@x.com"])
+
+        assert (await repo.get_for_user(user)).selected_calendars == ["team@x.com"]
+
+    async def test_repair_of_a_missing_selection_inserts_it(self, repo):
+        user = f"u-{uuid.uuid4().hex}"
+
+        await repo.repair_selected_calendars(user, None, ["a", "b"])
+
+        assert (await repo.get_for_user(user)).selected_calendars == ["a", "b"]
+
+    async def test_repair_of_a_missing_selection_keeps_one_saved_since(self, repo, raw_collection):
+        user = f"u-{uuid.uuid4().hex}"
+        await repo.set_selected_calendars(user, ["team@x.com"])
+
+        await repo.repair_selected_calendars(user, None, ["a", "b"])
+
+        assert (await repo.get_for_user(user)).selected_calendars == ["team@x.com"]
+        assert await raw_collection.count_documents({"user_id": user}) == 1

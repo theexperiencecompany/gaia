@@ -219,6 +219,14 @@ Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The API emi
 
 In tests, assert the whole call: `mock_capture.assert_called_once_with(UserId(USER_ID), EmailSent(...))`. Models compare by value, so the id and every property are checked.
 
+## Debt Guardrails (API)
+
+The repo-wide rules are in the root `CLAUDE.md` ("Debt Guardrails"). In the API, the design note and the `debt-review` skill check these three things in particular:
+
+- **Every new query names its index.** A new repository finder ships with its index in `app/db/mongodb/indexes.py`, in the same PR. The index is `user_id` first, then the equality filters, then the sort (ESR). A finder that reads every user (a cron, a fan-out) has a `limit` or a cursor and projects only the fields it uses. It is never a query per user.
+- **A rule the web, bots or CLI also apply is sent, not copied.** The API owns it, and the other surfaces read it through a response field or an enum in OpenAPI. They never keep their own copy of the constant or re-derive the decision (for example, which items were left out, or the state labels).
+- **New stateful data has its whole lifecycle in the design note.** That covers what deletes it with the account or the chat, what a retry does after a killed worker (idempotent, keyed per side effect), and what a plan change or a timezone/DST change does to it.
+
 ## Service Layer
 
 Services are async module-level functions, not classes.
@@ -568,7 +576,7 @@ Tier summary (full table in `tests/CLAUDE.md`):
 - `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).
 - `tests/composio/`, `tests/model_onboarding/` — live-credential, opt-in, excluded by default.
 
-Never run a raw full `pytest` locally, and never with xdist: the default `addopts` carries `-n 4`, each worker imports the whole app, and parallel workers exhaust a laptop's memory fast. For a targeted run use `mise test:one <file> [more files]` from the repo root, or `mise run //:test:one …` from inside `apps/api` (pytest with `-p no:xdist` and `pytest.ini`'s real `addopts`; never `-o addopts=""`, which drops `--strict-markers` and lets an unregistered marker pass locally and fail collection in CI), one file at a time, files back to back in a single command; suites belong to CI or the nx targets (`nx test api`, `nx run api:test:*`), which pin the dirs, markers and xdist settings for the home-box runners.
+Never run a raw full `pytest` locally, and never with xdist: the default `addopts` carries `-n 4`, each worker imports the whole app, and parallel workers exhaust a laptop's memory fast. For a targeted run use `mise test:one <file> [more files]` from the repo root or inside `apps/api`, with paths relative to where you ran it (pytest with `-p no:xdist` and `pytest.ini`'s real `addopts`; never `-o addopts=""`, which drops `--strict-markers` and lets an unregistered marker pass locally and fail collection in CI), one file at a time, files back to back in a single command; suites belong to CI or the nx targets (`nx test api`, `nx run api:test:*`), which pin the dirs, markers and xdist settings for the home-box runners.
 
 **Unmark the patch-away.** A caller mocking a service means that service's logic has never run — the mock is a permanent blind spot. When you see an endpoint test mocking a service it barely touches, or a service test mocking a repo call whose logic matters, prefer un-mocking: let the real component run against mocked seams one layer down. Same rule as "never mock the thing under test."
 
