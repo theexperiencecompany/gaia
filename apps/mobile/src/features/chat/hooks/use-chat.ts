@@ -1,3 +1,4 @@
+import type { MessageRequestWithHistory } from "@gaia/shared/api/generated";
 import type { TurnAccumulator } from "@gaia/shared/chat";
 import { applyStreamEvent, createTurnAccumulator } from "@gaia/shared/chat";
 import { foldReactionAcks } from "@gaia/shared/utils";
@@ -11,7 +12,7 @@ import { usePaywallStore } from "@/stores/paywall-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
-import type { Conversation, ReplyToMessageData } from "../types";
+import type { Conversation } from "../types";
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -24,13 +25,13 @@ interface UseChatOptions {
   onNavigate?: (conversationId: string) => void;
 }
 
-export interface SendMessageOptions {
-  replyToMessage?: ReplyToMessageData | null;
-  selectedTool?: string | null;
-  toolCategory?: string | null;
+export type SendMessageOptions = Pick<
+  MessageRequestWithHistory,
+  "replyToMessage" | "selectedTool" | "toolCategory"
+> & {
   selectedWorkflow?: { id: string; name: string } | null;
   attachments?: AttachmentFile[];
-}
+};
 
 interface UseChatReturn {
   messages: Message[];

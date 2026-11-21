@@ -1,5 +1,6 @@
 import type {
   ApprovalDecisionResponse,
+  ConversationEntry,
   ImageData,
   ReplyToMessageData,
   TodoRunWake,
@@ -37,24 +38,8 @@ export interface ApiFileData {
 /** @deprecated Use ToolDataEntry from @gaia/shared/chat instead. */
 export type ApiToolData = ToolDataEntry;
 
-export interface ApiMessage {
-  type: "user" | "bot";
-  response: string;
-  date: string;
-  message_id: string;
-  fileIds: string[];
-  fileData: ApiFileData[];
-  tool_data?: ToolDataEntry[];
-  metadata?: Record<string, unknown>;
-  replyToMessage?: ReplyToMessageData | null;
-  reply_to_message?: ReplyToMessageData | null;
-  /** Backend message kind ("text" | "emoji_ack") — a comms REACT answer. */
-  kind?: string | null;
-  /** GAIA id of the message an emoji_ack reacts to. */
-  reacts_to_message_id?: string | null;
-  /** What woke a tracked todo's run; set on that run's user message. */
-  todo_run_wake?: TodoRunWake | null;
-}
+/** A stored entry: the conversation store stamps every message_id at append. */
+export type ApiMessage = ConversationEntry & { message_id: string };
 
 export interface ApiConversationDetail {
   _id: string;
@@ -113,23 +98,18 @@ export interface ConversationDetail {
 }
 
 function normalizeMessage(apiMsg: ApiMessage): Message {
-  const imageData = apiMsg.metadata?.image_data as ImageData | undefined;
-  const memoryData = apiMsg.metadata?.memory_data as MemoryData | undefined;
-  const replyToMessage =
-    apiMsg.replyToMessage ?? apiMsg.reply_to_message ?? null;
-
   return {
     id: apiMsg.message_id,
     text: apiMsg.response,
     isUser: apiMsg.type === "user",
-    timestamp: new Date(apiMsg.date),
-    fileIds: apiMsg.fileIds,
-    fileData: apiMsg.fileData,
-    toolData: apiMsg.tool_data,
-    imageData: imageData ?? null,
-    memoryData: memoryData ?? null,
-    metadata: apiMsg.metadata,
-    replyToMessage,
+    // An undated entry reads as an Invalid Date, as it always has.
+    timestamp: new Date(apiMsg.date ?? Number.NaN),
+    fileIds: apiMsg.fileIds ?? undefined,
+    fileData: apiMsg.fileData ?? undefined,
+    toolData: apiMsg.tool_data ?? undefined,
+    imageData: apiMsg.image_data ?? null,
+    metadata: apiMsg.metadata ?? undefined,
+    replyToMessage: apiMsg.replyToMessage ?? null,
     kind: apiMsg.kind ?? null,
     reacts_to_message_id: apiMsg.reacts_to_message_id ?? null,
     todoRunWake: apiMsg.todo_run_wake ?? null,

@@ -29,15 +29,15 @@ function scrollToMessage(messageId: string) {
   }, 300);
 }
 
-interface BubbleIndicatorsProps {
-  fileData: AttachedFileData[];
-  selectedTool: ChatBubbleUserProps["selectedTool"];
-  toolCategory: ChatBubbleUserProps["toolCategory"];
-  selectedWorkflow: ChatBubbleUserProps["selectedWorkflow"];
-  selectedCalendarEvent: ChatBubbleUserProps["selectedCalendarEvent"];
-  todoRunWake: ChatBubbleUserProps["todo_run_wake"];
-  replyToMessage: ChatBubbleUserProps["replyToMessage"];
-}
+type BubbleIndicatorsProps = Pick<
+  ChatBubbleUserProps,
+  | "selectedTool"
+  | "toolCategory"
+  | "selectedWorkflow"
+  | "selectedCalendarEvent"
+  | "todo_run_wake"
+  | "replyToMessage"
+> & { fileData: AttachedFileData[] };
 
 function BubbleIndicators({
   fileData,
@@ -45,7 +45,7 @@ function BubbleIndicators({
   toolCategory,
   selectedWorkflow,
   selectedCalendarEvent,
-  todoRunWake,
+  todo_run_wake,
   replyToMessage,
 }: BubbleIndicatorsProps) {
   return (
@@ -73,9 +73,9 @@ function BubbleIndicators({
         </div>
       )}
 
-      {todoRunWake && (
+      {todo_run_wake && (
         <div className="flex justify-end">
-          <TodoRunWakeIndicator wake={todoRunWake} />
+          <TodoRunWakeIndicator wake={todo_run_wake} />
         </div>
       )}
 
@@ -149,7 +149,7 @@ export default function ChatBubbleUser({
               toolCategory={toolCategory}
               selectedWorkflow={selectedWorkflow}
               selectedCalendarEvent={selectedCalendarEvent}
-              todoRunWake={todo_run_wake}
+              todo_run_wake={todo_run_wake}
               replyToMessage={replyToMessage}
             />
 

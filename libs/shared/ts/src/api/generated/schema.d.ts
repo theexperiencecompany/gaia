@@ -7580,7 +7580,7 @@ export interface components {
             message_id?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["ModelTokenUsage"];
             } | null;
             /** Pinned */
             pinned?: boolean | null;
@@ -11014,7 +11014,7 @@ export interface components {
             message_id?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["ModelTokenUsage"];
             } | null;
             /** Pinned */
             pinned?: boolean | null;
@@ -11171,6 +11171,26 @@ export interface components {
             props?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ModelTokenUsage
+         * @description One model's token counts for a turn, in the shape LangChain's UsageMetadata records them.
+         */
+        ModelTokenUsage: {
+            /** Input Token Details */
+            input_token_details?: {
+                [key: string]: number;
+            };
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Token Details */
+            output_token_details?: {
+                [key: string]: number;
+            };
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
         };
         /** MultiURLResponse */
         MultiURLResponse: {
@@ -16739,6 +16759,7 @@ export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
 export type ModalConfig = components['schemas']['ModalConfig'];
+export type ModelTokenUsage = components['schemas']['ModelTokenUsage'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];

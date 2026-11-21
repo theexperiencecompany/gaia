@@ -3934,7 +3934,9 @@
           "metadata": {
             "anyOf": [
               {
-                "additionalProperties": true,
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ModelTokenUsage"
+                },
                 "type": "object"
               },
               {
@@ -11007,7 +11009,9 @@
           "metadata": {
             "anyOf": [
               {
-                "additionalProperties": true,
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ModelTokenUsage"
+                },
                 "type": "object"
               },
               {
@@ -11459,6 +11463,44 @@
           "component"
         ],
         "title": "ModalConfig",
+        "type": "object"
+      },
+      "ModelTokenUsage": {
+        "description": "One model's token counts for a turn, in the shape LangChain's UsageMetadata records them.",
+        "properties": {
+          "input_token_details": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Input Token Details",
+            "type": "object"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_token_details": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Output Token Details",
+            "type": "object"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens",
+          "output_tokens",
+          "total_tokens"
+        ],
+        "title": "ModelTokenUsage",
         "type": "object"
       },
       "MultiURLResponse": {
