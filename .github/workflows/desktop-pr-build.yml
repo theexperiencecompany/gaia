@@ -11,9 +11,10 @@ name: Desktop PR Build
 # packages (electron-builder --dir, no installer). macOS additionally ad-hoc
 # signs and verifies the bundle seal.
 #
-# Tiered: a PR push packages Linux only; the merge queue (and a dispatch)
-# packages every OS. ci.yml calls it whenever nx says desktop:build (which
-# depends on web and shared-typescript) or this workflow is affected.
+# Tiered: a PR push packages Linux only, and only when apps/desktop or this
+# workflow changed (ci:desktop-package); the merge queue (and a dispatch)
+# packages every OS, also when only web or shared-typescript changed
+# (ci:desktop-package-deps, tools/ci/project.json).
 on:
   workflow_call:
 

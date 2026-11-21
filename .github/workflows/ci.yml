@@ -830,9 +830,12 @@ jobs:
     secrets: inherit # pragma: allowlist secret
 
   # ── desktop-build: package the Electron app (Linux on a PR, every OS after) ─
+  # A PR packages only when the desktop app or this lane changed (ci:desktop-package);
+  # what reaches it through web runs in the queue (ci:desktop-package-deps).
+  # ts-build-test still builds desktop:build on every PR that reaches it.
   desktop-build:
     needs: [detect]
-    if: ${{ !cancelled() && (contains(fromJSON(needs.detect.outputs.tasks), 'desktop:build') || contains(fromJSON(needs.detect.outputs.jobs), 'desktop-build')) }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'desktop-build') }}
     uses: ./.github/workflows/desktop-pr-build.yml
     permissions:
       contents: read

@@ -1183,6 +1183,10 @@
     "desktop-package": {
       "executor": "nx:noop",
       "inputs": [
+        {
+          "input": "default",
+          "projects": "desktop"
+        },
         "{workspaceRoot}/.github/workflows/desktop-pr-build.yml",
         "{workspaceRoot}/.github/actions/setup-node-pnpm/**/*",
         "{workspaceRoot}/.github/actions/restore-nextjs-cache/**/*",
@@ -1193,6 +1197,25 @@
       "metadata": {
         "ci": {
           "job": "desktop-build"
+        }
+      }
+    },
+    "desktop-package-deps": {
+      "executor": "nx:noop",
+      "inputs": [
+        {
+          "input": "production",
+          "projects": "desktop",
+          "dependencies": true
+        },
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "desktop-build",
+          "events": ["merge_group", "push", "workflow_dispatch"]
         }
       }
     },
