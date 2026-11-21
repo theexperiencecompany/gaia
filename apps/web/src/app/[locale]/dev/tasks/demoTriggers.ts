@@ -23,6 +23,7 @@ export const APP_NAMES: Record<string, string> = {
 export const DEMO_TRIGGERS: DemoTrigger[] = [
   { slug: "gmail_new_message", app: "gmail", name: "New email" },
   { slug: "gmail_email_sent", app: "gmail", name: "Email sent" },
+  { slug: "gmail_poll_inbox", app: "gmail", name: "New emails in inbox" },
   { slug: "calendar_event_created", app: "googlecalendar", name: "New event" },
   {
     slug: "calendar_event_starting_soon",

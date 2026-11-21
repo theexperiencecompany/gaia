@@ -20,12 +20,14 @@ export type AskAnswer =
   | { kind: "approve" }
   | { kind: "deny" }
   | { kind: "reply"; text: string }
-  | { kind: "reconnect" };
+  | { kind: "reconnect" }
+  | { kind: "connect" };
 
 const LABEL = {
   approval: { text: "Needs your approval", Icon: CheckmarkCircle02Icon },
   question: { text: "GAIA has a question", Icon: BubbleChatIcon },
   reconnect: { text: "Needs reconnecting", Icon: Link01Icon },
+  connect: { text: "Needs an app", Icon: Link01Icon },
 } as const;
 
 /** The thing GAIA wants to send, as the approval card carries it (args_preview). */
@@ -93,7 +95,7 @@ function ReplyBox({ onSend }: { onSend: (text: string) => void }) {
 
 /**
  * What GAIA is blocked on, answerable in place. An approval shows what will be
- * sent; a question takes a reply; a lost connection offers to reconnect.
+ * sent; a question takes a reply; a lost connection offers to reconnect, a missing app to connect.
  */
 export default function TaskAsk({
   task,
@@ -157,6 +159,18 @@ export default function TaskAsk({
         >
           <Link01Icon className="size-4" />
           Reconnect {getToolDisplayName(task.integrations[0] ?? "")}
+        </GaiaButton>
+      )}
+
+      {ask.kind === "connect" && ask.app && (
+        <GaiaButton
+          size="sm"
+          variant="primary"
+          className="font-medium"
+          onPress={() => onAnswer({ kind: "connect" })}
+        >
+          <Link01Icon className="size-4" />
+          Connect {getToolDisplayName(ask.app)}
         </GaiaButton>
       )}
     </section>

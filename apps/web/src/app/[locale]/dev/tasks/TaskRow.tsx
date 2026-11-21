@@ -13,12 +13,11 @@ import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
 import TaskCheckbox from "./TaskCheckbox";
 import {
-  AppIcon,
   type ChipTone,
   IntegrationStack,
   MetaChip,
   TaskIconTile,
-  WHEN_ICONS,
+  WhenChip,
 } from "./TaskParts";
 import type { Task } from "./taskModel";
 
@@ -48,6 +47,7 @@ const ASK_NEED = {
   approval: { label: "Needs approval", Icon: CheckmarkCircle02Icon },
   question: { label: "Has a question", Icon: BubbleChatIcon },
   reconnect: { label: "Needs reconnecting", Icon: Link01Icon },
+  connect: { label: "Needs an app", Icon: Link01Icon },
 } as const;
 
 function AskChip({ kind }: { kind: keyof typeof ASK_NEED }) {
@@ -75,38 +75,10 @@ function Leading({ task, onToggleDone }: TaskRowProps) {
   );
 }
 
-/**
- * When a task is due or runs, always as one chip. Colour is kept for the two that
- * need you today; an event trigger leads with the app that fires it.
- */
 function When({ task }: { task: Task }) {
-  const { when } = task;
   // A workflow that is switched off has no next run to show.
   if (task.state === "paused") return <MetaChip>Disabled</MetaChip>;
-  if (!when.label) return null;
-  const Icon = WHEN_ICONS[when.kind];
-  const tone: ChipTone = when.overdue
-    ? "danger"
-    : when.isToday
-      ? "success"
-      : when.kind === "schedule"
-        ? "info"
-        : "default";
-
-  return (
-    <MetaChip
-      tone={tone}
-      icon={
-        when.app ? (
-          <AppIcon id={when.app} size={14} />
-        ) : (
-          <Icon className="size-3.5" />
-        )
-      }
-    >
-      {when.overdue ? `Overdue, ${when.label}` : when.label}
-    </MetaChip>
-  );
+  return <WhenChip when={task.when} />;
 }
 
 export default function TaskRow(props: TaskRowProps) {

@@ -35,13 +35,16 @@ export interface TaskWhen {
  * approval: a pending HIL ledger row (todo.pending_approval), approve or deny.
  * question: waiting_on="user" with a free-text question; answered by replying in chat.
  * reconnect: a paused workflow (deactivated_reason=integration_expired).
+ * connect: a task made from a template needs an app not yet connected (blocked_on_integrations).
  */
 export interface TaskAsk {
-  kind: "approval" | "question" | "reconnect";
+  kind: "approval" | "question" | "reconnect" | "connect";
   /** approval: the gated tool call; question: todo.question; reconnect: the pause reason. */
   prompt: string;
   /** approval: what the gated tool call will send (the approval's args_preview). */
   draft?: { to: string; subject: string; body: string };
+  /** connect: the app the task cannot run without. */
+  app?: string;
   /** if_no_reply="proceed" with default_action, as one sentence. */
   ifNoReply?: string;
 }

@@ -17,7 +17,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { WORKFLOW_ICON_MAP } from "@/features/workflows/constants/workflowIconCatalog";
 import { WORKFLOW_ICON_BG_ALPHA } from "@/features/workflows/constants/workflowIconStyle";
 import { cn } from "@/lib/utils";
-import type { Task, WhenKind } from "./taskModel";
+import type { Task, TaskWhen, WhenKind } from "./taskModel";
 
 type IconComponent = ComponentType<{ className?: string; size?: number }>;
 
@@ -136,6 +136,37 @@ export function MetaChip({
         {children}
       </Chip.Label>
     </Chip>
+  );
+}
+
+/**
+ * When a task is due or runs, always as one chip. Colour is kept for the two that
+ * need you today; an event trigger leads with the app that fires it.
+ */
+export function WhenChip({ when }: { when: TaskWhen }) {
+  if (!when.label) return null;
+  const Icon = WHEN_ICONS[when.kind];
+  const tone: ChipTone = when.overdue
+    ? "danger"
+    : when.isToday
+      ? "success"
+      : when.kind === "schedule"
+        ? "info"
+        : "default";
+
+  return (
+    <MetaChip
+      tone={tone}
+      icon={
+        when.app ? (
+          <AppIcon id={when.app} size={14} />
+        ) : (
+          <Icon className="size-3.5" />
+        )
+      }
+    >
+      {when.overdue ? `Overdue, ${when.label}` : when.label}
+    </MetaChip>
   );
 }
 

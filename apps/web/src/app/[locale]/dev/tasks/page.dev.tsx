@@ -33,6 +33,7 @@ const ANSWERED: {
   reply: (answer) =>
     answer.kind === "reply" ? `You replied: ${answer.text}` : "",
   reconnect: () => "You reconnected it",
+  connect: () => "You connected the app",
 };
 
 /** The id of the task open in the sidebar, so its row can show as selected. */
