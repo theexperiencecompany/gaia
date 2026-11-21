@@ -138,7 +138,7 @@ HISTORY_RUNS = 5
 # app build when cold sessions start together) off the test's own budget.
 MUTANT_TEST_TIMEOUT = 120
 PLUGIN_FENCE = (
-    '-m "not composio and not model_onboarding and not schemathesis" --strict-markers '
+    '-m "not composio and not model_onboarding and not schemathesis and not tasks_target" --strict-markers '
     "-p no:opik -p no:langsmith_plugin -p no:schemathesis"
 )
 PLAIN_RUN_ADDOPTS = f"addopts={PLUGIN_FENCE} --timeout=300"

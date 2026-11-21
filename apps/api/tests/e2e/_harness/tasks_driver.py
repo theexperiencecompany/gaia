@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
 from uuid import uuid4
@@ -17,6 +17,7 @@ from arq.connections import ArqRedis
 from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
 from httpx import AsyncClient, Response
+import time_machine
 
 from app.agents.tools.tracked_todo_tools import create_tracked_todo
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
@@ -41,6 +42,7 @@ from tests.e2e._harness.tasks_views import (
     KeepsWaiting,
     NeedsApproval,
     OpensSubtasks,
+    RepeatingTaskView,
     Reports,
     RunOutcome,
     RunView,
@@ -52,6 +54,11 @@ from tests.e2e._harness.transcript import Transcript
 from tests.e2e._harness.turn_queue import APPROVAL_ID_FROM_PROMPT, TurnQueue
 
 TODOS = "/api/v1/todos"
+WORKFLOWS = "/api/v1/workflows"
+#: How long after its armed time the worker picks a job up.
+JOB_PICKUP_DELAY = timedelta(seconds=1)
+#: How long after the first a duplicate delivery of the same job arrives.
+DUPLICATE_DELIVERY_DELAY = timedelta(minutes=5)
 NOTIFICATIONS = "/api/v1/notifications"
 #: When a one-off GAIA task first looks at its work, as a user handing it over leaves it.
 FIRST_LOOK = "1h"
@@ -66,11 +73,22 @@ _REDEEM = {
     "tool_name": "approve",
     "data": {"id": APPROVAL_ID_FROM_PROMPT},
 }
+#: A run's answer to the playbook check when its calls depend on what it finds.
+_DECLINE_PLAYBOOK = call(
+    "decline_playbook",
+    {"kind": "unstable_discovery", "reason": "the stories differ every day"},
+    call_id="tc_decline",
+)
 #: What GAIA says in the chat while it picks the work up.
 ON_IT = "On it."
 #: When GAIA checks back on a question it asked.
 QUESTION_EXPIRES = "1d"
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
+_WORKFLOW_RUN_STATUS = {
+    "success": RunOutcome.SUCCEEDED,
+    "failed": RunOutcome.FAILED,
+    "skipped": RunOutcome.SKIPPED,
+}
 _RUN_EVENTS = {
     TodoActivityEvent.RUN_FINISHED.value: RunOutcome.SUCCEEDED,
     TodoActivityEvent.RUN_FAILED.value: RunOutcome.FAILED,
@@ -111,6 +129,32 @@ def _task_view(body: dict[str, Any]) -> TaskView:
     )
 
 
+def _repeating_view(body: dict[str, Any]) -> RepeatingTaskView:
+    workflow = body["workflow"]
+    next_run = workflow["trigger_config"].get("next_run")
+    return RepeatingTaskView(
+        id=workflow["id"],
+        title=workflow["title"],
+        active=workflow["activated"],
+        next_run=datetime.fromisoformat(next_run) if next_run else None,
+        paused_reason=workflow.get("deactivated_reason"),
+    )
+
+
+async def _execute(job: JobDef, *, after: timedelta) -> str:
+    """Run a job's function as the worker does, the clock moved to when it was armed for plus after."""
+    due = datetime.fromtimestamp(job.score / 1000, UTC) + after
+    with time_machine.travel(max(due, datetime.now(UTC)), tick=True):
+        said = str(await _JOBS[job.function]({"job_id": job.job_id}, *job.args, **job.kwargs))
+        # The run's delivery finishes in the background, still at that time.
+        await drain_background_runs()
+        return said
+
+
+def _is_workflow(task_id: str) -> bool:
+    return task_id.startswith("wf_")
+
+
 class TasksDriver:
     """A signed-in user's hands on their tasks, and their eyes on what came of them."""
 
@@ -128,6 +172,7 @@ class TasksDriver:
         self._pool = pool
         self._executor = executor
         self._comms = comms
+        self._last_fired: JobDef | None = None
 
     # The account.
 
@@ -216,7 +261,7 @@ class TasksDriver:
         """
         armed = await self._armed(task_id)
         assert armed, f"nothing is armed to run task {task_id}"
-        await self._queue_tracked(task_id, run)
+        await self._queue_run(task_id, run)
         with self._executor.provider_down() if isinstance(run, Breaks) else nullcontext():
             outcome = await self._run(armed[0])
         self._all_turns_taken()
@@ -344,6 +389,74 @@ class TasksDriver:
         await drain_background_runs()
         self._all_turns_taken()
 
+    # Tasks GAIA repeats.
+
+    async def create_repeating_task(
+        self, title: str, brief: str, *, cron: str, notify: bool = True
+    ) -> RepeatingTaskView:
+        """Create a task GAIA runs on a schedule, from the task form."""
+        created = _ok(
+            await self._client.post(
+                WORKFLOWS,
+                json={
+                    "title": title,
+                    "prompt": brief,
+                    "trigger_config": {
+                        "type": "schedule",
+                        "cron_expression": cron,
+                        "timezone": "UTC",
+                    },
+                    "steps": [],
+                    "notify_on_completion": notify,
+                },
+            )
+        )
+        return _repeating_view(created)
+
+    async def reschedule(self, task_id: str, *, cron: str) -> RepeatingTaskView:
+        current = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]
+        trigger = {**current["trigger_config"], "cron_expression": cron}
+        return _repeating_view(
+            _ok(await self._client.put(f"{WORKFLOWS}/{task_id}", json={"trigger_config": trigger}))
+        )
+
+    async def edit_brief(self, task_id: str, brief: str) -> RepeatingTaskView:
+        return _repeating_view(
+            _ok(await self._client.put(f"{WORKFLOWS}/{task_id}", json={"prompt": brief}))
+        )
+
+    async def get_repeating(self, task_id: str) -> RepeatingTaskView:
+        return _repeating_view(_ok(await self._client.get(f"{WORKFLOWS}/{task_id}")))
+
+    async def fire_every_armed(self, task_id: str, run: GaiaRun) -> None:
+        """Fire every run ever armed for the task, stale ones included, GAIA doing one run as scripted."""
+        await self._queue_run(task_id, run)
+        for job in await self._armed(task_id):
+            await self._run(job)
+        self._all_turns_taken()
+
+    async def fire_again(self, task_id: str) -> None:
+        """Deliver the task's last fired job a second time, as a duplicate delivery would."""
+        assert self._last_fired is not None, "nothing was fired yet"
+        await _execute(self._last_fired, after=DUPLICATE_DELIVERY_DELAY)
+        self._all_turns_taken()
+
+    async def _queue_run(self, task_id: str, run: GaiaRun) -> None:
+        if not _is_workflow(task_id):
+            await self._queue_tracked(task_id, run)
+            return
+        match run:
+            case Reports(report):
+                self._comms.then(
+                    [call("call_executor", {"task": f"run {task_id}"}, call_id="tc_run"), ON_IT]
+                )
+                self._executor.then([_DECLINE_PLAYBOOK, report])
+                workflow = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]
+                if workflow["notify_on_completion"]:
+                    self._comms.then([report])
+            case _:
+                raise NotImplementedError(f"a repeating task cannot be scripted to {run}")
+
     async def ask_before_acting(self) -> None:
         """Set the user's approval settings to ask before the action GAIA takes in NeedsApproval."""
         _ok(
@@ -389,9 +502,10 @@ class TasksDriver:
 
     async def _run(self, job: JobDef) -> str:
         """Run a queued job as the worker would, taking it off the queue first."""
+        self._last_fired = job
         await self._pool.zrem(default_queue_name, job.job_id)
         await self._pool.delete(job_key_prefix + job.job_id)
-        return str(await _JOBS[job.function]({"job_id": job.job_id}, *job.args, **job.kwargs))
+        return await _execute(job, after=JOB_PICKUP_DELAY)
 
     # What the user sees.
 
@@ -420,7 +534,13 @@ class TasksDriver:
         return await self._list(parent_todo_id=task_id)
 
     async def runs(self, task_id: str) -> list[RunView]:
-        """Return the task's run history, oldest first, as its activity log records each run."""
+        """Return the task's run history, oldest first, as its page lists each run."""
+        if _is_workflow(task_id):
+            body = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}/executions"))
+            return [
+                RunView(outcome=_WORKFLOW_RUN_STATUS[e["status"]], reason=e.get("summary"))
+                for e in reversed(body["executions"])
+            ]
         return [
             RunView(outcome=_RUN_EVENTS[event], reason=detail or None)
             for event, detail in await self._activity(task_id)

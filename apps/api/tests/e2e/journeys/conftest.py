@@ -14,6 +14,7 @@ import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.db.mongodb import indexes
+from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from tests.conftest import FAKE_USER
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
@@ -88,7 +89,10 @@ async def _checkpointer(postgres_url: str) -> AsyncIterator[CheckpointerManager]
 async def _worker_pool(redis_url: str, real_redis: object) -> AsyncIterator[ArqRedis]:
     """Install a real ArqRedis on the test's Redis as the worker pool every enqueue reaches."""
     pool = ArqRedis.from_url(worker_redis_url(redis_url))
-    with patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)):
+    with (
+        patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)),
+        patch.object(workflow_scheduler, "arq_pool", pool),
+    ):
         yield pool
     await pool.aclose()
 
