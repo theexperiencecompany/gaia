@@ -7,6 +7,7 @@ import { addDays, format } from "date-fns";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { getUserHomeTimezone } from "@/lib/timezone";
+import PickMenu from "./PickMenu";
 import Segmented from "./Segmented";
 import type { TaskEnds } from "./taskModel";
 import { EDITOR_FIELD, Field } from "./WhenParts";
@@ -19,6 +20,16 @@ const END_MODES: { key: EndMode; label: string }[] = [
   { key: "date", label: "On" },
 ];
 
+/** A watch's ends in its own words: it usually ends the first time it tells you. */
+type WatchEndMode = "told" | "several" | "date" | "never";
+
+const WATCH_END_MODES: { id: WatchEndMode; label: string }[] = [
+  { id: "told", label: "After it tells you" },
+  { id: "several", label: "After several" },
+  { id: "date", label: "On a date" },
+  { id: "never", label: "Never" },
+];
+
 /** What a limit counts: a repeat's runs, or the times a watch tells you. */
 type Unit = "runs" | "alerts";
 
@@ -27,7 +38,8 @@ const COUNTED: Record<
   { label: string; one: string; many: string; first: number }
 > = {
   runs: { label: "Runs", one: "run", many: "runs", first: 10 },
-  alerts: { label: "Alerts", one: "alert", many: "alerts", first: 1 },
+  // One alert is "After it tells you", so "After several" starts at 3.
+  alerts: { label: "Alerts", one: "alert", many: "alerts", first: 3 },
 };
 
 /** Where a newly chosen date limit starts: a month from today. */
@@ -35,6 +47,15 @@ const FIRST_DATE_DAYS = 30;
 
 const modeOf = (ends?: TaskEnds): EndMode =>
   ends?.afterRuns ? "runs" : ends?.onDate ? "date" : "never";
+
+const watchModeOf = (ends?: TaskEnds): WatchEndMode =>
+  ends?.afterRuns === 1
+    ? "told"
+    : ends?.afterRuns
+      ? "several"
+      : ends?.onDate
+        ? "date"
+        : "never";
 
 /**
  * When a repeating task or a watch stops on its own: never, after a number of
@@ -59,20 +80,44 @@ export default function WhenEnds({
         onDate: format(addDays(new Date(), FIRST_DATE_DAYS), "yyyy-MM-dd"),
       });
   };
+  const isWatch = unit === "alerts";
+  const watchMode = watchModeOf(ends);
+  const chooseForWatch = (next: WatchEndMode) => {
+    if (next === "told") onChange({ afterRuns: 1 });
+    else choose(next === "several" ? "runs" : next);
+  };
+  const showsCount = isWatch ? watchMode === "several" : mode === "runs";
 
   return (
     <div className="space-y-2">
       <Field label="Ends">
-        <div className="w-44">
-          <Segmented
+        {isWatch ? (
+          <PickMenu
             label="Ends"
-            options={END_MODES}
-            value={mode}
-            onChange={choose}
+            summary={
+              WATCH_END_MODES.find((option) => option.id === watchMode)
+                ?.label ?? ""
+            }
+            options={WATCH_END_MODES}
+            selected={[watchMode]}
+            isMultiple={false}
+            onPick={(id) => {
+              const picked = WATCH_END_MODES.find((option) => option.id === id);
+              if (picked) chooseForWatch(picked.id);
+            }}
           />
-        </div>
+        ) : (
+          <div className="w-44">
+            <Segmented
+              label="Ends"
+              options={END_MODES}
+              value={mode}
+              onChange={choose}
+            />
+          </div>
+        )}
       </Field>
-      {mode === "runs" && (
+      {showsCount && (
         <Field label={counted.label}>
           <InputGroup
             className={inputVariants({ variant: "sunken", className: "w-44" })}
@@ -83,7 +128,9 @@ export default function WhenEnds({
               value={String(ends?.afterRuns ?? "")}
               onChange={(event) => {
                 const count = Number(event.target.value.replace(/\D/g, ""));
-                onChange({ afterRuns: count > 0 ? count : counted.first });
+                // A watch's count stays "several": one alert is its own choice.
+                const least = isWatch ? 2 : 1;
+                onChange({ afterRuns: count >= least ? count : counted.first });
               }}
               className={toneVariants({
                 tone: "white",
