@@ -6,31 +6,40 @@ files can later run against /tasks by swapping this module's implementation.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
+import json
 import re
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 from arq.connections import ArqRedis
 from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
+from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
 import time_machine
 
 from app.agents.tools.tracked_todo_tools import create_tracked_todo
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
+from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.message_models import MessageRequestWithHistory
+from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
 from app.services.chat import stream as chat_stream
+from app.services.oauth.oauth_service import handle_oauth_connection
 from app.utils.auth_utils import require_owner
 from app.worker import TASK_FUNCTIONS
+from shared.py.wide_events import spawn_logged_task
+from tests.e2e._harness.app_events import gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.tasks_views import (
@@ -54,9 +63,18 @@ from tests.e2e._harness.tasks_views import (
 )
 from tests.e2e._harness.transcript import Transcript
 from tests.e2e._harness.turn_queue import APPROVAL_ID_FROM_PROMPT, TurnQueue
+from tests.integration_account_factories import provider_account_id
 
 TODOS = "/api/v1/todos"
 WORKFLOWS = "/api/v1/workflows"
+WEBHOOK = "/api/v1/webhook/composio"
+WEBHOOK_MODULE = "app.api.v1.endpoints.webhook_composio"
+#: Composio's event type for a new message in a Gmail inbox.
+GMAIL_NEW_MESSAGE_EVENT = "gmail_new_gmail_message"
+#: GAIA's id of the one account each connected app has in the journeys.
+APP_ACCOUNT = "ca_1"
+#: The hour (UTC, the user's zone) app events arrive at in the journeys.
+DAYTIME_HOUR = 10
 #: How long after its armed time the worker picks a job up.
 JOB_PICKUP_DELAY = timedelta(seconds=1)
 #: The plan allowance every repeating task run is charged to.
@@ -142,6 +160,9 @@ def _repeating_view(body: dict[str, Any]) -> RepeatingTaskView:
         active=workflow["activated"],
         next_run=datetime.fromisoformat(next_run) if next_run else None,
         paused_reason=workflow.get("deactivated_reason"),
+        skipped_events=tuple(
+            skip["event"] for skip in (workflow.get("gate") or {}).get("recent_skips") or []
+        ),
     )
 
 
@@ -153,6 +174,19 @@ async def _execute(job: JobDef, *, after: timedelta) -> str:
         # The run's delivery finishes in the background, still at that time.
         await drain_background_runs()
         return said
+
+
+def _integration(integration_id: str) -> OAuthIntegration:
+    integration = get_integration_by_id(integration_id)
+    assert integration is not None, f"no app {integration_id}"
+    return integration
+
+
+def _next_daytime() -> datetime:
+    """Return the next mid-morning on the user's (UTC) clock, outside every default quiet hour."""
+    now = datetime.now(UTC)
+    morning = now.replace(hour=DAYTIME_HOUR, minute=0, second=0, microsecond=0)
+    return morning if morning > now else morning + timedelta(days=1)
 
 
 def _is_workflow(task_id: str) -> bool:
@@ -442,6 +476,112 @@ class TasksDriver:
 
     async def get_repeating(self, task_id: str) -> RepeatingTaskView:
         return _repeating_view(_ok(await self._client.get(f"{WORKFLOWS}/{task_id}")))
+
+    async def create_event_task(
+        self, title: str, brief: str, *, app_event: str, only_when: str | None = None
+    ) -> RepeatingTaskView:
+        """Create a task GAIA runs whenever an app event arrives, optionally only when it matches."""
+        payload: dict[str, Any] = {
+            "title": title,
+            "prompt": brief,
+            "trigger_config": {"type": "integration", "trigger_name": app_event},
+            "steps": [],
+        }
+        if only_when is not None:
+            payload["runs_only_when"] = only_when
+        return _repeating_view(_ok(await self._client.post(WORKFLOWS, json=payload)))
+
+    async def pause(self, task_id: str) -> RepeatingTaskView:
+        return _repeating_view(_ok(await self._client.post(f"{WORKFLOWS}/{task_id}/deactivate")))
+
+    async def resume(self, task_id: str) -> RepeatingTaskView:
+        return _repeating_view(_ok(await self._client.post(f"{WORKFLOWS}/{task_id}/activate")))
+
+    # Apps and their events.
+
+    async def connect_app(self, integration_id: str) -> None:
+        """Finish an app's OAuth connect, with every side effect the callback runs."""
+        background = BackgroundTasks()
+        await handle_oauth_connection(
+            self._user_id,
+            _integration(integration_id),
+            background,
+            connected_account_id=provider_account_id(APP_ACCOUNT),
+        )
+        await background()
+        await drain_background_runs()
+
+    async def app_disconnects(self, integration_id: str) -> None:
+        """Deliver the provider's notice that the app's account expired."""
+        toolkit = _integration(integration_id).composio_config
+        assert toolkit is not None, f"{integration_id} is not a Composio app"
+        await self._webhook(
+            {
+                "id": f"msg_{uuid4().hex[:8]}",
+                "type": "composio.connected_account.expired",
+                "timestamp": datetime.now(UTC).isoformat(),
+                "data": {
+                    "id": provider_account_id(APP_ACCOUNT),
+                    "user_id": self._user_id,
+                    "status": "EXPIRED",
+                    "status_reason": "refresh_token_revoked",
+                    "is_disabled": False,
+                    "toolkit": {"slug": toolkit.toolkit.upper()},
+                    "auth_config": {"id": toolkit.auth_config_id, "auth_scheme": "OAUTH2"},
+                    "state": {"authScheme": "OAUTH2", "val": {"status": "EXPIRED"}},
+                    "data": {},
+                    "params": {},
+                },
+            }
+        )
+
+    async def new_email(
+        self, *, subject: str, sender: str, gate_passes: bool | None = None, delivery_id: str
+    ) -> None:
+        """Deliver a new-email event for the user's inbox; gate_passes is what the matcher judges."""
+        message_id = f"msg-{delivery_id}"
+        data = {
+            "connection_id": provider_account_id(APP_ACCOUNT),
+            "connection_nano_id": "nano-1",
+            "trigger_nano_id": "ti_nano",
+            "trigger_id": "ti-gmail",
+            "user_id": self._user_id,
+            "message_id": message_id,
+            "thread_id": f"thread-{delivery_id}",
+            "subject": subject,
+            "sender": sender,
+            "message_text": f"{subject} from {sender}",
+            "payload": {"message_id": message_id},
+        }
+        verdict = 0.5 if gate_passes is None else (0.05 if gate_passes else 0.99)
+        with gate_judge(not_needed=verdict), time_machine.travel(_next_daytime(), tick=True):
+            await self._webhook(
+                {
+                    "type": GMAIL_NEW_MESSAGE_EVENT,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "data": data,
+                },
+                webhook_id=f"wh-{delivery_id}",
+            )
+
+    async def _webhook(self, body: dict[str, Any], *, webhook_id: str | None = None) -> None:
+        spawned: list[asyncio.Task[object]] = []
+
+        def recording_spawn(operation: str, coro: Any, **ctx: Any) -> asyncio.Task[object]:
+            task = spawn_logged_task(operation, coro, **ctx)
+            spawned.append(task)
+            return task
+
+        raw = json.dumps(body).encode()
+        with patch(f"{WEBHOOK_MODULE}.spawn_logged_task", side_effect=recording_spawn):
+            response = await self._client.post(
+                WEBHOOK,
+                content=raw,
+                headers=signed_webhook_headers(raw, webhook_id or f"wh-{uuid4().hex}"),
+            )
+            assert response.status_code == 200, response.text
+            await asyncio.gather(*spawned)
+        await drain_background_runs()
 
     async def publish(self, task_id: str) -> str:
         """Publish the task as a template anyone can see; return its public reference."""

@@ -67,8 +67,9 @@ class RepeatingTaskView:
     title: str
     active: bool
     next_run: datetime | None = None
-    total_runs: int = 0
     paused_reason: str | None = None
+    #: The events its "only when" condition turned away, by what each was about.
+    skipped_events: tuple[str, ...] = ()
 
 
 class NoReply(StrEnum):

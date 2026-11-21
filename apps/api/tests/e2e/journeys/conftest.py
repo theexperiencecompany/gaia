@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -14,10 +15,12 @@ import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.api.v1.middleware.tiered_rate_limiter import TieredRateLimiter, tiered_limiter
+from app.config.settings import settings
 from app.db.mongodb import indexes
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from tests.conftest import FAKE_USER
+from tests.e2e._harness.app_events import WEBHOOK_SECRET
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.tasks_driver import TasksDriver
 from tests.e2e._harness.turn_queue import TurnQueue
@@ -33,6 +36,14 @@ OWNED_COLLECTIONS = (
     "notifications",
     "approval_ledger",
     "waits",
+    "user_integrations",
+)
+#: The modules an app connect reaches Composio from; the double answers every call.
+COMPOSIO_USERS = (
+    "app.services.oauth.oauth_service",
+    "app.services.integrations.integration_account_lifecycle",
+    "app.services.integrations.account_identity",
+    "app.services.integrations.integration_connection_service",
 )
 
 
@@ -110,10 +121,13 @@ async def tasks(
     executor, comms = TurnQueue(responses=[]), TurnQueue(responses=[])
     # The session fence mocks the plan limiter; a journey counts runs on the real one, on real Redis.
     real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
-    with (
-        offline_todo_seams(),
-        patch.object(tiered_limiter, "check_and_increment", real_limiter),
-    ):
+    composio = AsyncMock()
+    with ExitStack() as seams:
+        seams.enter_context(offline_todo_seams())
+        seams.enter_context(patch.object(tiered_limiter, "check_and_increment", real_limiter))
+        seams.enter_context(patch.object(settings, "COMPOSIO_WEBHOOK_SECRET", WEBHOOK_SECRET))
+        for module in COMPOSIO_USERS:
+            seams.enter_context(patch(f"{module}.get_composio_service", return_value=composio))
         async with live_graphs(_checkpointer, executor_model=executor, comms_model=comms):
             driver = TasksDriver(
                 client,
