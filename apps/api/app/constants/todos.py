@@ -117,20 +117,6 @@ CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
 # Most of a triggered run's event data inlined in its prompt; the run can fetch the source.
 TRIGGER_EVENTS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH // 5
 
-# Tracked-todo recurrence shortcuts. Intervals step from now (drift is fine);
-# anchored steps keep the first fire's wall-clock time.
-TODO_INTERVAL_RECURRENCES: Final[dict[str, timedelta]] = {
-    "every_4h": timedelta(hours=4),
-    "every_1h": timedelta(hours=1),
-}
-TODO_ANCHORED_RECURRENCES: Final[dict[str, timedelta]] = {
-    "daily": timedelta(days=1),
-    "weekly": timedelta(weeks=1),
-}
-TODO_RECURRENCE_SHORTCUTS: Final[frozenset[str]] = frozenset(
-    TODO_INTERVAL_RECURRENCES.keys() | TODO_ANCHORED_RECURRENCES.keys()
-)
-
 # The ARQ task that runs a tracked todo; also the prefix of its per-occurrence job id.
 EXECUTE_TRACKED_TODO_TASK: Final[str] = "execute_tracked_todo"
 

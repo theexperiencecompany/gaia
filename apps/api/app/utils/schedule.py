@@ -16,6 +16,7 @@ from app.constants.scheduling import (
     SCHEDULE_REJECTION_SUGGESTION,
     ScheduleRejection,
 )
+from app.constants.tasks import REPEAT_SHORTCUTS
 
 INVALID_SCHEDULE_ERROR_CODE = "invalid_schedule"
 
@@ -63,6 +64,13 @@ def validate_recurring_schedule(expression: str) -> str:
     if rejection is not None:
         raise InvalidScheduleError(rejection)
     return expression
+
+
+def validate_repeat_rule(rule: str) -> str:
+    """Return a task's repeat rule when it is a shortcut or an acceptable cron; raise InvalidScheduleError otherwise."""
+    if rule in REPEAT_SHORTCUTS:
+        return rule
+    return validate_recurring_schedule(rule)
 
 
 RecurringSchedule = Annotated[str, AfterValidator(validate_recurring_schedule)]

@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
-    TODO_RECURRENCE_SHORTCUTS,
     NoReplyPlan,
     WaitingOn,
 )
@@ -17,18 +16,7 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
 from app.schemas.common import ResponseModel
-from app.utils.schedule import validate_recurring_schedule
-
-
-def validate_todo_recurrence(recurrence: str) -> str:
-    """Hold a tracked todo's run schedule to the rule: a shortcut, or an acceptable cron.
-
-    Only a tracked todo's recurrence schedules runs; a plain todo's is display-only
-    (mobile stores an RRULE there) and is never validated as a schedule.
-    """
-    if recurrence in TODO_RECURRENCE_SHORTCUTS:
-        return recurrence
-    return validate_recurring_schedule(recurrence)
+from app.utils.schedule import validate_repeat_rule
 
 
 class Priority(str, Enum):
@@ -159,7 +147,7 @@ class TodoModel(TodoBase):
     def tracked_recurrence_is_a_run_schedule(self) -> "TodoModel":
         """Validate the recurrence as a run schedule when this todo is tracked."""
         if self.recurrence and GAIA_TRACKED_LABEL in self.labels:
-            validate_todo_recurrence(self.recurrence)
+            validate_repeat_rule(self.recurrence)
         return self
 
 

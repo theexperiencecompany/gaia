@@ -35,7 +35,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from bson import ObjectId
 
 from app.constants.reminders import REMINDER_DEFAULT_LIFETIME
-from app.constants.todos import GAIA_TRACKED_LABEL, TODO_RECURRENCE_SHORTCUTS
+from app.constants.tasks import REPEAT_SHORTCUTS
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.workflows import workflow_repository
@@ -110,7 +111,7 @@ def plan_workflow(doc: dict[str, Any], plan: CleanupPlan) -> None:
 def plan_todo(doc: dict[str, Any], plan: CleanupPlan) -> None:
     """Report one tracked todo whose recurrence is neither a shortcut nor an acceptable schedule."""
     recurrence = doc["recurrence"]
-    if recurrence in TODO_RECURRENCE_SHORTCUTS:
+    if recurrence in REPEAT_SHORTCUTS:
         return
     invalid = _invalid(doc, recurrence)
     if invalid:

@@ -11,12 +11,12 @@ from typing import NamedTuple
 from langchain_core.runnables import RunnableConfig
 
 from app.constants.scheduling import SCHEDULE_REJECTION_SUGGESTION
+from app.constants.tasks import REPEAT_SHORTCUTS
 from app.constants.todos import (
     CANVAS_STANDING_RULES_SECTION,
     GAIA_TRACKED_LABEL,
     NEXT_CHECK_DURATION,
     NEXT_CHECK_DURATION_UNITS,
-    TODO_RECURRENCE_SHORTCUTS,
     NoReplyPlan,
     WaitingOn,
 )
@@ -25,12 +25,11 @@ from app.models.todo_models import (
     Priority,
     TodoUpdate,
     UpdateFieldInputs,
-    validate_todo_recurrence,
 )
 from app.services.canvas_markdown import section_body
 from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import get_next_run_time
-from app.utils.schedule import InvalidScheduleError
+from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
 from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
 
@@ -76,7 +75,7 @@ def compute_first_fire_from_cron(cron_expr: str, tz_name: str | None) -> datetim
 
 
 def is_cron_expression(recurrence: str) -> bool:
-    return recurrence not in TODO_RECURRENCE_SHORTCUTS
+    return recurrence not in REPEAT_SHORTCUTS
 
 
 def parse_iso_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
@@ -294,11 +293,11 @@ def build_scheduled_at_update(
 def validate_recurrence_format(recurrence: str) -> str | None:
     """Return a user-facing error if recurrence is neither a known shortcut nor an acceptable schedule."""
     try:
-        validate_todo_recurrence(recurrence)
+        validate_repeat_rule(recurrence)
     except InvalidScheduleError as e:
         return (
             f"Error: invalid recurrence '{recurrence}'. {e} "
-            f"Use one of: {', '.join(sorted(TODO_RECURRENCE_SHORTCUTS))}, "
+            f"Use one of: {', '.join(sorted(REPEAT_SHORTCUTS))}, "
             f"or a 5-field cron expression. {SCHEDULE_REJECTION_SUGGESTION}"
         )
     return None

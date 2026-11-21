@@ -132,7 +132,6 @@ from app.workers.tasks.todo_run_context import collect_reference_learnings, coll
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from app.workers.tasks.tracked_todo_tasks import (
     PAYWALL_FEATURE_TRACKED_TODO,
-    _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
     _mark_todo_failed,
@@ -3874,68 +3873,6 @@ class TestMarkTodoFailed:
             await _mark_todo_failed("todo-1", OWNER_ID, _doc())
 
         repo.add_labels.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# _compute_next_run — cases not covered by test_tracked_todo_recurrence.py
-# ---------------------------------------------------------------------------
-
-
-class TestComputeNextRunExtra:
-    def test_every_4h_is_a_four_hour_delta_from_now(self):
-        before = datetime.now(UTC)
-        next_run = _compute_next_run("every_4h")
-        after = datetime.now(UTC)
-        assert next_run is not None
-        assert before + timedelta(hours=4) <= next_run <= after + timedelta(hours=4)
-
-    @pytest.mark.parametrize(
-        ("recurrence", "step"), [("daily", timedelta(days=1)), ("weekly", timedelta(weeks=1))]
-    )
-    def test_without_an_anchor_it_falls_back_to_a_plain_delta(self, recurrence, step):
-        before = datetime.now(UTC)
-        next_run = _compute_next_run(recurrence, "Asia/Kolkata", anchor=None)
-        after = datetime.now(UTC)
-        assert next_run is not None
-        assert before + step <= next_run <= after + step
-
-    def test_anchored_weekly_keeps_the_weekday_and_the_local_time_of_day(self):
-        anchor = (datetime.now(KOLKATA) - timedelta(weeks=5)).replace(
-            hour=7, minute=45, second=0, microsecond=0
-        )
-        next_run = _compute_next_run("weekly", "Asia/Kolkata", anchor=anchor)
-
-        assert next_run is not None
-        assert next_run > datetime.now(UTC)
-        local = next_run.astimezone(KOLKATA)
-        assert (local.hour, local.minute) == (7, 45)
-        assert local.weekday() == anchor.weekday()
-        assert (local.date() - anchor.date()).days % 7 == 0
-
-    def test_an_anchor_already_in_the_future_is_kept_as_is(self):
-        anchor = datetime.now(UTC) + timedelta(hours=6)
-        assert _compute_next_run("daily", "UTC", anchor=anchor) == anchor
-
-    def test_an_anchor_exactly_at_now_advances_by_a_full_step(self):
-        """The boundary must use <=, or the next run is now and the job re-fires in a tight loop."""
-        now = datetime.now(UTC)
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value = now
-            next_run = _compute_next_run("daily", "UTC", anchor=now)
-
-        assert next_run == now + timedelta(days=1)
-
-    def test_daily_across_a_dst_transition_holds_the_local_wall_clock(self):
-        """Across the 2025-03-09 US DST transition, 08:00 EST must stay 08:00 EDT: 13:00 UTC becomes 12:00 UTC, not +24h."""
-        anchor = datetime(2025, 3, 8, 8, 0, tzinfo=NEW_YORK)
-        frozen_now = datetime(2025, 3, 8, 20, 0, tzinfo=UTC)
-        with patch(f"{MODULE}.datetime") as mock_dt:
-            mock_dt.now.return_value = frozen_now
-            next_run = _compute_next_run("daily", "America/New_York", anchor=anchor)
-
-        assert next_run is not None
-        assert next_run.astimezone(NEW_YORK).hour == 8
-        assert next_run == datetime(2025, 3, 9, 12, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

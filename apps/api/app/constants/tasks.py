@@ -167,3 +167,32 @@ class TemplateOrigin(StrEnum):
 
     COMMUNITY = "community"
     CURATED = "curated"
+
+
+# The engine: one job runs a GAIA task, or brings a to-do round, at the task's next time.
+
+#: The ARQ job that brings a task round; also the prefix of its per-occurrence job id.
+RUN_TASK_JOB: Final = "run_task"
+#: How many due tasks one recovery pass re-arms; the next pass takes the rest.
+RECOVER_TASKS_BATCH: Final = 100
+#: The most a re-armed job is spread out, so one recovery pass does not fire everything at once.
+RECOVER_TASKS_JITTER_SECONDS: Final = 60
+#: What a nudge says under a to-do's title when it falls due.
+TODO_DUE_NUDGE_BODY: Final = "This is due now."
+#: What a nudge says when a repeating to-do comes back onto the list.
+TODO_REPEAT_NUDGE_BODY: Final = "This is back on your list."
+#: The page a notification about a task opens.
+TASK_DEEP_LINK: Final = "/tasks?taskId={task_id}"
+TASKS_PAGE: Final = "/tasks"
+VIEW_TASK_LABEL: Final = "View task"
+
+# Repeat shortcuts: intervals step from now (drift is fine); anchored steps keep the wall-clock time.
+REPEAT_INTERVALS: Final[dict[str, timedelta]] = {
+    "every_4h": timedelta(hours=4),
+    "every_1h": timedelta(hours=1),
+}
+REPEAT_ANCHORED: Final[dict[str, timedelta]] = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+}
+REPEAT_SHORTCUTS: Final = frozenset(REPEAT_INTERVALS.keys() | REPEAT_ANCHORED.keys())

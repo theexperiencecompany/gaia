@@ -40,7 +40,6 @@ from app.models.todo_models import (
     TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
-    validate_todo_recurrence,
 )
 from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
@@ -62,7 +61,7 @@ from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.auth_utils import require_owner
 from app.utils.canvas_vector_utils import delete_canvas_embedding, set_canvas_completed
 from app.utils.errors import AppError
-from app.utils.schedule import InvalidScheduleError
+from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
     delete_todo_embedding,
@@ -196,7 +195,7 @@ async def _refuse_what_a_tracked_todo_cannot_take(
 def _refuse_a_bad_run_schedule(recurrence: str) -> None:
     """Hold a tracked todo's recurrence, which schedules its runs, to the recurring-schedule rule."""
     try:
-        validate_todo_recurrence(recurrence)
+        validate_repeat_rule(recurrence)
     except InvalidScheduleError as e:
         raise TrackedTodoScheduleError(e) from e
 

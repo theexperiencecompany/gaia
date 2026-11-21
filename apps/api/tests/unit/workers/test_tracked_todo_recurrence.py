@@ -3,16 +3,11 @@
 Covers the recently-refactored timezone code paths in
 app.workers.tasks.tracked_todo_tasks:
 
-- _compute_next_run now evaluates cron in recurrence_tz via the
-  canonical get_next_run_time, parsing the zone with Timezone.parse so a
-  stored ±HH:MM offset no longer crashes ZoneInfo and silently falls
-  back to UTC (the regression this fix closed).
 - _load_user_with_tz resolves the user's home zone via Timezone.parse
   and falls back to Timezone.utc() on a missing user or exception.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -21,7 +16,7 @@ import pytest
 from app.models.user_models import AuthenticatedUser
 from app.utils import auth_utils
 from app.utils.timezone import Timezone
-from app.workers.tasks.tracked_todo_tasks import _compute_next_run, _load_user_with_tz
+from app.workers.tasks.tracked_todo_tasks import _load_user_with_tz
 
 
 def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
@@ -31,63 +26,6 @@ def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
 
 KOLKATA = ZoneInfo("Asia/Kolkata")
 LOAD_USER = "app.utils.auth_utils.load_user_context"
-
-
-# ---------------------------------------------------------------------------
-# _compute_next_run
-# ---------------------------------------------------------------------------
-
-
-class TestComputeNextRun:
-    def test_offset_form_tz_does_not_crash_and_is_correct(self):
-        """Regression: a stored +05:30 offset must resolve 9 AM IST to 03:30 UTC, not silently fall back to UTC."""
-        next_run = _compute_next_run("0 9 * * *", "+05:30")
-        assert next_run is not None
-        assert next_run.tzinfo is not None
-        assert next_run.hour == 3
-        assert next_run.minute == 30
-
-    def test_iana_tz_matches_offset_equivalent(self):
-        """Asia/Kolkata is the IANA name for the +05:30 offset above."""
-        next_run = _compute_next_run("0 9 * * *", "Asia/Kolkata")
-        assert next_run is not None
-        assert next_run.hour == 3
-        assert next_run.minute == 30
-
-    def test_no_tz_evaluates_in_utc(self):
-        """No recurrence_tz -> cron interpreted in UTC, so 9 AM stays 09:00 UTC."""
-        next_run = _compute_next_run("0 9 * * *", None)
-        assert next_run is not None
-        assert next_run.hour == 9
-        assert next_run.minute == 0
-
-    def test_interval_shortcut_is_roughly_now_plus_one_hour(self):
-        before = datetime.now(UTC)
-        next_run = _compute_next_run("every_1h")
-        after = datetime.now(UTC)
-
-        assert next_run is not None
-        assert next_run.tzinfo is not None
-        assert before + timedelta(hours=1) <= next_run <= after + timedelta(hours=1)
-
-    def test_anchored_daily_preserves_local_time_of_day(self):
-        """A past 08:00 IST anchor must recur strictly in the future, still reading as 08:00 in Asia/Kolkata."""
-        anchor = datetime.now(KOLKATA).replace(
-            hour=8, minute=0, second=0, microsecond=0
-        ) - timedelta(days=3)
-
-        next_run = _compute_next_run("daily", "Asia/Kolkata", anchor=anchor)
-
-        assert next_run is not None
-        assert next_run.tzinfo is not None
-        assert next_run > datetime.now(UTC)
-
-        local = next_run.astimezone(KOLKATA)
-        assert local.hour == 8
-        assert local.minute == 0
-
-    def test_unrecognised_recurrence_returns_none(self):
-        assert _compute_next_run("not-a-recurrence", "UTC") is None
 
 
 # ---------------------------------------------------------------------------

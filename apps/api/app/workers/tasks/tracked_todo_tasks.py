@@ -44,8 +44,6 @@ from app.constants.todos import (
     PAUSED_RUN_RECHECK,
     RETRY_BACKOFF,
     RUN_LOCK_KEY,
-    TODO_ANCHORED_RECURRENCES,
-    TODO_INTERVAL_RECURRENCES,
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_RETRY_DELAY,
     TODO_SCHEDULE_FIRE_GRACE,
@@ -73,6 +71,7 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
+from app.services.tasks.schedule import next_occurrence
 from app.services.todo_activity import record_activity
 from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
@@ -92,7 +91,6 @@ from app.services.triggers.todo_trigger_window import (
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
 from app.services.user_service import get_quiet_hours
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
-from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
@@ -569,7 +567,7 @@ async def _advance_schedule(
     if not doc.recurrence and one_time_rerun_at is None:
         return await _settle_one_shot_run(doc)
     next_run = (
-        _compute_next_run(doc.recurrence, user_tz, anchor=doc.scheduled_at)
+        next_occurrence(doc.recurrence, user_tz, anchor=doc.scheduled_at)
         if doc.recurrence
         else one_time_rerun_at
     )
@@ -1039,53 +1037,6 @@ async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
             todo_id=doc.id,
             error=str(notify_exc),
         )
-
-
-def _compute_next_run(
-    recurrence: str,
-    recurrence_tz: str | None = None,
-    anchor: datetime | None = None,
-) -> datetime | None:
-    """Compute the next scheduled run time from a recurrence string.
-
-    Evaluated in recurrence_tz (IANA name); returns a UTC-aware datetime for
-    ARQ's _defer_until. "daily"/"weekly" anchor to the original scheduled_at
-    so a late run doesn't drift the wall-clock time forward; falls back to
-    croniter for cron expressions. Returns None if unrecognised.
-    """
-    # Canonical, offset-safe zone resolution (a stored ±HH:MM won't crash here).
-    home_tz = Timezone.parse(recurrence_tz)
-    tz = home_tz.tzinfo
-
-    now_utc = datetime.now(UTC)
-
-    if recurrence in TODO_INTERVAL_RECURRENCES:
-        # Intervals are deltas from "now" — drift is acceptable/expected.
-        return now_utc + TODO_INTERVAL_RECURRENCES[recurrence]
-
-    if recurrence in TODO_ANCHORED_RECURRENCES:
-        step = TODO_ANCHORED_RECURRENCES[recurrence]
-        if anchor is None:
-            # No anchor available — fall back to a plain delta from now.
-            return now_utc + step
-        # Anchor to the original local wall-clock time. Advance whole
-        # days/weeks from the anchor until strictly after now, preserving
-        # the time-of-day (and weekday for weekly).
-        anchor_local = anchor.astimezone(tz)
-        next_local = anchor_local
-        if next_local <= now_utc.astimezone(tz):
-            elapsed = now_utc.astimezone(tz) - anchor_local
-            steps_to_skip = (elapsed // step) + 1
-            next_local = anchor_local + step * steps_to_skip
-        return next_local.astimezone(UTC)
-
-    # Cron expression — evaluate in the user's local timezone via the canonical
-    # helper (single source of cron-in-zone math + observability).
-    try:
-        return get_next_run_time(recurrence, now_utc, home_tz)
-    except CronError:
-        log.warning("tracked_todo.next_run_unrecognised", recurrence=recurrence)
-        return None
 
 
 async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
