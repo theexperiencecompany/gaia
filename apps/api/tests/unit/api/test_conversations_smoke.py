@@ -30,12 +30,14 @@ from app.models.conversation_models import (
     CreateConversationResponse,
     DeleteAllConversationsResponse,
     LoadedConversation,
+    PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
     UpdateDescriptionResponse,
 )
 from tests.conftest import FAKE_USER
 from tests.factories import make_reply_item
+from tests.helpers import captured_wide_event
 
 CONV_SERVICE = "app.api.v1.endpoints.conversations"
 
@@ -368,6 +370,25 @@ class TestPinnedMessages:
 
 class TestPinMessage:
     """PUT /api/v1/conversations/{id}/messages/{msg_id}/pin."""
+
+    async def test_pinning_forwards_the_flag_and_tags_the_wide_event(self, client: AsyncClient):
+        mock_resp = PinMessageResponse(message="Message pinned", pinned=True)
+        with patch(
+            f"{CONV_SERVICE}.pin_message", new_callable=AsyncMock, return_value=mock_resp
+        ) as pin:
+            async with captured_wide_event() as live:
+                resp = await client.put(
+                    "/api/v1/conversations/conv_123/messages/msg_9/pin", json={"pinned": True}
+                )
+                event = dict(live)
+
+        assert resp.status_code == 200
+        assert resp.json() == {"message": "Message pinned", "pinned": True}
+        pin.assert_awaited_once_with("conv_123", "msg_9", True, FAKE_USER)
+        assert (event["user"], event["conversation"]) == (
+            {"id": FAKE_USER.user_id},
+            {"operation": "pin_message", "id": "conv_123"},
+        )
 
     async def test_pinning_a_message_the_log_lacks_is_a_404_naming_the_message(
         self, client: AsyncClient, owned_conversations: set[tuple[str, str]]

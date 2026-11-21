@@ -754,7 +754,7 @@ class TestLivenessRenewal:
             async with captured_wide_event() as event:
                 holder = asyncio.create_task(_holder())
                 with pytest.raises(asyncio.CancelledError, match="^executor liveness lost$"):
-                    await holder
+                    await asyncio.wait_for(holder, timeout=5)
 
         assert len(writes) == 3
         failures = [e for e in event["errors"] if e["msg"].endswith("holder's liveness")]
