@@ -626,6 +626,18 @@ class TasksDriver:
             if job.function == DISPATCH_TO_WATCHERS_JOB:
                 await self._run(job)
 
+    async def repeating_tasks(self) -> list[RepeatingTaskView]:
+        """Return the tasks GAIA repeats, as their list shows them."""
+        body = _ok(await self._client.get(WORKFLOWS))
+        return [_repeating_view({"workflow": w}) for w in body["workflows"]]
+
+    async def brief_of(self, task_id: str) -> str:
+        return _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]["prompt"]
+
+    async def reset_to_default(self, task_id: str) -> None:
+        """Put a task GAIA set up for an app back the way it shipped."""
+        _ok(await self._client.post(f"{WORKFLOWS}/{task_id}/reset-to-default"))
+
     async def publish(self, task_id: str) -> str:
         """Publish the task as a template anyone can see; return its public reference."""
         return _ok(await self._client.post(f"{WORKFLOWS}/{task_id}/publish"))["slug"]

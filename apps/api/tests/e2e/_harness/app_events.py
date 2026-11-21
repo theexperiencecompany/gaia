@@ -7,7 +7,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import hashlib
 import hmac
-from unittest.mock import AsyncMock, patch
+from itertools import count
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import respx
@@ -31,6 +33,17 @@ def signed_webhook_headers(body: bytes, webhook_id: str) -> dict[str, str]:
         "webhook-timestamp": _SIGNED_AT,
         "webhook-signature": f"v1,{base64.b64encode(digest).decode()}",
     }
+
+
+def composio_double() -> AsyncMock:
+    """Stand in for Composio: every async call succeeds, and each trigger it creates gets an id."""
+    service = AsyncMock()
+    service.composio = MagicMock()
+    created = count(1)
+    service.composio.triggers.create.side_effect = lambda **_: SimpleNamespace(
+        trigger_id=f"ti_journey_{next(created)}"
+    )
+    return service
 
 
 @contextmanager

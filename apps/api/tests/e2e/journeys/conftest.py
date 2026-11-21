@@ -20,7 +20,7 @@ from app.db.mongodb import indexes
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from tests.conftest import FAKE_USER
-from tests.e2e._harness.app_events import WEBHOOK_SECRET
+from tests.e2e._harness.app_events import WEBHOOK_SECRET, composio_double
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.tasks_driver import TasksDriver
 from tests.e2e._harness.turn_queue import TurnQueue
@@ -45,6 +45,7 @@ COMPOSIO_USERS = (
     "app.services.integrations.integration_account_lifecycle",
     "app.services.integrations.account_identity",
     "app.services.integrations.integration_connection_service",
+    "app.services.triggers.base",
 )
 
 
@@ -122,7 +123,7 @@ async def tasks(
     executor, comms = TurnQueue(responses=[]), TurnQueue(responses=[])
     # The session fence mocks the plan limiter; a journey counts runs on the real one, on real Redis.
     real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
-    composio = AsyncMock()
+    composio = composio_double()
     with ExitStack() as seams:
         seams.enter_context(offline_todo_seams())
         seams.enter_context(patch.object(tiered_limiter, "check_and_increment", real_limiter))
