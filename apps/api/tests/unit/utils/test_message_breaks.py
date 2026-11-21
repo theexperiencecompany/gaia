@@ -254,12 +254,15 @@ class TestOnlyBreaksSoFar:
             f"{BR} [ /",
             f"{BR}<NEW_MESSAGE_BREAK ",
             f"{BR}[NEW LINE BREAK /",
+            "<NE",
+            "<NE<",
+            "<NE<NEW_MESSAGE_BREAK>",
         ],
     )
     def test_breaks_whitespace_and_a_half_written_break_are_still_nothing(self, text):
         assert is_only_message_breaks(text) is True
 
-    @pytest.mark.parametrize("text", [f"{BR}hi", f"{BR}<b>", "x", f"{BR}{BR}."])
+    @pytest.mark.parametrize("text", [f"{BR}hi", f"{BR}<b>", "x", f"{BR}{BR}.", "Hi<NE<"])
     def test_any_visible_character_is_text(self, text):
         assert is_only_message_breaks(text) is False
 

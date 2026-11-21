@@ -81,6 +81,13 @@ class TestTheGuardStopsARunawayAtTheBound:
         with pytest.raises(RunawayMessageBreaksError):
             await _stream(RunawayBreaksGuard(), pieces * (MAX_LEADING_MESSAGE_BREAKS + 1))
 
+    async def test_a_stuttered_break_still_counts(self):
+        """A provider restarts a sentinel mid-way ("<NE", "<", "NEW_MESSAGE_BREAK>")."""
+        pieces = ["<NE", "<", "NEW_MESSAGE_BREAK>"]
+
+        with pytest.raises(RunawayMessageBreaksError):
+            await _stream(RunawayBreaksGuard(), pieces * (MAX_LEADING_MESSAGE_BREAKS + 1))
+
     async def test_each_model_call_is_counted_on_its_own(self):
         """A provider retry or failover streams under its own run; half a runaway each is no runaway."""
         guard = RunawayBreaksGuard()
@@ -95,6 +102,18 @@ class TestARealReplyIsNeverStopped:
         tokens = [NEW_MESSAGE_BREAKER, NEW_MESSAGE_BREAKER, "hey", "!"]
 
         await _stream(RunawayBreaksGuard(), tokens + [NEW_MESSAGE_BREAKER] * 50)
+
+    async def test_breaks_after_a_streamed_tool_call_are_not_counted(self):
+        guard = RunawayBreaksGuard()
+        run = uuid4()
+        call = AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "call_executor", "args": "{}", "id": "tc-1", "index": 0}],
+        )
+        await guard.on_llm_new_token("", chunk=ChatGenerationChunk(message=call), run_id=run)
+
+        for _ in range(MAX_LEADING_MESSAGE_BREAKS + 1):
+            await guard.on_llm_new_token(NEW_MESSAGE_BREAKER, run_id=run)
 
     async def test_a_long_multi_bubble_reply_streams_to_the_end(self):
         bubbles = [f"point {index}" for index in range(MAX_LEADING_MESSAGE_BREAKS * 2)]

@@ -172,3 +172,16 @@ def test_a_message_that_was_only_an_open_note_opens_no_bubble() -> None:
     )
 
     assert reply.text == "Hello."
+
+
+def test_an_opener_still_missing_its_bracket_at_a_message_boundary_hides_nothing_after_it() -> None:
+    boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
+    reply = (
+        ReplyText()
+        .take(ResponseEvent(response="Status.<delivery_instructions "))
+        .take(boundary)
+        .take(ResponseEvent(response="Please choose a date."))
+    )
+
+    assert reply.text == f"Status.{NEW_MESSAGE_BREAKER}Please choose a date."
+    assert reply.shown == reply.text

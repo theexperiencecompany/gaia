@@ -23,7 +23,13 @@ from uuid import UUID
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.callbacks import AsyncCallbackHandler
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    AnyMessage,
+    BaseMessageChunk,
+    HumanMessage,
+)
 from langchain_core.outputs import ChatGenerationChunk, GenerationChunk
 from langchain_core.tracers.context import register_configure_hook
 
@@ -82,6 +88,9 @@ class RunawayBreaksGuard(AsyncCallbackHandler):
         so_far = self._text_by_run.get(run_id, "")
         if so_far is None:
             return
+        if isinstance(chunk, ChatGenerationChunk) and _calls_a_tool(chunk.message):
+            self._text_by_run[run_id] = None
+            return
         text = so_far + (chunk.text if chunk is not None else extract_text_content(token))
         if not is_only_message_breaks(text):
             self._text_by_run[run_id] = None
@@ -91,6 +100,10 @@ class RunawayBreaksGuard(AsyncCallbackHandler):
         if breaks > MAX_LEADING_MESSAGE_BREAKS:
             message_id = chunk.message.id if isinstance(chunk, ChatGenerationChunk) else None
             raise RunawayMessageBreaksError(breaks=breaks, chars=len(text), message_id=message_id)
+
+
+def _calls_a_tool(message: BaseMessageChunk) -> bool:
+    return isinstance(message, AIMessageChunk) and bool(message.tool_call_chunks)
 
 
 # A model call configured while this is set carries the guard: the comms model
@@ -127,9 +140,7 @@ def _without_edge_breaks(content: MessageContent) -> MessageContent:
     if isinstance(content, str):
         return strip_edge_message_breaks(content)
     texts = [_item_text(item) for item in content]
-    worded = [
-        i for i, text in enumerate(texts) if text is not None and not is_only_message_breaks(text)
-    ]
+    worded = [i for i, text in enumerate(texts) if text is not None and split_message_bubbles(text)]
     span = range(worded[0], worded[-1] + 1) if worded else range(0)
     trimmed: list[ContentItem] = []
     for index, text in enumerate(texts):

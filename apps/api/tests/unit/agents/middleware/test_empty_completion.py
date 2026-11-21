@@ -188,6 +188,7 @@ class TestTheRetryDoesNotReplayAPoisonedHistory:
                 [NEW_MESSAGE_BREAKER, f"{NEW_MESSAGE_BREAKER}hi", NEW_MESSAGE_BREAKER * 2],
                 ["", "hi", ""],
             ),
+            (["<"], ["<"]),
         ],
     )
     async def test_a_block_reply_is_trimmed_at_its_outer_edges_only(

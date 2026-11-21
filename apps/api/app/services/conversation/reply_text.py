@@ -17,9 +17,12 @@ from app.utils.file_links import FileLinks, unfinished_path_start
 from app.utils.message_breaks import shown_so_far, split_message_bubbles
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubbleTextDelta
 
-#: A framed payload, open to the end when the echo stops before it closes, or a stray closer.
+#: A framed payload, open to the end when the echo stops before it closes, an opener
+#: the text ends inside, or a stray closer.
 _AGENT_PAYLOAD_PATTERN = re.compile(
-    rf"<({AGENT_TAG_NAMES_PATTERN})(?:\s[^>]*)?>.*?(?:</\1\s*>|\Z)|</(?:{AGENT_TAG_NAMES_PATTERN})\s*>",
+    rf"<({AGENT_TAG_NAMES_PATTERN})(?:\s[^>]*)?>.*?(?:</\1\s*>|\Z)"
+    rf"|<(?:{AGENT_TAG_NAMES_PATTERN})\s[^>]*\Z"
+    rf"|</(?:{AGENT_TAG_NAMES_PATTERN})\s*>",
     re.IGNORECASE | re.DOTALL,
 )
 

@@ -75,7 +75,7 @@ _TRAILING_BREAKS_RE = re.compile(rf"(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\
 
 def is_only_message_breaks(text: str) -> bool:
     """Return whether text, possibly still streaming, holds nothing yet but breaks and whitespace."""
-    return not _BREAK_TAIL_RE.sub("", MESSAGE_BREAK_SENTINEL_RE.sub("", text)).strip()
+    return not shown_so_far(MESSAGE_BREAK_SENTINEL_RE.sub("", text)).strip()
 
 
 def count_message_breaks(text: str) -> int:
