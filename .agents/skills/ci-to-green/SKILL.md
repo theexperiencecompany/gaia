@@ -33,7 +33,7 @@ Sort each failure into one bucket before touching code:
 |---|---|---|
 | Failing tests | `test-python (unit-a)` | step 2 |
 | Mutation | survivors, or a module that "reached no verdict" | step 3 |
-| regression-proof | "ERRORED on base", "SKIPPED on base" | step 4 |
+| regression-proof | "cannot run on base", "ERRORED on base", "SKIPPED on base" | step 4 |
 | Lint / static | mypy, ruff, ratchets, package-hygiene | step 5 |
 | Not ours | new advisory, stale runner cache, timing flake | prove it (step 6) |
 
@@ -92,6 +92,13 @@ It runs the PR's **newly marked** `@pytest.mark.regression` tests against the ba
 and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing. A test only
 the unit slices own is proven on every push (lint-python's `regression-proof` check); one
 that needs services, in the integration slice in the merge queue.
+
+"cannot run on base — <file>: <error>" means the PR's test tree does not even collect
+there: a conftest or test module imports a name only the head has (pytest exit 4/2). The
+lane then reruns each test file alone, so only the tests under that file lose their proof
+and every other one still reports. Make the named file import only what base has, or keep
+the head-only import out of shared conftest/module scope; the tests that need it must still
+fail by assertion.
 
 - The test imports a **module** that doesn't exist on base, or tests a feature base
   doesn't have: the test is gap-fill, so remove the mark (`apps/api/tests/CLAUDE.md`).

@@ -49,10 +49,12 @@ Subcommands:
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
         Print one pytest node id per line for every `@pytest.mark.regression`
         test the PR ADDS. Driven by `pytest.sh regression-proof`.
-    regression-proof-verdict <junit.xml> [--lane L] [--path-prefix P] [--out DIR]
+    regression-proof-verdict [<junit.xml> ...] [--run <junit.xml> <log> ...]
+                             [--base-root DIR] [--lane L] [--path-prefix P] [--out DIR]
         Decide whether the base-revision run actually proved anything: every
-        regression test must have FAILED — not passed, not skipped, and not
-        merely errored.
+        regression test must have FAILED — not passed, not skipped, not
+        merely errored, and not left uncollectable by a conftest or module
+        that cannot import on base (named at its file and first error line).
     check [--lane L] [--fallback F] [--path-prefix P] -- <command...>
         A check step's shell: run the command, stream its output, and when it
         fails write `<job>/<step id>`'s verdict from what it printed (every
@@ -938,6 +940,20 @@ class JUnitCase(NamedTuple):
     errored: bool
     skipped: bool
     detail: str
+    # The module never imported, so no test in it ran: pytest's own word for it.
+    collection_failure: bool = False
+
+
+# The <error> message pytest writes for a test module it could not import.
+COLLECTION_FAILURE = "collection failure"
+
+
+def _first_tree_location(text: str) -> tuple[str, int] | None:
+    """Return the first rootdir-relative frame: the test tree's own line, not the base code below it."""
+    for file_path, line in _TRACEBACK_LOCATION.findall(text):
+        if not file_path.startswith("/"):
+            return file_path, int(line)
+    return None
 
 
 def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
@@ -958,7 +974,10 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
     for case in root.iter("testcase"):
         problems = [n for tag in ("failure", "error") for n in case.iter(tag)]
         text = "\n".join(p.text or p.get("message", "") for p in problems)
-        location = _location_from_traceback(text)
+        collection_failure = any(p.get("message") == COLLECTION_FAILURE for p in problems)
+        location = (
+            _first_tree_location(text) if collection_failure else _location_from_traceback(text)
+        )
         if location is None:
             # xunit1 is the only family that puts file/line on the testcase, and
             # it is the deprecated one; when the traceback gave us nothing, fall
@@ -973,6 +992,7 @@ def _read_junit(path: str, path_prefix: str = "") -> list[JUnitCase]:
                 errored=case.find("error") is not None,
                 skipped=case.find("skipped") is not None,
                 detail=_junit_detail(text),
+                collection_failure=collection_failure,
             )
         )
     return cases
@@ -1068,28 +1088,102 @@ def cmd_pytest_verdict(args: list[str]) -> int:
     return 0
 
 
-def cmd_regression_proof_verdict(args: list[str]) -> int:
-    """Exit 0 when every regression test failed on base, 1 otherwise."""
-    parser = _verdict_parser("regression-proof-verdict", default_lane="regression-proof")
-    parser.add_argument("junit")
-    opts = parser.parse_args(args)
+# A conftest that fails to import aborts pytest before any report exists, so
+# only its output names the file; a test module's failure lands in the JUnit.
+_CONFTEST_LOAD = re.compile(r"ImportError while loading conftest '(?P<path>[^']+)'")
 
+
+class Uncollectable(NamedTuple):
+    """A conftest or test module the copied test tree cannot import on base."""
+
+    file: str
+    line: int
+    error: str
+
+
+def _unrooted(text: str, base_root: str) -> str:
+    """Drop the base worktree's absolute prefix, so a message names `app/y.py`, not a temp dir."""
+    if not base_root:
+        return text
+    # The resolved form first: on macOS `/var/...` resolves to `/private/var/...`, which contains it.
+    for root in (os.path.realpath(base_root), base_root.rstrip("/")):
+        text = text.replace(f"{root}/", "")
+    return text
+
+
+def _first_error_line(text: str) -> str:
+    """Return the exception line pytest prefixes with `E`, else its first ERROR or other line."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for prefix in ("E ", "ERROR"):
+        for line in lines:
+            if line.startswith(prefix):
+                return line.removeprefix("E ").strip()
+    return lines[0] if lines else "pytest printed nothing and wrote no report"
+
+
+def _uncollectable_from_log(log: str, base_root: str, path_prefix: str) -> Uncollectable:
+    """Name the file and first error of a run that aborted before writing any test case."""
+    text = _unrooted(Path(log).read_text(errors="replace"), base_root)
+    location = _first_tree_location(text)
+    if location is None:
+        conftest = _CONFTEST_LOAD.search(text)
+        location = (conftest["path"], 1) if conftest else ("", 0)
+    file = f"{path_prefix}{location[0]}" if location[0] else ""
+    return Uncollectable(file, location[1], _first_error_line(text))
+
+
+def _read_regression_run(
+    junit: str, log: str | None, base_root: str, path_prefix: str
+) -> tuple[list[JUnitCase], list[Uncollectable]]:
+    """Split one base run into the test cases it ran and the files it could not collect.
+
+    Raises OSError for a missing report only when no log can say why.
+    """
     try:
-        cases = _read_junit(opts.junit, opts.path_prefix)
-    except OSError as exc:
-        report(
-            opts.lane,
-            Status.ERROR,
-            f"cannot read the JUnit report: {exc}",
-            advice=[
-                "The base run wrote no report — check the step above for why pytest never ran."
-            ],
-            out_dir=opts.out,
-        )
-        return 1
+        cases = _read_junit(junit, path_prefix)
+    except OSError:
+        if log is None:
+            raise
+        cases = []
+    blocked = [
+        Uncollectable(c.file, c.line, _unrooted(_first_error_line(c.detail), base_root))
+        for c in cases
+        if c.collection_failure
+    ]
+    ran = [c for c in cases if not c.collection_failure]
+    if not ran and not blocked and log is not None:
+        blocked.append(_uncollectable_from_log(log, base_root, path_prefix))
+    return ran, blocked
 
-    # One test can emit several <testcase> entries (call + teardown), so fold
-    # them together and ask what happened across all of them.
+
+# What each way of not failing on base means, in the order a reader needs it.
+REGRESSION_REJECTIONS: tuple[tuple[str, str], ...] = (
+    (
+        "PASS",
+        "A regression test must go red without its fix. Either the fix is "
+        "not needed, or the test does not exercise the bug it names.",
+    ),
+    (
+        "SKIPPED",
+        "A skip is not proof — the test never ran, so it says nothing about "
+        "whether the bug exists on base. Give the run whatever the test skips "
+        "for (the contract tier needs USE_REAL_SERVICES=1 plus live Mongo and "
+        "Redis), or move the proof to a tier that runs here.",
+    ),
+    (
+        "ERRORED",
+        "An error is not proof: the test never reached its assertions, so it "
+        "shows the harness broke, not that the bug is caught. Make it runnable "
+        "against the base revision — assert on behavior rather than importing "
+        "symbols the fix introduces.",
+    ),
+)
+
+
+def _outcomes(
+    cases: list[JUnitCase],
+) -> tuple[dict[str, list[str]], list[str], dict[str, tuple[str, int]]]:
+    """Fold each test's cases (call + teardown) into one outcome: rejections by label, the proven, and where each is."""
     failed: dict[str, bool] = defaultdict(bool)
     errored: dict[str, bool] = defaultdict(bool)
     skipped: dict[str, bool] = defaultdict(bool)
@@ -1099,8 +1193,84 @@ def cmd_regression_proof_verdict(args: list[str]) -> int:
         errored[case.name] |= case.errored
         skipped[case.name] |= case.skipped
         where.setdefault(case.name, (case.file, case.line))
+    # A skip is neither a failure nor an error in JUnit, so folding it into
+    # "passed" is how a test that never ran got reported as "PASS on base".
+    rejected = {
+        "PASS": sorted(n for n in failed if not failed[n] and not errored[n] and not skipped[n]),
+        "SKIPPED": sorted(n for n in failed if skipped[n] and not failed[n] and not errored[n]),
+        "ERRORED": sorted(n for n in failed if errored[n] and not failed[n]),
+    }
+    return rejected, sorted(n for n in failed if failed[n]), where
 
-    if not failed:
+
+def _blocked_verdict(blocked: list[Uncollectable]) -> tuple[list[Finding], list[str], list[str]]:
+    """Return the findings, summary part and advice for the files that cannot be collected on base."""
+    unique = list(dict.fromkeys(blocked))
+    if not unique:
+        return [], [], []
+    for item in unique:
+        print(f"ERROR: regression-proof — cannot run on base: {item.file}: {item.error}")
+    first = unique[0]
+    more = f" (+{len(unique) - 1} more)" if len(unique) > 1 else ""
+    files = ", ".join(dict.fromkeys(item.file for item in unique if item.file)) or "the test tree"
+    findings: list[Finding] = [
+        {
+            "file": item.file,
+            "line": item.line,
+            "message": f"cannot run on base — {item.error}",
+        }
+        for item in unique
+    ]
+    advice = (
+        "The PR's test tree runs against the base's app code, so nothing under a "
+        "conftest or test module that cannot import there was proven to fail. "
+        f"Make {files} import only what exists on base, or guard the head-only "
+        "import so collection survives on base; the test that needs it must "
+        "still fail by its assertion."
+    )
+    return findings, [f"cannot run on base — {first.file}: {first.error}{more}"], [advice]
+
+
+def cmd_regression_proof_verdict(args: list[str]) -> int:
+    """Exit 0 when every regression test failed on base, 1 otherwise."""
+    parser = _verdict_parser("regression-proof-verdict", default_lane="regression-proof")
+    parser.add_argument("junit", nargs="*")
+    parser.add_argument(
+        "--run",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("JUNIT", "LOG"),
+        help="one isolated base run: its report, and the output that names a collection abort",
+    )
+    parser.add_argument("--base-root", default="", help="the base checkout's pytest rootdir")
+    opts = parser.parse_args(args)
+    runs: list[tuple[str, str | None]] = [(j, None) for j in opts.junit]
+    runs += [(junit, log) for junit, log in opts.run]
+    if not runs:
+        parser.error("give at least one JUnit report or --run")
+
+    cases: list[JUnitCase] = []
+    blocked: list[Uncollectable] = []
+    for junit, log in runs:
+        try:
+            ran, unrunnable = _read_regression_run(junit, log, opts.base_root, opts.path_prefix)
+        except OSError as exc:
+            report(
+                opts.lane,
+                Status.ERROR,
+                f"cannot read the JUnit report: {exc}",
+                advice=[
+                    "The base run wrote no report — check the step above for why pytest never ran."
+                ],
+                out_dir=opts.out,
+            )
+            return 1
+        cases += ran
+        blocked += unrunnable
+
+    rejected, proven, where = _outcomes(cases)
+    if not cases and not blocked:
         report(
             opts.lane,
             Status.ERROR,
@@ -1110,58 +1280,17 @@ def cmd_regression_proof_verdict(args: list[str]) -> int:
         )
         return 1
 
-    # A skip is neither a failure nor an error in JUnit, so folding it into
-    # "passed" is how a test that never ran got reported as "PASS on base" —
-    # with the advice to delete the fix. The contract tier is guarded by
-    # `USE_REAL_SERVICES`, so any regression test in it skips wherever the lane
-    # forgets to export it, which is every local run of this script.
-    skipped_only = sorted(n for n in failed if skipped[n] and not failed[n] and not errored[n])
-    passed_on_base = sorted(
-        n for n in failed if not failed[n] and not errored[n] and not skipped[n]
-    )
-    errored_only = sorted(n for n in failed if errored[n] and not failed[n])
-    proven = sorted(n for n in failed if failed[n])
-
-    # A table rather than three near-identical if-blocks: they differed only in
-    # their label and their advice, and each new outcome added another branch to
-    # a function the complexity ratchet already watches. Ordered by what a reader
-    # most needs to hear first.
-    for label, names, advice in (
-        (
-            "PASS",
-            passed_on_base,
-            (
-                "A regression test must go red without its fix. Either the fix is",
-                "not needed, or the test does not exercise the bug it names.",
-            ),
-        ),
-        (
-            "SKIPPED",
-            skipped_only,
-            (
-                "A skip is not proof — the test never ran, so it says nothing about",
-                "whether the bug exists on base. Give the run whatever the test skips",
-                "for (the contract tier needs USE_REAL_SERVICES=1 plus live Mongo and",
-                "Redis), or move the proof to a tier that runs here.",
-            ),
-        ),
-        (
-            "ERRORED",
-            errored_only,
-            (
-                "An error is not proof: the test never reached its assertions, so it",
-                "shows the harness broke, not that the bug is caught. Make it runnable",
-                "against the base revision — assert on behavior rather than importing",
-                "symbols the fix introduces.",
-            ),
-        ),
-    ):
+    # Every outcome in one verdict: an unimportable file must not hide what its
+    # siblings proved or failed to prove.
+    findings, summary, advice = _blocked_verdict(blocked)
+    for label, label_advice in REGRESSION_REJECTIONS:
+        names = rejected[label]
         if not names:
             continue
         print(f"ERROR: regression-proof — {len(names)} test(s) {label} on base:")
         for name in names:
             print(f"  {name}")
-        findings: list[Finding] = [
+        findings += [
             {
                 "file": where[name][0],
                 "line": where[name][1],
@@ -1169,19 +1298,22 @@ def cmd_regression_proof_verdict(args: list[str]) -> int:
             }
             for name in names
         ]
-        report(
-            opts.lane,
-            Status.FAIL,
-            f"{len(names)} regression test(s) {label} on base instead of failing",
-            findings=findings,
-            advice=[" ".join(advice)],
-            out_dir=opts.out,
-        )
-        return 1
+        summary.append(f"{len(names)} regression test(s) {label} on base instead of failing")
+        advice.append(label_advice)
 
     print(f"regression-proof: {len(proven)} regression test(s) fail on base as required")
     for name in proven:
         print(f"  FAILED {name}")
+    if findings:
+        report(
+            opts.lane,
+            Status.FAIL,
+            "; ".join(summary),
+            findings=findings,
+            advice=advice,
+            out_dir=opts.out,
+        )
+        return 1
     report(
         opts.lane,
         Status.PASS,
