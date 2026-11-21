@@ -68,10 +68,9 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 
 #: A streamed tail that may still become a break, down to a lone "<" or "[".
 _BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|{_OPEN}$", re.IGNORECASE)
+_BRACKET_RE = re.compile(r"[<\[]")
 
 _LEADING_BREAKS_RE = re.compile(rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*", re.IGNORECASE)
-# Peeled one at a time from the end: a (?:\s*sentinel)+$ search is quadratic in a whitespace run.
-_BREAK_AT_END_RE = re.compile(rf"{MESSAGE_BREAK_SENTINEL_RE.pattern}\Z", re.IGNORECASE)
 
 
 def is_only_message_breaks(text: str) -> bool:
@@ -91,14 +90,15 @@ def strip_leading_message_breaks(text: str) -> str:
 
 def strip_trailing_message_breaks(text: str) -> str:
     """Drop the run of sentinels a text closes with, and the whitespace around it."""
-    stripped = text.rstrip()
-    found = _BREAK_AT_END_RE.search(stripped)
-    if found is None:
-        return text
-    while found is not None:
-        stripped = stripped[: found.start()].rstrip()
-        found = _BREAK_AT_END_RE.search(stripped)
-    return stripped
+    end = len(text.rstrip())
+    kept_end = end
+    for found in reversed(list(MESSAGE_BREAK_SENTINEL_RE.finditer(text))):
+        if found.end() != kept_end:
+            break
+        kept_end = found.start()
+        while kept_end and text[kept_end - 1].isspace():
+            kept_end -= 1
+    return text if kept_end == end else text[:kept_end]
 
 
 def strip_edge_message_breaks(text: str) -> str:
@@ -117,9 +117,13 @@ def shown_so_far(text: str) -> str:
     Each result extends the one before, so a client can append the difference.
     """
     # A stuttered break ("<NE" then "<NEW_MESSAGE_BREAK>") is dropped whole, so every tail is held.
-    while tail := _BREAK_TAIL_RE.search(text):
-        text = text[: tail.start()]
-    return text
+    # A tail holds one bracket, its first character: walk the brackets back from the end once.
+    end = len(text)
+    for bracket in reversed([found.start() for found in _BRACKET_RE.finditer(text)]):
+        if not _BREAK_TAIL_RE.fullmatch(text, bracket, end):
+            break
+        end = bracket
+    return text[:end]
 
 
 def append_message_bubble(message: str, bubble: str) -> str:

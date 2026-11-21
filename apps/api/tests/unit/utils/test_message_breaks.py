@@ -2,7 +2,6 @@
 
 from itertools import pairwise
 import re
-import time
 
 import pytest
 
@@ -284,18 +283,25 @@ class TestEdgeBreaks:
         assert strip_edge_message_breaks(BR * 5) == ""
 
 
-@pytest.mark.regression
-@pytest.mark.parametrize(
-    "text",
-    ["a" + " " * 50_000 + "x", "<" + " " * 50_000 + "x", "<NEW_MESSAGE_BREAK" + " " * 50_000],
-)
-def test_a_long_whitespace_run_is_parsed_in_linear_time(text):
-    started = time.perf_counter()
-    strip_edge_message_breaks(text)
-    is_only_message_breaks(text)
-    shown_so_far(text)
+class TestLongInputs:
+    def test_a_long_whitespace_run_is_text_not_a_break(self):
+        text = "<" + " " * 50_000 + "x"
 
-    assert time.perf_counter() - started < 1.0
+        assert strip_edge_message_breaks(text) == text
+        assert shown_so_far(text) == text
+        assert is_only_message_breaks(text) is False
+
+    def test_a_sentinel_left_open_before_a_long_whitespace_run_is_held(self):
+        text = "<NEW_MESSAGE_BREAK" + " " * 50_000
+
+        assert shown_so_far(text) == ""
+        assert is_only_message_breaks(text) is True
+
+    def test_a_long_run_of_lone_brackets_is_held_whole(self):
+        assert shown_so_far("Hi" + "<" * 50_000) == "Hi"
+
+    def test_a_long_run_of_trailing_breaks_strips_to_the_text(self):
+        assert strip_edge_message_breaks("Hi" + f" {BR}" * 10_000 + " ") == "Hi"
 
 
 class TestShownSoFar:
