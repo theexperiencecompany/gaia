@@ -1,7 +1,14 @@
 "use client";
 
 import { PlusSignIcon } from "@icons";
-import { createContext, type ReactNode, useContext, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  createContext,
+  type ReactNode,
+  Suspense,
+  useContext,
+  useState,
+} from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import RightSidebarSlot, {
   RightSidebarSlotProvider,
@@ -116,9 +123,12 @@ function OwnerSection({
   onOpen,
   onNew,
   draftRow,
+  emptyLine,
 }: {
   id: string;
   title: string;
+  /** What the section says when nothing is in it. */
+  emptyLine: string;
   tasks: Task[];
   all: Task[];
   splitRepeating?: boolean;
@@ -140,12 +150,14 @@ function OwnerSection({
   // A new task has no date, so it is typed where undated tasks begin and lands exactly there.
   const dated = oneOff.filter((task) => task.when.order !== undefined);
   const undated = oneOff.filter((task) => task.when.order === undefined);
+  const isEmpty =
+    open.length === 0 && doneToday.length === 0 && !showEarlier && !draftRow;
 
   return (
     <TaskSection
       id={id}
       title={title}
-      count={open.length}
+      count={open.length > 0 ? open.length : undefined}
       action={
         <div className="flex items-center gap-1">
           {earlier.length > 0 && (
@@ -177,6 +189,9 @@ function OwnerSection({
         </div>
       }
     >
+      {isEmpty && (
+        <p className="px-2 py-2 text-sm leading-6 text-zinc-500">{emptyLine}</p>
+      )}
       <Rows
         tasks={dated}
         all={all}
@@ -207,8 +222,18 @@ function OwnerSection({
   );
 }
 
+/** ?state=empty shows the page as a brand-new user first sees it. */
 export default function TasksDemoPage() {
-  const [tasks, setTasks] = useState<Task[]>(DEMO_TASKS);
+  return (
+    <Suspense>
+      <TasksDemo />
+    </Suspense>
+  );
+}
+
+function TasksDemo() {
+  const isFirstRun = useSearchParams().get("state") === "empty";
+  const [tasks, setTasks] = useState<Task[]>(isFirstRun ? [] : DEMO_TASKS);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const opened = tasks.find((task) => task.id === openTask?.id);
   // An answer wakes the task, so it runs and the run is recorded.
@@ -349,37 +374,47 @@ export default function TasksDemoPage() {
                 </TaskSection>
               )}
 
-              <OwnerSection
-                id="mine"
-                title="On your plate"
-                tasks={mine}
-                all={tasks}
-                onToggleDone={toggleDone}
-                onOpen={open}
-                onNew={() => startNew("you")}
-                draftRow={
-                  creating === "you" && (
-                    <NewTodoRow
-                      onCreate={(title) => {
-                        const task = { ...blankTask("you"), title };
-                        add(task);
-                        open(task);
-                      }}
-                      onDone={() => setCreating(null)}
-                    />
-                  )
-                }
-              />
-              <OwnerSection
-                id="gaia"
-                title="On GAIA's plate"
-                tasks={gaias}
-                all={tasks}
-                splitRepeating
-                onToggleDone={toggleDone}
-                onOpen={open}
-                onNew={() => startNew("gaia")}
-              />
+              {tasks.length === 0 && !creating ? (
+                <p className="px-2 text-[15px] leading-6 text-zinc-500">
+                  No tasks yet. Add one for yourself, or hand one to GAIA.
+                </p>
+              ) : (
+                <>
+                  <OwnerSection
+                    id="mine"
+                    title="On your plate"
+                    emptyLine="Nothing on your plate."
+                    tasks={mine}
+                    all={tasks}
+                    onToggleDone={toggleDone}
+                    onOpen={open}
+                    onNew={() => startNew("you")}
+                    draftRow={
+                      creating === "you" && (
+                        <NewTodoRow
+                          onCreate={(title) => {
+                            const task = { ...blankTask("you"), title };
+                            add(task);
+                            open(task);
+                          }}
+                          onDone={() => setCreating(null)}
+                        />
+                      )
+                    }
+                  />
+                  <OwnerSection
+                    id="gaia"
+                    title="On GAIA's plate"
+                    emptyLine="Nothing on GAIA's plate."
+                    tasks={gaias}
+                    all={tasks}
+                    splitRepeating
+                    onToggleDone={toggleDone}
+                    onOpen={open}
+                    onNew={() => startNew("gaia")}
+                  />
+                </>
+              )}
             </div>
           </main>
           <RightSidebarSlot />
