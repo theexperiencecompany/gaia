@@ -2,6 +2,7 @@
 import {
   type ConversationFrame,
   DISPLAY_STATE,
+  REPLY_OUTCOME,
   SEND_NOT_DELIVERED,
 } from "@shared/conversation";
 import {
@@ -10,6 +11,7 @@ import {
   replyDelta,
   replyItem,
   stateFrame,
+  updateFrame,
   userItem,
 } from "@shared/conversation/testing";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -198,6 +200,39 @@ describe("the chat rendered from the server's screen patches", () => {
       shown.filter((state) => !passedThrough.has(JSON.stringify(state))),
     ).toEqual([]);
     expect(shown.at(-1)).toEqual(["Part one.", "Part two.", "Part three."]);
+  });
+
+  // web-e2e-screen: the idle state hid the loading line at once while the row it ended, patched in
+  // the same burst, still waited on the row's deferred render, so the screen showed neither.
+  it("never hides the loading line before the row it stood in for shows", async () => {
+    renderChat();
+    await feed(
+      insertFrame(userItem("m1", 1, "two parts")),
+      insertFrame(replyItem("r1", 2, "Part one.")),
+      stateFrame(2, DISPLAY_STATE.THINKING),
+    );
+    const lastPartShown = () =>
+      screenRow("r1").textContent?.includes("Part two.") ?? false;
+    const loadingShown = () =>
+      document.querySelector('[data-testid="chat-loading-row"]') !== null;
+    useLiveConversationStore
+      .getState()
+      .applyFrames(CONVERSATION, [
+        updateFrame(
+          replyItem(
+            "r1",
+            2,
+            ["Part one.", "Part two."],
+            REPLY_OUTCOME.ANSWERED,
+          ),
+        ),
+        stateFrame(2, DISPLAY_STATE.IDLE),
+      ]);
+    // The store write renders in a microtask; a deferred render waits for a task.
+    await Promise.resolve();
+    expect(loadingShown() || lastPartShown()).toBe(true);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect([loadingShown(), lastPartShown()]).toEqual([false, true]);
   });
 
   it("words a failed reply with nothing shown in the server's failure line", async () => {
