@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  Calendar,
-  Input,
-  InputGroup,
-  Popover,
-  Separator,
-  TextArea,
-  TimeField,
-} from "@heroui/react";
-import { FilterHorizontalIcon, Search01Icon, Tick02Icon } from "@icons";
+import { Calendar, Input, Popover, Separator, TimeField } from "@heroui/react";
+import { FilterHorizontalIcon, WebhookIcon } from "@icons";
 import { getLocalTimeZone, parseDate, Time } from "@internationalized/date";
 import { useLocale } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
@@ -30,14 +22,15 @@ import { getUserHomeTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { AppIcon } from "./AppIcon";
-import { APP_NAMES, DEMO_TRIGGERS, defaultTriggerData } from "./demoTriggers";
-import EventSettings from "./EventSettings";
+import EventPane from "./EventPane";
 import { PropertyRow } from "./PropertyRow";
 import Segmented from "./Segmented";
 import { WHEN_ICONS } from "./taskIcons";
-import { isRepeating, type TaskWhen } from "./taskModel";
+import { isRepeating, type TaskWhen, type WhenKind } from "./taskModel";
+import { WatchIcon } from "./WatchIcon";
 import WhenEnds from "./WhenEnds";
 import { EDITOR_FIELD, Field, TextAction } from "./WhenParts";
+import { watchEndsLabel } from "./watchModel";
 import {
   DEFAULT_REPEAT,
   endsLabel,
@@ -45,7 +38,6 @@ import {
   inDays,
   NO_WHEN,
   onDate,
-  onEvent,
   onSchedule,
   type Repeat,
   toCron,
@@ -54,11 +46,15 @@ import {
 type Mode = "date" | "repeat" | "event";
 type Change = (when: TaskWhen) => void;
 
-const MODES: { key: Mode; label: string; kind: TaskWhen["kind"] }[] = [
-  { key: "date", label: "Date", kind: "at" },
-  { key: "repeat", label: "Repeat", kind: "schedule" },
-  { key: "event", label: "Event", kind: "event" },
+const MODES: { key: Mode; label: string; kinds: WhenKind[] }[] = [
+  { key: "date", label: "Date", kinds: ["at"] },
+  { key: "repeat", label: "Repeat", kinds: ["schedule"] },
+  // A watch and a webhook are things that happen too, so they are chosen with the app events.
+  { key: "event", label: "Event", kinds: ["event", "watch"] },
 ];
+
+const modeOf = (when: TaskWhen) =>
+  MODES.find((item) => item.kinds.includes(when.kind))?.key;
 
 const calendar = calendarVariants();
 
@@ -77,8 +73,12 @@ function WhenValue({ when }: { when: TaskWhen }) {
             : "text-zinc-200",
       )}
     >
-      {when.app ? (
+      {when.watch ? (
+        <WatchIcon source={when.watch.source} size={15} />
+      ) : when.app ? (
         <AppIcon id={when.app} size={15} />
+      ) : when.webhook ? (
+        <WebhookIcon className="size-4 shrink-0 opacity-70" />
       ) : (
         <Icon className="size-4 shrink-0 opacity-70" />
       )}
@@ -444,144 +444,6 @@ function RepeatPane({
   );
 }
 
-function EventPane({
-  when,
-  onChange,
-  limit,
-}: {
-  when: TaskWhen;
-  onChange: Change;
-  limit?: ReactNode;
-}) {
-  const selected = DEMO_TRIGGERS.find((item) => item.slug === when.trigger);
-  const [isChoosing, setIsChoosing] = useState(!selected);
-  const [query, setQuery] = useState("");
-
-  if (selected && !isChoosing) {
-    return (
-      <div className="space-y-3">
-        <GaiaButton
-          size="sm"
-          variant="sunken"
-          shape="md"
-          tone="strong"
-          aria-label="Change the event"
-          onPress={() => setIsChoosing(true)}
-          className="h-9 w-full justify-start gap-2 text-sm"
-        >
-          <AppIcon id={selected.app} size={16} />
-          <span className="truncate">{selected.name}</span>
-          <span className="ml-auto text-[13px] text-zinc-500">Change</span>
-        </GaiaButton>
-        <EventSettings
-          trigger={selected}
-          data={when.triggerData ?? defaultTriggerData(selected)}
-          onChange={(data) =>
-            onChange(onEvent(selected.slug, when.condition, data))
-          }
-        />
-        <div>
-          <p className="px-1 pb-1.5 text-[13px] text-zinc-500">Only when</p>
-          <TextArea
-            aria-label="Only when"
-            value={when.condition ?? ""}
-            onChange={(event) =>
-              onChange(
-                onEvent(selected.slug, event.target.value, when.triggerData),
-              )
-            }
-            placeholder="It has an invoice attached"
-            rows={2}
-            className={inputVariants({
-              variant: "sunken",
-              placeholder: "subtle",
-              className: toneVariants({
-                tone: "white",
-                className: "block w-full resize-none text-sm leading-5",
-              }),
-            })}
-          />
-          <p className="px-1 pt-1.5 text-xs text-zinc-500">
-            Optional. GAIA skips everything else.
-          </p>
-        </div>
-        {limit}
-      </div>
-    );
-  }
-
-  const needle = query.trim().toLowerCase();
-  const matches = DEMO_TRIGGERS.filter((item) =>
-    `${APP_NAMES[item.app]} ${item.name}`.toLowerCase().includes(needle),
-  );
-  const apps = [...new Set(matches.map((item) => item.app))];
-
-  return (
-    <div className="space-y-1">
-      <InputGroup
-        className={inputVariants({ variant: "sunken", className: "w-full" })}
-      >
-        <InputGroup.Prefix>
-          <Search01Icon className="size-4 shrink-0 text-zinc-500" />
-        </InputGroup.Prefix>
-        <InputGroup.Input
-          autoFocus
-          aria-label="Search events"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search apps and events"
-          className={toneVariants({ tone: "white", className: "text-sm" })}
-        />
-      </InputGroup>
-      <div className="-mx-1 max-h-72 overflow-y-auto px-1">
-        {apps.map((app) => (
-          <section key={app}>
-            <h4 className="px-3 pt-3 pb-1 text-xs text-zinc-500">
-              {APP_NAMES[app]}
-            </h4>
-            {matches
-              .filter((item) => item.app === app)
-              .map((item) => (
-                <GaiaButton
-                  key={item.slug}
-                  size="sm"
-                  variant="raised-ghost"
-                  shape="md"
-                  tone="bright"
-                  onPress={() => {
-                    onChange(
-                      item.slug === when.trigger
-                        ? when
-                        : onEvent(
-                            item.slug,
-                            when.condition,
-                            defaultTriggerData(item),
-                          ),
-                    );
-                    setIsChoosing(false);
-                    setQuery("");
-                  }}
-                  className="h-9 w-full justify-start gap-2 text-sm"
-                >
-                  <AppIcon id={item.app} size={15} />
-                  {item.name}
-                  {item.slug === when.trigger && (
-                    <Tick02Icon className="ml-auto size-4 text-zinc-400" />
-                  )}
-                </GaiaButton>
-              ))}
-          </section>
-        ))}
-        {matches.length === 0 && (
-          <p className="px-2 py-6 text-center text-[13px] text-zinc-500">
-            Nothing matches
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function WhenEditor({
   when,
   onChange,
@@ -607,16 +469,14 @@ function WhenEditor({
         ? { ...next, ends: when.ends }
         : next,
     );
-  const [mode, setMode] = useState<Mode>(
-    () => MODES.find((item) => item.kind === when.kind)?.key ?? "date",
-  );
+  const [mode, setMode] = useState<Mode>(() => modeOf(when) ?? "date");
 
   // What each mode held before you switched away, so looking at another one loses nothing.
   const [kept, setKept] = useState<Partial<Record<Mode, TaskWhen>>>({});
 
   const choose = (next: Mode) => {
     if (next === mode) return;
-    const current = MODES.find((item) => item.kind === when.kind)?.key;
+    const current = modeOf(when);
     if (current) setKept({ ...kept, [current]: when });
     setMode(next);
     const before = kept[next];
@@ -632,7 +492,7 @@ function WhenEditor({
       <Segmented
         label="When"
         options={modes.map((item) => {
-          const Icon = WHEN_ICONS[item.kind];
+          const Icon = WHEN_ICONS[item.kinds[0]];
           return {
             key: item.key,
             label: item.label,
@@ -678,25 +538,34 @@ function WhenEditor({
 
 /**
  * The one "when" every task has: nothing, a date, a repeat, or (for GAIA) an app
- * event. The row shows it in a line; the editor opens under it, inside the sidebar.
+ * event, a webhook or a watch. The row shows it in a line; the editor opens
+ * under it, inside the sidebar.
  */
 export default function WhenField({
   when,
   onChange,
   forGaia,
   runCount,
+  isOpen: openFromOutside,
+  onOpenChange,
 }: {
   when: TaskWhen;
   onChange: Change;
   forGaia: boolean;
   /** occurrence_count, read against the limit on the Ends row. */
   runCount?: number;
+  /** Set when something outside the row opens the editor, as a watch's fix does. */
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOwnOpen, setIsOwnOpen] = useState(false);
+  const isOpen = openFromOutside ?? isOwnOpen;
+  const setIsOpen = onOpenChange ?? setIsOwnOpen;
   // React Aria formats dates and times in the app's locale, not the browser's.
   const locale = useLocale();
-  const ends =
-    forGaia && isRepeating(when) && when.ends
+  const ends = when.watch
+    ? watchEndsLabel(when)
+    : forGaia && isRepeating(when) && when.ends
       ? endsLabel(when.ends, runCount)
       : undefined;
   return (
@@ -719,7 +588,7 @@ export default function WhenField({
               surface: "raised",
               className: shapeVariants({
                 shape: "xl",
-                className: "w-[19rem] shadow-xl outline-none",
+                className: "w-[19rem] overflow-y-auto shadow-xl outline-none",
               }),
             })}
           >

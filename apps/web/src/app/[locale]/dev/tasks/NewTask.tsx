@@ -81,9 +81,10 @@ export function NewTodoRow({
   );
 }
 
-/** Where a new GAIA task starts: repeating, waiting for its date, or at work now. */
+/** Where a new GAIA task starts: repeating, watching, waiting for its date, or at work now. */
 function firstState(task: Task): Pick<Task, "state" | "status"> {
   if (isRepeating(task.when)) return { state: "standing" };
+  if (task.when.kind === "watch") return { state: "waiting" };
   if (task.when.kind === "at") return { state: "scheduled" };
   return { state: "running", status: "Getting started" };
 }
@@ -93,7 +94,11 @@ export function NewGaiaTask({ onCreate }: { onCreate: (task: Task) => void }) {
   const [draft, setDraft] = useState<Task>(() => blankTask("gaia"));
   const update = (patch: Partial<Task>) => setDraft({ ...draft, ...patch });
   const instructions = draft.instructions?.trim() ?? "";
-  const title = draft.title.trim() || instructions.split("\n")[0];
+  // A watch's sentence names the task well enough when nothing else does.
+  const title =
+    draft.title.trim() ||
+    instructions.split("\n")[0] ||
+    (draft.when.watch?.sentence ?? "");
 
   return (
     <div className="flex h-full flex-col">

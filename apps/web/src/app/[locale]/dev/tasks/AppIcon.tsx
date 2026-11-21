@@ -1,16 +1,30 @@
 "use client";
 
+import { toolFaviconUrl } from "@/data/tools";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
-export function AppIcon({ id, size = 16 }: { id: string; size?: number }) {
+/** An app's logo by its integration id, or a site's icon by its host. */
+export function AppIcon({
+  id,
+  site,
+  size = 16,
+}: {
+  id?: string;
+  site?: string;
+  size?: number;
+}) {
   return (
     <span className="flex shrink-0 items-center justify-center">
-      {getToolCategoryIcon(id, {
-        size,
-        width: size,
-        height: size,
-        showBackground: false,
-      })}
+      {getToolCategoryIcon(
+        id ?? site ?? "",
+        {
+          size,
+          width: size,
+          height: size,
+          showBackground: false,
+        },
+        site && !id ? toolFaviconUrl(site) : undefined,
+      )}
     </span>
   );
 }
