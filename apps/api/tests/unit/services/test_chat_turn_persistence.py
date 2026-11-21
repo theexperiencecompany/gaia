@@ -407,7 +407,9 @@ class TestTheSubstitutionIsRecordedExactly:
     async def test_a_model_that_spent_tokens_on_no_text_is_recorded_as_such(self):
         state = _StreamState()
         state.complete_message = ""
-        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 64}}
+        state.usage_metadata = {
+            "gemini": {"input_tokens": 120, "output_tokens": 64, "total_tokens": 184}
+        }
 
         _, _, mock_log = await persist_with_log(state)
 
@@ -423,7 +425,9 @@ class TestTheSubstitutionIsRecordedExactly:
     async def test_a_model_that_produced_nothing_at_all_is_told_apart(self):
         state = _StreamState()
         state.complete_message = ""
-        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 0}}
+        state.usage_metadata = {
+            "gemini": {"input_tokens": 120, "output_tokens": 0, "total_tokens": 120}
+        }
 
         _, _, mock_log = await persist_with_log(state)
 
@@ -465,11 +469,15 @@ class TestUsageMetadata:
         """The cost and usage views read it back off the saved message."""
         state = _StreamState()
         state.complete_message = "Done."
-        state.usage_metadata = {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+        state.usage_metadata = {
+            "gpt-6-luna": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
+        }
 
         bot, _ = await persist(state)
 
-        assert bot.metadata == {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+        assert bot.metadata == {
+            "gpt-6-luna": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
+        }
 
 
 class TestStoppedTurns:
