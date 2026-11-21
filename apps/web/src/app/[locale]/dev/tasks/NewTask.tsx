@@ -1,16 +1,14 @@
 "use client";
 
-import { Dropdown, Input, TextArea } from "@heroui/react";
-import { PlusSignIcon, UserIcon } from "@icons";
+import { Input, TextArea } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
-import { GaiaMark, TaskIconTile } from "./TaskParts";
-import TaskProperties from "./TaskProperties";
-import type { Assignee, Task } from "./taskModel";
+import { TaskIconTile } from "./TaskIconTile";
+import { type Assignee, isRepeating, type Task } from "./taskModel";
+import WhenField from "./WhenField";
 
 /** A task with nothing set: the starting point for every way of creating one. */
 export function blankTask(assignee: Assignee): Task {
@@ -23,71 +21,9 @@ export function blankTask(assignee: Assignee): Task {
     priority: "none",
     integrations: [],
     checklist: [],
-    activity: [],
     runs: [],
     notify: true,
   };
-}
-
-const NEW_FOR: {
-  id: Assignee;
-  label: string;
-  description: string;
-}[] = [
-  { id: "you", label: "For me", description: "A to-do you'll do yourself" },
-  { id: "gaia", label: "For GAIA", description: "Hand something to GAIA" },
-];
-
-/** The one question creating a task asks: who it's for. Everything else comes after. */
-export function NewTaskButton({
-  onPick,
-}: {
-  onPick: (assignee: Assignee) => void;
-}) {
-  return (
-    <Dropdown>
-      <GaiaButton size="sm" variant="tertiary" tone="strong">
-        <PlusSignIcon className="size-4" />
-        New task
-      </GaiaButton>
-      <Dropdown.Popover
-        placement="bottom end"
-        offset={7}
-        className={shapeVariants({ shape: "lg" })}
-      >
-        <Dropdown.Menu
-          aria-label="Who is the task for"
-          onAction={(key) => {
-            const picked = NEW_FOR.find((item) => item.id === key);
-            if (picked) onPick(picked.id);
-          }}
-        >
-          {NEW_FOR.map((item) => (
-            <Dropdown.Item
-              key={item.id}
-              id={item.id}
-              textValue={item.label}
-              className="gap-2"
-            >
-              <span aria-hidden className="flex shrink-0">
-                {item.id === "you" ? (
-                  <UserIcon className="size-5 text-zinc-400" />
-                ) : (
-                  <GaiaMark size={20} />
-                )}
-              </span>
-              <div className="flex flex-col">
-                <span>{item.label}</span>
-                <span className="text-xs text-zinc-400">
-                  {item.description}
-                </span>
-              </div>
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      </Dropdown.Popover>
-    </Dropdown>
-  );
 }
 
 /** A to-do being typed, in the list where it will live. Enter keeps going; leaving it empty ends it. */
@@ -145,7 +81,14 @@ export function NewTodoRow({
   );
 }
 
-/** Handing GAIA a task: what it's called and what to do. Nothing else is asked. */
+/** Where a new GAIA task starts: repeating, waiting for its date, or at work now. */
+function firstState(task: Task): Pick<Task, "state" | "status"> {
+  if (isRepeating(task.when)) return { state: "standing" };
+  if (task.when.kind === "at") return { state: "scheduled" };
+  return { state: "running", status: "Getting started" };
+}
+
+/** Handing GAIA a task: what it's called, what to do, and when. Nothing else is asked. */
 export function NewGaiaTask({ onCreate }: { onCreate: (task: Task) => void }) {
   const [draft, setDraft] = useState<Task>(() => blankTask("gaia"));
   const update = (patch: Partial<Task>) => setDraft({ ...draft, ...patch });
@@ -188,16 +131,20 @@ export function NewGaiaTask({ onCreate }: { onCreate: (task: Task) => void }) {
             }),
           })}
         />
-        <TaskProperties task={draft} update={update} />
+        <div>
+          <WhenField
+            when={draft.when}
+            onChange={(when) => update({ when })}
+            forGaia
+          />
+        </div>
       </div>
       <div className="p-3">
         <GaiaButton
           variant="primary"
           fullWidth
           isDisabled={!title}
-          onPress={() =>
-            onCreate({ ...draft, title, status: "Getting started" })
-          }
+          onPress={() => onCreate({ ...draft, title, ...firstState(draft) })}
           className="font-medium"
         >
           Hand to GAIA

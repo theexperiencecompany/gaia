@@ -8,13 +8,13 @@ import RightSidebarSlot, {
 } from "@/components/layout/sidebar/RightSidebarSlot";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DEMO_TASKS } from "./demoTasks";
-import { DEMO_STEPS } from "./demoWorkflows";
-import { blankTask, NewGaiaTask, NewTaskButton, NewTodoRow } from "./NewTask";
+import { blankTask, NewGaiaTask, NewTodoRow } from "./NewTask";
+import NewTaskButton from "./NewTaskButton";
 import type { AskAnswer } from "./TaskAsk";
 import TaskPanel from "./TaskPanel";
 import TaskRow from "./TaskRow";
 import TaskSection from "./TaskSection";
-import { type Assignee, isRepeating, type Task } from "./taskModel";
+import { type Assignee, isRepeating, needOf, type Task } from "./taskModel";
 
 /** Soonest first: overdue, today, upcoming, then tasks with no date. */
 function byDate(a: Task, b: Task): number {
@@ -24,22 +24,21 @@ function byDate(a: Task, b: Task): number {
   );
 }
 
-/** How each answer reads in the task's activity once it is given. */
+/** The run an answer wakes, as its record reads. */
 const ANSWERED: {
   [K in AskAnswer["kind"]]: (answer: AskAnswer) => string;
 } = {
-  approve: () => "You approved it",
-  deny: () => "You said not to send it",
+  approve: () => "Sent it after you approved",
+  deny: () => "Left it unsent, as you asked",
   reply: (answer) =>
-    answer.kind === "reply" ? `You replied: ${answer.text}` : "",
-  reconnect: () => "You reconnected it",
+    answer.kind === "reply" ? `Picked up your reply: ${answer.text}` : "",
 };
 
 /** The id of the task open in the sidebar, so its row can show as selected. */
 const SelectedTask = createContext<string | undefined>(undefined);
 
-/** A task's steps: tasks filed under it, then its checklist items as the same kind of row. */
-function stepsOf(task: Task, all: Task[]): Task[] {
+/** A task's subtasks: tasks filed under it, then its checklist items as the same kind of row. */
+function subtasksOf(task: Task, all: Task[]): Task[] {
   const filed = all.filter((other) => other.parentId === task.id);
   const ticks: Task[] = task.checklist.map((item) => ({
     id: item.id,
@@ -51,7 +50,6 @@ function stepsOf(task: Task, all: Task[]): Task[] {
     priority: "none",
     integrations: [],
     checklist: [],
-    activity: [],
     runs: [],
     notify: false,
   }));
@@ -73,7 +71,7 @@ function Rows({
   return (
     <ul>
       {tasks.map((task) => {
-        const steps = task.parentId ? [] : stepsOf(task, all);
+        const subtasks = task.parentId ? [] : subtasksOf(task, all);
         const parent = all.find((other) => other.id === task.parentId);
         return (
           <TaskRow
@@ -83,11 +81,12 @@ function Rows({
             onOpen={onOpen}
             isSelected={task.id === selectedId}
             parentTitle={parent?.title}
-            steps={
-              steps.length > 0
+            subtasks={
+              subtasks.length > 0
                 ? {
-                    done: steps.filter((step) => step.state === "done").length,
-                    total: steps.length,
+                    done: subtasks.filter((item) => item.state === "done")
+                      .length,
+                    total: subtasks.length,
                   }
                 : undefined
             }
@@ -208,15 +207,24 @@ export default function TasksDemoPage() {
   const [tasks, setTasks] = useState<Task[]>(DEMO_TASKS);
   const [openTask, setOpenTask] = useState<Task | null>(null);
   const opened = tasks.find((task) => task.id === openTask?.id);
+  // An answer wakes the task, so it runs and the run is recorded.
   const answer = (task: Task, given: AskAnswer) =>
     replace({
       ...task,
       ask: undefined,
-      // Reconnecting is what a paused task was waiting for, so it runs again.
-      state: given.kind === "reconnect" ? "standing" : task.state,
-      activity: [
-        ...task.activity,
-        { at: "Just now", text: ANSWERED[given.kind](given) },
+      state: "running",
+      waitingOn: undefined,
+      runs: [
+        {
+          id: crypto.randomUUID(),
+          at: "Just now",
+          outcome: "success",
+          summary: ANSWERED[given.kind](given),
+          duration: "1s",
+          trigger: "manual",
+          trace: [],
+        },
+        ...task.runs,
       ],
     });
   const [creating, setCreating] = useState<Assignee | null>(null);
@@ -263,7 +271,21 @@ export default function TasksDemoPage() {
       }),
     );
 
-  const needsYou = tasks.filter((task) => task.ask && task.state !== "done");
+  // GAIA's offer on a to-do becomes a task GAIA owns, filed under the to-do.
+  const acceptOffer = (todo: Task, title: string) =>
+    setTasks((current) => [
+      ...current.map((task) =>
+        task.id === todo.id ? { ...task, offer: undefined } : task,
+      ),
+      {
+        ...blankTask("gaia"),
+        title,
+        parentId: todo.id,
+        status: "Getting started",
+      },
+    ]);
+
+  const needsYou = tasks.filter((task) => needOf(task));
   const topLevel = tasks.filter((task) => !task.parentId);
   const mine = topLevel.filter((task) => task.assignee === "you");
   const gaias = topLevel.filter(
@@ -347,10 +369,13 @@ export default function TasksDemoPage() {
               <TaskPanel
                 key={opened.id}
                 task={opened}
-                steps={DEMO_STEPS[opened.id]}
+                parent={tasks.find((task) => task.id === opened.parentId)}
+                childTasks={tasks.filter((task) => task.parentId === opened.id)}
                 onChange={replace}
                 onAnswer={answer}
                 onDelete={remove}
+                onOpen={open}
+                onAcceptOffer={acceptOffer}
               />
             ) : (
               <NewGaiaTask

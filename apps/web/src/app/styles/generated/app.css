@@ -13,6 +13,7 @@
 @import "@heroui/styles/components/chip.css" layer(components);
 @import "@heroui/styles/components/close-button.css" layer(components);
 @import "@heroui/styles/components/combo-box.css" layer(components);
+@import "@heroui/styles/components/date-field.css" layer(components);
 @import "@heroui/styles/components/date-input-group.css" layer(components);
 @import "@heroui/styles/components/description.css" layer(components);
 @import "@heroui/styles/components/dropdown.css" layer(components);
@@ -928,9 +929,11 @@
 @source "../../[locale]/dev/primitive-parity/ParityOverlays.tsx";
 @source "../../[locale]/dev/tasks/demoTasks.ts";
 @source "../../[locale]/dev/tasks/demoTriggers.ts";
-@source "../../[locale]/dev/tasks/demoWorkflows.ts";
+@source "../../[locale]/dev/tasks/EventSettings.tsx";
 @source "../../[locale]/dev/tasks/NewTask.tsx";
 @source "../../[locale]/dev/tasks/page.dev.tsx";
+@source "../../[locale]/dev/tasks/statusModel.ts";
+@source "../../[locale]/dev/tasks/TaskApps.tsx";
 @source "../../[locale]/dev/tasks/TaskAsk.tsx";
 @source "../../[locale]/dev/tasks/TaskCheckbox.tsx";
 @source "../../[locale]/dev/tasks/TaskIcon.tsx";
@@ -941,9 +944,11 @@
 @source "../../[locale]/dev/tasks/TaskRecord.tsx";
 @source "../../[locale]/dev/tasks/TaskRow.tsx";
 @source "../../[locale]/dev/tasks/TaskSection.tsx";
-@source "../../[locale]/dev/tasks/TaskSteps.tsx";
+@source "../../[locale]/dev/tasks/TaskSubtasks.tsx";
+@source "../../[locale]/dev/tasks/WhenEnds.tsx";
 @source "../../[locale]/dev/tasks/WhenField.tsx";
 @source "../../[locale]/dev/tasks/whenModel.ts";
+@source "../../[locale]/dev/tasks/WhenParts.tsx";
 @source "../../[locale]/dev/text-animation/DemoBody.tsx";
 @source "../../[locale]/dev/text-animation/page.dev.tsx";
 @source "../../[locale]/dev/toasts/page.dev.tsx";

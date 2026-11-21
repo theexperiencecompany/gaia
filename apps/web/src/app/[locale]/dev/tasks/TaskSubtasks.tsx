@@ -10,8 +10,9 @@ import { toneVariants } from "@/components/shared/tone";
 import { cn } from "@/lib/utils";
 import type { SubTask } from "@/types/features/todoTypes";
 import TaskCheckbox from "./TaskCheckbox";
-import { TaskIconTile } from "./TaskParts";
-import type { Task } from "./taskModel";
+import { TaskIconTile } from "./TaskIconTile";
+import { NEEDS } from "./taskIcons";
+import { needOf, type Task } from "./taskModel";
 
 type Update = (patch: Partial<Task>) => void;
 
@@ -43,16 +44,84 @@ const newSubtask = (title = ""): SubTask => ({
   created_at: new Date().toISOString(),
 });
 
+/** A child task's own short state: what it needs from you, or GAIA's latest line. */
+function shortStatus(child: Task): { text?: string; isNeed: boolean } {
+  const need = needOf(child);
+  if (need) return { text: NEEDS[need].label, isNeed: true };
+  if (child.state === "paused") return { text: "Stopped", isNeed: false };
+  return { text: child.status, isNeed: false };
+}
+
+/** A subtask GAIA owns: its mark, its name and its state; it opens as its own task. */
+function ChildLine({
+  child,
+  onOpen,
+}: {
+  child: Task;
+  onOpen: (task: Task) => void;
+}) {
+  const isDone = child.state === "done";
+  const status = shortStatus(child);
+  return (
+    <div className="relative -mx-2">
+      <GaiaButton
+        aria-label={`Open ${child.title}`}
+        variant="row"
+        shape="sm"
+        inset="none"
+        onPress={() => onOpen(child)}
+        className="absolute inset-0 h-full w-full min-w-0"
+      />
+      <div className="pointer-events-none relative flex min-h-9 items-start gap-3 px-2 py-1.5">
+        <span className={MARK}>
+          <TaskIconTile icon={child.icon} size={20} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate text-sm leading-6",
+              isDone
+                ? "text-zinc-500 line-through decoration-zinc-600"
+                : "text-zinc-200",
+            )}
+          >
+            {child.title}
+          </span>
+          {status.text && !isDone && (
+            <span
+              className={cn(
+                "block truncate text-xs leading-4",
+                status.isNeed ? "text-amber-400" : "text-zinc-500",
+              )}
+            >
+              {status.text}
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
- * A task's subtasks. The last line is always an empty one to type into, so adding
- * never moves anything; Enter inside an existing subtask starts one below it.
+ * A task's subtasks: its checklist, then the tasks GAIA owns under it. On your own
+ * to-do the last line is always an empty one to type into, so adding never moves
+ * anything; Enter inside an existing subtask starts one below it.
  */
-export default function TaskSteps({
+export default function TaskSubtasks({
   task,
   update,
+  childTasks,
+  onOpen,
+  onAcceptOffer,
 }: {
   task: Task;
   update: Update;
+  /** Tasks whose parent_id is this one. */
+  childTasks: Task[];
+  onOpen: (task: Task) => void;
+  /** Turns GAIA's offer into a subtask GAIA owns. */
+  onAcceptOffer: (title: string) => void;
 }) {
   const subtasks = task.checklist;
   const isYours = task.assignee === "you";
@@ -100,71 +169,67 @@ export default function TaskSteps({
   };
 
   const acceptOffer = () => {
-    const item = newSubtask(task.offer);
-    update({
-      offer: undefined,
-      checklist: [...subtasks, item],
-      gaiaSteps: [...(task.gaiaSteps ?? []), item.id],
-    });
+    if (task.offer) onAcceptOffer(task.offer);
   };
 
-  if (subtasks.length === 0 && !task.offer && !isYours) return null;
+  if (
+    subtasks.length === 0 &&
+    childTasks.length === 0 &&
+    !task.offer &&
+    !isYours
+  )
+    return null;
 
   return (
     <div className="space-y-0.5">
-      {subtasks.map((item, index) => {
-        const byGaia = task.gaiaSteps?.includes(item.id);
-        return (
-          <div
-            key={item.id}
-            className={cn(
-              LINE,
-              "group focus-within:bg-white/[0.04] hover:bg-white/[0.04]",
-            )}
-          >
-            <span className={MARK}>
-              {byGaia ? (
-                <TaskIconTile size={20} />
-              ) : (
-                <TaskCheckbox
-                  label={item.completed ? "Mark not done" : "Mark done"}
-                  isSelected={item.completed}
-                  isReadOnly={!isYours}
-                  isSubtask
-                  onChange={(completed) => patch(item.id, { completed })}
-                />
-              )}
-            </span>
-            <Input
-              ref={(node: HTMLInputElement | null) => {
-                if (node) inputs.current.set(item.id, node);
-                else inputs.current.delete(item.id);
-              }}
-              aria-label="Subtask"
-              value={item.title}
-              readOnly={!isYours || byGaia}
-              onChange={(event) =>
-                patch(item.id, { title: event.target.value })
-              }
-              onKeyDown={(event) => onKeyDown(event, index)}
-              className={subtaskField(item.completed)}
+      {subtasks.map((item, index) => (
+        <div
+          key={item.id}
+          className={cn(
+            LINE,
+            "group focus-within:bg-white/[0.04] hover:bg-white/[0.04]",
+          )}
+        >
+          <span className={MARK}>
+            <TaskCheckbox
+              label={item.completed ? "Mark not done" : "Mark done"}
+              isSelected={item.completed}
+              isReadOnly={!isYours}
+              isSubtask
+              onChange={(completed) => patch(item.id, { completed })}
             />
-            {isYours && (
-              <GaiaButton
-                isIconOnly
-                size="sm"
-                variant="quiet"
-                tone="faint"
-                aria-label="Remove subtask"
-                onPress={() => remove(index)}
-                className="size-6 min-w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[focus-visible=true]:opacity-100"
-              >
-                <Cancel01Icon className="size-3.5" />
-              </GaiaButton>
-            )}
-          </div>
-        );
-      })}
+          </span>
+          <Input
+            ref={(node: HTMLInputElement | null) => {
+              if (node) inputs.current.set(item.id, node);
+              else inputs.current.delete(item.id);
+            }}
+            aria-label="Subtask"
+            value={item.title}
+            readOnly={!isYours}
+            onChange={(event) => patch(item.id, { title: event.target.value })}
+            onKeyDown={(event) => onKeyDown(event, index)}
+            className={subtaskField(item.completed)}
+          />
+          {isYours && (
+            <GaiaButton
+              isIconOnly
+              size="sm"
+              variant="quiet"
+              tone="faint"
+              aria-label="Remove subtask"
+              onPress={() => remove(index)}
+              className="size-6 min-w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[focus-visible=true]:opacity-100"
+            >
+              <Cancel01Icon className="size-3.5" />
+            </GaiaButton>
+          )}
+        </div>
+      ))}
+
+      {childTasks.map((child) => (
+        <ChildLine key={child.id} child={child} onOpen={onOpen} />
+      ))}
 
       {task.offer && (
         <div className={cn(LINE, "items-start py-2")}>

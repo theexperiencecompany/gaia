@@ -4,11 +4,12 @@ import {
   format,
   getDate,
   getDay,
+  parseISO,
 } from "date-fns";
 
 import { describeCron } from "@/features/workflows/utils/cronUtils";
 import { DEMO_TRIGGERS } from "./demoTriggers";
-import type { TaskWhen } from "./taskModel";
+import type { TaskEnds, TaskWhen, TriggerData } from "./taskModel";
 
 export const NO_WHEN: TaskWhen = { kind: "anytime" };
 
@@ -176,14 +177,36 @@ export function onSchedule(cron: string, timezone: string): TaskWhen {
   };
 }
 
-/** When something happens in an app, narrowed by an optional "only when". */
-export function onEvent(trigger: string, condition?: string): TaskWhen {
+/** When something happens in an app, with its settings and an optional "only when". */
+export function onEvent(
+  trigger: string,
+  condition?: string,
+  triggerData?: TriggerData,
+): TaskWhen {
   const known = DEMO_TRIGGERS.find((item) => item.slug === trigger);
   return {
     kind: "event",
     trigger,
     app: known?.app,
+    triggerData,
     condition: condition?.trim() ? condition : undefined,
     label: known?.name ?? trigger,
   };
+}
+
+/** How a limit reads on its row: "3 of 10 runs", or the last day it runs. */
+export function endsLabel(ends: TaskEnds, runCount = 0): string | undefined {
+  if (ends.afterRuns) return `${runCount} of ${ends.afterRuns} runs`;
+  if (ends.onDate) return `Until ${format(parseISO(ends.onDate), "MMM d")}`;
+  return undefined;
+}
+
+/** A next check as it reads mid-sentence: "later today", "tomorrow", "Friday", "Dec 2". */
+export function checkDay(iso: string): string {
+  const date = parseISO(iso);
+  const away = differenceInCalendarDays(date, new Date());
+  if (away <= 0) return `today at ${clock(date.getHours(), date.getMinutes())}`;
+  if (away === 1) return "tomorrow";
+  if (away < 7) return format(date, "EEEE");
+  return format(date, "MMM d");
 }

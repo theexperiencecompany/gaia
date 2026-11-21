@@ -1,31 +1,24 @@
 "use client";
 
 import { InputGroup } from "@heroui/react";
-import {
-  ArrowUp02Icon,
-  BubbleChatIcon,
-  CheckmarkCircle02Icon,
-  Link01Icon,
-} from "@icons";
-import { getToolDisplayName } from "@shared/icons";
+import { ArrowUp02Icon, BubbleChatIcon, CheckmarkCircle02Icon } from "@icons";
 import { useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
+import { noReplyLine } from "./statusModel";
 import type { Task } from "./taskModel";
 
-/** The answers a task's ask can take, each one a real call: the approval ledger, the task's chat, or the connect flow. */
+/** The answers a task's ask can take, each one a real call: the approval ledger or the task's chat. */
 export type AskAnswer =
   | { kind: "approve" }
   | { kind: "deny" }
-  | { kind: "reply"; text: string }
-  | { kind: "reconnect" };
+  | { kind: "reply"; text: string };
 
 const LABEL = {
   approval: { text: "Needs your approval", Icon: CheckmarkCircle02Icon },
   question: { text: "GAIA has a question", Icon: BubbleChatIcon },
-  reconnect: { text: "Needs reconnecting", Icon: Link01Icon },
 } as const;
 
 /** The thing GAIA wants to send, as the approval card carries it (args_preview). */
@@ -93,7 +86,7 @@ function ReplyBox({ onSend }: { onSend: (text: string) => void }) {
 
 /**
  * What GAIA is blocked on, answerable in place. An approval shows what will be
- * sent; a question takes a reply; a lost connection offers to reconnect.
+ * sent; a question takes a reply and says what happens without one.
  */
 export default function TaskAsk({
   task,
@@ -143,21 +136,11 @@ export default function TaskAsk({
             onSend={(reply) => onAnswer({ kind: "reply", text: reply })}
           />
           {ask.ifNoReply && (
-            <p className="text-xs leading-5 text-zinc-500">{ask.ifNoReply}</p>
+            <p className="text-xs leading-5 text-zinc-500">
+              {noReplyLine(ask.ifNoReply, task.nextCheck)}
+            </p>
           )}
         </>
-      )}
-
-      {ask.kind === "reconnect" && (
-        <GaiaButton
-          size="sm"
-          variant="primary"
-          className="font-medium"
-          onPress={() => onAnswer({ kind: "reconnect" })}
-        >
-          <Link01Icon className="size-4" />
-          Reconnect {getToolDisplayName(task.integrations[0] ?? "")}
-        </GaiaButton>
       )}
     </section>
   );

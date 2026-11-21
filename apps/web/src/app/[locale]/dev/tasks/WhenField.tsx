@@ -29,11 +29,18 @@ import { describeCron } from "@/features/workflows/utils/cronUtils";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
-import { APP_NAMES, DEMO_TRIGGERS } from "./demoTriggers";
-import { AppIcon, PropertyRow, WHEN_ICONS } from "./TaskParts";
-import type { TaskWhen } from "./taskModel";
+import { AppIcon } from "./AppIcon";
+import { APP_NAMES, DEMO_TRIGGERS, defaultTriggerData } from "./demoTriggers";
+import EventSettings from "./EventSettings";
+import { PropertyRow } from "./PropertyRow";
+import Segmented from "./Segmented";
+import { WHEN_ICONS } from "./taskIcons";
+import { isRepeating, type TaskWhen } from "./taskModel";
+import WhenEnds from "./WhenEnds";
+import { EDITOR_FIELD, Field, TextAction } from "./WhenParts";
 import {
   DEFAULT_REPEAT,
+  endsLabel,
   fromCron,
   inDays,
   NO_WHEN,
@@ -53,33 +60,7 @@ const MODES: { key: Mode; label: string; kind: TaskWhen["kind"] }[] = [
   { key: "event", label: "Event", kind: "event" },
 ];
 
-/** Every field in the editor: 36px tall, 12px corners, one step darker than the popover. */
-const EDITOR_FIELD = inputVariants({ variant: "sunken" });
-
 const calendar = calendarVariants();
-
-/** A quiet text action under a field, on the same 4px inset as the field labels. */
-function TextAction({
-  onPress,
-  children,
-}: {
-  onPress: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <GaiaButton
-      size="sm"
-      variant="text"
-      inset="snug"
-      tone="faint"
-      hoverTone="bright"
-      onPress={onPress}
-      className="h-7 min-w-0 justify-start text-[13px]"
-    >
-      {children}
-    </GaiaButton>
-  );
-}
 
 /** When a task is due or runs, on one line. The detail is one click away. */
 function WhenValue({ when }: { when: TaskWhen }) {
@@ -147,55 +128,6 @@ function DayPick({
     >
       {children}
     </GaiaButton>
-  );
-}
-
-/** A choice of one: a 36px track with the chosen segment raised inside it. */
-function Segmented<Key extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { key: Key; label: string; icon?: ReactNode }[];
-  value: Key;
-  onChange: (key: Key) => void;
-}) {
-  return (
-    <fieldset
-      aria-label={label}
-      className="mx-0 flex h-9 min-w-0 gap-1 rounded-xl border-0 bg-zinc-900 p-1"
-    >
-      {options.map((option) => {
-        const isOn = option.key === value;
-        return (
-          <GaiaButton
-            key={option.key}
-            size="sm"
-            variant={isOn ? "default-solid" : "text"}
-            tone={isOn ? "strong" : "muted"}
-            hoverTone={isOn ? "none" : "bright"}
-            inset="tight"
-            aria-pressed={isOn}
-            onPress={() => onChange(option.key)}
-            className="h-7 min-w-0 flex-1 gap-1.5 text-[13px] font-medium"
-          >
-            {option.icon}
-            {option.label}
-          </GaiaButton>
-        );
-      })}
-    </fieldset>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex h-9 items-center justify-between gap-3">
-      <span className="px-1 text-[13px] text-zinc-500">{label}</span>
-      {children}
-    </div>
   );
 }
 
@@ -378,10 +310,13 @@ function RepeatPane({
   when,
   onChange,
   forGaia,
+  limit,
 }: {
   when: TaskWhen;
   onChange: Change;
   forGaia: boolean;
+  /** When it stops on its own, with the other settings of the repeat. */
+  limit?: ReactNode;
 }) {
   const cron = when.cron ?? "";
   const timezone = when.timezone ?? getUserHomeTimezone();
@@ -411,7 +346,6 @@ function RepeatPane({
           placeholder="0 9 * * 1-5"
           className={inputVariants({
             variant: "sunken",
-            size: "sm",
             className: toneVariants({
               tone: "white",
               className: "w-full font-mono text-sm",
@@ -422,6 +356,7 @@ function RepeatPane({
           {describeCron(cron) ?? "minute, hour, day, month, weekday"}
         </p>
         {zone}
+        {limit}
         <TextAction
           onPress={() => {
             setIsCustom(false);
@@ -498,6 +433,7 @@ function RepeatPane({
           />
         </Field>
         {zone}
+        {limit}
       </div>
       {forGaia && (
         <TextAction onPress={() => setIsCustom(true)}>
@@ -508,7 +444,15 @@ function RepeatPane({
   );
 }
 
-function EventPane({ when, onChange }: { when: TaskWhen; onChange: Change }) {
+function EventPane({
+  when,
+  onChange,
+  limit,
+}: {
+  when: TaskWhen;
+  onChange: Change;
+  limit?: ReactNode;
+}) {
   const selected = DEMO_TRIGGERS.find((item) => item.slug === when.trigger);
   const [isChoosing, setIsChoosing] = useState(!selected);
   const [query, setQuery] = useState("");
@@ -529,13 +473,22 @@ function EventPane({ when, onChange }: { when: TaskWhen; onChange: Change }) {
           <span className="truncate">{selected.name}</span>
           <span className="ml-auto text-[13px] text-zinc-500">Change</span>
         </GaiaButton>
+        <EventSettings
+          trigger={selected}
+          data={when.triggerData ?? defaultTriggerData(selected)}
+          onChange={(data) =>
+            onChange(onEvent(selected.slug, when.condition, data))
+          }
+        />
         <div>
           <p className="px-1 pb-1.5 text-[13px] text-zinc-500">Only when</p>
           <TextArea
             aria-label="Only when"
             value={when.condition ?? ""}
             onChange={(event) =>
-              onChange(onEvent(selected.slug, event.target.value))
+              onChange(
+                onEvent(selected.slug, event.target.value, when.triggerData),
+              )
             }
             placeholder="It has an invoice attached"
             rows={2}
@@ -552,6 +505,7 @@ function EventPane({ when, onChange }: { when: TaskWhen; onChange: Change }) {
             Optional. GAIA skips everything else.
           </p>
         </div>
+        {limit}
       </div>
     );
   }
@@ -595,7 +549,15 @@ function EventPane({ when, onChange }: { when: TaskWhen; onChange: Change }) {
                   shape="md"
                   tone="bright"
                   onPress={() => {
-                    onChange(onEvent(item.slug, when.condition));
+                    onChange(
+                      item.slug === when.trigger
+                        ? when
+                        : onEvent(
+                            item.slug,
+                            when.condition,
+                            defaultTriggerData(item),
+                          ),
+                    );
                     setIsChoosing(false);
                     setQuery("");
                   }}
@@ -632,6 +594,19 @@ function WhenEditor({
   onClear: () => void;
 }) {
   const modes = MODES.filter((mode) => forGaia || mode.key !== "event");
+  const limit = forGaia && isRepeating(when) && (
+    <WhenEnds
+      ends={when.ends}
+      onChange={(ends) => onChange({ ...when, ends })}
+    />
+  );
+  // A limit belongs to the repeat, so editing the days or the event keeps it.
+  const change: Change = (next) =>
+    onChange(
+      isRepeating(next) && isRepeating(when)
+        ? { ...next, ends: when.ends }
+        : next,
+    );
   const [mode, setMode] = useState<Mode>(
     () => MODES.find((item) => item.kind === when.kind)?.key ?? "date",
   );
@@ -648,7 +623,7 @@ function WhenEditor({
     if (before) onChange(before);
     // Repeating has a sensible default, so choosing it sets it; a date and an event are picked.
     else if (next === "repeat" && when.kind !== "schedule") {
-      onChange(onSchedule(toCron(DEFAULT_REPEAT), getUserHomeTimezone()));
+      change(onSchedule(toCron(DEFAULT_REPEAT), getUserHomeTimezone()));
     }
   };
 
@@ -670,9 +645,16 @@ function WhenEditor({
 
       {mode === "date" && <DatePane when={when} onChange={onChange} />}
       {mode === "repeat" && when.kind === "schedule" && (
-        <RepeatPane when={when} onChange={onChange} forGaia={forGaia} />
+        <RepeatPane
+          when={when}
+          onChange={change}
+          forGaia={forGaia}
+          limit={limit}
+        />
       )}
-      {mode === "event" && <EventPane when={when} onChange={onChange} />}
+      {mode === "event" && (
+        <EventPane when={when} onChange={change} limit={limit} />
+      )}
 
       {when.kind !== "anytime" && (
         <>
@@ -702,52 +684,77 @@ export default function WhenField({
   when,
   onChange,
   forGaia,
+  runCount,
 }: {
   when: TaskWhen;
   onChange: Change;
   forGaia: boolean;
+  /** occurrence_count, read against the limit on the Ends row. */
+  runCount?: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   // React Aria formats dates and times in the app's locale, not the browser's.
   const locale = useLocale();
+  const ends =
+    forGaia && isRepeating(when) && when.ends
+      ? endsLabel(when.ends, runCount)
+      : undefined;
   return (
-    <PropertyRow label="When">
-      <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
-        <GaiaButton
-          size="sm"
-          variant="property"
-          inset="tight"
-          aria-label="When"
-          className="-ml-2 h-8 min-w-0 flex-1 justify-start text-sm"
-        >
-          <WhenValue when={when} />
-        </GaiaButton>
-        <Popover.Content
-          placement="bottom end"
-          offset={6}
-          className={overlayVariants({
-            surface: "raised",
-            className: shapeVariants({
-              shape: "xl",
-              className: "w-[19rem] shadow-xl outline-none",
-            }),
-          })}
-        >
-          <I18nProvider locale={locale}>
-            <div className="p-3 leading-5">
-              <WhenEditor
-                when={when}
-                onChange={onChange}
-                forGaia={forGaia}
-                onClear={() => {
-                  onChange(NO_WHEN);
-                  setIsOpen(false);
-                }}
-              />
-            </div>
-          </I18nProvider>
-        </Popover.Content>
-      </Popover>
-    </PropertyRow>
+    <>
+      <PropertyRow label="When">
+        <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+          <GaiaButton
+            size="sm"
+            variant="property"
+            inset="tight"
+            aria-label="When"
+            className="-ml-2 h-8 min-w-0 flex-1 justify-start text-sm"
+          >
+            <WhenValue when={when} />
+          </GaiaButton>
+          <Popover.Content
+            placement="bottom end"
+            offset={6}
+            className={overlayVariants({
+              surface: "raised",
+              className: shapeVariants({
+                shape: "xl",
+                className: "w-[19rem] shadow-xl outline-none",
+              }),
+            })}
+          >
+            <I18nProvider locale={locale}>
+              <div className="p-3 leading-5">
+                <WhenEditor
+                  when={when}
+                  onChange={onChange}
+                  forGaia={forGaia}
+                  onClear={() => {
+                    onChange(NO_WHEN);
+                    setIsOpen(false);
+                  }}
+                />
+              </div>
+            </I18nProvider>
+          </Popover.Content>
+        </Popover>
+      </PropertyRow>
+      {ends && (
+        <PropertyRow label="Ends">
+          {/* The limit is set in the When editor, so its row opens that editor. */}
+          <GaiaButton
+            size="sm"
+            variant="property"
+            tone="bright"
+            inset="tight"
+            aria-label="Ends"
+            onPress={() => setIsOpen(true)}
+            className="-ml-2 h-8 min-w-0 justify-start text-sm tabular-nums"
+          >
+            {ends}
+          </GaiaButton>
+        </PropertyRow>
+      )}
+    </>
   );
 }

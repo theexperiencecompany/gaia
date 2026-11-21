@@ -1,3 +1,5 @@
+import { addDays, setHours, startOfHour } from "date-fns";
+
 import type { Task } from "./taskModel";
 import { inDays, NO_WHEN, onEvent, onSchedule } from "./whenModel";
 
@@ -6,7 +8,6 @@ import { inDays, NO_WHEN, onEvent, onSchedule } from "./whenModel";
 const base = {
   integrations: [],
   checklist: [],
-  activity: [],
   runs: [],
   notify: true,
   priority: "none",
@@ -14,6 +15,10 @@ const base = {
 
 const CREATED = "2026-11-10T09:00:00Z";
 const HOME = "America/Los_Angeles";
+
+/** A next check, a few days out at a given hour: the scheduled_at GAIA set. */
+const checkIn = (days: number, hour = 9) =>
+  setHours(startOfHour(addDays(new Date(), days)), hour).toISOString();
 
 export const DEMO_TASKS: Task[] = [
   {
@@ -37,14 +42,19 @@ export const DEMO_TASKS: Task[] = [
     instructions:
       "Reply to Priya's offsite thread. Confirm I can make Feb 6 to 8, ask whether partners are invited, and keep it short.",
     integrations: ["gmail"],
-    activity: [
+    runs: [
       {
-        at: "9:41 AM",
-        text: "Read the thread and your calendar for Feb 6 to 8",
-      },
-      {
-        at: "9:42 AM",
-        text: "Drafted a reply and asked you to approve sending it",
+        id: "po1",
+        at: "Today, 9:41 AM",
+        outcome: "success",
+        summary: "Drafted a reply and asked you to approve it",
+        duration: "18s",
+        trigger: "schedule",
+        trace: [
+          { app: "gmail", text: "Read Priya's thread, 4 messages" },
+          { app: "googlecalendar", text: "Feb 6 to 8 is free" },
+          { app: "gmail", text: "Drafted a reply for your approval" },
+        ],
       },
     ],
   },
@@ -59,14 +69,37 @@ export const DEMO_TASKS: Task[] = [
       kind: "question",
       prompt:
         "Tuesday 10:30 AM or Thursday 4 PM? Dr. Mehta's office has both open.",
-      ifNoReply: "No reply by Thursday and GAIA books Tuesday.",
+      ifNoReply: { plan: "proceed", defaultAction: "books Tuesday" },
     },
+    waitingOn: "user",
+    nextCheck: checkIn(5, 17),
     instructions:
       "Book a cleaning with Dr. Mehta. Mornings are better, avoid Mondays.",
-    integrations: ["googlecalendar"],
-    activity: [
-      { at: "Yesterday", text: "Asked the office for openings next week" },
-      { at: "Today, 8:12 AM", text: "Got two openings and asked you to pick" },
+    integrations: ["googlecalendar", "gmail"],
+    runs: [
+      {
+        id: "de2",
+        at: "Today, 8:12 AM",
+        outcome: "success",
+        summary: "Got two openings and asked you to pick",
+        duration: "22s",
+        trigger: "gmail",
+        trace: [
+          { app: "gmail", text: "Dr. Mehta's office replied with two times" },
+          { app: "googlecalendar", text: "Both are free on your calendar" },
+        ],
+      },
+      {
+        id: "de1",
+        at: "Yesterday, 4:30 PM",
+        outcome: "success",
+        summary: "Asked the office for openings next week",
+        duration: "15s",
+        trigger: "manual",
+        trace: [
+          { app: "gmail", text: "Emailed the office for a cleaning slot" },
+        ],
+      },
     ],
   },
   {
@@ -75,11 +108,11 @@ export const DEMO_TASKS: Task[] = [
     title: "Triage my review requests",
     assignee: "gaia",
     state: "paused",
-    when: onEvent("github_pr_event", "Someone asks for my review"),
-    ask: {
-      kind: "reconnect",
-      prompt: "Paused. GitHub disconnected on Tuesday",
-    },
+    when: onEvent("github_pr_event", "Someone asks for my review", {
+      repos: ["theexperiencecompany/gaia"],
+    }),
+    pauseReason: "integration_expired",
+    disconnected: ["github"],
     instructions:
       "When someone requests my review, summarise the PR, link the Linear issue, and add it to today's plan.",
     integrations: ["github", "linear"],
@@ -91,6 +124,10 @@ export const DEMO_TASKS: Task[] = [
         outcome: "failed",
         summary: "GitHub access expired",
         duration: "2s",
+        trigger: "github",
+        trace: [],
+        error:
+          "GitHub turned down GAIA's access, so the pull request could not be read.",
       },
       {
         id: "r2",
@@ -98,6 +135,12 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "Summarised PR #482, linked ENG-311",
         duration: "41s",
+        trigger: "github",
+        trace: [
+          { app: "github", text: "Read PR #482, 6 files changed" },
+          { app: "linear", text: "Found ENG-311 by its branch name" },
+          { app: "todos", text: "Added it to today's plan" },
+        ],
       },
     ],
     notify: false,
@@ -195,9 +238,22 @@ export const DEMO_TASKS: Task[] = [
         created_at: CREATED,
       },
     ],
-    activity: [
-      { at: "10:02 AM", text: "Held Mar 12 to 19 on your calendar" },
-      { at: "10:05 AM", text: "Searching direct flights from SFO" },
+    runs: [
+      {
+        id: "li1",
+        at: "Today, 10:02 AM",
+        outcome: "success",
+        summary: "Held the dates and started on flights",
+        duration: "3m 4s",
+        trigger: "manual",
+        trace: [
+          { app: "googlecalendar", text: "Held Mar 12 to 19" },
+          {
+            app: "gmail",
+            text: "Found your passport details in a past booking",
+          },
+        ],
+      },
     ],
   },
   {
@@ -218,11 +274,24 @@ export const DEMO_TASKS: Task[] = [
     assignee: "gaia",
     state: "waiting",
     waitingOn: "event",
+    nextCheck: checkIn(4),
     when: inDays(5),
     status: "Waiting on John's reply",
     source: { app: "gmail", label: "Email thread" },
     integrations: ["gmail"],
-    activity: [{ at: "Tue", text: "Sent John the contract and a summary" }],
+    runs: [
+      {
+        id: "jc1",
+        at: "Tue, 3:10 PM",
+        outcome: "success",
+        summary: "Sent John the contract and a summary",
+        duration: "26s",
+        trigger: "manual",
+        trace: [
+          { app: "gmail", text: "Sent the contract to John with a summary" },
+        ],
+      },
+    ],
   },
   {
     ...base,
@@ -231,8 +300,9 @@ export const DEMO_TASKS: Task[] = [
     assignee: "gaia",
     state: "waiting",
     waitingOn: "time",
+    nextCheck: checkIn(1),
     when: inDays(7),
-    status: "Application sent. Checks on it after your appointment",
+    status: "Application sent",
     integrations: ["googlecalendar", "gmail"],
     checklist: [
       {
@@ -254,9 +324,28 @@ export const DEMO_TASKS: Task[] = [
         created_at: CREATED,
       },
     ],
-    activity: [
-      { at: "Nov 2", text: "Filled in the DS-82 from your profile" },
-      { at: "Nov 3", text: "Booked Nov 21, 10:15 AM at Walgreens, Market St" },
+    runs: [
+      {
+        id: "pp2",
+        at: "Nov 3, 9:00 AM",
+        outcome: "success",
+        summary: "Booked a photo for Nov 21 at Walgreens, Market St",
+        duration: "51s",
+        trigger: "schedule",
+        trace: [
+          { app: "googlecalendar", text: "Added Nov 21, 10:15 AM" },
+          { app: "gmail", text: "Saved the booking confirmation" },
+        ],
+      },
+      {
+        id: "pp1",
+        at: "Nov 2, 11:30 AM",
+        outcome: "success",
+        summary: "Filled in the DS-82 from your profile",
+        duration: "1m 8s",
+        trigger: "manual",
+        trace: [],
+      },
     ],
   },
   {
@@ -268,6 +357,7 @@ export const DEMO_TASKS: Task[] = [
     when: inDays(2, "9:00"),
     status: "Starts from your Notion metrics page",
     integrations: ["notion", "gmail"],
+    disconnected: ["notion"],
   },
   {
     ...base,
@@ -275,13 +365,22 @@ export const DEMO_TASKS: Task[] = [
     title: "Inbox desk",
     assignee: "gaia",
     state: "standing",
-    setUpByGaia: true,
+    origin: {
+      app: "gmail",
+      why: "GAIA set this up when you connected Gmail. Every morning it sorts your mail and opens a task for each thread that needs a reply.",
+    },
     when: onSchedule("0 8 * * *", HOME),
     status: "Sorted 23 emails this morning",
     instructions:
       "Sort new mail into reply, act, fyi and junk. Open a task for every thread that needs a reply and draft it.",
     integrations: ["gmail"],
     icon: { name: "InboxIcon", color: "#72a3fe" },
+    canvas: [
+      {
+        heading: "How you like it",
+        body: "Newsletters go to fyi. Anything from Priya or the landlord gets a reply drafted the same day.",
+      },
+    ],
     runs: [
       {
         id: "d1",
@@ -289,6 +388,15 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "23 emails, 4 need a reply",
         duration: "1m 12s",
+        trigger: "schedule",
+        trace: [
+          { app: "gmail", text: "Read 23 new emails" },
+          { app: "gmail", text: "Sorted 4 to reply, 2 to act, 17 to fyi" },
+          {
+            app: "todos",
+            text: "Opened 2 tasks for threads that need a reply",
+          },
+        ],
       },
       {
         id: "d2",
@@ -296,6 +404,8 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "31 emails, 2 need a reply",
         duration: "1m 40s",
+        trigger: "schedule",
+        trace: [{ app: "gmail", text: "Read 31 new emails" }],
       },
     ],
   },
@@ -305,7 +415,8 @@ export const DEMO_TASKS: Task[] = [
     title: "Morning brief",
     assignee: "gaia",
     state: "standing",
-    when: onSchedule("0 8 * * 1-5", HOME),
+    when: { ...onSchedule("0 8 * * 1-5", HOME), ends: { afterRuns: 10 } },
+    runCount: 3,
     status: "Ran today at 8:00 AM",
     instructions:
       "Brief me on today's meetings, anything urgent in my inbox, and the weather. Keep it under a minute to read.",
@@ -318,6 +429,12 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "4 meetings, 2 urgent emails",
         duration: "38s",
+        trigger: "schedule",
+        trace: [
+          { app: "googlecalendar", text: "4 meetings, first at 9:30 AM" },
+          { app: "gmail", text: "2 urgent emails, from Sam and the bank" },
+          { app: "weather", text: "Clear, 64 degrees" },
+        ],
       },
       {
         id: "m2",
@@ -325,6 +442,8 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "6 meetings, 1 urgent email",
         duration: "44s",
+        trigger: "schedule",
+        trace: [],
       },
       {
         id: "m3",
@@ -332,6 +451,8 @@ export const DEMO_TASKS: Task[] = [
         outcome: "skipped",
         summary: "Quiet hours, so the brief waited",
         duration: "1s",
+        trigger: "schedule",
+        trace: [],
       },
     ],
   },
@@ -354,6 +475,11 @@ export const DEMO_TASKS: Task[] = [
         outcome: "success",
         summary: "Filed the Figma invoice",
         duration: "12s",
+        trigger: "gmail",
+        trace: [
+          { app: "gmail", text: "Found Figma_Invoice_Nov.pdf" },
+          { app: "googledrive", text: "Saved to Finance/Invoices/2026" },
+        ],
       },
       {
         id: "i2",
@@ -361,6 +487,8 @@ export const DEMO_TASKS: Task[] = [
         outcome: "skipped",
         summary: "A receipt, not an invoice",
         duration: "3s",
+        trigger: "gmail",
+        trace: [],
       },
     ],
     notify: false,
@@ -431,6 +559,9 @@ export const DEMO_TASKS: Task[] = [
     title: "Reply to the landlord about the lease",
     assignee: "gaia",
     state: "waiting",
+    waitingOn: "event",
+    nextCheck: checkIn(2),
+    status: "Asked when the new rent starts",
     when: inDays(2),
   },
   {
@@ -440,6 +571,9 @@ export const DEMO_TASKS: Task[] = [
     title: "Send Sam the Q3 deck",
     assignee: "gaia",
     state: "waiting",
+    waitingOn: "time",
+    nextCheck: checkIn(1),
+    status: "Looking for the latest deck in Drive",
     when: NO_WHEN,
   },
   {
@@ -450,6 +584,45 @@ export const DEMO_TASKS: Task[] = [
     assignee: "gaia",
     state: "done",
     doneToday: true,
+    status: "Confirmed Friday at 8",
     when: NO_WHEN,
+  },
+  {
+    ...base,
+    id: "meeting-prep",
+    title: "Meeting briefing",
+    assignee: "gaia",
+    state: "standing",
+    origin: {
+      app: "googlecalendar",
+      why: "GAIA set this up when you connected Google Calendar. Before each meeting it looks up who you are meeting and sends you a brief.",
+    },
+    when: onEvent("calendar_event_starting_soon", undefined, {
+      minutes_before_start: 60,
+      calendar_ids: [],
+      include_all_day: false,
+    }),
+    status: "Briefed you for 2 meetings today",
+    instructions:
+      "Prepare a brief for the upcoming meeting: who it is with, what you last discussed, open items and the join link. Skip solo events like the gym or focus time.",
+    integrations: ["googlecalendar", "gmail"],
+    icon: { name: "Calendar01Icon", color: "#eebe0c" },
+    runs: [
+      {
+        id: "mp1",
+        at: "Today, 9:30 AM",
+        outcome: "success",
+        summary: "Briefed you for the design review",
+        duration: "34s",
+        trigger: "googlecalendar",
+        trace: [
+          {
+            app: "googlecalendar",
+            text: "Design review at 10:30 AM, 5 people",
+          },
+          { app: "gmail", text: "Found 3 threads about the new onboarding" },
+        ],
+      },
+    ],
   },
 ];

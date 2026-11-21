@@ -2,14 +2,19 @@
 
 import { Popover, Switch } from "@heroui/react";
 import { Flag02Icon, Tick02Icon } from "@icons";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { switchVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
-import { AppIcon, PropertyRow } from "./TaskParts";
+import { AppIcon } from "./AppIcon";
+import { APP_NAMES } from "./demoTriggers";
+import { PropertyRow } from "./PropertyRow";
+import { statusLine } from "./statusModel";
+import TaskApps from "./TaskApps";
+import { TaskIconTile } from "./TaskIconTile";
 import { isRepeating, type Task } from "./taskModel";
 import WhenField from "./WhenField";
 
@@ -77,31 +82,90 @@ function PriorityRow({ task, update }: { task: Task; update: Update }) {
   );
 }
 
+/** A plain value that is read, not edited: one or two lines on the row. */
+function ReadRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <PropertyRow label={label} hint={hint}>
+      <span className="flex min-w-0 items-start gap-1.5 py-2 text-sm leading-5 text-zinc-200">
+        {children}
+      </span>
+    </PropertyRow>
+  );
+}
+
 /** The facts about a task, one per row; click a value to change it. */
 export default function TaskProperties({
   task,
   update,
+  parent,
+  onOpen,
 }: {
   task: Task;
   update: Update;
+  /** The task this one is a subtask of. */
+  parent?: Task;
+  onOpen: (task: Task) => void;
 }) {
   const isYours = task.assignee === "you";
   const notifyLabel = isYours ? "Nudges" : "Notify me";
+  // A stopped task says so above its properties, and a question says it in the ask.
+  const status =
+    !isYours && !isRepeating(task.when) && task.state !== "paused"
+      ? statusLine(task)
+      : undefined;
   return (
     <div>
-      {!isYours && task.status && !isRepeating(task.when) && (
-        <PropertyRow label="Status">
-          <span className="line-clamp-2 py-1.5 text-sm leading-5 text-zinc-200">
-            {task.status}
+      {task.origin && (
+        <ReadRow label="Set up by" hint={task.origin.why}>
+          <span className="flex h-5 shrink-0 items-center">
+            <AppIcon id={task.origin.app} size={15} />
           </span>
+          {/* "Calendar", not "Google Calendar": the logo already says whose it is. */}
+          GAIA, from{" "}
+          {(APP_NAMES[task.origin.app] ?? task.origin.app).replace(
+            /^Google /,
+            "",
+          )}
+        </ReadRow>
+      )}
+      {parent && (
+        <PropertyRow label="Part of">
+          <GaiaButton
+            size="sm"
+            variant="property"
+            tone="bright"
+            inset="tight"
+            onPress={() => onOpen(parent)}
+            className="-ml-2 h-8 min-w-0 gap-2 text-sm"
+          >
+            {parent.assignee === "gaia" && (
+              <TaskIconTile icon={parent.icon} size={18} />
+            )}
+            <span className="truncate">{parent.title}</span>
+          </GaiaButton>
         </PropertyRow>
+      )}
+      {status && (
+        <ReadRow label="Status">
+          <span className="line-clamp-3">{status}</span>
+        </ReadRow>
       )}
       <WhenField
         when={task.when}
         onChange={(when) => update({ when })}
         forGaia={!isYours}
+        runCount={task.runCount}
       />
       {!isRepeating(task.when) && <PriorityRow task={task} update={update} />}
+      {!isYours && <TaskApps task={task} update={update} />}
       <PropertyRow
         label={notifyLabel}
         hint={

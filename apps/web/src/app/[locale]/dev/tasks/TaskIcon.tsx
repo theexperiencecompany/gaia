@@ -9,7 +9,7 @@ import {
   getDefaultFormValues,
   type WorkflowFormData,
 } from "@/features/workflows/schemas/workflowFormSchema";
-import { GaiaMark } from "./TaskParts";
+import { GaiaMark } from "./TaskIconTile";
 import type { Task } from "./taskModel";
 
 /** A GAIA task's icon: the workflow icon picker, with the GAIA mark until one is chosen. */

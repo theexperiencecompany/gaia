@@ -8,6 +8,7 @@ import {
   PauseIcon,
   PlayIcon,
   Share01Icon,
+  StopCircleIcon,
 } from "@icons";
 import type { ComponentType } from "react";
 
@@ -15,23 +16,27 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
-import type { Workflow } from "@/features/workflows/api/workflowApi";
 import { cn } from "@/lib/utils";
 import TaskAsk, { type AskAnswer } from "./TaskAsk";
 import TaskCheckbox from "./TaskCheckbox";
 import TaskIcon from "./TaskIcon";
 import TaskProperties from "./TaskProperties";
 import TaskRecord from "./TaskRecord";
-import TaskSteps from "./TaskSteps";
+import TaskSubtasks from "./TaskSubtasks";
 import { isRepeating, type Task } from "./taskModel";
 
 interface TaskPanelProps {
   task: Task;
-  /** workflow.steps, for a task GAIA runs again and again. */
-  steps?: Workflow["steps"];
+  /** The task this one is a subtask of (parent_id). */
+  parent?: Task;
+  /** The tasks under this one (their parent_id is this task). */
+  childTasks: Task[];
   onChange: (task: Task) => void;
   onAnswer: (task: Task, answer: AskAnswer) => void;
   onDelete: (task: Task) => void;
+  onOpen: (task: Task) => void;
+  /** Turns GAIA's offer on a to-do into a subtask GAIA owns. */
+  onAcceptOffer: (task: Task, title: string) => void;
 }
 
 interface MenuAction {
@@ -42,20 +47,67 @@ interface MenuAction {
   onPress?: () => void;
 }
 
+/** The "..." menu: Stop for a one-off GAIA task, Disable for a repeating one, Delete for all. */
+function taskMenu(
+  task: Task,
+  update: (patch: Partial<Task>) => void,
+  resume: () => void,
+  remove: () => void,
+): MenuAction[] {
+  const isGaia = task.assignee === "gaia";
+  const isOff = task.state === "paused";
+  const repeats = isRepeating(task.when);
+  const stop = () => update({ state: "paused" });
+  const actions: MenuAction[] = [];
+  // A one-off GAIA task opens its chat from the footer, so only a repeating one lists it here.
+  if (isGaia && repeats) {
+    actions.push({ key: "chat", label: "Open chat", Icon: Comment01Icon });
+  }
+  // Stopping leaves the task where it is; GAIA just stops working on it (active=false).
+  if (isGaia && !repeats && task.state !== "done") {
+    actions.push(
+      isOff
+        ? { key: "resume", label: "Resume", Icon: PlayIcon, onPress: resume }
+        : { key: "stop", label: "Stop", Icon: StopCircleIcon, onPress: stop },
+    );
+  }
+  if (repeats && !task.pauseReason) {
+    actions.push(
+      isOff
+        ? { key: "enable", label: "Enable", Icon: PlayIcon, onPress: resume }
+        : { key: "disable", label: "Disable", Icon: PauseIcon, onPress: stop },
+      { key: "publish", label: "Publish to the community", Icon: Share01Icon },
+    );
+  }
+  actions.push({
+    key: "delete",
+    label: "Delete",
+    Icon: Delete02Icon,
+    isDanger: true,
+    onPress: remove,
+  });
+  return actions;
+}
+
 /**
  * Every task in the sidebar, the same way: its name, what it is, when, and the
  * rest. Yours leads with a checkbox; GAIA's leads with its icon and keeps a record.
  */
 export default function TaskPanel({
   task,
-  steps,
+  parent,
+  childTasks,
   onChange,
   onAnswer,
   onDelete,
+  onOpen,
+  onAcceptOffer,
 }: TaskPanelProps) {
   const isYours = task.assignee === "you";
   const isDone = task.state === "done";
   const isOff = task.state === "paused";
+  // Switched off by you (active=false, no pause_reason), not paused by the system.
+  const isSwitchedOff = isOff && !task.pauseReason;
   const repeats = isRepeating(task.when);
   const update = (patch: Partial<Task>) => onChange({ ...task, ...patch });
 
@@ -78,41 +130,8 @@ export default function TaskPanel({
     />
   );
 
-  // A one-off GAIA task opens its chat from the footer, so only a repeating one lists it here.
-  const menu: MenuAction[] = [
-    ...(repeats && !isYours
-      ? [{ key: "chat", label: "Open chat", Icon: Comment01Icon }]
-      : []),
-    ...(repeats && !task.ask
-      ? [
-          isOff
-            ? {
-                key: "enable",
-                label: "Enable",
-                Icon: PlayIcon,
-                onPress: () => update({ state: "standing" }),
-              }
-            : {
-                key: "disable",
-                label: "Disable",
-                Icon: PauseIcon,
-                onPress: () => update({ state: "paused" }),
-              },
-          {
-            key: "publish",
-            label: "Publish to the community",
-            Icon: Share01Icon,
-          },
-        ]
-      : []),
-    {
-      key: "delete",
-      label: "Delete",
-      Icon: Delete02Icon,
-      isDanger: true,
-      onPress: () => onDelete(task),
-    },
-  ];
+  const resume = () => update({ state: repeats ? "standing" : "running" });
+  const menu = taskMenu(task, update, resume, () => onDelete(task));
 
   const runNow = () =>
     update({
@@ -123,6 +142,8 @@ export default function TaskPanel({
           outcome: "success",
           summary: "Started by you",
           duration: "1s",
+          trigger: "manual",
+          trace: [],
         },
         ...task.runs,
       ],
@@ -180,16 +201,20 @@ export default function TaskPanel({
           />
         </div>
 
-        {isOff && !task.ask && (
+        {isSwitchedOff && (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-zinc-800 py-2.5 pr-2.5 pl-4">
-            <p className="text-sm text-zinc-300">Disabled, so it won't run.</p>
+            <p className="text-sm text-zinc-300">
+              {repeats
+                ? "Disabled, so it won't run."
+                : "Stopped, so it won't run."}
+            </p>
             <GaiaButton
               size="sm"
               variant="default-solid"
               tone="strong"
-              onPress={() => update({ state: "standing" })}
+              onPress={resume}
             >
-              Enable
+              {repeats ? "Enable" : "Resume"}
             </GaiaButton>
           </div>
         )}
@@ -198,11 +223,22 @@ export default function TaskPanel({
           <TaskAsk task={task} onAnswer={(answer) => onAnswer(task, answer)} />
         )}
 
-        <TaskProperties task={task} update={update} />
+        <TaskProperties
+          task={task}
+          update={update}
+          parent={parent}
+          onOpen={onOpen}
+        />
 
-        {!repeats && <TaskSteps task={task} update={update} />}
+        <TaskSubtasks
+          task={task}
+          update={update}
+          childTasks={childTasks}
+          onOpen={onOpen}
+          onAcceptOffer={(title) => onAcceptOffer(task, title)}
+        />
 
-        {!isYours && <TaskRecord task={task} steps={steps} />}
+        {!isYours && <TaskRecord task={task} />}
       </div>
 
       <div className="flex items-center gap-2 p-3">
