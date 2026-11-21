@@ -2951,7 +2951,6 @@ _GET_WORKFLOW = "app.services.workflow.service.WorkflowService.get_workflow"
 class TestTriggerIntegrationIsRequired:
     """Create, activate, regenerate and generate all ask the list view's question."""
 
-    @pytest.mark.regression
     async def test_activate_names_the_trigger_integration(self) -> None:
         with (
             patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
@@ -2982,7 +2981,6 @@ class TestTriggerIntegrationIsRequired:
         # The gate asked about this user's connections, not anyone's.
         _gmail_disconnected.assert_awaited_with(USER_ID)
 
-    @pytest.mark.regression
     async def test_regenerate_keeps_the_workflow_off(self) -> None:
         with (
             patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=_gmail_triggered_workflow()),
@@ -2998,7 +2996,6 @@ class TestTriggerIntegrationIsRequired:
 
         assert set_steps.await_args.kwargs["deactivate"] is True
 
-    @pytest.mark.regression
     async def test_generate_keeps_the_workflow_off(self) -> None:
         with (
             patch(f"{_REPO}.touch", new_callable=AsyncMock),

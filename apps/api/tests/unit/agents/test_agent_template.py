@@ -140,7 +140,6 @@ class TestApprovalMessagingWording:
     def test_every_channel_is_classified(self) -> None:
         assert set(COMMS_PROMPT_BY_SOURCE) == set(MESSAGING_SOURCES) | set(UI_SOURCES)
 
-    @pytest.mark.regression
     def test_messaging_channels_leave_the_asking_to_gaia(self) -> None:
         for source in MESSAGING_SOURCES:
             prompt = get_comms_static_prompt(source)
@@ -160,7 +159,6 @@ class TestApprovalMessagingWording:
             assert "do not ask them to type a reply in chat" in prompt
             assert "APPROVALS ON THIS PLATFORM" not in prompt
 
-    @pytest.mark.regression
     def test_no_channel_tells_the_user_to_reply_yes(self) -> None:
         # Bug 30: a todo's parked write-up said "Reply YES", which answers nothing anywhere.
         for source in COMMS_PROMPT_BY_SOURCE:

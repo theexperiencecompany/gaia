@@ -600,7 +600,6 @@ class TestCallModel:
 
         assert result["messages"][-1].content == blocks
 
-    @pytest.mark.regression
     def test_sync_call_model_comms_agent_keeps_no_text_of_a_breaks_only_block_reply(self) -> None:
         """Regression: a fallback lane's block reply of bare breaks reached the thread verbatim, for later turns to copy."""
         reasoning = {"type": "reasoning", "reasoning": "nothing to add"}
