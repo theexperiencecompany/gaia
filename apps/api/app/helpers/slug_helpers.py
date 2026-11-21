@@ -36,8 +36,8 @@ def generate_integration_slug(
     slug = f"{slugify(name, max_length=40)}-mcp-{slugify(category, max_length=20)}"
 
     if len(slug) > max_length:
-        clipped = slug[:max_length]
-        last_hyphen = clipped.rfind(_SLUG_STRIP_CHARS)
-        slug = clipped[:last_hyphen] if last_hyphen > 0 else clipped
+        cut = slug[:max_length]
+        last_hyphen = cut.rfind(_SLUG_STRIP_CHARS)
+        slug = cut[:last_hyphen] if last_hyphen > 0 else cut
 
     return slug.rstrip(_SLUG_STRIP_CHARS)
