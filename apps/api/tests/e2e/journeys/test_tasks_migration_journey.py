@@ -1,7 +1,8 @@
 """Journey: an account built on today's todos and workflows moves into tasks with nothing lost.
 
 The account is made by driving the real system (routes, tools, worker jobs, OAuth connect),
-not by writing documents by hand. The migration then runs on real Mongo, the parity checker
+not by writing documents by hand, except for plain to-dos: those now live only in tasks, so
+the old todos they migrate from are written as the old todos API stored them. The migration then runs on real Mongo, the parity checker
 must come back clean, every kind of corruption must be caught, a second run must change
 nothing, and a run killed midway must resume to the same end state.
 """
@@ -12,7 +13,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
+from uuid import uuid4
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 from scripts.seed_explore_workflows import create_workflow_document, get_all_workflows
@@ -23,7 +26,6 @@ from scripts.tasks_migration.transform import task_from_workflow
 
 from app.constants.tasks import INBOX_DESK_SYSTEM_KEY
 from app.constants.waits import WaitCondition
-from app.db.repositories.todos import todo_repository
 from app.models.agent_config import AgentConfigurableView
 from app.models.task_models import TaskDocument
 from app.models.workflow_models import (
@@ -60,9 +62,46 @@ QUESTION = "Window or aisle for the Lisbon flight?"
 ONLY_BILLING = "the email is about billing"
 
 
-async def _generated_workflow(tasks: TasksDriver, title: str) -> str:
+async def _legacy_todo(
+    db: AsyncIOMotorDatabase[dict[str, Any]],
+    title: str,
+    *,
+    due: datetime | None = None,
+    recurrence: str | None = None,
+    checklist: tuple[tuple[str, bool], ...] = (),
+    completed: bool = False,
+) -> str:
+    """Write a plain todo as the old todos API stored it; returns its id."""
+    now = datetime.now(UTC)
+    todo_id = ObjectId()
+    await db["todos"].insert_one(
+        {
+            "_id": todo_id,
+            "user_id": USER,
+            "title": title,
+            "description": None,
+            "labels": [],
+            "due_date": due,
+            "due_date_timezone": None,
+            "priority": "none",
+            "completed": completed,
+            "completed_at": now if completed else None,
+            "subtasks": [
+                {"id": str(uuid4()), "title": item, "completed": ticked, "created_at": now}
+                for item, ticked in checklist
+            ],
+            "recurrence": recurrence,
+            "notify_on_run": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    return str(todo_id)
+
+
+async def _generated_workflow(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
     """Give a to-do its generated workflow the way the generation worker does, steps supplied."""
-    todo = await tasks.create_todo(title)
+    todo_id = await _legacy_todo(db, title)
     workflow = await WorkflowService.create_workflow(
         CreateWorkflowRequest(
             title=f"Todo: {title}",
@@ -73,10 +112,10 @@ async def _generated_workflow(tasks: TasksDriver, title: str) -> str:
         ),
         USER,
         is_todo_workflow=True,
-        source_todo_id=todo.id,
+        source_todo_id=todo_id,
     )
     assert workflow.id is not None
-    assert await todo_repository.link_workflow(todo.id, user_id=USER, workflow_id=workflow.id)
+    await db["todos"].update_one({"_id": ObjectId(todo_id)}, {"$set": {"workflow_id": workflow.id}})
     return workflow.id
 
 
@@ -90,13 +129,9 @@ async def _seed_explore_row(db: AsyncIOMotorDatabase[dict[str, Any]]) -> str:
 async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, Any]]) -> None:
     """Drive today's system into an account with every kind of todo and workflow."""
     soon = datetime.now(UTC) + timedelta(days=2)
-    groceries = await tasks.create_todo("Buy groceries", due=soon)
-    groceries = await tasks.add_subtask(groceries.id, "Milk")
-    groceries = await tasks.add_subtask(groceries.id, "Bread")
-    await tasks.tick_subtask(groceries.id, groceries.subtasks[0].id)
-    await tasks.create_todo("Pay rent", due=soon, repeat="0 9 1 * *")
-    done = await tasks.create_todo("Return the library book")
-    await tasks.complete(done.id)
+    await _legacy_todo(db, "Buy groceries", due=soon, checklist=(("Milk", True), ("Bread", False)))
+    await _legacy_todo(db, "Pay rent", due=soon, recurrence="0 9 1 * *")
+    await _legacy_todo(db, "Return the library book", completed=True)
 
     dentist = await tasks.hand_to_gaia("Find a dentist near the office")
     await wait_for_user(
@@ -114,7 +149,7 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
     )
     finished = await tasks.hand_to_gaia("Renew the car insurance")
     await tasks.run_due(finished.id, Finishes("Renewed the insurance."))
-    await _generated_workflow(tasks, "Plan the offsite")
+    await _generated_workflow(db, "Plan the offsite")
 
     await tasks.connect_app("gmail")
     watcher = await tasks.hand_to_gaia("Wait for the landlord's reply")

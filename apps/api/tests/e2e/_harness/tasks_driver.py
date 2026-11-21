@@ -1,7 +1,8 @@
-"""The user's actions on tasks, implemented on today's /todos and /workflows system.
+"""The user's actions on tasks: to-dos on /tasks, GAIA's work still on /todos and /workflows.
 
-Journeys speak only through this driver and tasks_views, so the same journey
-files can later run against /tasks by swapping this module's implementation.
+Journeys speak only through this driver and tasks_views, so the same journey files run
+whichever system holds a task. A to-do lives in tasks (its id starts task_); a GAIA
+one-off is still a tracked todo, and a repeating task a workflow, until they move.
 """
 
 from __future__ import annotations
@@ -81,6 +82,7 @@ from tests.e2e._harness.transcript import Transcript
 from tests.e2e._harness.turn_queue import APPROVAL_ID_FROM_PROMPT, TurnQueue
 from tests.integration_account_factories import provider_account_id
 
+TASKS = "/api/v1/tasks"
 TODOS = "/api/v1/todos"
 WORKFLOWS = "/api/v1/workflows"
 WEBHOOK = "/api/v1/webhook/composio"
@@ -139,7 +141,8 @@ _JOBS: Mapping[str, Callable[..., Awaitable[object]]] = {
     **{f.name: f.coroutine for f in TASK_FUNCTIONS if isinstance(f, Function)},
     **{f.__name__: f for f in TASK_FUNCTIONS if not isinstance(f, Function)},
 }
-_RUN_JOBS = ("execute_tracked_todo", "resume_tracked_todo", "execute_workflow_by_id")
+_RUN_JOBS = ("run_task", "execute_tracked_todo", "resume_tracked_todo", "execute_workflow_by_id")
+USER_SETTINGS = "/api/v1/user"
 
 
 def _ok(response: Response) -> Any:
@@ -151,7 +154,31 @@ def _ok(response: Response) -> Any:
     return response.json()
 
 
+def _when_time(when: dict[str, Any]) -> datetime | None:
+    moment = when.get("at") or when.get("next_run")
+    return datetime.fromisoformat(moment) if moment else None
+
+
 def _task_view(body: dict[str, Any]) -> TaskView:
+    """Read a /tasks response as the user sees the task."""
+    return TaskView(
+        id=body["id"],
+        title=body["title"],
+        done=body["completed"],
+        due=_when_time(body["when"]),
+        subtasks=tuple(
+            Subtask(id=s["id"], title=s["title"], done=s["completed"]) for s in body["subtasks"]
+        ),
+        by_gaia=body["assignee"] == "gaia",
+        failed="failed" in body["status_flags"],
+        parent_id=body["parent_id"],
+        open_children=body["open_subtask_count"],
+        next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
+    )
+
+
+def _todo_view(body: dict[str, Any]) -> TaskView:
+    """Read a /todos response (a GAIA one-off not yet moved) as the user sees the task."""
     return TaskView(
         id=body["id"],
         title=body["title"],
@@ -211,6 +238,18 @@ def _is_workflow(task_id: str) -> bool:
     return task_id.startswith("wf_")
 
 
+def _is_task(task_id: str) -> bool:
+    return task_id.startswith("task_")
+
+
+def _base(task_id: str) -> str:
+    return TASKS if _is_task(task_id) else TODOS
+
+
+def _view(task_id: str, body: dict[str, Any]) -> TaskView:
+    return _task_view(body) if _is_task(task_id) else _todo_view(body)
+
+
 class TasksDriver:
     """A signed-in user's hands on their tasks, and their eyes on what came of them."""
 
@@ -253,11 +292,20 @@ class TasksDriver:
     ) -> TaskView:
         """Create a to-do the user does themselves; repeat is a cron the to-do comes back on."""
         payload: dict[str, Any] = {"title": title}
-        if due is not None:
-            payload["due_date"] = due.isoformat()
         if repeat is not None:
-            payload["recurrence"] = repeat
-        return _task_view(_ok(await self._client.post(TODOS, json=payload)))
+            payload["when"] = {"kind": "repeat", "rule": repeat}
+        elif due is not None:
+            payload["when"] = {"kind": "date", "at": due.isoformat()}
+        return _task_view(_ok(await self._client.post(TASKS, json=payload)))
+
+    async def keep_quiet_hours(self, *, start_hour: int, end_hour: int) -> None:
+        """Turn on the user's quiet hours, on their own clock."""
+        _ok(
+            await self._client.put(
+                f"{USER_SETTINGS}/quiet-hours",
+                json={"enabled": True, "start_hour": start_hour, "end_hour": end_hour},
+            )
+        )
 
     async def pass_time_until(self, when: datetime) -> None:
         """Let the clock reach when, every run armed for any task by then firing in its turn."""
@@ -275,41 +323,41 @@ class TasksDriver:
         payload: dict[str, Any] = {}
         if title is not None:
             payload["title"] = title
-        if due is not None:
+        if due is not None and _is_task(task_id):
+            payload["when"] = {"kind": "date", "at": due.isoformat()}
+        elif due is not None:
             payload["due_date"] = due.isoformat()
-        return _task_view(_ok(await self._client.put(f"{TODOS}/{task_id}", json=payload)))
+        return await self._put(task_id, payload)
 
     async def complete(self, task_id: str) -> TaskView:
-        return _task_view(
-            _ok(await self._client.put(f"{TODOS}/{task_id}", json={"completed": True}))
-        )
+        return await self._put(task_id, {"completed": True})
 
     async def reopen(self, task_id: str) -> TaskView:
-        return _task_view(
-            _ok(await self._client.put(f"{TODOS}/{task_id}", json={"completed": False}))
-        )
+        return await self._put(task_id, {"completed": False})
+
+    async def _put(self, task_id: str, payload: dict[str, Any]) -> TaskView:
+        path = f"{_base(task_id)}/{task_id}"
+        return _view(task_id, _ok(await self._client.put(path, json=payload)))
 
     async def delete(self, task_id: str) -> None:
-        response = await self._client.delete(f"{TODOS}/{task_id}")
+        response = await self._client.delete(f"{_base(task_id)}/{task_id}")
         assert response.status_code == 204, response.text
 
     async def add_subtask(self, task_id: str, title: str) -> TaskView:
-        return _task_view(
-            _ok(await self._client.post(f"{TODOS}/{task_id}/subtasks", json={"title": title}))
-        )
+        path = f"{_base(task_id)}/{task_id}/subtasks"
+        return _view(task_id, _ok(await self._client.post(path, json={"title": title})))
 
     async def rename_subtask(self, task_id: str, subtask_id: str, title: str) -> TaskView:
-        return _task_view(
-            _ok(
-                await self._client.put(
-                    f"{TODOS}/{task_id}/subtasks/{subtask_id}", json={"title": title}
-                )
-            )
-        )
+        path = f"{TASKS}/{task_id}/subtasks/{subtask_id}"
+        return _task_view(_ok(await self._client.put(path, json={"title": title})))
 
     async def tick_subtask(self, task_id: str, subtask_id: str) -> TaskView:
+        """Tick a checklist item, or untick it when it is already ticked."""
+        current = await self.get(task_id)
+        item = next((s for s in current.subtasks if s.id == subtask_id), None) if current else None
+        path = f"{TASKS}/{task_id}/subtasks/{subtask_id}"
         return _task_view(
-            _ok(await self._client.post(f"{TODOS}/{task_id}/subtasks/{subtask_id}/toggle"))
+            _ok(await self._client.put(path, json={"completed": not item.done if item else True}))
         )
 
     # Work handed to GAIA.
@@ -823,23 +871,23 @@ class TasksDriver:
     # What the user sees.
 
     async def get(self, task_id: str) -> TaskView | None:
-        response = await self._client.get(f"{TODOS}/{task_id}")
+        response = await self._client.get(f"{_base(task_id)}/{task_id}")
         if response.status_code == 404:
             return None
-        return _task_view(_ok(response))
+        return _view(task_id, _ok(response))
 
     async def open_list(self) -> list[TaskView]:
         """Return the open tasks list, in the order the list API returns it."""
-        return await self._list(completed="false")
+        return [*await self._tasks(completed="false"), *await self._list(completed="false")]
 
     async def overdue(self) -> list[TaskView]:
-        return await self._list(overdue="true")
+        return [*await self._tasks(overdue="true"), *await self._list(overdue="true")]
 
     async def completed_list(self) -> list[TaskView]:
-        return await self._list(completed="true")
+        return [*await self._tasks(completed="true"), *await self._list(completed="true")]
 
     async def counts(self) -> Counts:
-        body = _ok(await self._client.get(f"{TODOS}/counts"))
+        body = _ok(await self._client.get(f"{TASKS}/counts"))
         return Counts(today=body["today"], overdue=body["overdue"], completed=body["completed"])
 
     async def subtasks_of(self, task_id: str) -> list[TaskView]:
@@ -928,6 +976,10 @@ class TasksDriver:
     async def _gaia_tasks(self) -> list[TaskView]:
         return await self._list(labels=GAIA_TRACKED_LABEL)
 
+    async def _tasks(self, **params: str) -> list[TaskView]:
+        body = _ok(await self._client.get(TASKS, params=params))
+        return [_task_view(item) for item in body["tasks"]]
+
     async def _list(self, **params: str) -> list[TaskView]:
         body = _ok(await self._client.get(TODOS, params={"mode": "text", **params}))
-        return [_task_view(item) for item in body["data"]]
+        return [_todo_view(item) for item in body["data"]]

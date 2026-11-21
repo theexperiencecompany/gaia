@@ -27,6 +27,8 @@ from tests.e2e._harness.turn_queue import TurnQueue
 from tests.helpers import skip_items_without_real_services, worker_redis_url
 
 OWNED_COLLECTIONS = (
+    "tasks",
+    "task_runs",
     "todos",
     "projects",
     "workflows",
@@ -73,6 +75,8 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
                 "name": FAKE_USER.name,
                 "timezone": "UTC",
                 "onboarding.completed": True,
+                # Off unless a journey turns them on, so a nudge's time decides when it lands.
+                "quiet_hours": {"enabled": False, "start_hour": 22, "end_hour": 8},
             },
             "$unset": {
                 "hil_preferences": "",

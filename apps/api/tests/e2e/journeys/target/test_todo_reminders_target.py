@@ -8,7 +8,7 @@ import pytest
 
 from tests.e2e._harness.tasks_driver import TasksDriver
 
-pytestmark = [pytest.mark.e2e, pytest.mark.tasks_target]
+pytestmark = pytest.mark.e2e
 
 
 class TestARepeatingTodo:
