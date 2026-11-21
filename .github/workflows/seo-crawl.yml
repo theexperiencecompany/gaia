@@ -42,8 +42,11 @@ jobs:
       contents: write # push the baseline branch
       pull-requests: write # open the baseline PR
     steps:
+      # The deployed commit's baseline, not master's tip: a newer commit can edit
+      # the baseline before this run starts. A schedule run keeps the default ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.deployed_sha || '' }}
           fetch-depth: 1
 
       - name: Crawl the live site with squirrelscan as a plain full audit does
@@ -76,6 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.deployed_sha }}
           persist-credentials: false
       - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
         id: audit
