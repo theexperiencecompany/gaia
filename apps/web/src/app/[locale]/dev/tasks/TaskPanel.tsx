@@ -9,7 +9,7 @@ import {
   PlayIcon,
   Share01Icon,
 } from "@icons";
-import type { ComponentType } from "react";
+import { type ComponentType, useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -17,6 +17,7 @@ import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import { cn } from "@/lib/utils";
+import { type PublishInput, PublishStep } from "../explore/PublishStep";
 import TaskAsk, { type AskAnswer } from "./TaskAsk";
 import TaskCheckbox from "./TaskCheckbox";
 import TaskIcon from "./TaskIcon";
@@ -34,7 +35,8 @@ interface TaskPanelProps {
   onDelete: (task: Task) => void;
   /** Whether a copy of this task is on Explore as a template. */
   isPublished?: boolean;
-  onPublishToggle?: () => void;
+  onPublish?: (input: PublishInput) => void;
+  onUnpublish?: () => void;
 }
 
 interface MenuAction {
@@ -56,8 +58,10 @@ export default function TaskPanel({
   onAnswer,
   onDelete,
   isPublished = false,
-  onPublishToggle,
+  onPublish,
+  onUnpublish,
 }: TaskPanelProps) {
+  const [isPublishing, setIsPublishing] = useState(false);
   const isYours = task.assignee === "you";
   const isDone = task.state === "done";
   const isOff = task.state === "paused";
@@ -103,12 +107,19 @@ export default function TaskPanel({
                 Icon: PauseIcon,
                 onPress: () => update({ state: "paused" }),
               },
-          {
-            key: "publish",
-            label: isPublished ? "Unpublish" : "Publish to the community",
-            Icon: Share01Icon,
-            onPress: onPublishToggle,
-          },
+          isPublished
+            ? {
+                key: "unpublish",
+                label: "Unpublish",
+                Icon: Share01Icon,
+                onPress: onUnpublish,
+              }
+            : {
+                key: "publish",
+                label: "Publish to the community",
+                Icon: Share01Icon,
+                onPress: () => setIsPublishing(true),
+              },
         ]
       : []),
     {
@@ -202,6 +213,17 @@ export default function TaskPanel({
 
         {!isDone && (
           <TaskAsk task={task} onAnswer={(answer) => onAnswer(task, answer)} />
+        )}
+
+        {isPublishing && onPublish && !isPublished && (
+          <PublishStep
+            task={task}
+            onPublish={(input) => {
+              onPublish(input);
+              setIsPublishing(false);
+            }}
+            onCancel={() => setIsPublishing(false)}
+          />
         )}
 
         <TaskProperties task={task} update={update} />
