@@ -14,7 +14,7 @@ import path from "node:path";
 import tailwind from "@tailwindcss/postcss";
 import postcss from "postcss";
 import { describe, expect, it } from "vitest";
-import { AREAS } from "../../scripts/generate-area-css.mjs";
+import { AREAS, areaEntries } from "../../scripts/generate-area-css.mjs";
 
 /**
  * Tailwind v4 resolves `@source` globs relative to the CSS file and silently
@@ -78,6 +78,14 @@ describe("area bundles come from the import graph", () => {
         stdio: "pipe",
       },
     );
+  });
+
+  it("a dev-only page (page.dev.tsx) is a route of the area its layout imports", () => {
+    const devPage = path.join(
+      WEB_DIR,
+      "src/app/[locale]/dev/toasts/page.dev.tsx",
+    );
+    expect(areaEntries("app")).toContain(devPage);
   });
 
   for (const area of AREAS) {
