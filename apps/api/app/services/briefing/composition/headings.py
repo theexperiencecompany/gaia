@@ -5,16 +5,20 @@ or outcome; tone and register never count. A heading untrue of any item is sent 
 composition named, like any other broken part of it.
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.prompts.brief_heading_prompts import BRIEF_HEADING_PROMPT, NOT_NEW
 from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL, BRIEF_HEADING_CHECK_TEMPERATURE
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefComposition, ComposedItems
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.hil.utils import untrusted_fence
 from app.utils.errors import AppError
+from app.utils.timezone import as_utc
 
 _JUDGING = StructuredCallOptions(temperature=BRIEF_HEADING_CHECK_TEMPERATURE, schema_held=True)
 
@@ -43,13 +47,20 @@ def _groups(composition: BriefComposition) -> dict[int, ComposedItems]:
     }
 
 
+def _not_new(candidate: BriefCandidate, since: datetime) -> bool:
+    """Whether an earlier brief saw it, or the app made it before the last brief: nothing new."""
+    signal = candidate.signal
+    created = as_utc(signal.created_at) if signal is not None else None
+    return candidate.is_known or (created is not None and created < since)
+
+
 def _group_lines(number: int, group: ComposedItems, pool: FactPool) -> str:
     lines = [f'block {number}, heading "{group.heading}", state {group.state.value}:']
     for item in group.items:
         candidate = pool.items[item.id]
         said = item.action or item.outcome
         side = f"{'action' if item.action else 'outcome'} {said.value}" if said else "neither"
-        known = f" | {NOT_NEW}" if candidate.is_known else ""
+        known = f" | {NOT_NEW}" if _not_new(candidate, pool.context.done_since) else ""
         lines.append(
             f"- item {item.id}: {item.title} | {candidate.state.label.lower()} | {side}{known}"
         )

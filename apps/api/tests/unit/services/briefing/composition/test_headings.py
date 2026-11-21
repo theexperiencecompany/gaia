@@ -15,7 +15,7 @@ from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_composition_models import BriefComposition
 from app.models.brief_item_models import ItemState
-from app.models.scout_models import SignalMemoryDocument
+from app.models.scout_models import Signal, SignalMemoryDocument
 from app.services.briefing.composition import headings
 from app.services.briefing.composition.headings import (
     HeadingVerdict,
@@ -276,3 +276,35 @@ async def test_an_item_an_earlier_brief_saw_unchanged_is_shown_as_not_new(model:
     prompt = model.await_args.args[1]
     assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
     assert "- item 2: Investor update | done | outcome sent\n" in prompt + "\n"
+
+
+async def test_an_item_the_app_made_before_the_last_brief_is_shown_as_not_new(
+    model: AsyncMock,
+) -> None:
+    """Sim 12-03: issues made before the 12-02 brief, which never saw them, went out as new."""
+
+    def issue(created: datetime) -> BriefCandidate:
+        made = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id=f"{created.day}",
+            kind="issue",
+            title="Emoji crash",
+            created_at=created,
+        )
+        return POOL.items[1].model_copy(update={"signal": made})
+
+    pool = replace(
+        POOL,
+        items={
+            1: issue(datetime(2026, 11, 9, tzinfo=UTC)),
+            2: issue(datetime(2026, 11, 10, 6, tzinfo=UTC)),
+        },
+    )
+
+    await heading_problems(USER_ID, COMPOSITION, pool)
+
+    prompt = model.await_args.args[1]
+    assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
+    (made_after,) = [line for line in prompt.splitlines() if line.startswith("- item 2:")]
+    assert not made_after.endswith("not new")
