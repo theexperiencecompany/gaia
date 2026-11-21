@@ -105,7 +105,6 @@ ECHOED_NOTE = (
 )
 
 
-@pytest.mark.regression
 def test_an_echoed_delivery_note_never_reaches_the_reply() -> None:
     """Regression: the step path lost the internal-tag backstop, so an echoed outcome note showed on screen."""
     reply = ReplyText().take(ResponseEvent(response=f"Expired.\n\n{ECHOED_NOTE}"))
@@ -140,7 +139,6 @@ def test_a_lookalike_tag_is_ordinary_text() -> None:
     assert reply.shown == reply.text
 
 
-@pytest.mark.regression
 def test_a_bare_closing_tag_still_streaming_is_never_shown() -> None:
     before = ReplyText().take(ResponseEvent(response="Done.</delivery_instr"))
     after = before.take(ResponseEvent(response="uctions> More."))
@@ -150,7 +148,6 @@ def test_a_bare_closing_tag_still_streaming_is_never_shown() -> None:
     assert after.text == "Done. More."
 
 
-@pytest.mark.regression
 def test_a_note_left_open_at_a_message_boundary_hides_only_its_own_message() -> None:
     boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
     reply = (
@@ -176,7 +173,6 @@ def test_a_message_that_was_only_an_open_note_opens_no_bubble() -> None:
     assert reply.text == "Hello."
 
 
-@pytest.mark.regression
 def test_an_opener_still_missing_its_bracket_at_a_message_boundary_hides_nothing_after_it() -> None:
     boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
     reply = (
@@ -190,7 +186,6 @@ def test_an_opener_still_missing_its_bracket_at_a_message_boundary_hides_nothing
     assert reply.shown == reply.text
 
 
-@pytest.mark.regression
 def test_an_empty_message_between_two_boundaries_keeps_the_pending_break() -> None:
     boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
     reply = (
@@ -205,7 +200,6 @@ def test_an_empty_message_between_two_boundaries_keeps_the_pending_break() -> No
     assert reply.shown == reply.text
 
 
-@pytest.mark.regression
 def test_a_kept_message_left_inside_a_note_hides_nothing_after_it() -> None:
     reply = ReplyText.kept("Status.<delivery_instructions>internal").take(
         ResponseEvent(response="Hello.")

@@ -65,6 +65,11 @@ behavior belongs in `test:real`, not in the default run.
   rejects it). Tests for a brand-new module are gap-fill: leave them unmarked.
   The two cases look identical until CI fails, so check with
   `git cat-file -e origin/master:<path>` before reaching for the mark.
+  The same goes for the harness: the lane runs this branch's whole `tests/`
+  tree, so a conftest on the test's path, `tests/helpers.py` or
+  `tests/factories.py` importing a name new on this branch fails every marked
+  test under it at collection. Reproduce the lane with
+  `bash scripts/ci/pytest.sh regression-proof origin/master` before pushing a mark.
 - **Hermetic paths**: never hardcode `~` or absolute paths — the `_hermetic_environment` fence owns env (it blanks real credentials at session start); any env a test needs is provisioned by fixtures, not read from the developer's machine.
 - **Fixtures catalog** — search before you build:
   - `tests/conftest.py` — env fence, `client` / `unauthed_client` (ASGITransport), `fake_user` / `fake_user_2`, `fake_redis` (per-test fakeredis behind `redis_cache`; any tier whose code path touches Redis without a real-services fixture)

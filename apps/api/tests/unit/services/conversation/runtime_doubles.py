@@ -76,8 +76,9 @@ class FakeClock:
         self.now += timedelta(seconds=seconds)
 
 
-async def _no_pause(point: str) -> None:
-    return None
+async def _io_yield(point: str) -> None:
+    # A real log call suspends on I/O, so a step looping on reads still lets its beat and timeouts run.
+    await asyncio.sleep(0)
 
 
 @dataclass
@@ -96,7 +97,7 @@ class InMemoryConversationLog:
     """The ConversationLog port over a dict; pause(point) runs before and after every call."""
 
     def __init__(
-        self, clock: Callable[[], datetime], pause: Callable[[str], Awaitable[None]] = _no_pause
+        self, clock: Callable[[], datetime], pause: Callable[[str], Awaitable[None]] = _io_yield
     ) -> None:
         self._clock = clock
         self._conversations: dict[str, _Conversation] = {}
@@ -267,7 +268,7 @@ class PausingLog:
 
     def __init__(self, inner: ConversationLog) -> None:
         self._inner = inner
-        self.pause: Callable[[str], Awaitable[None]] = _no_pause
+        self.pause: Callable[[str], Awaitable[None]] = _io_yield
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
         await self.pause("append")
@@ -369,6 +370,8 @@ class Pause:
 
 # Seconds a run whose script ended waits to be cancelled; the step cancels it within milliseconds.
 SILENT_RUN_LIMIT_SECONDS = 5
+# Seconds a test waits for one step to return: past the silent run's limit, so that error shows first.
+STEP_LIMIT_SECONDS = 10
 
 
 class UnscriptedRunError(Exception):

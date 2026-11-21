@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-import pytest
 
 from app.agents.core.interruption import (
     INTERRUPTED_TOOL_RESULT,
@@ -142,7 +141,6 @@ def _snapshot(messages: list[Any] | None) -> MagicMock:
 
 
 class TestRecordInterruption:
-    @pytest.mark.regression
     async def test_the_record_rewrites_the_dangling_call_so_no_backfill_is_orphaned(self) -> None:
         """Regression: a call only in pending writes was dropped, leaving its backfill answering nothing."""
         graph = MagicMock()

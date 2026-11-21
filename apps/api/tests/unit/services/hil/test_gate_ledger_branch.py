@@ -817,7 +817,6 @@ class TestLedgerAutoMode:
         assert await gate.decide_tool_call(gated_request()) is None
         gate_seams.ledger.register.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_an_auto_run_is_counted_as_a_decision_made_by_auto(
         self, gate_seams: GateSeams
     ) -> None:

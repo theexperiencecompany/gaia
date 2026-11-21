@@ -35,6 +35,7 @@ from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import fired, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
+    STEP_LIMIT_SECONDS,
     USER,
     Absorbed,
     Action,
@@ -68,7 +69,7 @@ def arrive(rt: Runtime, *entries: Entry) -> Action:
 
 
 async def run(rt: Runtime) -> None:
-    await advance(rt.ports, CONVERSATION, USER)
+    await asyncio.wait_for(advance(rt.ports, CONVERSATION, USER), timeout=STEP_LIMIT_SECONDS)
 
 
 async def replies(rt: Runtime) -> list[Reply]:

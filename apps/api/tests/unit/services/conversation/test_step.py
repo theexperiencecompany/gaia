@@ -38,6 +38,7 @@ from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, fired, todo_run, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
+    STEP_LIMIT_SECONDS,
     USER,
     Do,
     EffectCall,
@@ -56,7 +57,7 @@ def text(chunk: str) -> Streamed:
 
 
 async def run(rt: Runtime) -> None:
-    await step.advance(rt.ports, CONVERSATION, USER)
+    await asyncio.wait_for(step.advance(rt.ports, CONVERSATION, USER), timeout=STEP_LIMIT_SECONDS)
 
 
 async def settles(rt: Runtime) -> list[ReplySettled]:

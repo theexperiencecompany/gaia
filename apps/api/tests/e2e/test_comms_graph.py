@@ -328,7 +328,6 @@ async def stream_turn(graph: CompiledStateGraph, thread_id: str) -> list[AIMessa
 class TestARunawayOfBareBreaks:
     """Regression: six turns streamed 3,998 bare breaks for ~100 s each, and the saved garbage poisoned every later turn."""
 
-    @pytest.mark.regression
     async def test_the_runaway_is_stopped_early_and_a_changed_retry_answers(self):
         model = RunawayBreaksModel(responses=[], runaway_calls=1)
         async with comms_graph([], model=model) as graph:
@@ -340,7 +339,6 @@ class TestARunawayOfBareBreaks:
         assert retry[:-1] == first
         assert isinstance(retry[-1], HumanMessage)
 
-    @pytest.mark.regression
     async def test_a_runaway_surviving_the_retry_leaves_no_breaks_in_the_thread(self):
         model = RunawayBreaksModel(responses=[], runaway_calls=2)
         async with comms_graph([], model=model) as graph:

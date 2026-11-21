@@ -282,7 +282,6 @@ class TestARunThatFoundNothingForTheUser:
 
     NOTE = "Nothing needs the user now; the next briefing lists this open Stripe thread."
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "source",
         [todo_models.ExternalRefSource.GMAIL_THREAD, todo_models.ExternalRefSource.INBOX_DESK],

@@ -220,7 +220,6 @@ class TestInferIntegrationContent:
 
         assert result is content
 
-    @pytest.mark.regression
     async def test_prompt_carries_every_tool_its_description_and_the_auth(self, mock_llm):
         mock_llm.structured.return_value = _complete_content()
         tools = [

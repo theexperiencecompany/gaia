@@ -76,6 +76,7 @@ from tests.unit.services.conversation.log_helpers import (
 )
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
+    STEP_LIMIT_SECONDS,
     USER,
     Absorbed,
     Action,
@@ -213,7 +214,7 @@ def arrive(rt: Runtime, *entries: Entry) -> Action:
 
 
 async def run(rt: Runtime) -> None:
-    await advance(rt.ports, CONVERSATION, USER)
+    await asyncio.wait_for(advance(rt.ports, CONVERSATION, USER), timeout=STEP_LIMIT_SECONDS)
 
 
 async def assert_quiet(rt: Runtime) -> None:
@@ -518,7 +519,7 @@ class StepScenarios:
         )
         await send(rt, user("u1"))
         # A missed segment leaves u2 waking, and the next attempt's unscripted run waits forever.
-        await asyncio.wait_for(run(rt), timeout=10)
+        await run(rt)
         assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
         assert await kinds(rt) == [
             "user_message",

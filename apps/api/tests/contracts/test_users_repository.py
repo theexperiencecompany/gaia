@@ -81,32 +81,6 @@ class TestUserReads:
 
         assert [u.id for u in found] == [str(legacy.inserted_id)]
 
-
-class TestEmailIsCaseInsensitive:
-    """An address is one account in any case: stored lowercase, looked up lowercase."""
-
-    @pytest.mark.regression
-    async def test_create_stores_the_lowercase_address(self, repo, make_user, raw_collection):
-        await repo.create(make_user(email="Mixed.Case@Y.com"))
-
-        assert await raw_collection.find_one({"email": "mixed.case@y.com"}) is not None
-
-    @pytest.mark.regression
-    async def test_get_by_email_ignores_the_callers_case(self, repo, make_user):
-        created = await repo.create(make_user(email="idp@y.com"))
-
-        assert await repo.get_by_email("IdP@Y.com") == created
-
-    @pytest.mark.regression
-    async def test_touch_last_active_ignores_the_callers_case(
-        self, repo, make_user, raw_collection
-    ):
-        await repo.create(make_user(email="seen@y.com"))
-
-        await repo.touch_last_active("Seen@Y.com")
-
-        assert (await raw_collection.find_one({"email": "seen@y.com"}))["last_active_at"]
-
     async def test_find_by_ids_skips_invalid(self, repo, make_user):
         a = await repo.create(make_user(email="c1@b.com"))
         b = await repo.create(make_user(email="c2@b.com"))
@@ -120,6 +94,29 @@ class TestEmailIsCaseInsensitive:
         dump = (await repo.get(created.id)).model_dump()
         assert dump["custom_flag"] is True
         assert dump["nested"] == {"k": "v"}
+
+
+class TestEmailIsCaseInsensitive:
+    """An address is one account in any case: stored lowercase, looked up lowercase."""
+
+    async def test_create_stores_the_lowercase_address(self, repo, make_user, raw_collection):
+        await repo.create(make_user(email="Mixed.Case@Y.com"))
+
+        assert await raw_collection.find_one({"email": "mixed.case@y.com"}) is not None
+
+    async def test_get_by_email_ignores_the_callers_case(self, repo, make_user):
+        created = await repo.create(make_user(email="idp@y.com"))
+
+        assert await repo.get_by_email("IdP@Y.com") == created
+
+    async def test_touch_last_active_ignores_the_callers_case(
+        self, repo, make_user, raw_collection
+    ):
+        await repo.create(make_user(email="seen@y.com"))
+
+        await repo.touch_last_active("Seen@Y.com")
+
+        assert (await raw_collection.find_one({"email": "seen@y.com"}))["last_active_at"]
 
 
 class TestCacheFreshness:
