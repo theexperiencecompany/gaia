@@ -301,11 +301,15 @@ class TasksDriver:
     async def keep_quiet_hours(self, *, start_hour: int, end_hour: int) -> None:
         """Turn on the user's quiet hours, on their own clock."""
         _ok(
-            await self._client.put(
+            await self._client.patch(
                 f"{USER_SETTINGS}/quiet-hours",
                 json={"enabled": True, "start_hour": start_hour, "end_hour": end_hour},
             )
         )
+
+    async def live_in(self, timezone: str) -> None:
+        """Set the zone on the user's profile, as the app does when their clock moves."""
+        _ok(await self._client.patch(f"{USER_SETTINGS}/timezone", data={"timezone": timezone}))
 
     async def pass_time_until(self, when: datetime) -> None:
         """Let the clock reach when, every run armed for any task by then firing in its turn."""
