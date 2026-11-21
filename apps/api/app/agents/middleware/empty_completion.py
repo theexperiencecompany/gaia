@@ -130,18 +130,20 @@ def _without_edge_breaks(content: MessageContent) -> MessageContent:
     worded = [
         i for i, text in enumerate(texts) if text is not None and not is_only_message_breaks(text)
     ]
-    first, last = (worded[0], worded[-1]) if worded else (len(content), -1)
+    span = range(worded[0], worded[-1] + 1) if worded else range(0)
     trimmed: list[ContentItem] = []
-    for index, (item, text) in enumerate(zip(content, texts, strict=True)):
+    for index, text in enumerate(texts):
+        item = content[index]
         if text is None:
             trimmed.append(item)
             continue
-        if not first <= index <= last:
+        if index not in span:
             text = ""
-        if index == first:
-            text = strip_leading_message_breaks(text)
-        if index == last:
-            text = strip_trailing_message_breaks(text)
+        else:
+            if index == span.start:
+                text = strip_leading_message_breaks(text)
+            if index == span[-1]:
+                text = strip_trailing_message_breaks(text)
         trimmed.append(text if isinstance(item, str) else {**item, "text": text})
     return trimmed
 

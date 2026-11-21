@@ -143,8 +143,8 @@ class TestTheRetryDoesNotReplayAPoisonedHistory:
         }
         reply = AIMessage(
             content=[
-                "plain",
                 reasoning,
+                "plain",
                 {"type": "text", "text": f"{NEW_MESSAGE_BREAKER}sure{NEW_MESSAGE_BREAKER * 2}"},
             ]
         )
@@ -155,10 +155,20 @@ class TestTheRetryDoesNotReplayAPoisonedHistory:
         )
 
         assert handler.requests[1].messages[0].content == [
-            "plain",
             reasoning,
+            "plain",
             {"type": "text", "text": f"{NEW_MESSAGE_BREAKER}sure"},
         ]
+
+    async def test_a_tool_call_whose_text_is_only_breaks_keeps_no_text(self):
+        call = AIMessage(content=[" ", NEW_MESSAGE_BREAKER], tool_calls=TOOL_CALL.tool_calls)
+        handler = _ScriptedHandler(EMPTY, ANSWER)
+
+        await EmptyCompletionRetryMiddleware().awrap_model_call(
+            _request().override(messages=[call, HumanMessage(content="and?")]), handler
+        )
+
+        assert handler.requests[1].messages[0].content == ["", ""]
 
     @pytest.mark.parametrize(
         ("content", "retried"),
