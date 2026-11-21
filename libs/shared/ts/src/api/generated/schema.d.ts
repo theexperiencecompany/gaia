@@ -8398,7 +8398,7 @@ export interface components {
          *     the user switched off themselves (no reason) is never silently re-enabled.
          * @enum {string}
          */
-        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed";
+        DeactivationReason: "user_dormant" | "integration_expired" | "subscription_lapsed" | "integration_never_connected" | "invalid_schedule" | "owner_not_found" | "member_removed" | "trigger_retired";
         /**
          * DecisionRefusal
          * @description Why a decision did not commit.
