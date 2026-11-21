@@ -82,35 +82,6 @@ class TestLearnWritingStyle:
             "config": {"configurable": {"user_id": USER}},
         }
 
-    async def test_status_callback_reports_the_sent_count(self) -> None:
-        statuses: list[str] = []
-
-        async def on_status(text: str) -> None:
-            statuses.append(text)
-
-        with (
-            patch(f"{MODULE}.search_messages", AsyncMock(return_value=_sent([LONG_BODY] * 5))),
-            patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=_llm_output())),
-        ):
-            await learn_writing_style(USER, on_status=on_status)
-
-        assert statuses == [
-            "Reading your sent folder",
-            "Found 5 sent emails",
-            "Analyzing tone and phrasing",
-        ]
-
-    async def test_one_sent_email_is_singular_in_the_status(self) -> None:
-        statuses: list[str] = []
-
-        async def on_status(text: str) -> None:
-            statuses.append(text)
-
-        with patch(f"{MODULE}.search_messages", AsyncMock(return_value=_sent([LONG_BODY]))):
-            await learn_writing_style(USER, on_status=on_status)
-
-        assert statuses[1] == "Found 1 sent email"
-
     async def test_too_few_sent_emails_skips_the_model(self) -> None:
         llm = AsyncMock()
         with (

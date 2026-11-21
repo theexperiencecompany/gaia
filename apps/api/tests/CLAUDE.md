@@ -18,7 +18,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Meta | `tests/meta/` | nothing | import fences, architecture invariants |
 | Live opt-in | `tests/composio/`, `tests/model_onboarding/` | real credentials | composio creds; model capability checks (bills tokens) |
 
-A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_stream_manager_4921.py`).
+A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_run_stop_4921.py`).
 
 ## Quality bar
 

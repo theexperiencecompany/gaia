@@ -3,15 +3,15 @@
 A comms turn can come back with no content — reasoning-only output, a reply of
 nothing but message breaks, max_tokens
 spent before the first token, a content filter, a dropped body — which
-downstream treats as a real answer and turns into a fixed apology
-(_substitute_empty_completion in app/services/chat/stream.py).
+downstream settles as a failed reply with its Retry (_final_reply in
+app/services/conversation/step.py).
 
 Sits innermost in the comms wrap_model_call chain and repeats the call ONCE
 (an empty completion is a one-shot failure, not something that converges over
 rounds). NOT retried: errors (already own the turn's error path),
 cancellations (raise CancelledError instead of an empty message), and tool
 calls (content of its own). Nothing streamed, so nothing needs retracting.
-If the retry is also empty, the turn falls through to the existing honest line.
+If the retry is also empty, the reply fails.
 """
 
 from __future__ import annotations

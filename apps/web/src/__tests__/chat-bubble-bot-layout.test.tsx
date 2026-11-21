@@ -109,7 +109,7 @@ describe("ChatBubbleBot avatar", () => {
   });
 
   it("drops the avatar when the next bubble continues the group", () => {
-    renderBubble({ text: "hi", isGroupedWithNext: true });
+    renderBubble({ text: "hi", grouping: { withPrev: false, withNext: true } });
     expect(screen.queryByTestId("bot-avatar")).toBeNull();
     expect(screen.getByTestId("bot-footer")).toBeDefined();
   });

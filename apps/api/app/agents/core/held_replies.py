@@ -14,26 +14,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from langchain_core.messages import AIMessage
-from pydantic import BaseModel, ConfigDict
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall, ToolCallChunk
 
+from app.constants.comms import TURN_ENDING_TOOL_NAMES
 from app.models.agent_models import StreamChunkMetadata
 from app.utils.message_breaks import append_message_bubble
-
-
-class MessageBoundaryEvent(BaseModel):
-    """A custom-stream ``message_boundary`` frame's retraction fields."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    message_id: str | None = None
-    discarded: bool = False
-
-
-class _RetractionFrame(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    message_boundary: MessageBoundaryEvent | None = None
 
 
 class HeldChunk(NamedTuple):
@@ -45,12 +30,17 @@ class HeldChunk(NamedTuple):
 
 
 def announces_tool_call(chunk: AIMessage) -> bool:
-    """Return whether this chunk already carries a tool call, meaning any text is narration.
+    """Return whether this chunk already carries a work tool call, meaning any text is narration.
 
-    tool_calls (complete) or tool_call_chunks (still assembling) both count.
-    getattr guards the second since only the chunk subclass has that field.
+    tool_calls (complete) or tool_call_chunks (still assembling, on a chunk only) both count;
+    a turn-ending call (answered, react, stay_silent) does not, since the words beside it are
+    the reply.
     """
-    return bool(chunk.tool_calls or getattr(chunk, "tool_call_chunks", None))
+    calls: list[ToolCall] = chunk.tool_calls
+    parts: list[ToolCallChunk] = chunk.tool_call_chunks if isinstance(chunk, AIMessageChunk) else []
+    # A streamed call names itself in its first chunk only; the rest carry arguments.
+    names = [call["name"] for call in calls] + [name for part in parts if (name := part["name"])]
+    return any(name not in TURN_ENDING_TOOL_NAMES for name in names)
 
 
 def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
@@ -63,21 +53,6 @@ def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
         if isinstance(message, AIMessage):
             return message
     return None
-
-
-def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
-    """Forget text whose message was retracted mid-node, before its boundary.
-
-    Retractions are normally announced at node end, except the style guard's,
-    which retracts a draft mid-node to replace it with a second model call;
-    the driver must honour that boundary too, or the draft stays persisted.
-    """
-    if not isinstance(payload, dict):
-        return
-    boundary = _RetractionFrame.model_validate(payload).message_boundary
-    if boundary is not None and boundary.discarded:
-        for texts in held:
-            texts.pop(boundary.message_id or "", None)
 
 
 @dataclass
@@ -129,21 +104,24 @@ class HeldReplies:
 
     def settle(
         self, messages: Sequence[object], complete_message: str, *, reply_tier: bool = True
-    ) -> tuple[str, str | None, bool]:
-        """Decide the fate of the message a node just produced: kept, or a handoff preamble.
+    ) -> tuple[str, str | None]:
+        """Keep the message a node just produced, a preamble before a hand-off included: it was said.
 
-        Returns the updated complete_message plus the boundary's message id
-        (None when the node produced none) and whether it was discarded.
+        Returns the updated complete_message plus the boundary's message id,
+        None when the node produced none.
         """
         boundary = last_ai_message(messages) if reply_tier else None
         if boundary is None:
-            return complete_message, None, False
+            return complete_message, None
         boundary_id = boundary.id or ""
         held = self.texts.pop(boundary_id, "")
-        discarded = boundary_id in self.tool_call_ids or announces_tool_call(boundary)
-        if held and not discarded:
+        if held:
             complete_message = append_message_bubble(complete_message, held)
-        return complete_message, boundary_id, discarded
+        return complete_message, boundary_id
+
+    def supersede(self) -> None:
+        """Forget every reply held so far: the run was sent back to work, so its answer comes after."""
+        self.texts.clear()
 
     def flush(self, complete_message: str) -> str:
         """Append text whose message never reached a boundary (a cancelled run)."""

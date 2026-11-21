@@ -1,10 +1,9 @@
-"""Where a chat turn's ingress and prep go: named steps and store round trips.
+"""Where a chat turn's ingress goes: named steps and store round trips.
 
 LoggingMiddleware begins a TurnTimings for each request and holds it in a
-contextvar, so the middleware, the endpoint and the turn's background stream
-task (its context is copied at spawn) all record into the same object. The
-turn clock moves it from ingress to prep at t0 and closes it at the first model
-request; nothing is attributed after that.
+contextvar, so the middleware and the endpoint record into the same object. The
+turn's accept closes it: ingress runs from arrival until the user's message is
+in the conversation's log, and nothing is attributed after that.
 
 Store clients report each round trip through record_store_call. A call lands on
 the step active in the calling task, or on its phase's OTHER when none is, and
@@ -24,13 +23,12 @@ class TurnPhase(StrEnum):
     """The stretches a step or store call is attributed to."""
 
     INGRESS = "ingress"
-    PREP = "prep"
-    #: Past the turn's first model request: nothing more is attributed.
+    #: Past the turn's accept: nothing more is attributed.
     CLOSED = "closed"
 
 
 class TurnStep(StrEnum):
-    """Named steps of ingress and prep, in the order a turn usually meets them."""
+    """Named steps of ingress, in the order a turn usually meets them."""
 
     AUTH = "auth"
     BOT_AUTH = "bot_auth"
@@ -39,15 +37,9 @@ class TurnStep(StrEnum):
     RESOLVE_USER = "resolve_user"
     PAYWALL = "paywall"
     CHARGE = "charge"
-    OWNERSHIP = "ownership"
     SESSION = "session"
-    HISTORY = "history"
-    START_STREAM = "start_stream"
-    PRESENCE = "presence"
-    INIT_CHUNK = "init_chunk"
-    APPROVAL_CHECK = "approval_check"
-    AGENT_STATE = "agent_state"
-    CONTEXT = "context"
+    #: Appending the user's message to the conversation's log.
+    ACCEPT = "accept"
     #: Store calls from work a step spawned that outlived it: competing load, not waited on.
     BACKGROUND = "background"
     #: The phase's time and store calls no named step covers.
@@ -82,13 +74,15 @@ class StepReport:
 class TurnTimings:
     """Step times and store tallies for one turn, keyed by the phase they ran in."""
 
+    #: perf_counter when the request arrived; None for timings no request began.
+    started: float | None = None
     phase: TurnPhase = TurnPhase.INGRESS
     steps: dict[tuple[TurnPhase, TurnStep], float] = field(default_factory=dict)
     stores: dict[tuple[TurnPhase, TurnStep, Store], StoreTally] = field(default_factory=dict)
 
     def enter(self, phase: TurnPhase) -> None:
         """Move to phase; phases only advance, so a late stamp cannot reopen one."""
-        order = (TurnPhase.INGRESS, TurnPhase.PREP, TurnPhase.CLOSED)
+        order = (TurnPhase.INGRESS, TurnPhase.CLOSED)
         if order.index(phase) > order.index(self.phase):
             self.phase = phase
 
@@ -128,15 +122,6 @@ class TurnTimings:
         report[TurnStep.OTHER].seconds = max(phase_seconds - sum(named.values()), 0.0)
         return report
 
-    def reports(
-        self, *, ingress: float, prep: float
-    ) -> dict[TurnPhase, dict[TurnStep, StepReport]]:
-        """Return both reported phases, given the lengths the turn clock measured for them."""
-        return {
-            TurnPhase.INGRESS: self.report(TurnPhase.INGRESS, ingress),
-            TurnPhase.PREP: self.report(TurnPhase.PREP, prep),
-        }
-
 
 @dataclass
 class _StepScope:
@@ -150,15 +135,21 @@ _turn: ContextVar[TurnTimings | None] = ContextVar("turn_timings", default=None)
 _scope: ContextVar[_StepScope | None] = ContextVar("turn_step", default=None)
 
 
-def begin_turn_timings() -> TurnTimings:
-    """Start a request's timings and make them current for everything it spawns."""
-    timings = TurnTimings()
+def begin_turn_timings(started: float | None = None) -> TurnTimings:
+    """Start a request's timings, arrived at started, and make them current for everything it spawns."""
+    timings = TurnTimings(started=started)
     _turn.set(timings)
     return timings
 
 
-def current_turn_timings() -> TurnTimings | None:
-    return _turn.get()
+def close_ingress() -> dict[TurnStep, StepReport] | None:
+    """End the current request's ingress at its turn's accept and return its steps; None outside one."""
+    timings = _turn.get()
+    if timings is None or timings.started is None or timings.phase is not TurnPhase.INGRESS:
+        return None
+    report = timings.report(TurnPhase.INGRESS, time.perf_counter() - timings.started)
+    timings.enter(TurnPhase.CLOSED)
+    return report
 
 
 @contextmanager

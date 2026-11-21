@@ -6,7 +6,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 
 
 class E2bSandboxState(str, Enum):

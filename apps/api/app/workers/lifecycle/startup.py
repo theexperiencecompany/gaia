@@ -22,6 +22,8 @@ from app.core.provider_registration import (
     unified_startup,
 )
 from app.core.runtime_config_subscriber import start_runtime_config_subscriber
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
 from app.services.delivery_alerts.dead_letter_tap import start_dead_letter_tap
 from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
@@ -57,6 +59,7 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
 
         # Use unified startup function - handles provider registration, eager init, and auto-init
         await unified_startup("arq_worker")
+        install_runtime_ports(build_runtime_ports())
 
         # Device socket is owned by the API pod; reply frames route back to
         # THIS process's per-pod up-channel, so the worker needs its own

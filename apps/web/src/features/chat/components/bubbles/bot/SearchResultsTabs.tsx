@@ -189,8 +189,10 @@ function ImageItem({
           <Skeleton className="h-full w-full rounded-2xl" />
         </div>
       )}
+      {/* Search results come from any host, which remotePatterns cannot list. */}
       <Image
         src={imageUrl}
+        unoptimized
         alt={`Search result image ${index + 1}`}
         width={112}
         height={112}

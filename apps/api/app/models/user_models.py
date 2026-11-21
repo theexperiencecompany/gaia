@@ -16,7 +16,7 @@ from pydantic import (
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.models.quiet_hours_models import QuietHours
 from app.schemas.common import ResponseModel

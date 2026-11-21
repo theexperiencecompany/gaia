@@ -87,7 +87,7 @@ async def complete_platform_link(
         delivered = True
         if first_contact:
             delivery = await publish_outbound_message(
-                ConversationSource.coerce(platform) or ConversationSource.WEB,
+                ConversationSource(platform),
                 user_id,
                 first_contact,
                 ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING,

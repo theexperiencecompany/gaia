@@ -11,7 +11,7 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
 from app.constants.auth import MIN_PASSWORD_LENGTH
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 
 ADMIN_CREDENTIAL_SLOT = "admin"
 

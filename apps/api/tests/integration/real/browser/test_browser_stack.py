@@ -21,7 +21,7 @@ import uuid
 import pytest
 
 from app.agents.core.background.executor_queue import get_lock_holder
-from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
+from app.constants.browser import BrowserSessionStatus, JobEnding
 from app.db.repositories.browser_tasks import browser_task_repository
 from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove, Text
 from tests.integration.real.browser._stack.fixture_site import (
@@ -36,13 +36,13 @@ from tests.integration.real.browser._stack.fixture_site import (
     NEW_WINDOW_HEADING,
     SECURE_HEADING,
 )
-from tests.integration.real.browser._stack.observe import Delivery, Transcript, wait_for
 from tests.integration.real.browser._stack.stack import (
     RUN_SECONDS,
     SCENARIO_SECONDS,
     BotUser,
     BrowserStack,
 )
+from tests.integration.real.browser._stack.transcript import Delivery, Transcript, wait_for
 
 pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(SCENARIO_SECONDS)]
 
@@ -61,14 +61,11 @@ _PROGRESS = re.compile(r"^(Step \d+ ·|📽 )")
 
 
 def _told(transcript: Transcript) -> list[Delivery]:
-    """Return what the chat was told in words: no photo, no progress line, no handoff prompt."""
+    """Return what the chat was told in words: no photo, no progress line."""
     return [
         d
         for d in transcript.deliveries
-        if d.text
-        and not d.photo_url
-        and not _PROGRESS.match(d.text)
-        and BROWSER_HANDOFF_REPLY_PROMPT not in d.text
+        if d.text and not d.photo_url and not _PROGRESS.match(d.text)
     ]
 
 
@@ -308,7 +305,7 @@ async def test_a_page_that_never_answers_does_not_freeze_the_run(stack: BrowserS
     conversation_id, job_id = await _start(
         stack,
         user,
-        f"Open {hang} and tell me what it shows; if it never loads, tell me the heading of {home}. {marker}",
+        f"Open {hang} and tell me what it shows; if it fails to load, tell me the heading of {home}. {marker}",
         hang,
     )
     result = await stack.finished(job_id)
@@ -485,9 +482,12 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
 
     assert result.status is BrowserSessionStatus.CANCELLED
     assert CAPTCHA_HEADING not in result.summary
-    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell anything.
+    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell a result. The tap is the
+    # user's word in the conversation (047cd53a26), so the one thing said after it is its answer.
     assert await stack.ending(job_id) is JobEnding.STOPPED
-    assert len(_told(dm)) == told_before, [d.text for d in _told(dm)]
+    after = _told(dm)[told_before:]
+    assert len(after) == 1, [d.text for d in _told(dm)]
+    assert CAPTCHA_HEADING not in after[0].said
 
 
 async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_over(

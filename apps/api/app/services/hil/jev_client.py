@@ -6,18 +6,29 @@ module.
 """
 
 from collections.abc import Mapping
+from urllib.parse import urljoin
 
 import httpx
 
 from app.constants.hil import (
     HIL_JEV_MODEL_NAME,
     HIL_JEV_TIMEOUT_SECONDS,
-    HIL_JEV_URL,
     JevFailure,
 )
+from app.constants.llm import OPENROUTER_API_URL
 from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
+
+
+def decisions_url(base_url: str | None) -> str:
+    """Return OpenRouter's Decisions route, which sits beside v1 under /api.
+
+    A configured OpenRouter base (a test stack's model server) moves it with the
+    model calls; production refuses to boot with that override set.
+    """
+    # A base given with its trailing slash resolves the same: "v1//" + "../" still lands on /api.
+    return urljoin(f"{base_url or OPENROUTER_API_URL}/", "../alpha/decisions")
 
 
 class JevUnconfiguredError(RuntimeError):
@@ -54,7 +65,7 @@ async def post_decisions(
     if not key:
         raise JevUnconfiguredError("No OpenRouter key saved or set; cannot reach the JEV judge")
     resp = await jev_http_client.post(
-        HIL_JEV_URL,
+        decisions_url(config.base_url if config else None),
         json={"model": HIL_JEV_MODEL_NAME, "state": state, "questions": questions},
         headers={"Authorization": f"Bearer {key}"},
     )

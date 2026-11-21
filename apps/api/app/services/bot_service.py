@@ -10,18 +10,12 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import enforce_cost_budget, enforce_tiered_limit
-from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationModel, ConversationSource
-from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
 from app.services.bot_session_merge import apply_merge, plan_merge
-from app.services.browser.handoff import bot_chat_address
-from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
 from app.services.limit_upsell import capture_limit_hit
-from shared.py.analytics import PlatformIdentity, UserId
-from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from shared.py.analytics import PlatformIdentity
 from shared.py.wide_events import log
 
 # Constants
@@ -188,7 +182,7 @@ class BotService:
         *,
         is_dm: bool = False,
     ) -> str:
-        """Stop what the current session's conversation is running, delete it, and return a freshly created conversation id."""
+        """Delete the session and return a freshly created conversation id."""
         if is_dm:
             # The channel-keyed legacy row IS this DM: left in place, the next
             # inbound merge would resurrect the conversation the user just reset.
@@ -196,80 +190,17 @@ class BotService:
             await bot_session_repository.delete_by_session_key(legacy_key)
             channel_id = None
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
-        current = await bot_session_repository.get_by_session_key(session_key)
-        # /stop resets the session; a browser run outlives the turn that started it,
-        # so without this it keeps going in a conversation the user has left. A DM's /stop
-        # also reaches a run started in a group, which answers to this DM; a group's, its own.
-        source = ConversationSource.coerce(platform)
-        requester = requester_chat(user.user_id, source) if is_dm else None
-        if current is not None:
-            await stop_chat_jobs(current.conversation_id, requester)
-        elif requester is not None:
-            await stop_chat_jobs(bot_chat_address(requester.source, user.user_id), requester)
         await bot_session_repository.delete_by_session_key(session_key)
 
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
 
-    @staticmethod
-    async def load_conversation_history(
-        conversation_id: str, user_id: str, limit: int = 20
-    ) -> list[MessageDict]:
-        """Return up to limit recent messages as role/content dicts in seq order, skipping replies still being written."""
-        history: list[MessageDict] = []
-        for msg in await conversation_repository.list_recent_messages(
-            conversation_id, user_id=user_id, limit=limit
-        ):
-            if msg.in_progress:
-                continue
-            if msg.type == "user":
-                history.append(MessageDict(role="user", content=msg.response or ""))
-            elif msg.type == "bot":
-                history.append(MessageDict(role="assistant", content=msg.response or ""))
-        return history
 
-
-async def build_bot_message_request(
-    body: BotChatRequest, conversation_id: str, user_id: str
-) -> MessageRequestWithHistory:
-    """Load conversation history and append the incoming turn, ready for the agent."""
-    history = await BotService.load_conversation_history(conversation_id, user_id)
-    history.append(MessageDict(role="user", content=body.message))
-    return MessageRequestWithHistory(
-        message=body.message,
-        conversation_id=conversation_id,
-        messages=history,
-        fileIds=body.file_ids or [],
-        fileData=body.file_data or [],
-        platform_message_id=body.platform_message_id,
-    )
-
-
-async def charge_bot_turn(user_id: str, body: BotChatRequest, stream_id: str) -> None:
-    """Charge quota/budget for one bot turn and record its submission event.
+async def charge_bot_turn(user_id: str) -> None:
+    """Charge quota and the day's budget for one bot turn, refusing it before any work starts.
 
     Mirrors what the web chat endpoint charges via @tiered_rate_limit, done
     manually since the caller here has no authenticated request to decorate.
     """
-    # Can't be a decorator: the caller has no authenticated request (resolved
-    # from a platform link). Without this, bot turns had no quota and never hit
-    # record_activity. enforce_rate_limit (above) is separate: flat anti-spam.
     await enforce_tiered_limit(user_id, "chat_messages")
-    # Caps how EXPENSIVE the day has been (the tiered limit above caps how MANY
-    # messages) — without it, an over-budget bot user got a stream that opened
-    # and died partway instead of a clean refusal before any work started.
+    # Caps how expensive the day has been; the tiered limit above caps how many messages.
     await enforce_cost_budget(user_id, feature_key="chat_messages")
-    # Captured past every gate, like the web endpoint: a refusal never reached
-    # the agent, so counting it here would inflate volume by exactly the users
-    # who hit walls most. A refusal is its own event.
-    capture(
-        UserId(user_id),
-        ChatMessageSubmitted(
-            # `source` is the canonical key: a ConversationSource value, the same
-            # key every other chat event reports its surface under.
-            source=body.platform,
-            has_files=bool(body.file_ids or body.file_data),
-            stream_id=stream_id,
-            # Bots have no retry action: a resend is a new message.
-            is_retry=False,
-        ),
-    )

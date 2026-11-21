@@ -192,6 +192,8 @@ export interface BotCreateTodoRequest {
 
 export interface BotConversation {
   conversation_id: string;
+  /** The conversation's web app page, built by the server. */
+  url: string;
   title?: string;
   description?: string;
   created_at: string;
@@ -453,13 +455,3 @@ export interface OutboundNotifications {
   /** Sends one whole message, already rendered, as the notification template. */
   deliver(destinationId: string, text: string): Promise<void>;
 }
-
-/**
- * Fired when the backend marks the reply's text final (`reply_complete`), ahead of `done`.
- *
- * `done` only follows the turn's end-of-turn work — follow-up suggestions, and in a delegated
- * turn the whole executor run — so a platform that sends whole messages delivers here instead.
- * `keptText` is every KEPT message so far, in the same shape `onDone` receives; the frame can
- * repeat, and text kept after it (a delegated turn's result) still arrives with `done`.
- */
-export type ReplyCompleteHandler = (keptText: string) => void | Promise<void>;

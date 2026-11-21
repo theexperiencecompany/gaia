@@ -16,8 +16,5 @@ WEBSOCKET_BROADCAST_CHANNEL: Final[str] = "websocket:broadcast"
 # How long the per-pod listener waits before re-subscribing after Redis drops it.
 WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS: Final[float] = 5.0
 
-# Pause before the one retry of a failed per-user broadcast.
-WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS: Final[float] = 0.5
-
-# The push that sets a user message's reaction badge outside an open turn; carries a ReactionFrame.
-REACTION_WS_EVENT: Final[str] = "conversation.message_reaction"
+# The message that asks the user's desktop app to run one desktop tool action.
+DESKTOP_TOOL_REQUEST_MESSAGE: Final[str] = "desktop_tool_request"

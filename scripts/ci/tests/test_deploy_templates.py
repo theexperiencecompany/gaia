@@ -125,3 +125,27 @@ def test_the_inline_caddyfile_holds_no_compose_interpolation(
 )
 def test_render_images_name_their_registry(image: str, full: str) -> None:
     assert dt._docker_hub(image) == full
+
+
+def test_coolify_runs_the_migration_once_before_the_api_and_the_worker(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    services = _coolify(compose, secrets)["services"]
+
+    migrate = services["gaia-migrate"]
+    assert migrate["command"] == ["python", "-m", "scripts.migrate_conversations"]
+    assert migrate["restart"] == "no" and migrate["exclude_from_hc"] is True
+    assert "AGENT_SECRET" in migrate["environment"]
+    for app in ("gaia-backend", "arq-worker"):
+        assert services[app]["depends_on"]["gaia-migrate"] == {
+            "condition": "service_completed_successfully"
+        }
+
+
+def test_render_runs_the_migration_before_each_backend_deploy(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    services = {s["name"]: s for s in _render(compose, secrets)["services"]}
+
+    assert services["gaia-backend"]["preDeployCommand"] == "python -m scripts.migrate_conversations"
+    assert "gaia-migrate" not in services

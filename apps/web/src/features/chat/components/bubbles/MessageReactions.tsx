@@ -1,4 +1,4 @@
-import type { MessageReaction } from "@shared/api/generated";
+import type { Reaction } from "@shared/api/generated";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import {
@@ -13,7 +13,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface MessageReactionsProps {
-  reaction: MessageReaction;
+  reaction: Reaction;
 }
 
 const POP_EASE = [0.34, 1.56, 0.64, 1] as const;

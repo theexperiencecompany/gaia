@@ -1,7 +1,6 @@
 """Chat constants."""
 
 from enum import Enum
-import re
 
 # Sized so small files (images, short PDFs) come through in full; only large
 # multi-page summaries truncate, with the full text in the `<file>.summary.md` sidecar.
@@ -10,6 +9,27 @@ import re
 #: tool_data entry a subagent's streamed work is grouped under (mirrored as
 #: SUBAGENT_GROUP_TOOL_NAME in @gaia/shared/chat).
 SUBAGENT_GROUP_TOOL_NAME = "subagent_group"
+#: The tool call that opens a browser run, and the prefix of the group its actions stream under.
+BROWSER_TASK_TOOL_NAME = "browser_task"
+BROWSER_GROUP_PREFIX = "browser:"
+#: Cards whose calls in one item render as one card holding every call's data.
+GROUPED_TOOL_CARDS = frozenset(
+    {
+        "approval_request",
+        "search_results",
+        "reddit_data",
+        "integration_connection_required",
+        "integration_list_data",
+        "device_approval_required",
+        "rate_limit_data",
+        "email_fetch_data",
+        "email_compose_data",
+        "email_sent_data",
+        "artifact_data",
+        "memory_data",
+        "browser_task_data",
+    }
+)
 
 
 class ConversationSource(str, Enum):
@@ -23,6 +43,8 @@ class ConversationSource(str, Enum):
     SLACK = "slack"
     WHATSAPP = "whatsapp"
     IMESSAGE = "imessage"
+    #: A turn spoken on a voice call; its reply is read aloud.
+    VOICE = "voice"
     WORKFLOW_SYSTEM = "workflow_system"
     BACKGROUND = "background"
 
@@ -85,7 +107,12 @@ class SourceCategory(str, Enum):
 # "which sources are messaging-platform bots" — used by delivery routing and the
 # web conversation-list filter. Members are enums, so comparisons never use str.
 _UI_SOURCES: frozenset[ConversationSource] = frozenset(
-    {ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP}
+    {
+        ConversationSource.WEB,
+        ConversationSource.MOBILE,
+        ConversationSource.DESKTOP,
+        ConversationSource.VOICE,
+    }
 )
 BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
     {
@@ -120,50 +147,13 @@ CONVERSATION_APPEND_JITTER_SECONDS = 0.004
 CONVERSATION_READ_LIMIT = 600
 
 # Named in every refusal of a conversation the entries migration has not reached.
-CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
+CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "scripts.migrate_conversation_entries"
+# One row per conversation the entries migration's last pass failed on, cleared when a pass succeeds.
+CONVERSATION_MIGRATION_FAILURES_COLLECTION = "conversation_migration_failures"
+# One row per element of an embedded array the entries migration moved off a head too full to take the log pointer.
+CONVERSATION_ARCHIVED_MESSAGES_COLLECTION = "conversation_archived_messages"
+# Named in every refusal of a log entry still holding a field this stack renamed.
+ENTRY_RENAMES_MIGRATION_SCRIPT = "scripts.migrate_approval_vocabulary"
 
-# ``MessageModel.type`` of a message the human wrote (the other value is
-# ``"bot"``). Named so a stored-message query and the writers agree on the literal.
-USER_MESSAGE_TYPE = "user"
-
-# Shown when a turn dies and the provider exception carries no message of its
-# own. Names the exception type so a support report still identifies the failure.
-GENERIC_TURN_ERROR = "Something went wrong while generating this response ({error_type})."
-
-# Saved on a reply whose turn died (a crashed process) after the user saw it begin.
-TURN_INTERRUPTED = (
-    "My reply was cut off before I could finish it. Anything I started for it may "
-    "already be done, so check before asking again."
-)
-
-# Saved in place of a reply that could not be written. The work the turn did
-# (a reminder, a todo) stands, so the user must be told to look before re-asking.
-TURN_REPLY_NOT_SAVED = (
-    "I couldn't save my reply to this message. Anything I did for it may already "
-    "be done, so check before asking again."
-)
-
-# Shown when the model produced no text at all (reasoning-only output,
-# max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
-EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
-
-# A recursion-limit stop is an expected degradation, not an infrastructure
-# failure — never show the raw "Recursion limit of N reached..." internals.
-RECURSION_LIMIT_MESSAGE = (
-    "I hit my step limit on this one before finishing. "
-    "Ask me to continue and I'll pick up where I left off."
-)
-
-# Matches `./artifacts/x`, `/artifacts/x`, and plain `artifacts/x` at the start
-# of the string or right after whitespace/quote/paren. Anchoring there — rather
-# than "any non-word char" — keeps `myartifacts/` and `?file=artifacts/report.pdf` from being mangled.
-ARTIFACT_REF_RE = re.compile(
-    r"""(?P<lead>^|[\s'"`(])(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
-    re.VERBOSE,
-)
-
-# Matches a fully-qualified in-sandbox artifact path. Rewritten to the current
-# conversation's backend URL regardless of the `<id>` written, which also self-heals a mismatched session id.
-WORKSPACE_ARTIFACT_RE = re.compile(
-    r"/workspace/sessions/[A-Za-z0-9._-]+/artifacts/(?P<path>[A-Za-z0-9._\-/]+)"
-)
+# The tool_data card a session artifact rides on: written by the coding tools, read off the reply.
+ARTIFACT_CARD = "artifact_data"

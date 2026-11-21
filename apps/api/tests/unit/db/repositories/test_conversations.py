@@ -9,20 +9,42 @@ in the base repository goes through.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.repositories.cache import CachePolicy
-from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import MessageModel, ToolDataEntry
+from app.constants.chat import ConversationSource
+from app.core.websocket_manager import websocket_manager
+from app.db.repositories.conversation_entries import (
+    EntryWindow,
+    StoredRow,
+    head_from_raw,
+    log_document,
+)
+from app.db.repositories.conversations import (
+    ConversationRepository,
+    _read_beside,
+    union_with_outboxes,
+)
+from app.models.conversation_log_models import (
+    Entry,
+    LoggedEntry,
+    Notice,
+    Reply,
+    ReplySettled,
+    UserMessage,
+)
+from app.models.conversation_screen_models import NoticeItem
+from app.utils.artifact_utils import FILE_LINKS
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
 APPROVAL_ID = "appr-1"
-CACHE_POLICY = CachePolicy(prefix="test-conversations")
 TOOL_DATA_ENTRIES: list[ToolDataEntry] = [{"tool_name": "search", "data": {"ok": True}}]
 
 
@@ -51,10 +73,6 @@ def _update_call(
     collection.update_one.assert_awaited_once()
     args, kwargs = collection.update_one.await_args
     return args[0], args[1], kwargs
-
-
-def _matched(collection: MagicMock, count: int) -> None:
-    collection.update_one.return_value = MagicMock(matched_count=count, upserted_id=None)
 
 
 class TestBackgroundVisibility:
@@ -97,79 +115,15 @@ class TestBackgroundVisibility:
             is False
         )
 
-    async def test_background_run_surfaces_while_it_holds_approval(
-        self, repo: ConversationRepository
-    ) -> None:
-        assert (
-            self._matches(
-                repo,
-                {
-                    "user_id": USER_ID,
-                    "source": "background",
-                    "starred": False,
-                    "has_live_approval": True,
-                },
-            )
-            is True
-        )
-
     async def test_sourceless_legacy_row_stays_visible(self, repo: ConversationRepository) -> None:
         assert self._matches(repo, {"user_id": USER_ID, "starred": False}) is True
 
     async def test_null_starred_reads_as_unstarred(self, repo: ConversationRepository) -> None:
-        """Several write paths store explicit null: a null-starred background row with a live approval must surface, not vanish."""
-        assert (
-            self._matches(
-                repo,
-                {
-                    "user_id": USER_ID,
-                    "source": "background",
-                    "starred": None,
-                    "has_live_approval": True,
-                },
-            )
-            is True
-        )
-        assert (
-            self._matches(
-                repo,
-                {"user_id": USER_ID, "source": "background", "starred": None},
-            )
-            is False
-        )
+        """Several write paths store explicit null: a null-starred web row must stay listed."""
+        assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": None}) is True
 
     async def test_web_conversation_ignores_the_flag(self, repo: ConversationRepository) -> None:
         assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": False}) is True
-
-    async def test_mark_raises_flag_and_stamps_source_only_when_missing(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        assert (
-            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is True
-        )
-
-        first, second = collection.update_one.await_args_list
-        assert first.args[1] == {"$set": {"has_live_approval": True}}
-        assert second.args[0]["source"] == {"$exists": False}
-        assert second.args[1] == {"$set": {"source": "background"}}
-
-    async def test_mark_on_missing_conversation_touches_nothing(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        _matched(collection, 0)
-
-        assert (
-            await repo.mark_background_with_live_approval(CONVERSATION_ID, user_id=USER_ID) is False
-        )
-        collection.update_one.assert_awaited_once()
-
-    async def test_refresh_rewrites_the_flag(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        await repo.refresh_live_approval_flag(CONVERSATION_ID, user_id=USER_ID, live=False)
-
-        flt, update, _kwargs = _update_call(collection)
-        assert update == {"$set": {"has_live_approval": False}}
 
 
 class TestOwnerIds:
@@ -187,26 +141,98 @@ class TestOwnerIds:
         assert args[1] == {"conversation_id": CONVERSATION_ID}
 
 
-class TestFillMessage:
-    async def test_the_opened_entry_takes_the_saved_reply_and_drops_its_in_progress_mark(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        reply = MessageModel(
-            type="bot", response="Done.", message_id="bot-1", tool_data=TOOL_DATA_ENTRIES
-        )
+_AT = datetime(2026, 1, 2, tzinfo=UTC)
 
-        assert await repo.fill_message(CONVERSATION_ID, user_id=USER_ID, message=reply) is True
 
-        query, pipeline, _ = _update_call(collection)
-        assert isinstance(pipeline, list)
-        assert query == {"user_id": USER_ID, "conversation_id": CONVERSATION_ID, "id": "bot-1"}
-        [set_stage, unset_stage] = pipeline
-        assert set_stage["$set"]["response"] == {"$literal": "Done."}
-        cards = {
-            "$concatArrays": [{"$literal": TOOL_DATA_ENTRIES}, {"$ifNull": ["$tool_data", []]}]
+def _row(seq: int, entry: Entry) -> StoredRow:
+    return StoredRow(
+        conversation_id=CONVERSATION_ID, logged=LoggedEntry(seq=seq, at=_AT, entry=entry)
+    )
+
+
+async def test_a_field_write_tells_the_users_clients_the_row_changed(
+    repo: ConversationRepository, collection: MagicMock
+) -> None:
+    announce = AsyncMock()
+    with patch.object(websocket_manager, "announce", announce):
+        assert await repo.set_starred(CONVERSATION_ID, user_id=USER_ID, starred=True) is True
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    announce.assert_awaited_once_with(
+        USER_ID, {"type": "conversation.list_changed", "conversation_id": CONVERSATION_ID}
+    )
+
+
+async def test_a_hit_reads_its_settle_then_the_message_the_settle_quotes_asking_each_once() -> None:
+    reply = Reply(id="o-r1", reply_id="r1", attempt_id="a1", text="the answer")
+    settle = ReplySettled(
+        id="settle:r1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u1",),
+        through=1,
+        quote_target="u1",
+    )
+    asked = UserMessage(id="u1", text="the question", surface=ConversationSource.WEB)
+    stored = [_row(1, asked), _row(3, settle)]
+    calls: list[tuple[list[str], list[str]]] = []
+
+    async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[StoredRow]:
+        calls.append((list(ids), list(reply_ids)))
+        return [
+            row
+            for row in stored
+            if row.logged.entry.id in ids
+            or getattr(row.logged.entry, "reply_id", None) in reply_ids
+        ]
+
+    related = await _read_beside([_row(2, reply)], lookup)
+
+    assert related == [_row(3, settle), _row(1, asked)]
+    assert calls == [(["work:r1:finished", "work:r1:lost"], ["r1"]), (["u1"], [])]
+
+
+def test_a_stored_copy_newer_than_the_heads_outbox_snapshot_wins_the_read() -> None:
+    draft = Reply(id="o-r1", reply_id="r1", attempt_id="a1", text="dra", revision=1)
+    done = draft.model_copy(update={"text": "draft", "revision": 2})
+    staged = log_document(CONVERSATION_ID, USER_ID, LoggedEntry(seq=1, at=_AT, entry=draft))
+    head = head_from_raw(
+        {
+            "conversation_id": CONVERSATION_ID,
+            "user_id": USER_ID,
+            "log_head": 1,
+            "outbox": {"1": staged},
         }
-        assert set_stage["$set"]["tool_data"] == {
-            "$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]
-        }
-        assert "in_progress" in unset_stage["$unset"]
-        assert "pinned" not in unset_stage["$unset"]
+    )
+    flushed = log_document(CONVERSATION_ID, USER_ID, LoggedEntry(seq=1, at=_AT, entry=done))
+
+    [(_, entries)] = union_with_outboxes([head], [flushed], EntryWindow())
+
+    assert [(entry.seq, entry.revision) for entry in entries] == [(1, 2)]
+
+
+async def test_an_artifact_registry_write_touches_only_its_users_conversation(
+    repo: ConversationRepository, collection: MagicMock
+) -> None:
+    await repo.set_artifacts(CONVERSATION_ID, user_id=USER_ID, entries=[])
+
+    filter_, update, _ = _update_call(collection)
+    assert filter_ == {"conversation_id": CONVERSATION_ID, "user_id": USER_ID}
+    assert update == {"$set": {"artifacts": []}}
+
+
+async def test_a_pinned_message_links_its_files_to_its_own_conversation(
+    repo: ConversationRepository,
+) -> None:
+    notice = Notice(id="n1", text="Wrote /workspace/sessions/s1/artifacts/a.csv", origin="reminder")
+    reads = iter([[_row(1, notice)]])
+
+    async def find_entries(_user_id: str, _match: object) -> list[StoredRow]:
+        return next(reads, [])
+
+    with patch.object(repo, "_find_entries", side_effect=find_entries):
+        [hit] = await repo.list_pinned_messages(USER_ID)
+
+    assert isinstance(hit.item, NoticeItem)
+    assert hit.item.bubbles == (f"Wrote [a.csv]({FILE_LINKS.conversation_page(CONVERSATION_ID)})",)

@@ -1,41 +1,24 @@
 """Unit tests for app.services.workflow.conversation_service."""
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.chat_models import MessageModel, SystemPurpose, UpdateMessagesRequest
-from app.models.user_models import AuthenticatedUser
+from app.agents.tools.core.registry import init_tool_registry
+from app.core.lazy_loader import providers
+from app.models.chat_models import SystemPurpose
+from app.models.conversation_log_models import Notice
+from app.models.workflow_execution_models import RecordedCall
 from app.services.workflow.conversation_service import (
-    add_workflow_execution_messages,
+    build_playbook_tool_data,
     get_or_create_workflow_conversation,
+    log_playbook_run,
 )
+from shared.py.conversation_wire import ToolDataEntry
+from tests.unit.services.conversation.runtime_doubles import CONVERSATION, USER, Runtime
 
 MODULE = "app.services.workflow.conversation_service"
-
-
-@pytest.mark.unit
-class TestAddWorkflowExecutionMessages:
-    async def test_messages_are_appended_as_the_workflow_owner(self) -> None:
-        messages = [MessageModel(type="bot", response="Workflow finished")]
-        update = AsyncMock()
-
-        with patch(f"{MODULE}.update_messages", update):
-            await add_workflow_execution_messages("conv-1", messages, "user-1")
-
-        update.assert_awaited_once_with(
-            UpdateMessagesRequest(conversation_id="conv-1", messages=messages),
-            AuthenticatedUser(user_id="user-1"),
-        )
-
-    async def test_a_failed_append_propagates(self) -> None:
-        messages = [MessageModel(type="bot", response="Workflow finished")]
-
-        with (
-            patch(f"{MODULE}.update_messages", AsyncMock(side_effect=RuntimeError("mongo down"))),
-            pytest.raises(RuntimeError, match="mongo down"),
-        ):
-            await add_workflow_execution_messages("conv-1", messages, "user-1")
 
 
 @pytest.mark.unit
@@ -76,3 +59,60 @@ class TestGetOrCreateWorkflowConversation:
         repo.set_workflow_binding.assert_awaited_once_with(
             "conv-new", user_id="user-1", workflow_id="wf-1", workflow_title="Digest"
         )
+
+
+@pytest.fixture
+def tool_registry() -> None:
+    """Register the real tool registry: the replayed calls' cards resolve their categories through it."""
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+
+
+def _card(card: ToolDataEntry) -> tuple[object, ...]:
+    data = cast(dict[str, object], card["data"])
+    return (card["tool_name"], data["tool_name"], data["inputs"], data["output"])
+
+
+async def test_a_replay_shows_its_playbook_card_then_every_call_with_its_result(
+    tool_registry: None,
+) -> None:
+    """Regression: a call a subagent made in the recorded run vanished from its replay's cards."""
+    playbook = MagicMock(
+        description="Send the digest",
+        steps=[MagicMock(tool="gmail_send"), MagicMock(tool="slack_post")],
+    )
+    trace = [
+        RecordedCall(
+            tool_name="gmail_send", args={"to": "a"}, result_digest="sent", subagent_id="sub-1"
+        ),
+        RecordedCall(tool_name="slack_post", args={"text": "hi"}, result_digest="posted"),
+    ]
+
+    cards = await build_playbook_tool_data(trace, "507f1f77bcf86cd799439011", playbook)
+
+    assert [_card(card) for card in cards] == [
+        (
+            "tool_calls_data",
+            "run_playbook",
+            {"description": "Send the digest", "plan": ["gmail_send", "slack_post"]},
+            "Replayed 2 frozen step(s): gmail_send; slack_post",
+        ),
+        ("tool_calls_data", "gmail_send", {"to": "a"}, "sent"),
+        ("tool_calls_data", "slack_post", {"text": "hi"}, "posted"),
+    ]
+
+
+async def test_a_replayed_run_is_logged_as_a_notice_naming_its_workflow() -> None:
+    runtime = Runtime()
+    workflow = MagicMock(id="wf-1", title="Digest")
+    with patch(f"{MODULE}.runtime_ports", return_value=runtime.ports):
+        await log_playbook_run(CONVERSATION, USER, workflow, "Sent the digest")
+
+    (logged,) = await runtime.log.read_after(CONVERSATION, USER, 0)
+    notice = logged.entry
+    assert isinstance(notice, Notice)
+    assert notice.id.startswith("playbook:")
+    assert (notice.text, notice.origin) == (
+        "Sent the digest",
+        'workflow "Digest" (id wf-1), replayed from its playbook',
+    )

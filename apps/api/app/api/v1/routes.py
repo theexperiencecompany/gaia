@@ -12,12 +12,12 @@ from app.api.v1.endpoints import (
     blob,
     blog,
     bot,
+    bot_conversations,
     bot_delivery_failures,
     bot_links,
     browser,
     browser_live_view,
     calendar,
-    chat,
     conversations,
     desktop,
     device,
@@ -68,7 +68,6 @@ from app.config.settings import settings
 router = APIRouter()
 
 router.include_router(voice.router, tags=["Voice"])
-router.include_router(chat.router, tags=["Chat"])
 router.include_router(browser.router)
 router.include_router(browser_live_view.router)
 router.include_router(desktop.router)
@@ -127,5 +126,6 @@ router.include_router(bot.router, prefix="/bot", tags=["Bot"])
 # own module but are part of the same public /api/v1/bot surface.
 router.include_router(bot_links.router, prefix="/bot", tags=["Bot"])
 router.include_router(bot_delivery_failures.router, prefix="/bot", tags=["Bot"])
+router.include_router(bot_conversations.router, prefix="/bot", tags=["Bot"])
 router.include_router(platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"])
 router.include_router(platform_links.router, prefix="/platform-links", tags=["Platform Links"])

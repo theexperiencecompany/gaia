@@ -15,7 +15,6 @@ import pytest
 
 from app.models.conversation_models import (
     ConversationDescriptionHit,
-    ConversationEntry,
     ConversationMessageHit,
     ConversationSearchResults,
 )
@@ -23,6 +22,7 @@ from app.models.notes_models import NoteSearchHit
 from app.services import search_service
 from app.services.search_service import search_messages
 from app.utils.log_identifiers import user_text_shape
+from tests.factories import make_reply_item
 from tests.helpers import captured_wide_event
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -55,15 +55,11 @@ def _conversation_results() -> ConversationSearchResults:
         messages=[
             ConversationMessageHit(
                 conversation_id="conv1",
-                message=ConversationEntry(
-                    type="bot", response="test response about Python", message_id="m1", seq=1
-                ),
+                item=make_reply_item("test response about Python", reply_id="m1"),
             ),
             ConversationMessageHit(
                 conversation_id="conv2",
-                message=ConversationEntry(
-                    type="bot", response="Python programming", message_id="m2", seq=1
-                ),
+                item=make_reply_item("Python programming", reply_id="m2"),
             ),
         ],
         conversations=[
@@ -95,6 +91,21 @@ class TestSearchMessagesHappyPath:
         assert all(n.snippet == "...matched text..." for n in result.notes)
         assert result.messages[0].conversation_id == "conv1"
         assert result.notes[0].id == "n1"
+
+    async def test_a_reply_snippet_spans_its_bubbles_with_thirty_characters_before_the_match(
+        self, mock_conversation_repo, mock_note_repo
+    ):
+        item = make_reply_item("x", reply_id="m1").model_copy(
+            update={"bubbles": ("A" * 40, "Python rocks")}
+        )
+        mock_conversation_repo.search.return_value = ConversationSearchResults(
+            messages=[ConversationMessageHit(conversation_id="conv1", item=item)], conversations=[]
+        )
+        mock_note_repo.search_by_plaintext.return_value = []
+
+        result = await search_messages("python", FAKE_USER_ID)
+
+        assert [m.snippet for m in result.messages] == ["..." + "A" * 28 + "\n\nPython rocks"]
 
 
 class TestSearchMessagesLogsNoUserText:

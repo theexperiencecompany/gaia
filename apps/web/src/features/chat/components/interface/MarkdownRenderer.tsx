@@ -1,6 +1,5 @@
 import "./markdown.css";
 import Image from "next/image";
-import { useParams } from "next/navigation";
 import type React from "react";
 import { useMemo } from "react";
 import rehypeKatex from "rehype-katex";
@@ -19,9 +18,9 @@ import {
   type UrlTransform,
 } from "streamdown";
 
-import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { remarkBareListMarker } from "@/features/chat/utils/remarkBareListMarker";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
@@ -65,31 +64,25 @@ const REMARK_PLUGINS = [
   remarkBreaks,
   remarkSmartypants,
   remarkSupersub,
+  remarkBareListMarker,
 ];
 
 interface MarkdownImageProps {
   src?: string;
   alt?: string;
-  conversationId: string | undefined;
   onOpen: (src: string) => void;
 }
 
-const MarkdownImage: React.FC<MarkdownImageProps> = ({
-  src,
-  alt,
-  conversationId,
-  onOpen,
-}) => {
-  const resolved = resolveArtifactSrc(src, conversationId) ?? src;
-  if (!resolved) return null;
+const MarkdownImage: React.FC<MarkdownImageProps> = ({ src, alt, onOpen }) => {
+  if (!src) return null;
   return (
     <Image
       width={500}
       height={500}
       alt={alt || "image"}
       className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-      src={resolved}
-      onClick={() => onOpen(resolved)}
+      src={src}
+      onClick={() => onOpen(src)}
       unoptimized
     />
   );
@@ -100,18 +93,10 @@ const MarkdownImageNode: React.FC<{ src?: string | Blob; alt?: string }> = ({
   alt,
 }) => {
   const { openDialog } = useImageDialog();
-  const params = useParams<{ id?: string }>();
   // Markdown image sources are always URL strings; ignore the Blob case the
   // react-markdown prop type technically allows.
   const imageSrc = typeof src === "string" ? src : undefined;
-  return (
-    <MarkdownImage
-      src={imageSrc}
-      alt={alt}
-      conversationId={params?.id}
-      onOpen={openDialog}
-    />
-  );
+  return <MarkdownImage src={imageSrc} alt={alt} onOpen={openDialog} />;
 };
 
 // Built at module scope, not inside the component, so renderers aren't
@@ -163,7 +148,7 @@ function buildMarkdownComponents(
       <hr className="my-8 border-t border-zinc-700" {...props} />
     ),
     p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
-    li: ({ ...props }) => <li className="mb-2" {...props} />,
+    li: ({ ...props }) => <li className="mb-2 last:mb-0" {...props} />,
     img: MarkdownImageNode,
     pre: ({ ...props }) => <pre className="font-serif! text-wrap" {...props} />,
     table: ({ ...props }) => (

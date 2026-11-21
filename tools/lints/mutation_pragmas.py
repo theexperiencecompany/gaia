@@ -9,12 +9,15 @@ mutant it was written for survives and reds the mutation lane:
 2. a comment-only pragma with no start/end/block token: it marks just its empty line;
 3. a trailing pragma on a line of closing brackets that does not end the statement
    (one that does marks the statement's first line, which mutmut honours);
-4. a trailing pragma on a plain name argument of a call opened on an earlier line:
-   the argument's replace-with-None and drop mutations belong to the call's line.
+4. a trailing pragma on a plain name argument of a call opened on an earlier line, or
+   on a keyword argument whose value holds nothing mutmut mutates (names, attributes,
+   f-strings) of a call whose own line carries no pragma: an argument's replace-with-None
+   and drop mutations are mutants of the call node, so they belong to the call's line.
 """
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 import io
 import keyword
@@ -33,6 +36,10 @@ _CONTEXT_TOKENS = frozenset({"start", "end", "block"})
 _ONLY_CLOSERS = re.compile(r"^[\s)\]},]*$")
 # A name or attribute argument holds nothing mutmut mutates on its own line.
 _PLAIN_ARGUMENT = re.compile(r"^\s*(\w+=)?[\w.]+,?\s*$")
+# A keyword argument's own line holds only its value's mutants; kw=None and drop are the call's.
+_KEYWORD_ARGUMENT = re.compile(r"^\s*\w+=(?!=)(?P<value>.*?),?\s*$")
+# Nodes mutmut mutates; an f-string's text and a plain name are not among them.
+_MUTATED = (ast.Constant, ast.UnaryOp, ast.BinOp, ast.BoolOp, ast.Compare, ast.Call, ast.Lambda)
 _OPENERS = {"(": ")", "[": "]", "{": "}"}
 _CLOSERS = frozenset(_OPENERS.values())
 
@@ -42,6 +49,8 @@ class _Open:
     char: str
     line: int
     is_call: bool
+    # The call's own line carries a pragma, so its argument mutants are already skipped.
+    covered: bool
 
 
 def _pragma_token(comment: str) -> str | None:
@@ -56,6 +65,28 @@ def _opens_call(previous: tokenize.TokenInfo | None) -> bool:
     if previous.type == tokenize.NAME:
         return not keyword.iskeyword(previous.string)
     return previous.string in {")", "]"}
+
+
+def _keyword_value_mutates_nothing(code: str) -> bool:
+    """Return whether code is a whole keyword argument whose value gives mutmut nothing to mutate."""
+    match = _KEYWORD_ARGUMENT.match(code)
+    if match is None:
+        return False
+    try:
+        value = ast.parse(match["value"], mode="eval")
+    except SyntaxError:
+        return False
+    in_fstrings = {
+        id(part)
+        for node in ast.walk(value)
+        if isinstance(node, ast.JoinedStr)
+        for part in node.values
+    }
+    return not any(
+        isinstance(node, _MUTATED) and not (isinstance(node, ast.Constant) and node.value is None)
+        for node in ast.walk(value)
+        if id(node) not in in_fstrings
+    )
 
 
 def _misplaced(comment: tokenize.TokenInfo, stack: list[_Open], line_text: str) -> str | None:
@@ -74,7 +105,10 @@ def _misplaced(comment: tokenize.TokenInfo, stack: list[_Open], line_text: str) 
         innermost is not None
         and innermost.is_call
         and innermost.line < comment.start[0]
-        and _PLAIN_ARGUMENT.match(code)
+        and (
+            _PLAIN_ARGUMENT.match(code)
+            or (not innermost.covered and _keyword_value_mutates_nothing(code))
+        )
     ):
         return (
             f"an argument's replace and drop mutations belong to the call on line "
@@ -88,14 +122,18 @@ def _scan(path: Path) -> list[Violation]:
     lines = source.splitlines()
     stack: list[_Open] = []
     previous: tokenize.TokenInfo | None = None
+    in_block = False
     violations: list[Violation] = []
     for tok in tokenize.generate_tokens(io.StringIO(source).readline):
         if tok.type == tokenize.OP and tok.string in _OPENERS:
             is_call = tok.string == "(" and _opens_call(previous)
-            stack.append(_Open(tok.string, tok.start[0], is_call))
+            covered = in_block or bool(_PRAGMA.search(lines[tok.start[0] - 1]))
+            stack.append(_Open(tok.string, tok.start[0], is_call, covered))
         elif tok.type == tokenize.OP and tok.string in _CLOSERS and stack:
             stack.pop()
         elif tok.type == tokenize.COMMENT and _PRAGMA.search(tok.string):
+            if not stack and _pragma_token(tok.string) in {"start", "end"}:
+                in_block = _pragma_token(tok.string) == "start"
             reason = _misplaced(tok, stack, lines[tok.start[0] - 1])
             if reason is not None:
                 violations.append(

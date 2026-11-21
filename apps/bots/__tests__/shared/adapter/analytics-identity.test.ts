@@ -9,7 +9,12 @@
  */
 
 import type { AnalyticsId } from "@gaia/shared/analytics";
-import { BaseBotAdapter, type LinkState } from "@gaia/shared/bots";
+import {
+  BaseBotAdapter,
+  type ChatRequest,
+  type ConversationSurface,
+  type LinkState,
+} from "@gaia/shared/bots";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PLATFORM_USER_ID = "123456789";
@@ -38,13 +43,16 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
+  }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
   protected async sendOutboundFile(): Promise<void> {
     /* no file delivery under test */
   }
-  buildContext() {
+  override buildContext() {
     return {} as never;
   }
 
@@ -64,6 +72,14 @@ class TestAdapter extends BaseBotAdapter {
 
   welcome(platformUserId: string): Promise<boolean> {
     return this.shouldSendWelcome(platformUserId);
+  }
+
+  post(request: ChatRequest): Promise<void> {
+    return this.postAndFollow(
+      request,
+      {} as ConversationSurface,
+      async () => undefined,
+    );
   }
 }
 
@@ -228,6 +244,38 @@ describe("BaseBotAdapter identity lookup bounds", () => {
     await expect(adapter.resolve(PLATFORM_USER_ID)).resolves.toBe(GAIA_USER_ID);
 
     expect(checkAuthStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("posts the message without waiting on the identity lookup", async () => {
+    vi.useFakeTimers();
+    const postMessage = vi.fn(() => new Promise(() => undefined));
+    const analytics = { capture: vi.fn(), alias: vi.fn() };
+    const adapter = new TestAdapter();
+    adapter.install(
+      {
+        checkAuthStatus: vi.fn(() => new Promise(() => undefined)),
+        postMessage,
+      },
+      analytics,
+    );
+
+    void adapter.post({
+      message: "hi",
+      platform: "discord",
+      platformUserId: PLATFORM_USER_ID,
+      channelId: "channel-1",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(analytics.capture).not.toHaveBeenCalled();
+    // The event still lands, on the platform id, once the bounded lookup gives up.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(analytics.capture).toHaveBeenCalledWith(
+      PLATFORM_DISTINCT_ID,
+      "bot:message_received",
+      { interaction_type: "chat", message_length: 2 },
+    );
   });
 });
 
