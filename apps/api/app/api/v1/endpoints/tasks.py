@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.decorators import tiered_rate_limit
@@ -15,7 +15,10 @@ from app.schemas.tasks import (
     TaskIdsRequest,
     TaskListParams,
     TaskListResponse,
+    TaskNotesResponse,
     TaskResponse,
+    TaskRunListResponse,
+    TaskRunResponse,
     TaskUpdateRequest,
 )
 from app.services.tasks import task_service
@@ -110,6 +113,33 @@ async def get_task(task_id: str, user_id: Annotated[str, Depends(get_user_id)]) 
     task = await task_service.require_task(user_id, task_id)
     log.set_ns("task", assignee=task.assignee.value)
     return await task_service.task_response(user_id, task)
+
+
+@router.get("/tasks/{task_id}/runs")
+async def list_task_runs(
+    task_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> TaskRunListResponse:
+    """List the task's runs, newest first, with what each did and how it ended."""
+    log.set(user={"id": user_id}, task={"operation": "list_runs", "id": task_id})
+    runs, total = await task_service.list_runs(user_id, task_id, limit=limit, offset=offset)
+    log.set_ns("task", run_count=len(runs), total_runs=total)
+    return TaskRunListResponse(runs=[TaskRunResponse.from_document(r) for r in runs], total=total)
+
+
+@router.get("/tasks/{task_id}/notes")
+async def get_task_notes(
+    task_id: str, user_id: Annotated[str, Depends(get_user_id)]
+) -> TaskNotesResponse:
+    """Return GAIA's notes on the task."""
+    log.set(user={"id": user_id}, task={"operation": "get_notes", "id": task_id})
+    task = await task_service.require_task(user_id, task_id)
+    log.set_ns("task", has_notes=bool(task.notes))
+    return TaskNotesResponse(
+        notes=task.notes or "", observations=task.observations or "", log=task.log or ""
+    )
 
 
 @router.put("/tasks/{task_id}")

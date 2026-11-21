@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import uuid
 
 from app.constants.tasks import Assignee
+from app.db.repositories.task_runs import task_run_repository
 from app.db.repositories.tasks import task_repository
 from app.models.task_models import (
     NoWhen,
@@ -19,6 +20,7 @@ from app.models.task_models import (
     TaskUpdate,
     When,
 )
+from app.models.task_run_models import TaskRunDocument
 from app.models.todo_models import SubTask
 from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
 from app.services.analytics_service import capture
@@ -185,11 +187,21 @@ async def delete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
     """Delete the user's tasks and every subtask under them; returns the requested ids that existed."""
     existing = {task.id for task in await task_repository.find_by_ids(user_id, task_ids)}
     doomed = await _with_subtasks(user_id, [t for t in task_ids if t in existing])
+    # The runs first: a failed task delete keeps the task, and a retry deletes both.
+    await task_run_repository.delete_for_tasks(user_id, doomed)
     deleted = await task_repository.bulk_delete(user_id, doomed) if doomed else 0
     log.set_ns("task", deleted=deleted)
     if deleted:
         capture(UserId(user_id), TaskDeleted(count=deleted))
     return [t for t in task_ids if t in existing]
+
+
+async def list_runs(
+    user_id: str, task_id: str, *, limit: int, offset: int
+) -> tuple[list[TaskRunDocument], int]:
+    """Return a page of the task's run records, newest first, and their total."""
+    await require_task(user_id, task_id)
+    return await task_run_repository.list_for_task(task_id, user_id, limit=limit, offset=offset)
 
 
 async def delete_task(user_id: str, task_id: str) -> None:

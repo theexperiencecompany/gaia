@@ -18526,6 +18526,30 @@
         "title": "TaskListResponse",
         "type": "object"
       },
+      "TaskNotesResponse": {
+        "description": "GAIA's notes on a task: what it keeps (notes), what it noticed, and the system log.",
+        "properties": {
+          "log": {
+            "title": "Log",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "observations": {
+            "title": "Observations",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notes",
+          "observations",
+          "log"
+        ],
+        "title": "TaskNotesResponse",
+        "type": "object"
+      },
       "TaskResponse": {
         "description": "A task as the list and its side panel show it.",
         "properties": {
@@ -18838,6 +18862,149 @@
         "title": "TaskResponse",
         "type": "object"
       },
+      "TaskRunKind": {
+        "description": "A run, or a stretch of a migrated todo's timeline that was no run.",
+        "enum": [
+          "run",
+          "history"
+        ],
+        "title": "TaskRunKind",
+        "type": "string"
+      },
+      "TaskRunListResponse": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/TaskRunResponse"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "total"
+        ],
+        "title": "TaskRunListResponse",
+        "type": "object"
+      },
+      "TaskRunResponse": {
+        "description": "One run of a GAIA task as its Runs tab lists it, or a migrated stretch of its old log.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskRunKind"
+          },
+          "log_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Text"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskRunStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "trigger_type": {
+            "title": "Trigger Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "kind",
+          "status",
+          "started_at",
+          "completed_at",
+          "duration_seconds",
+          "trigger_type",
+          "summary",
+          "error_message",
+          "conversation_id",
+          "log_text"
+        ],
+        "title": "TaskRunResponse",
+        "type": "object"
+      },
       "TaskRunState": {
         "description": "Whether a GAIA task is idle, mid-run, or finished every run it will ever make.",
         "enum": [
@@ -18846,6 +19013,18 @@
           "ended"
         ],
         "title": "TaskRunState",
+        "type": "string"
+      },
+      "TaskRunStatus": {
+        "description": "How one run of a GAIA task went: running until its one terminal write.",
+        "enum": [
+          "running",
+          "success",
+          "failed",
+          "skipped",
+          "cancelled"
+        ],
+        "title": "TaskRunStatus",
         "type": "string"
       },
       "TaskUpdateRequest": {
@@ -40456,6 +40635,155 @@
           }
         },
         "summary": "Update Task",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/notes": {
+      "get": {
+        "description": "Return GAIA's notes on the task.",
+        "operationId": "tasks_get_task_notes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskNotesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Task Notes",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/runs": {
+      "get": {
+        "description": "List the task's runs, newest first, with what each did and how it ended.",
+        "operationId": "tasks_list_task_runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Task Runs",
         "tags": [
           "Tasks"
         ]

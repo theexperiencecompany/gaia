@@ -4654,6 +4654,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Notes
+         * @description Return GAIA's notes on the task.
+         */
+        get: operations["tasks_get_task_notes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Task Runs
+         * @description List the task's runs, newest first, with what each did and how it ended.
+         */
+        get: operations["tasks_list_task_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/subtasks": {
         parameters: {
             query?: never;
@@ -14843,6 +14883,18 @@ export interface components {
             total: number;
         };
         /**
+         * TaskNotesResponse
+         * @description GAIA's notes on a task: what it keeps (notes), what it noticed, and the system log.
+         */
+        TaskNotesResponse: {
+            /** Log */
+            log: string;
+            /** Notes */
+            notes: string;
+            /** Observations */
+            observations: string;
+        };
+        /**
          * TaskResponse
          * @description A task as the list and its side panel show it.
          */
@@ -14917,11 +14969,59 @@ export interface components {
             when: components["schemas"]["NoWhen"] | components["schemas"]["DateWhen"] | components["schemas"]["RepeatWhen"] | components["schemas"]["EventWhen"] | components["schemas"]["WatchWhen"];
         };
         /**
+         * TaskRunKind
+         * @description A run, or a stretch of a migrated todo's timeline that was no run.
+         * @enum {string}
+         */
+        TaskRunKind: "run" | "history";
+        /** TaskRunListResponse */
+        TaskRunListResponse: {
+            /** Runs */
+            runs: components["schemas"]["TaskRunResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TaskRunResponse
+         * @description One run of a GAIA task as its Runs tab lists it, or a migrated stretch of its old log.
+         */
+        TaskRunResponse: {
+            /** Completed At */
+            completed_at: string | null;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Duration Seconds */
+            duration_seconds: number | null;
+            /** Error Message */
+            error_message: string | null;
+            kind: components["schemas"]["TaskRunKind"];
+            /** Log Text */
+            log_text: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            status: components["schemas"]["TaskRunStatus"] | null;
+            /** Summary */
+            summary: string | null;
+            /** Trigger Type */
+            trigger_type: string;
+        };
+        /**
          * TaskRunState
          * @description Whether a GAIA task is idle, mid-run, or finished every run it will ever make.
          * @enum {string}
          */
         TaskRunState: "idle" | "running" | "ended";
+        /**
+         * TaskRunStatus
+         * @description How one run of a GAIA task went: running until its one terminal write.
+         * @enum {string}
+         */
+        TaskRunStatus: "running" | "success" | "failed" | "skipped" | "cancelled";
         /**
          * TaskUpdateRequest
          * @description A partial edit: a field left out stays as it is.
@@ -17609,8 +17709,13 @@ export type TaskCreateRequest = components['schemas']['TaskCreateRequest'];
 export type TaskFlag = components['schemas']['TaskFlag'];
 export type TaskIdsRequest = components['schemas']['TaskIdsRequest'];
 export type TaskListResponse = components['schemas']['TaskListResponse'];
+export type TaskNotesResponse = components['schemas']['TaskNotesResponse'];
 export type TaskResponse = components['schemas']['TaskResponse'];
+export type TaskRunKind = components['schemas']['TaskRunKind'];
+export type TaskRunListResponse = components['schemas']['TaskRunListResponse'];
+export type TaskRunResponse = components['schemas']['TaskRunResponse'];
 export type TaskRunState = components['schemas']['TaskRunState'];
+export type TaskRunStatus = components['schemas']['TaskRunStatus'];
 export type TaskUpdateRequest = components['schemas']['TaskUpdateRequest'];
 export type ThresholdCondition = components['schemas']['ThresholdCondition'];
 export type ThresholdDirection = components['schemas']['ThresholdDirection'];
@@ -30311,6 +30416,107 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_get_task_notes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskNotesResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_list_task_runs: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRunListResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

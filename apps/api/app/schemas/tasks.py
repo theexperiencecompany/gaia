@@ -6,7 +6,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.general import MAX_PAGE_NUMBER
-from app.constants.tasks import Assignee, TaskFlag, TaskRunState
+from app.constants.tasks import Assignee, TaskFlag, TaskRunKind, TaskRunState, TaskRunStatus
 from app.models.scheduler_models import DeactivationReason
 from app.models.task_models import (
     DateWhen,
@@ -17,6 +17,7 @@ from app.models.task_models import (
     Waiting,
     When,
 )
+from app.models.task_run_models import TaskRunDocument
 from app.models.todo_models import ExternalRef, Priority, SubTask
 from app.models.trigger_subscription_models import TriggerSubscriptionView
 from app.schemas.common import ResponseModel
@@ -154,6 +155,43 @@ class TaskResponse(ResponseModel):
             open_subtask_count=open_subtask_count,
             missing_integrations=[i for i in task.integration_ids if i not in connected],
         )
+
+
+class TaskRunResponse(ResponseModel):
+    """One run of a GAIA task as its Runs tab lists it, or a migrated stretch of its old log."""
+
+    run_id: str
+    kind: TaskRunKind
+    status: TaskRunStatus | None
+    started_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float | None
+    trigger_type: str
+    summary: str | None
+    error_message: str | None
+    conversation_id: str | None
+    #: The old activity log's lines for this stretch, verbatim, on a migrated record.
+    log_text: str | None
+
+    @classmethod
+    def from_document(cls, run: TaskRunDocument) -> "TaskRunResponse":
+        return cls(
+            **run.model_dump(include=set(cls.model_fields) - {"log_text"}),
+            log_text=run.imported.text if run.imported else None,
+        )
+
+
+class TaskRunListResponse(ResponseModel):
+    runs: list[TaskRunResponse]
+    total: int
+
+
+class TaskNotesResponse(ResponseModel):
+    """GAIA's notes on a task: what it keeps (notes), what it noticed, and the system log."""
+
+    notes: str
+    observations: str
+    log: str
 
 
 class TaskListResponse(ResponseModel):
