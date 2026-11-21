@@ -468,5 +468,4 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	attr-defined
 apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
-apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
 apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type

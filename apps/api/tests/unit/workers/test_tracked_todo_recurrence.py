@@ -9,7 +9,6 @@ app.workers.tasks.tracked_todo_tasks:
 
 from collections.abc import Callable
 from unittest.mock import AsyncMock, patch
-from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -19,12 +18,11 @@ from app.utils.timezone import Timezone
 from app.workers.tasks.tracked_todo_tasks import _load_user_with_tz
 
 
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+def _user_context(*, timezone: str | None) -> Callable[[str], AuthenticatedUser]:
     """Build the user load_user_context returns for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+    return lambda user_id: AuthenticatedUser(user_id=user_id, timezone=timezone)
 
 
-KOLKATA = ZoneInfo("Asia/Kolkata")
 LOAD_USER = "app.utils.auth_utils.load_user_context"
 
 
