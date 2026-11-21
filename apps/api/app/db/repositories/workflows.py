@@ -34,9 +34,11 @@ from app.models.scheduler_models import (
     TaskRearm,
     _Unset,
 )
+from app.models.trigger_configs import TriggerConfigData
 from app.models.trigger_gate_models import GateSkipRecord
 from app.models.workflow_models import (
     PublicWorkflowRow,
+    StoredTriggerRow,
     SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
@@ -660,6 +662,54 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"$set": {"trigger_config.composio_trigger_ids": trigger_ids}},
             scope=REPO_GLOBAL_SCOPE,
         )
+
+    async def find_on_unknown_trigger_types(self) -> list[StoredTriggerRow]:
+        """Workflows stored with a trigger type no TriggerType names, read as a projection."""
+        return await self._aggregate(
+            [
+                {"$match": {"trigger_config.type": {"$nin": [t.value for t in TriggerType]}}},
+                {
+                    "$project": {
+                        "user_id": 1,
+                        "activated": 1,
+                        "trigger_type": "$trigger_config.type",
+                    }
+                },
+            ],
+            StoredTriggerRow,
+        )
+
+    async def move_to_successor_trigger(
+        self,
+        workflow_id: str,
+        retired_type: str,
+        successor: TriggerConfigData,
+        *,
+        reason: DeactivationReason | None,
+    ) -> bool:
+        """Rewrite a retired trigger as its successor, unregistered and off; whether it matched.
+
+        Only a record still on retired_type is written, so a re-run is a no-op. reason
+        marks a workflow that was on; one its owner had switched off keeps no reason.
+        """
+        fields: dict[str, object] = {
+            "activated": False,
+            "trigger_config.type": TriggerType.INTEGRATION.value,
+            "trigger_config.trigger_name": successor.trigger_name,
+            # Every trigger config field is JSON-native, so no dump mode changes the stored document.
+            "trigger_config.trigger_data": successor.model_dump(mode="json"),  # pragma: no mutate
+            "trigger_config.enabled": False,
+            "trigger_config.composio_trigger_ids": [],
+        }
+        if reason is not None:
+            fields["deactivated_reason"] = reason.value
+        # Workflows keep no entity cache (cache_policy is None), so the seam's scope is inert here.
+        matched = await self._apply_raw_update_unfetched(  # pragma: no mutate
+            {"_id": workflow_id, "trigger_config.type": retired_type},
+            {"$set": fields},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return matched > 0
 
     async def backfill_public_slug(self, workflow_id: str, slug: str) -> WorkflowDocument | None:
         """Set slug on a public workflow only while it is still unset (the lazy legacy backfill).
