@@ -773,6 +773,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.81.0(react@19.2.3))
+      '@internationalized/date':
+        specifier: 3.10.1
+        version: 3.10.1
       '@livekit/components-react':
         specifier: ^2.9.23
         version: 2.9.23(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tslib@2.8.1)
@@ -4389,8 +4392,8 @@ packages:
   '@internationalized/date@3.10.1':
     resolution: {integrity: sha512-oJrXtQiAXLvT9clCf1K4kxp3eKsQhIaZqxEyowkBcsvZDdZkbWrVmnGknxs5flTD0VGsxrxKgBCZty1EzoiMzA==}
 
-  '@internationalized/date@3.12.2':
-    resolution: {integrity: sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw==}
+  '@internationalized/date@3.12.4':
+    resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
 
   '@internationalized/message@3.1.10':
     resolution: {integrity: sha512-nc0Or6EdWHqZRcsXb6P9hBIpLsfSl/ILh0rk5h/OVBpzmhdExXtPy2cQtWsq8XKRBpRHwDNnAHt4OpolcB7dog==}
@@ -8365,7 +8368,9 @@ packages:
   '@smithy/core@3.36.0':
     resolution: {integrity: sha512-3hJiwG1F5t1SoXqp/yOCmYXziyx7ZVqF63S5W6YU201e/qwVaHPex+E/3vvyY9a3ORq/b+BydeNZpP2saQ9X2g==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.38.1':
     resolution: {integrity: sha512-U/mB2XiwTLaf+NSgLSWwJfptsMT/H8aBi0aTAA/E5e2/TagFeGCqAyhKGG0w0A9IWTkm4qYEmLoD/HB6aYfnRA==}
@@ -12518,6 +12523,7 @@ packages:
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
+    deprecated: Please migrate to image-size@2.x
     hasBin: true
 
   immutable@5.1.9:
@@ -17517,7 +17523,7 @@ snapshots:
 
   '@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@react-types/shared': 3.36.0(react@19.2.3)
       '@spectrum-icons/ui': 3.7.1(@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@spectrum-icons/workflow': 4.3.1(@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -21792,7 +21798,7 @@ snapshots:
     dependencies:
       '@swc/helpers': 0.5.23
 
-  '@internationalized/date@3.12.2':
+  '@internationalized/date@3.12.4':
     dependencies:
       '@swc/helpers': 0.5.23
 
@@ -24166,7 +24172,7 @@ snapshots:
 
   '@react-aria/calendar@3.9.3(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@react-aria/i18n': 3.13.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-aria/interactions': 3.28.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-aria/live-announcer': 3.5.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -24231,7 +24237,7 @@ snapshots:
 
   '@react-aria/datepicker@3.15.3(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-aria/focus': 3.22.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -24317,7 +24323,7 @@ snapshots:
 
   '@react-aria/i18n@3.12.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@internationalized/message': 3.1.10
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
@@ -24330,7 +24336,7 @@ snapshots:
 
   '@react-aria/i18n@3.13.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@internationalized/message': 3.1.10
       '@internationalized/string': 3.2.9
       '@swc/helpers': 0.5.23
@@ -25285,7 +25291,7 @@ snapshots:
 
   '@react-stately/calendar@3.9.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@react-stately/utils': 3.12.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-types/calendar': 3.8.1(react@19.2.3)
       '@react-types/shared': 3.36.0(react@19.2.3)
@@ -25342,7 +25348,7 @@ snapshots:
 
   '@react-stately/datepicker@3.15.3(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@internationalized/string': 3.2.9
       '@react-stately/form': 3.3.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-stately/overlays': 3.7.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -25607,7 +25613,7 @@ snapshots:
 
   '@react-types/calendar@3.8.1(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@react-types/shared': 3.36.0(react@19.2.3)
       react: 19.2.3
 
@@ -25643,7 +25649,7 @@ snapshots:
 
   '@react-types/datepicker@3.13.3(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.10.1
       '@react-types/calendar': 3.9.0(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-types/overlays': 3.10.0(@react-spectrum/provider@3.11.1(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@react-types/shared': 3.36.0(react@19.2.3)
@@ -34516,7 +34522,7 @@ snapshots:
 
   react-aria-components@1.19.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@react-types/shared': 3.36.0(react@19.2.3)
       '@swc/helpers': 0.5.23
       client-only: 0.0.1
@@ -34527,7 +34533,7 @@ snapshots:
 
   react-aria@3.50.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-types/shared': 3.36.0(react@19.2.3)
@@ -34886,7 +34892,7 @@ snapshots:
 
   react-stately@3.48.0(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-types/shared': 3.36.0(react@19.2.3)

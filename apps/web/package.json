@@ -82,6 +82,7 @@
     "@heroui/tooltip": "2.2.27",
     "@heroui/user": "2.2.25",
     "@hookform/resolvers": "^5.4.0",
+    "@internationalized/date": "3.10.1",
     "@livekit/components-react": "^2.9.23",
     "@marsidev/react-turnstile": "^1.6.3",
     "@mcp-ui/client": "^7.1.1",
