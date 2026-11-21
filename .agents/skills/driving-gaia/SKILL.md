@@ -180,6 +180,8 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
 **Verify it landed — check Mongo, not stdout.** The API's database is `$MONGO_DB_NAME` (`app/db/mongodb/mongodb.py`): `gaia_wt<offset>` in a linked worktree (`.env.worktree`), `GAIA` in the main checkout. Resolve the user id from the mint/seed response, then:
 
 ```bash
+# this shell may not have .env.worktree loaded (mise loads it only for tasks)
+[ -f .env.worktree ] && set -a && . ./.env.worktree && set +a
 mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.todos.countDocuments({user_id:"<USER_ID>"})'
 # chat persisted → the conversation + messages exist:

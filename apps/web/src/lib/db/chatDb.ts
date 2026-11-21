@@ -1,23 +1,33 @@
+import type { ConversationSummary } from "@shared/api/generated";
 import type { ScreenItem } from "@shared/conversation";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
-import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { LocalSend } from "@/features/chat/live/liveConversationStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
-export interface IConversation {
-  id: string;
+type CamelCase<S extends string> = S extends `${infer Head}_${infer Tail}`
+  ? `${Head}${Capitalize<CamelCase<Tail>>}`
+  : S;
+
+/** Conversation summary fields a stored conversation keeps unchanged, under their camelCase names. */
+type StoredSummaryFields<K extends keyof ConversationSummary & string> = {
+  [P in K as CamelCase<P>]?: NonNullable<ConversationSummary[P]>;
+};
+
+export type IConversation = StoredSummaryFields<
+  | "description"
+  | "user_id"
+  | "starred"
+  | "is_system_generated"
+  | "is_unread"
+  | "source"
+> & {
+  id: ConversationSummary["conversation_id"];
   title: string;
-  description?: string;
-  userId?: string;
-  starred?: boolean;
-  isSystemGenerated?: boolean;
-  systemPurpose?: SystemPurpose | null;
-  isUnread?: boolean;
-  source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
+  systemPurpose?: ConversationSummary["system_purpose"];
   // Live work here awaits the user's approval: the sidebar lists the
   // conversation for its card, and the row lights the approval dot.
-  awaitingApproval: boolean;
+  awaitingApproval: ConversationSummary["awaiting_approval"];
   todoId?: string | null;
   // False when the server's conversation list never shows it (a todo's chat, a bot DM).
   listed?: boolean;
@@ -27,7 +37,7 @@ export interface IConversation {
   artifacts?: ArtifactData[];
   createdAt: Date;
   updatedAt: Date;
-}
+};
 
 /** A conversation's screen and head as this device last saw them, where an older page starts, and the sends it made into it. */
 export interface IConversationLog {

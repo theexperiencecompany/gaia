@@ -341,6 +341,31 @@ async def test_deleting_conversations_deletes_their_entries(
     assert await entries_collection.count_documents({}) == 0
 
 
+async def test_a_chat_created_while_a_delete_runs_is_kept_with_its_entries(
+    repo: ConversationRepository,
+    held: HeldFlushes,
+    entries_collection: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    await _chat(repo, uid)
+    distinct = repo._distinct
+    created: list[str] = []
+
+    async def chat_created_after_the_read(field: str, filter_: Any = None) -> list[str]:
+        ids = await distinct(field, filter_)
+        created.append(await _chat(repo, uid))
+        await _append(created[0], uid, [_flushed_at_once("late-1")])
+        await held.run_all()
+        return ids
+
+    monkeypatch.setattr(repo, "_distinct", chat_created_after_the_read)
+    deleted = await repo.delete_all_for_user(uid)
+    assert created[0] not in deleted
+    assert await repo.get(created[0], user_id=uid) is not None
+    assert await entries_collection.count_documents({"conversation_id": created[0]}) == 1
+
+
 async def _chat(repo: ConversationRepository, user_id: str, **fields: object) -> str:
     doc = ConversationDocument.model_validate(
         {

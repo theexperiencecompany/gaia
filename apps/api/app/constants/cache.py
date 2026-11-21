@@ -20,7 +20,6 @@ FIVE_MINUTES_TTL = 300
 # TTL Aliases
 DEFAULT_CACHE_TTL = ONE_HOUR_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
-SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # Subscription plan tier, cached for hot paths (rate limiting, per-request model
 # routing). Eventually consistent: a plan change takes effect within the TTL.
 SUBSCRIPTION_PLAN_CACHE_PREFIX = "subscription:"
@@ -71,6 +70,7 @@ LAST_ACTIVE_DEBOUNCE_SECONDS = 60
 NOTE_CACHE_PREFIX = "note"
 TODO_CACHE_PREFIX = "todo"
 USER_INTEGRATION_CACHE_PREFIX = "user_integration"
+INTEGRATION_CACHE_PREFIX = "integration"
 PROJECT_CACHE_PREFIX = "project"
 USER_CACHE_PREFIX = "user"
 BOT_USER_CACHE_PREFIX = "bot_user"
@@ -85,7 +85,6 @@ USER_PRESENCE_PREFIX = "user_presence"
 
 # Cache key prefixes
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_EXCLUDED_SCOPES_PREFIX = "mcp_oauth_excluded_scopes"
 # v2: discovery is now cached as the OAuthDiscovery model (model_dump) rather
