@@ -59,7 +59,8 @@ class ReplyText:
     @classmethod
     def kept(cls, text: str) -> ReplyText:
         """Return text as one whole kept message, so the next chunk opens a bubble below it."""
-        return cls(raw=text, message_start=len(text), break_pending=bool(text))
+        ended = _strip_internal_agent_tags(text)
+        return cls(raw=ended, message_start=len(ended), break_pending=bool(ended))
 
     def take(self, payload: ResponseEvent | MessageBoundaryEvent) -> ReplyText:
         """Fold one streamed chunk or message boundary; text only ever grows."""

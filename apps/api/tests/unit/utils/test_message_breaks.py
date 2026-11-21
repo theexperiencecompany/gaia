@@ -2,6 +2,7 @@
 
 from itertools import pairwise
 import re
+import time
 
 import pytest
 
@@ -281,6 +282,20 @@ class TestEdgeBreaks:
 
     def test_a_breaks_only_text_strips_to_nothing(self):
         assert strip_edge_message_breaks(BR * 5) == ""
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "text",
+    ["a" + " " * 50_000 + "x", "<" + " " * 50_000 + "x", "<NEW_MESSAGE_BREAK" + " " * 50_000],
+)
+def test_a_long_whitespace_run_is_parsed_in_linear_time(text):
+    started = time.perf_counter()
+    strip_edge_message_breaks(text)
+    is_only_message_breaks(text)
+    shown_so_far(text)
+
+    assert time.perf_counter() - started < 1.0
 
 
 class TestShownSoFar:

@@ -25,8 +25,8 @@ _SENTINEL_WORD_SEQUENCES: tuple[tuple[str, ...], ...] = (
 )
 
 _SEPARATOR = r"[\s_-]*"
-_OPEN = r"[<\[]\s*/?\s*"
-_CLOSE_OPENING = r"\s*/?\s*"
+_OPEN = r"[<\[]\s*(?:/\s*)?"
+_CLOSE_OPENING = r"\s*(?:/\s*)?"
 _CLOSE = _CLOSE_OPENING + r"[>\]]"
 _WHOLE_SPELLINGS = "|".join(_SEPARATOR.join(words) for words in _SENTINEL_WORD_SEQUENCES)
 
@@ -67,10 +67,11 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 
 
 #: A streamed tail that may still become a break, down to a lone "<" or "[".
-_BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
+_BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|{_OPEN}$", re.IGNORECASE)
 
 _LEADING_BREAKS_RE = re.compile(rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*", re.IGNORECASE)
-_TRAILING_BREAKS_RE = re.compile(rf"(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*$", re.IGNORECASE)
+# Peeled one at a time from the end: a (?:\s*sentinel)+$ search is quadratic in a whitespace run.
+_BREAK_AT_END_RE = re.compile(rf"{MESSAGE_BREAK_SENTINEL_RE.pattern}\Z", re.IGNORECASE)
 
 
 def is_only_message_breaks(text: str) -> bool:
@@ -89,8 +90,15 @@ def strip_leading_message_breaks(text: str) -> str:
 
 
 def strip_trailing_message_breaks(text: str) -> str:
-    """Drop the run of sentinels a text closes with."""
-    return _TRAILING_BREAKS_RE.sub("", text)
+    """Drop the run of sentinels a text closes with, and the whitespace around it."""
+    stripped = text.rstrip()
+    found = _BREAK_AT_END_RE.search(stripped)
+    if found is None:
+        return text
+    while found is not None:
+        stripped = stripped[: found.start()].rstrip()
+        found = _BREAK_AT_END_RE.search(stripped)
+    return stripped
 
 
 def strip_edge_message_breaks(text: str) -> str:
