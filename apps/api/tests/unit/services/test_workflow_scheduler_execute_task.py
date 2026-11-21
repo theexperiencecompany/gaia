@@ -17,7 +17,7 @@ from app.services.workflow.scheduler import WorkflowScheduler
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    svc = WorkflowScheduler(redis_settings=MagicMock())
+    svc = WorkflowScheduler()
     svc.arq_pool = AsyncMock()
     return svc
 

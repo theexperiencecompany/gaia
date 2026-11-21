@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import ConfigDict
 import pytest
 
+from app.config.arq_redis import arq_redis_settings
+from app.constants.db import ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,
@@ -80,7 +82,7 @@ class ConcreteSchedulerService(BaseSchedulerService):
 
 @pytest.fixture
 def service():
-    svc = ConcreteSchedulerService(redis_settings=MagicMock())
+    svc = ConcreteSchedulerService()
     svc.arq_pool = AsyncMock()
     return svc
 
@@ -140,19 +142,19 @@ def recurring_task_stop_after():
 
 
 class TestInitializeClose:
-    async def test_initialize_creates_pool(self):
-        with (
-            patch(
-                "app.services.scheduler_service.create_pool",
-                new_callable=AsyncMock,
-                return_value=MagicMock(),
-            ) as mock_create_pool,
-        ):
-            svc = ConcreteSchedulerService(redis_settings=MagicMock())
+    async def test_initialize_connects_with_the_shared_arq_redis_settings(self):
+        pool = MagicMock()
+        with patch(
+            "app.services.scheduler_service.create_pool",
+            new_callable=AsyncMock,
+            return_value=pool,
+        ) as mock_create_pool:
+            svc = ConcreteSchedulerService()
             await svc.initialize()
 
-            mock_create_pool.assert_awaited_once()
-            assert svc.arq_pool is not None
+        mock_create_pool.assert_awaited_once_with(arq_redis_settings())
+        assert mock_create_pool.await_args.args[0].conn_timeout == ARQ_REDIS_CONNECT_TIMEOUT_SECONDS
+        assert svc.arq_pool is pool
 
     async def test_close_closes_pool(self, service):
         mock_pool = AsyncMock()
