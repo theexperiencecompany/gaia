@@ -1,22 +1,24 @@
 /**
- * Unified `/todo` command — manages the user's todo list.
+ * Unified `/todo` command — manages the user's tasks.
  *
  * Supports subcommands: `list`, `add`, `complete`, `delete`.
  * Delegates to shared handlers in `utils/commands.ts`.
  *
  * For Discord (structured args), the `add` subcommand extracts `priority`
- * and `description` from named options. For text-based platforms, it falls
- * back to `dispatchTodoSubcommand` which parses positional args.
+ * and `description` (sent as the task body) from named options. For
+ * text-based platforms, it falls back to `dispatchTaskSubcommand` which
+ * parses positional args.
  *
  * @module
  */
 
+import type { TaskCreateRequest } from "../../api/generated";
 import type { BotCommand, CommandExecuteParams } from "../types";
 import { parseTextArgs, sendChunked } from "../utils";
 import {
-  dispatchTodoSubcommand,
-  handleTodoCreate,
-  handleTodoList,
+  dispatchTaskSubcommand,
+  handleTaskCreate,
+  handleTaskList,
 } from "../utils/commands";
 
 /** `/todo` command definition with subcommands. */
@@ -41,7 +43,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "title",
-          description: "BotTodo title",
+          description: "Todo title",
           required: true,
           type: "string",
         },
@@ -57,7 +59,7 @@ export const todoCommand: BotCommand = {
         },
         {
           name: "description",
-          description: "BotTodo description",
+          description: "Todo description",
           type: "string",
         },
       ],
@@ -68,7 +70,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotTodo ID",
+          description: "Todo ID",
           required: true,
           type: "string",
         },
@@ -80,7 +82,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotTodo ID",
+          description: "Todo ID",
           required: true,
           type: "string",
         },
@@ -100,20 +102,18 @@ export const todoCommand: BotCommand = {
       (rawText ? parseTextArgs(rawText).subcommand : "list");
 
     // Structured args path (Discord): handle "add" specially to preserve
-    // priority and description options that dispatchTodoSubcommand ignores
+    // priority and description options that dispatchTaskSubcommand ignores
     if (args.subcommand && !rawText && subcommand === "add") {
       const title = args.title ? String(args.title) : "";
       if (!title) {
         await target.sendEphemeral("Usage: /todo add <title>");
         return;
       }
-      const priority = args.priority as "low" | "medium" | "high" | undefined;
-      const description = args.description
-        ? String(args.description)
-        : undefined;
-      const response = await handleTodoCreate(gaia, title, ctx, {
+      const priority = args.priority as TaskCreateRequest["priority"];
+      const body = args.description ? String(args.description) : undefined;
+      const response = await handleTaskCreate(gaia, title, ctx, {
         priority,
-        description,
+        body,
       });
       await sendChunked(target.sendEphemeral, response, target.platform);
       return;
@@ -123,7 +123,7 @@ export const todoCommand: BotCommand = {
     if (args.subcommand && !rawText && subcommand === "list") {
       const completed =
         typeof args.completed === "boolean" ? args.completed : undefined;
-      const response = await handleTodoList(gaia, ctx, completed);
+      const response = await handleTaskList(gaia, ctx, completed);
       await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }
@@ -133,7 +133,7 @@ export const todoCommand: BotCommand = {
       const subArgs: string[] = [];
       if (args.title) subArgs.push(String(args.title));
       if (args.id) subArgs.push(String(args.id));
-      const response = await dispatchTodoSubcommand(
+      const response = await dispatchTaskSubcommand(
         gaia,
         ctx,
         subcommand,
@@ -145,7 +145,7 @@ export const todoCommand: BotCommand = {
 
     // Text-based path (Slack, Telegram): parse rawText into positional args
     const subArgs = rawText ? parseTextArgs(rawText).args : [];
-    const response = await dispatchTodoSubcommand(
+    const response = await dispatchTaskSubcommand(
       gaia,
       ctx,
       subcommand,

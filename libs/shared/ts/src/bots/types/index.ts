@@ -9,7 +9,7 @@
  * - ChatRequest / ChatResponse: chat API payloads
  * - CommandContext: user identity passed to all shared command handlers
  * - BotConfig: environment config loaded by config/index.ts
- * - Domain types: BotWorkflow, BotTodo, BotConversation (match backend API schemas)
+ * - Domain types: BotWorkflow, BotConversation (match backend API schemas)
  */
 
 /**
@@ -164,30 +164,6 @@ export interface BotWorkflowExecutionResponse {
   execution_id: string;
   status: string;
   result?: unknown;
-}
-
-export interface BotTodo {
-  id: string;
-  title: string;
-  description?: string;
-  completed: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
-}
-
-export interface BotTodoListResponse {
-  todos: BotTodo[];
-  total: number;
-}
-
-export interface BotCreateTodoRequest {
-  title: string;
-  description?: string;
-  completed?: boolean;
-  priority?: "low" | "medium" | "high";
-  due_date?: string;
-  project_id?: string;
 }
 
 export interface BotConversation {
