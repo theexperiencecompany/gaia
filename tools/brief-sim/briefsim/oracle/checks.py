@@ -36,7 +36,7 @@ SUNDAY = 6
 ON_TIME_SLACK = timedelta(minutes=10)
 _MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 _DUE_PHRASE = re.compile(
-    r"\b(due|overdue since)\s+(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+    r"\b((?:was |were )?due|overdue since)\s+(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday"
     r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2})\b",
     re.IGNORECASE,
 )
@@ -166,7 +166,7 @@ def check_local_date(truth: Truth, brief: Brief) -> list[Finding]:
 
 
 def _said_due(phrase: str, when: str, today: date) -> date:
-    """Return the due date a phrase ("due Thursday", "overdue since Friday") states, seen on today."""
+    """Return the due date a phrase ("due Thursday", "was due Monday", "overdue since Friday") states, seen on today."""
     when = when.lower()
     offsets = {"today": 0, "tomorrow": 1, "yesterday": -1}
     if when in offsets:
