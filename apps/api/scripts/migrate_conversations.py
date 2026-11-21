@@ -13,11 +13,12 @@ runs it as gaia-migrate, which the API and the worker wait on.
 Usage::
 
     cd apps/api
-    uv run python -m scripts.migrate_conversations
+    uv run python -m scripts.migrate_conversations [--check]
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -28,6 +29,18 @@ from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.db.repositories.conversation_migration_guard import first_refusal
 from scripts import migrate_approval_vocabulary as vocabulary
 from scripts.migrate_conversation_entries import __main__ as entries
+
+#: The exit status of --check while a catch-up has work to do; deploy.sh migrate reads the same value.
+CATCH_UP_NEEDED_EXIT = 3
+
+
+async def pending_catch_up(db: AsyncIOMotorDatabase) -> str | None:
+    """Name what a catch-up run would still rewrite in db, or None when it has nothing to do; reads only."""
+    if refusal := await first_refusal():
+        return refusal.error().message
+    if left := (await vocabulary.verify(db)).left:
+        return f"{left} stored approval values in the old vocabulary"
+    return None
 
 
 async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
@@ -50,6 +63,24 @@ async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
     return 0
 
 
-if __name__ == "__main__":
+async def check(db: AsyncIOMotorDatabase) -> int:
+    """Report whether a catch-up run has work to do, writing nothing: CATCH_UP_NEEDED_EXIT when it has."""
+    if pending := await pending_catch_up(db):
+        print(f"A catch-up is needed: {pending}")
+        return CATCH_UP_NEEDED_EXIT
+    print("Every conversation is in this build's shape.")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check", action="store_true", help="write nothing; say whether a catch-up is needed"
+    )
+    args = parser.parse_args()
     database = MongoDB(settings.MONGO_DB, MONGO_DATABASE_NAME).database
-    raise SystemExit(asyncio.run(migrate_conversations(database)))
+    return asyncio.run(check(database) if args.check else migrate_conversations(database))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
