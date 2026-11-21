@@ -43,19 +43,6 @@ export interface DemoTrigger {
   settings?: TriggerSetting[];
 }
 
-export const APP_NAMES: Record<string, string> = {
-  gmail: "Gmail",
-  googlecalendar: "Google Calendar",
-  github: "GitHub",
-  linear: "Linear",
-  slack: "Slack",
-  notion: "Notion",
-  googlesheets: "Google Sheets",
-  googledocs: "Google Docs",
-  googledrive: "Google Drive",
-  todoist: "Todoist",
-};
-
 const REPOS: PickSetting = {
   kind: "pick",
   key: "repos",

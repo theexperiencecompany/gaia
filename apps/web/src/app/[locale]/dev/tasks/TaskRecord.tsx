@@ -7,8 +7,8 @@ import { type ReactNode, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { tabsVariants } from "@/components/shared/tabsVariants";
 import { cn } from "@/lib/utils";
+import { appName } from "../marketplace/appModel";
 import { AppIcon } from "./AppIcon";
-import { APP_NAMES } from "./demoTriggers";
 import { isRepeating, type Task, type TaskRun } from "./taskModel";
 import { WEBHOOK_TRIGGER } from "./whenModel";
 
@@ -50,7 +50,7 @@ function startedBy(trigger: TaskRun["trigger"]): string {
   if (trigger === "schedule") return "On schedule";
   if (trigger === "watch") return "When it saw the change";
   if (trigger === WEBHOOK_TRIGGER) return "From the webhook";
-  return `From ${APP_NAMES[trigger] ?? trigger}`;
+  return `From ${appName(trigger)}`;
 }
 
 /** One run: its summary and time; open, what GAIA did in it and its chat. */

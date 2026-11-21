@@ -6,8 +6,8 @@ import { addHours, format, parseISO } from "date-fns";
 import { useEffect, useRef, useState } from "react";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { appName } from "../marketplace/appModel";
 import { AskShell } from "./AskShell";
-import { APP_NAMES } from "./demoTriggers";
 import { CHECK_MS } from "./demoWatches";
 import type { Task } from "./taskModel";
 import { ago, BLIND, BLIND_PAUSE_HOURS } from "./watchModel";
@@ -35,9 +35,7 @@ export default function WatchTrouble({
   if (task.state === "paused" && !task.pauseReason) return null;
 
   const { source, blind, reading } = watch;
-  const where = source.app
-    ? (APP_NAMES[source.app] ?? source.app)
-    : source.site;
+  const where = source.app ? appName(source.app) : source.site;
   const { line, fix } = BLIND[blind.reason];
   const isPaused = task.state === "paused";
   const pausesOn = format(

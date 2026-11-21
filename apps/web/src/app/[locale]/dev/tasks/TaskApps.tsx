@@ -3,21 +3,21 @@
 import { Tooltip } from "@heroui/react";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { appName } from "../marketplace/appModel";
 import { AppIcon } from "./AppIcon";
-import { APP_NAMES } from "./demoTriggers";
 import { PropertyRow } from "./PropertyRow";
 import { isRepeating, type Task } from "./taskModel";
 
 /** An app's logo, named on hover. */
 function AppLogo({ id }: { id: string }) {
-  const name = APP_NAMES[id] ?? id;
+  const name = appName(id);
   return (
     <Tooltip delay={200}>
       <Tooltip.Trigger
         aria-label={name}
         render={(props) => <span {...props} className="flex" />}
       >
-        <AppIcon id={id} size={16} />
+        <AppIcon id={id} size={15} />
       </Tooltip.Trigger>
       <Tooltip.Content placement="top">{name}</Tooltip.Content>
     </Tooltip>
@@ -75,7 +75,7 @@ export default function TaskApps({
             className="h-7 min-w-0 gap-1.5 text-[13px]"
           >
             <AppIcon id={next} size={14} />
-            {wasConnected ? "Reconnect" : "Connect"} {APP_NAMES[next] ?? next}
+            {wasConnected ? "Reconnect" : "Connect"} {appName(next)}
           </GaiaButton>
         )}
       </div>

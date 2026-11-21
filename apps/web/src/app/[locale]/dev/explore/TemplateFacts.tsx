@@ -56,7 +56,7 @@ export function TemplateFacts({
           <div className="-ml-2 flex flex-wrap">
             {integration_ids.map((app) => (
               <FactLink key={app} href={`${MARKETPLACE_PATH}/${app}`}>
-                <AppIcon id={app} size={16} />
+                <AppIcon id={app} size={15} />
                 {appName(app)}
               </FactLink>
             ))}

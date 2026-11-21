@@ -7,8 +7,9 @@ import { type ReactNode, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
+import { appName } from "../marketplace/appModel";
 import { AppIcon } from "./AppIcon";
-import { APP_NAMES, DEMO_TRIGGERS, defaultTriggerData } from "./demoTriggers";
+import { DEMO_TRIGGERS, defaultTriggerData } from "./demoTriggers";
 import EventSettings from "./EventSettings";
 import type { TaskWhen } from "./taskModel";
 import WatchPane from "./WatchPane";
@@ -186,7 +187,7 @@ export default function EventPane({
   const needle = query.trim().toLowerCase();
   const anywhere = ANYWHERE.filter((item) => item.words.includes(needle));
   const matches = DEMO_TRIGGERS.filter((item) =>
-    `${APP_NAMES[item.app]} ${item.name}`.toLowerCase().includes(needle),
+    `${appName(item.app)} ${item.name}`.toLowerCase().includes(needle),
   );
   const apps = [...new Set(matches.map((item) => item.app))];
 
@@ -254,7 +255,7 @@ export default function EventPane({
         {apps.map((app) => (
           <section key={app}>
             <h4 className="px-3 pt-3 pb-1 text-xs text-zinc-500">
-              {APP_NAMES[app]}
+              {appName(app)}
             </h4>
             {matches
               .filter((item) => item.app === app)
