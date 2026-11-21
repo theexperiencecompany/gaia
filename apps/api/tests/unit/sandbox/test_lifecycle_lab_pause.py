@@ -64,20 +64,20 @@ class TestLabIdlePause:
 
     async def test_a_live_run_keeps_the_sandbox_from_pausing(self) -> None:
         sbx = await self._fire([_run_todo(1)])
-        sbx.beta_pause.assert_not_awaited()
+        sbx.pause.assert_not_awaited()
 
     async def test_a_live_run_stays_up_when_the_flag_reads_off(self) -> None:
         # The flag reads off whenever PostHog is unreachable, and
         # that paused sandboxes with a coding agent working inside.
         sbx = await self._fire([_run_todo(1)], flag_on=False)
-        sbx.beta_pause.assert_not_awaited()
+        sbx.pause.assert_not_awaited()
 
     async def test_no_live_run_means_it_is_idle_paused(self) -> None:
         # Every flagged user skipped the idle pause, so a sandbox
         # with nothing running billed until E2B's lifetime cap killed it.
         sbx = await self._fire([])
-        sbx.beta_pause.assert_awaited_once()
+        sbx.pause.assert_awaited_once()
 
     async def test_a_run_past_the_cap_no_longer_keeps_it_awake(self) -> None:
         sbx = await self._fire([_run_todo(13)])
-        sbx.beta_pause.assert_awaited_once()
+        sbx.pause.assert_awaited_once()

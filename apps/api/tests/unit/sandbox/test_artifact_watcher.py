@@ -13,13 +13,16 @@ scheduling, snapshot diffing — is the real production code.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from typing import Any, cast
 
-from e2b import AsyncSandbox
+from e2b import AsyncSandbox, AsyncWatchHandle, FilesystemEvent, FilesystemEventType
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
+from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
+from app.services.artifact_events import ArtifactFileEvent, upsert_event
 from app.services.sandbox import artifact_watcher as aw
 from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifacts_prefix
 from app.services.storage import JuiceFSUnavailable
@@ -35,9 +38,9 @@ def info(path: str, size: int = 10, mtime: float = 100.0, inode: int = 0) -> Art
     )
 
 
-def fs_event(name: str, etype: str = "WRITE") -> SimpleNamespace:
-    """Stand-in for e2b's FilesystemEvent (name is relative to the watch root)."""
-    return SimpleNamespace(name=name, type=SimpleNamespace(name=etype))
+def fs_event(name: str, etype: str = "WRITE") -> FilesystemEvent:
+    """Build e2b's FilesystemEvent (name is relative to the watch root)."""
+    return FilesystemEvent(name=name, type=FilesystemEventType[etype])
 
 
 def fake_sandbox(**files: Any) -> AsyncSandbox:
@@ -92,9 +95,9 @@ def upserts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     from the guard working.
     """
     calls: list[tuple[str, Any]] = []
-    real = aw.upsert_event
+    real = upsert_event
 
-    def record(session_id: str, art: Any, **kw: Any) -> dict[str, Any]:
+    def record(session_id: str, art: Any, **kw: Any) -> ArtifactFileEvent:
         calls.append((session_id, art))
         return real(session_id, art, **kw)
 
@@ -129,7 +132,7 @@ async def test_a_temp_file_write_publishes_nothing(
     # Atomic writes land as `<name>.gaia-tmp` then rename. Publishing the temp
     # file makes a half-written artifact flash in the user's panel.
     w = ArtifactWatcher(USER, fake_sandbox())
-    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{aw.WORKSPACE_TMP_SUFFIX}"))
+    await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{WORKSPACE_TMP_SUFFIX}"))
     assert published == []
 
 
@@ -586,6 +589,65 @@ async def test_a_dead_watch_stream_marks_the_watcher_not_alive() -> None:
     w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))
     await w.start()
     w._on_watch_exit(None)
+    assert w.is_alive() is False
+
+
+@pytest.fixture
+def watch_exits(monkeypatch: pytest.MonkeyPatch) -> list[Exception | None]:
+    """Capture each recorded watch-stream death (the warning a dead stream logs)."""
+    exits: list[Exception | None] = []
+
+    async def record(user_id: str, mode: str, exc: Exception | None) -> None:
+        exits.append(exc)
+
+    monkeypatch.setattr(aw, "_record_watch_exit", record)
+    return exits
+
+
+def sandbox_with_sdk_watch_handle(events: AsyncGenerator[Any, None]) -> AsyncSandbox:
+    """Build a sandbox whose watch_dir returns e2b's real AsyncWatchHandle over the stream."""
+
+    async def watch_dir(*_a: Any, on_exit: Any, **_k: Any) -> AsyncWatchHandle:
+        return AsyncWatchHandle(events, on_event=lambda _ev: None, on_exit=on_exit)
+
+    async def make_dir(*_a: Any, **_k: Any) -> None:
+        return None
+
+    return fake_sandbox(watch_dir=watch_dir, make_dir=make_dir)
+
+
+async def test_stopping_an_sdk_watch_handle_is_not_recorded_as_a_dead_stream(
+    watch_exits: list[Exception | None],
+) -> None:
+    # The SDK's stop() calls on_exit(None); our own stop must not log a stream death.
+    async def endless() -> AsyncGenerator[Any, None]:
+        await asyncio.Event().wait()
+        yield
+
+    w = ArtifactWatcher(USER, sandbox_with_sdk_watch_handle(endless()))
+    await w.start()
+    await asyncio.sleep(0)  # let the SDK's event task start, as it has long before a real stop
+    await w.stop()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert watch_exits == []
+    assert w.is_alive() is False
+
+
+async def test_an_sdk_watch_stream_that_fails_is_recorded_with_its_error(
+    watch_exits: list[Exception | None],
+) -> None:
+    boom = RuntimeError("envd restarted")
+
+    async def failing() -> AsyncGenerator[Any, None]:
+        raise boom
+        yield
+
+    w = ArtifactWatcher(USER, sandbox_with_sdk_watch_handle(failing()))
+    await w.start()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert len(watch_exits) == 1
     assert w.is_alive() is False
 
 

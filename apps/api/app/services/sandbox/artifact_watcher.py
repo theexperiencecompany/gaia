@@ -182,11 +182,9 @@ class ArtifactWatcher:
         handle, self._handle = self._handle, None
         if handle is None:
             return
-        if self._mode == "accesslog":
-            kill = getattr(handle, "kill", None)
-            if kill is not None:
-                with contextlib.suppress(Exception):
-                    await kill()
+        if isinstance(handle, AsyncCommandHandle):
+            with contextlib.suppress(Exception):
+                await handle.kill()
             with contextlib.suppress(Exception):
                 await self.sandbox.commands.run(
                     f"pkill -f 'tail -n0 -F {ACCESSLOG_PATH}'",
@@ -194,10 +192,8 @@ class ArtifactWatcher:
                     user="root",
                 )
         else:
-            stop = getattr(handle, "stop", None)
-            if stop is not None:
-                with contextlib.suppress(Exception):
-                    await handle.stop()
+            with contextlib.suppress(Exception):
+                await handle.stop()
 
     def is_alive(self) -> bool:
         """Return True if the watcher is running with a live underlying handle."""
@@ -223,8 +219,12 @@ class ArtifactWatcher:
         # Stream died (envd restart/pause); mark dead synchronously — envd's
         # callback can't await — so the next acquire reopens it. Previously this
         # failed silently, indistinguishable from a sandbox nobody wrote to.
+        stopped_by_us = self._stopped
         self._stopped = True
         self._handle = None
+        # The SDK also calls on_exit(None) from handle.stop(); that is our own stop, not a death.
+        if stopped_by_us and exc is None:
+            return
         spawn_logged_task(
             "sandbox_artifact_watch_exit",
             _record_watch_exit(self.user_id, self._mode, exc),

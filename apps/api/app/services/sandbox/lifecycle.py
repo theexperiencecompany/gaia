@@ -23,7 +23,6 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 import time
-from typing import cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from e2b import AsyncSandbox, NotFoundException, SandboxState
@@ -61,6 +60,7 @@ from app.services.sandbox.errors import (
     SandboxRateLimitError,
 )
 from app.services.sandbox.local_sandbox import (
+    CodingSandbox,
     LocalDockerSandbox,
     get_local_sandbox,
     pop_local_sandbox,
@@ -313,9 +313,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
     return sbx
 
 
-async def _set_up_agents_home(
-    user_id: str, sbx: AsyncSandbox | LocalDockerSandbox, *, replaced: bool
-) -> None:
+async def _set_up_agents_home(user_id: str, sbx: CodingSandbox, *, replaced: bool) -> None:
     """Lay out the coding agents' home on a fresh agent-lab or local sandbox, restoring the last save.
 
     Runs once the sandbox is recorded, so a failure never orphans it: the
@@ -440,7 +438,7 @@ async def _write_canary(sbx: AsyncSandbox) -> str:
 async def _read_canary(sbx: AsyncSandbox) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     try:
-        content = cast(str, await sbx.files.read(CANARY_PATH))
+        content = await sbx.files.read(CANARY_PATH)
     except Exception:
         # Missing (NotFoundException) or any read failure → treat as stale.
         return None
@@ -804,14 +802,14 @@ async def _cancel_pause_task(entry: PooledSandbox) -> None:
 async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """Pause the sandbox and record the paused state. False on failure.
 
-    The SDK method is beta_pause (there is no plain pause); it snapshots
-    both filesystem and memory so a later connect() resumes in place. An
+    The SDK's pause keeps memory by default, so it snapshots both filesystem
+    and memory and a later connect() resumes in place. An
     agent-lab sandbox saves its agents' home first, in case it never resumes.
     """
     if is_agent_lab_template(entry.template_id):
         await save_agents_home(user_id, entry.sandbox)
     try:
-        await entry.sandbox.beta_pause()
+        await entry.sandbox.pause()
         await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
         log.info(f"{LogTag.SANDBOX} paused idle sandbox user", user_id=user_id)
         return True
@@ -930,7 +928,7 @@ async def renew_sandbox(user_id: str) -> None:
         await _cancel_pause_task(entry)
         await _stop_watcher(entry)
         sandbox_id = entry.sandbox.sandbox_id
-        await entry.sandbox.beta_pause()
+        await entry.sandbox.pause()
         resumed = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(entry.template_id))
         if resumed is None:
             await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
@@ -985,7 +983,7 @@ async def pause_idle_sandbox(user_id: str) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
+async def acquire_sandbox(user_id: str) -> AsyncIterator[CodingSandbox]:
     """Yield a live sandbox for the user, serialized per user with debounced pause.
 
     On self-host without an E2B key this yields the local Docker-exec backend

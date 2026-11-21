@@ -76,8 +76,6 @@ apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	arg-typ
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	attr-defined
 apps/api/tests/integration/real/memory/test_episodes.py	arg-type
 apps/api/tests/integration/real/test_execute_graph_streaming.py	arg-type
-apps/api/tests/integration/real/test_local_sandbox_docker.py	attr-defined
-apps/api/tests/integration/real/test_local_sandbox_docker.py	misc
 apps/api/tests/integration/real/test_postgres_checkpointer.py	arg-type
 apps/api/tests/integration/real/test_sandbox_lock_real.py	attr-defined
 apps/api/tests/integration/real/test_websocket_broadcast_real.py	unused-ignore
@@ -241,18 +239,9 @@ apps/api/tests/unit/patches/test_langchain_merge_dicts_model_name_patch.py	attr-
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	arg-type
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	method-assign
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	override
-apps/api/tests/unit/sandbox/test_artifact_watcher.py	attr-defined
-apps/api/tests/unit/sandbox/test_artifact_watcher.py	return-value
 apps/api/tests/unit/sandbox/test_legacy_workspace_migration.py	attr-defined
-apps/api/tests/unit/sandbox/test_lifecycle_core.py	attr-defined
-apps/api/tests/unit/sandbox/test_lifecycle_core.py	misc
 apps/api/tests/unit/sandbox/test_lifecycle_eviction.py	attr-defined
 apps/api/tests/unit/sandbox/test_lifecycle_local.py	attr-defined
-apps/api/tests/unit/sandbox/test_lifecycle_pause.py	attr-defined
-apps/api/tests/unit/sandbox/test_lifecycle_reuse.py	attr-defined
-apps/api/tests/unit/sandbox/test_local_sandbox.py	attr-defined
-apps/api/tests/unit/sandbox/test_local_sandbox.py	func-returns-value
-apps/api/tests/unit/sandbox/test_local_sandbox.py	unused-ignore
 apps/api/tests/unit/schemas/mcp/test_requests.py	arg-type
 apps/api/tests/unit/schemas/mcp/test_requests.py	call-arg
 apps/api/tests/unit/schemas/mcp/test_responses.py	arg-type
@@ -342,8 +331,6 @@ apps/api/tests/unit/services/test_file_service.py	list-item
 apps/api/tests/unit/services/test_integration_inference_service.py	misc
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
 apps/api/tests/unit/services/test_lab_hooks.py	list-item
-apps/api/tests/unit/services/test_lab_keepwarm.py	misc
-apps/api/tests/unit/services/test_lab_keepwarm.py	typeddict-item
 apps/api/tests/unit/services/test_llm_metering_ledger.py	attr-defined
 apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
