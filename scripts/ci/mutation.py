@@ -396,14 +396,20 @@ def verdict_root() -> Path:
 
 def _detector_output(paths: Sequence[str]) -> str:
     """Return what lib/mutation_matrix.py prints for these candidate module paths."""
-    return subprocess.run(
+    detector = subprocess.run(
         [sys.executable, str(LIB / "mutation_matrix.py")],
         input="".join(f"{p}\n" for p in paths),
         stdout=subprocess.PIPE,
         text=True,
-        check=True,
+        check=False,
         cwd=REPO_ROOT,
-    ).stdout
+    )
+    if detector.returncode < 0:
+        raise SystemExit(f"mutation: the detector was killed by signal {-detector.returncode}")
+    if detector.returncode != 0:
+        # The detector has already said why on stderr.
+        raise SystemExit(detector.returncode)
+    return detector.stdout
 
 
 def _parse_matrix(text: str) -> list[ModuleWork]:

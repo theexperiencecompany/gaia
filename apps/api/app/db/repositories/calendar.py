@@ -35,5 +35,26 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
         )
         return True
 
+    async def repair_selected_calendars(
+        self, user_id: str, loaded: list[str] | None, repaired: list[str]
+    ) -> None:
+        """Store the repaired selection only while the stored one is still what the read loaded.
+
+        loaded None means the read found no preferences doc, so only an absent doc is written.
+        """
+        if loaded is None:
+            await self._apply_raw_update_unfetched(
+                {"user_id": user_id},
+                {"$setOnInsert": {"selected_calendars": repaired}},
+                scope=REPO_GLOBAL_SCOPE,
+                upsert=True,
+            )  # pragma: no mutate — cache_policy None: no cache, so scope is inert
+            return
+        await self._apply_raw_update_unfetched(
+            {"user_id": user_id, "selected_calendars": loaded},
+            {"$set": {"selected_calendars": repaired}},
+            scope=REPO_GLOBAL_SCOPE,
+        )  # pragma: no mutate — cache_policy None: no cache, so scope is inert
+
 
 calendar_repository = CalendarRepository()

@@ -7,7 +7,8 @@
 # so a declaration with fields of its own is a copy of a Pydantic model that
 # drifts the moment the model changes.
 #
-# This file only ever shrinks. Adding a line is a review conversation; deleting
+# This file only ever shrinks. Adding a line needs the founder's written
+# approval above it (scripts/ci/baselines.py growth); deleting
 # one (by importing the generated type instead) needs no permission. A line that
 # no longer matches anything is reported as removable and does not fail the
 # gate, so emptying it never reds a concurrent PR.

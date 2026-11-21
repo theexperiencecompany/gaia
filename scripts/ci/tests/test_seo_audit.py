@@ -9,6 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 from pathlib import Path
+import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -291,6 +293,66 @@ def _flaky_connection_site(dropped_connections: int) -> Iterator[tuple[str, list
     finally:
         server.shutdown()
         server.server_close()
+
+
+@contextmanager
+def _resetting_site(resets: int) -> Iterator[tuple[str, list[int]]]:
+    """Send a body's headers and a fragment, then RST the socket; answer normally after `resets`."""
+    requests = [0]
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self) -> None:
+            requests[0] += 1
+            if requests[0] <= resets:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", "4096")
+                self.end_headers()
+                self.wfile.write(b"<html><title>partial</title>")
+                self.wfile.flush()
+                # Linger 0 turns the close into an RST, so the reader raises
+                # ConnectionResetError rather than IncompleteRead on a clean EOF.
+                self.connection.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                )
+                self.close_connection = True
+                return
+            body = b"<html><head><title>ok</title></head><body>ok</body></html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}", requests
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_reset_during_the_body_read_is_retried(audit_module: ModuleType) -> None:
+    """ConnectionResetError is not an HTTPException, so it used to escape the retry handler."""
+    with _resetting_site(resets=1) as (base, requests):
+        assert audit_module.fetch(base + "/page").status == 200
+
+    assert requests[0] == 2
+
+
+def test_a_site_that_keeps_resetting_is_a_transport_finding_after_a_bounded_number_of_tries(
+    audit_module: ModuleType,
+) -> None:
+    with _resetting_site(resets=10**6) as (base, requests):
+        assert audit_module.fetch(base + "/page").status == 0
+
+    assert requests[0] == audit_module.TRANSPORT_RETRIES + 1
 
 
 @pytest.fixture
