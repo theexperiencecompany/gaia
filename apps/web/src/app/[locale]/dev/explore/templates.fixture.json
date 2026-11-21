@@ -59,7 +59,7 @@
       "kind": "event",
       "trigger_name": "calendar_event_starting_soon"
     },
-    "integration_ids": [],
+    "integration_ids": ["googlecalendar"],
     "creator": {
       "id": "system",
       "name": "GAIA Team",
@@ -296,7 +296,7 @@
       "kind": "event",
       "trigger_name": "gmail_new_message"
     },
-    "integration_ids": ["googlecalendar"],
+    "integration_ids": ["gmail", "googlecalendar"],
     "creator": {
       "id": "system",
       "name": "GAIA Team",
@@ -553,7 +553,7 @@
       "kind": "event",
       "trigger_name": "calendar_event_starting_soon"
     },
-    "integration_ids": [],
+    "integration_ids": ["googlecalendar"],
     "creator": {
       "id": "system",
       "name": "GAIA Team",

@@ -942,13 +942,17 @@
 @source "../../[locale]/dev/primitive-parity/ParityDisplay.tsx";
 @source "../../[locale]/dev/primitive-parity/ParityFields.tsx";
 @source "../../[locale]/dev/primitive-parity/ParityOverlays.tsx";
+@source "../../[locale]/dev/tasks/AppIcons.tsx";
 @source "../../[locale]/dev/tasks/demoTasks.ts";
 @source "../../[locale]/dev/tasks/demoTriggers.ts";
 @source "../../[locale]/dev/tasks/demoWorkflows.ts";
+@source "../../[locale]/dev/tasks/NewGaiaTask.tsx";
 @source "../../[locale]/dev/tasks/NewTask.tsx";
 @source "../../[locale]/dev/tasks/page.dev.tsx";
+@source "../../[locale]/dev/tasks/PropertyRow.tsx";
 @source "../../[locale]/dev/tasks/TaskAsk.tsx";
 @source "../../[locale]/dev/tasks/TaskCheckbox.tsx";
+@source "../../[locale]/dev/tasks/TaskChips.tsx";
 @source "../../[locale]/dev/tasks/TaskIcon.tsx";
 @source "../../[locale]/dev/tasks/taskModel.ts";
 @source "../../[locale]/dev/tasks/TaskPanel.tsx";
