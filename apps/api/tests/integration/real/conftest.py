@@ -60,7 +60,6 @@ from tests.helpers import (
     log_history,
     pg_advisory_lock,
     pick_free_port,
-    skip_items_without_real_services,
 )
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
@@ -71,6 +70,7 @@ from tests.integration.real.db_fixtures import (
     redis_url,
 )
 from tests.integration.real.ledger_fixtures import edges
+from tests.real_services import mark_real_services
 
 __all__ = [
     "edges",
@@ -314,16 +314,14 @@ async def make_pro_subscription(mongo_db, real_redis: Redis):
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Real-infra tier: skip at collection when real services are unavailable.
+    """Put this directory behind the real-services gate.
 
-    A bare local run (no USE_REAL_SERVICES=1, no Docker) must skip this whole
-    directory in milliseconds — never hang on dead ports or fail with
-    connection errors after a slow boot. pytest calls this hook with EVERY
-    collected item, so scope the skip to this conftest's own directory.
+    pytest calls this hook with EVERY collected item, so scope the mark to this
+    conftest's own directory.
     """
 
     dir_root = Path(__file__).resolve().parent
-    skip_items_without_real_services([item for item in items if item.path.is_relative_to(dir_root)])
+    mark_real_services(item for item in items if item.path.is_relative_to(dir_root))
 
 
 @pytest.fixture

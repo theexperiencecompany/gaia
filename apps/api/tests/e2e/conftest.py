@@ -62,7 +62,7 @@ from tests.e2e._harness.step_stack import (
     OpenStack,
     Stack,
 )
-from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
+from tests.helpers import BindableToolsFakeModel, pg_advisory_lock
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
@@ -71,6 +71,7 @@ from tests.integration.real.db_fixtures import (
     real_redis,
     redis_url,
 )
+from tests.real_services import mark_real_services
 
 # Imported to register the fixtures for this directory; `__all__` marks them as
 # a deliberate re-export (same pattern as tests/integration/real/conftest.py).
@@ -88,7 +89,7 @@ _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Skip the e2e files that need real Mongo/Redis at collection otherwise.
+    """Put the e2e files that need real Mongo/Redis behind the real-services gate.
 
     These are the only e2e files that request the real-infra fixtures from
     tests/integration/real/db_fixtures (verified by grep): the HIL journeys and
@@ -103,13 +104,10 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         "test_tracked_todo_chat_e2e.py",
     }
     dir_root = Path(__file__).resolve().parent
-    skip_items_without_real_services(
-        [
-            item
-            for item in items
-            if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
-        ],
-        reason="requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
+    mark_real_services(
+        item
+        for item in items
+        if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
     )
 
 

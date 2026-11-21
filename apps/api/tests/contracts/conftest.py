@@ -17,6 +17,7 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine, Iterator
 from datetime import UTC, datetime
 import os
+from pathlib import Path
 from typing import Any
 import uuid
 
@@ -37,20 +38,14 @@ from app.models.conversation_models import ConversationDocument
 from app.services.conversation.mongo_log import MongoConversationLog
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import worker_mongo_db_name, worker_redis_url
+from tests.real_services import mark_real_services
 from tests.unit.services.conversation.runtime_doubles import FakeClock
 from tests.unit.services.conversation.test_conversation_log_contract import UID
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 
-
-@pytest.fixture(autouse=True)
-def _require_real_services() -> None:
-    if not _USE_REAL_SERVICES:
-        pytest.skip(
-            "repository contract tests require real Mongo + Redis. Set "
-            "USE_REAL_SERVICES=1 and run both on localhost — "
-            "these tests never mock the database."
-        )
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    dir_root = Path(__file__).resolve().parent
+    mark_real_services(item for item in items if item.path.is_relative_to(dir_root))
 
 
 @pytest.fixture(scope="session")

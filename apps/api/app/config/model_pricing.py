@@ -12,6 +12,7 @@ unit suite fails if a runtime-referenced model has no rate.
 from typing import NamedTuple
 
 from app.config.settings import settings
+from app.constants.llm import SIM_STUB_MODEL_NAME
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -105,6 +106,8 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0012,
         cached_input_cost_per_1k=0.00002,
     ),
+    # GAIA_SIM_MODE's scripted stub (tools/llm-stub): every sim call names it, and it costs nothing.
+    SIM_STUB_MODEL_NAME: ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom
     # lane) - do not ship. OpenAI list price: $0.40/$1.60 per 1M in/out, $0.10 cached.
     "gpt-4.1-mini": ModelPricing(
