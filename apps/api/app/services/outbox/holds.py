@@ -293,8 +293,9 @@ def _in_silence(
             return _hold_or_tell(state, ends, reason)
         return Tell()
     grace = ANSWER_QUIET_GRACE_SECONDS if is_answer(report) else ACTIVITY_OVERRIDE_SECONDS
+    # A user who is here lifts quiet hours only: the budget, the gap and the check-in still apply.
     if reason is HoldReason.QUIET_HOURS and _active_within(state, grace):
-        return Tell()
+        return None
     return _hold_or_tell(state, _bounded(ends + _jitter(state.user_id), latest), reason)
 
 

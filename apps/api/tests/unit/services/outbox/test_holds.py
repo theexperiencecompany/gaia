@@ -79,6 +79,27 @@ def test_a_user_who_just_wrote_is_told_in_quiet_hours() -> None:
     assert place(notice(), ROUTINE, verdict(), here) == Tell()
 
 
+def test_a_user_who_just_wrote_at_night_still_gets_the_gap_between_unsolicited_messages() -> None:
+    """Regression: two low-urgency updates reached a user who had just written, 2 seconds apart, at night."""
+    just_told = _state(
+        NIGHT,
+        last_active_at=NIGHT - timedelta(minutes=5),
+        last_unsolicited_at=NIGHT - timedelta(seconds=2),
+    )
+
+    placed = place(notice(), ROUTINE, verdict(), just_told)
+
+    assert isinstance(placed, Hold) and placed.reason is HoldReason.GAP
+
+
+def test_a_user_who_just_wrote_at_night_still_gets_background_items_at_the_check_in() -> None:
+    here = _state(NIGHT, last_active_at=NIGHT - timedelta(minutes=5))
+
+    placed = place(notice(), UrgencyClass.BACKGROUND, verdict(), here)
+
+    assert isinstance(placed, Hold) and placed.reason is HoldReason.CHECKIN
+
+
 def test_an_answer_gets_a_longer_grace_than_an_unsolicited_item() -> None:
     wrote_20_minutes_ago = _state(NIGHT, last_active_at=NIGHT - timedelta(minutes=20))
     answer = notice(initiative=Initiative.ASKED)
