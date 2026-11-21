@@ -17,7 +17,6 @@ from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import (
     AbstractAsyncContextManager,
     AbstractContextManager,
-    AsyncExitStack,
     asynccontextmanager,
     contextmanager,
 )
@@ -25,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -33,20 +32,15 @@ from bson import ObjectId
 from fastapi import FastAPI
 from httpx import AsyncClient
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
-from langgraph.store.memory import InMemoryStore
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import PrivateAttr
 import pytest
 
 from app.agents.core.background.todo_run import TodoRunFailedError
-from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
-from app.agents.core.graph_manager import GraphManager
-from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.constants.memory import ReconcileOutcome
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TODO_CONVERSATION_MAX_MESSAGES,
@@ -56,14 +50,10 @@ from app.constants.todos import (
 )
 from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.core.stream_manager import stream_manager
-from app.core.websocket_manager import websocket_manager
 from app.db.mongodb import indexes
 from app.db.repositories.todos import todo_repository
-from app.memory.ingestion import RetainedMemory
 from app.models.chat_models import ConversationModel
 from app.models.hil_models import HILPreferences
-from app.models.integration_models import UserIntegrationCapabilities
-from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -92,15 +82,13 @@ from app.workers.tasks.tracked_todo_tasks import (
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
+from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.transcript import Transcript
 from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
 from tests.helpers import worker_redis_url
 
 pytestmark = pytest.mark.e2e
 
-FOLLOW_UP_NODE = "app.agents.core.nodes.follow_up_actions_node"
-RESET_MODULE = "app.services.checkpoint_thread_reset"
-CONVERSATIONS_MODULE = "app.services.conversation_service"
 TITLE = "Watch the staging deploy"
 REPORT = "Deploy is green: all 3 checks passed."
 SECOND_REPORT = "Still green on the second check."
@@ -199,15 +187,7 @@ async def _binding_index(mongo_db: AsyncIOMotorDatabase) -> None:
 @pytest.fixture(autouse=True)
 def _offline_seams() -> Iterator[None]:
     """Double the todo's ChromaDB embeddings and VFS projection: off this path, never asserted on."""
-    with (
-        patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.todos.todo_service.schedule_user_todos_sync"),
-        patch("app.services.tracked_todo_service.store_canvas_embedding", new_callable=AsyncMock),
-        patch("app.services.tracked_todo_service.schedule_gaia_tasks_sync"),
-    ):
+    with offline_todo_seams():
         yield
 
 
@@ -247,62 +227,11 @@ def open_stack(
             else streaming_model(executor),
             comms_model=streaming_model(comms),
         )
-
-        async def record_push(_user_id: str, event: dict[str, Any]) -> None:
-            built.pushed.append(event)
-
-        memory = MagicMock()
-        memory.retain_single = AsyncMock(
-            return_value=RetainedMemory(
-                entry=MemoryEntry(id="mem-todo-chat", content="m", category_path="general"),
-                outcome=ReconcileOutcome.NEW,
-            )
-        )
-        memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
-        memory.retain = AsyncMock()
-        the_checkpointer = AsyncMock(return_value=checkpointer)
-
-        async with AsyncExitStack() as stack:
-            for patcher in (
-                patch.object(
-                    build_graph_module, "get_tools_store", AsyncMock(return_value=InMemoryStore())
-                ),
-                patch.object(build_graph_module, "get_checkpointer_manager", the_checkpointer),
-                patch(f"{RESET_MODULE}.get_checkpointer_manager", the_checkpointer),
-                patch(f"{CONVERSATIONS_MODULE}.get_checkpointer_manager", the_checkpointer),
-                patch(
-                    f"{FOLLOW_UP_NODE}.ainvoke_structured",
-                    new=AsyncMock(return_value=FollowUpActions(actions=[])),
-                ),
-                patch(
-                    f"{FOLLOW_UP_NODE}.get_user_integration_capabilities",
-                    new=AsyncMock(return_value=UserIntegrationCapabilities(tool_names=[])),
-                ),
-                patch("app.agents.tools.memory_tools.memory_engine", memory),
-                patch("app.agents.core.nodes.memory_node.memory_engine", memory),
-                patch.object(websocket_manager, "broadcast_to_user", new=record_push),
-            ):
-                stack.enter_context(patcher)
-            graphs = {
-                "executor_agent": await stack.enter_async_context(
-                    build_graph_module.build_executor_graph(chat_llm=built.executor_model)
-                ),
-                "comms_agent": await stack.enter_async_context(
-                    build_graph_module.build_comms_graph(chat_llm=built.comms_model)
-                ),
-            }
-            stack.enter_context(
-                patch.object(
-                    GraphManager,
-                    "get_graph",
-                    new=AsyncMock(side_effect=lambda name="default_graph": graphs[name]),
-                )
-            )
-            try:
-                yield built
-            finally:
-                # Inside the patches: nothing a run left going may reach the real services.
-                await drain_background_runs()
+        async with live_graphs(
+            checkpointer, executor_model=built.executor_model, comms_model=built.comms_model
+        ) as graphs:
+            built.pushed = graphs.pushed
+            yield built
 
     return opened
 
