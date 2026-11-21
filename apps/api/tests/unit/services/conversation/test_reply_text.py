@@ -185,3 +185,17 @@ def test_an_opener_still_missing_its_bracket_at_a_message_boundary_hides_nothing
 
     assert reply.text == f"Status.{NEW_MESSAGE_BREAKER}Please choose a date."
     assert reply.shown == reply.text
+
+
+def test_an_empty_message_between_two_boundaries_keeps_the_pending_break() -> None:
+    boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
+    reply = (
+        ReplyText()
+        .take(ResponseEvent(response="First."))
+        .take(boundary)
+        .take(boundary)
+        .take(ResponseEvent(response="Second."))
+    )
+
+    assert reply.text == f"First.{NEW_MESSAGE_BREAKER}Second."
+    assert reply.shown == reply.text

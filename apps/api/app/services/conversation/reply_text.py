@@ -73,7 +73,10 @@ class ReplyText:
                 # A payload left open ends with its message, so it can't hide the next one.
                 ended = _strip_internal_agent_tags(self.raw[self.message_start :])
                 raw = self.raw[: self.message_start] + ended
-                return ReplyText(raw=raw, message_start=len(raw), break_pending=bool(ended))
+                # An empty message (a tool call alone) keeps the break an earlier one left pending.
+                return ReplyText(
+                    raw=raw, message_start=len(raw), break_pending=bool(ended) or self.break_pending
+                )
 
     @property
     def text(self) -> str:
