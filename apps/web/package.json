@@ -53,6 +53,7 @@
     "@heroui/react": "3.2.7",
     "@heroui/styles": "3.2.7",
     "@hookform/resolvers": "^5.4.0",
+    "@internationalized/date": "^3.12.4",
     "@livekit/components-react": "^2.9.23",
     "@marsidev/react-turnstile": "^1.6.3",
     "@mcp-ui/client": "^7.1.1",

@@ -686,6 +686,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.81.0(react@19.2.3))
+      '@internationalized/date':
+        specifier: ^3.12.4
+        version: 3.12.4
       '@livekit/components-react':
         specifier: ^2.9.23
         version: 2.9.23(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tslib@2.8.1)
@@ -3766,9 +3769,6 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       ink: '>=5'
-
-  '@internationalized/date@3.12.2':
-    resolution: {integrity: sha512-FY1Y+H64NDs+HAF6omlnWxm3mEpfgaCSWtL5l551ZZfImA+kGjPFgrnJrGjH6lfmLL0g8Z/mBu1R3kufeCp6Jw==}
 
   '@internationalized/date@3.12.4':
     resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
@@ -16166,7 +16166,7 @@ snapshots:
 
   '@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@react-types/shared': 3.37.0(react@19.2.3)
       '@spectrum-icons/ui': 3.7.1(@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@spectrum-icons/workflow': 4.3.1(@adobe/react-spectrum@3.47.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -19371,10 +19371,6 @@ snapshots:
       deepmerge: 4.3.1
       figures: 6.1.0
       ink: 6.8.0(@types/react@19.2.17)(react-devtools-core@6.1.5)(react@19.2.3)
-
-  '@internationalized/date@3.12.2':
-    dependencies:
-      '@swc/helpers': 0.5.23
 
   '@internationalized/date@3.12.4':
     dependencies:
@@ -30963,7 +30959,7 @@ snapshots:
 
   react-aria-components@1.19.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@react-types/shared': 3.37.0(react@19.2.3)
       '@swc/helpers': 0.5.23
       client-only: 0.0.1
@@ -30987,7 +30983,7 @@ snapshots:
 
   react-aria@3.50.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-types/shared': 3.37.0(react@19.2.3)
@@ -31360,7 +31356,7 @@ snapshots:
 
   react-stately@3.48.0(react@19.2.3):
     dependencies:
-      '@internationalized/date': 3.12.2
+      '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.9
       '@react-types/shared': 3.37.0(react@19.2.3)

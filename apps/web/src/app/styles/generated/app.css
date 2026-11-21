@@ -5,12 +5,15 @@
 @import "@heroui/styles/components/badge.css" layer(components);
 @import "@heroui/styles/components/button.css" layer(components);
 @import "@heroui/styles/components/button-group.css" layer(components);
+@import "@heroui/styles/components/calendar.css" layer(components);
+@import "@heroui/styles/components/calendar-year-picker.css" layer(components);
 @import "@heroui/styles/components/card.css" layer(components);
 @import "@heroui/styles/components/checkbox.css" layer(components);
 @import "@heroui/styles/components/checkbox-group.css" layer(components);
 @import "@heroui/styles/components/chip.css" layer(components);
 @import "@heroui/styles/components/close-button.css" layer(components);
 @import "@heroui/styles/components/combo-box.css" layer(components);
+@import "@heroui/styles/components/date-input-group.css" layer(components);
 @import "@heroui/styles/components/description.css" layer(components);
 @import "@heroui/styles/components/dropdown.css" layer(components);
 @import "@heroui/styles/components/empty-state.css" layer(components);
@@ -29,6 +32,7 @@
 @import "@heroui/styles/components/menu-section.css" layer(components);
 @import "@heroui/styles/components/modal.css" layer(components);
 @import "@heroui/styles/components/number-field.css" layer(components);
+@import "@heroui/styles/components/pagination.css" layer(components);
 @import "@heroui/styles/components/popover.css" layer(components);
 @import "@heroui/styles/components/progress-bar.css" layer(components);
 @import "@heroui/styles/components/radio.css" layer(components);
@@ -46,6 +50,7 @@
 @import "@heroui/styles/components/tabs.css" layer(components);
 @import "@heroui/styles/components/textarea.css" layer(components);
 @import "@heroui/styles/components/textfield.css" layer(components);
+@import "@heroui/styles/components/time-field.css" layer(components);
 @import "@heroui/styles/components/tooltip.css" layer(components);
 
 @source "../../layout.tsx";
@@ -136,6 +141,7 @@
 @source "../../../components/seo/SiteLink.tsx";
 @source "../../../components/shared/accordionVariants.ts";
 @source "../../../components/shared/buttonVariants.ts";
+@source "../../../components/shared/calendarVariants.ts";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";
 @source "../../../components/shared/CollapsibleListWrapper.tsx";
 @source "../../../components/shared/ComboBoxInput.tsx";
@@ -219,6 +225,7 @@
 @source "../../../features/skills/constants.ts";
 @source "../../../features/skills/utils.ts";
 @source "../../../features/todo/constants.ts";
+@source "../../../features/wake-word/index.ts";
 @source "../../../hooks/api/useAxiosInterceptor.ts";
 @source "../../../hooks/layout/useHeader.ts";
 @source "../../../hooks/providers/GlobalAuth.tsx";
@@ -393,6 +400,7 @@
 @source "../../../config/openui/components/primitives.tsx";
 @source "../../../config/openui/components/timeline.tsx";
 @source "../../../config/openui/components/VideoBlockView.tsx";
+@source "../../../config/openui/examples/index.ts";
 @source "../../../config/openui/hooks/useSafeTriggerAction.ts";
 @source "../../../config/openui/primitives/ToolCard.tsx";
 @source "../../../config/openui/primitives/ToolInset.tsx";
@@ -410,6 +418,7 @@
 @source "../../../features/auth/hooks/useLogout.ts";
 @source "../../../features/auth/hooks/useOnboardingGuard.ts";
 @source "../../../features/auth/utils/firstName.ts";
+@source "../../../features/auth/utils/sessionHint.ts";
 @source "../../../features/auth/utils/signupCta.ts";
 @source "../../../features/auth/utils/toCurrentUser.ts";
 @source "../../../features/bots/hooks/useBotLinks.ts";
@@ -847,6 +856,7 @@
 @source "../../../features/use-cases/hooks/useUseCaseCategories.ts";
 @source "../../../features/use-cases/utils/toUseCase.ts";
 @source "../../../features/wake-word/components/WakeListenerClient.tsx";
+@source "../../../features/wake-word/components/WakeWordIndicator.tsx";
 @source "../../../features/wake-word/constants/models.ts";
 @source "../../../features/wake-word/hooks/useHeyGaia.ts";
 @source "../../../features/weather/components/WeatherCard.tsx";
@@ -908,7 +918,38 @@
 @source "../../[locale]/(main)/setup/page.tsx";
 @source "../../[locale]/(main)/todos/page.tsx";
 @source "../../[locale]/(main)/workflows/page.tsx";
+@source "../../[locale]/dev/openui-samples/page.dev.tsx";
+@source "../../[locale]/dev/orb/page.dev.tsx";
+@source "../../[locale]/dev/primitive-parity/page.dev.tsx";
+@source "../../[locale]/dev/primitive-parity/ParityButtons.tsx";
+@source "../../[locale]/dev/primitive-parity/ParityCell.tsx";
+@source "../../[locale]/dev/primitive-parity/ParityDisplay.tsx";
+@source "../../[locale]/dev/primitive-parity/ParityFields.tsx";
+@source "../../[locale]/dev/primitive-parity/ParityOverlays.tsx";
+@source "../../[locale]/dev/tasks/demoTasks.ts";
+@source "../../[locale]/dev/tasks/demoTriggers.ts";
+@source "../../[locale]/dev/tasks/demoWorkflows.ts";
+@source "../../[locale]/dev/tasks/NewTask.tsx";
+@source "../../[locale]/dev/tasks/page.dev.tsx";
+@source "../../[locale]/dev/tasks/TaskAsk.tsx";
+@source "../../[locale]/dev/tasks/TaskCheckbox.tsx";
+@source "../../[locale]/dev/tasks/TaskIcon.tsx";
+@source "../../[locale]/dev/tasks/taskModel.ts";
+@source "../../[locale]/dev/tasks/TaskPanel.tsx";
+@source "../../[locale]/dev/tasks/TaskParts.tsx";
+@source "../../[locale]/dev/tasks/TaskProperties.tsx";
+@source "../../[locale]/dev/tasks/TaskRecord.tsx";
+@source "../../[locale]/dev/tasks/TaskRow.tsx";
+@source "../../[locale]/dev/tasks/TaskSection.tsx";
+@source "../../[locale]/dev/tasks/TaskSteps.tsx";
+@source "../../[locale]/dev/tasks/WhenField.tsx";
+@source "../../[locale]/dev/tasks/whenModel.ts";
+@source "../../[locale]/dev/text-animation/DemoBody.tsx";
+@source "../../[locale]/dev/text-animation/page.dev.tsx";
+@source "../../[locale]/dev/toasts/page.dev.tsx";
 @source "../../[locale]/dev/tool-gallery/layout.tsx";
+@source "../../[locale]/dev/tool-gallery/page.dev.tsx";
+@source "../../[locale]/dev/wake-word/page.dev.tsx";
 @source "../../../components/layout/sidebar/right-variants/IntegrationSidebar.tsx";
 @source "../../../components/layout/sidebar/right-variants/TodoSidebar.tsx";
 @source "../../../components/layout/sidebar/variants/IntegrationsSidebar.tsx";
@@ -947,6 +988,7 @@
 @source "../../../features/chat/components/composer/SelectedWorkflowIndicator.tsx";
 @source "../../../features/chat/components/composer/SendStopButton.tsx";
 @source "../../../features/chat/components/composer/SlashCommandDropdown.tsx";
+@source "../../../features/chat/components/dev/OpenUIPlayground.tsx";
 @source "../../../features/chat/components/files/FileDropModal.tsx";
 @source "../../../features/chat/components/files/FilePreview.tsx";
 @source "../../../features/chat/components/files/fileTypeConfig.ts";
@@ -977,6 +1019,7 @@
 @source "../../../features/landing/components/demo/constants.ts";
 @source "../../../features/landing/components/demo/DummyComposer.tsx";
 @source "../../../features/landing/components/demo/DummySlashCommandDropdown.tsx";
+@source "../../../features/landing/components/demo/SimpleChatBubbles.tsx";
 @source "../../../features/landing/components/iphone/ChatDemo.tsx";
 @source "../../../features/landing/components/iphone/useStaggeredMessages.ts";
 @source "../../../features/onboarding/components/stages/Chat.tsx";
@@ -1112,6 +1155,8 @@
 @source "../../[locale]/(main)/todos/today/page.tsx";
 @source "../../[locale]/(main)/todos/upcoming/page.tsx";
 @source "../../[locale]/(main)/workflows/[id]/page.tsx";
+@source "../../[locale]/dev/tool-gallery/[tool]/GalleryToolCard.tsx";
+@source "../../[locale]/dev/tool-gallery/[tool]/page.dev.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/ConnectedActions.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRenameModal.tsx";
 @source "../../../components/layout/sidebar/right-variants/integration-sidebar/IntegrationAccountRow.tsx";
