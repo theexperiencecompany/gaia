@@ -25,11 +25,16 @@ from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
 
-# Security-critical index builds: these unique indexes enforce invariants, so
-# unlike performance indexes (warn-and-continue) a failed build aborts boot
-# rather than running healthy with the constraint silently absent.
+# Unique indexes that enforce invariants (conversations: the entries' seq and id the
+# outbox flush dedupes on): a failed build aborts boot instead of warn-and-continue.
 SECURITY_CRITICAL_COLLECTIONS = frozenset(
-    {"auth_credentials", "auth_invites", "instance_settings", "provider_credentials"}
+    {
+        "auth_credentials",
+        "auth_invites",
+        "conversations",
+        "instance_settings",
+        "provider_credentials",
+    }
 )
 
 # Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape

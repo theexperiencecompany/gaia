@@ -9,6 +9,7 @@ import {
   memo,
   type ReactNode,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -279,7 +280,11 @@ export default function ChatRenderer({ compact = false }: ChatRendererProps) {
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
   // The open conversation's loading row, from its server state (plus voice/upload loading).
-  const { isLoading, loadingText, progress } = useActiveLiveLoading();
+  // It moves with the rows' deferred snapshot (GaiaRow), so it never hides before what it stood in for shows.
+  const live = useActiveLiveLoading();
+  const isLoading = useDeferredValue(live.isLoading);
+  const loadingText = useDeferredValue(live.loadingText);
+  const progress = useDeferredValue(live.progress);
   const { id: convoIdParam } = useParams<{ id: string }>();
   // While GAIA owes a reply, the newest bubble's follow-ups and action row
   // (they belong to a finished answer) are suppressed; finished turns keep theirs.

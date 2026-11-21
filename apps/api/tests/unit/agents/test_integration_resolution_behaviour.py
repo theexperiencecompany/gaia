@@ -1,6 +1,5 @@
 """Exact-argument behaviour of integration_resolution's lookups and connect prompts."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -42,20 +41,16 @@ def _subagent() -> Subagent:
 @pytest.mark.unit
 @pytest.mark.asyncio
 class TestGetIntegrationTargetLookupKeys:
-    async def test_repository_and_resolver_receive_the_normalised_id(self) -> None:
+    async def test_registry_and_repository_receive_the_normalised_id(self) -> None:
         with (
-            patch(f"{TARGET}.get_subagent_by_id", return_value=None),
-            patch(f"{TARGET}.get_cache", new=AsyncMock(return_value=None)),
-            patch(f"{TARGET}.set_cache", new=AsyncMock()),
+            patch(f"{TARGET}.get_subagent_by_id", return_value=None) as lookup,
             patch(f"{TARGET}.integration_repository") as repo,
-            patch(f"{TARGET}.IntegrationResolver") as resolver,
         ):
             repo.find_by_id_prefix_or_name = AsyncMock(return_value=None)
-            resolver.resolve = AsyncMock(return_value=SimpleNamespace(custom_doc=None))
             assert await get_integration_target("  My-MCP ") is None
 
+        lookup.assert_called_once_with("my-mcp")
         repo.find_by_id_prefix_or_name.assert_awaited_once_with("my-mcp")
-        resolver.resolve.assert_awaited_once_with("my-mcp")
 
 
 @pytest.mark.unit
