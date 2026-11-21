@@ -5329,7 +5329,8 @@
           "integration_never_connected",
           "invalid_schedule",
           "owner_not_found",
-          "member_removed"
+          "member_removed",
+          "trigger_retired"
         ],
         "title": "DeactivationReason",
         "type": "string"

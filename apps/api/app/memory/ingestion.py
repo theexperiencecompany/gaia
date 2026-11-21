@@ -7,6 +7,7 @@ the hash-gated /workspace/memory projection sync and a debounced
 core-document consolidation for the docs its changes touch.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, date as date_type, datetime, timedelta
 from difflib import SequenceMatcher
@@ -45,11 +46,11 @@ from app.memory.extraction import categorize_fact, extract_memories, summarize_e
 from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
 from app.memory.pg_store import EpisodeEntry
-from app.memory.pg_store.episodes import entry_text
+from app.memory.pg_store.episodes import entry_text, journal_entries
 from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
 from app.memory.user_time import resolve_user_timezone
-from app.models.memory_db_models import MemoryEpisode, MemoryRecord
+from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
@@ -71,18 +72,6 @@ class TranscriptTurn(TypedDict):
 
     role: str
     content: str
-
-
-def _journal_entries(episode: MemoryEpisode | None) -> list[EpisodeEntry]:
-    """Return a day's stored journal entries in the shape pg_store declares.
-
-    MemoryEpisode.entries is a JSONB column arriving as untyped mappings; the
-    entry shape belongs to app.memory.pg_store.episodes, named once here so
-    every reader below shares one declaration instead of re-guessing keys.
-    """
-    if episode is None:
-        return []
-    return cast(list[EpisodeEntry], episode.entries)
 
 
 class MemoryLimitReachedError(Exception):
@@ -308,7 +297,7 @@ async def _load_ingest_context(user_id: str, now: datetime) -> _IngestContext:
         folder_tree=folder_tree,
         recent_facts=recent_facts,
         local_now=local_now,
-        journaled_today=[entry_text(entry) for entry in _journal_entries(today_episode)],
+        journaled_today=[entry_text(entry) for entry in journal_entries(today_episode)],
     )
 
 
@@ -543,7 +532,7 @@ async def summarize_episode(user_id: str, date: date_type) -> None:
         return
 
     # Typed local: the comprehension reads the declared entry shape, not raw keys.
-    entries: list[EpisodeEntry] = _journal_entries(episode)
+    entries: list[EpisodeEntry] = journal_entries(episode)
     lines = [f"{entry.get('time', '')} {entry_text(entry)}" for entry in entries]
     summary = await summarize_episode_entries(lines, user_id=user_id)
     if summary is None:
@@ -794,12 +783,35 @@ def _normalize_entry(text: str) -> str:
 
 
 def _is_near_duplicate(candidate: str, seen: list[str]) -> bool:
-    """Whether a normalized entry restates any already-seen one."""
-    return any(
-        candidate == prior
-        or SequenceMatcher(None, candidate, prior).ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
-        for prior in seen
-    )
+    """Whether a normalized entry restates any already-seen one.
+
+    The quick ratios are difflib's upper bounds on ratio(), so a pair they
+    already rule out skips the quadratic match without changing the answer.
+    """
+    for prior in seen:
+        if candidate == prior:
+            return True
+        matcher = SequenceMatcher(None, candidate, prior)
+        if (
+            matcher.real_quick_ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+            and matcher.quick_ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+            and matcher.ratio() >= EPISODE_ENTRY_DEDUPE_RATIO
+        ):
+            return True
+    return False
+
+
+def _novel_entries(entries: list[str], seen: list[str]) -> list[str]:
+    """Return the entries that restate neither a seen entry nor an earlier kept one."""
+    seen = list(seen)
+    kept: list[str] = []
+    for text in entries:
+        normalized = _normalize_entry(text)
+        if _is_near_duplicate(normalized, seen):
+            continue
+        kept.append(text)
+        seen.append(normalized)
+    return kept
 
 
 async def _append_episode_entries(
@@ -818,14 +830,10 @@ async def _append_episode_entries(
     if not entries:
         return 0, 0
     episode = await pg_store.get_episode(user_id, local_now.date())
-    seen = [_normalize_entry(entry_text(entry)) for entry in _journal_entries(episode)]
-    kept: list[str] = []
-    for text in entries:
-        normalized = _normalize_entry(text)
-        if _is_near_duplicate(normalized, seen):
-            continue
-        kept.append(text)
-        seen.append(normalized)
+    seen = [_normalize_entry(entry_text(entry)) for entry in journal_entries(episode)]
+    # A thread: the comparison is quadratic in a busy day's entries (2.8s of
+    # event-loop time in 17min, prod), and a turn's reply shares that loop.
+    kept = await asyncio.to_thread(_novel_entries, entries, seen)
     if not kept:
         return 0, len(entries)
     timestamp = local_now.strftime(EPISODE_ENTRY_TIME_FORMAT)
