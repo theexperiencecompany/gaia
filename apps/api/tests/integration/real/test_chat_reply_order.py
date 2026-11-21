@@ -105,7 +105,6 @@ async def _read(client: AsyncClient, conversation_id: str) -> list[dict[str, obj
     return response.json()["messages"]
 
 
-@pytest.mark.regression
 async def test_reply_streaming_when_the_user_sends_again_stays_above_that_message(
     client: AsyncClient, real_redis, make_conversation
 ) -> None:
