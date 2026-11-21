@@ -1,5 +1,6 @@
 """How an attempt ends, scenario by scenario: crashes, spoken-over replies, follow-ups, reactions and stops."""
 
+import asyncio
 from collections.abc import Sequence
 
 import pytest
@@ -55,6 +56,7 @@ from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import barge, fired, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
+    STEP_LIMIT_SECONDS,
     USER,
     Action,
     Cancelled,
@@ -98,7 +100,7 @@ def arrive(rt: Runtime, *entries: Entry) -> Action:
 
 
 async def run(rt: Runtime) -> None:
-    await advance(rt.ports, CONVERSATION, USER)
+    await asyncio.wait_for(advance(rt.ports, CONVERSATION, USER), timeout=STEP_LIMIT_SECONDS)
 
 
 async def replies(rt: Runtime) -> list[Reply]:

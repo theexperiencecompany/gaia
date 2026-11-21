@@ -1,5 +1,6 @@
 """The step's writes, scenario by scenario: segments, quotes, carried bubbles, frame addresses and the log reads they spend."""
 
+import asyncio
 from collections import Counter
 
 import pytest
@@ -21,6 +22,7 @@ from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
+    STEP_LIMIT_SECONDS,
     USER,
     Absorbed,
     Action,
@@ -62,7 +64,7 @@ def counting_log_calls(rt: Runtime) -> Counter[str]:
 
 
 async def run(rt: Runtime) -> None:
-    await advance(rt.ports, CONVERSATION, USER)
+    await asyncio.wait_for(advance(rt.ports, CONVERSATION, USER), timeout=STEP_LIMIT_SECONDS)
 
 
 async def replies(rt: Runtime) -> list[Reply]:
