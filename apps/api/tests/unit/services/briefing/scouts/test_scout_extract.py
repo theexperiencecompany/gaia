@@ -317,6 +317,7 @@ class TestOneMalformedItem:
             ({"created": "a while back"}, "created_at", None),
             ({"updated": "lately"}, "updated_at", None),
             ({"html_url": {"href": "x"}}, "url", None),
+            ({"html_url": "https://api.github.com/repos/o/r/pulls/1813"}, "url", None),
             ({"state": ["open"]}, "state", None),
         ],
         ids=[
@@ -326,6 +327,7 @@ class TestOneMalformedItem:
             "created not a date",
             "updated not a date",
             "url not text",
+            "url an API endpoint, not a page (GitHub notifications, 2026-11-22)",
             "state not text",
         ],
     )

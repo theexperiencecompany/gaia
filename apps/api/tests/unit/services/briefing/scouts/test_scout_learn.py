@@ -322,6 +322,24 @@ class TestLearnFreezeReplay:
         assert [s.people_you for s in learned.signals] == [["Priya"]]
         assert [s.people_you for s in replayed] == [["Priya"]]
 
+    async def test_a_reported_api_endpoint_is_no_link(self) -> None:
+        """GitHub's learn reported api.github.com PR links, which open as JSON, not the PR (2026-11-22)."""
+        signals = [
+            {
+                "external_id": "1813",
+                "kind": "unread PR thread you are in",
+                "title": "fix(ci): ci:watch --fail-fast stops only on a check that blocks merge",
+                "why": "unread",
+                "importance": "normal",
+                "url": "https://api.github.com/repos/o/r/pulls/1813",
+            }
+        ]
+        app = _App([_ISSUE])
+        with _seams(app, _report(steps=[], sources=[], signals=signals)):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+
+        assert [s.url for s in learned.signals] == [None]
+
     async def test_a_malformed_item_neither_stops_the_freeze_nor_the_replay(self) -> None:
         """A nameless creator or an untitled issue failed the freeze, so the scout never learned."""
         nameless = {**_ISSUE, "id": "ENG-13", "creator": {"id": 7}}

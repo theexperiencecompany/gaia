@@ -11,10 +11,16 @@ and how much, is the judge's call.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from pydantic import TypeAdapter, ValidationError
 
-from app.constants.scouts import PERSON_ID_KEYS, PERSON_NAME_KEYS, SCOUT_SIGNAL_CEILING
+from app.constants.scouts import (
+    API_HOST_LABEL,
+    PERSON_ID_KEYS,
+    PERSON_NAME_KEYS,
+    SCOUT_SIGNAL_CEILING,
+)
 from app.models.scout_models import Signal, SignalSource
 from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import (
@@ -72,6 +78,14 @@ class _Item:
             self.unread.append(what)
         return text
 
+    def page(self, path: str | None) -> str | None:
+        """Return the item's link when a person can open it; an app's API endpoint reads as unread."""
+        url = self.text(path, "url")
+        page = page_url(url)
+        if url is not None and page is None:
+            self.unread.append("url")
+        return page
+
     def moment(self, path: str | None, what: str) -> datetime | None:
         raw = self.optional(path)
         if raw is None:
@@ -118,6 +132,13 @@ class _Item:
         return people, you
 
 
+def page_url(url: str | None) -> str | None:
+    """Return url when a person can open it as a page; None for an app's API endpoint."""
+    if url is None or urlsplit(url).netloc.split(".")[0] == API_HOST_LABEL:
+        return None
+    return url
+
+
 def is_the_user(person: object, handles: frozenset[str]) -> bool:
     """Say whether an app's person, a handle or an object, carries one of the user's own handles.
 
@@ -158,7 +179,7 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
         people=people,
         people_role=fields.people_role,
         people_you=you,
-        url=item.text(fields.url, "url"),
+        url=item.page(fields.url),
         state=item.state(fields.state),
         amount=amount,
         amount_unit=source.amount_unit if amount is not None else None,

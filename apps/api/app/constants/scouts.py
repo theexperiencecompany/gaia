@@ -6,6 +6,8 @@ from typing import Final
 #: Integrations another part of the brief already covers: mail through the inbox desk,
 #: the day's events through the calendar section. A scout there would count them twice.
 SCOUTED_ELSEWHERE: Final[frozenset[str]] = frozenset({"gmail", "googlecalendar"})
+#: A link a person opens; an app's REST host (api.github.com) answers it with JSON, not a page.
+API_HOST_LABEL: Final[str] = "api"
 
 #: Graph steps a learn run may take; each tool call costs two (the model turn and the call).
 SCOUT_LEARN_RECURSION_LIMIT: Final[int] = 24
