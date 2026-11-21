@@ -133,6 +133,15 @@ class OpensSubtasks:
 
 
 @dataclass(frozen=True)
+class OpensReplyTask:
+    """GAIA finds an email thread that needs the user's reply and opens a sub-task for it."""
+
+    thread_id: str
+    title: str
+    report: str
+
+
+@dataclass(frozen=True)
 class SavesPlaybook:
     """GAIA does a repeating task's work with a tool call and saves the calls to replay next time."""
 
@@ -155,6 +164,7 @@ GaiaRun = (
     | Breaks
     | OpensSubtasks
     | NeedsApproval
+    | OpensReplyTask
     | SavesPlaybook
     | ReplaysPlaybook
 )

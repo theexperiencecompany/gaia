@@ -30,7 +30,13 @@ from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
-from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import (
+    FAILED_LABEL,
+    GAIA_TRACKED_LABEL,
+    INBOX_DESK_TITLE,
+    PROVISION_INBOX_DESK_TASK,
+    TodoActivityEvent,
+)
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.message_models import MessageRequestWithHistory
@@ -57,6 +63,7 @@ from tests.e2e._harness.tasks_views import (
     GaiaRun,
     KeepsWaiting,
     NeedsApproval,
+    OpensReplyTask,
     OpensSubtasks,
     RepeatingTaskView,
     ReplaysPlaybook,
@@ -432,6 +439,24 @@ class TasksDriver:
                     ]
                 )
                 tell(asking)
+            case OpensReplyTask(thread_id, title, report):
+                self._executor.then(
+                    [
+                        call(
+                            "create_tracked_todo",
+                            {
+                                "title": title,
+                                "parent_todo_id": task_id,
+                                "gmail_thread_id": thread_id,
+                                "waiting_on": "time",
+                                "scheduled_at": FIRST_LOOK,
+                            },
+                            call_id="tc_reply_task",
+                        ),
+                        report,
+                    ]
+                )
+                tell(report)
             case Breaks():
                 pass
 
@@ -549,6 +574,16 @@ class TasksDriver:
         )
         await background()
         await drain_background_runs()
+        # The worker picks up the set-up jobs the connect queued.
+        for job in await self._pool.queued_jobs():
+            if job.function == PROVISION_INBOX_DESK_TASK:
+                await self._run(job)
+
+    async def inbox_desk(self) -> TaskView | None:
+        """Return the Inbox desk GAIA keeps for the user, None when there is none."""
+        desks = [t for t in await self._gaia_tasks() if t.title == INBOX_DESK_TITLE]
+        assert len(desks) <= 1, f"more than one Inbox desk: {desks}"
+        return desks[0] if desks else None
 
     async def app_disconnects(self, integration_id: str) -> None:
         """Deliver the provider's notice that the app's account expired."""
