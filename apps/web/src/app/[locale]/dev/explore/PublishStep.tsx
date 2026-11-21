@@ -1,21 +1,17 @@
 "use client";
 
-import { Input, Label, ListBox, Select, TextField } from "@heroui/react";
-import { Share01Icon } from "@icons";
-import { useState } from "react";
+import { Dropdown, TextArea } from "@heroui/react";
+import { ArrowDown01Icon, Share01Icon, Tick02Icon } from "@icons";
+import { useRef, useState } from "react";
 
-import {
-  inputVariants,
-  overlayVariants,
-} from "@/components/shared/controlVariants";
+import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
-import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
-import { IntegrationStack } from "../tasks/AppIcon";
-import { TaskIconTile } from "../tasks/TaskIconTile";
+import { PropertyRow } from "../tasks/PropertyRow";
 import type { Task } from "../tasks/taskModel";
-import { WhenChip } from "../tasks/WhenChip";
+import { useFocusAfterMenu } from "../tasks/useFocusAfterMenu";
+import { TemplateRowBody } from "./TemplateRow";
 import { TEMPLATES } from "./templateModel";
 
 /** The categories Explore already files templates under; a publisher picks one, never invents one. */
@@ -23,16 +19,17 @@ const CATEGORIES = [
   ...new Set(TEMPLATES.flatMap((template) => template.categories)),
 ].sort();
 
+/** The longest one line Explore shows in full. */
+const SUMMARY_MAX = 90;
+
 export interface PublishInput {
   summary: string;
   category: string;
 }
 
-const fieldLabel = toneVariants({ tone: "muted", className: "text-[13px]" });
-
 /**
- * Publishing, as a step in the task's sidebar: the publisher sees exactly the row
- * Explore will show, writes its one line, files it, and is told what stays private.
+ * Publishing, as a step in the task's sidebar: the publisher sees the row Explore
+ * will show, writes its one line, files it, and is told what stays private.
  */
 export function PublishStep({
   task,
@@ -45,84 +42,94 @@ export function PublishStep({
 }) {
   const [summary, setSummary] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const canPublish = summary.trim().length > 0 && category !== null;
+  const line = summary.trim();
+  const field = useRef<HTMLTextAreaElement>(null);
+  useFocusAfterMenu(field);
 
   return (
-    <section
-      aria-label="Publish to the community"
-      className="space-y-4 rounded-2xl bg-zinc-800 p-4"
-    >
+    <section aria-label="Publish to the community" className="space-y-3">
       <p className="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
         <Share01Icon className="size-3.5" />
         Publish to the community
       </p>
 
-      <div className="flex gap-3.5 rounded-2xl bg-zinc-900 p-3">
-        <TaskIconTile icon={task.icon} size={28} />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-h-7 items-center gap-2">
-            <p className="truncate text-[15px] text-zinc-100">{task.title}</p>
-            <IntegrationStack ids={task.integrations} size={15} />
-          </div>
-          <p className="line-clamp-2 text-[13px] leading-5 text-zinc-500">
-            {summary.trim() || "Your one line shows here"}
-          </p>
-          <span className="mt-2 flex">
-            <WhenChip when={task.when} />
-          </span>
-        </div>
+      <div className="-mx-2">
+        <TemplateRowBody
+          icon={task.icon}
+          title={task.title}
+          apps={task.integrations}
+          summary={line || "Your one line shows here"}
+          when={task.when}
+          isNarrow
+        />
       </div>
 
-      <TextField value={summary} onChange={setSummary} isRequired>
-        <Label className={fieldLabel}>One line for Explore</Label>
-        <Input
-          autoFocus
-          placeholder="What someone gets from this"
-          maxLength={90}
-          className={inputVariants({
-            variant: "sunken",
-            placeholder: "faint",
-            className: toneVariants({ tone: "white", className: "text-sm" }),
-          })}
-        />
-      </TextField>
-
-      <Select
-        selectedKey={category}
-        onSelectionChange={(key) =>
-          setCategory(key === null ? null : String(key))
-        }
-        placeholder="Choose one"
-        isRequired
-      >
-        <Label className={fieldLabel}>Category</Label>
-        <Select.Trigger
-          className={inputVariants({
-            variant: "sunken",
-            className: "w-full cursor-pointer",
-          })}
-        >
-          <GaiaSelectValue
-            className={toneVariants({
-              tone: category ? "white" : "muted",
-              className: "text-sm",
+      <div>
+        {/* 8px above and below make the one line a 36px row, like the rows under it. */}
+        <div className="py-2">
+          <TextArea
+            ref={field}
+            aria-label="One line for Explore"
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            placeholder="One line: what someone gets from this"
+            maxLength={SUMMARY_MAX}
+            rows={1}
+            className={inputVariants({
+              variant: "inline",
+              placeholder: "subtle",
+              className: toneVariants({
+                tone: "muted",
+                className:
+                  "field-sizing-content block w-full resize-none text-sm leading-5",
+              }),
             })}
           />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover className={overlayVariants({ surface: "raised" })}>
-          <ListBox>
-            {CATEGORIES.map((name) => (
-              <GaiaListBoxItem key={name} id={name} textValue={name} />
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+        </div>
+        <PropertyRow label="Category">
+          <Dropdown>
+            <GaiaButton
+              size="sm"
+              variant="property"
+              tone={category ? "bright" : "faint"}
+              inset="tight"
+              aria-label="Category"
+              className="-ml-2 h-8 min-w-0 flex-1 justify-between gap-1.5 text-sm"
+            >
+              {category ?? "Choose one"}
+              <ArrowDown01Icon className="size-4 shrink-0 opacity-60" />
+            </GaiaButton>
+            <Dropdown.Popover
+              placement="bottom start"
+              offset={6}
+              className={shapeVariants({ shape: "lg", className: "min-w-44" })}
+            >
+              <Dropdown.Menu
+                aria-label="Category"
+                onAction={(key) => setCategory(String(key))}
+              >
+                {CATEGORIES.map((name) => (
+                  <Dropdown.Item
+                    key={name}
+                    id={name}
+                    textValue={name}
+                    className="gap-2"
+                  >
+                    {name}
+                    {name === category && (
+                      <Tick02Icon className="ml-auto size-4 text-zinc-400" />
+                    )}
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown.Popover>
+          </Dropdown>
+        </PropertyRow>
+      </div>
 
       <p className="text-[13px] leading-5 text-zinc-500">
-        People get a copy of the name, what GAIA does, when it runs and the apps
-        it needs, with your name as the maker. Your notes, runs and chat stay
-        private. You can unpublish at any time.
+        People get a copy with your name on it. Your notes, runs and chat stay
+        private.
       </p>
 
       <div className="flex gap-2">
@@ -131,10 +138,9 @@ export function PublishStep({
           shape="md"
           variant="primary"
           className="h-9 font-medium"
-          isDisabled={!canPublish}
+          isDisabled={!line || !category}
           onPress={() => {
-            if (!category) return;
-            onPublish({ summary: summary.trim(), category });
+            if (category) onPublish({ summary: line, category });
           }}
         >
           Publish
