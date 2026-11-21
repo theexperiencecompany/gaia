@@ -15119,48 +15119,6 @@
         "title": "PushTokenResponse",
         "type": "object"
       },
-      "Question": {
-        "description": "What GAIA asked the user, and what it does if they never answer.",
-        "properties": {
-          "default_action": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Action"
-          },
-          "hold_checks": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Hold Checks",
-            "type": "integer"
-          },
-          "if_no_reply": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NoReplyPlan"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "text": {
-            "minLength": 1,
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ],
-        "title": "Question",
-        "type": "object"
-      },
       "QuietHours": {
         "additionalProperties": false,
         "description": "When the user's quiet hours start and end on their own clock; the span may cross midnight.",
@@ -22273,7 +22231,7 @@
           "question": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Question"
+                "$ref": "#/components/schemas/WaitingQuestion"
               },
               {
                 "type": "null"
@@ -22298,6 +22256,48 @@
         ],
         "title": "WaitingOn",
         "type": "string"
+      },
+      "WaitingQuestion": {
+        "description": "What GAIA asked the user, and what it does if they never answer.",
+        "properties": {
+          "default_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Action"
+          },
+          "hold_checks": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Hold Checks",
+            "type": "integer"
+          },
+          "if_no_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoReplyPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "WaitingQuestion",
+        "type": "object"
       },
       "Watch": {
         "description": "A change the user asked GAIA to tell them about, as GAIA compiled it from their sentence.",

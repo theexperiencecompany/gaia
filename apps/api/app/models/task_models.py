@@ -242,7 +242,7 @@ When = Annotated[
 # What a one-off GAIA task waits on.
 
 
-class Question(BaseModel):
+class WaitingQuestion(BaseModel):
     """What GAIA asked the user, and what it does if they never answer."""
 
     text: str = Field(min_length=1)
@@ -256,7 +256,7 @@ class Waiting(BaseModel):
     """What an open one-off GAIA task waits for until its next check."""
 
     on: WaitingOn
-    question: Question | None = None
+    question: WaitingQuestion | None = None
 
     @model_validator(mode="after")
     def _question_only_on_the_user(self) -> Self:

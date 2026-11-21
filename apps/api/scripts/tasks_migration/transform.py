@@ -40,10 +40,10 @@ from app.models.task_models import (
     DateWhen,
     EventWhen,
     NoWhen,
-    Question,
     RepeatWhen,
     TaskDocument,
     Waiting,
+    WaitingQuestion,
     When,
 )
 from app.models.task_run_models import ImportedActivity, TaskRunDocument
@@ -156,7 +156,7 @@ def _todo_waiting(todo: LegacyTodo) -> Waiting | None:
         return Waiting(on=WaitingOn.USER)
     return Waiting(
         on=WaitingOn.USER,
-        question=Question(
+        question=WaitingQuestion(
             text=todo.question,
             if_no_reply=todo.if_no_reply,
             default_action=todo.default_action,

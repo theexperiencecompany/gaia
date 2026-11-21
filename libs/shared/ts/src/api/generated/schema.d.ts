@@ -13075,22 +13075,6 @@ export interface components {
             success: boolean;
         };
         /**
-         * Question
-         * @description What GAIA asked the user, and what it does if they never answer.
-         */
-        Question: {
-            /** Default Action */
-            default_action?: string | null;
-            /**
-             * Hold Checks
-             * @default 0
-             */
-            hold_checks?: number;
-            if_no_reply?: components["schemas"]["NoReplyPlan"] | null;
-            /** Text */
-            text: string;
-        };
-        /**
          * QuietHours
          * @description When the user's quiet hours start and end on their own clock; the span may cross midnight.
          */
@@ -16423,7 +16407,7 @@ export interface components {
          */
         Waiting: {
             on: components["schemas"]["WaitingOn"];
-            question?: components["schemas"]["Question"] | null;
+            question?: components["schemas"]["WaitingQuestion"] | null;
         };
         /**
          * WaitingOn
@@ -16431,6 +16415,22 @@ export interface components {
          * @enum {string}
          */
         WaitingOn: "time" | "event" | "user" | "sub_todos" | "unplanned";
+        /**
+         * WaitingQuestion
+         * @description What GAIA asked the user, and what it does if they never answer.
+         */
+        WaitingQuestion: {
+            /** Default Action */
+            default_action?: string | null;
+            /**
+             * Hold Checks
+             * @default 0
+             */
+            hold_checks?: number;
+            if_no_reply?: components["schemas"]["NoReplyPlan"] | null;
+            /** Text */
+            text: string;
+        };
         /**
          * Watch
          * @description A change the user asked GAIA to tell them about, as GAIA compiled it from their sentence.
@@ -17509,7 +17509,6 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
-export type Question = components['schemas']['Question'];
 export type QuietHours = components['schemas']['QuietHours'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
@@ -17685,6 +17684,7 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type Waiting = components['schemas']['Waiting'];
 export type WaitingOn = components['schemas']['WaitingOn'];
+export type WaitingQuestion = components['schemas']['WaitingQuestion'];
 export type Watch = components['schemas']['Watch'];
 export type WatchBlindEpisode = components['schemas']['WatchBlindEpisode'];
 export type WatchConfirm = components['schemas']['WatchConfirm'];
