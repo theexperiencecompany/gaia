@@ -106,6 +106,10 @@ def dummy_tool_b(query: str) -> str:
     return "result_b"
 
 
+# A model call binds tools only when the agent has some: an empty tools array is a 400.
+_BINDS_TOOL_A = ToolRetrievalConfig(disable_retrieve_tools=True, initial_tool_ids=["dummy_tool_a"])
+
+
 def _make_tool_registry(*tools_list: BaseTool) -> dict[str, BaseTool]:
     return {t.name: t for t in tools_list}
 
@@ -533,10 +537,8 @@ class TestCallModel:
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
-        registry = _make_tool_registry()
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -553,8 +555,8 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -570,8 +572,8 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="executor_agent"),
         )
 
@@ -587,8 +589,8 @@ class TestCallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -603,9 +605,7 @@ class TestAcallModel:
         llm = _make_llm()
         registry = _make_tool_registry(dummy_tool_a)
 
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -615,10 +615,31 @@ class TestAcallModel:
         result = await agent_node.afunc(state, config, store=store)
         assert "messages" in result
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_a_call_with_no_tools_goes_out_on_the_bare_model(self) -> None:
+        """Workers AI answers a 400 to an empty tools array, so a tool-less call must bind none."""
+        llm = _make_llm()
+        configured = llm.with_config.return_value
+        configured.ainvoke = AsyncMock(return_value=AIMessage(content="bare"))
+        configured.with_retry.return_value = configured
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+        )
+
+        result = await _agent_runnable(builder).afunc(
+            _make_state(), _make_config(), store=MagicMock()
+        )
+
+        configured.bind_tools.assert_not_called()
+        assert result["messages"][-1].content == "bare"
+
     @pytest.mark.asyncio
     async def test_acall_model_with_middleware_hooks(self) -> None:
         llm = _make_llm()
-        registry = _make_tool_registry()
+        registry = _make_tool_registry(dummy_tool_a)
 
         mw = MagicMock()
         mw.tools = []
@@ -636,7 +657,7 @@ class TestAcallModel:
             builder = create_agent(
                 llm,
                 registry,
-                tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+                tools_config=_BINDS_TOOL_A,
                 agent_config=AgentConfig(middleware=[mw]),
             )
             agent_node = _agent_runnable(builder)
@@ -665,10 +686,8 @@ class TestAcallModel:
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
-        registry = _make_tool_registry()
-        builder = create_agent(
-            llm, registry, tools_config=ToolRetrievalConfig(disable_retrieve_tools=True)
-        )
+        registry = _make_tool_registry(dummy_tool_a)
+        builder = create_agent(llm, registry, tools_config=_BINDS_TOOL_A)
 
         agent_node = _agent_runnable(builder)
         state = _make_state()
@@ -686,8 +705,8 @@ class TestAcallModel:
         )
         builder = create_agent(
             llm,
-            _make_tool_registry(),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -724,8 +743,8 @@ class TestAcallModel:
         node = _agent_runnable(
             create_agent(
                 llm,
-                _make_tool_registry(),
-                tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+                _make_tool_registry(dummy_tool_a),
+                tools_config=_BINDS_TOOL_A,
                 agent_config=AgentConfig(agent_name="comms_agent"),
             )
         )
@@ -1160,7 +1179,7 @@ class TestBindSessionId:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name=agent),
         )
 
@@ -1180,7 +1199,7 @@ class TestBindSessionId:
         builder = create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 
@@ -2153,7 +2172,7 @@ class TestModelNodeWiring:
         builder = create_agent(
             _make_llm(),
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             hooks_config=HookConfig(pre_model_hooks=[hook]),
         )
         state = _make_state(messages=[HumanMessage("hi")])
@@ -2189,7 +2208,7 @@ class TestModelNodeWiring:
         builder = create_agent(
             _make_llm(),
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
         )
         state = _make_state(messages=[HumanMessage("hi")])
 
@@ -2611,7 +2630,7 @@ class TestTheFallbackTheModelNodeHandsTheClient:
         return create_agent(
             llm,
             _make_tool_registry(dummy_tool_a),
-            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            tools_config=_BINDS_TOOL_A,
             agent_config=AgentConfig(agent_name="comms_agent"),
         )
 

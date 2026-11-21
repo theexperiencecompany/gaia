@@ -6,7 +6,7 @@ then replayed with no model through the production runner, exactly as the brief 
 """
 
 import asyncio
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -15,6 +15,7 @@ import re
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
@@ -22,7 +23,7 @@ from langchain_core.messages import (
     HumanMessage,
     ToolMessage,
 )
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, tool
 import pytest
 from tests.factories import make_user_id
@@ -192,10 +193,34 @@ def _report(**overrides: object) -> str:
     return f"```json\n{json.dumps(report)}\n```"
 
 
+class _Greedy(ScriptedModel):
+    """Calls the app on every turn it holds tools for; writes its report only once they are gone."""
+
+    report: str
+    holds_tools: bool = False
+
+    def bind_tools(
+        self,
+        tools: Sequence[dict[str, Any] | type | Callable[..., Any] | BaseTool],
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable[LanguageModelInput, AIMessage]:
+        del tool_choice, kwargs
+        return self.model_copy(update={"holds_tools": bool(tools)})
+
+    def turn_for(self, messages: Sequence[BaseMessage]) -> AIMessage:
+        if not self.holds_tools:
+            return AIMessage(content=self.report)
+        return super().turn_for(messages)
+
+
 @contextmanager
-def _seams(app: _App, report: str) -> Iterator[None]:
+def _seams(app: _App, report: str, model: ScriptedModel | None = None) -> Iterator[None]:
     registry = _Registry({**app.tools(), "delete_issue": _delete_issue})
-    model = _Learner(script=[ScriptedCall("list_issues", {"assignee": "me"})], report=report)
+    model = model or _Learner(
+        script=[ScriptedCall("list_issues", {"assignee": "me"})], report=report
+    )
     with (
         patch.object(learn, "resolve_model", {ModelUse.HELPER: model}.__getitem__),
         patch(
@@ -408,6 +433,27 @@ class TestLearnFreezeReplay:
         assert learned.scout is not None
         assert learned.scout.status is ScoutStatus.NOTHING_TO_WATCH
         assert learned.scout.playbook is None
+
+    @pytest.mark.regression
+    async def test_a_learn_at_its_spend_cap_loses_its_tools_and_still_writes_its_report(
+        self,
+    ) -> None:
+        """Todoist and Twitter learns ignored the wrap-up notice, hit the stop and never froze."""
+        app = _App([_ISSUE])
+        greedy = _Greedy(
+            script=[ScriptedCall("list_issues", {"assignee": "me"})] * SCOUT_LEARN_RECURSION_LIMIT,
+            report=_report(),
+        )
+        with (
+            _seams(app, _report(), greedy),
+            patch.object(ScoutSpend, "winding_down", lambda _self: bool(app.calls)),
+        ):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+
+        assert learned.scout is not None
+        assert learned.scout.status is ScoutStatus.WATCHING
+        # The agent's one call before its cap, then the freeze's verification replay.
+        assert app.calls == [{"assignee": "me", "user_id": USER_ID}] * 2
 
     async def test_a_run_that_writes_no_report_fails_loud(self) -> None:
         app = _App([_ISSUE])

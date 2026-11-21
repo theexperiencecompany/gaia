@@ -35,7 +35,6 @@ from app.constants.llm import (
     FALLBACK_MODEL_METADATA_KEY,
     FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
-    LEDGER_STOP_TEXT,
     LEDGER_WRAPUP_NOTICE,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
@@ -81,12 +80,8 @@ class SpendLedger(Protocol):
 
     async def book(self, cost_usd: float) -> None: ...
 
-    def exhausted(self) -> bool:
-        """Whether the run has spent what it may: the wall stops its next call."""
-        ...
-
     def winding_down(self) -> bool:
-        """Whether the run is near that stop: each next call is told to answer now."""
+        """Whether the next call would spend out what the run may: it is sent with no tools, so it answers."""
         ...
 
 
@@ -212,20 +207,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     ) -> ModelResponse:
         """Run the call behind the user's budget wall, or a ledger run behind its own ledger's."""
         if self.ledger is not None:
-            if self.ledger.exhausted():
-                log.warning("ledger_stop", event_name="ledger_stop", agent_name=self.agent_name)
-                return ModelResponse(
-                    result=[
-                        AIMessage(
-                            content=LEDGER_STOP_TEXT,
-                            response_metadata={BUDGET_STOP_METADATA_KEY: True},
-                        )
-                    ]
-                )
             if self.ledger.winding_down():
-                log.info("ledger_wrapup_notice", agent_name=self.agent_name)
+                # No tools to call, so this reply is the run's last: it answers from what it read.
+                log.info("ledger_final_call", agent_name=self.agent_name)
                 request = request.override(
-                    messages=[*request.messages, HumanMessage(content=LEDGER_WRAPUP_NOTICE)]
+                    tools=[],
+                    messages=[*request.messages, HumanMessage(content=LEDGER_WRAPUP_NOTICE)],
                 )
         else:
             walled = await self._budget_wall(request)

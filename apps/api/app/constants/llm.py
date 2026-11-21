@@ -148,12 +148,10 @@ PROVIDER_NAME_METADATA_KEY = "provider_name"
 # The response_metadata flag on the reply the budget wall writes in place of a
 # model call; the accounting middleware meters nothing for a reply carrying it.
 BUDGET_STOP_METADATA_KEY = "budget_stop"
-# The reply a run with its own spend ledger gets once that ledger is spent out.
-LEDGER_STOP_TEXT = "Stopped: this run has spent its budget."
-# What a ledger run is told on each call once its ledger nears that stop, so it answers first.
+# What a ledger run's last call is told: its tools are gone, so it answers from what it read.
 LEDGER_WRAPUP_NOTICE = (
-    "[System notice: this run has almost spent its budget. Stop calling tools and give "
-    "your final answer now, from what you have already read.]"
+    "[System notice: this run has spent its budget and its tools are gone. Give your "
+    "final answer now, from what you have already read.]"
 )
 # The response_metadata keys marking a reply a fallback provider served, and the
 # model it served: read by the SSE downgrade notice and priced by accounting.

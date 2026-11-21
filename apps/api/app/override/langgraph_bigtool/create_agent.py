@@ -7,7 +7,6 @@ Type/lint errors here are expected: adapted from an external library.
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import dataclasses
-import functools
 import hashlib
 import math
 from typing import Any, cast
@@ -18,6 +17,7 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
+    AnyMessage,
     HumanMessage,
     MessageLikeRepresentation,
     ToolCall,
@@ -136,9 +136,14 @@ def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfi
     )
 
 
+def _with_tools(model: Runnable, tools: Sequence[BaseTool | dict[str, Any]]) -> Runnable:
+    """Bind tools onto model; with none, the bare model, since providers reject an empty tools array."""
+    return model.bind_tools(tools) if tools else model  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
+
+
 def _prepare_fallback(
     llm: LanguageModelLike,
-    tools_to_bind: list[BaseTool],
+    tools_to_bind: Sequence[BaseTool | dict[str, Any]],
     model_configurations: AgentConfigurable,
 ) -> tuple[Callable[[], Runnable], "ModelLane"] | None:
     """Rebind this run onto the next configured provider; None if none exists.
@@ -158,7 +163,7 @@ def _prepare_fallback(
     bindable = cast(
         BaseChatModel, llm.with_config(configurable=fallback_lane.rebind(model_configurations))
     )
-    return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
+    return (lambda: _with_tools(bindable, tools_to_bind), fallback_lane)
 
 
 def _bind_session_id(
@@ -367,8 +372,9 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
         tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
+        llm_with_tools = _bind_session_id(
+            _with_tools(_llm, tools_to_bind), model_configurations, deps.agent_name
+        )
         prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
         state = _maybe_inject_wrapup(state, config)
         response = invoke_llm(
@@ -413,42 +419,47 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         _llm = llm.with_config(configurable=config.get("configurable", {}))
         model_configurations = agent_configurable(config)
 
-        tools_to_bind = _tools_to_bind(deps, state)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]  # langchain model-lane stubs omit bind_tools for this lane type
-        llm_with_tools = _bind_session_id(llm_with_tools, model_configurations, deps.agent_name)
-        prepared = _prepare_fallback(llm, tools_to_bind, model_configurations)
-        # LLMAccountingMiddleware already charges this call; auxiliary metering
-        # here would book it a second time.
-        invoke_fn = functools.partial(
-            ainvoke_llm,
-            llm_with_tools,
-            fallback=prepared[0] if prepared else None,
-            config=config,
-            label=deps.agent_name,
-            options=LLMInvokeOptions(
-                meter_auxiliary=False,
-                fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-                fallback_model=prepared[1].model if prepared else None,
-                sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
-            ),
-        )
+        tools_to_bind: list[BaseTool | dict[str, Any]] = [*_tools_to_bind(deps, state)]
+
+        async def invoke_fn(
+            messages: list[AnyMessage], tools: list[BaseTool | dict[str, Any]]
+        ) -> AIMessage:
+            llm_with_tools = _bind_session_id(
+                _with_tools(_llm, tools), model_configurations, deps.agent_name
+            )
+            prepared = _prepare_fallback(llm, tools, model_configurations)
+            # LLMAccountingMiddleware already charges this call; auxiliary metering
+            # here would book it a second time.
+            return cast(
+                AIMessage,
+                await ainvoke_llm(
+                    llm_with_tools,
+                    messages,
+                    fallback=prepared[0] if prepared else None,
+                    config=config,
+                    label=deps.agent_name,
+                    options=LLMInvokeOptions(
+                        meter_auxiliary=False,
+                        fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                        fallback_model=prepared[1].model if prepared else None,
+                        sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+                    ),
+                ),
+            )
 
         _log_message_preview(state)
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
-            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
-                tool for tool in tools_to_bind
-            ]
             response = await middleware_executor.wrap_model_invocation(
                 model=_llm,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
                 state=state,
                 config=config,
                 store=store,
-                tools=middleware_tools_for_request,
+                tools=tools_to_bind,
                 invoke_fn=invoke_fn,
             )
         else:
-            response = await invoke_fn(state["messages"])
+            response = await invoke_fn(state["messages"], tools_to_bind)
 
         response = _finalize_model_response(response, deps.agent_name)
 

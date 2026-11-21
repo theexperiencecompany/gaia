@@ -65,10 +65,6 @@ class ScoutSpend:
         if extra:
             await _add(self.key, extra)
 
-    def exhausted(self) -> bool:
-        """Whether the learn has booked its whole reservation, so the accounting wall stops it."""
-        return self.booked >= _RESERVATION
-
     def winding_down(self) -> bool:
         """Whether a next call costing what the last one did would spend out the reservation."""
         return self.booked + self.last_call >= _RESERVATION
