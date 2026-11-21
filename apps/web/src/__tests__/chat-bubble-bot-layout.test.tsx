@@ -137,7 +137,7 @@ describe("ChatBubbleBot attachments", () => {
   it("shows no reaction badge on GAIA's own bubble", () => {
     renderBubble({
       text: "hi",
-      reactions: [{ emoji: "👍" }] as ChatBubbleBotProps["reactions"],
+      reaction: { emoji: "👍", by: "chat_model" },
     });
     expect(screen.queryByText("👍")).toBeNull();
   });

@@ -1,7 +1,7 @@
 import { createTurnAccumulator } from "@shared/chat";
 import { describe, expect, it } from "vitest";
 
-import { buildTurnMessageRecord, type EmojiAckStamp } from "./messageRecord";
+import { buildTurnMessageRecord } from "./messageRecord";
 
 const meta = {
   conversationId: "conv-1",
@@ -22,37 +22,21 @@ const meta = {
 };
 
 describe("buildTurnMessageRecord", () => {
-  it("records the streamed text as a plain message without an ack stamp", () => {
+  it("records the streamed text as the reply, never a reaction", () => {
     const acc = createTurnAccumulator("<EMOJI>😎</EMOJI>");
 
     const record = buildTurnMessageRecord(meta, acc, "sending");
 
     expect(record.content).toBe("<EMOJI>😎</EMOJI>");
-    expect(record.kind).toBeUndefined();
-    expect(record.reacts_to_message_id).toBeUndefined();
-  });
-
-  it("re-stamps a REACT ack as the bare emoji targeting the user message", () => {
-    const acc = createTurnAccumulator("<EMOJI>😎</EMOJI>");
-    const ack: EmojiAckStamp = {
-      kind: "emoji_ack",
-      emoji: "😎",
-      reactsToMessageId: "umsg-1",
-    };
-
-    const record = buildTurnMessageRecord(meta, acc, "sent", null, ack);
-
-    expect(record.content).toBe("😎");
-    expect(record.kind).toBe("emoji_ack");
-    expect(record.reacts_to_message_id).toBe("umsg-1");
+    expect(record.reaction).toBeUndefined();
   });
 
   it("marks a turn the user stopped, and only that turn", () => {
     const acc = createTurnAccumulator("Looking into dentists");
 
-    expect(
-      buildTurnMessageRecord(meta, acc, "sent", null, null, true).stopped,
-    ).toBe(true);
+    expect(buildTurnMessageRecord(meta, acc, "sent", null, true).stopped).toBe(
+      true,
+    );
     expect(buildTurnMessageRecord(meta, acc, "sent").stopped).toBeNull();
   });
 });

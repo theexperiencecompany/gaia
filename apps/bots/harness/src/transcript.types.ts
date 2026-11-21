@@ -138,6 +138,8 @@ export interface ReactionEvent extends TranscriptEventBase {
   /** Platform message id the emoji was attached to. */
   targetMessageId: string;
   emoji: string;
+  /** GAIA's earlier reaction on that message, which this one replaces. */
+  replaces: string | null;
 }
 
 /** Discriminated union of every transcript event. */

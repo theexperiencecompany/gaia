@@ -7,6 +7,7 @@ from langchain_core.messages import AnyMessage, HumanMessage
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
+from app.agents.context.reaction_note import reaction_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.helpers.message_helpers import (
@@ -46,6 +47,8 @@ class MessageScope:
     presence: PresenceSnapshot | None = None
     #: The turn starts a conversation, so its thread has never been told where the user is.
     opens_thread: bool = False
+    #: The instant reaction to this turn's message, read only if it already landed.
+    instant_reaction: asyncio.Task[str | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -132,8 +135,10 @@ async def construct_langchain_messages(
         chain_msgs.append(assembled.volatile)
 
     human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
-    # The note sits inline just ahead of the turn it describes, and stays in the thread.
-    turn_msgs = [human_msg] if note is None else [note, human_msg]
+    # Read after the gather, never awaited: a reaction still deciding costs this turn nothing.
+    reacted = reaction_note_message(scope.instant_reaction)
+    # The notes sit inline just ahead of the turn they describe, and stay in the thread.
+    turn_msgs = [*(m for m in (note, reacted) if m is not None), human_msg]
     return [*chain_msgs, *turn_msgs, time_msg]
 
 

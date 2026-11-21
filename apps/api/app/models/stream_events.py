@@ -53,6 +53,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.models.chat_models import MessageReaction
 from app.models.hil_models import HILApprovalStatus
 
 # ---------------------------------------------------------------------------
@@ -225,24 +226,19 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class EmojiAckPayload(BaseModel):
-    """What the reaction badge needs: the emoji and the message it reacts to."""
+class ReactionPayload(MessageReaction):
+    """A reaction GAIA placed, and the user message it sits on."""
 
-    emoji: str
-    reacts_to_message_id: str
+    message_id: str
 
 
-class EmojiAckFrame(BaseModel):
-    """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
+class ReactionFrame(BaseModel):
+    """GAIA reacted to a user message; the client sets the message's badge, replacing any earlier one.
 
-    The driver never streams a directive's text (visible_comms_text), so this
-    frame is the turn's whole visible outcome: the emoji is a reaction badge on
-    the ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
-    the interactive path (background executor results announce the same outcome
-    over the WebSocket notification instead).
+    Not the turn's answer: a turn can react and still reply or keep working.
     """
 
-    emoji_ack: EmojiAckPayload
+    reaction: ReactionPayload
 
 
 class TodoProgressFrame(BaseModel):

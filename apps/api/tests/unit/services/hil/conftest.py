@@ -325,13 +325,12 @@ def serve_jev(answer: dict[str, Any] | Exception) -> Iterator[AsyncMock]:
     response = MagicMock()
     response.json.return_value = answer
     client = AsyncMock()
-    client.__aenter__.return_value = client
     if isinstance(answer, Exception):
         client.post.side_effect = answer
     else:
         client.post.return_value = response
     with (
-        patch(f"{JEV_CLIENT_MODULE}.httpx.AsyncClient", return_value=client),
+        patch(f"{JEV_CLIENT_MODULE}.jev_http_client", client),
         patch(
             f"{JEV_CLIENT_MODULE}.resolve",
             AsyncMock(return_value=ProviderConfig(api_key="or-key")),  # pragma: allowlist secret

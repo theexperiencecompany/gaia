@@ -1012,6 +1012,7 @@ type WhatsAppReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<ReactionOutcome>;
 };
 
@@ -1029,6 +1030,7 @@ describe("WhatsAppAdapter - reactToMessage", () => {
       "wamid.123",
       "👍",
       false,
+      null,
     );
 
     expect(attached).toBe("attached");
@@ -1049,6 +1051,7 @@ describe("WhatsAppAdapter - reactToMessage", () => {
       "wamid.123",
       "👍",
       false,
+      null,
     );
 
     expect(attached).toBe("attach_failed");
@@ -1077,8 +1080,14 @@ describe("WhatsAppAdapter - live turn reaction", () => {
       emoji: string,
     ) => Promise<ReactionOutcome>;
 
-    await expect(hook("👍")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("15551234567", "wamid.in", "👍", false);
+    await expect(hook("👍", "🔎")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith(
+      "15551234567",
+      "wamid.in",
+      "👍",
+      false,
+      "🔎",
+    );
     expect(mockSendText).not.toHaveBeenCalled();
   });
 });

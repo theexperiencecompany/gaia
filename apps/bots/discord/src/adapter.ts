@@ -263,6 +263,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ): Promise<ReactionOutcome> {
     try {
       const channel = isChannel
@@ -274,6 +275,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         );
       }
       const message = await channel.messages.fetch(platformMessageId);
+      // Discord reactions add up, so GAIA's earlier one comes off before the new one goes on.
+      if (replaces && replaces !== emoji) {
+        await message.reactions.resolve(replaces)?.users.remove();
+      }
       await message.react(emoji);
       return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
@@ -729,8 +734,8 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         this.analyticsFor(userId),
-        (emoji: string) =>
-          this.reactToMessage(userId, message.id, emoji, false),
+        (emoji: string, replaces: string | null) =>
+          this.reactToMessage(userId, message.id, emoji, false, replaces),
       );
 
       stopTyping();
@@ -980,10 +985,14 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         this.analyticsFor(message.author.id),
-        (emoji: string) =>
-          message.guild
-            ? this.reactToMessage(message.channelId, message.id, emoji, true)
-            : this.reactToMessage(message.author.id, message.id, emoji, false),
+        (emoji: string, replaces: string | null) =>
+          this.reactToMessage(
+            message.guild ? message.channelId : message.author.id,
+            message.id,
+            emoji,
+            message.guild !== null,
+            replaces,
+          ),
       );
 
       stopTyping();

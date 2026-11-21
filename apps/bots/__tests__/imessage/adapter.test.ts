@@ -191,6 +191,7 @@ type PrivateAdapter = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<string>;
   adapterLogger: { warn: ReturnType<typeof vi.fn> };
   commands: Map<string, { execute: (p: unknown) => Promise<void> }>;
@@ -837,6 +838,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attached");
@@ -858,6 +860,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "🫡",
       false,
+      null,
     );
 
     expect(outcome).toBe("attached");
@@ -874,6 +877,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attach_failed");
@@ -896,6 +900,7 @@ describe("reactToMessage", () => {
       "msg-9",
       "👍",
       false,
+      null,
     );
 
     expect(outcome).toBe("attach_failed");
@@ -909,7 +914,13 @@ describe("reactToMessage", () => {
     const space = makeSpace({ getMessage: vi.fn(async () => undefined) });
     const { priv } = setup(space);
 
-    const outcome = await priv.reactToMessage("+15550100", "gone", "👍", false);
+    const outcome = await priv.reactToMessage(
+      "+15550100",
+      "gone",
+      "👍",
+      false,
+      null,
+    );
 
     expect(outcome).toBe("attach_failed");
     expect(space.send).not.toHaveBeenCalled();

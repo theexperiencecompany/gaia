@@ -54,8 +54,6 @@ const message = (id: string, tool_data: IMessage["tool_data"]): IMessage => ({
   createdAt: new Date(),
   updatedAt: new Date(),
   messageId: id,
-  kind: null,
-  reacts_to_message_id: null,
   tool_data: tool_data ?? null,
   follow_up_actions: null,
   replyToMessageData: null,

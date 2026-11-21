@@ -6,6 +6,7 @@ import pytest
 from app.services.latency_metrics import (
     observe_context_section_budget_exceeded,
     observe_fast_recall_semantic_missed,
+    observe_reaction_ack_decision,
     observe_trigger_gate_decision,
     observe_turn_overhead,
 )
@@ -107,6 +108,15 @@ def test_a_trigger_gate_decision_is_counted_under_its_labels() -> None:
     observe_trigger_gate_decision(owner="workflow", outcome="run", reason="jev_timeout")
 
     assert REGISTRY.get_sample_value("trigger_gate_decision_total", labels) == before + 1
+
+
+def test_a_reaction_ack_decision_is_counted_under_its_labels() -> None:
+    labels = {"outcome": "none", "reason": "jev_timeout"}
+    before = REGISTRY.get_sample_value("reaction_ack_decision_total", labels) or 0.0
+
+    observe_reaction_ack_decision(outcome="none", reason="jev_timeout")
+
+    assert REGISTRY.get_sample_value("reaction_ack_decision_total", labels) == before + 1
 
 
 def test_a_turns_overhead_is_observed_per_stage_with_total_the_sum_of_ours() -> None:

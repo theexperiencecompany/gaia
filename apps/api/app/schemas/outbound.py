@@ -66,6 +66,8 @@ class OutboundReaction(BaseModel):
 
     target_platform_message_id: str = Field(min_length=1)
     emoji: str = Field(min_length=1)
+    #: The reaction GAIA already has on that message, which the new one replaces.
+    replaces_emoji: str | None = Field(default=None, min_length=1)
 
 
 class OutboundMessageEnvelope(BaseModel):

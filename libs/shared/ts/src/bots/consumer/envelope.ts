@@ -82,6 +82,8 @@ export const outboundReactionSchema = z.object({
   target_platform_message_id: z.string().min(1),
   /** Single emoji to attach. */
   emoji: z.string().min(1),
+  /** GAIA's reaction already on that message, which this one replaces. */
+  replaces_emoji: z.string().min(1).nullish(),
 });
 
 /** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */

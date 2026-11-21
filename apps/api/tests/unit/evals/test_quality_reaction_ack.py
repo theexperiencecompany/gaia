@@ -1,6 +1,6 @@
 """A reaction the comms agent sends in place of a written acknowledgment reaches the transcript.
 
-Comms acknowledges handed-off work with a tap-back (an emoji_ack frame) instead of a
+Comms acknowledges handed-off work with a tap-back (a reaction frame) instead of a
 sentence. The transport used to drop that frame, so the judge saw no reply at all
 and graded "the reply is one short line" against silence.
 """
@@ -16,14 +16,20 @@ from scripts.evals.suites import quality
 from scripts.evals.suites.quality import ChatStreamTransport
 
 REACTION = "\U0001f6d2"
-REACTION_FRAME = {"emoji_ack": {"emoji": REACTION, "reacts_to_message_id": "m1"}}
+REACTION_FRAME = {"reaction": {"message_id": "m1", "emoji": REACTION, "by": "chat_model"}}
 
 
-def test_emoji_ack_frame_becomes_the_turns_reaction() -> None:
+def test_a_reaction_frame_becomes_the_turns_reaction() -> None:
     record = quality._parse_frames([REACTION_FRAME])
 
     assert record["reaction"] == REACTION
     assert record["text"] == ""
+
+
+def test_the_chat_models_reaction_replaces_the_instant_one_in_the_transcript() -> None:
+    instant = {"reaction": {"message_id": "m1", "emoji": "\U0001f44c", "by": "jev"}}
+
+    assert quality._parse_frames([instant, REACTION_FRAME])["reaction"] == REACTION
 
 
 async def test_transport_writes_the_reaction_into_the_transcript() -> None:

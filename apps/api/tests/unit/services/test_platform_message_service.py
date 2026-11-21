@@ -9,12 +9,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.models.chat_models import (
-    BOT_CONVERSATION_SOURCES,
-    ConversationSource,
-    SourceCategory,
-)
+from app.db.repositories.bot_sessions import bot_session_repository
+from app.models.chat_models import ConversationSource, SourceCategory
 from app.services import platform_message_service as pms
 from app.services.outbound_delivery import OutboundResult
 
@@ -36,7 +34,7 @@ class TestIsBotPlatform:
 
 
 class TestDeliverMessageToPlatform:
-    @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
+    @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES))
     async def test_publishes_to_resolved_platform(self, source: ConversationSource) -> None:
         """Each bot source is published with the coerced enum, user id, and text."""
         with patch.object(
@@ -57,7 +55,7 @@ class TestDeliverMessageToPlatform:
         session = SimpleNamespace(channel_id="C-group-1")
         with (
             patch.object(
-                pms.bot_session_repository,
+                bot_session_repository,
                 "get_by_conversation_id",
                 new_callable=AsyncMock,
                 return_value=session,
@@ -87,7 +85,7 @@ class TestDeliverMessageToPlatform:
         """Without a conversation_id the DM path is taken directly — the bot-session lookup is skipped entirely."""
         with (
             patch.object(
-                pms.bot_session_repository, "get_by_conversation_id", new_callable=AsyncMock
+                bot_session_repository, "get_by_conversation_id", new_callable=AsyncMock
             ) as get_session,
             patch.object(
                 pms,
@@ -111,7 +109,7 @@ class TestDeliverMessageToPlatform:
         """A DM conversation and a non-bot conversation with no session both fall back to the DM, never a channel send."""
         with (
             patch.object(
-                pms.bot_session_repository,
+                bot_session_repository,
                 "get_by_conversation_id",
                 new_callable=AsyncMock,
                 return_value=session,
@@ -220,13 +218,14 @@ class TestDeliverReactionToPlatform:
             "👍",
             destination_override=None,
             is_channel=False,
+            replaces_emoji=None,
         )
 
     async def test_a_group_conversation_reacts_in_its_channel(self) -> None:
         session = SimpleNamespace(channel_id="C-group-1")
         with (
             patch.object(
-                pms.bot_session_repository,
+                bot_session_repository,
                 "get_by_conversation_id",
                 new_callable=AsyncMock,
                 return_value=session,
@@ -239,7 +238,12 @@ class TestDeliverReactionToPlatform:
             ) as pub,
         ):
             ok = await pms.deliver_reaction_to_platform(
-                ConversationSource.SLACK, "user-1", "1700.1", "👍", conversation_id="conv-g"
+                ConversationSource.SLACK,
+                "user-1",
+                "1700.1",
+                "👍",
+                conversation_id="conv-g",
+                replaces_emoji="🔎",
             )
 
         assert ok is True
@@ -251,6 +255,7 @@ class TestDeliverReactionToPlatform:
             "👍",
             destination_override="C-group-1",
             is_channel=True,
+            replaces_emoji="🔎",
         )
 
     @pytest.mark.parametrize("result", [OutboundResult.SKIPPED, OutboundResult.FAILED])
@@ -285,7 +290,7 @@ class TestDeliverReactionToPlatform:
 class TestBotPlatformConsistency:
     """Every bot source must be routable by is_bot_platform and categorised as a BOT by SourceCategory."""
 
-    @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES, key=lambda s: s.value))
+    @pytest.mark.parametrize("source", sorted(BOT_CONVERSATION_SOURCES))
     def test_every_bot_source_is_routable_and_categorised(self, source) -> None:
         assert pms.is_bot_platform(source) is True
         assert SourceCategory.from_source(source) is SourceCategory.BOT

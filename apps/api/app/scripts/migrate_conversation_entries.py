@@ -6,6 +6,9 @@ Element i becomes the entry at seq i+1; the array stays in place until
 element's, first gets a fresh id written back into the array. Safe to re-run:
 each pass visits only the conversations whose array changed since it was
 copied (any append, trim or in-place edit), and merges them by message id.
+Every --apply then folds each emoji_ack message, in any conversation and
+whichever build wrote it, into a reaction on the user message it answered;
+--verify fails while any copied ack is unfolded.
 
 Cutover, in this order:
   1. --apply while the old build serves (repeat until it reports 0 raced).
@@ -70,7 +73,7 @@ def _embedded(after: str | None) -> Awaitable[list[HeadRef]]:
 
 async def _migrate(args: argparse.Namespace) -> int:
     actions: Counter[MigrationAction] = Counter()
-    copied = identified = 0
+    copied = identified = folded = 0
     async for ref in _heads(
         lambda after: conversation_entries_migration.heads_to_migrate(
             after_head_id=after, batch=_BATCH
@@ -80,6 +83,7 @@ async def _migrate(args: argparse.Namespace) -> int:
         actions[outcome.action] += 1
         copied += outcome.copied
         identified += outcome.identified
+        folded += outcome.folded
         if outcome.action is MigrationAction.RACED:
             print(f"  [{outcome.action}] {ref.conversation_id}: written meanwhile, re-run")
         elif outcome.action is not MigrationAction.UNCHANGED:
@@ -87,14 +91,28 @@ async def _migrate(args: argparse.Namespace) -> int:
                 f"  [{outcome.action}] {ref.conversation_id}: {outcome.copied} copied, "
                 f"{outcome.rewritten} rewritten, {outcome.identified} given an id"
             )
+    folded += await _fold_remaining_acks(apply=args.apply)
+    acks = f"{folded} emoji_ack messages folded into reactions"
     if actions:
         counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items()))
-        print(f"Summary: {counts}; {copied} entries; {identified} elements given an id")
+        print(f"Summary: {counts}; {copied} entries; {identified} elements given an id; {acks}")
     else:
-        print("Summary: nothing to migrate")
+        print(f"Summary: nothing to migrate; {acks}")
     if not args.apply:
         print("Dry run only. Re-run with --apply to write.")
     return 1 if actions[MigrationAction.RACED] else 0
+
+
+async def _fold_remaining_acks(*, apply: bool) -> int:
+    """Fold the acks in conversations the copy did not visit: ones a build without the fold appended."""
+    folded = 0
+    async for ref in _heads(
+        lambda after: conversation_entries_migration.heads_with_acks(
+            after_head_id=after, batch=_BATCH
+        )
+    ):
+        folded += await conversation_entries_migration.fold_reaction_acks(ref, apply=apply)
+    return folded
 
 
 async def _verify_all() -> tuple[list[tuple[HeadRef, VerifyReport]], int]:

@@ -725,7 +725,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.whatsapp,
         this.analyticsFor(waId),
-        (emoji: string) => this.reactToMessage(waId, messageId, emoji, false),
+        (emoji: string, replaces: string | null) =>
+          this.reactToMessage(waId, messageId, emoji, false, replaces),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -984,7 +985,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
+    _replaces: string | null,
   ): Promise<ReactionOutcome> {
+    // A sender has one reaction per WhatsApp message, so a new one replaces the last.
     // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
     // always a wa_id, same addressing as deliverOutbound.
     try {

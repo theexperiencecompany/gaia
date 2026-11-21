@@ -1064,11 +1064,11 @@ describe("a buffered platform delivers the reply when it is complete, not at don
   });
 
   describe("an emoji-only turn is unaffected", () => {
-    // The ack is the whole reply: nothing is kept when the first reply_complete
-    // arrives, and the emoji itself lands after it.
+    // The chat model's reaction is the whole reply: nothing is kept when the first
+    // reply_complete arrives, and the reaction itself lands after it.
     const EMOJI_TURN = [
       REPLY_COMPLETE,
-      { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
+      { reaction: { message_id: "u1", emoji: "😅", by: "chat_model" } },
       REPLY_COMPLETE,
       DONE,
     ];
@@ -1083,7 +1083,8 @@ describe("a buffered platform delivers the reply when it is complete, not at don
       await live.finish();
 
       expect(live.delivered.writes).toEqual([]);
-      expect(live.noReply).not.toHaveBeenCalled();
+      // The reaction says nothing, so the waiting indicator comes down on the no-reply path.
+      expect(live.noReply).toHaveBeenCalledOnce();
     });
 
     it("sends the emoji once as text when the reaction cannot attach", async () => {

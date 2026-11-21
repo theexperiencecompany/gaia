@@ -20,18 +20,6 @@ export interface TurnMessageMeta {
   options: TurnOptions;
 }
 
-/**
- * The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack (server frame
- * `emoji_ack`). The record becomes the bare emoji stamped `emoji_ack` +
- * `reacts_to_message_id`, which `foldReactionAcks` turns into a reaction badge
- * on the user's message instead of a bubble.
- */
-export interface EmojiAckStamp {
-  kind: "emoji_ack";
-  emoji: string;
-  reactsToMessageId: string;
-}
-
 /** Shown when a stream ended without ever signalling completion. */
 export const INTERRUPTED_ERROR =
   "The response was interrupted before it finished.";
@@ -54,12 +42,11 @@ export const buildTurnMessageRecord = (
   acc: TurnAccumulator,
   status: IMessage["status"],
   error: string | null = null,
-  emojiAck: EmojiAckStamp | null = null,
   stopped = false,
 ): IMessage => ({
   id: meta.botMessageId,
   conversationId: meta.conversationId,
-  content: emojiAck ? emojiAck.emoji : acc.responseText,
+  content: acc.responseText,
   role: "assistant",
   status,
   createdAt: meta.createdAt,
@@ -82,8 +69,6 @@ export const buildTurnMessageRecord = (
   pinned: false,
   isConvoSystemGenerated: false,
   error,
-  kind: emojiAck?.kind,
-  reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
   stopped: stopped || null,
   replyToMessageId: meta.options.replyToMessage?.id ?? null,
   replyToMessageData: meta.options.replyToMessage,

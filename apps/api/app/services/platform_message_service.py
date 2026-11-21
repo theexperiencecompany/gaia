@@ -92,8 +92,9 @@ async def deliver_reaction_to_platform(
     emoji: str,
     *,
     conversation_id: str | None = None,
+    replaces_emoji: str | None = None,
 ) -> bool:
-    """Attach emoji as a native reaction to an existing platform message.
+    """Attach emoji as a native reaction to an existing platform message, in place of replaces_emoji.
 
     Same channel-or-DM addressing as deliver_message_to_platform. Returns
     True if the reaction was enqueued; otherwise False and the caller falls
@@ -112,5 +113,6 @@ async def deliver_reaction_to_platform(
         emoji,
         destination_override=target.destination_id if target else None,
         is_channel=target.is_channel if target else False,
+        replaces_emoji=replaces_emoji,
     )
     return result is OutboundResult.PUBLISHED

@@ -86,6 +86,44 @@ describe("turnAccumulator golden replay", () => {
     expect(acc.toolData).toEqual([]);
   });
 
+  it("parses a reaction frame into the reaction on its message", () => {
+    const events = parseChatStreamEvent(
+      JSON.stringify({
+        reaction: { message_id: "umsg_1", emoji: "🔎", by: "jev" },
+      }),
+    );
+
+    expect(events).toEqual([
+      {
+        type: "reaction",
+        messageId: "umsg_1",
+        reaction: { emoji: "🔎", by: "jev" },
+      },
+    ]);
+  });
+
+  it("drops a reaction frame from a reactor it does not know", () => {
+    const events = parseChatStreamEvent(
+      JSON.stringify({
+        reaction: { message_id: "umsg_1", emoji: "🔎", by: "someone" },
+      }),
+    );
+
+    expect(events.some((event) => event.type === "reaction")).toBe(false);
+  });
+
+  it("does not accumulate a reaction into the turn's reply", () => {
+    const acc = fold([
+      JSON.stringify({
+        reaction: { message_id: "u", emoji: "👍", by: "chat_model" },
+      }),
+      JSON.stringify({ response: "Booked." }),
+    ]);
+
+    expect(acc.responseText).toBe("Booked.");
+    expect(acc.toolData).toEqual([]);
+  });
+
   it("(b) tool turn: tool_output merges onto the matching tool_call_id", () => {
     const acc = fold(toolTurn);
 

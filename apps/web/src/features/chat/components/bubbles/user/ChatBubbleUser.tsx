@@ -105,7 +105,7 @@ export default function ChatBubbleUser({
   replyToMessage,
   queued,
   failed,
-  reactions,
+  reaction,
   disableActions = false,
   onRetry,
   isRetrying,
@@ -130,8 +130,6 @@ export default function ChatBubbleUser({
 
   if (!hasContent) return null;
 
-  const hasReactions = !!reactions && reactions.length > 0;
-
   return (
     <div
       className="group flex w-full justify-end gap-3"
@@ -143,7 +141,7 @@ export default function ChatBubbleUser({
           <div
             className={`chat_bubble_container user transition-opacity duration-300 ${
               queued ? "opacity-50" : "opacity-100"
-            } ${hasReactions ? "mt-7" : ""}`}
+            } ${reaction ? "mt-7" : ""}`}
           >
             <BubbleIndicators
               fileData={fileData}
@@ -157,7 +155,7 @@ export default function ChatBubbleUser({
 
             {text?.trim() && (
               <div className={cn("relative", bubbleClassName)}>
-                {hasReactions && <MessageReactions reactions={reactions} />}
+                {reaction && <MessageReactions reaction={reaction} />}
                 {isEmojiOnly ? (
                   <div className={textClassName}>{text}</div>
                 ) : (

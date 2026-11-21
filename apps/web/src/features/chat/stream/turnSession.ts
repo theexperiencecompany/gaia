@@ -16,6 +16,7 @@ import {
 } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
+import { applyMessageReaction } from "@/features/chat/utils/reactionUtils";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { toast } from "@/lib/toast";
@@ -27,7 +28,6 @@ import { hasExecutorDelegation } from "./executorDelegation";
 import {
   buildTurnMessageRecord,
   buildUserMessageRecord,
-  type EmojiAckStamp,
   resolveTurnOutcome,
   type TurnMessageMeta,
 } from "./messageRecord";
@@ -86,10 +86,6 @@ export class TurnSession {
   private flushHandle: number | null = null;
   private lastPartialPersistAt = 0;
   private closeHandled = false;
-  /** The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack — see
-   *  handleEmojiAck. Stamped on the record so the fold badges the emoji onto
-   *  the user's message instead of rendering the turn as a bubble. */
-  private reactionAck: EmojiAckStamp | null = null;
   /** Client cross-check clock. Server timing is the SLO; these deltas only
    *  validate it from the user's side. */
   private sendStartMs = 0;
@@ -366,8 +362,19 @@ export class TurnSession {
         this.handleMainResponseComplete();
         return undefined;
 
+      case "reaction":
+        // Not the turn's answer: the badge lands now and the turn keeps working.
+        if (this.conversationId) {
+          await applyMessageReaction(
+            this.conversationId,
+            event.messageId,
+            event.reaction,
+          );
+        }
+        return undefined;
+
       case "emoji_ack":
-        this.handleEmojiAck(event.emoji, event.reactsToMessageId);
+        // The server no longer sends this frame; the shared parser keeps it for the mobile app.
         return undefined;
 
       case "progress": {
@@ -645,23 +652,6 @@ export class TurnSession {
     this.scheduleFlush();
   }
 
-  /**
-   * The server ruled this turn a comms `<EMOJI>…</EMOJI>` ack and streamed none
-   * of its text: the emoji is a reaction on the user's message. Stamp the
-   * record (bare emoji + kind + target) in the
-   * store and IndexedDB now, so `foldReactionAcks` hides the ack bubble and
-   * badges the emoji without a reload; the close write carries the same stamp.
-   */
-  private handleEmojiAck(emoji: string, reactsToMessageId: string): void {
-    this.reactionAck = { kind: "emoji_ack", emoji, reactsToMessageId };
-    const record = this.buildRecord("sending");
-    if (!record) return;
-    useChatStore.getState().updateMessageInPlace(record);
-    db.putMessage(record).catch((error) => {
-      console.error("Failed to persist reaction ack:", error);
-    });
-  }
-
   private setSpinner(active: boolean): void {
     if (this.steering) return;
     const store = useStreamStore.getState();
@@ -731,14 +721,7 @@ export class TurnSession {
       seq: this.botSeq,
       options: this.args.options,
     };
-    return buildTurnMessageRecord(
-      meta,
-      this.acc,
-      status,
-      error,
-      this.reactionAck,
-      stopped,
-    );
+    return buildTurnMessageRecord(meta, this.acc, status, error, stopped);
   }
 
   /** Batch accumulator flushes to one store write per animation frame. */

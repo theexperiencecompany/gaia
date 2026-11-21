@@ -38,27 +38,29 @@ function apiMessage(overrides: Record<string, unknown>) {
 }
 
 describe("fetchMessages — reaction parity", () => {
-  it("carries kind/reacts_to_message_id onto the normalized message", async () => {
+  it("shows GAIA's stored reaction as a badge on the user's message", async () => {
     getMock.mockResolvedValueOnce(
       conversationDetail([
-        apiMessage({ message_id: "user-1", type: "user", response: "book it" }),
         apiMessage({
-          message_id: "ack-1",
-          response: "👍",
-          kind: "emoji_ack",
-          reacts_to_message_id: "user-1",
+          message_id: "user-1",
+          type: "user",
+          response: "book it",
+          reaction: { emoji: "👍", by: "chat_model" },
         }),
+        apiMessage({ message_id: "bot-1", response: "booked" }),
       ]),
     );
 
     const messages = await fetchMessages("conv-1");
 
-    const ack = messages.find((message) => message.id === "ack-1");
-    expect(ack?.kind).toBe("emoji_ack");
-    expect(ack?.reacts_to_message_id).toBe("user-1");
+    const userMessage = messages.find((message) => message.id === "user-1");
+    expect(userMessage?.reactions).toEqual([{ emoji: "👍", ackId: "user-1" }]);
+    expect(
+      messages.find((message) => message.id === "bot-1")?.reactions,
+    ).toBeNull();
   });
 
-  it("defaults the reaction fields to null when the backend omits them", async () => {
+  it("leaves a message without a stored reaction unbadged", async () => {
     getMock.mockResolvedValueOnce(
       conversationDetail([apiMessage({ message_id: "bot-1" })]),
     );
@@ -66,7 +68,6 @@ describe("fetchMessages — reaction parity", () => {
     const messages = await fetchMessages("conv-1");
 
     expect(messages).toHaveLength(1);
-    expect(messages[0].kind).toBeNull();
-    expect(messages[0].reacts_to_message_id).toBeNull();
+    expect(messages[0].reactions).toBeNull();
   });
 });

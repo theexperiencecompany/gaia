@@ -1446,6 +1446,7 @@ type DiscordReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<ReactionOutcome>;
   client: unknown;
 };
@@ -1473,11 +1474,44 @@ describe("DiscordAdapter - reactToMessage", () => {
       "msg-7",
       "👍",
       true,
+      null,
     );
 
     expect(attached).toBe("attached");
     expect(fetchMessage).toHaveBeenCalledWith("msg-7");
     expect(react).toHaveBeenCalledWith("👍");
+  });
+
+  it("takes GAIA's earlier reaction off before adding the new one", async () => {
+    const order: string[] = [];
+    const remove = vi.fn(async () => {
+      order.push("remove 🔎");
+    });
+    const react = vi.fn(async (emoji: string) => {
+      order.push(`add ${emoji}`);
+    });
+    const resolve = vi.fn((emoji: string) =>
+      emoji === "🔎" ? { users: { remove } } : null,
+    );
+    const fetchMessage = vi
+      .fn()
+      .mockResolvedValue({ react, reactions: { resolve } });
+    const adapter = makeReactor(
+      { isTextBased: () => true, messages: { fetch: fetchMessage } },
+      {},
+    );
+
+    const attached = await adapter.reactToMessage(
+      "chan-1",
+      "msg-7",
+      "👍",
+      true,
+      "🔎",
+    );
+
+    expect(attached).toBe("attached");
+    expect(order).toEqual(["remove 🔎", "add 👍"]);
+    expect(remove).toHaveBeenCalledWith();
   });
 
   it("reacts via the user's DM channel when not a channel", async () => {
@@ -1495,6 +1529,7 @@ describe("DiscordAdapter - reactToMessage", () => {
       "msg-7",
       "👍",
       false,
+      null,
     );
 
     expect(attached).toBe("attached");
@@ -1519,6 +1554,7 @@ describe("DiscordAdapter - reactToMessage", () => {
       "msg-7",
       "👍",
       true,
+      null,
     );
 
     expect(attached).toBe("attach_failed");
@@ -1532,9 +1568,15 @@ describe("DiscordAdapter - live turn reactions", () => {
   });
 
   /** The reaction hook the adapter handed to its last handleStreamingChat call. */
-  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
+  function lastReactionHook(): (
+    emoji: string,
+    replaces: string | null,
+  ) => Promise<ReactionOutcome> {
     const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
-    return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
+    return call?.[8] as (
+      emoji: string,
+      replaces: string | null,
+    ) => Promise<ReactionOutcome>;
   }
 
   function spyReact(adapter: DiscordAdapter) {
@@ -1558,8 +1600,14 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleMentionMessage(message, "bot-id", RECEIVED_AT);
 
-    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("channel-abc", "msg-in", "👍", true);
+    await expect(lastReactionHook()("👍", null)).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith(
+      "channel-abc",
+      "msg-in",
+      "👍",
+      true,
+      null,
+    );
   });
 
   it("reacts to a DM through the author's DM channel", async () => {
@@ -1587,7 +1635,7 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleDMMessage(message, RECEIVED_AT);
 
-    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false);
+    await expect(lastReactionHook()("👍", null)).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false, null);
   });
 });

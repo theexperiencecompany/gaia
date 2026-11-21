@@ -1815,6 +1815,7 @@ type TelegramReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
+    replaces: string | null,
   ) => Promise<ReactionOutcome>;
 };
 
@@ -1826,7 +1827,13 @@ describe("TelegramAdapter - reactToMessage", () => {
   it("attaches via setMessageReaction with numeric chat and message ids", async () => {
     const adapter = makeAdapter() as unknown as TelegramReactor;
 
-    const attached = await adapter.reactToMessage("4242", "777", "👍", false);
+    const attached = await adapter.reactToMessage(
+      "4242",
+      "777",
+      "👍",
+      false,
+      null,
+    );
 
     expect(attached).toBe("attached");
     expect(mockSetMessageReaction).toHaveBeenCalledWith("4242", 777, [
@@ -1834,10 +1841,26 @@ describe("TelegramAdapter - reactToMessage", () => {
     ]);
   });
 
+  it("replaces GAIA's earlier reaction by setting the new one alone", async () => {
+    const adapter = makeAdapter() as unknown as TelegramReactor;
+
+    await adapter.reactToMessage("4242", "777", "👍", false, "🔎");
+
+    expect(mockSetMessageReaction.mock.calls).toEqual([
+      ["4242", 777, [{ type: "emoji", emoji: "👍" }]],
+    ]);
+  });
+
   it("sends a heart without the variation selector Telegram's reaction list omits", async () => {
     const adapter = makeAdapter() as unknown as TelegramReactor;
 
-    const attached = await adapter.reactToMessage("4242", "777", "❤️", false);
+    const attached = await adapter.reactToMessage(
+      "4242",
+      "777",
+      "❤️",
+      false,
+      null,
+    );
 
     expect(attached).toBe("attached");
     expect(mockSetMessageReaction).toHaveBeenCalledWith("4242", 777, [
@@ -1849,7 +1872,13 @@ describe("TelegramAdapter - reactToMessage", () => {
     mockSetMessageReaction.mockRejectedValueOnce(new Error("Bad Request"));
     const adapter = makeAdapter() as unknown as TelegramReactor;
 
-    const attached = await adapter.reactToMessage("4242", "777", "✅", false);
+    const attached = await adapter.reactToMessage(
+      "4242",
+      "777",
+      "✅",
+      false,
+      null,
+    );
 
     expect(attached).toBe("attach_failed");
     expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
@@ -1893,7 +1922,7 @@ describe("TelegramAdapter - live turn reaction", () => {
     };
   }
 
-  it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
+  it("reacts to the inbound message in place of the last reaction and keeps the placeholder for the reply", async () => {
     const react = vi
       .spyOn(adapter as unknown as TelegramReactor, "reactToMessage")
       .mockResolvedValue("attached");
@@ -1901,9 +1930,9 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     const hook = await streamAndTakeHook(liveCtx(deleteMessage));
 
-    await expect(hook("👍")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("123456", "10", "👍", false);
-    expect(deleteMessage).toHaveBeenCalledWith(123456, 42);
+    await expect(hook("👍", "🔎")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("123456", "10", "👍", false, "🔎");
+    expect(deleteMessage).not.toHaveBeenCalled();
   });
 
   it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
@@ -1915,7 +1944,7 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     const hook = await streamAndTakeHook(liveCtx(deleteMessage));
 
-    await expect(hook("👍")).resolves.toBe("attach_failed");
+    await expect(hook("👍", null)).resolves.toBe("attach_failed");
     expect(deleteMessage).not.toHaveBeenCalled();
   });
 
@@ -1927,7 +1956,7 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     const hook = await streamAndTakeHook(makeCtx());
 
-    await expect(hook("👍")).resolves.toBe("no_target");
+    await expect(hook("👍", null)).resolves.toBe("no_target");
     expect(react).not.toHaveBeenCalled();
   });
 });

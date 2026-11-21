@@ -493,10 +493,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
+    _replaces: string | null,
   ): Promise<ReactionOutcome> {
-    // Telegram accepts only a fixed emoji set, spelled without the U+FE0F
-    // variation selector ("❤" not "❤️"), and 400s anything else; an off-list
-    // emoji lands in the catch below and the caller sends text.
+    // Setting the bot's reaction list replaces its last reaction. Only a fixed emoji set, without
+    // U+FE0F ("❤" not "❤️"), is accepted; anything else 400s into the catch below.
     const allowed = emoji.replaceAll("\uFE0F", "") as Extract<
       ReactionType,
       { type: "emoji" }
@@ -800,18 +800,16 @@ export class TelegramAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.telegram,
         analytics,
-        async (emoji: string) => {
+        async (emoji: string, replaces: string | null) => {
           const inboundId = ctx.msg?.message_id;
           if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
-          const outcome = await this.reactToMessage(
+          return this.reactToMessage(
             chatId.toString(),
             inboundId.toString(),
             emoji,
             ctx.chat?.type !== "private",
+            replaces,
           );
-          if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-          await removePlaceholder();
-          return outcome;
         },
         removePlaceholder,
       );
