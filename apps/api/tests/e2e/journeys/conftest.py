@@ -20,7 +20,7 @@ from app.db.mongodb import indexes
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
 from tests.conftest import FAKE_USER
-from tests.e2e._harness.app_events import WEBHOOK_SECRET, composio_double
+from tests.e2e._harness.app_events import WEBHOOK_SECRET, BotOutbox, composio_double
 from tests.e2e._harness.live_stack import live_graphs, offline_todo_seams
 from tests.e2e._harness.tasks_driver import TasksDriver
 from tests.e2e._harness.turn_queue import TurnQueue
@@ -39,6 +39,7 @@ OWNED_COLLECTIONS = (
     "user_integrations",
 )
 PLAYBOOK_RUNNER = "app.services.workflow.playbook.runner"
+OUTBOUND = "app.services.outbound_delivery"
 #: The modules an app connect reaches Composio from; the double answers every call.
 COMPOSIO_USERS = (
     "app.services.oauth.oauth_service",
@@ -73,7 +74,11 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
                 "timezone": "UTC",
                 "onboarding.completed": True,
             },
-            "$unset": {"hil_preferences": ""},
+            "$unset": {
+                "hil_preferences": "",
+                "platform_links": "",
+                "platform_links_connected_at": "",
+            },
         },
         upsert=True,
     )
@@ -123,11 +128,14 @@ async def tasks(
     executor, comms = TurnQueue(responses=[]), TurnQueue(responses=[])
     # The session fence mocks the plan limiter; a journey counts runs on the real one, on real Redis.
     real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
-    composio = composio_double()
+    composio, outbox = composio_double(), BotOutbox()
     with ExitStack() as seams:
         seams.enter_context(offline_todo_seams())
         seams.enter_context(patch.object(tiered_limiter, "check_and_increment", real_limiter))
         seams.enter_context(patch.object(settings, "COMPOSIO_WEBHOOK_SECRET", WEBHOOK_SECRET))
+        seams.enter_context(
+            patch(f"{OUTBOUND}.get_rabbitmq_publisher", new=AsyncMock(return_value=outbox))
+        )
         for module in COMPOSIO_USERS:
             seams.enter_context(patch(f"{module}.get_composio_service", return_value=composio))
         async with live_graphs(_checkpointer, executor_model=executor, comms_model=comms):
@@ -137,6 +145,7 @@ async def tasks(
                 pool=_worker_pool,
                 executor=executor,
                 comms=comms,
+                outbox=outbox,
             )
             await driver.subscribe()
             # A playbook replay writes its result up with a structured model call of its own.

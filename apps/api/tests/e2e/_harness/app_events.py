@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import hashlib
 import hmac
 from itertools import count
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -33,6 +34,18 @@ def signed_webhook_headers(body: bytes, webhook_id: str) -> dict[str, str]:
         "webhook-timestamp": _SIGNED_AT,
         "webhook-signature": f"v1,{base64.b64encode(digest).decode()}",
     }
+
+
+class BotOutbox:
+    """The message broker the bots consume: records every envelope published to a platform."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def publish_outbound(self, queue_name: str, body: bytes, **_: object) -> None:
+        envelope = json.loads(body)
+        parts = envelope.get("text_parts") or [envelope["text"]]
+        self.sent.append((envelope["platform"], "\n".join(parts)))
 
 
 def composio_double() -> AsyncMock:

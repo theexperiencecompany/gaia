@@ -44,13 +44,14 @@ from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
 from app.services.chat import stream as chat_stream
 from app.services.oauth.oauth_service import handle_oauth_connection
+from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.conversation_service import get_or_create_workflow_conversation
 from app.services.workflow.playbook.record import CALL_ID_SEPARATOR
 from app.utils.auth_utils import require_owner
 from app.worker import TASK_FUNCTIONS
 from app.workers.tasks.workflow_tasks import REPLAY_SUMMARY
 from shared.py.wide_events import spawn_logged_task
-from tests.e2e._harness.app_events import gate_judge, signed_webhook_headers
+from tests.e2e._harness.app_events import BotOutbox, gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.tasks_views import (
@@ -220,7 +221,9 @@ class TasksDriver:
         pool: ArqRedis,
         executor: TurnQueue,
         comms: TurnQueue,
+        outbox: BotOutbox,
     ) -> None:
+        self._outbox = outbox
         self._client = client
         self._user_id = user_id
         self._pool = pool
@@ -709,7 +712,6 @@ class TasksDriver:
         if not _is_workflow(task_id):
             await self._queue_tracked(task_id, run)
             return
-        workflow = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]
         hand_off = [call("call_executor", {"task": f"run {task_id}"}, call_id="tc_run"), ON_IT]
         match run:
             case Reports(report):
@@ -741,7 +743,8 @@ class TasksDriver:
                 self._narrations.append(report)
             case _:
                 raise NotImplementedError(f"a repeating task cannot be scripted to {run}")
-        if workflow["notify_on_completion"] and not isinstance(run, ReplaysPlaybook):
+        # The run's write-up is asked for whether or not it is then delivered.
+        if not isinstance(run, ReplaysPlaybook):
             self._comms.then([report])
 
     async def narrate_replay(self, schema: type[BaseModel], prompt: str, **_: object) -> BaseModel:
@@ -852,6 +855,16 @@ class TasksDriver:
             Delivered(title=n["content"]["title"], body=n["content"]["body"], channel="inapp")
             for n in reversed(body["notifications"])
         ]
+
+    def messaged_on_chat_apps(self) -> list[Delivered]:
+        """Return every message GAIA sent the user on a linked chat app, oldest first."""
+        return [
+            Delivered(title="", body=text, channel=platform) for platform, text in self._outbox.sent
+        ]
+
+    async def link_chat_app(self, platform: str) -> None:
+        """Link the user's account on a chat app (Telegram, Discord, Slack), as its link flow does."""
+        await PlatformLinkService.link_account(self._user_id, platform, f"{platform}-user-1001")
 
     async def chat(self, task_id: str) -> list[ChatLine]:
         """Return the task's own chat as the user opens it from the task, oldest first."""
