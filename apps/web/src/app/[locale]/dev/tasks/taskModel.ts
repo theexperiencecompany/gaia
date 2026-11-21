@@ -262,6 +262,11 @@ export function isRepeating(when: TaskWhen): boolean {
   return when.kind === "schedule" || when.kind === "event";
 }
 
+/** Has a single due moment, so priority means something: not a repeat, an event or a watch. */
+export function takesPriority(when: TaskWhen): boolean {
+  return !isRepeating(when) && when.kind !== "watch";
+}
+
 /** What the task needs from you, if anything: its ask, or an app to reconnect. */
 export function needOf(task: Task): Need | undefined {
   if (task.state === "done") return undefined;

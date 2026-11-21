@@ -10,7 +10,13 @@ import { type ChipTone, MetaChip } from "./MetaChip";
 import TaskCheckbox from "./TaskCheckbox";
 import { TaskIconTile } from "./TaskIconTile";
 import { NEEDS } from "./taskIcons";
-import { isRepeating, type Need, needOf, type Task } from "./taskModel";
+import {
+  isRepeating,
+  type Need,
+  needOf,
+  type Task,
+  takesPriority,
+} from "./taskModel";
 import { WhenChip } from "./WhenChip";
 
 interface TaskRowProps {
@@ -73,7 +79,9 @@ export default function TaskRow(props: TaskRowProps) {
   const isDone = task.state === "done";
   const need = needOf(task);
   const priority =
-    task.priority === "none" ? null : PRIORITY_TAG[task.priority];
+    task.priority === "none" || !takesPriority(task.when)
+      ? null
+      : PRIORITY_TAG[task.priority];
 
   return (
     <li className="relative">

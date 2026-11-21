@@ -9,13 +9,13 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
+import { appName } from "../marketplace/appModel";
 import { AppIcon } from "./AppIcon";
-import { APP_NAMES } from "./demoTriggers";
 import { PropertyRow } from "./PropertyRow";
 import { statusLine } from "./statusModel";
 import TaskApps from "./TaskApps";
 import { TaskIconTile } from "./TaskIconTile";
-import { isRepeating, type Task } from "./taskModel";
+import { isRepeating, type Task, takesPriority } from "./taskModel";
 import WhenField from "./WhenField";
 import { ago } from "./watchModel";
 
@@ -136,11 +136,7 @@ export default function TaskProperties({
             <AppIcon id={task.origin.app} size={15} />
           </span>
           {/* "Calendar", not "Google Calendar": the logo already says whose it is. */}
-          GAIA, from{" "}
-          {(APP_NAMES[task.origin.app] ?? task.origin.app).replace(
-            /^Google /,
-            "",
-          )}
+          GAIA, from {appName(task.origin.app).replace(/^Google /, "")}
         </ReadRow>
       )}
       {parent && (
@@ -176,7 +172,7 @@ export default function TaskProperties({
       {lastReceived && (
         <ReadRow label="Last received">{ago(lastReceived)}</ReadRow>
       )}
-      {!isRepeating(task.when) && <PriorityRow task={task} update={update} />}
+      {takesPriority(task.when) && <PriorityRow task={task} update={update} />}
       {!isYours && <TaskApps task={task} update={update} />}
       <PropertyRow
         label={notifyLabel}
