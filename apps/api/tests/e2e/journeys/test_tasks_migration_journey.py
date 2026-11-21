@@ -24,6 +24,7 @@ from scripts.tasks_migration.migrate import PROGRESS, migrate
 from scripts.tasks_migration.parity import ParityReport, check_parity
 from scripts.tasks_migration.transform import task_from_workflow
 
+from app.agents.tools.tracked_todo_tools import create_tracked_todo
 from app.constants.tasks import INBOX_DESK_SYSTEM_KEY
 from app.constants.waits import WaitCondition
 from app.models.agent_config import AgentConfigurableView
@@ -99,6 +100,17 @@ async def _legacy_todo(
     return str(todo_id)
 
 
+async def _legacy_gaia_todo(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
+    """Hand GAIA a one-off through today's tracked-todo tool, as chat did; returns its id."""
+    said = await create_tracked_todo.ainvoke(
+        {"title": title, "waiting_on": "time", "scheduled_at": "1h", "notify_on_run": True},
+        config={"configurable": {"user_id": USER}},
+    )
+    row = await db["todos"].find_one({"user_id": USER, "title": title, "labels": "gaia-tracked"})
+    assert row is not None, f"GAIA did not take the task on: {said}"
+    return str(row["_id"])
+
+
 async def _generated_workflow(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
     """Give a to-do its generated workflow the way the generation worker does, steps supplied."""
     todo_id = await _legacy_todo(db, title)
@@ -133,27 +145,27 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
     await _legacy_todo(db, "Pay rent", due=soon, recurrence="0 9 1 * *")
     await _legacy_todo(db, "Return the library book", completed=True)
 
-    dentist = await tasks.hand_to_gaia("Find a dentist near the office")
+    dentist = await _legacy_gaia_todo(db, "Find a dentist near the office")
     await wait_for_user(
-        AgentConfigurableView(execution_mode="background", active_todo_id=dentist.id),
+        AgentConfigurableView(execution_mode="background", active_todo_id=dentist),
         USER,
         WaitCondition.INTEGRATION_CONNECTED,
         "notion",
         "Notion",
     )
-    asked = await tasks.hand_to_gaia("Book the Lisbon flight")
-    await tasks.run_due(asked.id, Asks(QUESTION, NoReply.HOLD))
-    parent = await tasks.hand_to_gaia("Move flats on the 14th")
+    asked = await _legacy_gaia_todo(db, "Book the Lisbon flight")
+    await tasks.run_due(asked, Asks(QUESTION, NoReply.HOLD))
+    parent = await _legacy_gaia_todo(db, "Move flats on the 14th")
     await tasks.run_due(
-        parent.id, OpensSubtasks(("Get mover quotes", "Book the van"), "Split the move.")
+        parent, OpensSubtasks(("Get mover quotes", "Book the van"), "Split the move.")
     )
-    finished = await tasks.hand_to_gaia("Renew the car insurance")
-    await tasks.run_due(finished.id, Finishes("Renewed the insurance."))
+    finished = await _legacy_gaia_todo(db, "Renew the car insurance")
+    await tasks.run_due(finished, Finishes("Renewed the insurance."))
     await _generated_workflow(db, "Plan the offsite")
 
     await tasks.connect_app("gmail")
-    watcher = await tasks.hand_to_gaia("Wait for the landlord's reply")
-    await tasks.watch_emails_from(watcher.id, "landlord@example.com")
+    watcher = await _legacy_gaia_todo(db, "Wait for the landlord's reply")
+    await tasks.watch_emails_from(watcher, "landlord@example.com")
     desk = await tasks.inbox_desk()
     assert desk is not None
     await tasks.run_due(
@@ -190,8 +202,8 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
     await _seed_explore_row(db)
 
     await tasks.ask_before_acting()
-    gated = await tasks.hand_to_gaia("Draw up the launch plan")
-    await tasks.run_due(gated.id, NeedsApproval("Waiting on your approval."))
+    gated = await _legacy_gaia_todo(db, "Draw up the launch plan")
+    await tasks.run_due(gated, NeedsApproval("Waiting on your approval."))
 
 
 async def _forget_targets(db: AsyncIOMotorDatabase[dict[str, Any]]) -> None:
