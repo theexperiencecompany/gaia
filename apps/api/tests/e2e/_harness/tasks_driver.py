@@ -20,6 +20,8 @@ from httpx import AsyncClient, Response
 import time_machine
 
 from app.agents.tools.tracked_todo_tools import create_tracked_todo
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
+from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.core.stream_manager import stream_manager
@@ -57,6 +59,8 @@ TODOS = "/api/v1/todos"
 WORKFLOWS = "/api/v1/workflows"
 #: How long after its armed time the worker picks a job up.
 JOB_PICKUP_DELAY = timedelta(seconds=1)
+#: The plan allowance every repeating task run is charged to.
+RUN_LIMIT_FEATURE = "trigger_workflow_executions"
 #: How long after the first a duplicate delivery of the same job arrives.
 DUPLICATE_DELIVERY_DELAY = timedelta(minutes=5)
 NOTIFICATIONS = "/api/v1/notifications"
@@ -254,18 +258,29 @@ class TasksDriver:
         assert created is not None, f"GAIA did not take the task on: {said}"
         return created
 
-    async def run_due(self, task_id: str, run: GaiaRun) -> str:
+    async def run_due(self, task_id: str, run: GaiaRun | None = None) -> str:
         """Let time pass to the task's next armed run and fire it, GAIA working as scripted.
 
+        run is None for a firing the journey expects to stop before GAIA works.
         Returns what the worker said of the job, for a journey that checks it was skipped.
         """
         armed = await self._armed(task_id)
         assert armed, f"nothing is armed to run task {task_id}"
-        await self._queue_run(task_id, run)
+        if run is not None:
+            await self._queue_run(task_id, run)
         with self._executor.provider_down() if isinstance(run, Breaks) else nullcontext():
             outcome = await self._run(armed[0])
         self._all_turns_taken()
         return outcome
+
+    async def use_up_runs_for_the_day(self, task_id: str) -> None:
+        """Spend the plan's GAIA runs for the day the task next runs on, as earlier runs would."""
+        (job, *_) = await self._armed(task_id)
+        with time_machine.travel(datetime.fromtimestamp(job.score / 1000, UTC)):
+            limits = get_limits_for_plan(RUN_LIMIT_FEATURE, PlanType.PRO)
+            day = RateLimitPeriod.DAY
+            key = tiered_limiter._get_redis_key(self._user_id, RUN_LIMIT_FEATURE, day)
+            await redis_cache.set(key, limits.day)
 
     async def has_run_armed(self, task_id: str) -> bool:
         """Whether anything will run the task again."""

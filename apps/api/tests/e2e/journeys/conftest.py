@@ -13,6 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
+from app.api.v1.middleware.tiered_rate_limiter import TieredRateLimiter, tiered_limiter
 from app.db.mongodb import indexes
 from app.services.workflow.scheduler import workflow_scheduler
 from app.utils.redis_utils import RedisPoolManager
@@ -107,7 +108,12 @@ async def tasks(
 ) -> AsyncIterator[TasksDriver]:
     """Yield the signed-in, subscribed user's driver, with GAIA's models scripted turn by turn."""
     executor, comms = TurnQueue(responses=[]), TurnQueue(responses=[])
-    with offline_todo_seams():
+    # The session fence mocks the plan limiter; a journey counts runs on the real one, on real Redis.
+    real_limiter = TieredRateLimiter.check_and_increment.__get__(tiered_limiter)
+    with (
+        offline_todo_seams(),
+        patch.object(tiered_limiter, "check_and_increment", real_limiter),
+    ):
         async with live_graphs(_checkpointer, executor_model=executor, comms_model=comms):
             driver = TasksDriver(
                 client,
