@@ -1,11 +1,12 @@
 "use client";
 
 import { Input } from "@heroui/react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import type { Assignee, Task } from "./taskModel";
+import { useFocusAfterMenu } from "./useFocusAfterMenu";
 
 /** A task with nothing set: the starting point for every way of creating one. */
 export function blankTask(assignee: Assignee): Task {
@@ -33,11 +34,7 @@ export function NewTodoRow({
 }) {
   const [title, setTitle] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  // The button that opened this row takes focus back when its press ends, so focus after that.
-  useEffect(() => {
-    const timer = setTimeout(() => input.current?.focus(), 80);
-    return () => clearTimeout(timer);
-  }, []);
+  useFocusAfterMenu(input);
   const commit = () => {
     const text = title.trim();
     if (text) onCreate(text);

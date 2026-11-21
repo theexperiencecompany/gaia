@@ -1,7 +1,7 @@
 "use client";
 
 import { Input, TextArea } from "@heroui/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -9,6 +9,7 @@ import { toneVariants } from "@/components/shared/tone";
 import { blankTask } from "./NewTask";
 import { TaskIconTile } from "./TaskIconTile";
 import { isRepeating, type Task } from "./taskModel";
+import { useFocusAfterMenu } from "./useFocusAfterMenu";
 import WhenField from "./WhenField";
 
 /** Where a new GAIA task starts: repeating, watching, waiting for its date, or at work now. */
@@ -23,6 +24,8 @@ function firstState(task: Task): Pick<Task, "state" | "status"> {
 export function NewGaiaTask({ onCreate }: { onCreate: (task: Task) => void }) {
   const [draft, setDraft] = useState<Task>(() => blankTask("gaia"));
   const update = (patch: Partial<Task>) => setDraft({ ...draft, ...patch });
+  const name = useRef<HTMLInputElement>(null);
+  useFocusAfterMenu(name);
   const instructions = draft.instructions?.trim() ?? "";
   // A watch's sentence names the task well enough when nothing else does.
   const title =
@@ -36,7 +39,7 @@ export function NewGaiaTask({ onCreate }: { onCreate: (task: Task) => void }) {
         <div className="space-y-3">
           <TaskIconTile size={36} />
           <Input
-            autoFocus
+            ref={name}
             aria-label="Task name"
             value={draft.title}
             onChange={(event) => update({ title: event.target.value })}
