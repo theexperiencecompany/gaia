@@ -69,7 +69,7 @@ export default function MarketplacePage() {
           <AppShelf
             id="community"
             title="From the community"
-            description="MCP servers people have published. Some ask for a key when you add them."
+            description="Apps other people added to GAIA. Some ask for an access key from the app when you add one."
             apps={market.community}
           />
         </div>

@@ -31,7 +31,7 @@ export function AppShelf({
       count={apps.length}
       description={description}
     >
-      <ul className="grid sm:grid-cols-2 sm:gap-x-2">
+      <ul>
         {shown.map((app) => (
           <AppRow key={app.integrationId} app={app} />
         ))}

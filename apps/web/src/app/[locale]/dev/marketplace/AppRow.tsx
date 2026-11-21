@@ -38,7 +38,7 @@ export function AppRow({ app }: { app: App }) {
               </span>
             )}
           </div>
-          <p className="truncate text-[13px] leading-5 text-zinc-500">
+          <p className="text-[13px] leading-5 text-zinc-500 sm:line-clamp-2">
             {app.description}
           </p>
         </div>
