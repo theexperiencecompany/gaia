@@ -232,17 +232,21 @@ def _validate(result: ComposeResult, items: list[OutboxItemDocument]) -> str | N
     return None
 
 
+def _plain_line(item: OutboxItemDocument) -> str:
+    """Return what the plain render says of one item: the producer's own words for the user, where it wrote them."""
+    report = item.report
+    if _is_verbatim(item):
+        return cast(RunReport, report).result
+    if isinstance(report, NoticeReport) and report.display is not None:
+        return report.display.line
+    return "; ".join(facts_of(report))
+
+
 def _degraded_parts(items: list[OutboxItemDocument], locale: str) -> list[str]:
     lines = [prerendered_text(PrerenderedKind.COMPOSE_DEGRADED, locale)]
-    for item in items:
-        if not _must_say(item):
-            continue
-        facts = (
-            cast(RunReport, item.report).result
-            if _is_verbatim(item)
-            else "; ".join(facts_of(item.report))
-        )
-        lines.append(f"{item.report.subject.label}: {facts}")
+    lines.extend(
+        f"{item.report.subject.label}: {_plain_line(item)}" for item in items if _must_say(item)
+    )
     return ["\n".join(lines)]
 
 

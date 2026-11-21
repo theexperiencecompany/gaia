@@ -31,6 +31,7 @@ from app.services.outbox.models import (
     DropReason,
     Initiative,
     ItemState,
+    NoticeDisplay,
     NoticeOutcome,
     NoticeReport,
     ProducerGuidance,
@@ -189,6 +190,23 @@ async def test_two_broken_answers_send_the_plain_render_and_count_it() -> None:
     assert composed.included == ["must"] and composed.skipped == ["optional"]
     assert "Label must: fact must" in composed.parts[0]
     assert "fact optional" not in composed.parts[0]
+
+
+async def test_the_plain_render_says_a_notice_in_the_line_its_producer_wrote_for_the_user() -> None:
+    """Regression: the plain render read "Morning email summary: Day 5 07:00: still could not read email"."""
+    note = "Day 5 07:00: still could not read email; the mail connection is expired."
+    report = MUST.report.model_copy(
+        update={
+            "facts": [note],
+            "display": NoticeDisplay(line="Your morning summary failed again."),
+        }
+    )
+    bad = _result(("must", "skip"), parts=[])
+
+    composed = await _compose(_model(bad, bad), [MUST.model_copy(update={"report": report})])
+
+    assert "Label must: Your morning summary failed again." in composed.parts[0]
+    assert note not in composed.parts[0]
 
 
 async def test_a_message_naming_internals_is_asked_again_with_what_leaked_stated() -> None:
