@@ -42,6 +42,10 @@ Subcommands:
     pytest-verdict <junit.xml> --lane L --exit-code N [--path-prefix P] [--out DIR]
         Turn a pytest JUnit report into a verdict: one finding per failed test,
         at its own file and line, with the assertion tail as the detail.
+    regression-proof-scope --services true|false <file> ...
+        Print the changed test files one tier proves: false keeps those only
+        service-free slices own (lint-python, every push), true the rest (the
+        integration slice, in the queue). Driven by `pytest.sh regression-proof`.
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
         Print one pytest node id per line for every `@pytest.mark.regression`
         test the PR ADDS. Driven by `pytest.sh regression-proof`.
@@ -93,7 +97,7 @@ import sys
 import time
 from typing import NamedTuple, TypedDict
 
-from lib import nx_affected, output_findings
+from lib import nx_affected, output_findings, test_slices
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 from lib.output_findings import Finding
 
@@ -833,6 +837,20 @@ def _test_ids(source: str, *, marked_only: bool) -> set[str]:
 
 def _mark_present_in_text(source: str) -> bool:
     return f"mark.{REGRESSION_MARK}" in source
+
+
+def cmd_regression_proof_scope(args: list[str]) -> int:
+    """Print the changed test files one tier's regression-proof run owns."""
+    parser = argparse.ArgumentParser(prog="verdict.py regression-proof-scope")
+    parser.add_argument("--services", choices=("true", "false"), required=True)
+    parser.add_argument("files", nargs="*", help="repo-relative apps/api/tests paths")
+    opts = parser.parse_args(args)
+    slices = test_slices.load()
+    wants_services = opts.services == "true"
+    for path in opts.files:
+        if test_slices.needs_services(path.removeprefix("apps/api/"), slices) == wants_services:
+            print(path)
+    return 0
 
 
 def cmd_regression_proof_select(args: list[str]) -> int:
@@ -1935,6 +1953,7 @@ SUBCOMMANDS = {
     "check-ownership": cmd_check_ownership,
     "dir": cmd_dir,
     "pytest-verdict": cmd_pytest_verdict,
+    "regression-proof-scope": cmd_regression_proof_scope,
     "regression-proof-select": cmd_regression_proof_select,
     "regression-proof-verdict": cmd_regression_proof_verdict,
     "check": cmd_check,

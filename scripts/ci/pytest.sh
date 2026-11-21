@@ -21,8 +21,13 @@
 #   flake-gate <cmd...>      Run a pytest command under pytest-rerunfailures: a
 #                            failure reruns once, and one that passes only on
 #                            the rerun fails a PR (warns in the queue/master).
-#   regression-proof <base>  Prove the NEW @pytest.mark.regression tests in this
+#   regression-proof [--services true|false] [--lane L] <base>
+#                            Prove the NEW @pytest.mark.regression tests in this
 #                            diff FAIL on <base-ref> — red-first, mechanically.
+#                            --services false proves only the files service-free
+#                            slices own (lint-python, on every push), true the
+#                            rest (the integration slice, in the queue); unset,
+#                            every changed file. --lane names the verdict.
 #
 # Env contract:
 #   slice             SLICE_NAME, SLICE_PATHS, XDIST_N (all required);
@@ -293,8 +298,15 @@ cmd_flake_gate() {
 # Exit 0: no changed tests, or all of this diff's NEW regression tests fail on
 # base (as they should). Exit 1: one PASSES on base — its fix may be moot.
 cmd_regression_proof() {
-  local BASE API_DIR
-  BASE="${1:?usage: pytest.sh regression-proof <base-ref>}"
+  local BASE API_DIR SERVICES="" LANE="regression-proof"
+  while [ "$#" -gt 1 ]; do
+    case "$1" in
+      --services) SERVICES="${2:?--services needs true or false}"; shift 2 ;;
+      --lane) LANE="${2:?--lane needs a lane id}"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+  BASE="${1:?usage: pytest.sh regression-proof [--services true|false] [--lane L] <base-ref>}"
   API_DIR="$REPO_ROOT/apps/api"
 
   # git pathspecs are cwd-relative — resolve from the repo root or the
@@ -308,10 +320,15 @@ cmd_regression_proof() {
   # whose status nothing sees. while-read (not mapfile) for macOS bash 3.2.
   local changed=() diff_out
   diff_out="$(git diff --diff-filter=ACMR --name-only "$BASE"...HEAD -- 'apps/api/tests/test_*.py' 'apps/api/tests/**/test_*.py')"
+  # Scoped before the base worktree exists, so a tier with nothing to prove costs no checkout.
+  if [ -n "$SERVICES" ] && [ -n "$diff_out" ]; then
+    # shellcheck disable=SC2086 # deliberate word splitting: test paths hold no spaces
+    diff_out="$(python3 "$SCRIPT_DIR/verdict.py" regression-proof-scope --services "$SERVICES" $diff_out)"
+  fi
   while IFS= read -r f; do [ -n "$f" ] && changed+=("$f"); done <<< "$diff_out"
   if [ "${#changed[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
-      --summary "no changed test files — nothing to prove on base"
+    ci_verdict --lane "$LANE" --status skip \
+      --summary "no changed test files${SERVICES:+ in this tier (--services $SERVICES)} — nothing to prove on base"
     exit 0
   fi
   echo "regression-proof: ${#changed[@]} changed test file(s):"
@@ -358,7 +375,7 @@ cmd_regression_proof() {
     fi
   done
   if [ -z "$VENV_PY" ]; then
-    ci_verdict_die --lane regression-proof --status error \
+    ci_verdict_die --lane "$LANE" --status error \
       --summary "main checkout venv not found under $REPO_ROOT" \
       --advice "setup-python-test-env leaves one; this lane cannot run the base revision without it."
   fi
@@ -404,7 +421,7 @@ cmd_regression_proof() {
   done
   SELECTED="$(mktemp -p "$BASE_COPIES")"
   if ! "$VENV_PY" "$SCRIPT_DIR/verdict.py" regression-proof-select "${select_args[@]}" > "$SELECTED"; then
-    ci_verdict_die --lane regression-proof --status fail \
+    ci_verdict_die --lane "$LANE" --status fail \
       --summary "could not attribute this diff's regression marks to tests" \
       --advice "Put the mark on the test function, its class, the module's pytestmark, or a pytest.param case."
   fi
@@ -413,7 +430,7 @@ cmd_regression_proof() {
     [ -n "$node_id" ] && new_regression_ids+=("${node_id#"$API_DIR"/}")
   done < "$SELECTED"
   if [ "${#new_regression_ids[@]}" -eq 0 ]; then
-    ci_verdict --lane regression-proof --status skip \
+    ci_verdict --lane "$LANE" --status skip \
       --summary "no NEW @pytest.mark.regression tests in this diff — nothing to prove"
     exit 0
   fi
@@ -438,7 +455,7 @@ cmd_regression_proof() {
   # Exit 5: verdict.py named marked tests that pytest's own `-m regression` then
   # did not collect. The two disagree, so nothing was proven.
   if [ "$rc" -eq 5 ]; then
-    ci_verdict_die --lane regression-proof --status fail \
+    ci_verdict_die --lane "$LANE" --status fail \
       --summary "pytest collected none of the ${#new_regression_ids[@]} regression test(s) verdict.py selected" \
       --advice "The mark is on something pytest -m regression does not see; put it on the test, its class, pytestmark, or a pytest.param case."
   fi
@@ -450,7 +467,7 @@ cmd_regression_proof() {
   if [ ! -s "$JUNIT" ]; then
     echo "       The check did not run; treating that as a failure, not a pass."
     tail -40 "$LOG"
-    ci_verdict_die --lane regression-proof --status error \
+    ci_verdict_die --lane "$LANE" --status error \
       --summary "pytest wrote no JUnit report (exit $rc) — the check did not run" \
       --advice "That is a failure, not a pass: an earlier version of this script redirected into a directory absent on the runner and printed success."
   fi
@@ -462,7 +479,7 @@ cmd_regression_proof() {
   # red on base, at the test's own file and line. Paths in the JUnit are
   # relative to apps/api, hence --path-prefix.
   if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "$JUNIT" \
-    --lane regression-proof --path-prefix apps/api/; then
+    --lane "$LANE" --path-prefix apps/api/; then
     echo "--- pytest output (base revision) ---"
     tail -40 "$LOG"
     exit 1
@@ -470,7 +487,7 @@ cmd_regression_proof() {
 }
 
 usage() {
-  sed -n '2,24p' "$0" >&2
+  sed -n '2,30p' "$0" >&2
 }
 
 main() {

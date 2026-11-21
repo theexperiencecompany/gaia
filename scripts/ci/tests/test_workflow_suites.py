@@ -20,6 +20,7 @@ import subprocess
 from typing import Any
 
 from doc_shape import mapping, sequence
+from lib import test_slices
 import pytest
 import yaml
 
@@ -244,21 +245,8 @@ OUTSIDE_THE_SLICES = {
 }
 
 
-def _under(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip("/") + "/")
-
-
-def _slice_owns(path: str, slice_def: dict[str, Any]) -> bool:
-    ignored = [arg.removeprefix("--ignore=") for arg in str(slice_def.get("ignore", "")).split()]
-    return any(_under(path, p) for p in str(slice_def["paths"]).split()) and not any(
-        _under(path, i) for i in ignored
-    )
-
-
 def test_every_api_test_file_runs_in_a_slice() -> None:
-    slices = json.loads((REPO_ROOT / "scripts" / "ci" / "lib" / "test-slices.json").read_text())[
-        "slices"
-    ]
+    slices = test_slices.load()
     listed = subprocess.run(
         ["git", "ls-files", "apps/api/tests"],
         cwd=REPO_ROOT,
@@ -274,7 +262,6 @@ def test_every_api_test_file_runs_in_a_slice() -> None:
     orphans = [
         t
         for t in tests
-        if not t.startswith(tuple(OUTSIDE_THE_SLICES))
-        and not any(_slice_owns(t, s) for s in slices)
+        if not t.startswith(tuple(OUTSIDE_THE_SLICES)) and not any(s.owns(t) for s in slices)
     ]
     assert orphans == [], "no test-slices.json slice runs these; add their directory to one"

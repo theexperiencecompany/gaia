@@ -51,6 +51,41 @@ def test_a_failure_on_base_is_proof(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert "fail on base as required" in capsys.readouterr().out
 
 
+SCOPED_FILES = [
+    "apps/api/tests/unit/services/test_a.py",
+    "apps/api/tests/unit/workers/test_b.py",
+    "apps/api/tests/meta/test_c.py",
+    "apps/api/tests/e2e/test_d.py",
+    "apps/api/tests/contracts/test_e.py",
+    "apps/api/tests/integration/real/browser/test_f.py",
+    "apps/api/tests/test_top_level.py",
+]
+
+
+def _scope(services: str, capsys: pytest.CaptureFixture[str]) -> list[str]:
+    assert verdict.cmd_regression_proof_scope(["--services", services, *SCOPED_FILES]) == 0
+    return capsys.readouterr().out.split()
+
+
+def test_the_service_free_scope_keeps_the_files_the_unit_slices_own(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _scope("false", capsys) == SCOPED_FILES[:3]
+
+
+def test_the_services_scope_keeps_every_other_file_so_none_goes_unproven(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A file no service-free slice owns, a top-level one included, stays with the queue's run."""
+    assert _scope("true", capsys) == SCOPED_FILES[3:]
+
+
+def test_the_scope_refuses_a_services_value_it_does_not_know() -> None:
+    with pytest.raises(SystemExit) as stopped:
+        verdict.cmd_regression_proof_scope(["--services", "unit", *SCOPED_FILES])
+    assert stopped.value.code == 2
+
+
 def test_a_pass_on_base_still_fails_the_lane(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

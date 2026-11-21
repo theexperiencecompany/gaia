@@ -18,8 +18,10 @@ work behind a runner's setup.
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
   only in the queue is an ejection plus a fix round), `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
-  integration, bridge and browser slices (regression-proof rides integration,
-  so it stays queue-only: the integration slice needs the services pool),
+  integration, bridge and browser slices (the regression-proof of a test that
+  needs services rides integration, so it stays queue-only; a test only the
+  service-free slices own is proven by lint-python's `ci:regression-proof` on
+  every push, `pytest.sh regression-proof --services false|true` either way),
   `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
   only through the queue, so the slow checks run once per merge, not once per
   push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts

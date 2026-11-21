@@ -12,7 +12,8 @@ name: CI
 #          quality-gate.
 #   full — merge_group, a master push with no green queue run, dispatch:
 #          everything above plus the integration/bridge/browser slices
-#          (regression-proof rides the integration slice), the dependency
+#          (regression-proof for service-tier tests rides the integration
+#          slice; lint-python proves the unit-tier ones on every push), the dependency
 #          audit, the scans, the image build and coverage; on master the
 #          deploy phases.
 #   verified — a master push of a SHA a green merge_group run already checked
@@ -1052,14 +1053,15 @@ jobs:
       # a test claiming to pin a bug that passes without the fix proves
       # nothing. Against the change's own base (a merge group's base commit),
       # never master: a stacked change would be charged with every regression
-      # test the changes below it added. The integration slice has the
-      # services it needs; its own verdict uploads below.
+      # test the changes below it added. Here only the tests that need the
+      # services this slice has; lint-python's ci:regression-proof proves the
+      # rest on every push. Its own verdict uploads below.
       - name: Changed regression tests must fail on base
         if: ${{ !cancelled() && env.SLICE_NAME == 'integration' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
         working-directory: apps/api
         env:
           GAIA_VERDICT_DIR: ${{ runner.temp }}/regression-proof-verdicts
-        run: bash ../../scripts/ci/pytest.sh regression-proof "$(bash ../../scripts/ci/changes.sh base-rev)"
+        run: bash ../../scripts/ci/pytest.sh regression-proof --services true "$(bash ../../scripts/ci/changes.sh base-rev)"
       # ── Record the map (every whole-suite run: the queue, master, dispatch) ──
       # !cancelled(): a lane with a red test still produced a valid map, and a
       # missing map makes every PR run the whole slice.

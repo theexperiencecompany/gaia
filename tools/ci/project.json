@@ -584,6 +584,28 @@
         }
       }
     },
+    "regression-proof": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash scripts/ci/pytest.sh regression-proof --services false --lane lint-python/regression-proof \"$(bash scripts/ci/changes.sh base-rev)\""
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/apps/api/tests/**/test_*.py",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "regression-proof",
+          "area": "tests",
+          "events": ["pull_request", "merge_group"]
+        }
+      }
+    },
     "api-schema": {
       "executor": "nx:run-commands",
       "options": {
