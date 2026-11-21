@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-21)
+
+
+### Features
+
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+
+
+### Bug Fixes
+
+* **cli:** verify GAIA answers before pairing a device ([#1856](https://github.com/theexperiencecompany/gaia/issues/1856)) ([62c4429](https://github.com/theexperiencecompany/gaia/commit/62c442944677644a9a48f63a1b98fb621e316956))
+* **cli:** verify GAIA answers before pairing this device ([62c4429](https://github.com/theexperiencecompany/gaia/commit/62c442944677644a9a48f63a1b98fb621e316956))
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+* **seo:** full-crawl Links and URL Structure to 100, family pages ship half the CSS ([#1797](https://github.com/theexperiencecompany/gaia/issues/1797)) ([dad3377](https://github.com/theexperiencecompany/gaia/commit/dad3377db52ed03387c354463b07094c22c7f935))
+
 ## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.6.0...cli-v0.7.0) (2026-10-26)
 
 
