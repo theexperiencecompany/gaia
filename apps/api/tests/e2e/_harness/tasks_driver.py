@@ -20,6 +20,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
+from arq.worker import Function
 from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
 from pydantic import BaseModel
@@ -135,8 +136,8 @@ _RUN_EVENTS = {
 }
 #: The worker's own job functions, wrapped as the worker registers them.
 _JOBS: Mapping[str, Callable[..., Awaitable[object]]] = {
-    getattr(f, "name", getattr(f, "__name__", "")): getattr(f, "coroutine", f)
-    for f in TASK_FUNCTIONS
+    **{f.name: f.coroutine for f in TASK_FUNCTIONS if isinstance(f, Function)},
+    **{f.__name__: f for f in TASK_FUNCTIONS if not isinstance(f, Function)},
 }
 _RUN_JOBS = ("execute_tracked_todo", "resume_tracked_todo", "execute_workflow_by_id")
 

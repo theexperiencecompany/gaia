@@ -16,7 +16,7 @@ import httpx
 import respx
 
 from app.constants.hil import HIL_JEV_URL
-from app.models.trigger_gate_models import GateKind
+from app.constants.trigger_gates import GateKind
 from app.services.providers.provider_credentials_service import ProviderConfig
 
 #: The secret the journeys sign Composio webhooks with; the fixture installs it as the app's.
