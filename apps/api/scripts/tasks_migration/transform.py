@@ -5,7 +5,7 @@ faithfully raises Unmappable naming why, instead of being bent to fit.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from typing import Final
 
@@ -165,6 +165,19 @@ def _todo_waiting(todo: LegacyTodo) -> Waiting | None:
     )
 
 
+def owed_nudge(todo: LegacyTodo, *, now: datetime) -> datetime | None:
+    """Return the nudge an open, dated plain todo owes: its due time while that is still ahead."""
+    owes = (
+        not todo.by_gaia
+        and not todo.completed
+        and not todo.recurrence
+        and todo.notify_on_run
+        and todo.due_date is not None
+        and todo.due_date > now
+    )
+    return todo.due_date if owes else None
+
+
 def _is_desk(todo: LegacyTodo) -> bool:
     return (
         todo.external_ref is not None and todo.external_ref.source is ExternalRefSource.INBOX_DESK
@@ -192,6 +205,7 @@ def task_from_todo(todo: LegacyTodo, *, is_users_desk: bool) -> TaskDocument:
         parent_id=todo.parent_todo_id,
         when=when,
         next_check_at=None if repeats else todo.scheduled_at,
+        nudge_at=owed_nudge(todo, now=datetime.now(UTC)),
         subscriptions=todo.trigger_subscriptions,
         active=todo.pause_reason is None,
         pause_reason=todo.pause_reason,

@@ -19,6 +19,7 @@ from scripts.tasks_migration.legacy import (
     LABEL_FLAGS,
     ONBOARDING_LABEL,
     LegacyPlaybook,
+    LegacyTodo,
     LegacyWorkflow,
     legacy_playbook_valid,
     with_stable_defaults,
@@ -30,6 +31,7 @@ from scripts.tasks_migration.migrate import (
     TASK_WAITER,
     WORKFLOW_CHAT_PURPOSE,
 )
+from scripts.tasks_migration.transform import owed_nudge
 
 from app.constants.tasks import INBOX_DESK_SYSTEM_KEY, TASK_ID_PATTERN, TaskRunKind
 from app.models.playbook_models import PlaybookBody
@@ -44,6 +46,7 @@ TRANSFORMS: Final = (
     "todo labels: gaia-tracked becomes assignee gaia, onboarding becomes from_onboarding, the "
     "six engine labels become status_flags, user labels and needs-follow-up are dropped",
     "todo due_date/recurrence/scheduled_at become when (date, repeat) and next_check_at",
+    "an open plain todo due ahead owes its nudge at its due time (nudge_at)",
     "todo waiting_on/question/if_no_reply/default_action/hold_checks become waiting",
     "todo subtasks and subscriptions stored without created_at, id or status get the todo's "
     "creation time, a position-derived id and active, so every run maps them the same way",
@@ -291,6 +294,8 @@ def _check_todo_when(
         when.get("timezone"),
     )
     check.eq(c, todo_id, "next_check_at", scheduled, task.get("next_check_at"))
+    owed = owed_nudge(LegacyTodo.model_validate(todo), now=datetime.now(UTC))
+    check.eq(c, todo_id, "nudge_at", owed, task.get("nudge_at"))
 
 
 def _check_todo_waiting(check: _Checker, todo_id: str, todo: Document, task: Document) -> None:
