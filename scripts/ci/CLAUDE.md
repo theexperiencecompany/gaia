@@ -190,6 +190,22 @@ drives two separate runtimes through `emit_python.py` and `emit_typescript.ts`
 to diff what they actually print. Folding an entry point into `checks.mjs` would
 leave the other three files behind and hide where the tool really lives.
 
+## regression-proof: what counts as proof on base
+
+`pytest.sh regression-proof` runs this diff's new `@pytest.mark.regression`
+tests in a worktree of the base, with the PR's whole test tree copied over, and
+`verdict.py regression-proof-verdict` requires each to FAIL there. PASSED,
+SKIPPED and ERRORED (never reached its assertions) are rejected. So is a test
+that cannot be collected on base at all: a conftest or test module importing a
+head-only name aborts pytest (exit 4, or 2) before anything runs, and the
+verdict says `cannot run on base — <file>: <first error line>` at that file's
+line, with the advice to import only what base has. Only then is each test
+file rerun alone, so the broken file voids only the tests under it and every
+other one still gets its own outcome; when everything imports, the lane stays
+one pytest start. All outcomes land in one verdict. `--services false` (in
+lint-python) and `--services true` (in the integration slice) share this one
+path.
+
 ## The host CPU governor (`lib/cpu-slots.sh`)
 
 The box is 8 physical cores / 16 threads, but the heavy lanes size their own

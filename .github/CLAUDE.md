@@ -23,7 +23,9 @@ work behind a runner's setup.
   integration, bridge and browser slices (the regression-proof of a test that
   needs services rides integration, so it stays queue-only; a test only the
   service-free slices own is proven by lint-python's `ci:regression-proof` on
-  every push, `pytest.sh regression-proof --services false|true` either way),
+  every push, `pytest.sh regression-proof --services false|true` either way,
+  with the same outcomes, including "cannot run on base" for a test tree that
+  does not collect there),
   `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
   only through the queue, so the slow checks run once per merge, not once per
   push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts

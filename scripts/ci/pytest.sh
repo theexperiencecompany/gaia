@@ -345,7 +345,8 @@ cmd_regression_proof() {
   # which is exactly how this failed on the Linux runner while working locally.
   JUNIT="$(mktemp)"
   BASE_COPIES="$(mktemp -d)"
-  trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT" "$BASE_COPIES"' EXIT
+  RUNS="$(mktemp -d)"
+  trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT" "$BASE_COPIES" "$RUNS"' EXIT
 
   git worktree add --detach "$WT" "$BASE" >/dev/null
 
@@ -439,16 +440,7 @@ cmd_regression_proof() {
 
   local rc
   set +e
-  # -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
-  # (filterwarnings included) against the BASE's product code. Base code
-  # legitimately predates this branch's deprecation fixes (e.g. the
-  # mcp_use.exceptions import fixed on this branch), so warning-as-error here
-  # measures base deprecations, not whether the pinned bug exists. The
-  # warnings policy's job is policing the branch's code — that happens in the
-  # main test-python run. This lane's job is assertion-level proof on base.
-  "$VENV_PY" -m pytest "${new_regression_ids[@]}" -m regression -q --tb=no --no-header \
-    -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
-    --junitxml="$JUNIT" > "$LOG" 2>&1
+  regression_proof_run "$JUNIT" "$LOG" "${new_regression_ids[@]}"
   rc=$?
   set -e
 
@@ -460,11 +452,38 @@ cmd_regression_proof() {
       --advice "The mark is on something pytest -m regression does not see; put it on the test, its class, pytestmark, or a pytest.param case."
   fi
 
-  # No report at all means pytest never ran (missing interpreter, unwritable path,
-  # a collection abort). That is a failure, not a pass — an earlier version of
-  # this script redirected into a directory absent on the runner, so pytest never
-  # executed and every check below was skipped on the way to printing success.
-  if [ ! -s "$JUNIT" ]; then
+  # Any other exit but 0/1 is a collection abort (2, or 4 for a conftest or a
+  # node id whose module would not import): pytest ran nothing, so one head-only
+  # import voided every test. Only then is each test file run alone, so the abort
+  # costs only the tests under the broken file and every other one still gets its
+  # own result. The everything-imports path stays one pytest start.
+  local runs=(--run "$JUNIT" "$LOG")
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+    local files=() file node_id file_ids n=0
+    for node_id in "${new_regression_ids[@]}"; do
+      file="${node_id%%::*}"
+      case " ${files[*]-} " in *" $file "*) ;; *) files+=("$file") ;; esac
+    done
+    echo "regression-proof: the base run could not collect (pytest exit $rc); running each of ${#files[@]} test file(s) alone"
+    runs=()
+    for file in "${files[@]}"; do
+      file_ids=()
+      for node_id in "${new_regression_ids[@]}"; do
+        if [ "${node_id%%::*}" = "$file" ]; then file_ids+=("$node_id"); fi
+      done
+      n=$((n + 1))
+      set +e
+      regression_proof_run "$RUNS/$n.xml" "$RUNS/$n.log" "${file_ids[@]}"
+      rc=$?
+      set -e
+      echo "  $file: pytest exit $rc"
+      runs+=(--run "$RUNS/$n.xml" "$RUNS/$n.log")
+    done
+  elif [ ! -s "$JUNIT" ]; then
+    # No report at all means pytest never ran (missing interpreter, unwritable
+    # path). That is a failure, not a pass — an earlier version of this script
+    # redirected into a directory absent on the runner, so pytest never executed
+    # and every check below was skipped on the way to printing success.
     echo "       The check did not run; treating that as a failure, not a pass."
     tail -40 "$LOG"
     ci_verdict_die --lane "$LANE" --status error \
@@ -476,14 +495,34 @@ cmd_regression_proof() {
   # summary line: a run can be "0 passed" while proving nothing, because a test
   # that ERRORS never reached its assertions. See `verdict.py regression-proof-verdict`,
   # which also writes this lane's verdict — one finding per test that did not go
-  # red on base, at the test's own file and line. Paths in the JUnit are
-  # relative to apps/api, hence --path-prefix.
-  if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "$JUNIT" \
-    --lane "$LANE" --path-prefix apps/api/; then
+  # red on base, at the test's own file and line, and one per conftest or module
+  # that cannot import on base, read from the run's report or its output. Paths in
+  # the JUnit are relative to apps/api, hence --path-prefix.
+  if ! uv run --no-project "$SCRIPT_DIR/verdict.py" regression-proof-verdict "${runs[@]}" \
+    --base-root "$WT/apps/api" --lane "$LANE" --path-prefix apps/api/; then
     echo "--- pytest output (base revision) ---"
     tail -40 "$LOG"
     exit 1
   fi
+}
+
+# One base-revision pytest run over the given node ids: report to $1, output to $2.
+# -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
+# (filterwarnings included) against the BASE's product code. Base code
+# legitimately predates this branch's deprecation fixes (e.g. the
+# mcp_use.exceptions import fixed on this branch), so warning-as-error here
+# measures base deprecations, not whether the pinned bug exists. The
+# warnings policy's job is policing the branch's code — that happens in the
+# main test-python run. This lane's job is assertion-level proof on base.
+# PY_COLORS=0: the verdict reads the error line out of this output and the
+# report, and an inherited FORCE_COLOR wraps both in escape codes; pytest lets
+# PY_COLORS override FORCE_COLOR and --color alike.
+regression_proof_run() {
+  local junit="$1" log="$2"
+  shift 2
+  PY_COLORS=0 "$VENV_PY" -m pytest "$@" -m regression -q --tb=no --no-header \
+    -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
+    --junitxml="$junit" > "$log" 2>&1
 }
 
 usage() {
