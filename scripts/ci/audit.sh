@@ -156,6 +156,11 @@ PIP_AUDIT_IGNORED=(
   GHSA-2wm9-hf6c-p5cr
   GHSA-xph7-9rjv-w5fr
   GHSA-36p7-vc44-83pf
+  # wcmatch 10.1 (fix: 11.2), expires 2026-12-21. e2b <= 2.37.0 caps wcmatch<11 and
+  # imports it only in the template builder (e2b/template/utils.py), reached only
+  # from the operator script apps/api/scripts/build_e2b_template.py over our own
+  # file names. Real fix: the e2b >= 2.37.1 upgrade (PR #1862).
+  CVE-2026-132276
 )
 
 cmd_pip() {
