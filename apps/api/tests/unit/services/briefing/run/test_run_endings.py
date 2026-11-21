@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from types import SimpleNamespace
 
 from playwright._impl._errors import TargetClosedError
 import pytest
@@ -26,6 +25,7 @@ from tests.briefing_run_world import (
     dormant,
     held,
     idle_day,
+    notified,
     quiet_day,
     scouted,
     stored_brief,
@@ -245,21 +245,24 @@ class TestHowARunEnds:
 
         message = world.stored().message
         post = world.post.await_args.kwargs
-        assert set(post) == {"user", "channel", "text", "origin", "message_class", "image"}
+        assert set(post) == {
+            "user",
+            "channel",
+            "message",
+        }
         assert post["user"] == build_user_context(world.user, auth_provider=None)
-        assert (post["channel"], post["origin"], post["message_class"]) == (
+        assert (post["channel"], post["message"].origin, post["message"].message_class) == (
             CHAT,
             "daily brief",
             ProactiveMessageClass.ROUTINE,
         )
-        assert split_message_bubbles(post["text"]) == [
+        assert split_message_bubbles(post["message"].text) == [
             "Your morning, sorted",
             f"{message}\n\nFull brief: {BRIEF_LINK}",
         ]
-        assert post["image"].url.startswith(CHAT_EDITION_URL)
-        assert post["image"].filename == "gaia-daily-brief.jpg"
-        user_id, text, card = world.brief_message.await_args.args
-        assert (user_id, text, card.briefing_id) == (USER, message, BRIEF_ID)
+        assert post["message"].image_url.startswith(CHAT_EDITION_URL)
+        user_id, briefing_id, text, card = world.brief_message.await_args.args
+        assert (user_id, briefing_id, text, card.briefing_id) == (USER, BRIEF_ID, message, BRIEF_ID)
         redirect = world.notify.await_args.args[0].content.actions[0].config.redirect
         assert redirect.url == f"/brief/{BRIEF_ID}"
         assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
@@ -271,8 +274,12 @@ class TestHowARunEnds:
 
         message = world.stored().message
         post = world.post.await_args.kwargs
-        assert (post["text"], post["image"], post["origin"]) == (message, None, "daily brief")
-        world.brief_message.assert_awaited_once_with(USER, message, None)
+        assert (post["message"].text, post["message"].image_url, post["message"].origin) == (
+            message,
+            None,
+            "daily brief",
+        )
+        world.brief_message.assert_awaited_once_with(USER, BRIEF_ID, message, None)
         assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
 
     async def test_each_delivery_step_is_recorded_once_it_succeeds(self, world: World) -> None:
@@ -300,11 +307,9 @@ class TestHowARunEnds:
     async def test_an_unsent_email_is_reported_with_every_channels_status(
         self, world: World
     ) -> None:
-        world.notify.return_value = SimpleNamespace(
-            channels=[
-                delivered("inapp"),
-                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
-            ]
+        world.notify.return_value = notified(
+            delivered("inapp"),
+            ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
         )
 
         async with captured_wide_event() as event:
@@ -315,7 +320,7 @@ class TestHowARunEnds:
 
     async def test_a_brief_that_asked_for_no_email_reports_none_unsent(self, world: World) -> None:
         world.user.email = None
-        world.notify.return_value = SimpleNamespace(channels=[delivered("inapp")])
+        world.notify.return_value = notified(delivered("inapp"))
 
         async with captured_wide_event() as event:
             await run_brief(USER, BriefingKind.DAILY)

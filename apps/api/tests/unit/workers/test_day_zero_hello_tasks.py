@@ -1,6 +1,6 @@
-"""GAIA's first text after a user links a chat platform: guards, parsing, delivery.
+"""GAIA's first text after a user links a chat platform: guards, prompt, delivery.
 
-The agent turn, the platform publish, the user repository and analytics are the
+The model call, the platform publish, the user repository and analytics are the
 faked seams; channel picking, prompt building and the user context are real.
 """
 
@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-import re
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,14 +16,12 @@ import time_machine
 
 from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_settings_models import BriefingSchedule
 from app.models.briefing_state_models import BriefingStateDocument, DayZeroHello
 from app.models.user_models import UserDocument
-from app.services.briefing import silent_turn
 from app.services.briefing.goals import StatedGoal
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.outbound_delivery import OutboundResult
@@ -33,6 +29,7 @@ from app.workers.brief_slots import slot_minute
 from app.workers.tasks import day_zero_hello_tasks as hello
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from tests.factories import make_user_id
 from tests.helpers import WideEventRecorder
 
@@ -59,14 +56,14 @@ class Seams:
         self.mark_sent = AsyncMock()
         self.state = AsyncMock(return_value=BriefingStateDocument(user_id=_USER))
         self.goal = AsyncMock(return_value=[StatedGoal("raise a seed round")])
-        self.agent = AsyncMock(return_value=SimpleNamespace(message='["Hi Ada!", "Brief at 8."]'))
+        self.agent = AsyncMock(return_value=hello.HelloBubbles(bubbles=["Hi Ada!", "Brief at 8."]))
         self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         self.capture = MagicMock()
         monkeypatch.setattr(user_repository, "get", self.get_user)
         monkeypatch.setattr(briefing_state_repository, "state_for", self.state)
         monkeypatch.setattr(briefing_state_repository, "mark_day_zero_hello_sent", self.mark_sent)
         monkeypatch.setattr(hello, "stated_goals", self.goal)
-        monkeypatch.setattr(silent_turn, "call_agent_silent", self.agent)
+        monkeypatch.setattr(hello, "ainvoke_structured", self.agent)
         monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
         monkeypatch.setattr(hello, "capture", self.capture)
         self.recorder = WideEventRecorder()
@@ -90,40 +87,6 @@ class Seams:
 def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     with time_machine.travel(_NOW, tick=False):
         yield Seams(monkeypatch)
-
-
-class TestParseBubbles:
-    @pytest.mark.parametrize(
-        "raw",
-        [
-            '["Hi", "Second"]',
-            'Here you go:\n```json\n["Hi", "Second"]\n```',
-            '```\n["Hi", "Second"]\n```',
-            '``` ```\n```json\n["Hi", "Second"]\n```',
-            '```json\nnot json\n```\n```json\n["Hi", "Second"]\n```',
-            '["  Hi  ", "", "   ", "Second"]',
-        ],
-        ids=["bare", "fenced", "plain-fence", "empty-first", "bad-first", "blanks-dropped"],
-    )
-    def test_the_first_valid_array_of_strings_is_the_bubbles(self, raw: str) -> None:
-        assert hello._parse_bubbles(raw) == ["Hi", "Second"]
-
-    @pytest.mark.parametrize(
-        "raw", ["Hi there!", '{"text": "Hi"}', '["Hi", 3]', '["", "  "]', "```json\n```"]
-    )
-    def test_anything_else_fails_the_run(self, raw: str) -> None:
-        with pytest.raises(hello.DayZeroHelloError, match="No valid bubble array"):
-            hello._parse_bubbles(raw)
-
-    def test_the_failure_quotes_the_first_300_characters(self) -> None:
-        raw = "x" * 299 + "yz"
-
-        with pytest.raises(hello.DayZeroHelloError) as raised:
-            hello._parse_bubbles(raw)
-
-        assert str(raised.value) == (
-            f"No valid bubble array in agent output (first 300 chars): {raw[:300]!r}"
-        )
 
 
 class TestGuards:
@@ -200,11 +163,12 @@ class TestDelivery:
         assert post["channel"] == ChatChannel(
             source=ConversationSource.TELEGRAM, platform_user_id="42", basis="priority"
         )
-        assert post["text"] == f"Hi Ada!{NEW_MESSAGE_BREAKER}Brief at 8."
-        assert post["origin"] == "day-zero hello"
+        assert post["message"].text == f"Hi Ada!{NEW_MESSAGE_BREAKER}Brief at 8."
+        assert post["message"].notice_id == f"day-zero-hello:{_USER}"
+        assert post["message"].origin == "day-zero hello"
         assert post["user"].user_id == _USER
         # A hello the user just asked for by linking must not wait out their quiet hours.
-        assert post["message_class"] is ProactiveMessageClass.USER_TRIGGERED
+        assert post["message"].message_class is ProactiveMessageClass.USER_TRIGGERED
         seams.mark_sent.assert_awaited_once_with(_USER, "telegram")
         seams.capture.assert_called_once_with(
             UserId(_USER), BriefingDayZeroHelloSent(platform="telegram", has_goal=True)
@@ -217,17 +181,12 @@ class TestDelivery:
         await seams.send()
 
         seams.goal.assert_awaited_once_with(_USER)
-        run = seams.agent.await_args.kwargs
-        prompt = run["request"].message
+        schema, prompt = seams.agent.await_args.args
+        assert schema is hello.HelloBubbles
         assert "texting Ada for the first time" in prompt
         assert "- raise a seed round" in prompt
         assert "OFFER one specific" in prompt
-        assert [m["content"] for m in run["request"].messages] == [prompt]
-        assert [m["role"] for m in run["request"].messages] == ["user"]
-        assert run["user"].user_id == _USER
-        assert re.fullmatch(rf"dayzero-{_USER}-[0-9a-f]{{6}}", run["conversation_id"])
-        assert run["options"].trigger_context == {"execution_mode": "background"}
-        assert run["options"].source == "day_zero_hello"
+        assert seams.agent.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
 
     @pytest.mark.parametrize(
         ("schedule", "promised"),
@@ -252,7 +211,7 @@ class TestDelivery:
 
         await seams.send()
 
-        prompt = seams.agent.await_args.kwargs["request"].message
+        prompt = seams.agent.await_args.args[1]
         assert promised.format(minute=_MINUTE) in prompt
         assert "around 8" not in prompt
 
@@ -270,7 +229,7 @@ class TestDelivery:
         with time_machine.travel(datetime(2026, 10, 17, 9, tzinfo=UTC), tick=False):
             await seams.send()
 
-        prompt = seams.agent.await_args.kwargs["request"].message
+        prompt = seams.agent.await_args.args[1]
         assert f"their first brief lands tomorrow at 5:{_MINUTE} PM." in prompt
 
     async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
@@ -280,7 +239,7 @@ class TestDelivery:
 
         await seams.send()
 
-        prompt = seams.agent.await_args.kwargs["request"].message
+        prompt = seams.agent.await_args.args[1]
         assert "first brief lands" not in prompt
         assert "never promise them one" in prompt
 
@@ -293,7 +252,7 @@ class TestDelivery:
 
         await seams.send()
 
-        prompt = seams.agent.await_args.kwargs["request"].message
+        prompt = seams.agent.await_args.args[1]
         assert "texting there for the first time" in prompt
         assert "ask ONE specific question" in prompt
         seams.capture.assert_called_once_with(
@@ -306,19 +265,5 @@ class TestDelivery:
         assert await seams.send() == f"skip {_USER}: publish skipped (telegram)"
 
         assert seams.event["skipped"] == "publish_skipped"
-        seams.mark_sent.assert_not_awaited()
-        seams.capture.assert_not_called()
-
-    async def test_a_failed_publish_raises_for_a_retry_and_leaves_the_flag_unset(
-        self, seams: Seams
-    ) -> None:
-        seams.post.return_value = OutboundResult.FAILED
-
-        with pytest.raises(
-            hello.DayZeroHelloError,
-            match=f"^day-zero hello publish failed for {_USER} on telegram$",
-        ):
-            await seams.send()
-
         seams.mark_sent.assert_not_awaited()
         seams.capture.assert_not_called()

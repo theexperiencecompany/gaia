@@ -100,7 +100,7 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
     get.assert_awaited_once_with("brief_abc123", user_id=FAKE_USER.user_id)
     mark.assert_awaited_once_with(FAKE_USER.user_id, "brief_abc123")
     capture.assert_called_once_with(
-        UserId(FAKE_USER.user_id), BriefingOpened(kind=BriefingKind.DAILY)
+        UserId(FAKE_USER.user_id), BriefingOpened(kind=BriefingKind.DAILY.value)
     )
 
 

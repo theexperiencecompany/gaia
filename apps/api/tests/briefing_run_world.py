@@ -53,7 +53,6 @@ from app.db.repositories.briefing_state import briefing_state_repository
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.email_verdicts import email_verdict_repository
-from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.signal_memory import signal_memory_repository
@@ -128,7 +127,6 @@ from tests.briefing_store_fakes import (
     InMemoryBriefingState,
     InMemoryConversations,
     InMemoryEmailVerdicts,
-    InMemoryHILApprovals,
     InMemoryPendingBriefItems,
     InMemoryReminders,
     InMemorySignalMemory,
@@ -406,6 +404,11 @@ def delivered(channel: str) -> ChannelDeliveryStatus:
     return ChannelDeliveryStatus(channel_type=channel, status=NotificationStatus.DELIVERED)
 
 
+def notified(*channels: ChannelDeliveryStatus) -> SimpleNamespace:
+    """Return what notification_service.notify does: the stored record, here only its channels."""
+    return SimpleNamespace(record=SimpleNamespace(channels=list(channels)))
+
+
 def skipped(app: str, reason: ScoutSkipReason = ScoutSkipReason.FAILED) -> ScoutResult:
     return ScoutResult(
         integration_id=app.lower(), app=app, outcome=ScoutOutcome.SKIPPED, skip_reason=reason
@@ -591,7 +594,6 @@ class World:
     executions: InMemoryWorkflowExecutions = field(default_factory=InMemoryWorkflowExecutions)
     verdicts: InMemoryEmailVerdicts = field(default_factory=InMemoryEmailVerdicts)
     approvals: InMemoryApprovalLedger = field(default_factory=InMemoryApprovalLedger)
-    hil: InMemoryHILApprovals = field(default_factory=InMemoryHILApprovals)
     reminders: InMemoryReminders = field(default_factory=InMemoryReminders)
     conversations: InMemoryConversations = field(default_factory=InMemoryConversations)
     integrations: InMemoryUserIntegrations = field(default_factory=InMemoryUserIntegrations)
@@ -599,7 +601,7 @@ class World:
     mint: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=BRIEF_LINK))
     notify: AsyncMock = field(
         default_factory=lambda: AsyncMock(
-            return_value=SimpleNamespace(channels=[delivered(c) for c in ORCHESTRATED])
+            return_value=notified(*(delivered(c) for c in ORCHESTRATED))
         )
     )
     post: AsyncMock = field(
@@ -914,7 +916,6 @@ def _install_stores(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
         (workflow_executions_repository, w.executions),
         (email_verdict_repository, w.verdicts),
         (approval_ledger_repository, w.approvals),
-        (hil_approval_repository, w.hil),
         (reminder_repository, w.reminders),
         (conversation_repository, w.conversations),
         (user_integration_repository, w.integrations),
@@ -955,7 +956,7 @@ def _install_seams(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     monkeypatch.setattr(store, "attach_link", _attached(w.mint))
     monkeypatch.setattr(store, "render_edition_png", w.render)
     monkeypatch.setattr(store, "store_edition", w.store_edition)
-    monkeypatch.setattr(notification_service, "create_notification", w.notify)
+    monkeypatch.setattr(notification_service, "notify", w.notify)
     monkeypatch.setattr(delivery, "post_brief_message", w.brief_message)
     monkeypatch.setattr(delivery, "resolve_proactive_target", chat_target)
     monkeypatch.setattr(delivery, "post_to_platform_chat", w.post)

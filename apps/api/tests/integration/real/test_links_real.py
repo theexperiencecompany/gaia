@@ -23,6 +23,7 @@ from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind, EditionFamily
+from app.constants.chat import ConversationSource
 from app.constants.notifications import NotificationKind
 from app.constants.short_links import MAX_RESOLVE_MISSES, TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS
 from app.db.repositories.conversations import conversation_repository
@@ -376,6 +377,8 @@ class TestRevokeRotateExpire:
         assert new["access"] == "owner"
         viewer.user = OWNER
         assert (await _open(client, new["slug"])).status_code == 200
+        # Only for its owner does the old URL still open (access.OWNER_STILL_OPENS).
+        viewer.user = STRANGER
         gone = await _open(client, old["slug"])
         assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
         assert (await _stored(old["slug"])).revoked_reason is RevokeReason.ROTATED
@@ -882,7 +885,10 @@ class TestDeletingTheSource:
     ) -> None:
         await conversation_repository.create(
             ConversationDocument(
-                user_id=OWNER.user_id, conversation_id="conv-1", createdAt="2026-11-01T00:00:00Z"
+                user_id=OWNER.user_id,
+                conversation_id="conv-1",
+                source=ConversationSource.WEB,
+                createdAt="2026-11-01T00:00:00Z",
             )
         )
         file_slug = (await _share(client, workspace.write("chart.png", PNG)))["slug"]
@@ -961,7 +967,7 @@ class TestRemovingTheOwner:
 
         for slug in (file_slug, todo_slug):
             gone = await _open(client, slug)
-            assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
+            assert (gone.status_code, gone.json().get("code")) == (410, "link_revoked"), gone.text
             assert (await _stored(slug)).revoked_reason is RevokeReason.ACCOUNT_REMOVED
         with pytest.raises(FileNotFoundError):
             await link_content.read_snapshot(OWNER.user_id, cid)

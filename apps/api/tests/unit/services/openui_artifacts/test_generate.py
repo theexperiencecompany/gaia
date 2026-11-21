@@ -135,20 +135,10 @@ def test_every_kind_has_its_own_prompt_read_from_its_file() -> None:
     assert len(set(ARTIFACT_PROMPTS.values())) == len(ArtifactKind)
 
 
-async def test_deltas_reach_the_sink_in_order_and_make_the_reply_text(model: Calls) -> None:
+async def test_the_reply_text_is_its_deltas_in_order(model: Calls) -> None:
     model.create.return_value = _stream(_delta("root = "), _delta("A()\n"), _completed())
-    sink = AsyncMock()
 
-    reply = await generate_reply(REQUEST, "in", sink)
-
-    assert [c.args[0] for c in sink.await_args_list] == ["root = ", "A()\n"]
-    assert reply.text == "root = A()\n"
-
-
-async def test_a_reply_needs_no_sink(model: Calls) -> None:
-    model.create.return_value = _stream(_delta("x"), _completed())
-
-    assert (await generate_reply(REQUEST, "in")).text == "x"
+    assert (await generate_reply(REQUEST, "in")).text == "root = A()\n"
 
 
 async def test_the_reply_carries_what_the_call_cost(model: Calls) -> None:
@@ -327,12 +317,11 @@ async def test_a_first_draft_is_asked_for_with_the_users_date_above_the_brief(
     model: Calls,
 ) -> None:
     model.create.return_value = _stream(_delta("root = A"), _completed())
-    sink = AsyncMock()
 
-    await write_program(REQUEST, sink)
+    reply = await write_program(REQUEST)
 
     assert model.create.await_args.kwargs["input"] == "Today is 04 November 2026.\n\nSign-ups 1,840"
-    sink.assert_awaited_once_with("root = A")
+    assert reply.text == "root = A"
 
 
 def test_the_dated_brief_is_the_users_date_above_the_brief() -> None:

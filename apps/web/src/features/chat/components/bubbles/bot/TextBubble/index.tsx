@@ -4,11 +4,10 @@ import {
   APPROVAL_REQUEST_TOOL_NAME,
   type ApprovalRequestData,
 } from "@shared/chat";
-import { splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import React, { useId } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -16,25 +15,15 @@ import {
   type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
-import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import { RichContentRenderer } from "../../../interface/RichContentRenderer";
-import {
-  ApprovalResolveProvider,
-  type ApprovalResolver,
-} from "../ApprovalResolveContext";
 import { ChatItemBoundary } from "../ChatItemBoundary";
 import { StoppedNote } from "../StoppedNote";
-import type { ApprovalOutcome } from "../SubagentRow";
+import type { ApprovalReceipt } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
-import UnifiedToolThread from "../UnifiedToolThread";
+import UnifiedToolThread, { type TimelineItem } from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
-import {
-  deriveProcessedToolKeys,
-  useSubagentSynthesis,
-} from "./useSubagentSynthesis";
 import { useToolRenderAudit } from "./useToolRenderAudit";
 
 const REPLY_QUOTE_MAX_LENGTH = 40;
@@ -83,7 +72,7 @@ function ReplyQuote({
 
 /**
  * The failure surface for a bot turn: `partial` is a compact strip under an
- * already-streamed bubble saying it was cut short; otherwise this IS the
+ * already-streamed bubble carrying the server's failure line; otherwise this IS the
  * message.
  *
  * Retry lives here (not only the hover row), since that row is invisible
@@ -121,7 +110,7 @@ function FailedResponse({
     return (
       <div className="mt-1 flex items-center gap-2 text-zinc-400">
         <Alert01Icon className="shrink-0" height={15} width={15} />
-        <span className="text-xs">Response was cut short</span>
+        <span className="text-xs">{error}</span>
         {retryButton}
       </div>
     );
@@ -320,9 +309,13 @@ function MixedPart({
   );
 }
 
+const NO_BUBBLES: readonly string[] = [];
+
 export default function TextBubble({
   message_id,
   text,
+  bubbles = NO_BUBBLES,
+  timeline,
   disclaimer,
   tool_data,
   isConvoSystemGenerated,
@@ -339,36 +332,12 @@ export default function TextBubble({
 }) {
   const baseId = useId();
 
-  // Persist a HIL approval decision into THIS message's tool_data so the
-  // pending card settles (clears the pill) and survives reload — the
-  // resolved frame publishes on a different (resumed) message's stream.
-  const resolveApproval = React.useCallback<ApprovalResolver>(
-    (approvalId, resolved) => {
-      if (!message_id || !tool_data) return;
-      const next = tool_data.map((entry) =>
-        entry.tool_name === APPROVAL_REQUEST_TOOL_NAME &&
-        (entry.data as ApprovalRequestData | null)?.approval_id === approvalId
-          ? { ...entry, data: resolved }
-          : entry,
-      );
-      void db.updateMessage(message_id, { tool_data: next });
-    },
-    [message_id, tool_data],
-  );
+  const displayText = text?.toString() ?? "";
 
-  // Parse thinking content from text
-  const parsedContent = React.useMemo(() => {
-    return parseThinkingFromText(text?.toString() || "");
-  }, [text]);
-
-  // Single ordered timeline of tool calls + subagent groups (emission order)
-  // and the remaining tool_data entries that render via TOOL_RENDERERS.
-  const { timeline, processedTools } = useSubagentSynthesis(tool_data);
-
-  // One stable React key per processedTools entry — derived from
-  // stream-stable structure (ids/tool name/timestamp), never payload, so
-  // grouped cards (search results, approvals) keep identity as data grows.
-  const processedToolKeys = deriveProcessedToolKeys(processedTools);
+  // The server's timeline: the tool thread in emission order, then the cards
+  // that render on their own, each under a key stable across the stream.
+  const steps = (timeline?.steps ?? []) as readonly TimelineItem[];
+  const cards = timeline?.cards ?? [];
 
   // Dev-only: record what this bubble did with each tool_data entry.
   useToolRenderAudit(message_id, tool_data);
@@ -381,7 +350,7 @@ export default function TextBubble({
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data?.status === "pending" && data.tool_call_id) {
+      if (data?.status === "waiting" && data.tool_call_id) {
         ids.add(data.tool_call_id);
       }
     });
@@ -391,13 +360,15 @@ export default function TextBubble({
   // Settled decisions, keyed the same way — the tool's row carries the outcome
   // as a chip, with feedback so it shows the receipt, not just "Approved".
   const { approvalOutcomeByToolCallId } = React.useMemo(() => {
-    const outcomes = new Map<string, ApprovalOutcome>();
+    const outcomes = new Map<string, ApprovalReceipt>();
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data?.tool_call_id && data.status !== "pending") {
+      if (data?.tool_call_id && data.status !== "waiting") {
         outcomes.set(data.tool_call_id, {
           status: data.status,
+          decider: data.decider ?? null,
+          action: data.action ?? null,
           feedback: data.feedback ?? null,
         });
       }
@@ -406,20 +377,16 @@ export default function TextBubble({
   }, [tool_data]);
 
   return (
-    <ApprovalResolveProvider value={resolveApproval}>
-      {parsedContent.thinking && (
-        <ThinkingBubble thinkingContent={parsedContent.thinking} />
-      )}
-
-      {timeline.length > 0 && (
+    <>
+      {steps.length > 0 && (
         <ChatItemBoundary
           key={`${baseId}-unified-tools`}
           item="tool_thread"
           messageId={message_id}
-          resetKey={timeline}
+          resetKey={steps}
         >
           <UnifiedToolThread
-            timeline={timeline}
+            timeline={steps}
             isStreaming={!!loading}
             pendingApprovalToolCallIds={pendingApprovalToolCallIds}
             approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
@@ -427,9 +394,9 @@ export default function TextBubble({
         </ChatItemBoundary>
       )}
 
-      {processedTools.map((entry, index) => {
+      {cards.map(({ key: entryKey, card }, index) => {
+        const entry = card as TypedToolDataEntry;
         const toolName = entry.tool_name;
-        const entryKey = processedToolKeys[index];
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
@@ -461,15 +428,10 @@ export default function TextBubble({
       })}
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        // Gate on CLEANED display text, not raw `text`: mid-stream it can
-        // hold non-visible content (thinking residue, a stray char) while
-        // rendered text is empty, which would flash an empty bubble + tail.
-        parsedContent.cleanText.trim().length > 0 &&
+        // Mid-stream a reply can have no bubbles yet, which would flash an empty bubble + tail.
+        bubbles.length > 0 &&
         (() => {
-          // Use cleaned text without thinking tags
-          const displayText = parsedContent.cleanText || "";
-          // Preserve :::openui fences when splitting so they aren't mangled.
-          const textParts = splitMessageByBreaks(displayText);
+          const textParts = bubbles;
 
           // Single pass so first/last/single reflect the *visible* list, not
           // array index — else a visible part sandwiched between blanks loses
@@ -487,7 +449,7 @@ export default function TextBubble({
             <ChatItemBoundary
               item="text"
               messageId={message_id}
-              resetKey={displayText}
+              resetKey={bubbles}
             >
               <div className="flex flex-col">
                 {visibleParts.map(({ part, originalIndex }, visibleIndex) => {
@@ -548,11 +510,11 @@ export default function TextBubble({
           onRetry={onRetry}
           partial={
             shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) ||
-            !!parsedContent.cleanText.trim()
+            !!displayText.trim()
           }
         />
       )}
       {stopped && !error && <StoppedNote />}
-    </ApprovalResolveProvider>
+    </>
   );
 }

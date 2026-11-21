@@ -92,7 +92,7 @@ class TestAWeeklyDigest:
         assert request.details.kind == NotificationKind.BRIEFING_WEEKLY
         assert request.content.body == payload.message == "Gym"
         # The recap is always pushed: it reaches the chat app, not only the in-app page.
-        assert world.post.await_args.kwargs["origin"] == "weekly brief"
+        assert world.post.await_args.kwargs["message"].origin == "weekly brief"
         assert world.pending.consumed == []
 
     async def test_code_builds_the_sections_from_the_weeks_candidates(self, world: World) -> None:

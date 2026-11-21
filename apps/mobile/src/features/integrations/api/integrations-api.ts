@@ -1,7 +1,4 @@
-import type {
-  CreateCustomIntegrationResponse,
-  IntegrationStatusesResponse,
-} from "@gaia/shared/api/generated";
+import type { CreateCustomIntegrationResponse } from "@gaia/shared/api/generated";
 
 export type { CreateCustomIntegrationResponse } from "@gaia/shared/api/generated";
 
@@ -27,7 +24,7 @@ WebBrowser.maybeCompleteAuthSession();
 // first, then connected, then the rest of the catalog.
 
 /**
- * Map one fast catalog entry (`GET /integrations/me/snapshot`) to the mobile
+ * Map one catalog entry (`GET /integrations/me`) to the mobile
  * `Integration` UI type. Per-tool schemas are not included here — the detail
  * sheet fetches them on demand via `getIntegrationTools`.
  */
@@ -53,28 +50,17 @@ function toIntegration(item: MyIntegrationItem): Integration {
   };
 }
 
-/** Fetch the catalog snapshot; use fetchIntegrationStatuses for live status. */
+/** Fetch the catalog, each integration with its server status. */
 export async function fetchIntegrations(): Promise<Integration[]> {
   try {
-    const response = await apiService.get<MyIntegrationsResponse>(
-      "/integrations/me/snapshot",
-    );
+    const response =
+      await apiService.get<MyIntegrationsResponse>("/integrations/me");
 
     return response.integrations.map(toIntegration);
   } catch (error) {
     console.error("Error fetching integrations:", error);
     return [];
   }
-}
-
-export async function fetchIntegrationStatuses(): Promise<
-  IntegrationStatusesResponse["statuses"]
-> {
-  const response = await apiService.get<IntegrationStatusesResponse>(
-    "/integrations/status",
-    { silent: true },
-  );
-  return response.statuses;
 }
 
 /**

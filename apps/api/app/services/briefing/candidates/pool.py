@@ -185,7 +185,7 @@ async def gather_candidates(
     open_todo_ids = {doc.id for doc in [*work.blocked, *work.failed, *work.running]}
     candidates = [
         *waiting_candidates(work),
-        *await approval_candidates(user_id, now, open_todo_ids),
+        *await approval_candidates(user_id, open_todo_ids),
         *await reminder_candidates(user_id, day_start, day_end),
         *own_todo_candidates(sources.open_own, day_end, work),
         *await failed_run_candidates(user_id, since),

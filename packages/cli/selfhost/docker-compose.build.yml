@@ -17,6 +17,9 @@ services:
   migrate:
     build: *api_build
 
+  gaia-migrate:
+    build: *api_build
+
   gaia-web:
     build:
       context: ../../..

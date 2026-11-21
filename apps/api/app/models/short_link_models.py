@@ -26,7 +26,7 @@ from pydantic import (
 )
 
 from app.constants.briefing import BriefingKind
-from app.db.repositories.base import MongoDocument, UserScopedDocument
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.models.message_models import SafePathId
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus

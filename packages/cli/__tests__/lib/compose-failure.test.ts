@@ -109,20 +109,26 @@ describe("explainComposeFailure", () => {
     expect(failure.service).toBe("mongo");
   });
 
-  it("names a one-shot service that failed, so its log tail is shown", () => {
-    // Verbatim from a real `up` (Compose v5) whose migrate service exited 1.
-    const failure = explainComposeFailure(
-      ['service "migrate" didn\'t complete successfully: exit 1'],
-      [],
-      UP,
-    );
+  // Verbatim from a real `up` (Compose v5) whose one-shot dependency exited 1.
+  it.each([
+    ["migrate", "data update"],
+    ["gaia-migrate", "data migration"],
+  ])(
+    "names the one-shot %s that failed, so its log tail is shown",
+    (service, name) => {
+      const failure = explainComposeFailure(
+        [`service "${service}" didn't complete successfully: exit 1`],
+        [],
+        UP,
+      );
 
-    expect(failure.cause).toBe(
-      "GAIA's data update didn't finish, so GAIA did not start on it.",
-    );
-    expect(failure.next).toContain("again");
-    expect(failure.service).toBe("migrate");
-  });
+      expect(failure.cause).toBe(
+        `GAIA's ${name} didn't finish, so GAIA did not start on it.`,
+      );
+      expect(failure.next).toContain("again");
+      expect(failure.service).toBe(service);
+    },
+  );
 
   it.each([
     ["write /var/lib/docker/tmp: no space left on device", "The disk is full."],

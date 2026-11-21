@@ -1,6 +1,5 @@
 """create_artifact: the executor's tool for reports, dashboards and other artifacts."""
 
-import time
 from typing import Annotated
 import uuid
 
@@ -8,17 +7,11 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.types import StreamWriter
 
-from app.constants.openui_artifacts import (
-    ARTIFACT_DELTA_EVENT,
-    ARTIFACT_DELTA_FLUSH_CHARS,
-    ARTIFACT_DELTA_FLUSH_SECONDS,
-    ARTIFACT_DONE_EVENT,
-)
+from app.constants.openui_artifacts import ARTIFACT_DONE_EVENT
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
 from app.models.openui_artifact_models import (
     ArtifactCard,
-    ArtifactDelta,
     ArtifactKind,
     ArtifactStatus,
     ArtifactStreamHeader,
@@ -30,33 +23,6 @@ from app.services.openui_artifacts.create import ArtifactCreationError, create_o
 from app.services.openui_artifacts.generate import ArtifactRequest
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
 from app.utils.timezone import home_timezone_from_config
-
-
-class _DeltaBatcher:
-    """Batch the model's token-sized deltas into a few stream frames for one artifact."""
-
-    def __init__(self, writer: StreamWriter, header: ArtifactStreamHeader) -> None:
-        self._writer = writer
-        self._header = header
-        self._pending: list[str] = []
-        self._size = 0
-        self._last_flush = time.monotonic()
-
-    async def push(self, delta: str) -> None:
-        self._pending.append(delta)
-        self._size += len(delta)
-        due = time.monotonic() - self._last_flush >= ARTIFACT_DELTA_FLUSH_SECONDS
-        if due or self._size >= ARTIFACT_DELTA_FLUSH_CHARS:
-            self.flush()
-
-    def flush(self) -> None:
-        if not self._pending:
-            return
-        delta = ArtifactDelta(**self._header.model_dump(mode="json"), delta="".join(self._pending))
-        self._writer({ARTIFACT_DELTA_EVENT: delta.model_dump(mode="json")})
-        self._pending.clear()
-        self._size = 0
-        self._last_flush = time.monotonic()
 
 
 def _write_card(writer: StreamWriter, card: ArtifactCard) -> None:
@@ -77,7 +43,6 @@ async def create_artifact(
 ) -> str:
     writer = current_stream_writer()
     header = ArtifactStreamHeader(stream_id=uuid.uuid4().hex, kind=kind, title=title)
-    batcher = _DeltaBatcher(writer, header)
     request = ArtifactRequest(
         kind=kind,
         brief=brief,
@@ -87,9 +52,8 @@ async def create_artifact(
         interactive=interactive,
     )
     try:
-        artifact = await create_openui_artifact(request, title, batcher.push)
+        artifact = await create_openui_artifact(request, title)
     except ArtifactCreationError as exc:
-        batcher.flush()
         _write_card(
             writer,
             ArtifactCard(
@@ -99,13 +63,11 @@ async def create_artifact(
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
     except Exception:
-        # The card is already on screen streaming; close it, then let the failure surface.
-        batcher.flush()
+        # The card shows the run failed, then the failure surfaces.
         _write_card(
             writer, ArtifactCard(**header.model_dump(mode="json"), status=ArtifactStatus.FAILED)
         )
         raise
-    batcher.flush()
     link = await attach_link(
         request.user_id, RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id=artifact.id)
     )

@@ -22,7 +22,6 @@ from app.services.openui_artifacts.generate import (
     ArtifactRefusedError,
     ArtifactRequest,
     ArtifactTruncatedError,
-    DeltaSink,
     dated_brief,
     repair_program,
     write_program,
@@ -70,11 +69,11 @@ def _fail(
     )
 
 
-async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validated:
+async def _validated(request: ArtifactRequest) -> _Validated:
     """Write the program, then repair it once if validation finds problems."""
     # Grounded in what the model was given, so the date it was told is not an invented figure.
     given = dated_brief(request)
-    first = await write_program(request, on_delta)
+    first = await write_program(request)
     validation = await validate_program(first.text, given, interactive=request.interactive)
     output_tokens = first.output_tokens
     repairs = 0
@@ -87,16 +86,14 @@ async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validate
     return _Validated(validation, repairs, output_tokens, first.first_component_ms)
 
 
-async def create_openui_artifact(
-    request: ArtifactRequest, title: str, on_delta: DeltaSink
-) -> OpenUIArtifact:
-    """Write, validate (repairing once) and store an artifact, streaming the first draft."""
+async def create_openui_artifact(request: ArtifactRequest, title: str) -> OpenUIArtifact:
+    """Write, validate (repairing once) and store an artifact."""
     started = time.perf_counter()
     brief_hash = _sha256(request.brief)
     log.set(artifact={"kind": request.kind.value, "brief_hash": brief_hash})
     try:
         async with asyncio.timeout(ARTIFACT_GENERATION_TIMEOUT_SECONDS):
-            result = await _validated(request, on_delta)
+            result = await _validated(request)
     except TimeoutError as exc:
         raise _fail(request, ArtifactFailureReason.TIMEOUT, []) from exc
     except ArtifactRefusedError as exc:

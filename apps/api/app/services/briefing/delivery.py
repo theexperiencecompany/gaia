@@ -9,7 +9,7 @@ and the reader's briefing state.
 
 from datetime import UTC, datetime
 
-from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
+from app.agents.core.background.platform_chat import ProactiveMessage, post_to_platform_chat
 from app.constants.briefing import (
     BRIEF_NOTIFICATION_ACTION_LABEL,
     BRIEF_NOTIFICATION_PRIORITY,
@@ -41,6 +41,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationSourceEnum,
     RedirectConfig,
+    notification_id,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.conversation import post_brief_message
@@ -86,8 +87,9 @@ async def _notify(
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if plan.push and _wants_email(user) else []
     )
-    record = await notification_service.create_notification(
+    notified = await notification_service.notify(
         NotificationRequest(
+            id=notification_id(user.id, "brief", brief.id),
             user_id=user.id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             priority=BRIEF_NOTIFICATION_PRIORITY,
@@ -113,11 +115,12 @@ async def _notify(
             details=_notification_metadata(brief, plan.notification_kind, card),
         )
     )
-    reached = [c.channel_type for c in record.channels if c.reached_user]
+    channels_sent = notified.record.channels
+    reached = [c.channel_type for c in channels_sent if c.reached_user]
     if NotificationChannel.EMAIL in channels and NotificationChannel.EMAIL not in reached:
         log.warning(
             "briefing.email_not_sent",
-            statuses={c.channel_type: c.status.value for c in record.channels},
+            statuses={c.channel_type: c.status.value for c in channels_sent},
         )
     return reached
 
@@ -131,21 +134,21 @@ async def _post_to_chat(user: UserDocument, channel: ChatChannel, brief: Briefin
     result = await post_to_platform_chat(
         user=build_user_context(user, auth_provider=None),
         channel=channel,
-        text=chat_text(payload, brief.link)
-        if brief.link is not None
-        else delivered_message(payload),
-        origin=f"{brief.kind} brief",
-        message_class=ProactiveMessageClass.ROUTINE,
-        image=PlatformImage(
-            url=await edition_url(
+        message=ProactiveMessage(
+            notice_id=f"brief:{brief.id}:{channel.source.value}",
+            text=chat_text(payload, brief.link)
+            if brief.link is not None
+            else delivered_message(payload),
+            origin=f"{brief.kind} brief",
+            message_class=ProactiveMessageClass.ROUTINE,
+            image_url=await edition_url(
                 edition.key,
                 EditionVariant.JPG,
                 datetime.now(UTC),  # pragma: no mutate — naive now() is the same instant
-            ),
-            filename=f"gaia-{brief.kind}-brief.jpg",
-        )
-        if edition is not None
-        else None,
+            )
+            if edition is not None
+            else None,
+        ),
     )
     return result is OutboundResult.PUBLISHED
 
@@ -168,7 +171,7 @@ async def deliver_brief(user: UserDocument, brief: BriefingModel) -> list[str]:
         )
         reached += notified
     if DeliveryStep.CONVERSATION not in plan.done:
-        await post_brief_message(user.id, delivered_message(brief.payload), card)
+        await post_brief_message(user.id, brief.id, delivered_message(brief.payload), card)
         await briefing_repository.record_step(user.id, brief.id, DeliveryStep.CONVERSATION, [])
     if plan.push and DeliveryStep.CHAT not in plan.done:
         target = await resolve_proactive_target(user.id)

@@ -3,6 +3,11 @@
 from app.constants.email import MAILTO_PREFIX
 
 
+def canonical_email(address: str) -> str:
+    """Return the one stored and compared form of an address: trimmed and lowercased."""
+    return address.strip().lower()
+
+
 def normalize_email(value: str) -> str | None:
     """Return the bare lowercase email from a mailto: URL or raw address.
 
@@ -12,7 +17,7 @@ def normalize_email(value: str) -> str | None:
     candidate = value.strip()
     if candidate.lower().startswith(MAILTO_PREFIX):
         candidate = candidate[len(MAILTO_PREFIX) :].split("?", 1)[0]
-    candidate = candidate.strip().lower()
+    candidate = canonical_email(candidate)
     if "@" not in candidate or "." not in candidate.split("@")[-1]:
         return None
     return candidate

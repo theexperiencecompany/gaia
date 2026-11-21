@@ -1,13 +1,13 @@
 """A proactive message sent inside the user's quiet hours reaches them when the window ends.
 
 Drives the real chokepoint, the real ARQ enqueue and a real ARQ worker over a
-real Redis. The user read and the bot transport are stubbed: what is proven is
-the hold and the release, not the Telegram send itself.
+real Redis. The user read and the Notice write are stubbed: what is proven is
+the hold and the release, not the log write or the Telegram send behind it.
 """
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from arq.connections import ArqRedis
 from arq.constants import default_queue_name, job_key_prefix
@@ -19,6 +19,7 @@ from app.agents.core.background import platform_chat
 from app.constants.notifications import DEFERRED_CHAT_MESSAGE_TASK, ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Notice
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_service import BotService
@@ -37,6 +38,7 @@ OWNER = UserDocument(
     timezone="Asia/Kolkata",
     quiet_hours=QuietHours(enabled=True, start_hour=22, end_hour=8),
 )
+NOTICE_ID = "notice-digest-1"
 CHANNEL = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority")
 
 
@@ -60,26 +62,28 @@ async def arq_pool(redis_url: str) -> AsyncIterator[ArqRedis]:
 
 @pytest.mark.service
 async def test_a_message_held_overnight_is_posted_when_the_window_ends(arq_pool: ArqRedis) -> None:
-    publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
+    logged = AsyncMock()
     with (
         patch.object(user_repository, "get", AsyncMock(return_value=OWNER)),
         patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=arq_pool)),
         patch.object(BotService, "get_or_create_session", AsyncMock(return_value="dm-conv")),
-        patch.object(platform_chat, "update_messages", AsyncMock()),
-        patch.object(platform_chat, "publish_outbound_message", publish),
-        patch.object(platform_chat, "record_platform_delivery", AsyncMock()),
+        patch.object(platform_chat, "runtime_ports", MagicMock()),
+        patch.object(platform_chat, "accept", logged),
     ):
         with time_machine.travel(SENT_AT, tick=False):
             held = await platform_chat.post_to_platform_chat(
                 user=AuthenticatedUser(user_id=OWNER.id),
                 channel=CHANNEL,
-                text="Your digest is ready.",
-                origin="result of workflow digest",
-                message_class=ProactiveMessageClass.ROUTINE,
+                message=platform_chat.ProactiveMessage(
+                    notice_id=NOTICE_ID,
+                    text="Your digest is ready.",
+                    origin="result of workflow digest",
+                    message_class=ProactiveMessageClass.ROUTINE,
+                ),
             )
 
         assert held is OutboundResult.DEFERRED
-        publish.assert_not_awaited()
+        logged.assert_not_awaited()
         (job_id,) = [
             key.decode().removeprefix(job_key_prefix)
             for key in await arq_pool.keys(f"{job_key_prefix}*")
@@ -99,9 +103,8 @@ async def test_a_message_held_overnight_is_posted_when_the_window_ends(arq_pool:
 
     assert worker.jobs_complete == 1
     assert worker.jobs_failed == 0
-    publish.assert_awaited_once()
-    assert publish.await_args.args == (
-        ConversationSource.TELEGRAM,
-        OWNER.id,
-        ["Your digest is ready."],
+    (_, conversation_id, user_id, notice) = logged.await_args.args
+    assert (conversation_id, user_id) == ("dm-conv", OWNER.id)
+    assert notice == Notice(
+        id=NOTICE_ID, text="Your digest is ready.", origin="result of workflow digest"
     )

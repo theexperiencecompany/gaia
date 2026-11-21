@@ -1,23 +1,18 @@
-"""GAIA's in-app delivery of a brief into the user's Briefings conversation: its message, edition attached."""
+"""GAIA's in-app delivery of a brief into the user's Briefings conversation: its notice, edition attached."""
 
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from app.db.repositories.conversations import conversation_repository
 from app.models.brief_view_models import BriefCard
-from app.models.chat_models import (
-    MessageModel,
-    SystemPurpose,
-    ToolDataEntry,
-    UpdateMessagesRequest,
-)
-from app.models.user_models import AuthenticatedUser
-from app.services.conversation_service import create_system_conversation, update_messages
+from app.models.chat_models import SystemPurpose
+from app.models.conversation_log_models import Notice
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
+from app.services.conversation_service import create_system_conversation
+from shared.py.conversation_wire import ToolDataEntry
 
 BRIEFING_CONVERSATION_TITLE = "Briefings"
 BRIEFING_TOOL_NAME = "briefing_data"
-# A card a day plus weeklies; capped like a workflow thread so it never nears 16MB.
-BRIEFING_CONVERSATION_MAX_MESSAGES = 60
 
 
 async def _briefing_conversation_id(user_id: str) -> str:
@@ -32,27 +27,28 @@ async def _briefing_conversation_id(user_id: str) -> str:
     return created.conversation_id
 
 
-async def post_brief_message(user_id: str, text: str, card: BriefCard | None) -> None:
-    """Append GAIA's brief message to the Briefings conversation: its text, with the folded edition attached.
+async def post_brief_message(
+    user_id: str, briefing_id: str, text: str, card: BriefCard | None
+) -> None:
+    """Log the brief as a Notice in the Briefings conversation, keyed by the brief so a retried delivery logs it once.
 
     A quiet day's note has no edition, so it is the text alone.
     """
-    now = datetime.now(UTC).isoformat()
-    message = MessageModel(
-        type="bot",
-        response=text,
-        date=now,
-        message_id=str(uuid4()),
-        tool_data=[
-            ToolDataEntry(tool_name=BRIEFING_TOOL_NAME, data=card.model_dump(), timestamp=now)
-        ]
+    tool_data = (
+        (
+            ToolDataEntry(
+                tool_name=BRIEFING_TOOL_NAME,
+                data=card.model_dump(),
+                timestamp=datetime.now(UTC).isoformat(),
+            ),
+        )
         if card is not None
-        else None,
+        else ()
     )
-    await update_messages(
-        UpdateMessagesRequest(
-            conversation_id=await _briefing_conversation_id(user_id), messages=[message]
-        ),
-        AuthenticatedUser(user_id=user_id),
-        max_messages=BRIEFING_CONVERSATION_MAX_MESSAGES,
+    notice = Notice(
+        id=f"brief:{briefing_id}",
+        text=text,
+        origin=f"brief {briefing_id}",
+        tool_data=tool_data,
     )
+    await accept(runtime_ports(), await _briefing_conversation_id(user_id), user_id, notice)

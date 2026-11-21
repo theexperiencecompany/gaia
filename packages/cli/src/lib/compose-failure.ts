@@ -227,7 +227,7 @@ const unhealthy: Matcher = (text) => {
   };
 };
 
-const incomplete: Matcher = (text) => {
+const oneShotFailed: Matcher = (text) => {
   const service = /service "?([\w-]+)"? didn't complete successfully/.exec(
     text,
   )?.[1];
@@ -259,7 +259,7 @@ export function explainComposeFailure(
     imageMissing,
     portTaken,
     unhealthy,
-    incomplete,
+    oneShotFailed,
     networkFailure,
   ]) {
     const failure = matcher(text, ctx);

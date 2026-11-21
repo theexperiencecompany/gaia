@@ -11,18 +11,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.hil import TOOL_READ_ONLY_VERDICT_TTL
 from app.constants.user_activity import ActivityStatus
 from app.db.mongodb import indexes
 from app.db.repositories.approval_ledger import ApprovalLedgerRepository
 from app.db.repositories.conversations import ConversationRepository
-from app.db.repositories.hil import HilApprovalRepository, ToolReadOnlyVerdictRepository
+from app.db.repositories.hil import ToolReadOnlyVerdictRepository
 from app.db.repositories.todos import TodosRepository
 from app.db.repositories.users import UserRepository
+from app.models.conversation_log_models import EntryKind
 from app.models.todo_models import ExternalRefSource
-from tests.contracts.conftest import QueryPlans
+from tests.contracts.conftest import QueryPlans, fixture_sibling
 
 USER_ID = "user-reading"
 _NOW = datetime(2026, 11, 18, 6, 0, tzinfo=UTC)
@@ -31,7 +34,12 @@ _NOISE = 60
 
 @pytest.fixture(autouse=True)
 def _indexes_on_the_fixture(raw_collection, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(indexes, "get_async_collection", lambda name: raw_collection)
+    def collection(name: str) -> AsyncIOMotorCollection:
+        if name == CONVERSATION_ENTRIES_COLLECTION:
+            return fixture_sibling(raw_collection, name)
+        return raw_collection
+
+    monkeypatch.setattr(indexes, "get_async_collection", collection)
 
 
 def _served_by(plans: list[str], *keys: str) -> bool:
@@ -39,7 +47,7 @@ def _served_by(plans: list[str], *keys: str) -> bool:
 
 
 @pytest.mark.regression
-async def test_pending_ledger_approvals_are_read_by_user_state_and_age(
+async def test_pending_ledger_approvals_are_read_by_user_outcome_and_age(
     raw_collection, query_plans: QueryPlans
 ) -> None:
     await indexes.create_approval_ledger_indexes()
@@ -50,7 +58,7 @@ async def test_pending_ledger_approvals_are_read_by_user_state_and_age(
                 "conversation_id": f"c{i}",
                 "fingerprint": f"f{i}",
                 "user_id": f"other-{i}",
-                "state": "pending",
+                "outcome": None,
                 "created_at": _NOW,
             }
             for i in range(_NOISE)
@@ -59,29 +67,7 @@ async def test_pending_ledger_approvals_are_read_by_user_state_and_age(
 
     plans = await query_plans(ApprovalLedgerRepository().list_pending_for_user(USER_ID))
 
-    assert _served_by(plans, "IXSCAN { user_id: 1, state: 1, created_at: 1 }"), plans
-
-
-@pytest.mark.regression
-async def test_pending_hil_approvals_are_read_by_user_status_and_age(
-    raw_collection, query_plans: QueryPlans
-) -> None:
-    await indexes.create_hil_approvals_indexes()
-    await raw_collection.insert_many(
-        [
-            {
-                "user_id": f"other-{i}",
-                "status": "pending",
-                "expires_at": _NOW + timedelta(hours=1),
-                "created_at": _NOW,
-            }
-            for i in range(_NOISE)
-        ]
-    )
-
-    plans = await query_plans(HilApprovalRepository().list_pending_for_user(USER_ID, _NOW))
-
-    assert _served_by(plans, "IXSCAN { user_id: 1, status: 1, created_at: 1 }"), plans
+    assert _served_by(plans, "IXSCAN { user_id: 1, outcome: 1, created_at: 1 }"), plans
 
 
 @pytest.mark.regression
@@ -139,22 +125,21 @@ async def test_external_ref_activity_is_read_by_user_source_and_each_time(
 
 
 @pytest.mark.regression
-async def test_bot_replies_read_only_conversations_active_since(
+async def test_bot_replies_read_only_the_users_messages_since_the_cutoff(
     raw_collection, query_plans: QueryPlans
 ) -> None:
     await indexes.create_conversation_indexes()
     stale = _NOW - timedelta(days=30)
-    await raw_collection.insert_many(
+    await fixture_sibling(raw_collection, CONVERSATION_ENTRIES_COLLECTION).insert_many(
         [
             {
-                "conversation_id": f"c{i}",
                 "user_id": USER_ID,
-                "source": "telegram",
-                "createdAt": stale.isoformat(),
-                "updatedAt": stale,
-                "messages": [
-                    {"type": "user", "response": "hi", "date": stale.isoformat()} for _ in range(20)
-                ],
+                "conversation_id": f"c{i % 3}",
+                "seq": i,
+                "id": f"e{i}",
+                "kind": EntryKind.USER_MESSAGE.value,
+                "surface": "telegram",
+                "at": stale,
             }
             for i in range(_NOISE)
         ]
@@ -164,7 +149,8 @@ async def test_bot_replies_read_only_conversations_active_since(
         ConversationRepository().list_bot_replies_since(USER_ID, _NOW, limit=10)
     )
 
-    assert _served_by(plans, "IXSCAN { user_id: 1, updatedAt: -1 }"), plans
+    assert any("IXSCAN { user_id: 1, kind: 1, at: 1 }" in plan for plan in plans), plans
+    assert not any("COLLSCAN" in plan for plan in plans), plans
 
 
 @pytest.mark.regression

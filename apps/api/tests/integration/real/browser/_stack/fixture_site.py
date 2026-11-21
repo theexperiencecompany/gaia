@@ -72,6 +72,8 @@ class FixtureSite:
     a: str = ""
     b: str = ""
     posts: list[FormPost] = field(default_factory=list)
+    #: Where the running scenario's posts start: a rerun never reads its failed attempt's.
+    _scenario_start: int = 0
     _servers: list[LocalServer] = field(default_factory=list)
     _sessions: set[str] = field(default_factory=set)
     #: Set at stop, so a held /hang request lets the server shut down.
@@ -98,8 +100,13 @@ class FixtureSite:
         for server in self._servers:
             await server.stop()
 
+    def begin_scenario(self) -> None:
+        """Start a scenario: posts_to reads only what its forms receive from here."""
+        self._scenario_start = len(self.posts)
+
     def posts_to(self, path: str) -> list[FormPost]:
-        return [post for post in self.posts if post.path == path]
+        """Return what path received in this scenario, in order."""
+        return [post for post in self.posts[self._scenario_start :] if post.path == path]
 
     # --- origin A -----------------------------------------------------------
 

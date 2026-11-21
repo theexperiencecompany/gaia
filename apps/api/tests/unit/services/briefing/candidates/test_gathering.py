@@ -14,7 +14,6 @@ from tests.helpers import captured_wide_event
 from app.constants.briefing import BRIEF_POOL_PER_SOURCE, BriefAction, BriefItemSource
 from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL, WaitingOn
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.todos import todo_repository
@@ -73,7 +72,6 @@ def memory(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
 def quiet_stores(monkeypatch: pytest.MonkeyPatch) -> None:
     for owner, name in (
         (approval_ledger_repository, "list_pending_for_user"),
-        (hil_approval_repository, "list_pending_for_user"),
         (reminder_repository, "find_scheduled_between"),
         (workflow_executions_repository, "list_since"),
         (workflow_repository, "find_system_workflows"),

@@ -1,16 +1,9 @@
-"""The jobs that finish a proactive chat message's delivery after it was sent."""
+"""The job that posts a proactive chat message quiet hours held back."""
 
 from unittest.mock import AsyncMock, patch
 
-from arq.worker import Retry
-import pytest
-
-from app.agents.core.background.platform_chat import DeferredChatMessage, PlatformImage
-from app.constants.notifications import (
-    PROACTIVE_RECORD_MAX_TRIES,
-    PROACTIVE_RECORD_RETRY_DELAY,
-    ProactiveMessageClass,
-)
+from app.agents.core.background.platform_chat import DeferredChatMessage, ProactiveMessage
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import UserDocument
@@ -24,9 +17,12 @@ MESSAGE = DeferredChatMessage(
     source=ConversationSource.TELEGRAM,
     platform_user_id="tg-7",
     basis="priority",
-    text="Invoice overdue.",
-    origin="notification from ai_agent",
-    message_class=ProactiveMessageClass.ROUTINE,
+    message=ProactiveMessage(
+        notice_id="notice:n-1",
+        text="Invoice overdue.",
+        origin="notification from ai_agent",
+        message_class=ProactiveMessageClass.ROUTINE,
+    ),
 )
 
 
@@ -56,15 +52,18 @@ class TestDeliverDeferredChatMessage:
         assert kwargs["channel"] == ChatChannel(
             source=ConversationSource.TELEGRAM, platform_user_id="tg-7", basis="priority"
         )
-        assert kwargs["text"] == "Invoice overdue."
-        assert kwargs["origin"] == "notification from ai_agent"
-        assert kwargs["message_class"] is ProactiveMessageClass.ROUTINE
+        assert kwargs["message"] == MESSAGE.message
         assert event["platform"] == "telegram"
         assert event["message_class"] == ProactiveMessageClass.ROUTINE.value
 
     async def test_the_held_image_goes_out_with_the_message(self) -> None:
-        image = PlatformImage(url="https://cdn.test/brief.png", filename="brief.png")
-        held = MESSAGE.model_copy(update={"image": image})
+        held = MESSAGE.model_copy(
+            update={
+                "message": MESSAGE.message.model_copy(
+                    update={"image_url": "https://cdn.test/brief.png"}
+                )
+            }
+        )
         post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         with (
             patch.object(user_repository, "get", AsyncMock(return_value=UserDocument(id="user-1"))),
@@ -72,7 +71,7 @@ class TestDeliverDeferredChatMessage:
         ):
             await proactive_delivery_tasks.deliver_deferred_chat_message({}, held)
 
-        assert post.await_args.kwargs["image"] == image
+        assert post.await_args.kwargs["message"].image_url == "https://cdn.test/brief.png"
 
     async def test_a_user_deleted_while_it_was_held_drops_it_with_a_warning(self) -> None:
         async with captured_wide_event() as event:
@@ -83,62 +82,3 @@ class TestDeliverDeferredChatMessage:
         (warning,) = event["warnings"]
         assert warning["msg"] == "deferred chat message dropped: user no longer exists"
         assert warning["user_id"] == "user-1"
-
-
-class TestRecordProactiveDelivery:
-    async def test_a_free_thread_records_the_message(self) -> None:
-        try_record = AsyncMock(return_value=True)
-        with patch.object(proactive_delivery_tasks, "try_record_platform_delivery", try_record):
-            async with captured_wide_event() as event:
-                outcome = await proactive_delivery_tasks.record_proactive_delivery(
-                    {"job_try": 1}, "conv-1", "Digest is ready."
-                )
-
-        assert outcome == "recorded"
-        try_record.assert_awaited_once_with("conv-1", "Digest is ready.")
-        assert event["conversation_id"] == "conv-1"
-
-    async def test_a_held_thread_retries_after_the_record_delay(self) -> None:
-        held = AsyncMock(return_value=False)
-        with (
-            patch.object(proactive_delivery_tasks, "try_record_platform_delivery", held),
-            pytest.raises(Retry) as retry,
-        ):
-            await proactive_delivery_tasks.record_proactive_delivery(
-                {"job_try": 1}, "conv-1", "Digest."
-            )
-
-        assert retry.value.defer_score == PROACTIVE_RECORD_RETRY_DELAY.total_seconds() * 1000
-
-    @pytest.mark.regression
-    async def test_a_write_that_raises_is_retried_not_dropped(self) -> None:
-        broken = AsyncMock(side_effect=RuntimeError("checkpoint down"))
-        with (
-            patch.object(proactive_delivery_tasks, "try_record_platform_delivery", broken),
-            pytest.raises(Retry),
-        ):
-            async with captured_wide_event() as event:
-                await proactive_delivery_tasks.record_proactive_delivery(
-                    {"job_try": 1}, "conv-1", "Digest."
-                )
-
-        (warning,) = event["warnings"]
-        assert (warning["msg"], warning["error"], warning["error_type"]) == (
-            "delivered message not yet recorded in its thread",
-            "checkpoint down",
-            "RuntimeError",
-        )
-
-    @pytest.mark.regression
-    async def test_the_last_try_gives_up_loudly(self) -> None:
-        held = AsyncMock(return_value=False)
-        with patch.object(proactive_delivery_tasks, "try_record_platform_delivery", held):
-            async with captured_wide_event() as event:
-                outcome = await proactive_delivery_tasks.record_proactive_delivery(
-                    {"job_try": PROACTIVE_RECORD_MAX_TRIES}, "conv-1", "Digest."
-                )
-
-        assert outcome == "failed"
-        (error,) = event["errors"]
-        assert error["msg"] == "delivered message never reached its conversation's thread"
-        assert error["tries"] == PROACTIVE_RECORD_MAX_TRIES

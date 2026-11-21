@@ -1,6 +1,5 @@
 // Comprehensive cron expression builder and parser
 
-import { FIXED_LOCALE, formatClockTime } from "@shared/utils";
 import cronstrue from "cronstrue";
 
 export interface CronSchedule {
@@ -115,66 +114,6 @@ export const parseCronExpression = (cron: string): CronSchedule => {
 
   // Everything else (step expressions, ranges, lists) is custom
   return { type: "custom", customExpression: cron };
-};
-
-export const getScheduleDescription = (cron: string): string => {
-  const schedule = parseCronExpression(cron);
-
-  const formatTime = (hour: number, minute: number): string =>
-    formatClockTime(`${hour}:${minute}`, FIXED_LOCALE);
-
-  const dayNames = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-
-  switch (schedule.type) {
-    case "daily":
-      return `Daily at ${formatTime(schedule.hour!, schedule.minute!)}`;
-
-    case "weekly":
-      return `Every ${dayNames[schedule.dayOfWeek!]} at ${formatTime(schedule.hour!, schedule.minute!)}`;
-
-    case "monthly": {
-      const ordinal =
-        schedule.dayOfMonth === 1
-          ? "1st"
-          : schedule.dayOfMonth === 2
-            ? "2nd"
-            : schedule.dayOfMonth === 3
-              ? "3rd"
-              : `${schedule.dayOfMonth}th`;
-      return `Monthly on the ${ordinal} at ${formatTime(schedule.hour!, schedule.minute!)}`;
-    }
-
-    case "yearly":
-      return `Yearly on ${monthNames[schedule.month! - 1]} ${schedule.dayOfMonth} at ${formatTime(schedule.hour!, schedule.minute!)}`;
-
-    case "custom":
-      return `Custom: ${schedule.customExpression}`;
-
-    default:
-      return cron;
-  }
 };
 
 // A plain-English description of a cron expression, or undefined when cronstrue

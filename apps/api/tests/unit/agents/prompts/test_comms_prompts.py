@@ -4,8 +4,8 @@ import pytest
 
 from app.agents.prompts.comms_prompts import outcome_delivery_note, tracked_todo_delivery_note
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
-from app.constants.comms import SILENCE_DIRECTIVE
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.comms import STAY_SILENT_TOOL_NAME
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 pytestmark = pytest.mark.unit
 
@@ -29,10 +29,10 @@ class TestTrackedTodoDeliveryNote:
             "result is that answer and they are waiting for it: always send it, even when the "
             "answer is no or nothing to worry about. "
         ) in once
-        assert "Write it up: it reaches their chat app as plain text" in once
+        assert "Write it up: lead with what changed" in once
         assert "When you do write" not in once
         assert "Nobody asked for it just now" not in once
-        assert SILENCE_DIRECTIVE not in once
+        assert STAY_SILENT_TOOL_NAME not in once
         assert "not worth a message" not in once
 
     @pytest.mark.regression
@@ -66,12 +66,11 @@ class TestTrackedTodoDeliveryNote:
                 "owe, an approval they have not given), a run that only kept notes. A report that "
                 "says only that nothing is new is that too: a mail-woken run with nothing to "
                 "escalate, or a run held for quiet hours, says exactly that, and the next briefing "
-                "carries the rest. Then reply with exactly one line and "
-                f"nothing else: {SILENCE_DIRECTIVE}. "
-                "Decide first and write only one of the two: a message with no tag, or the tag "
-                "alone, never a recap of open items beside it. "
+                f"carries the rest. Then call {STAY_SILENT_TOOL_NAME} and write no text. "
+                "Decide first and do only one of the two: a message, or the call alone, never a "
+                "recap of open items beside it. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
-                "you do write, it reaches their chat app as plain text with no cards: lead with "
+                "you do write, lead with "
                 "what changed or what they must decide, give the concrete details they need, keep "
                 "it short, never mention runs, schedules or internal ids, and never promise to "
                 f"follow up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than "
@@ -85,8 +84,8 @@ class TestTrackedTodoDeliveryNote:
         assert _note().rstrip().endswith(f"</{AgentTag.DELIVERY_INSTRUCTIONS}>")
         assert 'tracked todo "Watch the deploy"' in _note()
 
-    def test_it_offers_silence_in_the_parsers_own_format(self) -> None:
-        assert SILENCE_DIRECTIVE in _note()
+    def test_it_offers_silence_as_the_tool_the_graph_ends_on(self) -> None:
+        assert f"call {STAY_SILENT_TOOL_NAME} and write no text" in _note()
 
     def test_it_rules_out_a_reaction_and_splits_on_the_real_separator(self) -> None:
         assert "never answer with a reaction" in _note()
@@ -110,11 +109,11 @@ class TestTrackedTodoDeliveryNote:
         assert (
             "only when there is more than one beat.\n"
             "Its Standing rules, the user's own instructions for this todo. They bind this "
-            "decision above every default here and in your instructions, the SILENCE rule "
+            f"decision above every default here and in your instructions, the {STAY_SILENT_TOOL_NAME} rule "
             "included: when one asks to hear this todo's results, a report with content is "
             "sent whole, as a long-form deliverable: its headings and line items as written, "
             "in its order, with at most one line of your own before it, never retold as prose "
-            "and never shortened. SILENCE is only for a report with nothing in it.\n"
+            f"and never shortened. {STAY_SILENT_TOOL_NAME} is only for a report with nothing in it.\n"
             "- Tell me the result every time.\n"
         ) in note
 

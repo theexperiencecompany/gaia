@@ -109,8 +109,9 @@ class TestADailyBrief:
         assert [c.channel_type for c in request.channels] == ORCHESTRATED
         assert request.details.kind == NotificationKind.BRIEFING_DAILY
         # GAIA's Briefings-conversation message carries the same folded card the notification does.
-        user_id, text, card = world.brief_message.await_args.args
-        assert (user_id, text, card.briefing_id, card.kind) == (USER, message, BRIEF_ID, "daily")
+        user_id, briefing_id, text, card = world.brief_message.await_args.args
+        assert (user_id, briefing_id, text) == (USER, BRIEF_ID, message)
+        assert (card.briefing_id, card.kind) == (BRIEF_ID, "daily")
         assert card.needs_you_count == 1
         assert card.edition is not None and card.edition.image_url.startswith(EDITION_URL)
         assert request.details.card == card
@@ -119,8 +120,8 @@ class TestADailyBrief:
         world.render.assert_awaited_once()
         post = world.post.await_args.kwargs
         assert post["channel"] == CHAT
-        assert post["image"].url.startswith(CHAT_EDITION_URL)
-        assert split_message_bubbles(post["text"]) == [
+        assert post["message"].image_url.startswith(CHAT_EDITION_URL)
+        assert split_message_bubbles(post["message"].text) == [
             "Your morning, sorted",
             f"{message}\n\nFull brief: {BRIEF_LINK}",
         ]
@@ -247,8 +248,9 @@ class TestADailyBrief:
         assert (card.briefing_id, card.date) == (BRIEF_ID, DATE)
         post = world.post.await_args.kwargs
         assert post["user"].user_id == USER
-        assert (post["origin"], post["image"].filename) == ("daily brief", "gaia-daily-brief.jpg")
-        assert post["message_class"] is ProactiveMessageClass.ROUTINE
+        assert post["message"].origin == "daily brief"
+        assert post["message"].notice_id == f"brief:{BRIEF_ID}:telegram"
+        assert post["message"].message_class is ProactiveMessageClass.ROUTINE
 
     @pytest.mark.parametrize(
         "user",
@@ -348,7 +350,7 @@ class TestTheEdition:
             city="Tokyo", country="Japan", collected=1, total=85
         )
         line = "New stamp: Tokyo, Japan. 1 of 85 collected. [See your stamps]("
-        assert line in world.post.await_args.kwargs["text"]
+        assert line in world.post.await_args.kwargs["message"].text
         assert line in world.notify.await_args.args[0].content.body
         assert world.capture.call_args.args[1].stamp_collected is True
 
@@ -367,7 +369,7 @@ class TestTheEdition:
         await run_brief(USER, BriefingKind.DAILY)
 
         assert (world.stored().stamp_city, world.stored().new_stamp) == ("tokyo", None)
-        assert "New stamp" not in world.post.await_args.kwargs["text"]
+        assert "New stamp" not in world.post.await_args.kwargs["message"].text
 
     async def test_the_next_framed_brief_hangs_the_next_painting_of_the_pass(
         self, world: World

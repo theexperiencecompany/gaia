@@ -17,7 +17,7 @@ import * as m from "motion/react-m";
 import { useMemo } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
@@ -124,16 +124,12 @@ export function IntegrationsStep({ status, catalog }: IntegrationsStepProps) {
                   className="flex min-h-12 items-center gap-3 rounded-2xl bg-zinc-900 p-3"
                 >
                   <span className="shrink-0">
-                    {getToolCategoryIcon(
-                      integration.id,
-                      {
-                        size: 22,
-                        width: 22,
-                        height: 22,
-                        showBackground: false,
-                      },
-                      integration.iconUrl,
-                    )}
+                    <IntegrationIcon
+                      integrationId={integration.id}
+                      iconUrl={integration.iconUrl}
+                      category={integration.category}
+                      size={22}
+                    />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-zinc-200">

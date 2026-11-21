@@ -104,6 +104,9 @@ LOCAL_ONLY_KEYS = {
     "security_opt",
 }
 
+#: The restart policy that marks a one-shot compose service (a pre-boot migration).
+ONE_SHOT_RESTART = "no"
+
 #: Backend variables that need extra_hosts (host.docker.internal), which no platform template sets.
 HOST_GATEWAY_ENV = {"LOOPBACK_HOST_ALIAS"}
 
@@ -158,6 +161,7 @@ COOLIFY_HEADER = """# documentation: https://docs.heygaia.io/self-hosting/one-cl
 COOLIFY_SERVICES = {
     "proxy": "proxy",
     "gaia-web": "gaia-web",
+    "gaia-migrate": "gaia-migrate",
     "gaia-backend": "gaia-backend",
     "arq_worker": "arq-worker",
     "migrate": "migrate",
@@ -167,7 +171,7 @@ COOLIFY_SERVICES = {
     "mongo": "mongo",
     "rabbitmq": "rabbitmq",
 }
-COOLIFY_APP_SERVICES = {"gaia-backend", "arq_worker", "migrate"}
+COOLIFY_APP_SERVICES = {"migrate", "gaia-migrate", "gaia-backend", "arq_worker"}
 COOLIFY_VOLUMES = {
     "models_cache": "models-cache",
     "workspace": "workspace",
@@ -264,9 +268,9 @@ def _coolify_service(name: str, service: YamlMap, shared_env: Anchored) -> YamlM
             **service["healthcheck"],
             "test": Flow(service["healthcheck"]["test"]),
         }
-    else:
-        # A one-shot service (the migrations) exits by design; Coolify must not read that as down.
-        out["restart"] = service["restart"]
+    if service.get("restart") == ONE_SHOT_RESTART:
+        # Coolify restarts every service unless told not to, and counts an exited one as down.
+        out["restart"] = ONE_SHOT_RESTART
         out["exclude_from_hc"] = True
     unhandled = set(service) - LOCAL_ONLY_KEYS - set(out) - {"environment"}
     if unhandled:
@@ -401,17 +405,19 @@ RENDER_DISKS = {
 RENDER_DATASTORES = ("mongo", "rabbitmq", "chromadb")
 #: The env group holding the secrets the backend shares with the web app's server.
 RENDER_WEB_SERVER_GROUP = "gaia-web-server"
+#: Render has no one-shot service: these run, in order, as the backend's and the worker's
+#: pre-deploy command, the release step first, as on GAIA Cloud.
+RENDER_PRE_DEPLOY_SERVICES = ("migrate", "gaia-migrate")
 #: Every compose service, as a Render service or Render's own managed one.
 RENDER_SERVICES = {
     "proxy",
     "gaia-web",
     "gaia-backend",
     "arq_worker",
+    *RENDER_PRE_DEPLOY_SERVICES,
     *RENDER_DATASTORES,
     "redis",
     "postgres",
-    # Render runs it as the backend's and the worker's pre-deploy command.
-    "migrate",
 }
 
 #: Values only known once the private services exist: Render cannot compose a
@@ -531,7 +537,9 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
     services = compose["services"]
     _require_all("Render", "service", services, RENDER_SERVICES)
     worker = services["arq_worker"]
-    migrate = " ".join(services["migrate"]["command"])
+    pre_deploy = " && ".join(
+        " ".join(services[name]["command"]) for name in RENDER_PRE_DEPLOY_SERVICES
+    )
     render_services = SpacedList(
         [
             Note(
@@ -582,7 +590,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                     "The local embedding model loads ~1.8 GB on first memory use.",
                     RENDER_PLANS["gaia-backend"],
                 ),
-                "preDeployCommand": migrate,
+                "preDeployCommand": pre_deploy,
                 "envVars": _render_app_env(services, "gaia-backend"),
             },
             {
@@ -592,7 +600,7 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(worker),
                 "plan": RENDER_PLANS["arq_worker"],
                 "dockerCommand": " ".join(worker["command"]),
-                "preDeployCommand": migrate,
+                "preDeployCommand": pre_deploy,
                 "envVars": _render_app_env(services, "arq_worker"),
             },
             *(_render_datastore(services, name) for name in RENDER_DATASTORES),

@@ -224,9 +224,10 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             upsert=True,
         )
         if doc is None:
-            # pragma: no mutate below — unreachable, so its message cannot be observed:
-            # find_one_and_update(upsert=True, AFTER) always yields a document.
-            raise AppError(message="briefing upsert returned no document")  # pragma: no mutate
+            # Unreachable: find_one_and_update(upsert=True, AFTER) always yields a document.
+            raise AppError(
+                message="briefing upsert returned no document"
+            )  # pragma: no mutate — unreachable, so its message cannot be observed
         return doc
 
     async def record_step(

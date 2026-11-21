@@ -32,7 +32,6 @@ from app.constants.todos import (
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -41,7 +40,7 @@ from app.models.brief_candidate_models import CandidateOrigin, HeldResult, Outsi
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_payload_models import BriefingEvent
 from app.models.calendar_models import CalendarResponse
-from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.reminder_models import AgentType, ReminderDocument
 from app.models.scheduler_models import DeactivationReason
 from app.models.scout_models import (
@@ -654,7 +653,7 @@ def _ledger(approval_id: str, **fields: Any) -> ApprovalLedgerDocument:
 
 
 class TestApprovals:
-    async def test_both_stores_pending_approvals_wait_on_the_user_except_a_todos_own(
+    async def test_pending_approvals_wait_on_the_user_except_a_todos_own(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         ledger = AsyncMock(
@@ -666,63 +665,31 @@ class TestApprovals:
                 _ledger("ap_3", tool_name="create_reminder", summary=""),
             ]
         )
-        gate = AsyncMock(
-            return_value=[
-                HILApprovalRecord(
-                    approval_id="appr-1",
-                    user_id=USER_ID,
-                    conversation_id="conv-2",
-                    stream_id="s-1",
-                    tool_name="SLACK_SEND_MESSAGE",
-                    summary="Message #launch on Slack",
-                    integration_name="Slack",
-                    expires_at=NOW + timedelta(minutes=15),
-                )
-            ]
-        )
         monkeypatch.setattr(approval_ledger_repository, "list_pending_for_user", ledger)
-        monkeypatch.setattr(hil_approval_repository, "list_pending_for_user", gate)
 
-        found = await approval_candidates(USER_ID, NOW, {"b1"})
+        found = await approval_candidates(USER_ID, {"b1"})
 
         assert [(c.app, c.title, c.state) for c in found] == [
             ("Gmail", "Send the invoice to Acme", "you"),
             ("GAIA", "Approve create_reminder", "you"),
-            ("Slack", "Message #launch on Slack", "you"),
         ]
-        assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
-        assert [str(c.seen_as) for c in found] == [
-            "approval:ap_1",
-            "approval:ap_3",
-            "approval:appr-1",
-        ]
+        assert [c.source for c in found] == ["gmail", "gaia"]
+        assert [str(c.seen_as) for c in found] == ["approval:ap_1", "approval:ap_3"]
         assert {c.action for c in found} == {BriefAction.APPROVE}
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)
-        assert gate.await_args.args == (USER_ID, NOW)
 
     async def test_an_approval_opens_the_conversation_its_card_waits_in(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Dhruv replay 11-12: "review the update" went out as text, the approval had no address."""
-        record = HILApprovalRecord(
-            approval_id="appr-1",
-            user_id=USER_ID,
-            conversation_id="conv-2",
-            stream_id="s-1",
-            tool_name="delete_file",
-            expires_at=NOW + timedelta(minutes=15),
-        )
         monkeypatch.setattr(
             approval_ledger_repository,
             "list_pending_for_user",
-            AsyncMock(return_value=[_ledger("ap_1")]),
-        )
-        monkeypatch.setattr(
-            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[record])
+            AsyncMock(return_value=[_ledger("ap_1"), _ledger("ap_2", conversation_id="conv-2")]),
         )
 
-        found = await approval_candidates(USER_ID, NOW, set())
+        found = await approval_candidates(USER_ID, set())
 
         assert [c.url for c in found] == [
             f"{settings.FRONTEND_URL}/c/conv-1",
@@ -739,35 +706,10 @@ class TestApprovals:
         monkeypatch.setattr(
             approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=[row])
         )
-        monkeypatch.setattr(
-            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[])
-        )
 
-        [found] = await approval_candidates(USER_ID, NOW, set())
+        [found] = await approval_candidates(USER_ID, set())
 
         assert (found.source, found.app) == ("linear", "Linear")
-
-    async def test_a_gate_approval_without_an_integration_is_gaias_and_a_blank_summary_names_the_tool(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        record = HILApprovalRecord(
-            approval_id="appr-1",
-            user_id=USER_ID,
-            conversation_id="conv-2",
-            stream_id="s-1",
-            tool_name="delete_file",
-            expires_at=NOW + timedelta(minutes=15),
-        )
-        monkeypatch.setattr(
-            approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=[])
-        )
-        monkeypatch.setattr(
-            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[record])
-        )
-
-        [found] = await approval_candidates(USER_ID, NOW, set())
-
-        assert (found.source, found.app, found.title) == ("gaia", "GAIA", "Approve delete_file")
 
     async def test_a_row_owned_by_an_uncovered_todo_still_waits_on_the_user(
         self, monkeypatch: pytest.MonkeyPatch
@@ -779,13 +721,10 @@ class TestApprovals:
         monkeypatch.setattr(
             approval_ledger_repository, "list_pending_for_user", AsyncMock(return_value=rows)
         )
-        monkeypatch.setattr(
-            hil_approval_repository, "list_pending_for_user", AsyncMock(return_value=[])
-        )
 
-        found = await approval_candidates(USER_ID, NOW, {"b1"})
+        found = await approval_candidates(USER_ID, {"b1"})
 
-        assert len(found) == 1
+        assert [str(c.seen_as) for c in found] == ["approval:ap_2"]
 
 
 class TestReminders:

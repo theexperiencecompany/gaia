@@ -26,6 +26,7 @@ from app.constants.agents import (
     TimeHorizon,
     wrap_agent_payload,
 )
+from app.models.agent_config import StepTurnRef
 from app.models.ownership_models import ExecutorIntent
 from tests.helpers import load_llm_stub_module
 
@@ -128,6 +129,7 @@ class TestIntentInTheBrief:
         assert IRREVERSIBLE_APPROVED_BRIEF in out
         assert IRREVERSIBLE_UNAPPROVED_BRIEF not in out
 
+    @pytest.mark.usefixtures("fake_redis")
     async def test_call_executor_carries_the_intent_into_the_dispatched_brief(self):
         dispatched = await _dispatched_brief(
             {
@@ -145,17 +147,30 @@ class TestIntentInTheBrief:
         assert "- 6pm for evening" in dispatched
 
 
+#: An attempt that answers a request, so call_executor dispatches instead of refusing.
+_ASKING_STEP = StepTurnRef(epoch=1, batch_start=1, cause_through=1, answers=["m1"], asked=True)
+
+
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
-    tool_args = {"desired_outcome": "it is done", "time_horizon": "one_shot", **tool_args}
+    tool_args = {
+        "desired_outcome": "it is done",
+        "time_horizon": "one_shot",
+        "for_messages": [1],
+        **tool_args,
+    }
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),
     ) as mock_dispatch:
-        await call_executor.ainvoke(tool_args, config={"configurable": configurable})
+        await call_executor.ainvoke(
+            {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
+            config={"configurable": {"conversation_step": _ASKING_STEP, **configurable}},
+        )
     return mock_dispatch.call_args.kwargs["task"]
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestCallExecutorComposition:
     async def test_acceptance_criteria_reach_the_dispatched_task(self):
         """call_executor must dispatch the COMPOSED brief (task + criteria)."""
@@ -174,6 +189,7 @@ class TestCallExecutorComposition:
         assert "please triage my inbox" in dispatched_task
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestVerbatimRequestComesFromTheServer:
     """The verbatim ask is read off configurable, never re-typed by the comms model.
 
@@ -221,6 +237,7 @@ class TestVerbatimRequestComesFromTheServer:
         assert dispatched_task.startswith("triage inbox")
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestPreviousRunReachesTheExecutor:
     """A workflow run's checkpoint threads are dropped before it starts.
 

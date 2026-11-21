@@ -98,6 +98,11 @@ class InApp:
 ProactiveTarget = ChatChannel | InApp
 
 
+def proactive_surface(target: ProactiveTarget) -> ConversationSource:
+    """Return the surface a proactive message is read on: its chat app, else the web app."""
+    return target.source if isinstance(target, ChatChannel) else ConversationSource.WEB
+
+
 def is_active_place(target: ProactiveTarget) -> bool:
     """Whether target is where the user is active now, not a fallback chosen with nobody reachable active.
 

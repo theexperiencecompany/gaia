@@ -5,7 +5,6 @@ under one prompt_cache_key per kind; the brief under the user's date (and, for a
 program and its problems) is the input.
 """
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
 import time
@@ -86,9 +85,6 @@ class ArtifactRequest:
     interactive: bool = False
 
 
-DeltaSink = Callable[[str], Awaitable[None]]
-
-
 def dated_brief(request: ArtifactRequest) -> str:
     """Return the brief under the user's date: what the model is given and the program is grounded in."""
     return f"Today is {request.today.strftime('%d %B %Y')}.\n\n{request.brief}"
@@ -160,10 +156,8 @@ def _refused(exc: APIError) -> bool:
     return exc.code == _REFUSED_PROMPT_CODE
 
 
-async def generate_reply(
-    request: ArtifactRequest, model_input: str, on_delta: DeltaSink | None = None
-) -> GeneratedReply:
-    """Stream one reply, handing each text delta to on_delta as it arrives."""
+async def generate_reply(request: ArtifactRequest, model_input: str) -> GeneratedReply:
+    """Stream one reply, timing when its first component is complete."""
     client = await _client()
     started = time.perf_counter()
     text: list[str] = []
@@ -187,8 +181,6 @@ async def generate_reply(
                 # root's line and the first statement after it are both complete
                 if first_component_ms is None and newlines >= 2:
                     first_component_ms = (time.perf_counter() - started) * 1000
-                if on_delta is not None:
-                    await on_delta(event.delta)
             elif isinstance(event, ResponseRefusalDeltaEvent):
                 raise ArtifactRefusedError(message="the artifact model refused the request")
             elif isinstance(event, ResponseCompletedEvent):
@@ -213,8 +205,8 @@ async def generate_reply(
     )
 
 
-async def write_program(request: ArtifactRequest, on_delta: DeltaSink) -> GeneratedReply:
-    return await generate_reply(request, dated_brief(request), on_delta)
+async def write_program(request: ArtifactRequest) -> GeneratedReply:
+    return await generate_reply(request, dated_brief(request))
 
 
 async def repair_program(

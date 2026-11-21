@@ -431,6 +431,7 @@ async def test_connect_schedules_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         ok = await update_user_integration_status("u", "gmail", IntegrationStatus.CONNECTED)
@@ -443,6 +444,7 @@ async def test_created_status_does_not_schedule_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         await update_user_integration_status("u", "gmail", IntegrationStatus.CREATED)
@@ -463,6 +465,8 @@ def _oauth_patches(repo, sched):
         # Signup queues its ESP deliveries on the worker rather than sending
         # them here; stub the pool so the enqueue never reaches a real Redis.
         patch(f"{OAUTH}.RedisPoolManager.get_pool", new_callable=AsyncMock),
+        # A returning login resumes dormancy-paused workflows in a background task.
+        patch(f"{OAUTH}.resume_dormancy_paused_workflows", new_callable=AsyncMock),
     )
 
 
@@ -474,7 +478,7 @@ async def test_new_user_provisions_workspace():
     )
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
-    with p[0], p[1], p[2], p[3], p[4]:
+    with p[0], p[1], p[2], p[3], p[4], p[5]:
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None, auth_method=None)
     assert is_new is True
     sched.assert_called_once_with(NEW_USER_ID)
@@ -490,7 +494,7 @@ async def test_existing_user_does_not_provision():
     repo.update = AsyncMock()
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
-    with p[0], p[1], p[2], p[3], p[4]:
+    with p[0], p[1], p[2], p[3], p[4], p[5]:
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None, auth_method=None)
     assert is_new is False
     sched.assert_not_called()

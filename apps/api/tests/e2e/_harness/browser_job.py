@@ -14,7 +14,6 @@ from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, c
 from dataclasses import dataclass, field
 from functools import partial
 import inspect
-import json
 import tempfile
 from types import SimpleNamespace
 from typing import Any
@@ -26,7 +25,13 @@ import fakeredis.aioredis
 from pydantic import BaseModel
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.session import RunKind, create_session
+from app.agents.core.background.session import (
+    RunKind,
+    StreamSession,
+    create_session,
+    teardown_session,
+)
+from app.agents.core.background.session_writer import _collect as collect_into_session
 from app.browser_host.wire import SessionInfo
 from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
@@ -39,16 +44,16 @@ from app.constants.browser import (
     EngineSwitchReason,
     TakeoverKind,
 )
-from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
-from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
+from app.services.conversation.work_log import WorkReport
 from app.services.outbound_delivery import OutboundResult
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
+from shared.py.conversation_wire import ToolDataEntry
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"
@@ -344,17 +349,16 @@ class JobWorld:
         self.browser = double
         self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
-        self.chunks: list[str] = []
-        #: What reached the job's own stream, folded into the turn's message.
-        self.job_chunks: list[str] = []
+        self.chunks: list[dict[str, Any]] = []
+        #: What reached the job's own stream.
+        self.job_chunks: list[dict[str, Any]] = []
         #: What reached any other turn's stream, by stream id.
-        self.other_streams: dict[str, list[str]] = {}
+        self.other_streams: dict[str, list[dict[str, Any]]] = {}
         self.bot_messages: list[str] = []
-        self.bot_photos: list[str] = []
         #: Each executor run woken to tell an ending landed in its inbox, by conversation.
         self.woken: list[str] = []
-        #: What the job's stream saved into the turn's message: (message id, entries).
-        self.saved: list[tuple[str, list[dict[str, Any]]]] = []
+        #: What the job's logged work finished with: (task id, cards).
+        self.saved: list[tuple[str, list[ToolDataEntry]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
         self.jobs: list[asyncio.Task[Any]] = []
@@ -375,19 +379,14 @@ class JobWorld:
         self.record_browser_task = AsyncMock()
 
     def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
-        """Return each SSE chunk the job's own stream (or a named one) carried, decoded."""
+        """Return each frame the job's own stream (or a named one) collected."""
         if stream_id is None:
             chunks = self.job_chunks
         elif stream_id == self.stream_id:
             chunks = self.chunks
         else:
             chunks = self.other_streams.get(stream_id, [])
-        # The stream's close is a sentinel, not a frame.
-        return [
-            json.loads(chunk.removeprefix("data: ").strip())
-            for chunk in chunks
-            if chunk != "data: [DONE]\n\n"
-        ]
+        return list(chunks)
 
     def cards(self, stream_id: str | None = None) -> list[dict[str, Any]]:
         """Return the browser card payloads a stream carried, in publish order."""
@@ -524,10 +523,11 @@ async def browser_job_world(
         for entered in patches:
             stack.enter_context(entered)
         # The turn's stream is live for the whole journey, as a chat turn's is while it streams.
-        await StreamManager.start_stream(stream_id, "conv-of-the-turn", "user-of-the-turn")
+        create_session(stream_id, RunKind.LIVE)
         try:
             yield world
         finally:
+            teardown_session(stream_id)
             for task in [*world.jobs, *wide_events._spawned_tasks]:
                 task.cancel()
             await asyncio.gather(*world.jobs, *wide_events._spawned_tasks, return_exceptions=True)
@@ -624,51 +624,41 @@ def long_waits_pass_quickly() -> Iterator[None]:
 def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
     """Record what reaches the user: the turn's and the job's streams, bot messages and photos, the message the cards fold into, and the executor run woken to tell the ending."""
 
-    async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
-        if chunk_stream_id == stream_id:
-            world.chunks.append(chunk)
-        elif chunk_stream_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX):
-            world.job_chunks.append(chunk)
+    def _collect(session: StreamSession, data: dict[str, object]) -> None:
+        if session.stream_id == stream_id:
+            world.chunks.append(data)
+        elif session.stream_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX):
+            world.job_chunks.append(data)
         else:
-            world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
+            world.other_streams.setdefault(session.stream_id, []).append(data)
+        collect_into_session(session, data)
 
     async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> OutboundResult:
         world.bot_messages.extend(blocks)
         return OutboundResult.PUBLISHED
 
-    async def _outbound_photo(
-        platform: Any, user_id: str, url: str, **kwargs: Any
-    ) -> OutboundResult:
-        world.bot_photos.append(url)
-        return OutboundResult.PUBLISHED
-
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)
 
-    async def _save(conversation_id: str, **kwargs: Any) -> bool:
-        world.saved.append((kwargs["message_id"], list(kwargs["entries"])))
-        return True
-
-    conversations = MagicMock()
-    conversations.get_message = AsyncMock(
-        return_value=MessageModel(type="bot", response="", tool_data=[])
-    )
-    conversations.append_message_tool_data = _save
+    async def _finished(
+        conversation_id: str, user_id: str, task_id: str, outcome: Any, report: WorkReport
+    ) -> None:
+        world.saved.append((task_id, list(report.tool_data)))
 
     return [
+        patch("app.agents.core.background.session_writer._collect", _collect),
+        patch("app.services.outbound_delivery.publish_outbound_message", _outbound_message),
         patch(
-            "app.core.stream_manager.StreamManager.publish_chunk",
-            AsyncMock(side_effect=_publish_chunk),
-        ),
-        patch("app.services.browser.bot_delivery.publish_outbound_message", _outbound_message),
-        patch("app.services.browser.bot_delivery.publish_outbound_photo", _outbound_photo),
-        patch(
-            "app.services.browser.bot_delivery.create_live_view_link",
+            "app.services.browser.job_runner.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),
         ),
         # A woken executor run is a graph run of its own; that it was woken is the telling.
         patch("app.workers.tasks.browser_tasks.wake_executor_for_inbox", _wake),
-        patch("app.services.folded_cards.conversation_repository", conversations),
+        patch(
+            "app.agents.core.background.folded_stream.record_work_carried",
+            AsyncMock(return_value=True),
+        ),
+        patch("app.agents.core.background.folded_stream.record_work_finished", _finished),
     ]
 
 

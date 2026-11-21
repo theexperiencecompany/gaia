@@ -16,8 +16,6 @@ from app.constants.delivery_alerts import (
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.notifications import (
     DEFERRED_CHAT_MESSAGE_TASK,
-    PROACTIVE_RECORD_MAX_TRIES,
-    PROACTIVE_RECORD_TASK,
 )
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
@@ -61,13 +59,16 @@ from app.workers.tasks import (
     sweep_undelivered_signup_emails,
 )
 from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
+from app.workers.tasks.conversation_sweep_tasks import (
+    conversation_sweep_cron,
+    sweep_step_conversations,
+)
 from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.delivery_alert_tasks import (
     record_delivery_failure,
     refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
-from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
 )
@@ -75,7 +76,6 @@ from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.proactive_delivery_tasks import (
     deliver_deferred_chat_message,
-    record_proactive_delivery,
 )
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.scout_tasks import learn_scout_task
@@ -104,7 +104,7 @@ init_sentry()
 # correlated worker_task event; cron jobs reuse these same wrapped functions.
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
-_sweep_hil_approvals = arq_task(sweep_hil_approvals)
+_sweep_step_conversations = arq_task(sweep_step_conversations)
 _check_inactive_users = arq_task(check_inactive_users)
 # Named from the constant mark_user_seen enqueues by, so the two cannot drift.
 _reactivate_user = func(
@@ -170,12 +170,6 @@ _finish_tracked_todo_run = func(
 _deliver_deferred_chat_message = func(
     arq_task(deliver_deferred_chat_message), name=DEFERRED_CHAT_MESSAGE_TASK
 )
-# Named from the constant thread_record hands a held checkpoint write to; bounded tries.
-_record_proactive_delivery = func(
-    arq_task(record_proactive_delivery),
-    name=PROACTIVE_RECORD_TASK,
-    max_tries=PROACTIVE_RECORD_MAX_TRIES,
-)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -199,7 +193,7 @@ __all__ = ["TASK_FUNCTIONS", "WorkerSettings"]
 # Every job on the default queue. Browser jobs, brief fires and scout refreshes have their
 # own queue workers (app.workers.queue_workers), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
-    _sweep_hil_approvals,
+    _sweep_step_conversations,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
@@ -220,7 +214,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _resume_tracked_todo,
     _finish_tracked_todo_run,
     _deliver_deferred_chat_message,
-    _record_proactive_delivery,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
@@ -243,13 +236,9 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
 WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
-    cron(
-        # Every minute: HIL approvals must expire promptly — a stale pending
-        # approval hijacks the conversation's next messages and holds the
-        # executor's claim on the thread.
-        _sweep_hil_approvals,
-        second=0,
-    ),
+    # Every minute: a reply whose turn died mid-stream reads as failed, not in progress forever.
+    # Every 15s: a step-run conversation a dead process left is answered, and its lost work reported.
+    conversation_sweep_cron(),
     # Every few seconds: a browser job whose worker died is ended, and a result no
     # run was woken for is told, within moments rather than a lock's TTL.
     browser_reaper_cron(),

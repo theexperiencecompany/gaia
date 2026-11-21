@@ -10,16 +10,12 @@ import {
 import { AppState, InteractionManager } from "react-native";
 import { chatDb } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chat-store";
-import type { Message } from "../api/chat-api";
 import { chatKeys } from "../api/queries";
 import type { Conversation } from "../types";
-import { useApprovalDecisionWebSocket } from "./use-approval-decision-websocket";
 
 interface ChatContextValue {
   activeChatId: string | null;
   setActiveChatId: (chatId: string | null) => void;
-  createNewChat: () => string;
-  clearActiveMessages: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -31,10 +27,6 @@ interface ChatProviderProps {
 export function ChatProvider({ children }: ChatProviderProps) {
   const activeChatId = useChatStore((state) => state.activeChatId);
   const queryClient = useQueryClient();
-
-  // Settle open approval cards decided elsewhere (another device,
-  // notification action, agent-side revoke) with no reload.
-  useApprovalDecisionWebSocket();
 
   useEffect(() => {
     // Seed the conversations React Query cache from AsyncStorage so the
@@ -51,25 +43,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
       queryClient.invalidateQueries({ queryKey: cacheKey });
     });
 
-    // Pre-warm messages for every cached conversation in one multiGet so tapping
-    // any chat is instant (no skeleton flash) — web does the equivalent via a
-    // single Dexie getAllMessages. Deferred via InteractionManager to avoid an ANR.
+    // Deferred via InteractionManager so a launch never blocks on storage.
     const interaction = InteractionManager.runAfterInteractions(() => {
-      chatDb.getAllMessages().then((messagesByConversation) => {
-        for (const [conversationId, messages] of messagesByConversation) {
-          if (messages.length === 0) continue;
-          queryClient.setQueryData(
-            chatKeys.messages(conversationId),
-            (existing: Message[] | undefined) => existing ?? messages,
-          );
-        }
-        // Mark messages queries stale so opening a conversation revalidates
-        // against the API in the background (stale-while-revalidate); without
-        // this, seeded data stays "fresh" for 5min, suppressing sync until idle.
-        queryClient.invalidateQueries({
-          queryKey: [...chatKeys.all, "messages"],
-        });
-      });
+      chatDb.dropRetiredMessages();
     });
 
     return () => {
@@ -85,7 +61,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       if (state === "active") {
         queryClient.invalidateQueries({ queryKey: chatKeys.conversations() });
         queryClient.invalidateQueries({
-          queryKey: [...chatKeys.all, "messages"],
+          queryKey: [...chatKeys.all, "page"],
         });
       }
     });
@@ -103,34 +79,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
     useChatStore.getState().setActiveChatId(normalizedChatId);
   }, []);
 
-  const createNewChat = useCallback((): string => {
-    const newChatId = `chat-${Date.now()}`;
-    useChatStore.getState().setActiveChatId(newChatId);
-    return newChatId;
-  }, []);
-
-  const clearActiveMessages = useCallback(() => {
-    const store = useChatStore.getState();
-    const currentChatId = store.activeChatId;
-    if (currentChatId) {
-      store.clearMessages(currentChatId);
-    }
-    store.setStreamingState({
-      isTyping: false,
-      isStreaming: false,
-      conversationId: null,
-      progress: null,
-    });
-  }, []);
-
   const value = useMemo(
-    () => ({
-      activeChatId,
-      setActiveChatId,
-      createNewChat,
-      clearActiveMessages,
-    }),
-    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages],
+    () => ({ activeChatId, setActiveChatId }),
+    [activeChatId, setActiveChatId],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

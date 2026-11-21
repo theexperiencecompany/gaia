@@ -27,7 +27,8 @@ BACKGROUND_EXECUTION_BANNER = (
     '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
     "   - Gated actions register persistent approval cards (never expire) instead of "
     "pausing: if a call comes back PENDING, leave it and move on to independent work "
-    "or stop — the user decides in the Approvals tab and durable work resumes. "
+    "or stop — the user decides on the card in this conversation, which shows in their "
+    "chat list while it waits, and durable work resumes. "
     "If the step is not needed, withdraw it with a revoke before the run ends.\n"
     "   - Just execute. If no card can carry the decision (a truly novel choice with "
     "no standing instruction), write the question into "

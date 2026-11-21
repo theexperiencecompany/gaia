@@ -90,13 +90,4 @@ describe("ArtifactCard", () => {
     expect(await screen.findByLabelText("Loading report")).toBeTruthy();
     expect(fetchArtifact).toHaveBeenCalledTimes(2);
   });
-
-  it("ends an artifact the user stopped without a spinner", () => {
-    renderCard({ ...base, status: "stopped", program: "root = " });
-
-    expect(
-      screen.getByText("Stopped before this report was finished."),
-    ).toBeTruthy();
-    expect(screen.queryByLabelText("Writing")).toBeNull();
-  });
 });

@@ -7,8 +7,8 @@ call, which holds the run mid-flight right after it planned and called a tool;
 the real executor-status section comms' next turn would be seeded with is read
 at that moment.
 
-Not exercised: delivery of the result to the conversation (deliver_result is
-doubled, it has its own suite) and a real LLM choosing these calls.
+Not exercised: logging the finished work to the conversation (_log_work_finished
+is doubled, work_log has its own suite) and a real LLM choosing these calls.
 """
 
 import asyncio
@@ -131,7 +131,7 @@ async def running() -> AsyncIterator[tuple[GatedModel, asyncio.Task[None]]]:
             patch.object(
                 er, "prepare_executor_execution", AsyncMock(return_value=(_context(graph), None))
             ),
-            patch.object(er, "deliver_result", AsyncMock(return_value=(None, None))),
+            patch.object(er, "_log_work_finished", AsyncMock()),
         ):
             task = asyncio.create_task(
                 er.run_executor_background(run, "archive promos", {"user_id": USER_ID})

@@ -78,7 +78,7 @@ def delivery_guidance(doc: TodoDocument) -> str:
     """State where the run's final report goes; a kind that sets its own report form gets no second one."""
     if doc.delivery is WorkflowDelivery.SILENT:
         return SILENT_RUN_GUIDANCE
-    if doc.external_ref is not None and doc.external_ref.source.owns_report_form:
+    if doc.owns_report_form:
         return DELIVERED_RESULT_RULES
     return DELIVERED_RESULT_GUIDANCE
 

@@ -1,19 +1,19 @@
 """Day-zero hello: GAIA's first text after a user links a chat platform.
 
-Enqueued from PlatformLinkService.link_account on a brand-new chat link. One silent
-agent turn writes a short greeting, posted into the platform DM through
+Enqueued from PlatformLinkService.link_account on a brand-new chat link. One structured
+model call writes a short greeting, posted into the platform DM through
 post_to_platform_chat. Fires once per user, ever.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
-from app.agents.core.background.platform_chat import post_to_platform_chat
+from pydantic import BaseModel, Field
+
+from app.agents.core.background.platform_chat import ProactiveMessage, post_to_platform_chat
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
-from app.constants.briefing import SilentTurnSource
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.platform_links import DAY_ZERO_HELLO_TASK
 from app.db.repositories.briefing_state import briefing_state_repository
@@ -23,16 +23,15 @@ from app.services.analytics_service import capture
 from app.services.briefing.clock import resolve_clock
 from app.services.briefing.goals import format_goal_block, stated_goals
 from app.services.briefing.run_times import next_brief_lands, user_brief_slots
-from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import channel_for
 from app.services.outbound_delivery import OutboundResult
 from app.utils.auth_utils import build_user_context
-from app.utils.markdown_utils import decode_json_blocks
 from app.utils.timezone import as_utc
 from app.utils.user_display import display_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingDayZeroHelloSent
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import UserContext, log, wide_task
 
 # Only greet accounts young enough that a first hello still makes sense; an old
@@ -40,20 +39,10 @@ from shared.py.wide_events import UserContext, log, wide_task
 DAY_ZERO_MAX_ACCOUNT_AGE_DAYS = 14
 
 
-class DayZeroHelloError(Exception):
-    """The agent did not produce a valid bubble array — the run failed."""
+class HelloBubbles(BaseModel):
+    """The model's hello: one or two chat bubbles, in send order."""
 
-
-def _parse_bubbles(raw: str) -> list[str]:
-    """Extract the JSON array of chat bubbles from the agent output (fail loud)."""
-    for data in decode_json_blocks(raw).values:
-        if isinstance(data, list) and all(isinstance(b, str) for b in data):
-            bubbles = [b.strip() for b in data if b.strip()]
-            if bubbles:
-                return bubbles
-    raise DayZeroHelloError(
-        f"No valid bubble array in agent output (first 300 chars): {raw[:300]!r}"
-    )
+    bubbles: list[str] = Field(min_length=1, max_length=2)
 
 
 async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -> str:
@@ -61,7 +50,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
 
     Guards (all must hold): no prior day_zero_hello flag, account created within
     DAY_ZERO_MAX_ACCOUNT_AGE_DAYS, and the platform is still linked. A failing guard is a
-    normal skip; only a real broker failure raises.
+    normal skip.
     """
     async with wide_task(DAY_ZERO_HELLO_TASK, user=UserContext(id=user_id)):
         log.set(platform=platform)
@@ -106,28 +95,23 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             ),
         )
         auth_user = build_user_context(user, auth_provider=None)
-        reply = await run_silent_turn(
-            auth_user,
-            prompt,
-            conversation_id=f"dayzero-{user_id}-{uuid4().hex[:6]}",
-            source=SilentTurnSource.DAY_ZERO_HELLO,
+        hello = await ainvoke_structured(
+            HelloBubbles, prompt, label=DAY_ZERO_HELLO_TASK, config=metered_config(user_id)
         )
-        bubbles = _parse_bubbles(reply)
+        bubbles = [bubble.strip() for bubble in hello.bubbles if bubble.strip()]
 
         result = await post_to_platform_chat(
             user=auth_user,
             channel=channel,
-            text=NEW_MESSAGE_BREAKER.join(bubbles),
-            origin="day-zero hello",
-            message_class=ProactiveMessageClass.USER_TRIGGERED,
+            message=ProactiveMessage(
+                notice_id=f"day-zero-hello:{user_id}",
+                text=NEW_MESSAGE_BREAKER.join(bubbles),
+                origin="day-zero hello",
+                message_class=ProactiveMessageClass.USER_TRIGGERED,
+            ),
         )
         if result is not OutboundResult.PUBLISHED:
-            # Nothing landed, so leave the once-ever flag unset: a later relink can
-            # still greet them. A broker failure is a real error worth retrying.
-            if result is OutboundResult.FAILED:
-                raise DayZeroHelloError(
-                    f"day-zero hello publish failed for {user_id} on {platform}"
-                )
+            # Nothing landed, so leave the once-ever flag unset: a later relink can still greet them.
             log.set(skipped="publish_skipped")
             return f"skip {user_id}: publish skipped ({platform})"
 

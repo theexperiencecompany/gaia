@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 
 from app.override.langgraph_bigtool.hooks import HookType
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
@@ -50,6 +52,8 @@ class HookConfig:
     pre_model_hooks: list[HookType] | None = None
     end_graph_hooks: list[HookType] | None = None
     require_finish_to_end: bool = False
+    #: Whether a model message's calls end the turn once they ran (not None), or go back to the model.
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None] | None = None
 
 
 @dataclass(frozen=True)

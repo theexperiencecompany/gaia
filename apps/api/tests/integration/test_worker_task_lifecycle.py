@@ -37,6 +37,7 @@ from app.workers.tasks.workflow_tasks import (
     process_workflow_generation_task,
 )
 from tests.helpers import users_get
+from tests.unit.services.conversation.log_helpers import EMPTY
 
 # freezegun's module-restore logic collides with the transformers library
 # (references to torch at class-definition scope). Ignoring transformers
@@ -414,20 +415,27 @@ class TestWorkflowTaskExecution:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
             # The fire claims its workflow's conversation before it spends
-            # anything; nobody else holds it here.
+            # anything; its log holds no live work here.
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
                 return_value="conv-789",
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.try_acquire_lock",
-                new_callable=AsyncMock,
-                return_value=True,
+                "app.workers.tasks.workflow_tasks.redis_cache",
+                MagicMock(
+                    client=MagicMock(
+                        set=AsyncMock(return_value=True),
+                        get=AsyncMock(return_value=None),
+                        delete=AsyncMock(),
+                    )
+                ),
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
-                new_callable=AsyncMock,
+                "app.workers.tasks.workflow_tasks.runtime_ports",
+                MagicMock(
+                    return_value=MagicMock(log=MagicMock(state=AsyncMock(return_value=EMPTY)))
+                ),
             ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
@@ -496,17 +504,24 @@ class TestWorkflowTaskExecution:
                 return_value="conv-fail",
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.try_acquire_lock",
-                new_callable=AsyncMock,
-                return_value=True,
+                "app.workers.tasks.workflow_tasks.redis_cache",
+                MagicMock(
+                    client=MagicMock(
+                        set=AsyncMock(return_value=True),
+                        get=AsyncMock(return_value=None),
+                        delete=AsyncMock(),
+                    )
+                ),
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
-                new_callable=AsyncMock,
+                "app.workers.tasks.workflow_tasks.runtime_ports",
+                MagicMock(
+                    return_value=MagicMock(log=MagicMock(state=AsyncMock(return_value=EMPTY)))
+                ),
             ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
-            mock_notif.create_notification = AsyncMock()
+            mock_notif.notify = AsyncMock()
 
             with pytest.raises(RuntimeError, match="^Agent crashed$"):
                 await execute_workflow_by_id(ARQ_CTX, "wf-fail")
@@ -523,7 +538,7 @@ class TestWorkflowTaskExecution:
             )
 
             # Verify failure notification sent
-            mock_notif.create_notification.assert_awaited_once()
+            mock_notif.notify.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -537,8 +552,13 @@ class TestWorkerStartupHooks:
 
     @pytest.fixture(autouse=True)
     def _no_queue_workers(self) -> Iterator[None]:
-        # Real ones would start consuming their queues on whatever Redis is up.
-        with patch("app.workers.lifecycle.startup.start_queue_workers"):
+        # Real ones would start consuming their queues on whatever Redis is up; real
+        # runtime ports need a configured LLM and would outlive the test as process state.
+        with (
+            patch("app.workers.lifecycle.startup.start_queue_workers"),
+            patch("app.workers.lifecycle.startup.build_runtime_ports"),
+            patch("app.workers.lifecycle.startup.install_runtime_ports"),
+        ):
             yield
 
     async def test_startup_calls_unified_startup(self):

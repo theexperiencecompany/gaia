@@ -36,8 +36,11 @@ from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
 from app.agents.tools import run_record
+from app.agents.tools.comms_turn_tools import turn_ending
 from app.agents.tools.run_record import read_run_record
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.chat import ConversationSource
+from app.constants.comms import REACT_TOOL_NAME
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
@@ -59,6 +62,7 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import (
     REJECT_UNBOUND_TOOLS_NODE,
     _after_model_result,
+    _after_tools,
     _agent_sticky_key,
     _AgentDeps,
     _bind_session_id,
@@ -85,6 +89,7 @@ from app.override.langgraph_bigtool.create_agent import (
     reject_unbound_tools,
 )
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -595,6 +600,25 @@ class TestCallModel:
         result = _agent_runnable(builder).func(_make_state(), _make_config(), store=MagicMock())
 
         assert result["messages"][-1].content == blocks
+
+    @pytest.mark.regression
+    def test_sync_call_model_comms_agent_keeps_no_text_of_a_breaks_only_block_reply(self) -> None:
+        """Regression: a fallback lane's block reply of bare breaks reached the thread verbatim, for later turns to copy."""
+        reasoning = {"type": "reasoning", "reasoning": "nothing to add"}
+        llm = _make_llm()
+        llm.with_config.return_value.bind_tools.return_value.invoke.return_value = AIMessage(
+            content=[reasoning, {"type": "text", "text": NEW_MESSAGE_BREAKER * 3998}]
+        )
+        builder = create_agent(
+            llm,
+            _make_tool_registry(),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        result = _agent_runnable(builder).func(_make_state(), _make_config(), store=MagicMock())
+
+        assert result["messages"][-1].content == [reasoning]
 
 
 class TestAcallModel:
@@ -1702,6 +1726,7 @@ def _make_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 
@@ -1985,6 +2010,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -2031,6 +2057,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -2084,6 +2111,7 @@ class TestGetBoundToolNamesChannels:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
 
         bound = _get_bound_tool_names(deps, cast("State", {}))
@@ -2237,6 +2265,7 @@ def _make_branch_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 
@@ -2472,6 +2501,56 @@ class TestWireEdgesPinning:
         assert (FINISH_TASK_NAME, END) in edges
 
 
+def _ends_on_react(message: AIMessage, _config: RunnableConfig) -> str | None:
+    return "ended" if message.tool_calls[-1]["name"] == "react" else None
+
+
+def _after_calls(*names: str) -> State:
+    calls: list[ToolCall] = [
+        {"name": name, "args": {}, "id": f"c{n}", "type": "tool_call"}
+        for n, name in enumerate(names)
+    ]
+    return _make_state(
+        messages=[
+            AIMessage(content="", tool_calls=calls),
+            *(ToolMessage(content="ok", tool_call_id=call["id"]) for call in calls),
+        ]
+    )
+
+
+class TestTheToolsNodeEndsATurnOnlyAfterACallThatEndsIt:
+    def _tools_branch(self, deps: _AgentDeps) -> tuple[Any, list[str]]:
+        builder = MagicMock()
+        _wire_edges(builder, deps)
+        (branch,) = [
+            call for call in builder.add_conditional_edges.call_args_list if call.args[0] == "tools"
+        ]
+        return branch.args[1], branch.kwargs["path_map"]
+
+    @pytest.mark.parametrize(
+        ("hooks", "exit_node"), [(None, END), ([MagicMock(name="end_hook")], "end_graph_hooks")]
+    )
+    def test_a_turn_ending_call_exits_and_any_other_goes_back_to_the_model(
+        self, hooks: list[Any] | None, exit_node: str
+    ) -> None:
+        deps = replace(_make_deps(), turn_ending=_ends_on_react, end_graph_hooks=hooks)
+
+        route, path_map = self._tools_branch(deps)
+
+        assert path_map == ["agent", exit_node]
+        assert route(_after_calls("react"), {}) == exit_node
+        assert route(_after_calls("web_search"), {}) == "agent"
+        assert route(_make_state(messages=[HumanMessage(content="hi")]), {}) == "agent"
+
+    def test_without_turn_endings_the_tools_node_always_returns_to_the_model(self) -> None:
+        builder = MagicMock()
+
+        _wire_edges(builder, _make_deps())
+
+        assert ("tools", "agent") in [c.args for c in builder.add_edge.call_args_list]
+        assert all(c.args[0] != "tools" for c in builder.add_conditional_edges.call_args_list)
+
+
 class TestCreateAgentWiring:
     """Pin that every resolved value lands in deps and every factory-built node lands under its graph name."""
 
@@ -2695,3 +2774,34 @@ class TestTheFallbackTheModelNodeHandsTheClient:
 
         assert invoked.await_args.kwargs["fallback"] is None
         assert invoked.await_args.kwargs["options"].fallback_config is None
+
+
+class TestAfterTools:
+    """A turn ends after the tools only when its turn-ending calls all went through."""
+
+    @staticmethod
+    def route(state: State, config: RunnableConfig) -> str:
+        # Built per call: a route made at import would outlive the mutant under test.
+        return _after_tools(turn_ending, "end_turn")(state, config)
+
+    @staticmethod
+    def _reacted(emoji: str, status: str) -> State:
+        call = ToolCall(name=REACT_TOOL_NAME, args={"emoji": emoji, "message_id": 1}, id="r1")
+        return _make_state(
+            messages=[
+                AIMessage(content="", tool_calls=[call]),
+                ToolMessage(content="done", tool_call_id="r1", status=status),
+            ]
+        )
+
+    def test_a_turn_ending_call_that_went_through_ends_the_turn(self) -> None:
+        assert self.route(self._reacted("👍", "success"), {}) == "end_turn"
+
+    def test_a_turn_ending_call_that_failed_goes_back_to_the_model(self) -> None:
+        assert self.route(self._reacted("👍", "error"), {}) == "agent"
+
+    def test_a_reaction_the_runs_surface_refuses_goes_back_to_the_model(self) -> None:
+        telegram: RunnableConfig = {
+            "configurable": {"conversation_source": ConversationSource.TELEGRAM.value}
+        }
+        assert self.route(self._reacted("🔎", "success"), telegram) == "agent"

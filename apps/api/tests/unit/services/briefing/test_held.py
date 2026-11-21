@@ -104,7 +104,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
 
     monkeypatch.setattr(pending_brief_items_repository, "list_for_user", list_for_user)
     monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
-    monkeypatch.setattr(notification_service, "create_notification", s.notify)
+    monkeypatch.setattr(notification_service, "notify", s.notify)
     with time_machine.travel(_NOW, tick=False):
         yield s
 

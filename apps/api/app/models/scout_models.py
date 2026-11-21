@@ -21,7 +21,7 @@ from pydantic import (
 )
 
 from app.constants.scouts import SCOUT_CRITERION_MAX_CHARS
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.models.playbook_models import MAX_FOR_EACH_ITEMS, ForEachStep, PlaybookBody, ToolStep
 
 

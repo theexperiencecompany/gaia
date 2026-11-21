@@ -12,9 +12,11 @@ never the URL.
 Per-type facts live in the registry; nothing here branches on a target type.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import secrets
+from types import MappingProxyType
 
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
@@ -65,6 +67,7 @@ from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkAccessChanged,
     ShortLinkCreated,
+    ShortLinkDenialReason,
     ShortLinkDenied,
     ShortLinkOpened,
     ShortLinkRevoked,
@@ -481,8 +484,21 @@ def _envelope(granted: _GrantedView) -> LinkEnvelope:
     )
 
 
+# A link that exists is never NOT_FOUND, so that denial is never counted.
+_DENIAL_REASONS: Mapping[LinkDenial, ShortLinkDenialReason] = MappingProxyType(
+    {
+        LinkDenial.REVOKED: "revoked",
+        LinkDenial.EXPIRED: "expired",
+        LinkDenial.REMOVED: "removed",
+        LinkDenial.TARGET_DELETED: "target_deleted",
+        LinkDenial.SIGN_IN_REQUIRED: "sign_in_required",
+        LinkDenial.FORBIDDEN: "forbidden",
+    }
+)
+
+
 def _count_denial(link: ShortLink, viewer: LinkViewer, denial: LinkDenial) -> None:
-    reason = denial.value.removeprefix("link_")
+    reason = _DENIAL_REASONS[denial]
     capture(
         UserId(link.user_id),
         ShortLinkDenied(target_type=link.target.type.value, reason=reason),

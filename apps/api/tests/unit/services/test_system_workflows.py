@@ -17,14 +17,17 @@ from app.constants.briefing import (
     DAILY_BRIEFING_WORKFLOW_KEY,
     WEEKLY_DIGEST_WORKFLOW_KEY,
 )
+from app.constants.log_tags import LogTag
 from app.db.repositories.briefing_state import briefing_state_repository
 from app.models.briefing_state_models import BriefingStateDocument
+from app.models.notification.notification_models import notification_id
 from app.models.payment_models import PlanType
 from app.models.quiet_hours_models import QuietHours
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.system_workflows.provisioner import (
+    _notify_workflows_provisioned,
     _switch_on_or_wait_for_pro,
     provision_system_workflows,
     reset_system_workflow_to_default,
@@ -301,8 +304,8 @@ class TestNotifyWorkflowsProvisioned:
         req = _make_workflow_request("Email Digest", "Daily digest of important emails")
         await _notify_workflows_provisioned("user-1", "Gmail", [req])
 
-        mock_svc.create_notification.assert_awaited_once()
-        call_args = mock_svc.create_notification.call_args
+        mock_svc.notify.assert_awaited_once()
+        call_args = mock_svc.notify.call_args
         notification = call_args[0][0]
         assert "I set up a workflow" in notification.content.title
         assert "Gmail" in notification.content.title
@@ -321,8 +324,25 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "desc2")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert "2 workflows" in notification.content.title
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.NotificationService")
+    async def test_one_set_of_workflows_is_announced_under_one_id_in_any_order(
+        self, mock_notif_cls: MagicMock
+    ) -> None:
+        mock_svc = AsyncMock()
+        mock_notif_cls.return_value = mock_svc
+        digest = _make_workflow_request("Digest", "desc1")
+        sorter = _make_workflow_request("Sorter", "desc2")
+
+        await _notify_workflows_provisioned("user-1", "Gmail", [sorter, digest])
+
+        notification = mock_svc.notify.call_args[0][0]
+        assert notification.id == notification_id(
+            "user-1", "system_workflows_provisioned", "Gmail", "Digest,Sorter"
+        )
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
@@ -341,7 +361,7 @@ class TestNotifyWorkflowsProvisioned:
         req2 = _make_workflow_request("Sorter", "Files your mail")
         await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
 
-        notification = mock_svc.create_notification.call_args[0][0]
+        notification = mock_svc.notify.call_args[0][0]
         assert notification.content.body == (
             "Here's what I've got running for you:\n\n"
             "\u2022 Digest: Daily digest\n"
@@ -353,7 +373,7 @@ class TestNotifyWorkflowsProvisioned:
     @patch(f"{MODULE}.NotificationService")
     async def test_notification_failure_does_not_raise(self, mock_notif_cls: MagicMock) -> None:
         mock_svc = AsyncMock()
-        mock_svc.create_notification = AsyncMock(side_effect=RuntimeError("notify fail"))
+        mock_svc.notify = AsyncMock(side_effect=RuntimeError("notify fail"))
         mock_notif_cls.return_value = mock_svc
 
         from app.services.system_workflows.provisioner import (
@@ -988,11 +1008,6 @@ class TestResetSystemWorkflowToDefault:
         factory = MagicMock(return_value=_make_workflow_request())
 
         with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"sched_wf": factory}):
-            from app.constants.log_tags import LogTag
-            from app.services.system_workflows.provisioner import (
-                reset_system_workflow_to_default,
-            )
-
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is False

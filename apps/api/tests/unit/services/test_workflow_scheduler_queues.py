@@ -22,11 +22,7 @@ _NOW = datetime(2026, 11, 18, 6, 0, tzinfo=UTC)
 
 @pytest.fixture
 def scheduler() -> WorkflowScheduler:
-    with patch(
-        "app.services.scheduler_service.settings",
-        MagicMock(REDIS_URL="redis://localhost:6379/0"),
-    ):
-        svc = WorkflowScheduler(redis_settings=MagicMock())
+    svc = WorkflowScheduler()
     svc.arq_pool = AsyncMock()
     return svc
 

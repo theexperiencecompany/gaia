@@ -21,7 +21,6 @@ MCPProxyResourceReadResponse.contents	deferred-until=2026-12-15; MCP SDK payload
 MCPProxyResourceTemplatesListResponse.resource_templates	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
 MCPProxyResourcesListResponse.resources	deferred-until=2026-12-15; MCP SDK payload forwarded verbatim to the MCP App iframe (decided 2026-09-16)
 MCPProxyToolCallResponse.content	deferred-until=2026-12-15; the MCP content-block union is open-ended by spec, extensions included (decided 2026-09-16)
-MessageModel.metadata	deferred-until=2026-12-15; per-message bag the agent layers write, no closed key set (decided 2026-09-16)
 ModalConfig.props	deferred-until=2026-12-15; props of the web component a notification action opens (decided 2026-09-16)
 NotificationContent.rich_content	deferred-until=2026-12-15; renderer payload chosen per notification source (decided 2026-09-16)
 RecordedCall.args	deferred-until=2026-12-15; the arguments one tool actually ran with, one schema per tool (decided 2026-09-16)

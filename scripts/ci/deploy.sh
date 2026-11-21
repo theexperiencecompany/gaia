@@ -7,13 +7,19 @@
 #                               published to GHCR without it (drift). Writes
 #                               backend_deploy / backend_orphaned to
 #                               $GITHUB_OUTPUT.
-#   migrate                     Run the release's data migrations
-#                               (apps/api/scripts/post_deploy.py) as a one-off
-#                               Swarm job of the image `stack` is about to
-#                               roll, and wait for it: it must succeed before
-#                               any new API or worker serves.
 #   stack                       `docker stack deploy` the production Swarm stack
 #                               from the private gaia-infra checkout at .infra/.
+#   migrate                     Before the rollout, run the release's data
+#                               migrations (apps/api/scripts/post_deploy.py) as
+#                               a one-shot Swarm job on the NEW apps image; a
+#                               failure stops the deploy with nothing touched.
+#                               Then run one asking whether any
+#                               conversation still needs the migration catch-up.
+#                               None: return, and the rollout runs with no
+#                               downtime. Some: scale the old writers to 0, run
+#                               the catch-up job, and on its failure scale them
+#                               back up and fail. Writes catch_up= and
+#                               writers_down= to $GITHUB_OUTPUT.
 #   verify                      Everything a deploy needs, without touching a
 #                               single service — the rehearsal to run after
 #                               changing the infra repo, the deploy key or
@@ -46,9 +52,11 @@
 #           the images; empty falls through to the compose file's
 #           ${VAR:-latest} defaults. Needs the `prod` docker context.
 #   verify  as `stack`, minus the write.
-#   migrate as `stack`; the job takes the arq_worker's image, environment,
-#           secrets, external networks, mounts and placement from the rendered
-#           stack. MIGRATE_TIMEOUT_SECS (default 1800), MIGRATE_POLL_SECS.
+#   migrate GITHUB_OUTPUT (required); GAIA_IMAGE_TAG as `stack`;
+#           MIGRATE_RELEASE_TIMEOUT_SECS, MIGRATE_CHECK_TIMEOUT_SECS,
+#           MIGRATE_CATCH_UP_TIMEOUT_SECS, MIGRATE_WRITERS_TIMEOUT_SECS,
+#           MIGRATE_POLL_SECS. Needs the `prod` docker context and a GHCR
+#           login (the job pulls the image).
 #   retag   from-env: APPS_IMAGE_TAG / BOTS_IMAGE_TAG / GRAFANA_IMAGE_TAG.
 #           rolled-back: ROLLBACK_MODE, IMAGE_DIGEST, DOCKER_CONTEXT, STACK;
 #           re-points every service on one of our repos, grafana included.
@@ -209,88 +217,204 @@ _cmd_swarm_stack() {
       echo "::endgroup::"
       echo "deploy verify: OK (infra ref $(git -C .infra rev-parse --short HEAD), obs config hash $OBS_CFG_HASH, $(echo "$rendered" | yq '.services | length') services)"
       ;;
-    migrate)
-      _migrate "$(docker --context prod stack config -c "$STACK_FILE")"
-      ;;
     *)
-      echo "deploy.sh: unknown stack mode '$MODE' (deploy|verify|migrate)" >&2
+      echo "deploy.sh: unknown stack mode '$MODE' (deploy|verify)" >&2
       exit 2
       ;;
   esac
 }
 
-MIGRATE_JOB="gaia-prod_migrate"
+# The pre-rollout migrations (cmd_migrate). First the release step
+# (apps/api/scripts/post_deploy.py) runs every pending data migration while the
+# old build still serves. Then the new API refuses to
+# boot while any conversation holds data the conversation log does not match,
+# and the old build writes that data until it stops, so a catch-up runs only
+# with the old writers down. Bots and the voice agent write conversations
+# through the API, so stopping these two stops every conversation write.
+_MIGRATE_TEMPLATE="gaia-prod_gaia-backend"
+_MIGRATE_WRITERS=(gaia-prod_gaia-backend gaia-prod_arq_worker)
+_MIGRATE_SCRIPT=(python -m scripts.migrate_conversations)
+_MIGRATE_RELEASE_STEP=(python -m scripts.post_deploy --apply)
+# CATCH_UP_NEEDED_EXIT in apps/api/scripts/migrate_conversations.py.
+_MIGRATE_CATCH_UP_NEEDED=3
+# Job services not yet removed, and the `svc=replicas` pairs that put stopped
+# writers back: the EXIT trap reads both, so no exit path leaves either behind.
+_MIGRATE_JOBS=""
+_MIGRATE_RESTORE=""
+_MIGRATE_CAUGHT_UP=false
+_MIGRATE_ENV_FILE=""
+_MIGRATE_JOB_EXIT=""
 
-# `docker service create` arguments for the migration job, from the rendered
-# stack's arq_worker: the job is the worker's image running the release step.
-_migrate_job_args() {
-  local rendered="$1"
-  local worker='.services.arq_worker'
-  MIGRATE_ARGS=(
-    --name "$MIGRATE_JOB" --mode replicated-job --restart-condition none
-    --with-registry-auth --detach
-    --workdir "$(yq "$worker.working_dir" <<<"$rendered")"
-    --env GAIA_SERVICE_NAME=migrate
-  )
-  _add_each() {
-    local flag="$1" line values
-    # A command substitution, not < <(...): a yq that rejects the expression must fail the step.
-    values=$(yq ". as \$root | $2" <<<"$rendered")
-    while IFS= read -r line; do
-      [[ -n "$line" ]] && MIGRATE_ARGS+=("$flag" "$line")
-    done <<<"$values"
-  }
-  _add_each --env "$worker.environment // {} | to_entries | .[] | select(.key != \"GAIA_SERVICE_NAME\") | .key + \"=\" + (.value | tostring)"
-  _add_each --secret "$worker.secrets // [] | .[] | (.source // .)"
-  # Only networks that outlive the stack: a stack-scoped one may not exist before it.
-  _add_each --network "$worker.networks // {} | keys | .[] | . as \$n | \$root.networks[\$n] | select(.external == true) | (.name // \$n)"
-  _add_each --mount "$worker.volumes // [] | .[] | . as \$v | \"type=\" + .type + \",source=\" + (\$root.volumes[\$v.source].name // \$v.source) + \",target=\" + .target + ((.volume | select(.nocopy == true) | \",volume-nocopy=\" + .nocopy) // \"\")"
-  _add_each --constraint "$worker.deploy.placement.constraints // [] | .[]"
-  MIGRATE_ARGS+=("$(yq "$worker.image" <<<"$rendered")" python -m scripts.post_deploy --apply)
+_migrate_docker() { docker --context prod "$@"; }
+
+# _migrate_running <service> — its tasks Running right now, whatever their
+# desired state: a task told to shut down still writes until it exits.
+_migrate_running() {
+  local states
+  states=$(_migrate_docker service ps "$1" --format '{{.CurrentState}}') \
+    || ci_die "deploy migrate: cannot list the tasks of $1"
+  grep -c '^Running' <<< "$states" || true
 }
 
-# Wait for the migration job's one task to end; 0 when it completed.
-_await_migrate_job() {
-  local deadline=$(( $(date +%s) + MIGRATE_TIMEOUT_SECS )) state
+# _migrate_await <service> <le|ge> <count> — wait, bounded by
+# MIGRATE_WRITERS_TIMEOUT_SECS, until its Running tasks are at most / at least
+# count; 1 on timeout.
+_migrate_await() {
+  local svc="$1" op="$2" want="$3" running
+  local deadline=$(( $(date +%s) + ${MIGRATE_WRITERS_TIMEOUT_SECS:-300} ))
   while :; do
-    state=$(docker --context prod service ps "$MIGRATE_JOB" --format '{{.CurrentState}}' | head -n 1)
-    case "$state" in
-      Complete*) return 0 ;;
-      Failed*|Rejected*|Shutdown*|Orphaned*) echo "migration job ended: $state"; return 1 ;;
-    esac
-    if (( $(date +%s) >= deadline )); then
-      echo "::error::the migration job is still running after ${MIGRATE_TIMEOUT_SECS}s; it is left running and the next deploy waits for it"
-      return 2
-    fi
-    sleep "$MIGRATE_POLL_SECS"
+    running=$(_migrate_running "$svc") || return 1
+    if [[ "$op" = le ]] && (( running <= want )); then return 0; fi
+    if [[ "$op" = ge ]] && (( running >= want )); then return 0; fi
+    (( $(date +%s) < deadline )) || return 1
+    sleep "${MIGRATE_POLL_SECS:-5}"
   done
 }
 
-_migrate() {
-  local rendered="$1" outcome=0
-  : "${MIGRATE_TIMEOUT_SECS:=1800}"
-  : "${MIGRATE_POLL_SECS:=5}"
-  # A job an earlier deploy left behind may still be migrating: let it finish, never kill it.
-  if docker --context prod service inspect "$MIGRATE_JOB" >/dev/null 2>&1; then
-    echo "an earlier migration job exists; waiting for it to end"
-    local earlier=0
-    _await_migrate_job || earlier=$?
-    if (( earlier == 2 )); then exit 1; fi
-    docker --context prod service rm "$MIGRATE_JOB" >/dev/null
+_migrate_job_logs() {
+  ci_group "Logs of $1"
+  _migrate_docker service logs --raw "$1" 2>&1 || ci_warn "deploy migrate: could not read the logs of $1"
+  ci_endgroup
+}
+
+_migrate_remove_job() {
+  _migrate_docker service rm "$1" > /dev/null \
+    || ci_warn "deploy migrate: could not remove the job service $1 — remove it on the VM"
+  _MIGRATE_JOBS="${_MIGRATE_JOBS/ $1/}"
+}
+
+# _migrate_job <kind> <timeout secs> <command...> — run command as a one-shot
+# job on the new image with the backend's secrets, networks, env and working
+# directory, and set _MIGRATE_JOB_EXIT to its exit code. Dies when the job never
+# ran to an exit (rejected, shut down, or past the timeout).
+_migrate_job() {
+  local kind="$1" timeout="$2"
+  shift 2
+  local name template secret network workdir args=()
+  name="gaia-migrate-${kind}-${GITHUB_RUN_ID:-local}-$(date +%s)"
+  template=$(_migrate_docker service inspect "$_MIGRATE_TEMPLATE" --format '{{json .Spec.TaskTemplate}}') \
+    || ci_die "deploy migrate: cannot inspect $_MIGRATE_TEMPLATE, whose secrets, networks and env the job copies"
+
+  # The env goes through a 0600 file, never argv or the log.
+  _MIGRATE_ENV_FILE=$(mktemp)
+  chmod 600 "$_MIGRATE_ENV_FILE"
+  jq -r '.ContainerSpec.Env // [] | .[]' <<< "$template" > "$_MIGRATE_ENV_FILE"
+  args+=(--env-file "$_MIGRATE_ENV_FILE")
+  while IFS= read -r secret; do
+    [[ -z "$secret" ]] || args+=(--secret "$secret")
+  done < <(jq -r '.ContainerSpec.Secrets // [] | .[] | "source=\(.SecretName),target=\(.File.Name)"' <<< "$template")
+  while IFS= read -r network; do
+    [[ -z "$network" ]] || args+=(--network "$network")
+  done < <(jq -r '.Networks // [] | .[].Target' <<< "$template")
+  workdir=$(jq -r '.ContainerSpec.Dir // empty' <<< "$template")
+  [[ -z "$workdir" ]] || args+=(--workdir "$workdir")
+
+  echo "deploy migrate: starting the $kind job $name on $_MIGRATE_IMAGE: $*"
+  _MIGRATE_JOBS="$_MIGRATE_JOBS $name"
+  _migrate_docker service create --detach --quiet --with-registry-auth \
+    --name "$name" --label "gaia.migrate=$kind" \
+    --mode replicated-job --restart-condition none \
+    "${args[@]}" "$_MIGRATE_IMAGE" "$@" > /dev/null \
+    || ci_die "deploy migrate: could not create the $kind job $name"
+  rm -f "$_MIGRATE_ENV_FILE"
+  _MIGRATE_ENV_FILE=""
+
+  local deadline=$(( $(date +%s) + timeout )) task status="{}" state code
+  while :; do
+    task=$(_migrate_docker service ps "$name" --quiet --no-trunc | head -n 1) \
+      || ci_die "deploy migrate: cannot list the task of the $kind job $name"
+    state=""
+    if [[ -n "$task" ]]; then
+      status=$(_migrate_docker inspect "$task" --format '{{json .Status}}') \
+        || ci_die "deploy migrate: cannot inspect task $task of the $kind job $name"
+      state=$(jq -r '.State' <<< "$status")
+    fi
+    case "$state" in
+      complete | failed) break ;;
+      rejected | shutdown | orphaned | remove)
+        _migrate_job_logs "$name"
+        ci_die "deploy migrate: the $kind job $name never ran to an exit (task $state: $(jq -r '.Err // "no error given"' <<< "$status"))"
+        ;;
+    esac
+    if (( $(date +%s) >= deadline )); then
+      _migrate_job_logs "$name"
+      ci_die "deploy migrate: the $kind job $name did not finish within ${timeout}s (task ${state:-not scheduled yet})"
+    fi
+    sleep "${MIGRATE_POLL_SECS:-5}"
+  done
+
+  _migrate_job_logs "$name"
+  code=$(jq -r '.ContainerStatus.ExitCode // empty' <<< "$status")
+  [[ -n "$code" ]] || ci_die "deploy migrate: the $kind job $name ended $state with no exit code"
+  _migrate_remove_job "$name"
+  _MIGRATE_JOB_EXIT="$code"
+  echo "deploy migrate: the $kind job exited $code"
+}
+
+# On every exit: no job service outlives the step, and writers stopped for a
+# catch-up that did not succeed come back on the image they were running.
+_migrate_on_exit() {
+  local rc=$? job pair
+  [[ -z "$_MIGRATE_ENV_FILE" ]] || rm -f "$_MIGRATE_ENV_FILE"
+  for job in $_MIGRATE_JOBS; do
+    _migrate_remove_job "$job"
+  done
+  if [[ -n "$_MIGRATE_RESTORE" ]] && [[ "$_MIGRATE_CAUGHT_UP" != true ]]; then
+    echo "deploy migrate: scaling the old writers back up ($_MIGRATE_RESTORE)"
+    # shellcheck disable=SC2086 # one svc=replicas word per writer
+    if _migrate_docker service scale --detach $_MIGRATE_RESTORE > /dev/null; then
+      for pair in $_MIGRATE_RESTORE; do
+        _migrate_await "${pair%%=*}" ge "${pair#*=}" \
+          || printf '::error::%s\n' "deploy migrate: ${pair%%=*} is not back to ${pair#*=} Running tasks — check the VM" >&2
+      done
+    else
+      printf '::error::%s\n' "deploy migrate: could not scale the old writers back up — prod is DOWN; run docker service scale $_MIGRATE_RESTORE" >&2
+    fi
+    (( rc != 0 )) || rc=1
   fi
-  _migrate_job_args "$rendered"
-  docker --context prod service create "${MIGRATE_ARGS[@]}" >/dev/null
-  _await_migrate_job || outcome=$?
-  echo "::group::Migration job log"
-  docker --context prod service logs --raw "$MIGRATE_JOB"
-  echo "::endgroup::"
-  if (( outcome == 2 )); then exit 1; fi
-  docker --context prod service rm "$MIGRATE_JOB" >/dev/null
-  if (( outcome != 0 )); then
-    echo "::error::the release's migrations failed; the stack was not rolled (log above)"
-    exit 1
-  fi
-  ci_ok "deploy migrate: OK"
+  exit "$rc"
+}
+
+cmd_migrate() {
+  : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
+  _MIGRATE_IMAGE="$GHCR_NAMESPACE/${APPS_IMAGE_REPOS[0]}:${GAIA_IMAGE_TAG:-latest}"
+  trap _migrate_on_exit EXIT
+
+  _migrate_job release "${MIGRATE_RELEASE_TIMEOUT_SECS:-1800}" "${_MIGRATE_RELEASE_STEP[@]}"
+  [[ "$_MIGRATE_JOB_EXIT" = 0 ]] \
+    || ci_die "deploy migrate: the release's migrations failed (exit $_MIGRATE_JOB_EXIT) — nothing was stopped or rolled out"
+
+  _migrate_job check "${MIGRATE_CHECK_TIMEOUT_SECS:-600}" "${_MIGRATE_SCRIPT[@]}" --check
+  case "$_MIGRATE_JOB_EXIT" in
+    0)
+      printf 'catch_up=none\nwriters_down=false\n' >> "$GITHUB_OUTPUT"
+      ci_ok "deploy migrate: no conversation needs a catch-up — the rollout runs with no downtime"
+      return 0
+      ;;
+    "$_MIGRATE_CATCH_UP_NEEDED") echo "catch_up=needed" >> "$GITHUB_OUTPUT" ;;
+    *) ci_die "deploy migrate: the check job failed (exit $_MIGRATE_JOB_EXIT) — nothing was stopped or rolled out" ;;
+  esac
+
+  local svc replicas
+  for svc in "${_MIGRATE_WRITERS[@]}"; do
+    replicas=$(_migrate_docker service inspect "$svc" --format '{{.Spec.Mode.Replicated.Replicas}}') \
+      || ci_die "deploy migrate: cannot read the replica count of $svc"
+    _MIGRATE_RESTORE="${_MIGRATE_RESTORE:+$_MIGRATE_RESTORE }$svc=$replicas"
+  done
+  echo "deploy migrate: a catch-up is needed — stopping the old writers (${_MIGRATE_WRITERS[*]})"
+  _migrate_docker service scale --detach "${_MIGRATE_WRITERS[@]/%/=0}" > /dev/null \
+    || ci_die "deploy migrate: could not scale the old writers to 0"
+  for svc in "${_MIGRATE_WRITERS[@]}"; do
+    _migrate_await "$svc" le 0 \
+      || ci_die "deploy migrate: $svc still has Running tasks after ${MIGRATE_WRITERS_TIMEOUT_SECS:-300}s — not migrating under a live writer"
+  done
+
+  _migrate_job catch-up "${MIGRATE_CATCH_UP_TIMEOUT_SECS:-1800}" "${_MIGRATE_SCRIPT[@]}"
+  [[ "$_MIGRATE_JOB_EXIT" = 0 ]] \
+    || ci_die "deploy migrate: the catch-up job failed (exit $_MIGRATE_JOB_EXIT) — the new image was not rolled out"
+  _MIGRATE_CAUGHT_UP=true
+  echo "writers_down=true" >> "$GITHUB_OUTPUT"
+  ci_ok "deploy migrate: caught up; the writers stay stopped until the rollout starts them on the new image"
 }
 
 cmd_retag() {
@@ -772,7 +896,7 @@ cmd_unwedge() {
 }
 
 usage() {
-  sed -n '2,71p' "$0" >&2
+  sed -n '2,79p' "$0" >&2
 }
 
 main() {
@@ -781,7 +905,7 @@ main() {
   case "$sub" in
     plan)   cmd_plan "$@" ;;
     stack)  _cmd_swarm_stack deploy "$@" ;;
-    migrate) _cmd_swarm_stack migrate "$@" ;;
+    migrate) cmd_migrate "$@" ;;
     verify) _cmd_swarm_stack verify "$@" ;;
     retag)  cmd_retag "$@" ;;
     notify) cmd_notify "$@" ;;

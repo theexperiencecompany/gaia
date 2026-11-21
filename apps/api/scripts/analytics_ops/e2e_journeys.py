@@ -7,6 +7,7 @@ through gaia-sim, which runs the shared bot pipeline against the bot API route.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -25,7 +26,11 @@ from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.briefing import BriefingFrequency
 from app.constants.workflows import WorkflowDelivery
 from app.models.brief_settings_models import BriefingSchedule, BriefingScheduleUpdate
-from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.conversation_send_models import (
+    ConversationEvent,
+    MessageAccepted,
+    SendMessageRequest,
+)
 from app.models.user_models import (
     OnboardingAnswers,
     OnboardingNeed,
@@ -47,16 +52,20 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from scripts.evals.core.live_chat import TurnReader
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import OnboardingStep
+from shared.py.conversation_wire import ReplyOutcome
 
 from .posthog_api import REPO_ROOT
 
 DEV_USER_HEADER = "X-Dev-User"
 BOT_PLATFORM = "telegram"
 WEBHOOK_SECRET_ENV = "DODO_WEBHOOK_PAYMENTS_SECRET"
-STREAM_DONE = "data: [DONE]"
+SSE_DATA_PREFIX = "data: "
 HTTP_TIMEOUT_S = 120.0
+# The sim reply settles in seconds; past this the step is stuck.
+REPLY_TIMEOUT_S = 120.0
 BOT_SIM_TIMEOUT_S = 300
 # A Pro price in cents; the webhook reports it, nothing is charged.
 PRO_PRICE_CENTS = 2000
@@ -162,20 +171,22 @@ def onboarding(stack: Stack) -> None:
         report(OnboardingStep.FIRST_CHAT_OPENED)
 
 
-def _chat_request() -> dict[str, object]:
-    message = MessageDict(role="user", content=SIM_REPLY)
-    return MessageRequestWithHistory(message=SIM_REPLY, messages=[message]).model_dump(
-        mode="json", exclude_none=True
+def _send(
+    api: httpx.Client, stack: Stack, conversation_id: str, text: str = SIM_REPLY
+) -> httpx.Response:
+    """Send a scripted message into the conversation the way the web app does."""
+    body = SendMessageRequest(message_id=str(uuid4()), text=text)
+    return api.post(
+        f"/conversations/{conversation_id}/messages",
+        json=body.model_dump(mode="json", exclude_none=True),
+        headers=stack.browser(),
     )
 
 
 def paywall(stack: Stack) -> None:
-    """Send a chat turn as a free user, which the paywall refuses."""
+    """Send a chat message as a free user, which the paywall refuses."""
     with stack.client() as api:
-        _expect(
-            api.post("/chat-stream", json=_chat_request(), headers=stack.browser()),
-            HTTPStatus.PAYMENT_REQUIRED,
-        )
+        _expect(_send(api, stack, str(uuid4())), HTTPStatus.PAYMENT_REQUIRED)
 
 
 def _send_webhook(
@@ -253,16 +264,48 @@ def payment(stack: Stack) -> None:
 
 
 def chat(stack: Stack) -> None:
-    """Run one scripted chat turn through /chat-stream and read the stream to its end."""
-    with (
-        stack.client() as api,
-        api.stream("POST", "/chat-stream", json=_chat_request(), headers=stack.browser()) as reply,
-    ):
-        if reply.status_code != HTTPStatus.OK:
-            reply.read()
-            _expect(reply, HTTPStatus.OK)
-        if not any(line.strip() == STREAM_DONE for line in reply.iter_lines()):
-            raise JourneyError("/chat-stream ended without its [DONE] frame")
+    """Send one scripted message, follow the conversation's events until its reply settles, then press Stop."""
+    conversation_id = str(uuid4())
+    with stack.client() as api:
+        sent = _expect(_send(api, stack, conversation_id), HTTPStatus.ACCEPTED)
+        accepted = MessageAccepted.model_validate(sent.json())
+        with api.stream(
+            "GET",
+            f"/conversations/{conversation_id}/events",
+            params={"after": accepted.seq - 1},
+            headers=stack.browser(),
+        ) as events:
+            if events.status_code != HTTPStatus.OK:
+                events.read()
+                _expect(events, HTTPStatus.OK)
+            await_reply(
+                events.iter_lines(),
+                accepted.message_id,
+                deadline=time.monotonic() + REPLY_TIMEOUT_S,
+            )
+        _expect(
+            api.post(f"/conversations/{conversation_id}/stop", headers=stack.browser()),
+            HTTPStatus.OK,
+        )
+
+
+def await_reply(lines: Iterable[str], message_id: str, *, deadline: float) -> None:
+    """Read the events stream until the reply answering message_id settles answered."""
+    reader = TurnReader("", message_id, wait_for_work=False)
+    for line in lines:
+        if time.monotonic() > deadline:
+            raise JourneyError(f"no reply to {message_id} settled in time")
+        if not line.startswith(SSE_DATA_PREFIX):
+            continue
+        reader.feed(ConversationEvent.model_validate_json(line.removeprefix(SSE_DATA_PREFIX)).frame)
+        if not reader.answered:
+            continue
+        outcome = reader.turn().outcome
+        if outcome is not ReplyOutcome.ANSWERED:
+            settled = outcome.value if outcome else "without a reply"
+            raise JourneyError(f"the reply to {message_id} settled {settled}")
+        return
+    raise JourneyError(f"the events stream ended before the reply to {message_id} settled")
 
 
 #: The program the sim stub's Responses route writes for the brief: grounded in its figures.
@@ -279,8 +322,7 @@ ARTIFACT_BRIEF = (
 #: Someone other than the owner opening the shared link: the owner's own opens never count.
 ARTIFACT_READER = "delivered+analytics-e2e-reader@resend.dev"
 ARTIFACT_ID_PATTERN = re.compile(r'"artifact_id":\s*"([0-9a-f]{24})"')
-CONVERSATION_ID_PATTERN = re.compile(r'"conversation_id":\s*"([^"]+)"')
-#: The executor runs after comms' reply closes the stream; its card lands on the conversation.
+#: The executor runs after comms replies; its card lands on the conversation.
 ARTIFACT_TIMEOUT_S = 180.0
 
 
@@ -304,24 +346,13 @@ def artifact(stack: Stack) -> None:
     tool = json.dumps(
         {"kind": "dashboard", "title": "Analytics e2e launch", "brief": ARTIFACT_BRIEF}
     )
-    message = MessageDict(role="user", content=f"[[tool:create_artifact {tool}]] [[say:Done.]]")
-    request = MessageRequestWithHistory(message=message["content"], messages=[message])
-    with (
-        stack.client() as api,
-        api.stream(
-            "POST",
-            "/chat-stream",
-            json=request.model_dump(mode="json", exclude_none=True),
-            headers=stack.browser(),
-        ) as reply,
-    ):
-        _expect(reply, HTTPStatus.OK)
-        frames = "\n".join(reply.iter_lines())
-    conversation = CONVERSATION_ID_PATTERN.search(frames)
-    if conversation is None:
-        raise JourneyError("the chat turn streamed no conversation id")
+    conversation_id = str(uuid4())
     with stack.client() as api:
-        artifact_id = _await_artifact_id(api, conversation.group(1))
+        _expect(
+            _send(api, stack, conversation_id, f"[[tool:create_artifact {tool}]] [[say:Done.]]"),
+            HTTPStatus.ACCEPTED,
+        )
+        artifact_id = _await_artifact_id(api, conversation_id)
         _expect(
             api.get(f"/artifacts/{artifact_id}", headers=stack.browser()),
             HTTPStatus.OK,

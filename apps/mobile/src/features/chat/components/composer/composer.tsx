@@ -24,6 +24,7 @@ import { Text } from "@/components/ui/text";
 import { colors } from "@/lib/design-tokens";
 import { haptics } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import type { SelectedWorkflow } from "../chat/composer-draft";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
@@ -81,7 +82,7 @@ interface ComposerProps {
   selectedWorkflow?: ComposerWorkflowPick | null;
   onRemoveWorkflow?: () => void;
   onToolSelected?: (toolName: string, toolCategory: string) => void;
-  onWorkflowSelected?: (workflow: { id: string; title: string }) => void;
+  onWorkflowSelected?: (workflow: SelectedWorkflow) => void;
   replyTo?: ReplyToData | null;
   onRemoveReply?: () => void;
   selectedCalendarEvent?: ComposerCalendarEventPick | null;
@@ -124,12 +125,15 @@ export function Composer({
   const message = value ?? internalMessage;
   const setMessage = onChangeText ?? setInternalMessage;
   const trimmed = message.trim();
-  const hasContent =
-    !!trimmed ||
-    !!selectedTool ||
-    !!selectedWorkflow ||
-    !!selectedCalendarEvent ||
-    attachments.length > 0;
+  const hasContent = [
+    trimmed,
+    selectedTool,
+    selectedWorkflow,
+    selectedCalendarEvent,
+    attachments.length > 0,
+  ].some(Boolean);
+  // Nothing locks the composer: the button is Stop only while GAIA is busy and there is nothing to send.
+  const showStop = isStreaming && !hasContent;
 
   // Slash command detection for built-in commands
   const isCommandMode = trimmed.startsWith("/");
@@ -179,14 +183,14 @@ export function Composer({
   );
 
   const handleWorkflowSelected = useCallback(
-    (workflow: { id: string; title: string }) => {
+    (workflow: SelectedWorkflow) => {
       onWorkflowSelected?.(workflow);
     },
     [onWorkflowSelected],
   );
 
   const handleSend = useCallback(() => {
-    if (isStreaming) {
+    if (showStop) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       onCancel?.();
       return;
@@ -216,7 +220,7 @@ export function Composer({
     setAttachments([]);
     Keyboard.dismiss();
   }, [
-    isStreaming,
+    showStop,
     onCancel,
     hasContent,
     isCommandMode,
@@ -535,12 +539,12 @@ export function Composer({
             <Pressable
               onPress={handleSend}
               hitSlop={8}
-              disabled={!isStreaming && !hasContent}
+              disabled={!showStop && !hasContent}
               style={{
                 width: 36,
                 height: 36,
                 borderRadius: 18,
-                backgroundColor: isStreaming
+                backgroundColor: showStop
                   ? "rgba(63,63,70,0.8)"
                   : hasContent
                     ? colors.brand
@@ -549,7 +553,7 @@ export function Composer({
                 justifyContent: "center",
               }}
             >
-              {isStreaming ? (
+              {showStop ? (
                 <View
                   style={{
                     width: 10,

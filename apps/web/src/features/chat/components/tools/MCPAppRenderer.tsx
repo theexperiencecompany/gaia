@@ -12,7 +12,7 @@ import {
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
 import { MCP_APP_INITIAL_HEIGHT_PX } from "@/features/chat/constants/mcpApp";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { getBrowserTimezone } from "@/lib/timezone";
 
 type DisplayMode = "inline" | "fullscreen";

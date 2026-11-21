@@ -343,8 +343,8 @@ ARTIFACT_SIZE = 3
 
 
 def _artifact_listing(*records: tuple[str, float]) -> str:
-    """Build the NUL-delimited find stream _publish_artifacts parses (path, size, mtime, body)."""
-    return "".join(f"{rel}\0{ARTIFACT_SIZE}\0{mtime}\0\0" for rel, mtime in records)
+    """Build the NUL-delimited find stream _publish_artifacts parses (path, size, mtime)."""
+    return "".join(f"{rel}\0{ARTIFACT_SIZE}\0{mtime}\0" for rel, mtime in records)
 
 
 @pytest.mark.unit
@@ -417,7 +417,7 @@ class TestBashArtifactLinks:
                     )
                 ),
             ) as mint,
-            patch(f"{ARTIFACTS_MODULE}.publish_artifact_event", new=AsyncMock()) as pub,
+            patch(f"{ARTIFACTS_MODULE}.safe_emit") as card,
         ):
             links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         assert links == {
@@ -430,13 +430,10 @@ class TestBashArtifactLinks:
         }
         # Only what the run wrote is shared; listing an older file never mints for it.
         assert [c.args[1].path for c in mint.await_args_list] == ["skewed.md", "new.md"]
-        # Every artifact is still published, linked or not, so its card stays live.
-        assert [c.args[1]["path"] for c in pub.await_args_list] == [
-            "old.md",
-            "skewed.md",
-            "new.md",
-        ]
-        assert "short_url" not in pub.await_args_list[0].args[1]
+        # Every artifact is still carded, linked or not, so its card stays live.
+        cards = [c.args[0]["artifact_data"] for c in card.call_args_list]
+        assert [c["path"] for c in cards] == ["old.md", "skewed.md", "new.md"]
+        assert "short_url" not in cards[0]
 
     async def test_a_file_whose_publish_failed_gets_no_link(self) -> None:
         sbx = _sbx()
@@ -447,12 +444,10 @@ class TestBashArtifactLinks:
             links = await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
         assert links == {}
 
-    async def test_each_artifact_is_published_with_its_size_mtime_and_inline_body(self) -> None:
+    async def test_each_artifact_is_published_with_its_size_and_mtime(self) -> None:
         sbx = _sbx()
         sbx.commands.run = AsyncMock(
-            return_value=SimpleNamespace(
-                stdout=f"notes.md\0{ARTIFACT_SIZE}\0{RUN_STARTED_AT}\0YWJj\0"
-            )
+            return_value=SimpleNamespace(stdout=_artifact_listing(("notes.md", RUN_STARTED_AT)))
         )
         with patch(f"{MODULE}.publish_artifact", new=AsyncMock(return_value=SHORT_URL)) as pub:
             await _publish_artifacts(sbx, "u1", "conv1", changed_since=RUN_STARTED_AT)
@@ -465,7 +460,6 @@ class TestBashArtifactLinks:
                 mtime=RUN_STARTED_AT,
                 content_type="text/markdown",
             ),
-            "abc",
             written_this_turn=True,
         )
 

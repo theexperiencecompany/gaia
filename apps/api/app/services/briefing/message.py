@@ -9,8 +9,8 @@ import re
 
 from app.config.settings import settings
 from app.constants.briefing import POSTMARKS_PATH
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.brief_payload_models import BriefingPayload
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # A linked phrase in the message, as markdown: every bot renders it natively, the
 # email turns it into an anchor and the app into a link.

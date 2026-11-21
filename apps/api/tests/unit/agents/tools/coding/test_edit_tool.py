@@ -26,7 +26,7 @@ from e2b import NotFoundException
 from langchain_core.runnables import RunnableConfig
 import pytest
 
-from app.agents.tools.coding._artifacts import artifact_links_note
+from app.agents.tools.coding._artifacts import WrittenFile, artifact_links_note
 from app.agents.tools.coding.edit_tool import (
     MAX_FILE_BYTES,
     MAX_PATCH_BYTES,
@@ -50,14 +50,14 @@ MODULE = "app.agents.tools.coding.edit_tool"
 USER_ID = "user-1"
 SESSION_ID = "conv-1"
 
-CONFIG = RunnableConfig(
-    configurable={"user_id": USER_ID, "conversation_id": SESSION_ID},
-    metadata={"user_id": USER_ID, "conversation_id": SESSION_ID},
-)
+CONFIG: RunnableConfig = {
+    "configurable": {"user_id": USER_ID, "conversation_id": SESSION_ID},
+    "metadata": {"user_id": USER_ID, "conversation_id": SESSION_ID},
+}
 
 ABS_PATH = "/workspace/sessions/conv-1/scratch/app.py"
 MTIME = 1_700_000_000.0
-SHORT_URL = "https://heygaia.link/abcdefghijk"
+LINK_PLACEHOLDER = "gaia-link:report"
 
 
 def _target(abs_path: str = ABS_PATH, session_id: str | None = SESSION_ID) -> EditTarget:
@@ -200,7 +200,9 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", MTIME
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
+        24,
+        MTIME,
     )
 
 
@@ -222,7 +224,7 @@ async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "X b X c X", MTIME
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
 
@@ -284,7 +286,7 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "coffee☕", MTIME
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
 
@@ -339,7 +341,9 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", MTIME
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
+        24,
+        MTIME,
     )
 
 
@@ -480,14 +484,14 @@ async def test_edit_artifact_publish_failure_is_converted_to_error() -> None:
     assert result == "Error editing file: channel down"
 
 
-async def test_an_artifact_edit_hands_the_agent_its_public_link() -> None:
+async def test_an_artifact_edit_hands_the_agent_its_link_placeholder() -> None:
     sbx = AsyncMock()
     sbx.files.read = AsyncMock(return_value=b"<p>1</p>")
     with (
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)),
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=SHORT_URL)),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=LINK_PLACEHOLDER)),
     ):
         result = await edit.ainvoke(
             {"path": "artifacts/report.html", "old_string": "1", "new_string": "2"},
@@ -496,9 +500,9 @@ async def test_an_artifact_edit_hands_the_agent_its_public_link() -> None:
 
     assert result == (
         "Edited /workspace/sessions/conv-1/artifacts/report.html (1 occurrence replaced)"
-        + artifact_links_note({"report.html": SHORT_URL})
+        + artifact_links_note({"report.html": LINK_PLACEHOLDER})
     )
-    assert result.endswith(f"- report.html: {SHORT_URL}")
+    assert result.endswith(f"- report.html: {LINK_PLACEHOLDER}")
 
 
 # --- patch validation -------------------------------------------------------- #

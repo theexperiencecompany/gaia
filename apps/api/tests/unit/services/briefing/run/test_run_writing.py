@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, call
+from unittest.mock import call
 
 import pytest
 from tests.briefing_run_world import (
@@ -32,7 +31,6 @@ from tests.briefing_run_world import (
 )
 from tests.helpers import captured_wide_event
 
-from app.agents.core import agent as agent_module
 from app.agents.llm.client import metered_config
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import (
@@ -55,7 +53,6 @@ from app.services.analytics_service import AIFeature
 from app.services.briefing.goals import StatedGoal
 from app.services.briefing.pipeline import run_brief
 from app.services.briefing.work import TrackedWork
-from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
@@ -104,13 +101,7 @@ class TestTheComposition:
 
 
 class TestTheVoice:
-    async def test_the_voice_is_one_structured_call_metered_to_the_user_never_an_agent_turn(
-        self, world: World, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Live: a capped user's voice turn came back as the usage-limit stop text, and the brief failed."""
-        capped_turn = AsyncMock(return_value=SimpleNamespace(message=DAILY_BUDGET_STOP_FREE))
-        monkeypatch.setattr(agent_module, "call_agent_silent", capped_turn)
-
+    async def test_the_voice_is_one_structured_call_metered_to_the_user(self, world: World) -> None:
         await run_brief(USER, BriefingKind.DAILY)
 
         schema, _ = world.voice.await_args.args
@@ -119,7 +110,6 @@ class TestTheVoice:
         assert (kwargs["label"], kwargs["config"]) == (BRIEF_VOICE_LABEL, metered_config(USER))
         assert kwargs["options"].schema_held
         assert world.voice.await_count == 1
-        capped_turn.assert_not_awaited()
         assert world.stored().headline == VOICE["headline"]
         assert AIFeature.for_label(BRIEF_VOICE_LABEL) is AIFeature.BRIEFING
 
@@ -347,7 +337,9 @@ class TestLinks:
         links = {it.todo_id: it.link for sec in payload.sections for it in sec.items}
         assert links == {"b1": todo_link("b1"), "c1": None}
         assert [c.args[2] for c in world.mint.await_args_list] == ["b1", BRIEF_ID]
-        assert f"[the reply]({todo_link('b1')}) waits" in world.post.await_args.kwargs["text"]
+        assert (
+            f"[the reply]({todo_link('b1')}) waits" in world.post.await_args.kwargs["message"].text
+        )
 
     async def test_a_slot_with_no_link_behind_it_leaves_its_phrase_as_text(
         self, world: World

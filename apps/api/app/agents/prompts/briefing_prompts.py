@@ -676,11 +676,5 @@ use commas, periods, or parentheses. Do not overdo it into fake slang or forced
 quirkiness. No emoji unless it truly fits, and at most one.
 
 ## OUTPUT
-Your ENTIRE final message is a JSON array of 1 to 2 short strings inside one
-```json code fence, each string one chat bubble in the order they should send.
-No prose before or after the fence. Example shape (not the content):
-
-```json
-["first bubble here", "second bubble here"]
-```
+One or two short chat bubbles, in the order they should send.
 """

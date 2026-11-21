@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.runnables import RunnableConfig
 import pytest
 
-from app.agents.tools.coding._artifacts import artifact_links_note
+from app.agents.tools.coding._artifacts import WrittenFile, artifact_links_note
 from app.agents.tools.coding.write_tool import (
     MAX_CONTENT_BYTES,
     _maybe_write_task_file,
@@ -43,13 +43,13 @@ MODULE = "app.agents.tools.coding.write_tool"
 USER_ID = "user-1"
 SESSION_ID = "conv-1"
 
-CONFIG = RunnableConfig(
-    configurable={"user_id": USER_ID, "conversation_id": SESSION_ID},
-    metadata={"user_id": USER_ID, "conversation_id": SESSION_ID},
-)
+CONFIG: RunnableConfig = {
+    "configurable": {"user_id": USER_ID, "conversation_id": SESSION_ID},
+    "metadata": {"user_id": USER_ID, "conversation_id": SESSION_ID},
+}
 
 SCRATCH_PATH = "/workspace/sessions/conv-1/scratch/notes.md"
-SHORT_URL = "https://heygaia.link/abcdefghijk"
+LINK_PLACEHOLDER = "gaia-link:report"
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +116,7 @@ async def test_writes_session_scratch_file_with_exact_payloads(content: str, n_b
         session_id=SESSION_ID,
     )
     mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, SCRATCH_PATH, content, mtime
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, SCRATCH_PATH), n_bytes, mtime
     )
 
 
@@ -134,26 +134,28 @@ async def test_writes_absolute_path_without_session_conv() -> None:
         result = await write.ainvoke({"path": abs_path, "content": "hi"}, config=CONFIG)
 
     assert result == "Wrote 2 bytes to /workspace/notes.md"
-    mock_publish.assert_awaited_once_with(USER_ID, MountRole.UNKNOWN, None, abs_path, "hi", mtime)
+    mock_publish.assert_awaited_once_with(
+        WrittenFile(USER_ID, MountRole.UNKNOWN, None, abs_path), 2, mtime
+    )
 
 
-async def test_an_artifact_write_hands_the_agent_its_public_link() -> None:
+async def test_an_artifact_write_hands_the_agent_its_link_placeholder() -> None:
     artifact_path = "/workspace/sessions/conv-1/artifacts/report.html"
     with (
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(AsyncMock())),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)),
         patch(f"{MODULE}.add_fs_bytes"),
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=SHORT_URL)),
+        patch(f"{MODULE}.publish_artifact_write", AsyncMock(return_value=LINK_PLACEHOLDER)),
     ):
         result = await write.ainvoke(
             {"path": "artifacts/report.html", "content": "<p>"}, config=CONFIG
         )
 
     assert result == (
-        f"Wrote 3 bytes to {artifact_path}" + artifact_links_note({"report.html": SHORT_URL})
+        f"Wrote 3 bytes to {artifact_path}" + artifact_links_note({"report.html": LINK_PLACEHOLDER})
     )
-    assert result.endswith(f"- report.html: {SHORT_URL}")
+    assert result.endswith(f"- report.html: {LINK_PLACEHOLDER}")
 
 
 async def test_content_at_max_bytes_boundary_is_written() -> None:

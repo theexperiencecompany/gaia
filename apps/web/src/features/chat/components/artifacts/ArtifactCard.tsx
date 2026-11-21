@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip, Skeleton, Spinner } from "@heroui/react";
+import { Chip, Skeleton } from "@heroui/react";
 import { Alert01Icon, SquareArrowExpand01Icon } from "@icons";
 import type { ArtifactCardData } from "@shared/chat";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -22,7 +22,7 @@ function failureMessage(card: ArtifactCardData): string {
     : `GAIA couldn't make this ${card.kind}.`;
 }
 
-/** An artifact in chat: its first draft as it streams, then the stored program, with an Open action. */
+/** An artifact in chat: the stored program once it is ready, with an Open action. */
 export function ArtifactCard({ card }: ArtifactCardProps) {
   const artifactId =
     card.status === "ready" ? (card.artifact_id ?? null) : null;
@@ -32,8 +32,7 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
       <ArtifactViewer artifactId={artifactId} title={card.title} />
     ) : null,
   );
-  const program = stored.data?.program ?? card.program ?? "";
-  const streaming = card.status === "streaming";
+  const program = stored.data?.program ?? "";
 
   const body = () => {
     if (card.status === "failed") {
@@ -44,14 +43,6 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
         </p>
       );
     }
-    if (card.status === "stopped") {
-      return (
-        <p className={`${NOTICE_CLASSES} text-zinc-400`}>
-          Stopped before this {card.kind} was finished.
-        </p>
-      );
-    }
-    // A reloaded turn keeps only the done frame, so the program comes from the store.
     if (!program && stored.isError) {
       return (
         <div className={`${NOTICE_CLASSES} justify-between text-zinc-400`}>
@@ -83,11 +74,7 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
     }
     return (
       <div className="relative max-h-[28rem] overflow-hidden rounded-2xl bg-zinc-900 [mask-image:linear-gradient(to_bottom,black_75%,transparent)]">
-        <LazyArtifactRenderer
-          program={program}
-          isStreaming={streaming}
-          density="card"
-        />
+        <LazyArtifactRenderer program={program} density="card" />
       </div>
     );
   };
@@ -101,7 +88,6 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
           {card.title}
         </p>
-        {streaming ? <Spinner size="sm" aria-label="Writing" /> : null}
         {artifactId ? (
           <GaiaButton size="sm" variant="default-soft" onPress={preview.open}>
             <SquareArrowExpand01Icon size={14} />

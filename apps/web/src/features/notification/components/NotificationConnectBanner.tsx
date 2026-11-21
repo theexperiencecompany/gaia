@@ -61,9 +61,9 @@ export function NotificationConnectBanner({
     return (
       <div className="w-full px-3">
         <div className="flex w-full items-center justify-between gap-3 rounded-xl bg-zinc-800/60 px-3 py-2">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             {platformIconStack(26)}
-            <span className="text-xs text-zinc-400">
+            <span className="min-w-0 text-xs text-zinc-400">
               Get notified in the apps you already use
             </span>
           </div>

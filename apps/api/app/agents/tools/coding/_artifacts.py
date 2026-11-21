@@ -1,25 +1,19 @@
-"""Shared real-time artifact publishing for the coding tools.
+"""The artifact card the coding tools put on their run when they write under artifacts/.
 
-When a tool writes a file under a session's ``artifacts/`` tree, the chat UI
-expects a live ``artifact_data`` event so the card updates during the turn
-without polling. write, edit, and bash all funnel through here so the event
-shape — the ``(event, path, size_bytes, mtime)`` dedup signature and the link
-it carries — lives in exactly one place and can't drift between the three.
+write, edit and bash all funnel through here so the card's shape, and the link it carries,
+lives in one place.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
-from app.agents.workspace.paths import (
-    INLINE_ARTIFACT_MAX_BYTES,
-    MountRole,
-    detect_content_type,
-    is_inlineable_content_type,
-    session_artifacts,
-)
+from app.agents.tools.coding._context import safe_emit
+from app.agents.workspace.paths import MountRole, detect_content_type, session_artifacts
+from app.constants.chat import ARTIFACT_CARD
 from app.models.short_link_models import ShortLinkTargetType, WorkspaceFileTarget
-from app.services.artifact_events import publish_artifact_event, upsert_event
+from app.services.artifact_events import upsert_event
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.links.service import attach_link
 from app.services.links.urls import build_url
@@ -27,23 +21,13 @@ from app.services.storage import ArtifactInfo
 
 
 async def publish_artifact(
-    user_id: str,
-    conv_id: str,
-    artifact: ArtifactInfo,
-    inline_body: str | None,
-    *,
-    written_this_turn: bool,
+    user_id: str, conv_id: str, artifact: ArtifactInfo, *, written_this_turn: bool
 ) -> str | None:
-    """Publish one artifact upsert event; return the placeholder for the link it carries.
+    """Put one file on the run as an artifact card; return the placeholder for the link it carries.
 
-    Only a file the tool wrote this turn gets a link — the one the agent hands
-    the user with it. A file merely re-listed (bash's enumeration of an
-    unchanged artifact) publishes without one, so listing a workspace never
-    shares it. None as well when the owner stopped sharing the file or the
-    mint failed (attach_link). The card gets the URL; the agent gets only the
-    placeholder. ``artifact.path`` is relative to the session's ``artifacts/``
-    root; ``artifact.mtime`` must be the real post-write value (the
-    ``(event, path, size_bytes, mtime)`` dedup signature depends on it).
+    Only a file the tool wrote this turn gets a link, so bash re-listing an unchanged file
+    never shares it; None as well when the owner stopped sharing it or the mint failed. The
+    card gets the URL, the agent only the placeholder. artifact.path is relative to artifacts/.
     """
     link = (
         await attach_link(
@@ -58,35 +42,32 @@ async def publish_artifact(
         else None
     )
     short_url = build_url(link.slug) if link else None
-    event = upsert_event(conv_id, artifact, body=inline_body, short_url=short_url)
-    await publish_artifact_event(user_id, event)
+    safe_emit({ARTIFACT_CARD: dict(upsert_event(conv_id, artifact, short_url=short_url))})
     return link_placeholder(link.target) if link else None
 
 
 def artifact_links_note(links: Mapping[str, str]) -> str:
-    """The tool-result footer handing the agent each written file's link placeholder."""
+    """Return the tool-result footer handing the agent each written file's link placeholder."""
     if not links:
         return ""
     lines = "\n".join(f"- {name}: {placeholder}" for name, placeholder in links.items())
     return f"\n\n{LINK_NOTE} Links:\n{lines}"
 
 
-async def publish_artifact_write(
-    user_id: str,
-    role: MountRole,
-    role_conv: str | None,
-    abs_path: str,
-    content: str,
-    mtime: float,
-) -> str | None:
-    """Publish an artifact upsert when a write/edit lands under ``artifacts/``
-    and return its link placeholder.
+@dataclass(frozen=True)
+class WrittenFile:
+    """A file a coding tool wrote: whose, the mount it landed in, and where."""
 
-    No-op (``None``) for non-artifact paths. The tool already holds the written ``content``
-    as a string, so its UTF-8 size and inline body are derived here and the rest is
-    delegated to :func:`publish_artifact`.
-    """
-    if role != MountRole.ARTIFACTS or not role_conv:
+    user_id: str
+    role: MountRole
+    role_conv: str | None
+    abs_path: str
+
+
+async def publish_artifact_write(written: WrittenFile, size_bytes: int, mtime: float) -> str | None:
+    """Card a write or edit that lands under artifacts/ on the run; return its link placeholder."""
+    role_conv, abs_path = written.role_conv, written.abs_path
+    if written.role != MountRole.ARTIFACTS or not role_conv:
         return None
     artifacts_root = session_artifacts(role_conv) + "/"
     rel = (
@@ -95,15 +76,6 @@ async def publish_artifact_write(
         else abs_path.rsplit("/", 1)[-1]
     )
     artifact = ArtifactInfo(
-        path=rel,
-        size_bytes=len(content.encode("utf-8")),
-        mtime=mtime,
-        content_type=detect_content_type(rel),
+        path=rel, size_bytes=size_bytes, mtime=mtime, content_type=detect_content_type(rel)
     )
-    inline_body = (
-        content
-        if artifact.size_bytes <= INLINE_ARTIFACT_MAX_BYTES
-        and is_inlineable_content_type(artifact.content_type)
-        else None
-    )
-    return await publish_artifact(user_id, role_conv, artifact, inline_body, written_this_turn=True)
+    return await publish_artifact(written.user_id, role_conv, artifact, written_this_turn=True)

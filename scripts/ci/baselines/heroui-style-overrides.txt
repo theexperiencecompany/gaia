@@ -73,7 +73,6 @@ apps/web/src/features/chat/components/code-block/CustomAnchor.tsx:Tooltip.Conten
 apps/web/src/features/chat/components/code-block/MermaidTabs.tsx:Tabs.Tab:p-0!
 apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:px-3
 apps/web/src/features/chat/components/composer/ComposerInput.tsx:TextArea:py-2
-apps/web/src/features/chat/components/composer/SendStopButton.tsx:GaiaButton:px-3
 apps/web/src/features/chat/components/interface/BaseCardView.tsx:Header:py-1
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup.Input:px-1.5
 apps/web/src/features/desktop-popup/components/PopupComposer.tsx:InputGroup:pl-0.5

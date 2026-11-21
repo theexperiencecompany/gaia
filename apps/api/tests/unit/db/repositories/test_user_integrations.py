@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.integrations import IntegrationStatus
+from app.constants.integrations import IntegrationStatus, ToolsSetup
 from app.db.repositories.user_integrations import UserIntegrationsRepository
 from app.models.integration_models import IntegrationAccount
 
@@ -147,6 +147,48 @@ class TestSetAccountNickname:
         # Named by GAIA's own id, so a rename never depends on the provider's.
         assert kwargs["array_filters"] == [{"account.id": "acct_1"}]
         store.assert_awaited_once_with(USER_ID, doc)
+
+
+class TestSetToolsSetup:
+    async def test_a_guarded_write_moves_only_out_of_the_state_it_names(
+        self, collection: MagicMock
+    ) -> None:
+        with patch.object(UserIntegrationsRepository, "_cache_store", AsyncMock()) as store:
+            moved = await UserIntegrationsRepository().set_tools_setup(
+                USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+            )
+
+        (filter_, update), _ = collection.find_one_and_update.await_args
+        assert moved is True
+        assert store.await_args.args[0] == USER_ID
+        assert filter_ == {
+            "user_id": USER_ID,
+            "integration_id": INTEGRATION_ID,
+            "tools_setup": ToolsSetup.RUNNING,
+        }
+        assert update["$set"] == {"tools_setup": ToolsSetup.READY}
+
+    async def test_an_unguarded_write_sets_the_state_whatever_it_was(
+        self, collection: MagicMock
+    ) -> None:
+        with patch.object(UserIntegrationsRepository, "_cache_store", AsyncMock()):
+            await UserIntegrationsRepository().set_tools_setup(
+                USER_ID, INTEGRATION_ID, ToolsSetup.RUNNING
+            )
+
+        (filter_, _), _ = collection.find_one_and_update.await_args
+        assert filter_ == {"user_id": USER_ID, "integration_id": INTEGRATION_ID}
+
+    async def test_a_guard_that_matches_nothing_reports_no_move(
+        self, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update.return_value = None
+        with patch.object(UserIntegrationsRepository, "_cache_store", AsyncMock()):
+            moved = await UserIntegrationsRepository().set_tools_setup(
+                USER_ID, INTEGRATION_ID, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+            )
+
+        assert moved is False
 
 
 def _row(status: str, connected_at: datetime | None) -> dict[str, Any]:
