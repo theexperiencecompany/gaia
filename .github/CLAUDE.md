@@ -98,7 +98,10 @@ Consequences to keep in mind when editing a lane:
 - **The workspace persists.** Every checkout on the box uses `fetch-depth: 0`
   (`clean:` only off the box): a depth-1 checkout marks the persistent
   clone shallow and the next depth-0 fetch re-unshallows over a residential
-  uplink (measured 21-104 s).
+  uplink (measured 21-104 s). Off the box a full-history checkout is
+  blobless (`filter: blob:none`): every branch's commits and trees but only
+  HEAD's blobs, 38 MB instead of 783 MB, and a diff against the base fetches
+  the few blobs it reads. `test_workflow_box_signal.py` holds the two apart.
 - **Service containers are shared, not per job** — `scripts/ci/test-services.sh`
   namespaces one shared container set per runner instance; every lane that
   starts them must release its namespace in an `if: always()` teardown step

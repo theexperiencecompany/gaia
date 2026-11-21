@@ -117,3 +117,20 @@ def test_every_home_label_is_runner_pys() -> None:
         name: spec.get("default") for name, spec in selector["inputs"].items() if "label" in name
     }
     assert set(filter(None, defaults.values())) <= {label}, defaults
+
+
+BLOBLESS_OFF_THE_BOX = "${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}"
+
+
+def test_a_full_history_checkout_is_blobless_off_the_box_only() -> None:
+    """Every branch's blobs cost ~20 s per job on a hosted runner; the box's persistent clone stays whole."""
+    jobs = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    full = {
+        name: step["with"].get("filter")
+        for name, job in jobs.items()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+        and str(step["with"].get("fetch-depth")) == "0"
+    }
+    assert full, "no full-history checkout found: did ci.yml change shape?"
+    assert {name: f for name, f in full.items() if f != BLOBLESS_OFF_THE_BOX} == {}

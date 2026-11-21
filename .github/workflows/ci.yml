@@ -222,6 +222,9 @@ jobs:
           # depth-0 fetch on that runner then re-unshallows from GitHub
           # (measured 21-104 s).
           fetch-depth: 0
+          # Off the box, every branch's commits and trees but only HEAD's blobs
+          # (38 MB instead of 783 MB); a diff against the base fetches the few it reads.
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
 
       # Before the tier: a master push the merge queue already passed checks nothing again.
@@ -382,6 +385,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -455,6 +459,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -556,6 +561,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -665,6 +671,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       - uses: ./.github/actions/task-files
       - uses: ./.github/actions/setup-uv
@@ -1283,6 +1290,7 @@ jobs:
         with:
           clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
           fetch-depth: 0
+          filter: ${{ !startsWith(runner.name, 'gaia-home-') && 'blob:none' || '' }}
           persist-credentials: false
       # A services shard installs through the composite that also brings up
       # Mongo and Redis and exports USE_REAL_SERVICES=1.
