@@ -571,6 +571,10 @@ test.describe("screen over time — approvals", () => {
     });
     await expect(page.getByText("Expired").first()).toBeVisible();
     const live = await settledScreen(page, "Expired.", TURN_MS);
+    await expect(
+      page.getByText("delivery_instructions"),
+      "the outcome note comms reads never reaches the screen",
+    ).toHaveCount(0);
     await expectScreenOnlyGrew(page);
     await expectReloadMatches(page, live, TURN_MS);
   });

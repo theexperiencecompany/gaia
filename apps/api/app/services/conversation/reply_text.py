@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from app.constants.agents import agent_tag_tail_start, strip_internal_agent_tags
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
 from app.utils.errors import ShownTextTakenBackError
 from app.utils.file_links import FileLinks, unfinished_path_start
@@ -53,17 +54,18 @@ class ReplyText:
 
     @property
     def shown(self) -> str:
-        """Return the text a client may see yet: all of it but a break or sandbox path the open message is still writing."""
+        """Return the text a client may see yet: all of it but a break, sandbox path or internal tag the open message is still writing."""
         if len(self.raw) == self.message_start:
             return self.text
         open_message = shown_so_far(self.raw[self.message_start :])
+        open_message = open_message[: unfinished_path_start(open_message)]
         return _joined_bubbles(
-            self.raw[: self.message_start] + open_message[: unfinished_path_start(open_message)]
+            self.raw[: self.message_start] + open_message[: agent_tag_tail_start(open_message)]
         )
 
 
 def _joined_bubbles(raw: str) -> str:
-    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(raw))
+    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(strip_internal_agent_tags(raw)))
 
 
 def screen_bubbles(text: str, conversation_id: str, links: FileLinks) -> tuple[str, ...]:

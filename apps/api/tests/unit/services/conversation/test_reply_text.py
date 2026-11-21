@@ -95,3 +95,45 @@ def test_a_reply_of_only_bubble_breaks_stores_and_shows_no_text() -> None:
 
     assert reply.text == ""
     assert reply.shown == ""
+
+
+#: The outcome note a finished work's report carries to comms, echoed back by the model.
+ECHOED_NOTE = (
+    "<delivery_instructions>\nOutcome: it needs their decision. Ask exactly the one "
+    "question the result names and nothing else.\n</delivery_instructions>\n"
+)
+
+
+@pytest.mark.regression
+def test_an_echoed_delivery_note_never_reaches_the_reply() -> None:
+    """Regression: the step path lost the internal-tag backstop, so an echoed outcome note showed on screen."""
+    reply = ReplyText().take(ResponseEvent(response=f"Expired.\n\n{ECHOED_NOTE}"))
+
+    assert reply.text == "Expired."
+    assert reply.shown == "Expired."
+
+
+@pytest.mark.parametrize("into_note", [1, 6, 12, 40, len(ECHOED_NOTE) - 5])
+def test_a_note_still_streaming_is_never_shown_and_shown_text_only_grows(into_note: int) -> None:
+    said = "Expired. "
+    cut = len(said) + into_note
+    streamed = f"{said}{ECHOED_NOTE}Ask them."
+    before = ReplyText().take(ResponseEvent(response=streamed[:cut]))
+    after = before.take(ResponseEvent(response=streamed[cut:]))
+
+    assert before.shown == "Expired."
+    assert after.shown.startswith(before.shown)
+    assert after.text == "Expired. \nAsk them."
+
+
+def test_a_note_cut_off_before_it_closes_is_not_stored() -> None:
+    reply = ReplyText().take(ResponseEvent(response=f"Expired.\n{ECHOED_NOTE[:60]}"))
+
+    assert reply.text == "Expired."
+
+
+def test_a_lookalike_tag_is_ordinary_text() -> None:
+    reply = ReplyText().take(ResponseEvent(response="Use <deliverables> and a<b."))
+
+    assert reply.text == "Use <deliverables> and a<b."
+    assert reply.shown == reply.text
