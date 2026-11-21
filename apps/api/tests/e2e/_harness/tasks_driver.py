@@ -428,6 +428,25 @@ class TasksDriver:
     async def get_repeating(self, task_id: str) -> RepeatingTaskView:
         return _repeating_view(_ok(await self._client.get(f"{WORKFLOWS}/{task_id}")))
 
+    async def publish(self, task_id: str) -> str:
+        """Publish the task as a template anyone can see; return its public reference."""
+        return _ok(await self._client.post(f"{WORKFLOWS}/{task_id}/publish"))["slug"]
+
+    async def unpublish(self, task_id: str) -> None:
+        _ok(await self._client.post(f"{WORKFLOWS}/{task_id}/unpublish"))
+
+    async def public_template(self, ref: str) -> str | None:
+        """Return the title a visitor sees at a template's public link, None when it is not there."""
+        response = await self._client.get(f"{WORKFLOWS}/public/{ref}")
+        if response.status_code == 404:
+            return None
+        return _ok(response)["workflow"]["title"]
+
+    async def community_templates(self) -> list[str]:
+        """Return the titles the community page lists."""
+        body = _ok(await self._client.get(f"{WORKFLOWS}/community", params={"limit": 50}))
+        return [card["title"] for card in body["workflows"]]
+
     async def fire_every_armed(self, task_id: str, run: GaiaRun) -> None:
         """Fire every run ever armed for the task, stale ones included, GAIA doing one run as scripted."""
         await self._queue_run(task_id, run)
