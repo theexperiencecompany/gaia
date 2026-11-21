@@ -1,0 +1,871 @@
+[
+  {
+    "id": "tpl_c22d9e7e1f47",
+    "slug": "inbox-triage",
+    "title": "Inbox Triage",
+    "summary": "Daily digest: triages the last day's emails and creates todos for action items.",
+    "body": "Fetch the emails that arrived in the user's Gmail inbox over the last 24 hours. Classify each as spam, transactional, newsletter, informational, important, or action-required. Skip spam, transactional, and newsletters entirely. For important or action-required emails: extract action items, deadlines, and urgency (critical/high/normal). Create a todo for each action item. Search the web and user memory for relevant context on referenced topics or senders. Compile ONE concise daily briefing covering what came in, what needs attention, and what todos were created.",
+    "icon": "InboxIcon",
+    "icon_color": "#ff726b",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 8 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": true,
+    "system_key": "gmail:email_intelligence",
+    "published_at": "2026-08-14T17:26:09.733000Z"
+  },
+  {
+    "id": "tpl_d26751adb7e7",
+    "slug": "morning-briefing",
+    "title": "Morning Briefing",
+    "summary": "Wake up to your day and your priorities, all in one message.",
+    "body": "Every morning at 7:30am, gather today's calendar events and anything important from memory, then send me a short briefing: what's today, what needs attention, and what I should know.",
+    "icon": "Sun01Icon",
+    "icon_color": "#f68001",
+    "when": {
+      "kind": "repeat",
+      "cron": "30 7 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Home admin"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.740000Z"
+  },
+  {
+    "id": "tpl_0771929b59c1",
+    "slug": "meeting-reminder",
+    "title": "Meeting Reminder",
+    "summary": "A heads-up 10 minutes before any event with the join link.",
+    "body": "Send the user a short reminder for the upcoming calendar event from the trigger. Include the event title, time, and join link or location if available. Keep it to 2-3 lines — this is just a heads-up, not a full briefing.",
+    "icon": "AlarmClockIcon",
+    "icon_color": "#72a3fe",
+    "when": {
+      "kind": "event",
+      "trigger_name": "calendar_event_starting_soon"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Meetings"],
+    "featured": false,
+    "system_key": "calendar:meeting_reminder",
+    "published_at": "2026-08-14T17:26:09.734000Z"
+  },
+  {
+    "id": "tpl_6cb9c0859265",
+    "slug": "drink-water-reminder",
+    "title": "Drink Water Reminder",
+    "summary": "Gentle hydration nudges all day, no apps needed.",
+    "body": "Every two hours between 8am and 10pm, send me a friendly reminder to drink water. Keep it short and vary the wording so it doesn't get annoying.",
+    "icon": "RainIcon",
+    "icon_color": "#09b7dc",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 8-22/2 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Health & habits"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.746000Z"
+  },
+  {
+    "id": "tpl_70b07c7419c1",
+    "slug": "auto-draft-replies",
+    "title": "Auto-Draft Replies",
+    "summary": "Drafts replies for emails that need a response. You always approve before sending.",
+    "body": "Check the new inbox emails from the trigger for ones that need a reply. Skip newsletters, automated notifications, transactional emails, CC-only threads, and threads the user already replied to. Draft replies for direct questions, explicit requests, meeting invites, and introductions. Search user memory for sender context and the user's writing style. Write concise replies matching the original tone. If the request is ambiguous, draft a clarifying reply instead of guessing. Save as Gmail drafts — never send directly. Send the user a summary of drafts created with sender and subject for each.",
+    "icon": "MailSend01Icon",
+    "icon_color": "#f68001",
+    "when": {
+      "kind": "event",
+      "trigger_name": "gmail_poll_inbox"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": false,
+    "system_key": "gmail:smart_reply_drafts",
+    "published_at": "2026-08-14T17:26:09.734000Z"
+  },
+  {
+    "id": "tpl_be3220d10cb7",
+    "slug": "meeting-briefing",
+    "title": "Meeting Briefing",
+    "summary": "Researches attendees and prepares a briefing before each meeting.",
+    "body": "Prepare a meeting briefing for the upcoming calendar event from the trigger. Get the event details (title, attendees, description, location/link). Skip solo personal events (gym, lunch, focus time). For external attendees, search the web for LinkedIn, company info, and recent news. Search user memory for past interactions with attendees. Search Gmail for recent threads related to the meeting topic. Compile a structured brief: who the user is meeting, suggested talking points, open action items, relevant background, and the join link if available.",
+    "icon": "UserGroupIcon",
+    "icon_color": "#09b7dc",
+    "when": {
+      "kind": "event",
+      "trigger_name": "calendar_event_starting_soon"
+    },
+    "integration_ids": ["googlecalendar", "gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Meetings"],
+    "featured": true,
+    "system_key": "calendar:meeting_prep",
+    "published_at": "2026-08-14T17:26:09.734000Z"
+  },
+  {
+    "id": "tpl_630cd936d30d",
+    "slug": "follow-up-reminders",
+    "title": "Follow-up Reminders",
+    "summary": "Never let an important email go unanswered.",
+    "body": "Every weekday at 4pm, check my sent mail for messages that haven't been replied to in three or more days. For each one, show me a short list with a draft follow-up I can send with one tap.",
+    "icon": "MailSend01Icon",
+    "icon_color": "#ff726b",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 16 * * 1-5",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.738000Z"
+  },
+  {
+    "id": "tpl_4881894adbc8",
+    "slug": "morning-priority-map",
+    "title": "Morning Priority Map",
+    "summary": "Every morning, your top three tasks for today, in the order to do them.",
+    "body": "Every morning at 8:30am, review my open tasks and deadlines, pick the three that matter most today, and tell me what to do first.",
+    "icon": "Target01Icon",
+    "icon_color": "#f68001",
+    "when": {
+      "kind": "repeat",
+      "cron": "30 8 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Focus & planning"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.743000Z"
+  },
+  {
+    "id": "tpl_411c7f0fa1a4",
+    "slug": "monthly-subscription-audit",
+    "title": "Monthly Subscription Audit",
+    "summary": "See every subscription in one report, so nothing bills you silently.",
+    "body": "On the 1st of every month, scan my inbox for subscription and recurring-charge emails, then give me a report: service, amount, renewal date, and flag anything I haven't used in a while.",
+    "icon": "ReceiptDollarIcon",
+    "icon_color": "#5fbf49",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 1 * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.738000Z"
+  },
+  {
+    "id": "tpl_11f92a18701a",
+    "slug": "nightly-review",
+    "title": "Nightly Review",
+    "summary": "Every evening, review what got done and set up tomorrow's list.",
+    "body": "Every evening at 9pm, review what I completed today, note anything left undone, and prepare tomorrow's task list.",
+    "icon": "Moon01Icon",
+    "icon_color": "#ad8dfe",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 21 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Focus & planning"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.744000Z"
+  },
+  {
+    "id": "tpl_9b57bc4eadd0",
+    "slug": "rent-reminder",
+    "title": "Rent Reminder",
+    "summary": "A heads-up three days before month-end, so rent is never late.",
+    "body": "On the 25th of every month, remind me that rent is due at month-end. Keep it short and friendly.",
+    "icon": "Money01Icon",
+    "icon_color": "#5fbf49",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 25 * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Home admin"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.740000Z"
+  },
+  {
+    "id": "tpl_5996e9549ae6",
+    "slug": "focus-time",
+    "title": "Focus Time",
+    "summary": "Every morning, block out uninterrupted time for your most important work.",
+    "body": "Every weekday at 9am, look at my calendar and open tasks, then block 90 minutes of focus time today for the most important thing I need to do.",
+    "icon": "Timer01Icon",
+    "icon_color": "#72a3fe",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * 1-5",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Focus & planning"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.744000Z"
+  },
+  {
+    "id": "tpl_80146c2a1fa0",
+    "slug": "add-deadlines-to-calendar",
+    "title": "Add Deadlines to Calendar",
+    "summary": "Deadline emails become calendar events, so nothing slips.",
+    "body": "Whenever a new email mentions a deadline, such as a bill due date, an assignment, or a sign-up cutoff, create a calendar event for it the day before so I get a heads-up in time.",
+    "icon": "CalendarAdd01Icon",
+    "icon_color": "#f68001",
+    "when": {
+      "kind": "event",
+      "trigger_name": "gmail_new_message"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.739000Z"
+  },
+  {
+    "id": "tpl_bcd00fb4e3c1",
+    "slug": "assignment-tracker",
+    "title": "Assignment Tracker",
+    "summary": "Never be surprised by a due date again.",
+    "body": "Every Sunday at 6pm, review my calendar and todos, find assignments due in the next two weeks, and create a todo for each one with its due date.",
+    "icon": "Task01Icon",
+    "icon_color": "#ad8dfe",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 18 * * 0",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Study"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.735000Z"
+  },
+  {
+    "id": "tpl_e7d836805f5d",
+    "slug": "post-meeting-follow-ups",
+    "title": "Post-meeting Follow-ups",
+    "summary": "After every meeting, follow-ups drafted, so nothing falls through.",
+    "body": "Every weekday at 5pm, check my calendar for meetings that ended today, review any notes I saved, and draft a follow-up email for each one: the decisions made and each person's action items, ready for me to send.",
+    "icon": "MailSend01Icon",
+    "icon_color": "#09b7dc",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 17 * * 1-5",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar", "gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Meetings"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.740000Z"
+  },
+  {
+    "id": "tpl_8510b198a7eb",
+    "slug": "email-to-task",
+    "title": "Email to Task",
+    "summary": "Flag an email and it becomes a to-do.",
+    "body": "Whenever I ask, turn the emails I point to into todos: a clear title, what needs doing, and the deadline if one is mentioned. Add them to my task list.",
+    "icon": "Mail01Icon",
+    "icon_color": "#f68001",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Email"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.738000Z"
+  },
+  {
+    "id": "tpl_e1cfd2bfc0b9",
+    "slug": "weekly-productivity-check-in",
+    "title": "Weekly Productivity Check-in",
+    "summary": "Review your wins every Friday, so the week doesn't blur past.",
+    "body": "Every Friday at 5pm, review what I completed this week, celebrate the wins, and ask me one question: what's the one thing I want to carry into next week?",
+    "icon": "ChampionIcon",
+    "icon_color": "#eebe0c",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 17 * * 5",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Health & habits"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.746000Z"
+  },
+  {
+    "id": "tpl_4c7748447037",
+    "slug": "research-to-outline",
+    "title": "Research to Outline",
+    "summary": "Give GAIA a topic, get a structured outline ready for writing.",
+    "body": "Whenever I give you a topic or links, research it and produce a clean, structured outline with the key points and sources, ready for me to write from.",
+    "icon": "ClipboardIcon",
+    "icon_color": "#72a3fe",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Content"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.742000Z"
+  },
+  {
+    "id": "tpl_f92b44c76b77",
+    "slug": "meeting-notes-summary",
+    "title": "Meeting Notes Summary",
+    "summary": "Share your meeting notes, get a clean summary with decisions and action items.",
+    "body": "Whenever I share meeting notes, summarize them into key decisions, open questions, and action items, each with an owner if mentioned. Add the action items to my todos.",
+    "icon": "Note01Icon",
+    "icon_color": "#72a3fe",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Meetings"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.739000Z"
+  },
+  {
+    "id": "tpl_c40bc675f377",
+    "slug": "weekly-meal-plan",
+    "title": "Weekly Meal Plan",
+    "summary": "Every Sunday, plan your week's dinners and get a matching grocery list.",
+    "body": "Every Sunday at 10am, plan dinners for the week: quick, varied, and mindful of what I already have. Then give me a grocery list grouped by aisle.",
+    "icon": "Restaurant01Icon",
+    "icon_color": "#eebe0c",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 10 * * 0",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Home admin"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.741000Z"
+  },
+  {
+    "id": "tpl_5f04d90d0aec",
+    "slug": "nightly-gratitude",
+    "title": "Nightly Gratitude",
+    "summary": "A 9pm moment to note what went well today.",
+    "body": "Every evening at 9:30pm, ask me what went well today and save it to memory, so I can look back on the good days.",
+    "icon": "SmileIcon",
+    "icon_color": "#fb6ca0",
+    "when": {
+      "kind": "repeat",
+      "cron": "30 21 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Health & habits"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.746000Z"
+  },
+  {
+    "id": "tpl_b3cfc5562930",
+    "slug": "study-plan-today",
+    "title": "Study Plan Today",
+    "summary": "Every morning, a plan for what to study today.",
+    "body": "Every weekday at 7am, look at my class schedule and upcoming exams, then give me a short study plan for today: what to review, for how long, and in what order.",
+    "icon": "StudyLampIcon",
+    "icon_color": "#e175d9",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 7 * * 1-5",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Study"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.736000Z"
+  },
+  {
+    "id": "tpl_cce05b99ea7a",
+    "slug": "weekly-content-ideas",
+    "title": "Weekly Content Ideas",
+    "summary": "Every Monday, fresh content topics for your niche.",
+    "body": "Every Monday at 9am, look at trending topics in my niche and my past content, then give me five fresh content ideas with a one-line angle for each.",
+    "icon": "Idea01Icon",
+    "icon_color": "#ad8dfe",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * 1",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Content"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.742000Z"
+  },
+  {
+    "id": "tpl_cfe580454c05",
+    "slug": "meeting-prep",
+    "title": "Meeting Prep",
+    "summary": "Before every meeting, a one-page briefing on who you're meeting and what's on the agenda.",
+    "body": "When a meeting is about to start, gather the calendar invite and any notes I've saved, then summarize: who I'm meeting, what they care about, and three things to cover.",
+    "icon": "Calendar01Icon",
+    "icon_color": "#09b7dc",
+    "when": {
+      "kind": "event",
+      "trigger_name": "calendar_event_starting_soon"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Meetings"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.739000Z"
+  },
+  {
+    "id": "tpl_c4b243a9bb77",
+    "slug": "weekly-work-summary",
+    "title": "Weekly Work Summary",
+    "summary": "Every Friday, a summary of what you shipped this week, ready to paste into your team chat.",
+    "body": "Every Friday at 4pm, review my commits, merged pull requests, and completed tasks this week, and write a short summary I can paste into my team chat.",
+    "icon": "GitCommitIcon",
+    "icon_color": "#72a3fe",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 16 * * 5",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["github"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Dev"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.745000Z"
+  },
+  {
+    "id": "tpl_8c7dd232ff64",
+    "slug": "social-post-drafts",
+    "title": "Social Post Drafts",
+    "summary": "Turn your ideas into posts you can publish as-is.",
+    "body": "Whenever I ask, turn my content ideas into ready-to-post drafts: a hook, the body, and a call to action, sized for the platform I name.",
+    "icon": "Megaphone01Icon",
+    "icon_color": "#e175d9",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Content"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.742000Z"
+  },
+  {
+    "id": "tpl_9b99bc5c0e98",
+    "slug": "lecture-notes-summarizer",
+    "title": "Lecture Notes Summarizer",
+    "summary": "Share your notes, get a clean summary you can actually revise from.",
+    "body": "Whenever I share lecture notes, summarize them into clear, structured notes: key concepts, definitions, and anything likely to be on an exam.",
+    "icon": "Book01Icon",
+    "icon_color": "#ad8dfe",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Study"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.736000Z"
+  },
+  {
+    "id": "tpl_0f0899b0fe9c",
+    "slug": "birthday-gift-ideas",
+    "title": "Birthday Gift Ideas",
+    "summary": "Never miss a birthday, and always have a gift idea ready.",
+    "body": "Every Sunday at 11am, scan my calendar and contacts for birthdays in the next two weeks, and for each one suggest a gift idea based on what I know about the person.",
+    "icon": "GiftIcon",
+    "icon_color": "#fb6ca0",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 11 * * 0",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["googlecalendar"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Home admin"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.741000Z"
+  },
+  {
+    "id": "tpl_59ff3c22d844",
+    "slug": "code-review-reminders",
+    "title": "Code Review Reminders",
+    "summary": "When a teammate asks you to review code, GAIA keeps reminding you until it's done.",
+    "body": "Whenever I'm assigned a pull request, add it to my reminders and keep surfacing it until I've reviewed it.",
+    "icon": "GitBranchIcon",
+    "icon_color": "#ad8dfe",
+    "when": {
+      "kind": "event",
+      "trigger_name": "github_pr_event"
+    },
+    "integration_ids": ["github"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Dev"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.745000Z"
+  },
+  {
+    "id": "tpl_e7b8935c29a1",
+    "slug": "competitor-watch",
+    "title": "Competitor Watch",
+    "summary": "A monthly rundown of what your competitors shipped and said, so you're never blindsided.",
+    "body": "On the 1st of every month, research my competitors' recent launches, pricing changes, and posts, then give me a short rundown of what changed and what it means for me.",
+    "icon": "Telescope01Icon",
+    "icon_color": "#09b7dc",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 1 * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Content"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.742000Z"
+  },
+  {
+    "id": "tpl_923ebb6d62f0",
+    "slug": "exam-revision-pack",
+    "title": "Exam Revision Pack",
+    "summary": "A few weeks before each exam, get a condensed revision guide from your notes.",
+    "body": "Every Sunday at 10am, check for exams in the next three weeks. For each one, gather my notes on the subject and build a revision pack: condensed summaries, key formulas or dates, and practice questions.",
+    "icon": "GraduationScrollIcon",
+    "icon_color": "#e175d9",
+    "when": {
+      "kind": "repeat",
+      "cron": "0 10 * * 0",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["notion"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Study"],
+    "featured": true,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.737000Z"
+  },
+  {
+    "id": "tpl_d126fba2c52e",
+    "slug": "save-the-bug",
+    "title": "Save the Bug",
+    "summary": "Describe a bug once; GAIA files it as a tracked issue, so nothing gets lost.",
+    "body": "Whenever I describe a bug, file it as a GitHub issue with a clear title, repro steps, and any error text I gave you.",
+    "icon": "Bug01Icon",
+    "icon_color": "#ff726b",
+    "when": {
+      "kind": "none"
+    },
+    "integration_ids": ["github"],
+    "creator": {
+      "id": "system",
+      "name": "GAIA Team",
+      "avatar": null
+    },
+    "categories": ["Dev"],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-08-14T17:26:09.745000Z"
+  },
+  {
+    "id": "tpl_4ab401dcd7b3",
+    "slug": "scrapenewengineeringjobpostings-1b2627",
+    "title": "Scrape new engineering job postings",
+    "summary": "Triggered by a daily search of job boards, this workflow aggregates new listings matching your tech stack into a single view. It produces a curated list of roles so you can identify high-priority applications in under five minutes.",
+    "body": "Search major engineering job boards and career pages for new postings that align with your specific tech stack and seniority requirements. Aggregate these findings into a single, clean summary that highlights the most relevant opportunities. Evaluate each listing based on the provided criteria to filter out noise and prioritize roles that match your professional profile. Present the final curated list in a concise format that allows for rapid review, ensuring you can identify high-priority applications in under five minutes. If the search returns no results or encounters connectivity issues with a specific job board, notify me that no new relevant listings were found during this cycle so you can adjust your search parameters if necessary.",
+    "icon": null,
+    "icon_color": null,
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["notion"],
+    "creator": {
+      "id": "6a2a926fe1a658b84ff314d6",
+      "name": "Anurag Bansal",
+      "avatar": "https://workoscdn.com/images/v1/p31FDVch52HeOBCbs83QH2liweQRzc2A2XZG9fT-U74"
+    },
+    "categories": [],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-06-11T10:49:17.999000Z"
+  },
+  {
+    "id": "tpl_7cec985243dd",
+    "slug": "auto-draft-replies-3c3bbe",
+    "title": "Auto-Draft Replies",
+    "summary": "Drafts replies for emails that need a response. You always approve before sending.",
+    "body": "Check the new inbox emails from the trigger for ones that need a reply. Skip newsletters, automated notifications, transactional emails, CC-only threads, and threads the user already replied to. Draft replies for direct questions, explicit requests, meeting invites, and introductions. Search user memory for sender context and the user's writing style. Write concise replies matching the original tone. If the request is ambiguous, draft a clarifying reply instead of guessing. Save as Gmail drafts — never send directly. Send the user a summary of drafts created with sender and subject for each.",
+    "icon": null,
+    "icon_color": null,
+    "when": {
+      "kind": "event",
+      "trigger_name": "gmail_poll_inbox"
+    },
+    "integration_ids": ["gmail"],
+    "creator": {
+      "id": "688e401b263a1ab3d79db061",
+      "name": "Joel Strong",
+      "avatar": "https://workoscdn.com/images/v1/CK9U7Ve6fTLBx-DXDq5beM0vsuFsH3_K1hC8x3j3Muw"
+    },
+    "categories": [],
+    "featured": false,
+    "system_key": "gmail:smart_reply_drafts",
+    "published_at": "2026-03-25T17:59:45.580000Z"
+  },
+  {
+    "id": "tpl_fa50beaef986",
+    "slug": "dailyposthogmetricsreport",
+    "title": "Daily PostHog Metrics Report",
+    "summary": "Fetch metrics and then proceed",
+    "body": "Perform the following steps:\n\n1. Calculate the date range for the 'Last 24 Hours' and the 'Previous 24 Hours'.\n2. Fetch crucial PostHog metrics for these two periods, including:\n   - Core KPIs: Visitors (Unique Users), Signups, Sessions, DAU/MAU, Retention Rate (Day 1), Conversion Rate, Bounce Rate, Pageviews.\n   - Top Events (by count).\n   - Funnel Performance ($pageview -> chat:started -> chat:message_sent).\n   - Anomalies/Insights.\n3. Tell me the entire details in the notification of whatsapp\n   - Title: \":bar_chart: Daily PostHog Metrics Summary\"\n   - Header: \"Period: [Current Date Range] vs [Previous Date Range]\"\n   - Body: Use clean Markdown format with code blocks for tables and bullet points for highlights, comparing metrics and showing % change where possible.\n\nExplain the metrics eas easily as possible. \nTell me my current growth rate week on week, and compare with an ideal growth rate like 7%  how many users would be required to reach that growth rate, how many we have etc. ensure the maths adds up.",
+    "icon": null,
+    "icon_color": null,
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["posthog"],
+    "creator": {
+      "id": "67689b80006f6eec3f6f6df8",
+      "name": "Aryan",
+      "avatar": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "categories": [],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-03-06T21:40:15.914000Z"
+  },
+  {
+    "id": "tpl_060d028851e6",
+    "slug": "hackernewsfrontpage-6763ab",
+    "title": "HackerNews Frontpage",
+    "summary": "Daily newsletter to stay up to date with tech",
+    "body": "Fetch the front page of Hacker news, and summarise the results. Tell me about the best content accordingly too. Basically like a newsletter. Only fetch hacker news and tell me about the summary with proper markdown and the proper information. Use only Hacker news front page tool. tell me about everything and suggest the most important ones based on my interests.",
+    "icon": null,
+    "icon_color": null,
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": ["hackernews"],
+    "creator": {
+      "id": "67689b80006f6eec3f6f6df8",
+      "name": "Aryan",
+      "avatar": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "categories": [],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2026-02-09T18:29:05.136000Z"
+  },
+  {
+    "id": "tpl_10b4f4751db5",
+    "slug": "workflow-229fb7",
+    "title": "План",
+    "summary": "Этот процесс создает план на каждый день исходя из моих целей и отправляет в почту и в календарь",
+    "body": "Этот процесс создает план на каждый день исходя из моих целей и отправляет в почту и в календарь",
+    "icon": null,
+    "icon_color": null,
+    "when": {
+      "kind": "repeat",
+      "cron": "0 9 * * *",
+      "timezone": "UTC"
+    },
+    "integration_ids": [],
+    "creator": {
+      "id": "692de79f91a5bad1c8d9e9ca",
+      "name": "Leonid Trikutko",
+      "avatar": "https://workoscdn.com/images/v1/ikji4kdhiGt99tn1Hh9gzBh_kpzoqtJvSiRU0-jt2OQ"
+    },
+    "categories": [],
+    "featured": false,
+    "system_key": null,
+    "published_at": "2025-12-01T19:59:19.012000Z"
+  }
+]
