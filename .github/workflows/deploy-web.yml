@@ -7,7 +7,8 @@ name: Deploy Web (Cloudflare)
 # the same build and workerd smoke every PR and merge group runs) uploaded the
 # `open-next` bundle; this ships that artifact. A failed deploy leaves the run
 # red, so the next master run's nx base still contains the web change and
-# deploys it. There are no PR preview deploys.
+# deploys it. The post-deploy SEO audits run in their own seo-crawl.yml run,
+# which this dispatches. There are no PR preview deploys.
 #
 # Secrets required (already configured via `gh secret`):
 #   CLOUDFLARE_API_TOKEN  — minimal token: Workers Scripts Write + R2 Write/Read + Routes Write
@@ -128,38 +129,26 @@ jobs:
           echo "### ❌ Production deploy failed" >> "$GITHUB_STEP_SUMMARY"
           echo "Token scopes needed: Workers Scripts Write + R2 Write/Read + Routes Write on account d65fe47d…. Verify secrets and wrangler.jsonc." >> "$GITHUB_STEP_SUMMARY"
 
-  seo-audit:
-    name: SEO audit (post-deploy)
-    # Alerting, not a gate: it runs behind the production deploy, so a red audit
-    # never blocks or rolls back a deploy that already shipped.
+  # The live-site SEO audits run in their own seo-crawl.yml run, so a finding
+  # alerts there instead of turning this deploy's run red. Dispatched, not
+  # called: a called workflow's jobs are this run's jobs.
+  post-deploy-seo:
+    name: Start the post-deploy SEO audits
     needs: deploy-production
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     permissions:
-      contents: read
+      actions: write # dispatch seo-crawl.yml
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
-        run: bash scripts/ci/smoke-web.sh audit
-
-  # The PR gate's squirrel baseline held on every live page, the edge included: a
-  # finding here and not on the PR is something only production serves. Alerting,
-  # like seo-audit; the same crawl also runs nightly from its own schedule.
-  seo-crawl:
-    needs: deploy-production
-    if: github.ref == 'refs/heads/master'
-    uses: ./.github/workflows/seo-crawl.yml
-    permissions:
-      contents: write
-      pull-requests: write
-    secrets: inherit # pragma: allowlist secret
+      - name: Dispatch seo-crawl.yml for the commit this run deployed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run seo-crawl.yml --repo "$GITHUB_REPOSITORY" --ref master -f deployed_sha="$GITHUB_SHA"
 
   indexnow:
     name: IndexNow (post-deploy)
-    # Alerting, not a gate, like seo-audit: it runs behind the production deploy
+    # Alerting, not a gate: it runs behind the production deploy
     # and submits only the pages changed since the last run whose deploy succeeded
     # and whose IndexNow job did not fail, so a rejected batch is resubmitted.
     needs: deploy-production
