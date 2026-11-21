@@ -23,7 +23,7 @@ from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
 import time_machine
 
-from app.agents.tools.tracked_todo_tools import create_tracked_todo
+from app.agents.tools.tracked_todo_tools import create_tracked_todo, subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
@@ -73,6 +73,8 @@ WEBHOOK_MODULE = "app.api.v1.endpoints.webhook_composio"
 GMAIL_NEW_MESSAGE_EVENT = "gmail_new_gmail_message"
 #: GAIA's id of the one account each connected app has in the journeys.
 APP_ACCOUNT = "ca_1"
+#: The job that hands an app event to the GAIA tasks watching it.
+DISPATCH_TO_WATCHERS_JOB = "dispatch_todo_subscriptions"
 #: The hour (UTC, the user's zone) app events arrive at in the journeys.
 DAYTIME_HOUR = 10
 #: How long after its armed time the worker picks a job up.
@@ -316,6 +318,15 @@ class TasksDriver:
             key = tiered_limiter._get_redis_key(self._user_id, RUN_LIMIT_FEATURE, day)
             await redis_cache.set(key, limits.day)
 
+    async def runs_armed(self, task_id: str) -> int:
+        """Count the runs waiting to fire for the task."""
+        return len(await self._armed(task_id))
+
+    async def woken_by_events(self, task_id: str) -> int:
+        """Count the app events the task's history shows woke it."""
+        events = await self._activity(task_id)
+        return sum(event == TodoActivityEvent.TRIGGER_FIRED.value for event, _ in events)
+
     async def has_run_armed(self, task_id: str) -> bool:
         """Whether anything will run the task again."""
         return bool(await self._armed(task_id))
@@ -499,6 +510,20 @@ class TasksDriver:
 
     # Apps and their events.
 
+    async def watch_emails_from(self, task_id: str, sender: str) -> None:
+        """Have the GAIA task wake whenever an email from sender arrives, as its watch tool sets."""
+        said = await subscribe_todo_to_trigger.ainvoke(
+            {
+                "todo_id": task_id,
+                "trigger_name": "gmail_new_message",
+                "action": "execute",
+                "conditions": [{"field_name": "sender", "operator": "contains", "value": sender}],
+                "cooldown_seconds": 0,
+            },
+            config={"configurable": {"user_id": self._user_id}},
+        )
+        assert "is now watching" in said, said
+
     async def connect_app(self, integration_id: str) -> None:
         """Finish an app's OAuth connect, with every side effect the callback runs."""
         background = BackgroundTasks()
@@ -582,6 +607,10 @@ class TasksDriver:
             assert response.status_code == 200, response.text
             await asyncio.gather(*spawned)
         await drain_background_runs()
+        # The worker hands the event to the tasks watching it at once.
+        for job in await self._pool.queued_jobs():
+            if job.function == DISPATCH_TO_WATCHERS_JOB:
+                await self._run(job)
 
     async def publish(self, task_id: str) -> str:
         """Publish the task as a template anyone can see; return its public reference."""
