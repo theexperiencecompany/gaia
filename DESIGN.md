@@ -502,19 +502,22 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 
 | Prop / option | Means | Values | Where |
 |---|---|---|---|
-| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`. Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`. Tabs: `solid`, `light`, `underlined`. Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
+| `variant` | the fill | Button: HeroUI's `primary`, `secondary`, `tertiary`, `ghost`, `danger`, `danger-soft`, `outline` plus GAIA's `default-solid`, `default-soft`, `accent-soft`, `success-soft`, `warning-soft`, `text`, `quiet` (v2's light: no fill until hover), `property` (a side-panel value that opens an editor), `sunken` and `raised-ghost` (controls inside a zinc-800 editor), `row` (a list row's full-row press target). Field: `default`, `bare`, `transparent`, `underlined`, `translucent`, `subtle`, `inline` (text edited in place), `sunken` (a 36px zinc-900 editor control), `filled` (a zinc-800 block of writing). Tabs: `solid`, `light`, `underlined`, `sunken` (full-width zinc-900 track). Accordion: `light`, `shadow` | `GaiaButton variant=`, `inputVariants`, `tabsVariants`, `accordionVariants` |
 | `color` | semantic colour where HeroUI has a `color` prop | `accent`, `success`, `warning`, `danger`, `default` | `Chip color=`, `tabsVariants`, `sliderVariants` |
 | `size` | dimensions | `sm`, `md`, `lg`; Modal `xl`–`5xl` | the component's `size=`, `inputVariants`, `modalVariants` |
-| `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `xl` 16px, `pill` | `GaiaButton shape=`, `shapeVariants` |
+| `shape` | corners | `default` (the size's radius), `sharp` 2px, `sm` 8px, `md` 12px, `lg` 14px, `xl` 16px, `pill`; also on `Popover.Content` (`md`, `xl`) and `Dropdown.Popover` (`lg`) | `GaiaButton shape=`, `shapeVariants` |
 | `tone` | text colour | `white`, `strong` zinc-100, `bright` 200, `dim` 300, `muted` 400, `faint` 500, `subtle` 600, `ghost` 700, `accent` | `GaiaButton tone=`, `toneVariants` |
 | `hoverTone` | text colour on hover | `none`, `foreground`, `white`, `strong`, `bright`, `dim`, `muted`, `accent` | `GaiaButton hoverTone=`; `toneVariants({ interactive: true })` brightens to white |
 | `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
 | `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
-| `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |
-| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
+| `inset` | a button's or chip's horizontal padding | Button: `default`, `tight` (8px), `snug` (4px), `none`. Chip: `compact` (6px, 4px gap) | `GaiaButton inset=`, `chipVariants` |
+| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card), `page` (opaque zinc-800 under a page heading) | `overlayVariants`, `separatorVariants` |
 | `density` | an accordion's vertical rhythm | `default`, `compact`, `flush` | `accordionVariants` |
 | `labelPlacement` | where a field's label sits | `outside`, `inside` (v2's 56px field) | `fieldVariants` |
 | `is*` | a boolean state | `isSelected`, `isBordered` | `chipVariants`, `avatarVariants` |
+| `status` | a fact chip's DESIGN status pair (10% tint, 400 text) | `default`, `danger`, `success`, `warning`, `info` | `chipVariants` |
+| `ring`, `fill` | the round to-do checkbox on `Checkbox.Control` | ring: `none`, `low`, `medium`, `high` (priority colours); fill: `default` (zinc-300), `muted` (zinc-500); size `sm`, `md` | `checkboxVariants` |
+| slots | v2's small switch (40x24 track, 16px white thumb) and v2's month calendar on v3's parts | `control`, `thumb`; `base`, `header`, `heading`, `navButton`, `grid`, `headerCell`, `cell` | `switchVariants`, `calendarVariants` |
 
 A variant function goes on `className`, with any layout classes passed through it:
 

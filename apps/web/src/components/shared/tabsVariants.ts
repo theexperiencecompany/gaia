@@ -41,6 +41,13 @@ export const tabsVariants = tv({
           "start-[10%] top-auto bottom-0 h-[2px] w-[80%] rounded-none bg-foreground shadow-[0_1px_0px_0_rgba(0,0,0,0.05)]",
         tabPanel: "mt-0 px-1 py-3",
       },
+      // a full-width track set into a zinc-800 panel, zinc-900 at 70%
+      sunken: {
+        base: "w-full gap-0",
+        tabList: "w-full min-w-0 gap-2 rounded-xl bg-zinc-900/70 p-1",
+        tabIndicator: "rounded-lg shadow-sm",
+        tabPanel: "mt-0 px-1 pt-3 pb-1",
+      },
     },
     size: {
       sm: {
@@ -89,6 +96,11 @@ export const tabsVariants = tv({
         tab: "data-[selected=true]:text-accent",
         tabIndicator: "rounded-none",
       },
+    },
+    {
+      variant: "sunken",
+      color: "accent",
+      class: { tabIndicator: "shadow-sm" },
     },
   ],
   defaultVariants: {

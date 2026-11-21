@@ -136,6 +136,7 @@ html {
   --gaia-combo-clear-end: 2.25rem;
   --gaia-combo-input-clear-end: 4.25rem;
   --gaia-combo-trigger-end: 0.75rem;
+  --gaia-combo-suffix-end: 2rem;
   --gaia-table-header-height: 2.5rem;
   --gaia-table-header-gap: 5px;
   --gaia-table-card-padding: 1rem;
@@ -216,6 +217,9 @@ html {
   --gaia-field-height: 2.5rem;
   --gaia-field-line-height: 1.25rem;
   --gaia-field-background: var(--color-zinc-800);
+  /* every control in an editor popover (the task When editor) shares this height */
+  --gaia-control-editor-height: 2.25rem;
+  --gaia-field-filled-padding: 0.875rem;
   --gaia-slider-sm-track: 0.25rem;
   --gaia-slider-sm-thumb: 1.25rem;
   --gaia-slider-sm-thumb-inner: 1rem;

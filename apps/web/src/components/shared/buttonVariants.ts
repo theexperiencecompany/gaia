@@ -19,10 +19,11 @@ export const BUTTON_HOVER_TONE_CLASSES = {
 
 export type ButtonHoverTone = keyof typeof BUTTON_HOVER_TONE_CLASSES;
 
-/** Horizontal inset: tight is v2's px-2 compact button, none is a flush text action. */
+/** Horizontal inset: tight is v2's px-2 compact button, snug a text action on a 4px label inset, none is flush. */
 export const BUTTON_INSET_CLASSES = {
   default: "",
   tight: "px-2",
+  snug: "px-1",
   none: "p-0",
 } as const;
 
@@ -53,8 +54,8 @@ export const buttonOverlayVariants = tv({
 /**
  * GAIA's v2 looks HeroUI's Button lacks: default-solid (bare default, zinc-700),
  * default-soft (default flat), accent-soft (primary flat), success-soft and
- * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft), and
- * text (the small inline text action, 4px by 8px, no fill).
+ * warning-soft (their flat buttons; danger flat is HeroUI's danger-soft) and
+ * text (the small inline text action, 4px by 8px, no fill); the rest below.
  */
 const GAIA_BUTTON_FILLS = {
   // v2's solid and flat hover kept the fill and dimmed the whole button to 90%
@@ -69,6 +70,16 @@ const GAIA_BUTTON_FILLS = {
   "accent-soft":
     "bg-accent-soft text-accent-soft-foreground hover:opacity-90 active:opacity-90",
   text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",
+  // v2's light hover was its flat default fill, zinc-700 at 40%
+  quiet: "bg-transparent hover:bg-default-soft active:bg-default-soft",
+  // zinc-800 under the pointer and while its editor is open; it holds still on press, as the field it stands for
+  property:
+    "bg-transparent hover:bg-zinc-800 active:bg-zinc-800 aria-expanded:bg-zinc-800 active:transform-none data-[pressed=true]:bg-zinc-800 data-[pressed=true]:transform-none",
+  // a control set into a zinc-800 editor, and one with no fill there
+  sunken: "bg-zinc-900 hover:bg-zinc-700 active:bg-zinc-700",
+  "raised-ghost": "bg-transparent hover:bg-zinc-700 active:bg-zinc-700",
+  // a list row's full-row press target; aria-current marks the row open in the sidebar
+  row: "bg-transparent hover:bg-white/[0.04] active:bg-white/[0.04] active:transform-none aria-[current=true]:not-hover:bg-white/[0.06] data-[pressed=true]:transform-none",
 } as const;
 
 type GaiaButtonFill = keyof typeof GAIA_BUTTON_FILLS;

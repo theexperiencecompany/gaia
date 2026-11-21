@@ -306,6 +306,82 @@
     --input-bg-hover: var(--gaia-field-translucent-hover);
   }
 
+  /* inputVariants({ variant: "inline" }): text edited in place. Bare, and a textarea
+     keeps no minimum height or padding either, so the text never moves on focus. */
+  .input.gaia-input-inline,
+  .textarea.gaia-input-inline {
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    --input-bg: transparent;
+    --input-bg-hover: transparent;
+    --input-bg-focus: transparent;
+    --textarea-bg: transparent;
+    --textarea-bg-hover: transparent;
+    --textarea-bg-focus: transparent;
+  }
+
+  /* inputVariants({ variant: "sunken" }): a control inside a zinc-800 editor,
+     zinc-900 at rest, on hover and in focus, on 12px corners, 36px tall, no ring. */
+  .input.gaia-input-sunken,
+  .textarea.gaia-input-sunken,
+  .input-group.gaia-input-sunken,
+  .date-input-group.gaia-input-sunken,
+  .gaia-input-sunken .combo-box__input-group,
+  .gaia-input-sunken .combo-box__input-group:hover {
+    border: none;
+    border-radius: var(--gaia-radius-md);
+    background-color: var(--color-zinc-900);
+    box-shadow: none;
+    --input-bg: var(--color-zinc-900);
+    --input-bg-hover: var(--color-zinc-900);
+    --input-bg-focus: var(--color-zinc-900);
+    --textarea-bg: var(--color-zinc-900);
+    --textarea-bg-hover: var(--color-zinc-900);
+    --textarea-bg-focus: var(--color-zinc-900);
+  }
+  .input.gaia-input-sunken,
+  .input-group.gaia-input-sunken,
+  .date-input-group.gaia-input-sunken,
+  .gaia-input-sunken .combo-box__input-group {
+    height: var(--gaia-control-editor-height);
+    min-height: var(--gaia-control-editor-height);
+  }
+  .input-group.gaia-input-sunken .input-group__input,
+  .gaia-input-sunken .combo-box__input-group > .input {
+    box-shadow: none;
+  }
+  /* A leading icon sits 8px in with 6px to the text, v2's small field with start content. */
+  .input-group.gaia-input-sunken .input-group__prefix {
+    padding-inline: 0.5rem 0;
+  }
+  .input-group.gaia-input-sunken:has(> .input-group__prefix) .input-group__input {
+    padding-inline-start: 0.375rem;
+  }
+  /* A trailing control (a send button) sits 4px from the field's end. */
+  .input-group.gaia-input-sunken .input-group__suffix {
+    padding-inline-end: 0.25rem;
+  }
+
+  /* inputVariants({ variant: "filled" }): a block of writing on zinc-800, 16px corners, 14px in, no ring. */
+  .input.gaia-input-filled,
+  .textarea.gaia-input-filled {
+    padding: var(--gaia-field-filled-padding);
+    border: none;
+    border-radius: var(--gaia-radius-xl);
+    background-color: var(--color-zinc-800);
+    box-shadow: none;
+    --input-bg: var(--color-zinc-800);
+    --input-bg-hover: var(--color-zinc-800);
+    --input-bg-focus: var(--color-zinc-800);
+    --textarea-bg: var(--color-zinc-800);
+    --textarea-bg-hover: var(--color-zinc-800);
+    --textarea-bg-focus: var(--color-zinc-800);
+  }
+
   /* A danger menu item is red whether or not its text sits in a Label slot,
      as v2's danger DropdownItem was (v3 colours only the Label). */
   .menu-item--danger {
@@ -401,6 +477,10 @@
   }
   .combo-box__input-group > [data-slot="input-group-prefix"] {
     padding-inline-start: 0.75rem;
+  }
+  /* The chevron is absolutely placed at the row's end, so end content stops short of it. */
+  .combo-box__input-group > [data-slot="input-group-suffix"] {
+    padding-inline-end: var(--gaia-combo-suffix-end);
   }
   .combo-box__input-group > [data-slot="input-group-prefix"] + .input {
     padding-inline-start: 0.5rem;
@@ -745,15 +825,18 @@
     border-radius: var(--gaia-radius-sm);
   }
   .button.gaia-radius-md,
-  .chip.gaia-radius-md {
+  .chip.gaia-radius-md,
+  .popover.gaia-radius-md {
     border-radius: var(--gaia-radius-md);
   }
   .button.gaia-radius-lg,
-  .chip.gaia-radius-lg {
+  .chip.gaia-radius-lg,
+  .dropdown__popover.gaia-radius-lg {
     border-radius: var(--gaia-radius-lg);
   }
   .button.gaia-radius-xl,
-  .chip.gaia-radius-xl {
+  .chip.gaia-radius-xl,
+  .popover.gaia-radius-xl {
     border-radius: var(--gaia-radius-xl);
   }
   /* A shaped ButtonGroup rounds its end buttons, not itself (v2's group radius). */
