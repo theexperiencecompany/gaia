@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 import re
 from typing import Any
 
@@ -13,8 +14,6 @@ from pydantic import PrivateAttr
 
 from tests.e2e.test_agent_chain import StreamingScriptedModel
 
-#: A queued turn that fails the way a model provider outage does.
-PROVIDER_DOWN = object()
 #: Stands in, in a queued call's args, for the approval id the run's prompt names.
 APPROVAL_ID_FROM_PROMPT = "<approval id from the prompt>"
 _APPROVAL_READY = re.compile(r"APPROVAL_READY (\S+):")
@@ -26,6 +25,7 @@ class TurnQueue(StreamingScriptedModel):
     _turns: deque[Any] = PrivateAttr(default_factory=deque)
     #: The tail of each prompt a call came with when nothing was queued; product code may swallow the raise.
     _unscripted: list[str] = PrivateAttr(default_factory=list)
+    _down: bool = PrivateAttr(default=False)
 
     def then(self, turns: Iterable[Any]) -> None:
         self._turns.extend(turns)
@@ -38,8 +38,19 @@ class TurnQueue(StreamingScriptedModel):
     def unscripted(self) -> list[str]:
         return list(self._unscripted)
 
+    @contextmanager
+    def provider_down(self) -> Iterator[None]:
+        """Fail every call inside the block the way a model provider outage does."""
+        self._down = True
+        try:
+            yield
+        finally:
+            self._down = False
+
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
         self._prompts.append(list(messages))
+        if self._down:
+            raise RuntimeError("the model provider is down")
         if not self._turns:
             prompt = " ".join(str(m.content) for m in messages)[-600:]
             self._unscripted.append(prompt)
@@ -47,8 +58,6 @@ class TurnQueue(StreamingScriptedModel):
                 f"the model was called with no turn queued; it was shown: {prompt}"
             )
         turn = self._turns.popleft()
-        if turn is PROVIDER_DOWN:
-            raise RuntimeError("the model provider is down")
         return ChatResult(generations=[ChatGeneration(message=_message(turn, messages))])
 
 

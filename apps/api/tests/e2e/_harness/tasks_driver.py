@@ -7,6 +7,7 @@ files can later run against /tasks by swapping this module's implementation.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import nullcontext
 from datetime import datetime
 import re
 from typing import Any
@@ -47,7 +48,7 @@ from tests.e2e._harness.tasks_views import (
     TaskView,
 )
 from tests.e2e._harness.transcript import Transcript
-from tests.e2e._harness.turn_queue import PROVIDER_DOWN, TurnQueue
+from tests.e2e._harness.turn_queue import TurnQueue
 
 TODOS = "/api/v1/todos"
 NOTIFICATIONS = "/api/v1/notifications"
@@ -199,9 +200,12 @@ class TasksDriver:
 
     async def run_due(self, task_id: str, *runs: GaiaRun) -> list[str]:
         """Let the task's armed runs fire, GAIA doing each run as scripted; return what each job said."""
+        down = Breaks() in runs
+        assert not down or len(runs) == 1, "a run where the provider is down is scripted alone"
         for run in runs:
             self._queue_tracked(task_id, run)
-        outcomes = [await self._run(job) for job in await self._armed(task_id)]
+        with self._executor.provider_down() if down else nullcontext():
+            outcomes = [await self._run(job) for job in await self._armed(task_id)]
         self._all_turns_taken()
         return outcomes
 
@@ -272,7 +276,7 @@ class TasksDriver:
                 )
                 self._comms.then([report])
             case Breaks():
-                self._executor.then([PROVIDER_DOWN])
+                pass
 
     async def answer(self, task_id: str, reply: str, then: GaiaRun) -> None:
         """Reply in the task's chat, GAIA picking the task up from the reply."""
