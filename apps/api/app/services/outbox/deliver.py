@@ -7,7 +7,7 @@ under a unique (user, compose attempt); the transport runs only for the insert t
 won. A per-user Redis lock only saves the second flusher a compose.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -385,16 +385,7 @@ async def _send(
         else destination.recorded_in[1:]
     )
     try:
-        saved = {
-            conversation_id: await _save_messages(conversation_id, user, composed.parts)
-            for conversation_id in recorded_in
-        }
-        # Recorded where it was asked, not alerted there: the chat shows it as unread.
-        if composed.parts:
-            for conversation_id in destination.recorded_in[1:]:
-                await conversation_repository.set_unread(
-                    conversation_id, user_id=user_id, unread=True
-                )
+        saved = await _record_in_chats(user, destination, composed, recorded_in)
     except Exception:
         await _fail_items(user_id, attempt_id, ItemFailure.RECORD_FAILED)
         raise
@@ -421,15 +412,36 @@ async def _send(
         await _fail_items(user_id, attempt_id, failure)
     else:
         await _settle_sent(user_id, attempt_id, message, included)
+    await _record_in_threads(destination, [*composed.parts, *notes], delivered=failure is None)
 
-    # A chat app's thread holds only what that chat app received; a file it did not take is noted as
-    # not delivered, so the thread can answer "send it".
-    thread_parts = [*composed.parts, *notes]
-    if thread_parts:
-        thread_text = "\n\n".join(thread_parts)
-        for conversation_id in destination.recorded_in:
-            if failure is None or conversation_id != destination.alert_conversation_id:
-                await compose_module.record_in_thread(conversation_id, thread_text)
+
+async def _record_in_chats(
+    user: AuthenticatedUser, destination: Route, composed: Composed, recorded_in: Sequence[str]
+) -> dict[str, list[MessageModel]]:
+    """Save the message in each chat it is recorded in; the ones it was not alerted in show it unread."""
+    saved = {
+        conversation_id: await _save_messages(conversation_id, user, composed.parts)
+        for conversation_id in recorded_in
+    }
+    if composed.parts:
+        for conversation_id in destination.recorded_in[1:]:
+            await conversation_repository.set_unread(
+                conversation_id, user_id=user.user_id, unread=True
+            )
+    return saved
+
+
+async def _record_in_threads(destination: Route, parts: list[str], *, delivered: bool) -> None:
+    """Append what was said to each chat's agent thread; a chat app's own thread only when it got it.
+
+    parts carries the notes of files a chat app did not take, so the thread can answer "send it".
+    """
+    if not parts:
+        return
+    thread_text = "\n\n".join(parts)
+    for conversation_id in destination.recorded_in:
+        if delivered or conversation_id != destination.alert_conversation_id:
+            await compose_module.record_in_thread(conversation_id, thread_text)
 
 
 async def _settle_sent(

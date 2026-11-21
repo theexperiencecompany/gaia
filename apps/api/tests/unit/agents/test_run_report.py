@@ -12,6 +12,7 @@ from app.agents.core.background.run_report import (
     finished_outcome,
     run_report,
     workflow_run_report,
+    workflow_series,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.outcome_review import OutcomeReview
@@ -204,3 +205,13 @@ class TestTheReportNamesWhatItIsAbout:
         assert replay.subject.id == agent.subject.id
         assert replay.report_id == "wf:wf-1:exec-1:replay"
         assert replay.subject.label == "Your workflow"
+
+    def test_every_execution_of_a_workflow_is_one_series(self) -> None:
+        """Regression: each day's run was its own subject, so no earlier telling ever covered a repeat."""
+        monday, tuesday = (
+            run_report(_run(workflow_id="wf-1", workflow_execution_id=e), failed_outcome(None))
+            for e in ("exec-1", "exec-2")
+        )
+
+        assert monday.subject.id != tuesday.subject.id
+        assert monday.subject.series == tuesday.subject.series == workflow_series("wf-1")

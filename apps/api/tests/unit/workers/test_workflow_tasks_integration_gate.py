@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.background.run_report import workflow_series
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.models.scheduler_models import DeactivationReason
 from app.models.user_models import UserDocument
@@ -187,6 +188,24 @@ class TestAFailureIsNamedByTheRunItBelongsTo:
         first, again, other = (c.args[0].report_id for c in notify.await_args_list)
         assert first == again == "sys:workflow_failed:wf-1:exec-1"
         assert other == "sys:workflow_failed:wf-1:exec-2"
+
+
+class TestAWorkflowsNoticesBelongToItsSeries:
+    """Regression: a daily workflow's day-3, 4 and 5 failures each went out, since no earlier telling covered them."""
+
+    async def test_every_failure_of_one_workflow_shares_the_workflows_series(self) -> None:
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), "exec-1")
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), "exec-2")
+
+        series = {c.args[0].subject.series for c in notify.await_args_list}
+        assert series == {workflow_series("wf-1")}
+
+    async def test_the_pause_notice_shares_it_too(self) -> None:
+        with patch(f"{MODULE}.submit", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL_AND_NOTION)
+
+        assert notify.await_args.args[0].subject.series == workflow_series("wf-1")
 
 
 class TestTheNoticeTellsTheUserWhatToReconnect:

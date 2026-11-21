@@ -417,43 +417,8 @@ def _approval_doubles(world: World, sinks: Sinks) -> Iterator[None]:
 
 
 @contextmanager
-def _patched(
-    world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose, judge: ScriptedJudge
-) -> Iterator[None]:
-    async def get_user(user_id: str) -> UserDocument | None:
-        return world.user_document() if user_id == world.user_id else None
-
-    async def exists(conversation_id: str, *, user_id: str) -> bool:
-        return conversation_id in world.conversations
-
-    async def get_source(conversation_id: str, *, user_id: str) -> ConversationSource | None:
-        return ConversationSource.coerce(world.conversations.get(conversation_id))
-
-    async def latest_app(user_id: str) -> str | None:
-        return next((c for c, source in world.conversations.items() if source is None), None)
-
-    async def session_of(conversation_id: str) -> SimpleNamespace | None:
-        session = world.sessions.get(conversation_id)
-        if session is None:
-            return None
-        return SimpleNamespace(
-            platform=session[0], platform_user_id=session[1], channel_id=session[2]
-        )
-
-    async def get_or_create_session(
-        *, platform: str, platform_user_id: str, channel_id: str | None, user: object, is_dm: bool
-    ) -> str:
-        return world.dm_conversation_of(platform)
-
-    async def update_messages(request: Any, *, user: object) -> None:
-        world.saved.setdefault(request.conversation_id, []).extend(
-            m.response for m in request.messages
-        )
-        world.conversation_touched_at = clock.now()
-
-    async def set_unread(conversation_id: str, *, user_id: str, unread: bool) -> bool:
-        world.unread.add(conversation_id)
-        return True
+def _transport_doubles(sinks: Sinks) -> Iterator[None]:
+    """Stand in for the chat-app broker, the app's websocket and the voice room, recording what each was sent."""
 
     async def publish_bot(
         source: ConversationSource,
@@ -506,6 +471,55 @@ def _patched(
     async def publish_ws(user_id: str, conversation_id: str, message: dict[str, Any]) -> None:
         sinks.ws.append((conversation_id, message["response"]))
 
+    with ExitStack() as stack:
+        enter = stack.enter_context
+        enter(patch(f"{DELIVER}.publish_outbound_message", publish_bot))
+        enter(patch(f"{DELIVER}.publish_outbound_photo", publish_photo))
+        enter(patch(f"{DELIVER}.publish_outbound_file", publish_file))
+        enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
+        enter(patch(f"{DELIVER}.publish_spoken", publish_voice))
+        yield
+
+
+@contextmanager
+def _patched(
+    world: World, sinks: Sinks, arq: FakeArq, compose: ScriptedCompose, judge: ScriptedJudge
+) -> Iterator[None]:
+    async def get_user(user_id: str) -> UserDocument | None:
+        return world.user_document() if user_id == world.user_id else None
+
+    async def exists(conversation_id: str, *, user_id: str) -> bool:
+        return conversation_id in world.conversations
+
+    async def get_source(conversation_id: str, *, user_id: str) -> ConversationSource | None:
+        return ConversationSource.coerce(world.conversations.get(conversation_id))
+
+    async def latest_app(user_id: str) -> str | None:
+        return next((c for c, source in world.conversations.items() if source is None), None)
+
+    async def session_of(conversation_id: str) -> SimpleNamespace | None:
+        session = world.sessions.get(conversation_id)
+        if session is None:
+            return None
+        return SimpleNamespace(
+            platform=session[0], platform_user_id=session[1], channel_id=session[2]
+        )
+
+    async def get_or_create_session(
+        *, platform: str, platform_user_id: str, channel_id: str | None, user: object, is_dm: bool
+    ) -> str:
+        return world.dm_conversation_of(platform)
+
+    async def update_messages(request: Any, *, user: object) -> None:
+        world.saved.setdefault(request.conversation_id, []).extend(
+            m.response for m in request.messages
+        )
+        world.conversation_touched_at = clock.now()
+
+    async def set_unread(conversation_id: str, *, user_id: str, unread: bool) -> bool:
+        world.unread.add(conversation_id)
+        return True
+
     def capture(distinct_id: object, event: DeliveryMessageSent, dedupe: object = None) -> None:
         sinks.analytics.append(event)
 
@@ -522,11 +536,7 @@ def _patched(
         enter(patch(f"{ROUTER}.BotService.get_or_create_session", get_or_create_session))
         enter(patch(f"{DELIVER}.update_messages", update_messages))
         enter(patch(f"{DELIVER}.conversation_repository.set_unread", set_unread))
-        enter(patch(f"{DELIVER}.publish_outbound_message", publish_bot))
-        enter(patch(f"{DELIVER}.publish_outbound_photo", publish_photo))
-        enter(patch(f"{DELIVER}.publish_outbound_file", publish_file))
-        enter(patch(f"{DELIVER}.publish_conversation_message", publish_ws))
-        enter(patch(f"{DELIVER}.publish_spoken", publish_voice))
+        enter(_transport_doubles(sinks))
         enter(_approval_doubles(world, sinks))
         enter(_dormancy_doubles(world, sinks))
         enter(patch(f"{DELIVER}.capture", capture))

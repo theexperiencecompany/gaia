@@ -25,7 +25,7 @@ from app.services.outbox.models import (
     SubjectKind,
     UrgencyClass,
 )
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
 T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
@@ -33,12 +33,14 @@ T0 = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
 
 def _notice(outcome: NoticeOutcome = NoticeOutcome.INFO) -> NoticeReport:
     return system_notice(
-        user_id=USER,
-        producer=ProducerKind.ACCOUNT,
-        subject_kind=SubjectKind.ACCOUNT,
-        kind="memory_ready",
-        key=USER,
-        label="Your memory",
+        NoticeOccurrence(
+            user_id=USER,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="memory_ready",
+            key=USER,
+            label="Your memory",
+        ),
         outcome=outcome,
         facts=["Memories were organized."],
         display="Your memories are ready.",

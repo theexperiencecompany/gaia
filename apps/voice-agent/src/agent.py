@@ -1,8 +1,7 @@
 """Voice agent entrypoint — prewarm, room session lifecycle, and worker startup."""
 
 import asyncio
-from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 import os
 from pathlib import Path
@@ -266,17 +265,24 @@ def _register_session_logging(
     ctx.add_shutdown_callback(log_session_end)
 
 
+@dataclass
+class _SessionCredentials:
+    """What a participant's metadata sets on one session, and the task set its background work is kept in."""
+
+    custom_llm: CustomLLM
+    tts: elevenlabs.TTS
+    identity: dict[str, Any]
+    trace_id: str
+    tasks: set[asyncio.Task[None]]
+    #: The TTS voice applied now, so repeated metadata events (join + metadata_changed) don't re-apply it.
+    applied_voice: dict[str, str] = field(default_factory=dict)
+
+
 async def _apply_participant_credentials(
-    md: str | None,
-    origin: str,
-    who: str,
-    *,
-    custom_llm: CustomLLM,
-    tts: elevenlabs.TTS,
-    applied_voice: dict[str, str],
-    identity: dict[str, Any],
+    creds: _SessionCredentials, md: str | None, origin: str, who: str
 ) -> None:
     """Apply agent token, TTS voice, and conversation id from participant metadata."""
+    custom_llm, identity = creds.custom_llm, creds.identity
     meta = extract_meta_data(md)
     token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
     if token:
@@ -299,12 +305,12 @@ async def _apply_participant_credentials(
             participant=who,
             **identity,
         )
-    if voice_id and voice_id != applied_voice.get("id"):
+    if voice_id and voice_id != creds.applied_voice.get("id"):
         # User-selected ElevenLabs voice (set in Settings → Voice), carried
         # in the participant metadata minted by /token. Applies to all
         # synthesis from the next utterance on.
-        applied_voice["id"] = voice_id
-        tts.update_options(voice_id=voice_id)
+        creds.applied_voice["id"] = voice_id
+        creds.tts.update_options(voice_id=voice_id)
         log.info(
             f"{LogTag.AGENT} voice set",
             phase="voice_set",
@@ -324,16 +330,9 @@ async def _apply_participant_credentials(
 
 
 def _spawn_credential_task(
-    apply: Callable[[str | None, str, str], Coroutine[Any, Any, None]],
-    md: str | None,
-    origin: str,
-    who: str,
-    *,
-    tasks: set[asyncio.Task[None]],
-    identity: dict[str, Any],
-    trace_id: str,
+    creds: _SessionCredentials, md: str | None, origin: str, who: str
 ) -> None:
-    """Run a credential coroutine in its own wide event, kept alive in tasks.
+    """Apply a participant's credentials in its own wide event, kept alive in the session's tasks.
 
     This work applies the session's agent token, backend URL, TTS voice and
     conversation id — if it fails the session talks to the wrong backend or
@@ -343,10 +342,12 @@ def _spawn_credential_task(
     instead of a lone real-time line.
     """
 
+    identity, tasks = creds.identity, creds.tasks
+
     async def _run() -> None:
         async with log_context(
             "voice_credentials",
-            trace_id=trace_id or None,
+            trace_id=creds.trace_id or None,
             origin=origin,
             **identity,
         ):
@@ -357,7 +358,7 @@ def _spawn_credential_task(
                     participant=who,
                 )
             )
-            await apply(md, origin, who)
+            await _apply_participant_credentials(creds, md, origin, who)
 
     task: asyncio.Task[None] = asyncio.create_task(_run())
     tasks.add(task)
@@ -459,24 +460,16 @@ async def entrypoint(ctx: JobContext) -> None:
 
         _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
-        # Tracks the currently-applied TTS voice so repeated metadata events
-        # (join + metadata_changed) don't re-apply the same voice.
-        applied_voice: dict[str, str] = {}
-        apply_credentials = partial(
-            _apply_participant_credentials,
-            custom_llm=custom_llm,
-            tts=tts,
-            applied_voice=applied_voice,
-            identity=identity,
-        )
-
         background_tasks: set[asyncio.Task[None]] = set()
         spawn_credentials = partial(
             _spawn_credential_task,
-            apply_credentials,
-            tasks=background_tasks,
-            identity=identity,
-            trace_id=session_trace_id,
+            _SessionCredentials(
+                custom_llm=custom_llm,
+                tts=tts,
+                identity=identity,
+                trace_id=session_trace_id,
+                tasks=background_tasks,
+            ),
         )
 
         @ctx.room.on("participant_connected")

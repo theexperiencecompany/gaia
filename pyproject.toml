@@ -456,6 +456,7 @@ unfixable = [
 # _ProfileCandidate (services/onboarding/social_profile_service.py).
 "apps/api/app/agents/tools/todo_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py below)
 "apps/api/app/agents/tools/executor_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity: call_executor's brief (task, acceptance criteria, desired outcome, time horizon, defaults, approval, bound todo) is what the model fills in, and nesting it would hide each field from the schema (same as todo_tool.py and tracked_todo_tools.py)
+"apps/api/app/agents/tools/task_tools.py" = ["PLR0913"]  # start_task's @tool args are the model-facing tool schema (the same brief as call_executor plus start_at and visible), not reducible complexity (same as executor_tool.py)
 "apps/api/app/agents/middleware/subagent.py" = ["PLR0913"]  # spawn_subagent's @tool args are the model-facing tool schema (task, context, background, integration_ids) plus the injected call id, state and config, not reducible complexity (same as executor_tool.py)
 "apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
 "apps/api/app/db/repositories/base.py" = ["PLR0913"]  # _apply_raw_update is the one raw-Mongo seam every repository routes through; its seven knobs (filter, update, scope, extra_filter, return_document, array_filters, upsert) are the operator surface, used at 76 call sites. The paid-only gate only adds a cache eviction on a write miss here.
@@ -472,6 +473,7 @@ unfixable = [
 "apps/api/app/services/triggers/subscription_service.py" = ["PLR0913"]  # register_subscription's parameters are the subscription fields a caller must supply; grouping them into an object would hide the required inputs
 "apps/api/app/services/workflow/service.py" = ["PLR0912", "PLR0915"]  # the flagged function predates this change; the triggers feature only renames the owner-ref parameter here
 "apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py" = ["PLR0913"]  # _seed_watch is a test helper whose keyword arguments mirror the subscription fields under test
+"apps/api/tests/e2e/_harness/outbox_timeline.py" = ["PLR0913"]  # the photo and file transport fakes take exactly the arguments of publish_outbound_photo/publish_outbound_file they replace (see bot_queue.py)
 "apps/api/tests/unit/services/test_todo_service.py" = ["PLR0913"]  # test parameterization, not production complexity
 "apps/api/tests/unit/services/test_trigger_service.py" = ["PLR0913"]  # test parameterization, not production complexity
 "apps/api/tests/integration/real/test_device_bridge_e2e.py" = ["PLR0915"]  # the golden-path e2e test is one linear 8-step journey; splitting its statements into helpers hides the flow it exists to prove

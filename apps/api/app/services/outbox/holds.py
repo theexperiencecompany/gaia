@@ -298,6 +298,18 @@ def _in_silence(
     return _hold_or_tell(state, _bounded(ends + _jitter(state.user_id), latest), reason)
 
 
+def _while_dormant(
+    report: OutboxReport, urgency: UrgencyClass, state: AttentionState, latest: datetime | None
+) -> Placement | None:
+    """Hold a dormant user's routine or background item for the digest; None when that does not apply."""
+    if not state.dormant or urgency > UrgencyClass.ROUTINE or is_answer(report):
+        return None
+    until = _bounded(next_digest(state.user_id, state.clock, state.now), latest)
+    if until <= state.now:
+        return Record(DropReason.EXPIRED)
+    return Hold(until, HoldReason.DORMANT)
+
+
 def _unsolicited(
     urgency: UrgencyClass,
     verdict: JudgeVerdict | None,
@@ -347,11 +359,9 @@ def place(
     own timing and the hold-age cap apply either way.
     """
     latest = latest_telling(report, verdict)
-    if state.dormant and urgency <= UrgencyClass.ROUTINE and not is_answer(report):
-        until = _bounded(next_digest(state.user_id, state.clock, state.now), latest)
-        if until <= state.now:
-            return Record(DropReason.EXPIRED)
-        return Hold(until, HoldReason.DORMANT)
+    dormant = _while_dormant(report, urgency, state, latest)
+    if dormant is not None:
+        return dormant
     prior = state.prior_hold
     if (
         prior is not None

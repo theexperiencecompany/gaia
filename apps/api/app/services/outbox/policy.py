@@ -201,10 +201,16 @@ def _not_worth_telling(
     reason = _NOT_WORTH_TELLING_REASONS.get(verdict.relevance)
     if reason is None or is_security_notice(verdict):
         return None
-    if is_answer(report) and verdict.relevance in _KNOWN_FROM_TELLING and not told_before:
+    known_from_telling = verdict.relevance in _KNOWN_FROM_TELLING
+    if is_answer(report) and known_from_telling and not told_before:
         return None
-    if is_users_own(report, producer) and (
-        verdict.not_worth_probability < JUDGE_ANSWER_SUPPRESS_PROBABILITY
+    # The certainty bar guards the user's own item from a Judge guessing it no longer matters; a
+    # repeat of what the ledger shows GAIA already said is not a guess, so it needs no bar.
+    repeat_of_a_telling = known_from_telling and told_before
+    if (
+        is_users_own(report, producer)
+        and not repeat_of_a_telling
+        and verdict.not_worth_probability < JUDGE_ANSWER_SUPPRESS_PROBABILITY
     ):
         return None
     # A repeat of what GAIA already said never hides an item with a deadline.

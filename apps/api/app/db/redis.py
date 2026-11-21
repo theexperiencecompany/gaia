@@ -193,6 +193,10 @@ class AsyncRedisCommands(Protocol):
         """SREM — returns how many members were removed."""
         ...
 
+    async def zrem(self, name: str, *values: str) -> int:
+        """ZREM — returns how many members were removed from the sorted set."""
+        ...
+
     async def publish(self, channel: str, message: str) -> int:
         """PUBLISH — returns the number of subscribers that received it."""
         ...

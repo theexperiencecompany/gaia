@@ -1,5 +1,6 @@
 """System notices: what makes two filings the same fact, and what a notice must carry."""
 
+from dataclasses import replace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,31 +16,41 @@ from app.services.outbox.models import (
     SubjectKind,
 )
 from app.services.outbox.system_notices import (
+    NoticeOccurrence,
     settle_system_notices,
     system_notice,
     system_report_id,
 )
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
+MEMORY_READY = NoticeOccurrence(
+    user_id=USER,
+    producer=ProducerKind.ACCOUNT,
+    subject_kind=SubjectKind.ACCOUNT,
+    kind="memory_ready",
+    key=USER,
+    label="Your memory",
+)
 
 
-def _notice(**fields: object):
-    arguments: dict[str, object] = {
-        "user_id": USER,
-        "producer": ProducerKind.ACCOUNT,
-        "subject_kind": SubjectKind.ACCOUNT,
-        "kind": "memory_ready",
-        "key": USER,
-        "label": "Your memory",
-        "outcome": NoticeOutcome.INFO,
-        "facts": ["Memories were organized."],
-        "display": "Your memories are ready.",
-    }
-    return system_notice(**{**arguments, **fields})  # type: ignore[arg-type]
+def _notice(
+    occurrence: NoticeOccurrence = MEMORY_READY,
+    *,
+    facts: list[str] | None = None,
+    display: str = "Your memories are ready.",
+    action: NoticeAction | None = None,
+):
+    return system_notice(
+        occurrence,
+        outcome=NoticeOutcome.INFO,
+        facts=["Memories were organized."] if facts is None else facts,
+        display=display,
+        action=action,
+    )
 
 
 def test_a_notice_is_named_by_its_kind_and_natural_key() -> None:
-    notice = _notice(kind="integration_expired", key="notion:ca_1")
+    notice = _notice(replace(MEMORY_READY, kind="integration_expired", key="notion:ca_1"))
 
     assert notice.report_id == "sys:integration_expired:notion:ca_1"
     assert notice.report_id == system_report_id("integration_expired", "notion:ca_1")
@@ -48,12 +59,19 @@ def test_a_notice_is_named_by_its_kind_and_natural_key() -> None:
 
 def test_the_same_occurrence_is_the_same_report_and_another_is_not() -> None:
     assert _notice().report_id == _notice().report_id
-    assert _notice(key="other-user").report_id != _notice().report_id
+    assert _notice(replace(MEMORY_READY, key="other-user")).report_id != _notice().report_id
 
 
 def test_a_system_notice_is_self_initiated_unless_the_user_set_it_up() -> None:
+    set_up = replace(MEMORY_READY, initiative=Initiative.USER_SCHEDULED)
+
     assert _notice().initiative is Initiative.SELF_INITIATED
-    assert _notice(initiative=Initiative.USER_SCHEDULED).initiative is Initiative.USER_SCHEDULED
+    assert _notice(set_up).initiative is Initiative.USER_SCHEDULED
+
+
+def test_a_notice_of_a_recurring_producer_carries_its_series() -> None:
+    assert _notice().subject.series is None
+    assert _notice(replace(MEMORY_READY, series="wf:wf-1")).subject.series == "wf:wf-1"
 
 
 def test_a_notice_with_nothing_to_say_is_refused() -> None:

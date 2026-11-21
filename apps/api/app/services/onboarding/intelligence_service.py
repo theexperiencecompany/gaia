@@ -58,7 +58,7 @@ from app.services.onboarding.social_profile_service import (
 from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.utils.background_tasks import spawn_background_task
 from app.utils.profile_card import (
     generate_holo_card_content,
@@ -655,12 +655,14 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
 
     await submit(
         system_notice(
-            user_id=user_id,
-            producer=ProducerKind.ACCOUNT,
-            subject_kind=SubjectKind.ACCOUNT,
-            kind="personalization",
-            key=user_id,
-            label="Your memories",
+            NoticeOccurrence(
+                user_id=user_id,
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="personalization",
+                key=user_id,
+                label="Your memories",
+            ),
             outcome=NoticeOutcome.INFO,
             facts=facts,
             display="GAIA read through your inbox and saved what matters to your memories. "

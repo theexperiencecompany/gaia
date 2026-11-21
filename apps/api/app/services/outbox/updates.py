@@ -113,7 +113,7 @@ async def read_updates(
     """Return a page of the user's updates, newest first, narrowed by the filter."""
     match update_filter:
         case UpdateFilter.HELD:
-            states, outcomes, excluded = {ItemState.HELD}, None, _PROGRESS
+            states, outcomes, excluded = frozenset({ItemState.HELD}), None, _PROGRESS
         case UpdateFilter.NEEDS_YOU:
             states, outcomes, excluded = _LISTED_STATES, NEEDS_YOU_OUTCOMES, _PROGRESS
         case UpdateFilter.FAILED:

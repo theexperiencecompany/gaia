@@ -19,6 +19,7 @@ from app.agents.core.background.run_report import (
     RunOutcome,
     WorkflowRunRef,
     workflow_run_report,
+    workflow_series,
 )
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_FALLBACK_TEMPLATE,
@@ -84,7 +85,7 @@ from app.services.outbox.models import (
     ProducerKind,
     SubjectKind,
 )
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -500,14 +501,17 @@ async def _notify_workflow_paused_for_integrations(
     names = ", ".join(ref.name for ref in missing)
     await submit(
         system_notice(
-            user_id=workflow.user_id,
-            producer=ProducerKind.WORKFLOW,
-            subject_kind=SubjectKind.WORKFLOW_RUN,
-            kind="workflow_paused",
-            key=f"{workflow.id}:{','.join(sorted(ref.id for ref in missing))}:{clock.now().date()}",
-            label=workflow.title,
+            NoticeOccurrence(
+                user_id=workflow.user_id,
+                producer=ProducerKind.WORKFLOW,
+                subject_kind=SubjectKind.WORKFLOW_RUN,
+                kind="workflow_paused",
+                key=f"{workflow.id}:{','.join(sorted(ref.id for ref in missing))}:{clock.now().date()}",
+                label=workflow.title,
+                series=workflow_series(workflow.id),
+                initiative=Initiative.USER_SCHEDULED,
+            ),
             outcome=NoticeOutcome.NEEDS_YOU,
-            initiative=Initiative.USER_SCHEDULED,
             facts=[
                 f"'{workflow.title}' needs {names}, which isn't connected.",
                 "It is paused and will run again once the user reconnects.",
@@ -547,14 +551,17 @@ async def _notify_workflow_failed(
     )
     await submit(
         system_notice(
-            user_id=workflow.user_id,
-            producer=ProducerKind.WORKFLOW,
-            subject_kind=SubjectKind.WORKFLOW_RUN,
-            kind="workflow_failed",
-            key=f"{workflow.id}:{occurrence}",
-            label=workflow.title,
+            NoticeOccurrence(
+                user_id=workflow.user_id,
+                producer=ProducerKind.WORKFLOW,
+                subject_kind=SubjectKind.WORKFLOW_RUN,
+                kind="workflow_failed",
+                key=f"{workflow.id}:{occurrence}",
+                label=workflow.title,
+                series=workflow_series(workflow.id),
+                initiative=Initiative.USER_SCHEDULED,
+            ),
             outcome=outcome,
-            initiative=Initiative.USER_SCHEDULED,
             facts=[fact],
             display=fact,
             action=action,

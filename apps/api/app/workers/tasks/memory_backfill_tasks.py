@@ -30,7 +30,7 @@ from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import MemoryContext, UserContext, log
@@ -166,12 +166,14 @@ async def _notify_memory_ready(user_id: str) -> None:
     """File that the user's memory was just seeded from their past conversations."""
     await submit(
         system_notice(
-            user_id=user_id,
-            producer=ProducerKind.ACCOUNT,
-            subject_kind=SubjectKind.ACCOUNT,
-            kind="memory_ready",
-            key=user_id,
-            label="Your memory",
+            NoticeOccurrence(
+                user_id=user_id,
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="memory_ready",
+                key=user_id,
+                label="Your memory",
+            ),
             outcome=NoticeOutcome.INFO,
             facts=[
                 "GAIA organized memories from the user's past conversations: it now remembers "

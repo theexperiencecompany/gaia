@@ -32,7 +32,7 @@ from app.models.trigger_subscription_models import (
 from app.services.analytics_service import capture
 from app.services.outbox.intake import submit
 from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.todo_activity import record_activity
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
@@ -361,14 +361,16 @@ async def _notify(
     """Tell the user the event landed, once however often the event is delivered. No state change — that is the point."""
     await submit(
         system_notice(
-            user_id=todo.user_id,
-            producer=ProducerKind.TODO,
-            subject_kind=SubjectKind.TODO_RUN,
-            kind="trigger_notify",
-            key=f"{subscription.id}:{event_digest(payload)}",
-            label=todo.title,
+            NoticeOccurrence(
+                user_id=todo.user_id,
+                producer=ProducerKind.TODO,
+                subject_kind=SubjectKind.TODO_RUN,
+                kind="trigger_notify",
+                key=f"{subscription.id}:{event_digest(payload)}",
+                label=todo.title,
+                initiative=Initiative.USER_SCHEDULED,
+            ),
             outcome=NoticeOutcome.INFO,
-            initiative=Initiative.USER_SCHEDULED,
             facts=[
                 f"An event the user was watching for on '{todo.title}' just fired "
                 f"({subscription.trigger_name})."

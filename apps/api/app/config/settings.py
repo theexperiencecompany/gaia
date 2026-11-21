@@ -251,13 +251,9 @@ class Settings(BrowserHostSettings):
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
-    # Concurrent jobs PER WORKER PROCESS. A tracked-todo, executor or workflow run is
-    # almost all I/O wait (LLM and tool APIs), so a slot costs a coroutine, not a core.
-    # Measured in one process, 10/25/50/100 concurrent 3-LLM-call runs on a 3 s stub
-    # against the real pools: event-loop lag p99 175-260 ms up to 50 runs and 250-410 ms
-    # at 100; Mongo and SQLAlchemy queue at 100 (p99 ~280 ms / ~1 s); peak RSS stayed
-    # under 310 MB at every N. 50 is the last size with no queueing; real runs are
-    # heavier than the probe, so the rest is headroom.
+    # Concurrent jobs PER WORKER PROCESS; a run is mostly LLM/tool I/O wait, so a slot is a coroutine.
+    # Measured (3-LLM-call runs, 3 s stub): loop-lag p99 175-260 ms up to 50, 250-410 ms at 100,
+    # where Mongo/SQLAlchemy start queueing (p99 ~280 ms / ~1 s); RSS < 310 MB at every N.
     ARQ_MAX_JOBS: int = 50
     # The browser sidecar Worker's slots: each job is a Chromium session, not a coroutine.
     ARQ_BROWSER_MAX_JOBS: int = 10

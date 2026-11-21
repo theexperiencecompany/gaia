@@ -25,7 +25,7 @@ from app.models.workflow_models import (
 )
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.system_workflows.recipes import install_recipe
 from app.services.user_service import get_profile_timezone
@@ -176,12 +176,14 @@ async def _notify_workflows_provisioned(
     titles = sorted(request.title for request in created)
     await submit(
         system_notice(
-            user_id=user_id,
-            producer=ProducerKind.ACCOUNT,
-            subject_kind=SubjectKind.ACCOUNT,
-            kind="workflows_provisioned",
-            key=f"{integration_display_name}:{'|'.join(titles)}",
-            label=f"Workflows for your {integration_display_name}",
+            NoticeOccurrence(
+                user_id=user_id,
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="workflows_provisioned",
+                key=f"{integration_display_name}:{'|'.join(titles)}",
+                label=f"Workflows for your {integration_display_name}",
+            ),
             outcome=NoticeOutcome.INFO,
             facts=[
                 f"GAIA set up {len(created)} workflow(s) for the user's "

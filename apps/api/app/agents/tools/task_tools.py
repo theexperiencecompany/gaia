@@ -27,7 +27,7 @@ from app.constants.tasks import (
     TASK_FIND_RESULTS,
     TASK_START_DELAY,
 )
-from app.constants.todos import CANVAS_CONTEXT_SECTION, WaitingOn
+from app.constants.todos import CANVAS_CONTEXT_SECTION, TodoActivityEvent, WaitingOn
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import agent_configurable, get_user_id, read_agent_configurable
 from app.models.executor_activity_models import ExecutorActivity
@@ -36,7 +36,7 @@ from app.models.todo_models import AskOrigin, TodoDocument, TodoUpdate, TodoUpda
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import with_section_appended
 from app.services.conversation_service import get_or_create_todo_conversation
-from app.services.todo_activity import TodoActivityEvent, record_activity
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_service import TodoService
 from app.services.tracked_todo_service import CANVAS_TEMPLATE, tracked_todo_service
 from app.utils.canvas_vector_utils import search_canvas_context

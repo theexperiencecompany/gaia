@@ -3,7 +3,7 @@
 from app.services.cost_budget import format_reset_date, monthly_allowance_window
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 
 
 async def notify_monthly_heads_up_once(user_id: str) -> None:
@@ -12,12 +12,14 @@ async def notify_monthly_heads_up_once(user_id: str) -> None:
     reset = format_reset_date(reset_at)
     await submit(
         system_notice(
-            user_id=user_id,
-            producer=ProducerKind.ACCOUNT,
-            subject_kind=SubjectKind.ACCOUNT,
-            kind="usage_heads_up",
-            key=f"{user_id}:{window}",
-            label="Your monthly usage allowance",
+            NoticeOccurrence(
+                user_id=user_id,
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="usage_heads_up",
+                key=f"{user_id}:{window}",
+                label="Your monthly usage allowance",
+            ),
             outcome=NoticeOutcome.INFO,
             facts=[
                 "Most of the user's monthly usage allowance is used.",

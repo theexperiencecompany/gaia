@@ -105,6 +105,11 @@ def interrupting_policy(*, notify: bool, reason: str | None) -> DeliveryPolicy:
     return DeliveryPolicy(timing=DeliveryTiming.THE_MOMENT, may_wake=True, notify=notify)
 
 
+def workflow_series(workflow_id: str) -> str:
+    """Return the series every report of one workflow belongs to, whichever execution it came from."""
+    return f"{WORKFLOW_REPORT_PREFIX}{workflow_id}"
+
+
 def workflow_run_report(
     workflow: WorkflowRunRef, *, run_key: str, outcome: RunOutcome
 ) -> RunReport:
@@ -121,6 +126,7 @@ def workflow_run_report(
             kind=SubjectKind.WORKFLOW_RUN,
             id=subject_id,
             owner_conversation_id=workflow.conversation_id,
+            series=workflow_series(workflow.workflow_id),
             label=workflow.title or WORKFLOW_LABEL_FALLBACK,
         ),
         occurred_at=clock.now(),

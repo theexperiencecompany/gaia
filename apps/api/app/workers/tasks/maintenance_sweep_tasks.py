@@ -20,7 +20,11 @@ from app.services.canvas_markdown import bounded_canvas
 from app.services.outbox.holds import repeat_gap
 from app.services.outbox.intake import submit
 from app.services.outbox.models import NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice, system_report_id
+from app.services.outbox.system_notices import (
+    NoticeOccurrence,
+    system_notice,
+    system_report_id,
+)
 from app.services.todo_activity import record_activity
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -507,12 +511,14 @@ async def _send_user_dormant_digest(
     try:
         await submit(
             system_notice(
-                user_id=user_id,
-                producer=ProducerKind.TODO,
-                subject_kind=SubjectKind.TODO_RUN,
-                kind=KIND_DORMANT_DIGEST,
-                key=f"{user_id}:{_notice_day(now)}",
-                label="Dormant todos",
+                NoticeOccurrence(
+                    user_id=user_id,
+                    producer=ProducerKind.TODO,
+                    subject_kind=SubjectKind.TODO_RUN,
+                    kind=KIND_DORMANT_DIGEST,
+                    key=f"{user_id}:{_notice_day(now)}",
+                    label="Dormant todos",
+                ),
                 outcome=NoticeOutcome.INFO,
                 facts=facts,
                 display=f"{count} todo{'s have' if count != 1 else ' has'} gone quiet and may need "
@@ -571,12 +577,14 @@ async def _file_todo_notice(
     """File the notice of one kind for a todo, named by the day: the sweep's back-off keeps it to one a day at most."""
     await submit(
         system_notice(
-            user_id=todo.user_id,
-            producer=ProducerKind.TODO,
-            subject_kind=SubjectKind.TODO_RUN,
-            kind=kind,
-            key=f"{todo.id}:{_notice_day(now)}",
-            label=todo.title,
+            NoticeOccurrence(
+                user_id=todo.user_id,
+                producer=ProducerKind.TODO,
+                subject_kind=SubjectKind.TODO_RUN,
+                kind=kind,
+                key=f"{todo.id}:{_notice_day(now)}",
+                label=todo.title,
+            ),
             outcome=NoticeOutcome.INFO,
             facts=[fact],
             display=display,

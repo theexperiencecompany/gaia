@@ -68,7 +68,7 @@ from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.outbox.intake import submit
 from app.services.outbox.models import Initiative, NoticeOutcome, ProducerKind, SubjectKind
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.todo_activity import record_activity
 from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
@@ -1043,14 +1043,16 @@ async def _notify_run_failed(doc: TodoDocument, origin: TriggerOrigin | None, bo
     try:
         await submit(
             system_notice(
-                user_id=doc.user_id,
-                producer=ProducerKind.TODO,
-                subject_kind=SubjectKind.TODO_RUN,
-                kind="todo_run_failed",
-                key=_failed_run_key(doc, origin),
-                label=doc.title,
+                NoticeOccurrence(
+                    user_id=doc.user_id,
+                    producer=ProducerKind.TODO,
+                    subject_kind=SubjectKind.TODO_RUN,
+                    kind="todo_run_failed",
+                    key=_failed_run_key(doc, origin),
+                    label=doc.title,
+                    initiative=Initiative.USER_SCHEDULED,
+                ),
                 outcome=NoticeOutcome.FAILED,
-                initiative=Initiative.USER_SCHEDULED,
                 facts=[body],
                 display=body,
             )

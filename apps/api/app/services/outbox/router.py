@@ -272,6 +272,25 @@ async def _in_app_owner_ids(
     return [owner.conversation_id for owner in owners if owner.in_app]
 
 
+async def _alert_conversation_id(
+    user: AuthenticatedUser, target: ProactiveTarget, owner: _Owner | None
+) -> str:
+    """Return the conversation the message is alerted in: the owner's when it lives there, else the target's own."""
+    if isinstance(target, ChatChannel):
+        if owner is not None and target.basis == "owner_chat":
+            return owner.conversation_id
+        return await BotService.get_or_create_session(
+            platform=target.source.value,
+            platform_user_id=target.platform_user_id,
+            channel_id=None,
+            user=user,
+            is_dm=True,
+        )
+    if owner is not None and owner.in_app:
+        return owner.conversation_id
+    return await _latest_app_conversation_id(user.user_id)
+
+
 async def route(
     user: AuthenticatedUser, items: list[OutboxItemDocument], *, chat_apps_down: bool = False
 ) -> Route:
@@ -297,22 +316,7 @@ async def route(
             if any(is_answer(item.report) for item in items):
                 target = await _owner_dm_channel(owner) or target
 
-    if isinstance(target, ChatChannel):
-        if owner is not None and target.basis == "owner_chat":
-            alert_id = owner.conversation_id
-        else:
-            alert_id = await BotService.get_or_create_session(
-                platform=target.source.value,
-                platform_user_id=target.platform_user_id,
-                channel_id=None,
-                user=user,
-                is_dm=True,
-            )
-    elif owner is not None and owner.in_app:
-        alert_id = owner.conversation_id
-    else:
-        alert_id = await _latest_app_conversation_id(user.user_id)
-
+    alert_id = await _alert_conversation_id(user, target, owner)
     recorded_in = [alert_id]
     for conversation_id in await _in_app_owner_ids(user.user_id, items, owner):
         if conversation_id not in recorded_in:

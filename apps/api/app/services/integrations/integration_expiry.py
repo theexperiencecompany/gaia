@@ -37,7 +37,7 @@ from app.services.outbox.models import (
     ProducerKind,
     SubjectKind,
 )
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from shared.py.wide_events import log
 
 # Which detection path drove this transition — carried into the wide event so a
@@ -198,12 +198,14 @@ async def announce_account_expiry(
     )
     await submit(
         system_notice(
-            user_id=user_id,
-            producer=ProducerKind.ACCOUNT,
-            subject_kind=SubjectKind.ACCOUNT,
-            kind="integration_expired",
-            key=f"{integration_id}:{expired.account.id}:{expired.account.connected_at.isoformat()}",
-            label=f"{named} connection",
+            NoticeOccurrence(
+                user_id=user_id,
+                producer=ProducerKind.ACCOUNT,
+                subject_kind=SubjectKind.ACCOUNT,
+                kind="integration_expired",
+                key=f"{integration_id}:{expired.account.id}:{expired.account.connected_at.isoformat()}",
+                label=f"{named} connection",
+            ),
             outcome=NoticeOutcome.NEEDS_YOU,
             facts=[
                 _expiry_body(named, paused_workflows, reason),

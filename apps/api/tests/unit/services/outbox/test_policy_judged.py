@@ -51,6 +51,24 @@ def test_an_answer_is_never_called_known_unless_gaia_told_it(relevance: Relevanc
     assert (told.kind, told.drop_reason) == (DecisionKind.RECORD_ONLY, DropReason(relevance.value))
 
 
+@pytest.mark.parametrize("relevance", [Relevance.ALREADY_KNOWN, Relevance.DUPLICATE])
+@pytest.mark.parametrize("own", [MY_REMINDER, {"initiative": Initiative.USER_SCHEDULED}])
+def test_a_repeat_of_the_users_own_item_gaia_already_told_is_recorded_without_the_certainty_bar(
+    relevance: Relevance, own: dict[str, Any]
+) -> None:
+    """Regression: a scheduled check's day-3, 4 and 5 "couldn't check" all went out, each judged a duplicate."""
+    repeat = verdict(relevance=relevance, not_worth_probability=0.6)
+
+    first = decide(notice(**own), repeat, told_before=False)
+    again = decide(notice(**own), repeat, told_before=True)
+
+    assert first.kind is DecisionKind.SEND_NOW
+    assert (again.kind, again.drop_reason) == (
+        DecisionKind.RECORD_ONLY,
+        DropReason(relevance.value),
+    )
+
+
 def test_an_answer_the_user_handled_themselves_is_still_recorded_as_moot() -> None:
     sure = verdict(relevance=Relevance.MOOT, not_worth_probability=1.0)
 

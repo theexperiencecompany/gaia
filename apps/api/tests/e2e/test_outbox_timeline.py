@@ -91,7 +91,7 @@ from app.services.outbox.models import (
     SubjectMerge,
     UrgencyClass,
 )
-from app.services.outbox.system_notices import system_notice
+from app.services.outbox.system_notices import NoticeOccurrence, system_notice
 from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.outbox.updates import read_updates
 from app.services.platform_link_completion import complete_platform_link
@@ -855,7 +855,11 @@ def _executor_run(
 
 
 def _workflow_run(
-    owner: str = "wf-chat", *, stream_id: str = "w1", notify: bool = True
+    owner: str = "wf-chat",
+    *,
+    stream_id: str = "w1",
+    notify: bool = True,
+    execution_id: str = "exec-1",
 ) -> ExecutorRun:
     return _executor_run(
         owner,
@@ -863,7 +867,7 @@ def _workflow_run(
         stream_id=stream_id,
         workflow_id="wf-1",
         workflow_title="Morning briefing",
-        workflow_execution_id="exec-1",
+        workflow_execution_id=execution_id,
         workflow_notify_on_completion=notify,
     )
 
@@ -1158,6 +1162,28 @@ async def test_an_answer_the_judge_calls_known_is_recorded_once_the_ledger_shows
     await tl.drain()
 
     assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.DROPPED}
+
+
+async def test_a_daily_workflows_repeat_failure_the_judge_calls_a_duplicate_is_recorded(
+    tl: OutboxTimeline,
+) -> None:
+    """Regression: a scheduled summary's day-3, 4 and 5 failures each went out, every one judged a duplicate."""
+    tl.world.app_chat("wf-chat")
+    monday = _workflow_run(stream_id="w1", execution_id="exec-1")
+    tuesday = _workflow_run(stream_id="w2", execution_id="exec-2")
+    await _report(tl, monday, failed_outcome(None))
+    tl.judge.verdicts["wf:wf-1:exec-2:w2"] = verdict(
+        relevance=Relevance.DUPLICATE, not_worth_probability=0.6
+    )
+
+    await tl.at(5)
+    await _report(tl, tuesday, failed_outcome(None))
+
+    assert await _states(tl) == {
+        "wf:wf-1:exec-1:w1": ItemState.SENT,
+        "wf:wf-1:exec-2:w2": ItemState.DROPPED,
+    }
+    assert len(await tl.ledger()) == 1
 
 
 async def test_b17_a_muted_workflow_that_needs_the_user_is_told(tl: OutboxTimeline) -> None:
@@ -1970,12 +1996,14 @@ async def test_a_run_no_turn_waits_on_settles_no_chip(tl: OutboxTimeline) -> Non
 
 def _integration_expired() -> NoticeReport:
     return system_notice(
-        user_id=USER,
-        producer=ProducerKind.ACCOUNT,
-        subject_kind=SubjectKind.ACCOUNT,
-        kind="integration_expired",
-        key="notion:ca_1:2026-11-10",
-        label="Notion connection",
+        NoticeOccurrence(
+            user_id=USER,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="integration_expired",
+            key="notion:ca_1:2026-11-10",
+            label="Notion connection",
+        ),
         outcome=NoticeOutcome.NEEDS_YOU,
         facts=["The sign-in for the user's Notion account expired."],
         display="Your Notion sign-in expired.",
@@ -1984,12 +2012,14 @@ def _integration_expired() -> NoticeReport:
 
 def _memory_ready() -> NoticeReport:
     return system_notice(
-        user_id=USER,
-        producer=ProducerKind.ACCOUNT,
-        subject_kind=SubjectKind.ACCOUNT,
-        kind="memory_ready",
-        key=USER,
-        label="Your memory",
+        NoticeOccurrence(
+            user_id=USER,
+            producer=ProducerKind.ACCOUNT,
+            subject_kind=SubjectKind.ACCOUNT,
+            kind="memory_ready",
+            key=USER,
+            label="Your memory",
+        ),
         outcome=NoticeOutcome.INFO,
         facts=["GAIA organized memories from the user's past conversations."],
         display="GAIA organized memories from your past conversations.",
