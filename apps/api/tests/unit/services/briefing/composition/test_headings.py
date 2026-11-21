@@ -197,7 +197,7 @@ async def test_every_misfit_is_named_with_its_side_or_without_one(model: AsyncMo
     assert await heading_problems(USER_ID, bare, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you), '
         "item 2 (done, sent): mixed; move them under a heading true of what they are, or "
-        "rename this group"
+        "rename this group to one true of every item's act (sent)"
     }
 
 
@@ -208,7 +208,8 @@ async def test_a_verdict_naming_no_item_blames_its_items(model: AsyncMock) -> No
 
     assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of its items: too vague; move them '
-        "under a heading true of what they are, or rename this group"
+        "under a heading true of what they are, or rename this group to one true of every "
+        "item's act (review, sent)"
     }
 
 
@@ -216,7 +217,7 @@ async def test_a_heading_untrue_of_an_item_is_named_with_the_item(model: AsyncMo
     assert await heading_problems(USER_ID, COMPOSITION, POOL) == {
         2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
         "still waits on approval; move them under a heading true of what they are, or rename "
-        "this group"
+        "this group to one true of every item's act (review, sent)"
     }
 
 

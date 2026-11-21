@@ -401,7 +401,7 @@ class TestRetryThenFailLoud:
         asks, done = composed.rendered.blocks
         assert isinstance(asks, ComposedItems) and isinstance(done, ComposedItems)
         assert (asks.heading, [(i.id, i.action) for i in asks.items]) == (
-            "Needs you",
+            "To review",
             [(1, BriefAction.REVIEW)],
         )
         assert (done.heading, [(i.id, i.outcome) for i in done.items]) == (
@@ -426,12 +426,12 @@ class TestRetryThenFailLoud:
         (group,) = composed.rendered.blocks
         assert isinstance(group, ComposedItems)
         assert (group.heading, [i.title for i in group.items]) == (
-            "Needs you",
+            "Replies to send",
             ["Series A term sheet"],
         )
         assert model.await_count == 2
 
-    async def test_a_salvaged_brief_heads_each_group_by_its_state_without_asking_a_model(
+    async def test_a_salvaged_brief_heads_each_group_by_its_items_without_asking_a_model(
         self, model: AsyncMock, headings: AsyncMock
     ) -> None:
         group = _items_block(_item(1, title="[[fact:1]]")).blocks[0]
@@ -448,7 +448,7 @@ class TestRetryThenFailLoud:
 
         shown = _items_block(_item(1, title="Re: Series A term sheet"))
         assert composed.rendered == BriefComposition(
-            blocks=[shown.blocks[0].model_copy(update={"heading": "Needs you"})]
+            blocks=[shown.blocks[0].model_copy(update={"heading": "Replies to send"})]
         )
         headings.assert_not_awaited()
 
@@ -462,9 +462,9 @@ class TestRetryThenFailLoud:
         composed = await compose_brief(USER, POOL, DAILY)
 
         (group,) = composed.rendered.blocks
-        assert isinstance(group, ComposedItems) and group.heading == "Needs you"
+        assert isinstance(group, ComposedItems) and group.heading == "Replies to send"
 
-    async def test_a_heading_still_untrue_after_the_retry_gives_way_to_its_states(
+    async def test_a_heading_still_untrue_after_the_retry_gives_way_to_its_items_act(
         self, model: AsyncMock, headings: AsyncMock
     ) -> None:
         """Dhruv's Nov 15: a misfit heading twice failed the brief."""
@@ -475,7 +475,49 @@ class TestRetryThenFailLoud:
 
         (group,) = composed.rendered.blocks
         assert isinstance(group, ComposedItems)
-        assert group.heading == "Needs you"
+        assert group.heading == "Replies to send"
+
+
+class TestASalvageKeepsTheHeadingsThatPassed:
+    async def test_only_the_misfit_heading_gives_way_and_to_one_true_of_its_items(
+        self, model: AsyncMock, headings: AsyncMock
+    ) -> None:
+        """Founder's Nov 22: one misfit heading twice turned every group's heading to "Needs you"."""
+        model.return_value = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "items",
+                        "state": "needs_you",
+                        "heading": "Maya's term sheet",
+                        "items": [_item(1, title="Series A term sheet")],
+                    },
+                    {
+                        "kind": "items",
+                        "state": "done",
+                        "heading": "Still running",
+                        "items": [
+                            {
+                                "id": 2,
+                                "action": None,
+                                "outcome": "finished",
+                                "title": "Deck",
+                                "detail": None,
+                            }
+                        ],
+                    },
+                ]
+            }
+        )
+        headings.return_value = {2: 'block 2 heading "Still running" is not true of item 2'}
+
+        composed = await compose_brief(USER, POOL, DAILY)
+
+        assert [b.heading for b in composed.rendered.blocks if isinstance(b, ComposedItems)] == [
+            "Maya's term sheet",
+            "Done",
+        ]
+        assert headings.await_count == 2
 
 
 def _items_block(*items: dict[str, object]) -> BriefComposition:

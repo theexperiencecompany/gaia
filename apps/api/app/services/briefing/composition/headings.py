@@ -91,10 +91,17 @@ async def heading_problems(
     return {
         n: f'block {n} heading "{groups[n].heading}" is not true of '
         f"{_misfits(groups[n], v.misfits, pool) or 'its items'}: {v.why}; move "
-        "them under a heading true of what they are, or rename this group"
+        "them under a heading true of what they are, or rename this group to one true of "
+        f"every item's act ({_acts(groups[n])})"
         for n, v in sorted(verdicts.items())
         if not v.fits
     }
+
+
+def _acts(group: ComposedItems) -> str:
+    """Name each act or outcome the group's items carry, once, so a rename covers them all."""
+    said = (item.action or item.outcome for item in group.items)
+    return ", ".join(dict.fromkeys(s.value for s in said if s is not None)) or "none"
 
 
 def _misfits(group: ComposedItems, ids: list[int], pool: FactPool) -> str:

@@ -22,7 +22,12 @@ from app.models.brief_item_models import GroupState, ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.composition.compose import pool_values
-from app.services.briefing.composition.repair import pool_composition, repaired, salvaged
+from app.services.briefing.composition.repair import (
+    derived_heading,
+    pool_composition,
+    repaired,
+    salvaged,
+)
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 
 _CONTEXT = PoolContext(
@@ -197,7 +202,7 @@ APPROVAL = _candidate(
 PLACED_APPROVAL = ComposedItems(
     kind="items",
     state=GroupState.NEEDS_YOU,
-    heading=GroupState.NEEDS_YOU.fallback_heading,
+    heading="To approve",
     items=[_item(2, action=BriefAction.APPROVE, title="Connect integration")],
 )
 
@@ -329,7 +334,7 @@ class TestSalvage:
 
         assert kept == _of(
             ComposedItems(
-                kind="items", state=GroupState.NEEDS_YOU, heading="Needs you", items=[_item(1)]
+                kind="items", state=GroupState.NEEDS_YOU, heading="To review", items=[_item(1)]
             ),
             NOTE,
         )
@@ -341,7 +346,7 @@ class TestSalvage:
 
         assert kept == _of(
             ComposedItems(
-                kind="items", state=GroupState.NEEDS_YOU, heading="Needs you", items=[_item(1)]
+                kind="items", state=GroupState.NEEDS_YOU, heading="To review", items=[_item(1)]
             ),
             NOTE,
         )
@@ -355,7 +360,7 @@ class TestSalvage:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Sync job")],
             )
         )
@@ -375,7 +380,7 @@ class TestThePoolsOwnBrief:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Reply to Maya")],
             ),
             ComposedItems(
@@ -402,7 +407,7 @@ class TestThePoolsOwnBrief:
             ComposedItems(
                 kind="items",
                 state=GroupState.NEEDS_YOU,
-                heading="Needs you",
+                heading="To review",
                 items=[_item(1, title="Sync job")],
             )
         )
@@ -430,3 +435,31 @@ class TestThePoolsOwnBrief:
 
         assert isinstance(group, ComposedItems)
         assert group.items[0].title == (shown or title)
+
+
+class TestADerivedHeading:
+    """Founder's Nov 22: every salvaged group read "Needs you", the user's own list among them."""
+
+    def test_the_users_own_undated_todos_are_still_on_their_list(self) -> None:
+        pool = _pool(*(_candidate(f"Todo {n}", origin=CandidateOrigin.BACKLOG) for n in (1, 2)))
+
+        assert derived_heading(_group(_item(1), _item(2)), pool) == "Still on your list"
+
+    def test_items_asking_one_act_are_headed_by_it(self) -> None:
+        pool = _pool(_candidate("PR"), _candidate("Thread", app="Gmail"))
+        replies = _group(_item(1, action=BriefAction.REPLY), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(replies, pool) == "Replies to send"
+
+    def test_items_of_one_app_asking_several_acts_are_headed_by_their_app(self) -> None:
+        github = {"app": "GitHub", "source": "github"}
+        pool = _pool(_candidate("PR", **github), _candidate("Issue", **github))
+        mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(mixed, pool) == "Needs you in GitHub"
+
+    def test_items_sharing_nothing_are_headed_by_their_state(self) -> None:
+        pool = _pool(_candidate("PR", app="GitHub"), _candidate("Thread", app="Gmail"))
+        mixed = _group(_item(1, action=BriefAction.READ), _item(2, action=BriefAction.REPLY))
+
+        assert derived_heading(mixed, pool) == "Needs you"

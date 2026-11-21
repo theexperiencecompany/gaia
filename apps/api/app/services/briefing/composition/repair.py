@@ -2,14 +2,18 @@
 
 Code fixes what it can decide alone (an id twice or unknown, a second item titled as an earlier
 one, a producer's action or outcome, the page budget by the composition's own order); a block that still breaks its contract after the
-retry is dropped, a misfit heading gives way to one code derives from the group's state, and a
+retry is dropped, a misfit heading gives way to one code derives from what the group's items share, and a
 composition with nothing left is built from the pool. The user always gets a correct brief.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
 from app.constants.briefing import (
+    ACTION_HEADINGS,
+    BACKLOG_HEADING,
+    BRIEF_HEADING_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
+    GAIA_APP_NAME,
     MAX_BRIEF_CHARTS,
     MAX_BRIEF_ITEMS,
     MAX_ITEMS_PER_BLOCK,
@@ -64,7 +68,45 @@ def _owed(pool: FactPool) -> list[int]:
     ][:MAX_BRIEF_ITEMS]
 
 
-def _with_owed(blocks: list[ComposedBlock], owed: list[ComposedItem]) -> list[ComposedBlock]:
+def derived_heading(group: ComposedItems, pool: FactPool) -> str:
+    """Head a group by what its items share: the user's own list, one act, one app, else its state.
+
+    One item shares only its act: an app heading over a lone item says nothing its row does not.
+    """
+    candidates = [pool.items[item.id] for item in group.items if item.id in pool.items]
+    if candidates and all(c.backlog for c in candidates):
+        return BACKLOG_HEADING
+    actions = {item.action for item in group.items}
+    if len(actions) == 1 and (action := actions.pop()) is not None:
+        return ACTION_HEADINGS[action]
+    apps = {c.app for c in candidates}
+    # GAIA's own items are its todos and work, which no app name tells apart.
+    shared = len(apps) == 1 and len(candidates) > 1 and GAIA_APP_NAME not in apps
+    in_app = f"{group.state.fallback_heading} in {apps.pop()}" if shared else ""
+    return in_app if 0 < len(in_app) <= BRIEF_HEADING_MAX_CHARS else group.state.fallback_heading
+
+
+def headed(
+    composition: BriefComposition, pool: FactPool, misfits: Collection[int]
+) -> BriefComposition:
+    """Give each misfit group, by block number from 1, the heading derived from its items."""
+    return BriefComposition(
+        blocks=[
+            b.model_copy(update={"heading": derived_heading(b, pool)})
+            if isinstance(b, ComposedItems) and n in misfits
+            else b
+            for n, b in enumerate(composition.blocks, start=1)
+        ]
+    )
+
+
+def _derived(group: ComposedItems, pool: FactPool) -> ComposedItems:
+    return group.model_copy(update={"heading": derived_heading(group, pool)})
+
+
+def _with_owed(
+    blocks: list[ComposedBlock], owed: list[ComposedItem], pool: FactPool
+) -> list[ComposedBlock]:
     """Place the owed approvals in groups of their own, right after what already asks the user."""
     asks = [
         i
@@ -74,11 +116,14 @@ def _with_owed(blocks: list[ComposedBlock], owed: list[ComposedItem]) -> list[Co
     ]
     at = asks[-1] + 1 if asks else 0
     groups: list[ComposedBlock] = [
-        ComposedItems(
-            kind="items",
-            state=GroupState.NEEDS_YOU,
-            heading=GroupState.NEEDS_YOU.fallback_heading,
-            items=owed[start : start + MAX_ITEMS_PER_BLOCK],
+        _derived(
+            ComposedItems(
+                kind="items",
+                state=GroupState.NEEDS_YOU,
+                heading=GroupState.NEEDS_YOU.fallback_heading,
+                items=owed[start : start + MAX_ITEMS_PER_BLOCK],
+            ),
+            pool,
         )
         for start in range(0, len(owed), MAX_ITEMS_PER_BLOCK)
     ]
@@ -153,7 +198,7 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
         else:
             blocks.append(block)
     missing = [_placed(i, pool.items[i]) for i in owed if i not in seen]
-    return BriefComposition(blocks=_with_owed(blocks, missing) if missing else blocks)
+    return BriefComposition(blocks=_with_owed(blocks, missing, pool) if missing else blocks)
 
 
 def _as_group(lead: ComposedLead) -> ComposedItems:
@@ -182,7 +227,7 @@ def _sound(
             if not block_problems(index, block.model_copy(update={"items": [item]}), pool, values)
         ]
         if items:
-            fixed = block.model_copy(update={"items": items})
+            fixed = _derived(block.model_copy(update={"items": items}), pool)
             if not block_problems(index, fixed, pool, values):
                 return fixed
     return None
@@ -225,11 +270,14 @@ def pool_composition(pool: FactPool, values: SlotValues) -> BriefComposition:
             placed = _placed(item_id, candidate)
             by_state[_shared_state([placed]) or GroupState.DONE].append(placed)
     groups: list[ComposedBlock] = [
-        ComposedItems(
-            kind="items",
-            state=state,
-            heading=state.fallback_heading,
-            items=items[:MAX_ITEMS_PER_BLOCK],
+        _derived(
+            ComposedItems(
+                kind="items",
+                state=state,
+                heading=state.fallback_heading,
+                items=items[:MAX_ITEMS_PER_BLOCK],
+            ),
+            pool,
         )
         for state, items in by_state.items()
         if items

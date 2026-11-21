@@ -112,6 +112,19 @@ class BriefOutcome(StrEnum):
 HELD_RELEASE_TITLE: Final[str] = "While you were away"
 #: What the lead's section is headed: the composition gives the lead no heading of its own.
 LEAD_HEADING: Final[str] = "First up"
+#: A group code heads (a salvage, a misfit heading) when every item asks one act.
+ACTION_HEADINGS: Final[Mapping[BriefAction, str]] = MappingProxyType(
+    {
+        BriefAction.APPROVE: "To approve",
+        BriefAction.REPLY: "Replies to send",
+        BriefAction.REVIEW: "To review",
+        BriefAction.RETRY: "To retry",
+        BriefAction.READ: "To read",
+        BriefAction.ATTEND: "To do",
+    }
+)
+#: A group code heads when it holds only the user's own undated todos.
+BACKLOG_HEADING: Final[str] = "Still on your list"
 #: Section numerals, in reading order, for the editions that number their sections.
 SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII")
 # Every brief item is a short noun-phrase title and at most one muted detail line.

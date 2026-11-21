@@ -5,6 +5,7 @@ is sent back once with every problem named; past the last attempt code salvages 
 of it (the checked-call policy, briefing.checked_call).
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_RETRY_NOTE
@@ -25,7 +26,7 @@ from app.services.briefing.checked_call import CheckedCall, Rejected, checked_st
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
-from app.services.briefing.composition.repair import repaired, salvaged
+from app.services.briefing.composition.repair import headed, repaired, salvaged
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.kinds import BriefKindSpec
@@ -88,34 +89,17 @@ def rendered(composition: BriefComposition, values: SlotValues) -> BriefComposit
     return BriefComposition(blocks=[_filled(b, values) for b in composition.blocks])
 
 
-async def _problems(
-    user_id: str, answer: BriefComposition, pool: FactPool, values: SlotValues, must_place: bool
+def _contract_problems(
+    answer: BriefComposition, pool: FactPool, values: SlotValues, must_place: bool
 ) -> list[str]:
-    """Return the contract's problems, else every heading untrue of its items."""
     if must_place and not answer.blocks:
         return [EMPTY_DIGEST]
-    return composition_problems(answer, pool, values) or list(
-        (await heading_problems(user_id, rendered(answer, values), pool)).values()
-    )
+    return composition_problems(answer, pool, values)
 
 
-def _salvaged(
-    answer: BriefComposition | None, pool: FactPool, values: SlotValues
-) -> BriefComposition:
-    """Keep what holds of the last answer, else build from the pool; every group heads by its state.
-
-    A salvage asks no model, so no heading the check never passed is shown: each group takes
-    the heading code derives from its state.
-    """
-    kept = salvaged(answer or BriefComposition(blocks=[]), pool, values)
-    return BriefComposition(
-        blocks=[
-            b.model_copy(update={"heading": b.state.fallback_heading})
-            if isinstance(b, ComposedItems)
-            else b
-            for b in kept.blocks
-        ]
-    )
+def _groups(composition: BriefComposition) -> list[int]:
+    """Return the block number, from 1, of every group in the composition."""
+    return [n for n, b in enumerate(composition.blocks, start=1) if isinstance(b, ComposedItems)]
 
 
 def _unreadable_note(problems: list[str], _reply: str) -> str:
@@ -136,14 +120,20 @@ async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Co
         return Composed(written=answer, rendered=rendered(answer, values), values=values)
 
     async def held(answer: BriefComposition) -> Composed | Rejected[BriefComposition]:
+        """Check the contract, then every heading; what a salvage keeps shows only headings that passed."""
         kept = repaired(answer, pool)
-        problems = await _problems(user_id, kept, pool, values, spec.must_place)
+        problems = _contract_problems(kept, pool, values, spec.must_place)
+        # A contract break leaves every heading unjudged, so each gives way to its derived one.
+        misfits: Collection[int] = _groups(kept)
         if not problems:
-            return done(kept)
+            untrue = await heading_problems(user_id, rendered(kept, values), pool)
+            if not untrue:
+                return done(kept)
+            problems, misfits = list(untrue.values()), untrue.keys()
         note = COMPOSITION_RETRY_NOTE.format(
             problems="; ".join(problems), last=kept.model_dump_json()
         )
-        return Rejected(problems, note, kept)
+        return Rejected(problems, note, headed(kept, pool, misfits))
 
     return await checked_structured_call(
         user_id,
@@ -155,6 +145,6 @@ async def compose_brief(user_id: str, pool: FactPool, spec: BriefKindSpec) -> Co
             attempts=MAX_COMPOSITION_ATTEMPTS,
             check=held,
             unreadable=_unreadable_note,
-            salvage=lambda last: done(_salvaged(last, pool, values)),
+            salvage=lambda last: done(salvaged(last or BriefComposition(blocks=[]), pool, values)),
         ),
     )
