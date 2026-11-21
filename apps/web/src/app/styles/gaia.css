@@ -779,6 +779,11 @@
     background-color: var(--gaia-separator-raised);
   }
 
+  /* skeletonVariants({ surface: "raised" }): a placeholder inside a zinc-800 popover, one step lighter. */
+  .skeleton.gaia-skeleton-raised {
+    background-color: var(--color-zinc-700);
+  }
+
   .slider.gaia-slider-sm .slider__marks {
     margin-top: var(--gaia-slider-sm-marks-gap);
     height: calc(var(--gaia-slider-sm-marks-band) - var(--gaia-slider-sm-marks-gap));

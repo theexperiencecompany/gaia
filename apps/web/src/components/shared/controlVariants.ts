@@ -170,6 +170,14 @@ export const separatorVariants = tv({
   defaultVariants: { surface: "default" },
 });
 
+/** The surface a Skeleton sits on: raised shows it as zinc-700 inside a zinc-800 popover, where HeroUI's own fill disappears; gaia.css. */
+export const skeletonVariants = tv({
+  variants: {
+    surface: { default: "", raised: "gaia-skeleton-raised" },
+  },
+  defaultVariants: { surface: "default" },
+});
+
 /**
  * An overlay's surface on Popover.Content, Tooltip.Content, Select.Popover or
  * Dropdown.Popover: raised is v2's zinc-800 off a zinc-900 page, secondary the
