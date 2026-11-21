@@ -72,7 +72,6 @@ apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
 apps/api/tests/unit/agents/test_active_integrations.py	misc
-apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
@@ -156,7 +155,6 @@ apps/api/tests/unit/memory/test_consolidation.py	attr-defined
 apps/api/tests/unit/memory/test_consolidation.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
-apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type

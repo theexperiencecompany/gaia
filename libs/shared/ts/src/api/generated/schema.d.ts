@@ -15279,6 +15279,10 @@ export interface components {
              * @default 0
              */
             pending?: number;
+            /** Pending By Project */
+            pending_by_project?: {
+                [key: string]: number;
+            };
             /**
              * Total
              * @default 0
@@ -30260,7 +30264,10 @@ export interface operations {
                 project_id?: string | null;
                 q?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31175,7 +31182,10 @@ export interface operations {
     todos_get_todo_counts: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Browser timezone fallback */
+                "x-timezone"?: string;
+            };
             path?: never;
             cookie?: never;
         };

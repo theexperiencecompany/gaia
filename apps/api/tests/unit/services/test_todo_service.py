@@ -32,6 +32,7 @@ from app.models.todo_models import (
     ProjectDocument,
     ProjectWithCount,
     SearchMode,
+    TodoDayWindow,
     TodoDocument,
     TodoModel,
     TodoPage,
@@ -77,6 +78,7 @@ from app.services.todos.todo_service import (
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils import auth_utils
 from app.utils.errors import AppError
+from app.utils.timezone import Timezone
 from app.utils.todo_vector_utils import TodoSearchFilters
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import (
@@ -91,6 +93,9 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
 FAKE_PROJECT_ID = str(ObjectId())
 FAKE_INBOX_ID = str(ObjectId())
+_WINDOW = TodoDayWindow.for_timezone(
+    Timezone.parse("Asia/Kolkata"), datetime(2026, 11, 17, 19, 30, tzinfo=UTC)
+)
 NOW = datetime.now(UTC)
 _PARENT = str(ObjectId())
 _CHILD = str(ObjectId())
@@ -691,6 +696,63 @@ class TestListTodos:
         params = TodoSearchParams(mode=SearchMode.TEXT, page=1, per_page=50)
         await TodoService.list_todos(FAKE_USER_ID, params)
         mock_workflow_repo.assert_awaited_once_with(["wf1"], FAKE_USER_ID)
+
+    async def test_the_unfiltered_list_scopes_to_the_users_inbox(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+
+        await TodoService.list_todos(FAKE_USER_ID, TodoSearchParams(mode=SearchMode.TEXT))
+
+        mock_project_repo.get_or_create_inbox.assert_awaited_once_with(FAKE_USER_ID)
+        assert mock_todo_repo.list_page.await_args.kwargs["inbox_project_id"] == FAKE_INBOX_ID
+
+    async def test_an_overdue_list_is_not_scoped_to_the_inbox(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+        params = TodoSearchParams(mode=SearchMode.TEXT, overdue=True, day_window=_WINDOW)
+
+        await TodoService.list_todos(FAKE_USER_ID, params)
+
+        mock_project_repo.get_or_create_inbox.assert_not_awaited()
+        assert mock_todo_repo.list_page.await_args.kwargs["inbox_project_id"] is None
+
+    async def test_stats_are_computed_on_the_users_day(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+        mock_todo_repo.compute_stats = AsyncMock(return_value=TodoStats(total=7))
+        params = TodoSearchParams(mode=SearchMode.TEXT, include_stats=True, day_window=_WINDOW)
+
+        result = await TodoService.list_todos(FAKE_USER_ID, params)
+
+        assert result.stats == TodoStats(total=7)
+        mock_todo_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_WINDOW)
+
+    async def test_search_stats_are_computed_on_the_users_day(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils
+    ):
+        mock_vector_utils["vector_search"].return_value = []
+        mock_todo_repo.compute_stats = AsyncMock(return_value=TodoStats(total=4))
+        params = TodoSearchParams(
+            q="find", mode=SearchMode.SEMANTIC, include_stats=True, day_window=_WINDOW
+        )
+
+        result = await TodoService.list_todos(FAKE_USER_ID, params)
+
+        assert result.stats == TodoStats(total=4)
+        mock_todo_repo.compute_stats.assert_awaited_once_with(user_id=FAKE_USER_ID, window=_WINDOW)
+
+    async def test_stats_without_a_day_window_fail_loud(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+
+        with pytest.raises(ValueError, match="day_window"):
+            await TodoService.list_todos(
+                FAKE_USER_ID, TodoSearchParams(mode=SearchMode.TEXT, include_stats=True)
+            )
 
     async def test_semantic_route_uses_vector_search(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils

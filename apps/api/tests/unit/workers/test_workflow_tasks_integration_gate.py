@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import pytest
 import time_machine
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
@@ -196,6 +197,7 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
             "It's paused and will run again once you reconnect."
         )
 
+    @pytest.mark.regression
     async def test_the_button_connects_the_first_missing_integration_in_place(self) -> None:
         request = await self._sent(GMAIL_AND_NOTION)
 
@@ -203,7 +205,8 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         assert action.label == "Connect Gmail"
         assert action.type == ActionType.REDIRECT
         assert action.style == ActionStyle.PRIMARY
-        assert action.config.redirect.url == "/integrations?id=gmail"
+        # ?connect= starts the connect flow; ?id= only opens the sidebar (useIntegrationDeepLink).
+        assert action.config.redirect.url == "/integrations?connect=gmail"
         assert action.config.redirect.open_in_new_tab is False
         assert action.config.redirect.close_notification is True
 

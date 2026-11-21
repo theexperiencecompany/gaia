@@ -128,12 +128,10 @@ class WorkflowService:
         workflow_id: str,
         user_id: str,
         trigger_config: TriggerConfig,
-    ) -> tuple[list[str], bool]:
-        """Register Composio triggers for integration-based workflows.
+    ) -> list[str]:
+        """Register Composio triggers for integration-based workflows; skip a disconnected integration.
 
-        Returns (trigger_ids, integration_connected). Callers decide activation
-        from the connected flag, NOT from trigger_ids: account-level handlers
-        (e.g. Gmail) legitimately return [] on success.
+        An empty list is not a failure: account-level handlers (e.g. Gmail) return [] on success.
         """
         # Only handle integration type triggers
         if trigger_config.type != TriggerType.INTEGRATION:
@@ -141,7 +139,7 @@ class WorkflowService:
                 f"{LogTag.WORKFLOW} Skipping trigger registration: trigger type is not INTEGRATION",
                 type=trigger_config.type,
             )
-            return [], True
+            return []
 
         trigger_name = trigger_config.trigger_name
         if not trigger_name:
@@ -166,7 +164,7 @@ class WorkflowService:
                     integration_id=integration_id,
                     user_id=user_id,
                 )
-                return [], False
+                return []
 
         trigger_ids = await TriggerService.register_triggers(
             user_id=user_id,
@@ -176,7 +174,7 @@ class WorkflowService:
             raise_on_failure=True,
         )
 
-        return trigger_ids, True
+        return trigger_ids
 
     @staticmethod
     async def create_workflow(
@@ -331,32 +329,19 @@ class WorkflowService:
 
             # This can raise TriggerRegistrationError; handlers roll back their
             # own partial triggers on failure.
-            (
-                trigger_ids,
-                integration_connected,
-            ) = await WorkflowService._register_integration_triggers(
+            trigger_ids = await WorkflowService._register_integration_triggers(
                 workflow_id=workflow.id,
                 user_id=user_id,
                 trigger_config=trigger_config,
             )
 
-            # Caller-supplied steps skip the generation-time integration gate, so
-            # apply it here too: created inactive rather than failing on first run.
-            missing_step_integrations = await compute_missing_integrations(
-                compute_required_integrations(workflow.steps), user_id
-            )
-            if missing_step_integrations:
-                log.info(
-                    f"{LogTag.WORKFLOW} Workflow created inactive — steps need unconnected integrations",
-                    id=workflow.id,
-                    missing_integrations=[m.id for m in missing_step_integrations],
-                )
-
-            integration_skipped = bool(missing_step_integrations) or (
-                trigger_config.type == TriggerType.INTEGRATION and not integration_connected
+            # Created inactive rather than failing on first run when the steps or
+            # the trigger need an integration the user hasn't connected.
+            missing_integrations = await compute_missing_integrations(
+                compute_required_integrations(workflow.steps, trigger_config), user_id
             )
 
-            if integration_skipped:
+            if missing_integrations:
                 log.set(
                     workflow={
                         "id": workflow.id,
@@ -367,9 +352,9 @@ class WorkflowService:
                     }
                 )
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow created inactive — integration for trigger not connected",
+                    f"{LogTag.WORKFLOW} Workflow created inactive — integrations not connected",
                     id=workflow.id,
-                    trigger_name=trigger_config.trigger_name,
+                    missing_integrations=[m.id for m in missing_integrations],
                 )
             else:
                 # enabled mirrors activated; keyed by id alone (the create saga owns the row).
@@ -714,10 +699,7 @@ class WorkflowService:
                     old_trigger_ids = old_config.composio_trigger_ids or []
 
                     # Register new triggers FIRST (old still active if this fails).
-                    (
-                        registered_trigger_ids,
-                        _,
-                    ) = await WorkflowService._register_integration_triggers(
+                    registered_trigger_ids = await WorkflowService._register_integration_triggers(
                         workflow_id=workflow_id,
                         user_id=user_id,
                         trigger_config=new_trigger_config,
@@ -957,10 +939,9 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            # Refuse activation when the workflow's steps need integrations the
-            # user hasn't connected — an enabled workflow that can't run is
-            # misleading. (Surfaced as a 400 by the activate endpoint.)
-            required = compute_required_integrations(workflow.steps)
+            # Refuse activation when the steps or the trigger need an integration the
+            # user hasn't connected (surfaced as a 400 by the activate endpoint).
+            required = compute_required_integrations(workflow.steps, workflow.trigger_config)
             missing = await compute_missing_integrations(required, user_id)
             if missing:
                 names = ", ".join(ref.name for ref in missing)
@@ -980,21 +961,7 @@ class WorkflowService:
                     user_timezone=trigger_config.timezone or user_timezone
                 )
 
-            # Refuse activation up front: registration would otherwise silently
-            # no-op for a disconnected integration, confusing the user.
-            if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
-                from app.services.oauth.oauth_service import (  # noqa: PLC0415 -- breaks circular chain: oauth_service -> provisioner -> this service
-                    check_integration_status,
-                )
-
-                integration_id = get_integration_for_trigger(trigger_config.trigger_name)
-                if integration_id and not await check_integration_status(integration_id, user_id):
-                    raise TriggerRegistrationError(
-                        f"Connect {integration_id} before activating this workflow.",
-                        trigger_name=trigger_config.trigger_name,
-                    )
-
-            trigger_ids, _ = await WorkflowService._register_integration_triggers(
+            trigger_ids = await WorkflowService._register_integration_triggers(
                 workflow_id=workflow_id,
                 user_id=user_id,
                 trigger_config=trigger_config,
@@ -1181,7 +1148,7 @@ class WorkflowService:
             # Same gating as _generate_workflow_steps: if the regenerated steps
             # need an integration the user hasn't connected, force the workflow
             # inactive so an enabled-but-unrunnable workflow can't keep firing.
-            required = compute_required_integrations(steps)
+            required = compute_required_integrations(steps, workflow.trigger_config)
             missing = await compute_missing_integrations(required, user_id)
 
             # Persist only integration_ids the user still has connected — a stale
@@ -1381,7 +1348,7 @@ class WorkflowService:
                 user_id=user_id,
             )
 
-            required = compute_required_integrations(steps)
+            required = compute_required_integrations(steps, workflow.trigger_config)
             missing = await compute_missing_integrations(required, user_id)
 
             if missing:

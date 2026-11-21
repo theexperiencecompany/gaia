@@ -8,7 +8,8 @@
  * - **Ephemeral responses** via Bolt's `respond({ response_type: "ephemeral" })`
  * - **Rich messages** rendered as markdown (Slack has no native embed API)
  * - **App mentions** via the `app_mention` event with streaming chat
- * - **DM messages** via the `message` event with `channel_type === "im"`
+ * - **DM messages** via the `message` event with `channel_type === "im"`,
+ *   including ones carrying files (subtype `file_share`)
  * - **Socket Mode** for real-time event delivery
  *
  * New features gained from the unified command system:
@@ -24,11 +25,14 @@ import {
   type ActiveBotConversation,
   BaseBotAdapter,
   type BotCommand,
+  type BotFileData,
   buildAuthLinkMessage,
   type ConversationSurface,
   createBotLogger,
   extractSubcommandArgs,
   hashLogIdentifier,
+  type IncomingAttachment,
+  type MediaBatchOutcome,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -43,6 +47,11 @@ import {
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
 import { which } from "node-emoji";
+import {
+  downloadSlackFile,
+  type SlackInboundFile,
+  slackFileMedia,
+} from "./media";
 
 /** What Slack shows while GAIA prepares a reply: it has no typing indicator for bots. */
 /** The reaction on the user's message while GAIA prepares its reply; Slack gives bots no typing indicator. */
@@ -52,16 +61,6 @@ const SLACK_TYPING_REACTION = "eyes";
 type SlackRespondFn = (
   message: string | Record<string, unknown>,
 ) => Promise<unknown>;
-
-/** Slack message event shape (Bolt doesn't export typed message events). */
-interface SlackMessageEvent {
-  text?: string;
-  user?: string;
-  channel?: string;
-  channel_type?: string;
-  subtype?: string;
-  ts?: string;
-}
 
 /** Minimal Slack Web API client shape used by the adapter. */
 interface SlackWebClient {
@@ -199,7 +198,7 @@ export class SlackAdapter extends BaseBotAdapter {
       const botMention = context.botUserId
         ? new RegExp(`<@${context.botUserId}>`, "g")
         : null;
-      const content = botMention
+      const caption = botMention
         ? event.text.replace(botMention, "").trim()
         : event.text.trim();
       const userId = event.user;
@@ -207,7 +206,19 @@ export class SlackAdapter extends BaseBotAdapter {
 
       if (!userId) return;
 
-      if (!content) {
+      const media = await this.resolveSlackFiles(
+        client,
+        event.files ?? [],
+        caption,
+        userId,
+        channelId,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+
+      if (!content && attachments.length === 0) {
+        // Every file was rejected and its notice already sent.
+        if (media) return;
         await client.chat.postMessage({
           channel: channelId,
           text: "How can I help you?",
@@ -223,26 +234,42 @@ export class SlackAdapter extends BaseBotAdapter {
         false,
         receivedAt,
         event.ts,
+        attachments,
       );
     });
 
-    // DM messages
+    // DM messages; one carrying files arrives with subtype file_share. Bolt's
+    // ignoreSelf drops the bot's own uploads, so outbound files never loop back.
     this.app.message(async ({ message, client }) => {
       const receivedAt = Date.now();
-      const msg = message as SlackMessageEvent;
 
-      if (msg.subtype) return;
-      if (msg.channel_type !== "im") return;
-      if (!msg.text || !msg.user || !msg.channel) return;
+      if (message.subtype !== undefined && message.subtype !== "file_share") {
+        return;
+      }
+      if (message.channel_type !== "im") return;
+      if (!message.user || !message.channel) return;
+
+      const caption = message.text?.trim() ?? "";
+      const media = await this.resolveSlackFiles(
+        client,
+        message.files ?? [],
+        caption,
+        message.user,
+        message.channel,
+      );
+      const content = media ? media.text : caption;
+      const attachments = media?.attachments ?? [];
+      if (!content && attachments.length === 0) return;
 
       await this.postSlackMessage(
         client,
-        msg.channel,
-        msg.user,
-        msg.text,
+        message.channel,
+        message.user,
+        content,
         true,
         receivedAt,
-        msg.ts,
+        message.ts,
+        attachments,
       );
     });
   }
@@ -432,6 +459,40 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   /**
+   * Reads the files on a Slack message through the shared pipeline and posts
+   * its notice (rejections, skipped files); null when there are no files.
+   */
+  private async resolveSlackFiles(
+    client: SlackWebClient,
+    files: SlackInboundFile[],
+    caption: string,
+    userId: string,
+    channelId: string,
+  ): Promise<MediaBatchOutcome | null> {
+    if (files.length === 0) return null;
+
+    const items = files.map((file): IncomingAttachment => {
+      const url = file.url_private_download;
+      return {
+        media: slackFileMedia(file, caption || undefined),
+        // External files (Drive, Dropbox links) carry no Slack download URL.
+        download: url
+          ? (maxBytes) => downloadSlackFile(url, this.token, maxBytes)
+          : undefined,
+      };
+    });
+
+    const outcome = await this.resolveIncomingMedia(items, userId, channelId);
+    if (outcome.notice) {
+      await client.chat.postMessage({
+        channel: channelId,
+        text: outcome.notice,
+      });
+    }
+    return outcome;
+  }
+
+  /**
    * Posts a `/gaia` message, @mention or DM and follows its conversation in this
    * channel. Returns once the message is accepted.
    */
@@ -443,6 +504,7 @@ export class SlackAdapter extends BaseBotAdapter {
     isDm: boolean,
     receivedAt: number,
     inboundTs?: string,
+    attachments: BotFileData[] = [],
   ): Promise<void> {
     // Bolt runs handlers concurrently: a user's posts still go in arrival order.
     await this.arrivals.run(userId, () =>
@@ -455,6 +517,12 @@ export class SlackAdapter extends BaseBotAdapter {
           isDm,
           platformMessageId: inboundTs,
           receivedAt,
+          ...(attachments.length > 0
+            ? {
+                fileIds: attachments.map((a) => a.fileId),
+                fileData: attachments,
+              }
+            : {}),
         },
         this.conversationSurface(channelId),
         (authUrl) => this.sendAuthLink(client, channelId, userId, authUrl),

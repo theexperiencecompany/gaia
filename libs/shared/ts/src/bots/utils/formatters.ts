@@ -10,11 +10,10 @@
  */
 import { slackifyMarkdown } from "slackify-markdown";
 import type {
-  BotConversation,
-  BotTodo,
-  BotWorkflow,
-  PlatformName,
-} from "../types";
+  TodoResponse,
+  WorkflowWithIntegrations,
+} from "../../api/generated";
+import type { BotConversation, PlatformName } from "../types";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
@@ -26,20 +25,17 @@ import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
 /**
  * Formats a workflow for display in a bot message.
  */
-export function formatWorkflow(workflow: BotWorkflow): string {
-  const status =
-    workflow.status === "active"
-      ? "✅"
-      : workflow.status === "draft"
-        ? "📝"
-        : "⏸️";
-  return `${status} **${workflow.name}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
+export function formatWorkflow(workflow: WorkflowWithIntegrations): string {
+  const status = workflow.activated ? "✅" : "⏸️";
+  return `${status} **${workflow.title}**\nID: \`${workflow.id}\`\n${workflow.description || "No description"}`;
 }
 
 /**
  * Formats a list of workflows for display.
  */
-export function formatWorkflowList(workflows: BotWorkflow[]): string {
+export function formatWorkflowList(
+  workflows: WorkflowWithIntegrations[],
+): string {
   if (workflows.length === 0) {
     return "No workflows found. Create one with `/workflow create`";
   }
@@ -50,9 +46,10 @@ export function formatWorkflowList(workflows: BotWorkflow[]): string {
 /**
  * Formats a todo for display in a bot message.
  */
-export function formatTodo(todo: BotTodo): string {
+export function formatTodo(todo: TodoResponse): string {
   const checkbox = todo.completed ? "☑️" : "⬜";
-  const priority = todo.priority ? ` [${todo.priority.toUpperCase()}]` : "";
+  const priority =
+    todo.priority === "none" ? "" : ` [${todo.priority.toUpperCase()}]`;
   const dueDate = todo.due_date
     ? ` | Due: ${new Date(todo.due_date).toLocaleDateString()}`
     : "";
@@ -63,7 +60,7 @@ export function formatTodo(todo: BotTodo): string {
 /**
  * Formats a list of todos for display.
  */
-export function formatTodoList(todos: BotTodo[]): string {
+export function formatTodoList(todos: TodoResponse[]): string {
   if (todos.length === 0) {
     return "No todos found. Create one with `/todo add`";
   }
@@ -498,7 +495,7 @@ Type /help <command> for details.`,
     "/workflow get <id> - Get workflow details\n" +
     "/workflow execute <id> - Execute a workflow\n" +
     "/workflow delete <id> - Delete a workflow\n" +
-    "/workflow create <name> <description> - Create a workflow",
+    "/workflow create <title> <instructions> - Create a workflow you run on demand",
   todoUsage: {
     add: "Usage: /todo add <title>",
     complete: "Usage: /todo complete <todo-id>",
@@ -508,6 +505,7 @@ Type /help <command> for details.`,
     get: "Usage: /workflow get <workflow-id>",
     execute: "Usage: /workflow execute <workflow-id>",
     delete: "Usage: /workflow delete <workflow-id>",
+    create: "Usage: /workflow create <title> <instructions>",
   },
 };
 

@@ -161,6 +161,21 @@ def _largest_sequence(
 _RESULT_DECODER = json.JSONDecoder()
 
 
+class ToolResultEnvelope(BaseModel):
+    """The failure flags a tool result may carry: GAIA tools' success, Composio's successful, and error."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
+    successful: object = None
+    error: object = None
+
+    @property
+    def failed(self) -> bool:
+        """Whether either flag is False or the error is non-empty."""
+        return self.success is False or self.successful is False or bool(self.error)
+
+
 def parse_result(text: str) -> object:
     """A tool result as JSON when it is a JSON document, and as its own text otherwise.
 

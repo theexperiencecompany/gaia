@@ -422,3 +422,10 @@ LOCK_DEFER_BACKOFF: Final[list[timedelta]] = [
 ]
 # The daily cost-budget feature a triggered todo run charges against.
 TRIGGER_TODO_FEATURE_KEY: Final[str] = "trigger_todo_executions"
+
+# Days after today that count as "upcoming" in the sidebar, the Upcoming page and the agent.
+TODO_UPCOMING_DAYS: Final[int] = 7
+# Previews per bucket in the agent's todos summary.
+TODO_SUMMARY_PREVIEW_LIMIT: Final[int] = 5
+# Top-N labels in the todo stats and the agent's label list.
+TODO_STATS_LABEL_LIMIT: Final[int] = 50

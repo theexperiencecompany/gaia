@@ -5,22 +5,25 @@ import type {
   BotDeliveryReport,
   BotMessageAccepted,
   ConversationStopResponse,
+  CreateWorkflowRequest,
   DeliveryFailureReport,
+  TodoListResponse,
+  TodoModel,
+  TodoResponse,
+  TodoUpdateRequest,
+  WorkflowExecutionRequest,
+  WorkflowExecutionResponse,
+  WorkflowListResponse,
+  WorkflowResponse,
+  WorkflowWithIntegrations,
 } from "../../api/generated";
 import type { ConversationFrame } from "../../conversation/types";
 import type {
   AuthStatus,
   BotConversation,
   BotConversationListResponse,
-  BotCreateTodoRequest,
   BotFileData,
-  BotTodo,
-  BotTodoListResponse,
   BotUserContext,
-  BotWorkflow,
-  BotWorkflowExecutionRequest,
-  BotWorkflowExecutionResponse,
-  BotWorkflowListResponse,
   ChatRequest,
   RedeemedLinkCode,
   SettingsResponse,
@@ -357,9 +360,9 @@ export class GaiaClient {
    * Lists all workflows for the authenticated user.
    * Uses the regular /api/v1/workflows endpoint via bot middleware auth.
    */
-  async listWorkflows(ctx: BotUserContext): Promise<BotWorkflowListResponse> {
+  async listWorkflows(ctx: BotUserContext): Promise<WorkflowListResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<BotWorkflowListResponse>(
+      const { data } = await this.client.get<WorkflowListResponse>(
         "/api/v1/workflows",
         { headers: this.userHeaders(ctx) },
       );
@@ -371,15 +374,11 @@ export class GaiaClient {
    * Creates a new workflow.
    */
   async createWorkflow(
-    request: {
-      name: string;
-      description: string;
-      steps?: Record<string, unknown>[];
-    },
+    request: CreateWorkflowRequest,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<WorkflowWithIntegrations> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.post<WorkflowResponse>(
         "/api/v1/workflows",
         request,
         { headers: this.userHeaders(ctx) },
@@ -394,9 +393,9 @@ export class GaiaClient {
   async getWorkflow(
     workflowId: string,
     ctx: BotUserContext,
-  ): Promise<BotWorkflow> {
+  ): Promise<WorkflowWithIntegrations> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<{ workflow: BotWorkflow }>(
+      const { data } = await this.client.get<WorkflowResponse>(
         `/api/v1/workflows/${encodeURIComponent(workflowId)}`,
         { headers: this.userHeaders(ctx) },
       );
@@ -405,16 +404,17 @@ export class GaiaClient {
   }
 
   /**
-   * Executes a workflow.
+   * Starts a run of a workflow.
    */
   async executeWorkflow(
-    request: BotWorkflowExecutionRequest,
+    workflowId: string,
     ctx: BotUserContext,
-  ): Promise<BotWorkflowExecutionResponse> {
+  ): Promise<WorkflowExecutionResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<BotWorkflowExecutionResponse>(
-        `/api/v1/workflows/${encodeURIComponent(request.workflow_id)}/execute`,
-        { inputs: request.inputs },
+      const body: WorkflowExecutionRequest = {};
+      const { data } = await this.client.post<WorkflowExecutionResponse>(
+        `/api/v1/workflows/${encodeURIComponent(workflowId)}/execute`,
+        body,
         { headers: this.userHeaders(ctx) },
       );
       return data;
@@ -445,7 +445,7 @@ export class GaiaClient {
       completed?: boolean;
       project_id?: string;
     },
-  ): Promise<BotTodoListResponse> {
+  ): Promise<TodoListResponse> {
     return this.requestWithAuth(async () => {
       const queryParams = new URLSearchParams();
       if (params?.completed !== undefined) {
@@ -455,16 +455,11 @@ export class GaiaClient {
         queryParams.set("project_id", params.project_id);
       }
 
-      const { data } = await this.client.get(
+      const { data } = await this.client.get<TodoListResponse>(
         `/api/v1/todos?${queryParams.toString()}`,
         { headers: this.userHeaders(ctx) },
       );
-
-      // Map from regular API format (data/meta) to bot format (todos/total)
-      const todos = (data.data || data.todos || []).map(mapTodoResponse);
-      const total = data.meta?.total ?? data.total ?? todos.length;
-
-      return { todos, total };
+      return data;
     }, ctx);
   }
 
@@ -472,14 +467,16 @@ export class GaiaClient {
    * Creates a new todo.
    */
   async createTodo(
-    request: BotCreateTodoRequest,
+    request: TodoModel,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TodoResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post("/api/v1/todos", request, {
-        headers: this.userHeaders(ctx),
-      });
-      return mapTodoResponse(data);
+      const { data } = await this.client.post<TodoResponse>(
+        "/api/v1/todos",
+        request,
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
     }, ctx);
   }
 
@@ -488,23 +485,26 @@ export class GaiaClient {
    */
   async updateTodo(
     todoId: string,
-    updates: Partial<BotCreateTodoRequest>,
+    updates: TodoUpdateRequest,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TodoResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.put(
+      const { data } = await this.client.put<TodoResponse>(
         `/api/v1/todos/${encodeURIComponent(todoId)}`,
         updates,
         { headers: this.userHeaders(ctx) },
       );
-      return mapTodoResponse(data);
+      return data;
     }, ctx);
   }
 
   /**
    * Marks a todo as complete.
    */
-  async completeTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
+  async completeTodo(
+    todoId: string,
+    ctx: BotUserContext,
+  ): Promise<TodoResponse> {
     return this.updateTodo(todoId, { completed: true }, ctx);
   }
 
@@ -815,21 +815,6 @@ export class GaiaClient {
       };
     });
   }
-}
-
-/**
- * Maps a todo response from the regular API format to the bot-expected format.
- */
-function mapTodoResponse(data: Record<string, unknown>): BotTodo {
-  return {
-    id: (data.id as string) || "",
-    title: (data.title as string) || "",
-    description: data.description as string | undefined,
-    completed: (data.completed as boolean) || false,
-    priority: data.priority as "low" | "medium" | "high" | undefined,
-    due_date: data.due_date as string | undefined,
-    project_id: data.project_id as string | undefined,
-  };
 }
 
 /**

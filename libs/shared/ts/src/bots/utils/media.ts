@@ -15,8 +15,9 @@
  * platform-specific {@link IncomingMedia} descriptor and a download thunk.
  */
 import type { GaiaClient } from "../api";
-import type { BotFileData, BotUserContext, PlatformName } from "../types";
+import type { BotUserContext, PlatformName } from "../types";
 import { getHttpStatus } from "./logger";
+import type { IncomingMedia, MediaKind, MediaOutcome } from "./media.types";
 import { wideLog } from "./wide-events";
 
 const MB = 1024 * 1024;
@@ -28,6 +29,9 @@ export const BOT_MEDIA_LIMITS = {
   /** OpenAI Whisper hard cap, matched by the backend transcribe endpoint. */
   audio: 25 * MB,
 } as const;
+
+/** Attachments GAIA reads from one message; equals the web composer's MAX_FILES. */
+export const BOT_MAX_FILES_PER_MESSAGE = 5;
 
 /**
  * How long an adapter waits for a platform to deliver media bytes before
@@ -52,38 +56,14 @@ export const OUTBOUND_FILE_LIMITS: Record<PlatformName, number> = {
   imessage: 50 * MB, // Photon caps are undocumented; conservative floor
 };
 
-/** Normalised media kind, identical across platforms. */
-export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";
-
 function mediaByteLimit(kind: MediaKind): number {
   return kind === "audio" ? BOT_MEDIA_LIMITS.audio : BOT_MEDIA_LIMITS.file;
 }
 
-/**
- * Platform-agnostic descriptor of an inbound media message. Each adapter maps
- * its native payload (Kapso `ExtractedMedia`, Telegram `PhotoSize`/`Voice`/…)
- * onto this shape before handing it to {@link processBotMedia}.
- */
-export interface IncomingMedia {
-  kind: MediaKind;
-  /** True for push-to-talk voice notes (only meaningful when `kind === "audio"`). */
-  isVoiceNote: boolean;
-  /** Best-known mime type; callers fall back to a per-kind default upstream. */
-  mimeType: string;
-  /** Original filename for documents; absent for inline media. */
-  filename?: string;
-  /** Caption sent alongside the media, used as the prompt when present. */
-  caption?: string;
-  sizeBytes?: number;
+/** The notice for files past {@link BOT_MAX_FILES_PER_MESSAGE}, worded like web's. */
+export function skippedFilesMessage(skipped: number): string {
+  return `Up to ${BOT_MAX_FILES_PER_MESSAGE} files per message. Read the first ${BOT_MAX_FILES_PER_MESSAGE}, skipped ${skipped}.`;
 }
-
-/**
- * Result of {@link processBotMedia}. The adapter either streams a chat turn
- * (optionally with uploaded attachments) or sends a single plain reply.
- */
-export type MediaOutcome =
-  | { action: "chat"; text: string; attachments: BotFileData[] }
-  | { action: "reply"; text: string };
 
 /** Reply shown for media kinds GAIA does not process yet (video, sticker, …). */
 export function unsupportedMediaMessage(kind: string): string {
@@ -243,20 +223,27 @@ function rejectOversizeMedia(
  * Turns an inbound media message into the next action: transcribe audio, upload an image/document,
  * or reject an unsupported/oversize payload.
  *
- * `downloadBytes` is a thunk so unsupported/oversize kinds never incur a download; it receives one
- * byte past the cap (fewest that prove it was exceeded), so a streaming adapter can stop there
- * instead of buffering an untrusted attachment whole. Every exit records why under the event's
- * `media` namespace, so a "did nothing" attachment is answerable from the log, not a guess.
+ * `downloadBytes` (absent when the platform sent no way to fetch the bytes) is a thunk so rejected
+ * kinds never download; it receives one byte past the cap so a streaming adapter can stop there
+ * instead of buffering an untrusted attachment whole. Every exit records why under `media`.
  */
 export async function processBotMedia(
   gaia: GaiaClient,
   media: IncomingMedia,
-  downloadBytes: (maxBytes: number) => Promise<Uint8Array>,
+  downloadBytes: ((maxBytes: number) => Promise<Uint8Array>) | undefined,
   ctx: BotUserContext,
 ): Promise<MediaOutcome> {
   if (media.kind === "video" || media.kind === "sticker") {
     wideLog.setNs("media", { action: "reply", rejected: "unsupported_kind" });
     return { action: "reply", text: unsupportedMediaMessage(media.kind) };
+  }
+
+  if (!downloadBytes) {
+    wideLog.setNs("media", { action: "reply", rejected: "unfetchable" });
+    return {
+      action: "reply",
+      text: unfetchableMediaMessage(media.kind, media.isVoiceNote),
+    };
   }
 
   const limit = mediaByteLimit(media.kind);

@@ -1,4 +1,4 @@
-import type { Conversation, Todo, Workflow } from "@gaia/shared";
+import type { Conversation } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
@@ -21,34 +21,30 @@ import {
   renderForPlatform,
 } from "@gaia/shared/bots";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { serverTodo, serverWorkflow } from "../helpers/api-fixtures";
 
 // ---------------------------------------------------------------------------
 // formatWorkflow
 // ---------------------------------------------------------------------------
 describe("formatWorkflow", () => {
-  const base: Workflow = {
+  const base = serverWorkflow({
     id: "wf-1",
-    name: "My Workflow",
+    title: "My Workflow",
     description: "Does things",
-    status: "active",
-  };
+  });
 
-  it("shows check emoji for active workflow", () => {
-    const result = formatWorkflow({ ...base, status: "active" });
+  it("shows check emoji for an activated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: true });
     expect(result).toContain("\u2705");
   });
 
-  it("shows pencil emoji for draft workflow", () => {
-    const result = formatWorkflow({ ...base, status: "draft" });
-    expect(result).toContain("\uD83D\uDCDD");
-  });
-
-  it("shows pause emoji for paused/inactive workflow", () => {
-    const result = formatWorkflow({ ...base, status: "inactive" });
+  it("shows pause emoji for a deactivated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: false });
     expect(result).toContain("\u23F8");
+    expect(result).not.toContain("\u2705");
   });
 
-  it("includes name, ID, and description", () => {
+  it("includes title, ID, and description", () => {
     const result = formatWorkflow(base);
     expect(result).toContain("**My Workflow**");
     expect(result).toContain("`wf-1`");
@@ -72,11 +68,10 @@ describe("formatWorkflowList", () => {
   });
 
   it("formats multiple workflows joined by double newlines", () => {
-    const workflows: Workflow[] = [
-      { id: "1", name: "A", description: "d1", status: "active" },
-      { id: "2", name: "B", description: "d2", status: "draft" },
-    ];
-    const result = formatWorkflowList(workflows);
+    const result = formatWorkflowList([
+      serverWorkflow({ id: "1", title: "A" }),
+      serverWorkflow({ id: "2", title: "B", activated: false }),
+    ]);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
     expect(result.split("\n\n").length).toBeGreaterThanOrEqual(2);
@@ -87,11 +82,7 @@ describe("formatWorkflowList", () => {
 // formatTodo
 // ---------------------------------------------------------------------------
 describe("formatTodo", () => {
-  const base: Todo = {
-    id: "t-1",
-    title: "Buy milk",
-    completed: false,
-  };
+  const base = serverTodo({ id: "t-1", title: "Buy milk" });
 
   it("shows checked checkbox for completed todo", () => {
     const result = formatTodo({ ...base, completed: true });
@@ -115,8 +106,8 @@ describe("formatTodo", () => {
     expect(result).toMatch(/Due:\s*\d/);
   });
 
-  it("omits priority when not set", () => {
-    const result = formatTodo(base);
+  it("omits the priority tag for priority none", () => {
+    const result = formatTodo({ ...base, priority: "none" });
     expect(result).not.toContain("[");
   });
 
@@ -137,11 +128,10 @@ describe("formatTodoList", () => {
   });
 
   it("formats multiple todos joined by double newlines", () => {
-    const todos: Todo[] = [
-      { id: "1", title: "A", completed: false },
-      { id: "2", title: "B", completed: true },
-    ];
-    const result = formatTodoList(todos);
+    const result = formatTodoList([
+      serverTodo({ id: "1", title: "A" }),
+      serverTodo({ id: "2", title: "B", completed: true }),
+    ]);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
   });

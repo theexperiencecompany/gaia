@@ -35,6 +35,7 @@ import {
   withWideEvent,
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { serverTodo, serverWorkflow } from "../helpers/api-fixtures";
 import { captureBotEvents } from "../helpers/capture-bot-event";
 
 // ---------------------------------------------------------------------------
@@ -74,15 +75,8 @@ describe("handleWorkflowList", () => {
   it("returns formatted workflow list on success", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.listWorkflows).mockResolvedValue({
-      workflows: [
-        {
-          id: "wf-1",
-          name: "Daily Standup",
-          status: "active",
-          description: "Posts standup",
-        },
-      ],
-    } as never);
+      workflows: [serverWorkflow({ id: "wf-1", title: "Daily Standup" })],
+    });
 
     const result = await handleWorkflowList(gaia, ctx);
 
@@ -113,35 +107,18 @@ describe("handleWorkflowList", () => {
 });
 
 describe("handleWorkflowExecute", () => {
-  it("returns execution started message with ID and status", async () => {
+  it("returns execution started message with the execution ID", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.executeWorkflow).mockResolvedValue({
       execution_id: "exec-123",
-      status: "running",
-    } as never);
+      message: "Workflow execution started",
+    });
 
     const result = await handleWorkflowExecute(gaia, "wf-1", ctx);
 
-    expect(gaia.executeWorkflow).toHaveBeenCalledWith(
-      { workflow_id: "wf-1", inputs: undefined },
-      ctx,
-    );
-    expect(result).toContain("exec-123");
-    expect(result).toContain("running");
-  });
-
-  it("passes inputs when provided", async () => {
-    const gaia = makeGaia();
-    vi.mocked(gaia.executeWorkflow).mockResolvedValue({
-      execution_id: "exec-456",
-      status: "running",
-    } as never);
-
-    await handleWorkflowExecute(gaia, "wf-2", ctx, { key: "value" });
-
-    expect(gaia.executeWorkflow).toHaveBeenCalledWith(
-      { workflow_id: "wf-2", inputs: { key: "value" } },
-      ctx,
+    expect(gaia.executeWorkflow).toHaveBeenCalledWith("wf-1", ctx);
+    expect(result).toBe(
+      "✅ Workflow execution started!\nExecution ID: exec-123",
     );
   });
 
@@ -160,12 +137,9 @@ describe("handleWorkflowExecute", () => {
 describe("handleWorkflowGet", () => {
   it("returns formatted workflow on success", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.getWorkflow).mockResolvedValue({
-      id: "wf-1",
-      name: "My Workflow",
-      status: "draft",
-      description: "A test",
-    } as never);
+    vi.mocked(gaia.getWorkflow).mockResolvedValue(
+      serverWorkflow({ id: "wf-1", title: "My Workflow" }),
+    );
 
     const result = await handleWorkflowGet(gaia, "wf-1", ctx);
 
@@ -186,38 +160,24 @@ describe("handleWorkflowGet", () => {
 });
 
 describe("handleWorkflowCreate", () => {
-  it("returns created workflow with check emoji", async () => {
+  it("creates a manual workflow whose prompt is the instructions", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createWorkflow).mockResolvedValue({
-      id: "new-wf",
-      name: "New Flow",
-      status: "draft",
-    } as never);
+    vi.mocked(gaia.createWorkflow).mockResolvedValue(
+      serverWorkflow({ id: "new-wf", title: "New Flow" }),
+    );
 
-    const result = await handleWorkflowCreate(gaia, "New Flow", ctx, "Desc");
+    const result = await handleWorkflowCreate(gaia, "New Flow", "Desc", ctx);
 
     expect(gaia.createWorkflow).toHaveBeenCalledWith(
-      { name: "New Flow", description: "Desc" },
+      {
+        title: "New Flow",
+        prompt: "Desc",
+        trigger_config: { type: "manual", enabled: true },
+      },
       ctx,
     );
-    expect(result).toContain("✅");
+    expect(result).toContain("✅ Workflow created!");
     expect(result).toContain("New Flow");
-  });
-
-  it("uses empty string when no description provided", async () => {
-    const gaia = makeGaia();
-    vi.mocked(gaia.createWorkflow).mockResolvedValue({
-      id: "wf-x",
-      name: "Flow",
-      status: "active",
-    } as never);
-
-    await handleWorkflowCreate(gaia, "Flow", ctx);
-
-    expect(gaia.createWorkflow).toHaveBeenCalledWith(
-      { name: "Flow", description: "" },
-      ctx,
-    );
   });
 });
 
@@ -242,9 +202,9 @@ describe("handleTodoList", () => {
   it("returns formatted todo list on success", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.listTodos).mockResolvedValue({
-      todos: [
-        { id: "t-1", title: "Buy milk", completed: false },
-        { id: "t-2", title: "Read book", completed: true },
+      data: [
+        serverTodo({ id: "t-1", title: "Buy milk" }),
+        serverTodo({ id: "t-2", title: "Read book", completed: true }),
       ],
     } as never);
 
@@ -257,7 +217,7 @@ describe("handleTodoList", () => {
 
   it("passes completed filter when provided", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockResolvedValue({ todos: [] } as never);
+    vi.mocked(gaia.listTodos).mockResolvedValue({ data: [] } as never);
 
     await handleTodoList(gaia, ctx, true);
 
@@ -277,11 +237,9 @@ describe("handleTodoList", () => {
 describe("handleTodoCreate", () => {
   it("returns created todo with check emoji", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-new",
-      title: "Finish tests",
-      completed: false,
-    } as never);
+    vi.mocked(gaia.createTodo).mockResolvedValue(
+      serverTodo({ id: "t-new", title: "Finish tests" }),
+    );
 
     const result = await handleTodoCreate(gaia, "Finish tests", ctx);
 
@@ -295,12 +253,9 @@ describe("handleTodoCreate", () => {
 
   it("passes priority and description when provided", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-x",
-      title: "Urgent task",
-      completed: false,
-      priority: "high",
-    } as never);
+    vi.mocked(gaia.createTodo).mockResolvedValue(
+      serverTodo({ id: "t-x", title: "Urgent task", priority: "high" }),
+    );
 
     await handleTodoCreate(gaia, "Urgent task", ctx, {
       priority: "high",
@@ -489,12 +444,10 @@ describe("dispatchTodoSubcommand", () => {
 
   beforeEach(() => {
     gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockResolvedValue({ todos: [] } as never);
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-new",
-      title: "New task",
-      completed: false,
-    } as never);
+    vi.mocked(gaia.listTodos).mockResolvedValue({ data: [] } as never);
+    vi.mocked(gaia.createTodo).mockResolvedValue(
+      serverTodo({ id: "t-new", title: "New task" }),
+    );
     vi.mocked(gaia.completeTodo).mockResolvedValue({
       id: "t-1",
       title: "Done task",
@@ -561,15 +514,13 @@ describe("dispatchWorkflowSubcommand", () => {
   beforeEach(() => {
     gaia = makeGaia();
     vi.mocked(gaia.listWorkflows).mockResolvedValue({ workflows: [] } as never);
-    vi.mocked(gaia.getWorkflow).mockResolvedValue({
-      id: "wf-1",
-      name: "Flow",
-      status: "active",
-    } as never);
+    vi.mocked(gaia.getWorkflow).mockResolvedValue(
+      serverWorkflow({ id: "wf-1", title: "Flow" }),
+    );
     vi.mocked(gaia.executeWorkflow).mockResolvedValue({
       execution_id: "exec-1",
-      status: "running",
-    } as never);
+      message: "Workflow execution started",
+    });
     vi.mocked(gaia.deleteWorkflow).mockResolvedValue(undefined as never);
   });
 
@@ -591,10 +542,7 @@ describe("dispatchWorkflowSubcommand", () => {
 
   it("routes 'execute' with ID to handleWorkflowExecute", async () => {
     await dispatchWorkflowSubcommand(gaia, ctx, "execute", ["wf-1"]);
-    expect(gaia.executeWorkflow).toHaveBeenCalledWith(
-      expect.objectContaining({ workflow_id: "wf-1" }),
-      ctx,
-    );
+    expect(gaia.executeWorkflow).toHaveBeenCalledWith("wf-1", ctx);
   });
 
   it("returns usage hint when 'execute' has no ID", async () => {

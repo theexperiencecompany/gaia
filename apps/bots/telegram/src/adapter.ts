@@ -825,14 +825,17 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     try {
       const outcome = await this.resolveIncomingMedia(
-        media,
-        (maxBytes) => this.downloadTelegramFile(fileId, maxBytes),
+        [
+          {
+            media,
+            download: (maxBytes) => this.downloadTelegramFile(fileId, maxBytes),
+          },
+        ],
         userId,
         chatId.toString(),
       );
-      if (outcome.action === "reply") {
-        await ctx.reply(outcome.text);
-      } else {
+      if (outcome.notice) await ctx.reply(outcome.notice);
+      if (outcome.text || outcome.attachments.length > 0) {
         await this.postTelegramMessage(
           ctx,
           userId,

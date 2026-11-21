@@ -91,12 +91,11 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "../utils/logger";
-import {
-  type IncomingMedia,
-  type MediaOutcome,
-  OUTBOUND_FILE_LIMITS,
-  processBotMedia,
-} from "../utils/media";
+import { OUTBOUND_FILE_LIMITS } from "../utils/media";
+import type {
+  IncomingAttachment,
+  MediaBatchOutcome,
+} from "../utils/media.types";
 import {
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -105,6 +104,7 @@ import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
+import { resolveIncomingMedia } from "./incoming-media";
 import { listActiveUntilAnswered } from "./resume-list";
 
 /**
@@ -1135,52 +1135,27 @@ export abstract class BaseBotAdapter {
     return () => clearInterval(interval);
   }
 
-  /**
-   * Routes an inbound media message to transcribe/upload/reject via {@link processBotMedia}
-   * (the platform-agnostic decision); this injects the shared GAIA client and user context so
-   * every adapter stays byte-for-byte consistent. `download` is a thunk so unsupported kinds
-   * never incur one.
-   *
-   * Owns the media pipeline's wide-event boundary (download, Whisper transcription, upload),
-   * which happens before any chat boundary exists — without it, latency and rejection reason were dark.
-   */
+  /** Reads one message's attachments into one outcome; see {@link resolveIncomingMedia}. */
   protected resolveIncomingMedia(
-    media: IncomingMedia,
-    download: (maxBytes: number) => Promise<Uint8Array>,
+    items: IncomingAttachment[],
     userId: string,
     channelId?: string,
-  ): Promise<MediaOutcome> {
-    return withWideEvent(
-      "media_intake",
+  ): Promise<MediaBatchOutcome> {
+    return resolveIncomingMedia(
       {
         platform: this.platform,
-        component: "base-adapter",
-        user_hash: hashLogIdentifier(userId),
-        channel_hash: hashLogIdentifier(channelId),
-        media_kind: media.kind,
-        is_voice_note: media.isVoiceNote,
+        gaia: this.gaia,
+        buildContext: (id, channel) => this.buildContext(id, channel),
+        recordUpload: async (id, properties) =>
+          this.analytics.capture(
+            await this.resolveDistinctId(id),
+            "bot:file_uploaded",
+            properties,
+          ),
       },
-      async () => {
-        // Every inbound attachment on every platform funnels through here, the one place to
-        // count uploads. `outcome` separates an ingested attachment ("chat") from a rejected
-        // one ("reply") — rejection rate is worth watching. No filename: it's user content.
-        const outcome = await processBotMedia(
-          this.gaia,
-          media,
-          download,
-          this.buildContext(userId, channelId),
-        );
-        this.analytics.capture(
-          await this.resolveDistinctId(userId),
-          "bot:file_uploaded",
-          {
-            media_kind: media.kind,
-            is_voice_note: Boolean(media.isVoiceNote),
-            outcome: outcome.action === "chat" ? "ingested" : "rejected",
-          },
-        );
-        return outcome;
-      },
+      items,
+      userId,
+      channelId,
     );
   }
 }

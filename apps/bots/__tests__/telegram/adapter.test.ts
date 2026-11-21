@@ -1419,7 +1419,7 @@ describe("TelegramAdapter - media message routing", () => {
       filename: "photo.jpg",
     };
     setResolveOutcome({
-      action: "chat",
+      notice: "",
       text: "describe this image",
       attachments: [attachment],
     });
@@ -1443,8 +1443,9 @@ describe("TelegramAdapter - media message routing", () => {
   it("posts a plain reply for a 'reply' outcome and does not post a message", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     setResolveOutcome({
-      action: "reply",
-      text: "I can't process videos yet.",
+      notice: "I can't process videos yet.",
+      text: "",
+      attachments: [],
     });
 
     const ctx = makePhotoCtx({ replyFn });
@@ -1455,7 +1456,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("passes the extracted media and a download thunk to resolveIncomingMedia", async () => {
-    setResolveOutcome({ action: "reply", text: "ok" });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
 
     const ctx = makePhotoCtx({ caption: "look at this" });
     await invokeMediaHandler(ctx);
@@ -1467,20 +1468,24 @@ describe("TelegramAdapter - media message routing", () => {
     ).resolveIncomingMedia;
 
     expect(resolve).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "image",
-        isVoiceNote: false,
-        mimeType: "image/jpeg",
-        caption: "look at this",
-      }),
-      expect.any(Function), // download thunk (deferred until needed)
+      [
+        {
+          media: expect.objectContaining({
+            kind: "image",
+            isVoiceNote: false,
+            mimeType: "image/jpeg",
+            caption: "look at this",
+          }),
+          download: expect.any(Function), // deferred until needed
+        },
+      ],
       "999",
       "123456",
     );
   });
 
   it("forwards the declared file size so an oversize photo never reaches getFile", async () => {
-    setResolveOutcome({ action: "reply", text: "ok" });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
 
     const ctx = makePhotoCtx({ fileSize: 11_000_000 });
     await invokeMediaHandler(ctx);
@@ -1491,12 +1496,14 @@ describe("TelegramAdapter - media message routing", () => {
       }
     ).resolveIncomingMedia;
 
-    expect(resolve.mock.calls[0][0]).toMatchObject({ sizeBytes: 11_000_000 });
+    expect(resolve.mock.calls[0][0][0].media).toMatchObject({
+      sizeBytes: 11_000_000,
+    });
     expect(mockGetFile).not.toHaveBeenCalled();
   });
 
   it("reads the Telegram file through a capped stream instead of buffering it whole", async () => {
-    setResolveOutcome({ action: "reply", text: "ok" });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
     (adapter as unknown as { token: string }).token = "test-token";
 
     const chunk = 256;
@@ -1525,7 +1532,7 @@ describe("TelegramAdapter - media message routing", () => {
           resolveIncomingMedia: ReturnType<typeof vi.fn>;
         }
       ).resolveIncomingMedia;
-      const download = resolve.mock.calls[0][1] as (
+      const download = resolve.mock.calls[0][0][0].download as (
         maxBytes: number,
       ) => Promise<Uint8Array>;
 
@@ -1548,7 +1555,7 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("surfaces a failed file download as an error carrying the HTTP status", async () => {
-    setResolveOutcome({ action: "reply", text: "ok" });
+    setResolveOutcome({ notice: "ok", text: "", attachments: [] });
     (adapter as unknown as { token: string }).token = "test-token";
     vi.stubGlobal(
       "fetch",
@@ -1563,7 +1570,7 @@ describe("TelegramAdapter - media message routing", () => {
           resolveIncomingMedia: ReturnType<typeof vi.fn>;
         }
       ).resolveIncomingMedia;
-      const download = resolve.mock.calls[0][1] as (
+      const download = resolve.mock.calls[0][0][0].download as (
         maxBytes: number,
       ) => Promise<Uint8Array>;
 
@@ -1574,7 +1581,11 @@ describe("TelegramAdapter - media message routing", () => {
   });
 
   it("ignores a group photo that does not @mention the bot in its caption", async () => {
-    setResolveOutcome({ action: "reply", text: "should not be used" });
+    setResolveOutcome({
+      notice: "should not be used",
+      text: "",
+      attachments: [],
+    });
 
     const ctx = makePhotoCtx({ chatType: "group", caption: "just a photo" });
     await invokeMediaHandler(ctx);

@@ -770,15 +770,18 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         sizeBytes: media.sizeBytes,
       };
       const outcome = await this.resolveIncomingMedia(
-        incoming,
-        (maxBytes) => this.downloadMediaBytes(media, maxBytes),
+        [
+          {
+            media: incoming,
+            download: (maxBytes) => this.downloadMediaBytes(media, maxBytes),
+          },
+        ],
         waId,
         waId,
       );
 
-      if (outcome.action === "reply") {
-        await this.sendWhatsAppText(waId, outcome.text);
-      } else {
+      if (outcome.notice) await this.sendWhatsAppText(waId, outcome.notice);
+      if (outcome.text || outcome.attachments.length > 0) {
         await this.postWhatsAppMessage(
           waId,
           outcome.text,

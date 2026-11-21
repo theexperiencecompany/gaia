@@ -79,8 +79,8 @@ export {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
-export type { IncomingMedia, MediaKind, MediaOutcome } from "./media";
 export {
+  BOT_MAX_FILES_PER_MESSAGE,
   BOT_MEDIA_LIMITS,
   extensionForMime,
   friendlyMediaError,
@@ -92,6 +92,13 @@ export {
   unfetchableMediaMessage,
   unsupportedMediaMessage,
 } from "./media";
+export type {
+  IncomingAttachment,
+  IncomingMedia,
+  MediaBatchOutcome,
+  MediaKind,
+  MediaOutcome,
+} from "./media.types";
 export type { ReactionOutcome } from "./reaction-outcome";
 export { REACTION_OUTCOME } from "./reaction-outcome";
 export {

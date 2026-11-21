@@ -12,7 +12,7 @@ import {
   extractSubcommandArgs,
   friendlyMediaError,
   hashLogIdentifier,
-  type IncomingMedia,
+  type IncomingAttachment,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
@@ -29,7 +29,6 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   sanitizeErrorForLog,
-  unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
@@ -568,52 +567,28 @@ export class ImessageAdapter extends BaseBotAdapter {
     try {
       await this.ensureWelcomed(handle, space);
 
-      const uploaded: BotFileData[] = [];
-      const transcripts: string[] = [];
-      let filePrompt = "";
-
-      for (const [index, content] of contents.entries()) {
-        const isVoiceNote = content.type === "voice";
-        if (!content.id) {
-          this.adapterLogger.info("media_unfetchable", {
-            user_hash: handleHash,
-            media_kind: kinds[index],
-            reason: "no_attachment_id",
-          });
-          await this.sendImessageText(
-            space,
-            unfetchableMediaMessage(kinds[index], isVoiceNote),
-          );
-          continue;
-        }
-
-        const incoming: IncomingMedia = {
-          kind: kinds[index],
-          isVoiceNote,
-          mimeType: content.mimeType,
-          filename: content.name,
-          sizeBytes: content.size,
-          caption,
-        };
-        const outcome = await this.resolveIncomingMedia(
-          incoming,
-          (maxBytes) => readMediaBytes(content, maxBytes),
-          handle,
-          space.id,
-        );
-
-        if (outcome.action === "reply") {
-          await this.sendImessageText(space, outcome.text);
-        } else if (outcome.attachments.length > 0) {
-          uploaded.push(...outcome.attachments);
-          if (!filePrompt) filePrompt = outcome.text;
-        } else {
-          transcripts.push(outcome.text);
-        }
-      }
-
-      const text =
-        transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
+      const items = contents.map(
+        (content, index): IncomingAttachment => ({
+          media: {
+            kind: kinds[index],
+            isVoiceNote: content.type === "voice",
+            mimeType: content.mimeType,
+            filename: content.name,
+            sizeBytes: content.size,
+            caption,
+          },
+          // A part with no attachment id carries metadata but no bytes.
+          download: content.id
+            ? (maxBytes) => readMediaBytes(content, maxBytes)
+            : undefined,
+        }),
+      );
+      const {
+        notice,
+        text,
+        attachments: uploaded,
+      } = await this.resolveIncomingMedia(items, handle, space.id);
+      if (notice) await this.sendImessageText(space, notice);
       if (uploaded.length > 0 || text) {
         // Media turns carry no inbound message id (the media pipeline drops
         // it), so a later reaction to one falls back to a text bubble.

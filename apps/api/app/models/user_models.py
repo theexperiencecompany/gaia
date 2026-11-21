@@ -6,6 +6,7 @@ import re
 from typing import Annotated, Any, TypedDict
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -20,6 +21,7 @@ from app.models.document_models import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.models.quiet_hours_models import QuietHours
 from app.schemas.common import ResponseModel
+from app.utils.email_utils import canonical_email
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
 
@@ -553,7 +555,7 @@ class UserDocument(MongoDocument):
 
     model_config = ConfigDict(extra="allow")
 
-    email: str | None = None
+    email: Annotated[str, AfterValidator(canonical_email)] | None = None
     name: str | None = None
     picture: str | None = None
     timezone: str | None = None
