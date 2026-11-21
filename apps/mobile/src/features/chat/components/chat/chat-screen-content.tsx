@@ -368,10 +368,10 @@ export function ChatScreenContent({
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
       sendMessage(text, {
-        replyToMessage: replyingTo,
-        selectedWorkflow,
-        selectedTool: selectedTool?.name ?? null,
-        toolCategory: selectedTool?.category ?? null,
+        reply_to_message: replyingTo,
+        selected_workflow: selectedWorkflow,
+        selected_tool: selectedTool?.name ?? null,
+        tool_category: selectedTool?.category ?? null,
         attachments,
       });
       dispatchDraft({ type: "messageSent" });

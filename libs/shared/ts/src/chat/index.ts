@@ -37,7 +37,6 @@ export type {
 export { TOOL_CALLS_DATA_TOOL_NAME } from "./streaming";
 export type {
   ApiFileData,
-  ApiToolData,
   ArtifactData,
   CalendarDeleteOptions,
   CalendarEditOptions,
