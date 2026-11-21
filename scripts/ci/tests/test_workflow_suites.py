@@ -102,6 +102,15 @@ def test_the_fast_tier_runs_only_the_fast_slices_and_no_engine_slice(
     assert published["engine_slices"] == []
 
 
+def test_the_verified_tier_runs_no_slice() -> None:
+    # A master push the merge queue already passed: the queue ran every slice on this SHA.
+    assert _published_slices("verified") == {
+        "python_slices": [],
+        "engine_slices": [],
+        "slice_defs": {},
+    }
+
+
 def test_every_slice_names_its_tier(slices: list[dict[str, Any]]) -> None:
     # A slice with no tier would be silently dropped from (or added to) a PR push.
     for entry in slices:

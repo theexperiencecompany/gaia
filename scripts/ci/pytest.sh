@@ -11,7 +11,8 @@
 #                            the object, is the matrix value so the job row reads
 #                            `test-python (unit-a)`. CI_TIER=fast keeps only the
 #                            slices whose `tier` is fast (a PR push) and no engine
-#                            slice; unset or `full` keeps every slice.
+#                            slice; `verified` (a master push the merge queue
+#                            already passed) keeps none; unset or `full` keeps every slice.
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -64,13 +65,15 @@ SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 cmd_slices() {
   local tier="${CI_TIER:-full}"
   case "$tier" in
-    fast|full) ;;
-    *) echo "pytest.sh slices: CI_TIER must be fast or full, got '$tier'" >&2; exit 2 ;;
+    fast|full|verified) ;;
+    *) echo "pytest.sh slices: CI_TIER must be fast, full or verified, got '$tier'" >&2; exit 2 ;;
   esac
   python3 -c 'import json, sys
 slices = json.load(open(sys.argv[1]))["slices"]
 if sys.argv[2] == "fast":
     slices = [s for s in slices if s["tier"] == "fast"]
+elif sys.argv[2] == "verified":
+    slices = []
 for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
     chosen = [s["name"] for s in slices if s["engines"] == engines]
     print(key + "=" + json.dumps(chosen, separators=(",", ":")))

@@ -1130,3 +1130,85 @@ def test_a_check_that_opts_out_of_reuse_or_no_nx_task_decides_always_runs(
     )
 
     assert sorted(_plan(reuse_pr, monkeypatch, tmp_path, head)) == ["biome", "ruff"]
+
+
+# --- queue-verified -----------------------------------------------------------
+# A master push whose SHA a green merge_group run already checked skips the
+# lanes. Anything short of proof of that run means the full tier.
+
+MASTER_SHA = "a" * 40
+QUEUE_RUNS = r"/actions/workflows/ci\.yml/runs$"
+
+
+def _queue_run(**overrides: Any) -> dict[str, Any]:
+    run: dict[str, Any] = {
+        "id": 41,
+        "event": "merge_group",
+        "head_sha": MASTER_SHA,
+        "status": "completed",
+        "conclusion": "success",
+        "head_repository": {"full_name": REPO},
+        "html_url": f"https://github.com/{REPO}/actions/runs/41",
+    }
+    run.update(overrides)
+    return run
+
+
+def _verified(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, str]:
+    out = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    argv = ["--repo", REPO, "--workflow", "ci.yml", "--sha", MASTER_SHA]
+    assert verdict.cmd_queue_verified(argv) == 0
+    return dict(line.split("=", 1) for line in out.read_text().splitlines())
+
+
+def test_a_sha_a_green_merge_group_run_checked_is_verified(
+    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    api.on("GET", QUEUE_RUNS, Reply(body={"workflow_runs": [_queue_run()]}))
+
+    fields = _verified(monkeypatch, tmp_path)
+
+    assert fields == {
+        "queue_run": "41",
+        "queue_run_url": f"https://github.com/{REPO}/actions/runs/41",
+    }
+    (asked,) = api.requests
+    assert {
+        "event": "merge_group",
+        "head_sha": MASTER_SHA,
+        "status": "success",
+    }.items() <= asked.query.items()
+
+
+@pytest.mark.parametrize(
+    "runs",
+    [
+        pytest.param([], id="no-queue-run"),
+        pytest.param([_queue_run(conclusion="failure")], id="failed-run"),
+        pytest.param([_queue_run(conclusion="cancelled")], id="cancelled-run"),
+        pytest.param([_queue_run(head_sha="b" * 40)], id="other-sha"),
+        pytest.param([_queue_run(event="push")], id="not-a-merge-group"),
+        pytest.param([_queue_run(head_repository={"full_name": "fork/gaia"})], id="other-repo"),
+        pytest.param([_queue_run(head_repository=None)], id="no-head-repo"),
+    ],
+)
+def test_anything_but_a_green_queue_run_for_this_sha_is_the_full_tier(
+    runs: list[dict[str, Any]], api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The query parameters are a filter, not a guarantee: each run is re-checked.
+    api.on("GET", QUEUE_RUNS, Reply(body={"workflow_runs": runs}))
+
+    assert _verified(monkeypatch, tmp_path) == {"queue_run": "", "queue_run_url": ""}
+
+
+def test_an_unreadable_run_listing_is_the_full_tier_never_verified(
+    api: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    api.on("GET", QUEUE_RUNS, Reply(503, {"message": "unavailable"}))
+
+    assert _verified(monkeypatch, tmp_path) == {"queue_run": "", "queue_run_url": ""}
+    assert "::warning::" in capsys.readouterr().out

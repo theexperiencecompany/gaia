@@ -156,7 +156,23 @@ def test_a_pr_push_runs_only_the_fast_tier(workflow: Workflow) -> None:
     (plan,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "plan"]
     assert "tier" not in plan["if"]
     (tier,) = [s for s in jobs["detect"]["steps"] if s.get("id") == "tier"]
-    assert tier["env"]["TIER"] == "${{ github.event_name == 'pull_request' && 'fast' || 'full' }}"
+    assert tier["env"]["TIER"] == (
+        "${{ github.event_name == 'pull_request' && 'fast' || "
+        "steps.queue.outputs.queue_run != '' && 'verified' || 'full' }}"
+    )
+
+
+def test_only_a_master_push_the_queue_passed_skips_the_check_lanes(workflow: Workflow) -> None:
+    # The verified tier is decided before the tier step, on a push only, by the
+    # one subcommand whose tests pin "anything but a green queue run is full".
+    steps = workflow["jobs"]["detect"]["steps"]
+    ids = [s.get("id") for s in steps]
+    assert ids.index("queue") < ids.index("tier") < ids.index("affected")
+    queue = steps[ids.index("queue")]
+    assert queue["if"] == "github.event_name == 'push'"
+    assert queue["run"].startswith("python3 scripts/ci/verdict.py queue-verified ")
+    affected = steps[ids.index("affected")]
+    assert affected["env"]["CI_TIER"] == "${{ steps.tier.outputs.tier }}"
 
 
 def test_the_secret_scan_runs_only_on_the_events_that_bring_commits(workflow: Workflow) -> None:

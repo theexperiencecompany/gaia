@@ -44,6 +44,14 @@ SCOPED_FILES_MAX = 300
 # an env var or job output: Linux refuses one env string over 128 KiB
 # (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
 TASK_FILES_ENV = "TASK_FILES_PATH"
+# detect's tier for a master push whose SHA a green merge_group run already checked
+# (verdict.py queue-verified): it builds what a deploy ships and publishes what only
+# a master push may, and checks nothing the queue checked.
+VERIFIED_TIER = "verified"
+DEPLOY_BRANCH = "master"
+# ci.yml's web-build job builds the bundle deploy-web ships; web:build is what opens it.
+SHIPPING_JOBS = frozenset({"web-build"})
+SHIPPED_TASKS = frozenset({"web:build"})
 # pnpm records a finished install here; the workspace's nx and its plugins are in it.
 PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
 
@@ -335,11 +343,31 @@ def _is_source(reason: dict[str, str]) -> bool:
     )
 
 
-def outputs(selection: Selection, event: str, branch: str | None) -> dict[str, str]:
+def _publishes(check: Check) -> bool:
+    """Say whether only a master push runs this check: it publishes, so no queue run did it."""
+    return check.events == ("push",) and check.branch == DEPLOY_BRANCH
+
+
+def _shipping(check: Check | None, task: str) -> bool:
+    return task in SHIPPED_TASKS or (
+        check is not None and (check.job in SHIPPING_JOBS or _publishes(check))
+    )
+
+
+def outputs(selection: Selection, event: str, branch: str | None, tier: str = "") -> dict[str, str]:
     """Build detect's outputs; a job reads each as the same name upper-cased, and ci:local sets them too."""
     jobs = job_tasks(selection, event, branch)
+    tasks = sorted(selection.tasks)
+    if tier == VERIFIED_TIER:
+        known = checks()
+        tasks = [task for task in tasks if _shipping(known.get(task), task)]
+        jobs = {
+            job: kept
+            for job, listed in jobs.items()
+            if (kept := [t for t in listed if job in SHIPPING_JOBS or _publishes(known[t])])
+        }
     return {
-        "tasks": json.dumps(sorted(selection.tasks)),
+        "tasks": json.dumps(tasks),
         "jobs": json.dumps(sorted(jobs)),
         "job_tasks": json.dumps(jobs),
         "release_groups": json.dumps(release_groups(selection)),
@@ -394,6 +422,7 @@ def main() -> int:
         selection,
         os.environ.get("GITHUB_EVENT_NAME", LOCAL_EVENT),
         os.environ.get("GITHUB_REF_NAME"),
+        os.environ.get("CI_TIER", ""),
     )
     lines = "".join(f"{key}={value}\n" for key, value in published.items())
     sink = os.environ.get("GITHUB_OUTPUT")

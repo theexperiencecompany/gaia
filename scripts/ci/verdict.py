@@ -65,6 +65,11 @@ Subcommands:
         of each check a step ran, and fail when any check failed. With --check,
         post just that finished check (run-job calls it as each one ends); the
         job's post then skips it.
+    reuse-plan --repo R --workflow W --branch B --base B --head-sha S --run-id N --event E
+        Write `reused`: the checks whose last pass on this PR still holds.
+    queue-verified --repo R --workflow W --sha S
+        Write `queue_run` / `queue_run_url`: the green merge_group run that
+        already checked S, or empty (full tier), including when the API fails.
 
 Interpreters: the JUnit readers need defusedxml and are invoked with
 `uv run --no-project` (the PEP 723 block above is what supplies it); the rest
@@ -1868,6 +1873,62 @@ def cmd_reuse_plan(args: list[str]) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# queue-verified — a master push of a commit the merge queue already passed.
+#
+# GitHub fast-forwards master to the group commit it tested, so the push run
+# checks the same SHA a second time. A green `merge_group` run of this workflow
+# on that SHA is the verdict this run reuses; anything less proves nothing and
+# the run takes the full tier.
+# ---------------------------------------------------------------------------
+
+QUEUE_EVENT = "merge_group"
+
+
+def _queue_pass(gh: GitHub, repo: str, workflow: str, sha: str) -> Json | None:
+    """Return a successful merge_group run of workflow on sha from this repo, or None."""
+    listing = gh.get(
+        f"repos/{repo}/actions/workflows/{workflow}/runs"
+        f"?event={QUEUE_EVENT}&head_sha={sha}&status=success&per_page=20"
+    )
+    for run in records(listing, "workflow_runs"):
+        head_repo = run.get("head_repository")
+        if (
+            run.get("event") == QUEUE_EVENT
+            and run.get("head_sha") == sha
+            and run.get("conclusion") == "success"
+            and isinstance(head_repo, dict)
+            and head_repo.get("full_name") == repo
+        ):
+            return run
+    return None
+
+
+def cmd_queue_verified(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="verdict.py queue-verified")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--workflow", required=True, help="the workflow file name, e.g. ci.yml")
+    parser.add_argument("--sha", required=True, help="the pushed commit")
+    opts = parser.parse_args(args)
+
+    try:
+        run = _queue_pass(GitHub.from_env(), opts.repo, opts.workflow, opts.sha)
+    except GitHubError as err:
+        print(f"::warning::queue-verified: merge_group runs are unreadable ({err}) — full tier")
+        run = None
+    run_id = str(field_of(run, "id", int)) if run else ""
+    run_url = text_of(run, "html_url") if run else ""
+    outputs = os.environ.get("GITHUB_OUTPUT")
+    if outputs:
+        with Path(outputs).open("a") as handle:
+            handle.write(f"queue_run={run_id}\nqueue_run_url={run_url}\n")
+    if run:
+        print(f"queue-verified: {opts.sha[:12]} passed the merge queue in run {run_id} ({run_url})")
+    else:
+        print(f"queue-verified: no green {QUEUE_EVENT} run on {opts.sha[:12]} — full tier")
+    return 0
+
+
 SUBCOMMANDS = {
     "emit": cmd_emit,
     "consolidate": cmd_consolidate,
@@ -1880,6 +1941,7 @@ SUBCOMMANDS = {
     "sarif": cmd_sarif,
     "post-statuses": cmd_post_statuses,
     "reuse-plan": cmd_reuse_plan,
+    "queue-verified": cmd_queue_verified,
 }
 
 

@@ -9,10 +9,14 @@ name: CI
 #   fast — every PR push: select-runner, detect, lint-node, lint-python,
 #          lint-mixed, ts-build-test, test-python unit-a + unit-b, mutation of
 #          the changed modules, quality-gate.
-#   full — merge_group, master push, dispatch: everything above plus the
-#          integration/bridge/browser slices (regression-proof rides the
-#          integration slice), the dependency audit, the scans, the image
-#          build, and on master coverage and the deploy phases.
+#   full — merge_group, a master push with no green queue run, dispatch:
+#          everything above plus the integration/bridge/browser slices
+#          (regression-proof rides the integration slice), the dependency
+#          audit, the scans, the image build and coverage; on master the
+#          deploy phases.
+#   verified — a master push of a SHA a green merge_group run already checked
+#          (`verdict.py queue-verified`): no check lane runs; the images, the
+#          web bundle and the master-only publishing build, then deploy.
 # A PR enters master only through the merge queue, so the full tier gates every
 # merge: the slow checks run once per merge instead of once per push. Mutation
 # runs on the PR too: a survivor found only in the queue is an ejection plus a
@@ -183,6 +187,8 @@ jobs:
       statuses: read # reuse-plan reads each check's last status
     outputs:
       tier: ${{ steps.tier.outputs.tier }}
+      # The green merge_group run a verified master push relies on (empty otherwise).
+      queue_run_url: ${{ steps.queue.outputs.queue_run_url }}
       # The base every lane below diffs against: the PR's real parent (the
       # event payload names a stack's trunk — see scripts/ci/changes.sh), or
       # the commit a merge group was built on.
@@ -217,10 +223,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Before the tier: a master push the merge queue already passed checks nothing again.
+      - name: Did the merge queue already pass this commit
+        id: queue
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/verdict.py queue-verified --repo "$GITHUB_REPOSITORY" --workflow ci.yml --sha "$GITHUB_SHA"
+
       - name: Decide the tier
         id: tier
         env:
-          TIER: ${{ github.event_name == 'pull_request' && 'fast' || 'full' }}
+          TIER: ${{ github.event_name == 'pull_request' && 'fast' || steps.queue.outputs.queue_run != '' && 'verified' || 'full' }}
         shell: bash
         run: echo "tier=$TIER" | tee -a "$GITHUB_OUTPUT"
 
@@ -263,6 +277,8 @@ jobs:
         id: affected
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          # verified keeps only what a deploy ships and what only a master push publishes.
+          CI_TIER: ${{ steps.tier.outputs.tier }}
           TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: bash scripts/ci/changes.sh affected
       # Each task's changed files, for changes.sh files --task (the task-files composite).
@@ -957,8 +973,8 @@ jobs:
   # The suite is split by directory into slices that run concurrently, so the
   # wall clock is max(slice) instead of the sum. The fast tier runs unit-a and
   # unit-b; the full tier adds integration and bridge (services) and, in
-  # test-python-engines, browser. Each slice writes its own coverage on
-  # master; the `coverage` job combines them.
+  # test-python-engines, browser. Each full-tier slice writes its own
+  # coverage; the `coverage` job combines them.
   test-python:
     # Static: a job skipped before its matrix expands renders an expression in
     # its name literally. GitHub appends the matrix value: `test-python (unit-a)`.
@@ -1043,17 +1059,17 @@ jobs:
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job; one slice alone cannot reach it.
+      # Coverage is traced wherever the whole suite runs (every event but a PR's,
+      # whose slices are an impact selection): the gate and the test-impact map
+      # read it (C tracer: sysmon cannot record the per-test contexts the map needs).
       - name: Run Python tests (${{ matrix.slice }})
         # Explicit shell = `bash -eo pipefail`, so a `| tee` cannot swallow the
         # flake gate's exit code.
         shell: bash
         env:
-          # Coverage is traced only on master/dispatch runs, where the gate and
-          # the test-impact map read it (C tracer: sysmon cannot record the
-          # per-test contexts the map needs).
-          COVERAGE: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '' }}
+          COVERAGE: ${{ github.event_name != 'pull_request' && '1' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice }}
-          COV_CONTEXT: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'test' || '' }}
+          COV_CONTEXT: ${{ github.event_name != 'pull_request' && 'test' || '' }}
           HYPOTHESIS_PROFILE: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'ci' || 'ci-full' }}
           # serial lanes get -n 0 (the expression engine treats the string "0"
           # as falsy, hence the explicit flag); the box gets its static share,
@@ -1089,11 +1105,11 @@ jobs:
         env:
           GAIA_VERDICT_DIR: ${{ runner.temp }}/regression-proof-verdicts
         run: bash ../../scripts/ci/pytest.sh regression-proof "$(bash ../../scripts/ci/changes.sh base-rev)"
-      # ── Record the map (master / dispatch only) ──────────────────────────
+      # ── Record the map (every whole-suite run: the queue, master, dispatch) ──
       # !cancelled(): a lane with a red test still produced a valid map, and a
       # missing map makes every PR run the whole slice.
       - name: Record test impact map
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: github.event_name != 'pull_request' && !cancelled()
         working-directory: apps/api
         run: |
           mkdir -p ../../.test-impact-map
@@ -1102,7 +1118,7 @@ jobs:
             --out "../../.test-impact-map/test-impact-map-$SLICE_NAME.json" \
             --sha "$GITHUB_SHA" --slice "$SLICE_NAME"
       - name: Upload test impact map
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: github.event_name != 'pull_request' && !cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: test-impact-map-${{ matrix.slice }}
@@ -1110,7 +1126,7 @@ jobs:
           include-hidden-files: true
           retention-days: 30
       - name: Upload coverage data
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-${{ matrix.slice }}
@@ -1160,14 +1176,15 @@ jobs:
         slice: ${{ fromJSON(needs.detect.outputs.engine_slices) }}
     steps: *test-python-steps
 
-  # ── Coverage gate — master/dispatch only, off the test lanes' critical path ─
+  # ── Coverage gate — wherever the whole suite runs, off the slices' path ───
   # A PR HAS NO COVERAGE GATE, deliberately: its slices run a test-impact
   # SELECTION, and a coverage total over a subset fails honest PRs and passes
-  # dishonest ones. The full suite and the 80% combined gate run on master.
+  # dishonest ones. The merge queue runs every slice whole, so the 80% combined
+  # gate holds there, before the merge; a verified master push runs no slice.
   coverage:
     needs: [select-runner, detect, test-python, test-python-engines]
     # No `!cancelled()`: with a slice red there is no complete data to combine.
-    if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
@@ -1196,7 +1213,7 @@ jobs:
           ls -la .coverage.*
           uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
-          echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
+          echo "coverage gate: fail-under=$FAIL_UNDER (whole-suite runs only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1446,6 +1463,31 @@ jobs:
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
 
+  # ── Cache warm (verified master pushes only; never gates) ────────────────
+  # A PR restores caches saved on its own ref or on master, never the merge
+  # queue's (scoped to its gh-readonly-queue ref). A verified push runs no lint
+  # or test lane, so nothing else saves the uv cache on master; GitHub-hosted on
+  # purpose, since the box keeps ~/.cache/uv on disk and saves nothing.
+  cache-warm:
+    needs: [detect]
+    if: needs.detect.outputs.tier == 'verified'
+    runs-on: ubuntu-latest
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+
   # ── Quality gate (the one required check) ────────────────────────────────
   quality-gate:
     name: quality-gate
@@ -1494,11 +1536,15 @@ jobs:
           path: ${{ runner.temp }}/verdicts
           merge-multiple: true
       - name: Say which tier this run checked
+        shell: bash
         env:
           TIER: ${{ needs.detect.outputs.tier }}
+          QUEUE_RUN_URL: ${{ needs.detect.outputs.queue_run_url }}
         run: |
           if [ "$TIER" = "fast" ]; then
             echo "### Tier: fast — integration, bridge and browser slices (and regression-proof with them), the dependency audit, the scans and the image build run in the merge queue" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$TIER" = "verified" ]; then
+            echo "quality-gate: this commit passed the merge queue in $QUEUE_RUN_URL; no check lane ran again" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "### Tier: ${TIER:-none}" >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -1611,8 +1657,7 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && needs.web-build.result == 'success' }}
     uses: ./.github/workflows/deploy-web.yml
     permissions:
-      contents: write # seo-crawl pushes the branch of the baseline PR it opens
+      contents: read
       deployments: write
-      actions: read # IndexNow reads earlier runs' deploy jobs
-      pull-requests: write # seo-crawl opens that PR
+      actions: write # IndexNow reads earlier runs' deploy jobs; post-deploy-seo dispatches seo-crawl.yml
     secrets: inherit # pragma: allowlist secret

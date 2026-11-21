@@ -168,3 +168,64 @@ def test_a_failing_nx_command_raises_with_what_nx_said() -> None:
     ) as failed:
         nx_affected._nx("show", "project", "no-such-project")
     assert "no-such-project" in str(failed.value).split("\n", 1)[1]
+
+
+# ── the verified tier: a master push the merge queue already passed ─────────
+
+
+def _check(
+    task: str,
+    job: str,
+    events: tuple[str, ...] | None = None,
+    branch: str | None = None,
+    runner: str = "nx",
+) -> nx_affected.Check:
+    return nx_affected.Check(
+        task=task, job=job, check=task.split(":", 1)[1], area="build",
+        events=events, branch=branch, reuse=True, runner=runner,
+    )  # fmt: skip
+
+
+VERIFIED_CHECKS = {
+    c.task: c
+    for c in [
+        _check("ci:ruff", "lint-python"),
+        _check("web:build", "ts-build-test"),
+        _check("ci:web-bundle", "web-build"),
+        _check("ci:analytics-sync", "lint-mixed", events=("push",), branch="master", runner="step"),
+        _check("ci:analytics-check", "lint-mixed"),
+        _check("api:test", "test-python"),
+    ]
+}
+
+
+@pytest.fixture
+def verified_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(nx_affected, "checks", lambda: VERIFIED_CHECKS)
+    monkeypatch.setattr(nx_affected, "release_groups", lambda _selection: [])
+
+
+def _published(tier: str) -> dict[str, object]:
+    selection = nx_affected.Selection(tasks={task: [] for task in VERIFIED_CHECKS})
+    published = nx_affected.outputs(selection, "push", "master", tier)
+    return {key: json.loads(value) for key, value in published.items()}
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_a_verified_push_keeps_only_the_shipped_bundle_and_the_master_only_publishing() -> None:
+    published = _published("verified")
+
+    assert published["tasks"] == ["ci:analytics-sync", "ci:web-bundle", "web:build"]
+    assert published["jobs"] == ["lint-mixed", "web-build"]
+    assert published["job_tasks"] == {
+        "lint-mixed": ["ci:analytics-sync"],
+        "web-build": ["ci:web-bundle"],
+    }
+
+
+@pytest.mark.usefixtures("verified_checks")
+def test_the_full_tier_keeps_every_affected_check() -> None:
+    published = _published("full")
+
+    assert published["tasks"] == sorted(VERIFIED_CHECKS)
+    assert "test-python" in published["jobs"] and "ts-build-test" in published["jobs"]
