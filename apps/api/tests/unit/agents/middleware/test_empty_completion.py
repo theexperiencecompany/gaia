@@ -117,7 +117,6 @@ def _poisoned_request() -> ModelRequest:
 class TestTheRetryDoesNotReplayAPoisonedHistory:
     """Regression: a breaks-only reply saved to the thread was copied by every later turn, and the retry resent it verbatim."""
 
-    @pytest.mark.regression
     async def test_the_retry_drops_breaks_only_replies_trims_edge_breaks_and_adds_one_notice(self):
         handler = _ScriptedHandler(EMPTY, ANSWER)
 

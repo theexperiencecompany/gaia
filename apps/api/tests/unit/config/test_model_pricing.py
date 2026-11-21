@@ -163,7 +163,6 @@ class TestEveryRuntimeModelIsPriced:
 
         mock_log.error.assert_called_once()
 
-    @pytest.mark.regression
     def test_the_sim_stub_model_is_free_and_does_not_log(self) -> None:
         """Every call under GAIA_SIM_MODE names the stub's model; each one logged an ERROR."""
         with patch("app.config.model_pricing.log") as mock_log:
