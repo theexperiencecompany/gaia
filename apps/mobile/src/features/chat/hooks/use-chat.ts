@@ -1,4 +1,4 @@
-import type { SelectedWorkflowDataInput } from "@gaia/shared/api/generated";
+import type { SendMessageRequest } from "@gaia/shared/api/generated";
 import { DISPLAY_STATE } from "@gaia/shared/conversation";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,7 +20,6 @@ import {
   useLiveMessages,
   useOpenConversation,
 } from "../live/use-live-chat";
-import type { ReplyToMessageData } from "../types";
 
 export type { Message } from "../api/chat-api";
 
@@ -28,13 +27,10 @@ interface UseChatOptions {
   onNavigate?: (conversationId: string) => void;
 }
 
-export interface SendMessageOptions {
-  replyToMessage?: ReplyToMessageData | null;
-  selectedTool?: string | null;
-  toolCategory?: string | null;
-  selectedWorkflow?: SelectedWorkflowDataInput | null;
-  attachments?: AttachmentFile[];
-}
+export type SendMessageOptions = Pick<
+  SendMessageRequest,
+  "reply_to_message" | "selected_tool" | "tool_category" | "selected_workflow"
+> & { attachments?: AttachmentFile[] };
 
 interface UseChatReturn {
   /** The rows of the conversation's view: its saved and paged log, then the stream. */
@@ -102,10 +98,10 @@ export function useChat(
       conversationId,
       {
         text,
-        reply_to_message: opts?.replyToMessage ?? null,
-        selected_tool: opts?.selectedTool ?? null,
-        tool_category: opts?.toolCategory ?? null,
-        selected_workflow: opts?.selectedWorkflow ?? null,
+        reply_to_message: opts?.reply_to_message ?? null,
+        selected_tool: opts?.selected_tool ?? null,
+        tool_category: opts?.tool_category ?? null,
+        selected_workflow: opts?.selected_workflow ?? null,
       },
       attachments.flatMap((attachment) =>
         attachment.fileId

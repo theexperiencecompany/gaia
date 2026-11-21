@@ -2,6 +2,7 @@ import type {
   MemoryDocument,
   MemoryEntry,
   MemoryEpisode,
+  ToolDataEntry,
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
@@ -179,14 +180,12 @@ export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
 // Tools Message Schema
-// Derived from TOOL_REGISTRY. Represents the tool-specific portion
-// of a message. Used by the base message registry.
-export interface TypedToolDataEntry {
+// The API's tool data entry with its name and data narrowed by TOOL_REGISTRY.
+// Used by the base message registry.
+export type TypedToolDataEntry = Omit<ToolDataEntry, "tool_name" | "data"> & {
   tool_name: ToolName;
-  tool_category: string;
   data: ToolDataMap[ToolName];
-  timestamp: string | null;
-}
+};
 
 // Optional wrapper for tool data in messages
 type ToolsMessageSchema = {
