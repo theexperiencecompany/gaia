@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from doc_shape import sequence
 from lib import nx_affected
 import pytest
 
@@ -228,4 +229,5 @@ def test_the_full_tier_keeps_every_affected_check() -> None:
     published = _published("full")
 
     assert published["tasks"] == sorted(VERIFIED_CHECKS)
-    assert "test-python" in published["jobs"] and "ts-build-test" in published["jobs"]
+    jobs = sequence(published["jobs"])
+    assert "test-python" in jobs and "ts-build-test" in jobs
