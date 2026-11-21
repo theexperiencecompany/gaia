@@ -22,7 +22,12 @@ import re
 
 from app.constants.chat import ARTIFACT_REF_RE, USER_MESSAGE_TYPE, WORKSPACE_ARTIFACT_RE
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import MessageKind, MessageModel, UpdateMessagesRequest
+from app.models.chat_models import (
+    MessageKind,
+    MessageModel,
+    ModelTokenUsage,
+    UpdateMessagesRequest,
+)
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
@@ -144,7 +149,7 @@ class BotReply:
     complete_message: str
     bot_message_id: str
     tool_data: Mapping[str, object] = field(default_factory=dict)
-    metadata: dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, ModelTokenUsage] = field(default_factory=dict)
     error: str | None = None
     follow_up_actions: list[str] | None = None
     #: A REACT turn: a one-emoji acknowledgment of reacts_to_message_id.
