@@ -93,7 +93,7 @@ import sys
 import time
 import urllib.parse
 
-from lib import nx_affected
+from lib import nx_affected, runner_host
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 
 HERE = Path(__file__).resolve().parent
@@ -114,9 +114,6 @@ TEST_SLICES_JSON = HERE / "lib" / "test-slices.json"
 MUTATION_WAVE = 6
 REQUEUE_WORKFLOW = "ci-requeue.yml"
 SELF_HOSTED = "self-hosted"
-# The box's runners are gaia-home-<n> (gaia-infra setup.sh RUNNER_NAME_PREFIX); the
-# runner kind cannot tell it from Blacksmith, which reports self-hosted too.
-BOX_RUNNER_NAME_PREFIX = "gaia-home-"
 
 
 ACTIVE_RUN_STATUSES = frozenset({"queued", "pending", "waiting", "in_progress"})
@@ -1337,8 +1334,7 @@ def cmd_health(_args: list[str]) -> int:
     load1, load5, load15 = os.getloadavg()
     report = {
         # Off the box this whole report is about a machine running no CI.
-        "is_runner_host": counts["runner_listeners"] > 0
-        or os.environ.get("RUNNER_NAME", "").startswith(BOX_RUNNER_NAME_PREFIX),
+        "is_runner_host": counts["runner_listeners"] > 0 or runner_host.on_the_box(),
         "listeners": _listeners(),
         "loadavg": {"1m": round(load1, 2), "5m": round(load5, 2), "15m": round(load15, 2)},
         "threads": os.cpu_count() or 0,

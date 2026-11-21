@@ -265,9 +265,10 @@ wider matrix cannot finish sooner. What it does cost is one check row per job
 (a 430-module diff produced 250 of them, which no reviewer can read past) and a
 full checkout + `uv sync` per job rather than per shard.
 
-Under the cap each module gets its own shard and the check is named after it,
-which is the common case and the most useful thing to read at a glance. Over
-it, modules pack in round-robin and the check says `shard N/M (K modules)`; the
+The plan makes the fewest shards whose estimated cost fits the shard budget
+(`scripts/ci/CLAUDE.md`), so a typical PR's handful of modules runs in one
+shard. A shard carrying one module is named after it; a packed one says
+`shard N/M (K modules)`; the
 step then names every failing module in an `::error::` annotation and the job
 summary, because "this shard is red" is useless without saying which module.
 

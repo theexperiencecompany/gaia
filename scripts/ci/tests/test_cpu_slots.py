@@ -177,6 +177,17 @@ def test_a_shard_defaults_to_half_the_threads_and_takes_exactly_that(tmp_path: P
     assert tokens == workers
 
 
+@pytest.mark.skipif(shutil.which("nproc") is None, reason="nproc absent")
+def test_a_shard_off_the_box_uses_every_thread(tmp_path: Path) -> None:
+    """A GitHub-hosted shard has its runner to itself: half the threads left 2 of 4 vCPUs idle."""
+    env = {
+        **_base_env(tmp_path / "pool", 24),
+        "RUNNER_NAME": "GitHub Actions 1000238818",
+        "MUTMUT_MAX_CHILDREN": "",
+    }
+    assert _shard_budget(tmp_path, env) == (_nproc(), _nproc())
+
+
 def test_a_smaller_explicit_worker_count_is_not_raised_back_up(tmp_path: Path) -> None:
     """An explicit MUTMUT_MAX_CHILDREN is honoured as given, in both numbers."""
     env = {**_base_env(tmp_path / "pool", 24), "MUTMUT_MAX_CHILDREN": "2"}

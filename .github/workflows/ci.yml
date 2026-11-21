@@ -1271,8 +1271,8 @@ jobs:
       # Every module reports: this gate's value is the complete list.
       fail-fast: false
       # One wave of shards at once, equal to MUTATION_WAVE in mutation.py. The
-      # plan sizes the shard count by cost (up to MAX_SHARDS), so a costly diff
-      # queues further waves here instead of overloading a shard or the box. A
+      # plan makes the fewest shards its cost fits (up to MAX_SHARDS), so a costly
+      # diff queues further waves here instead of overloading a shard or the box. A
       # wave of 4 held shards 5-6 back ~13 min (run 40206323992) on
       # GitHub-hosted runners; on the box the CPU governor queues what it cannot fit.
       max-parallel: 6
