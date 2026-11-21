@@ -20,10 +20,22 @@ work behind a runner's setup.
   queue (`merge_group`), master and dispatch run the full tier on top: the
   integration, bridge and browser slices (regression-proof rides integration,
   so it stays queue-only: the integration slice needs the services pool),
-  `python-audit`, `scan`, `docker-image`, and on master `coverage` and the
-  deploy phases. A PR reaches master only through the queue, so the slow checks
-  run once per merge, not once per push. `detect` decides the tier
-  (`tier` output) and `pytest.sh slices` cuts the slice matrix to it.
+  `python-audit`, `scan`, `docker-image` and `coverage`. A PR reaches master
+  only through the queue, so the slow checks run once per merge, not once per
+  push. `detect` decides the tier (`tier` output) and `pytest.sh slices` cuts
+  the slice matrix to it.
+- **Verified tier: master deploys the commit the queue tested.** GitHub
+  fast-forwards master to the group commit it tested, so a master push whose SHA
+  has a green `merge_group` run of ci.yml (`verdict.py queue-verified`, its one
+  owner; an unreadable API means the full tier, never verified) runs no check
+  lane: `nx_affected.outputs` keeps only the web bundle (`web-build`) and the
+  checks only a master push runs (analytics-sync, which publishes), the gate
+  passes naming the queue run, and `build-images` / `deploy-web` /
+  `trigger-build` start as soon as their artifacts exist. A direct push and a
+  dispatch take the full tier, which is also where a `__FULL__` whole-tree scan
+  still happens. `cache-warm` saves the uv cache on master, which no lane does
+  on a verified push: a merge-queue run's caches are scoped to its
+  `gh-readonly-queue` ref and no PR can restore them.
 - **Grouped jobs.** Every check inside `lint-node`, `lint-python`,
   `lint-mixed`, `repo-policy`, `scan`, `python-audit` and `ts-build-test` is an
   nx target whose `metadata.ci` names its job, its status (`check`, `area`) and
@@ -201,10 +213,10 @@ could silently skip production deploys).
 **A PR has no coverage gate.** diff-cover was retired with the slice split: a
 PR's slices run a test-impact selection, and a coverage percentage measured
 over a subset is not a coverage percentage. The full suite and the 80%
-combined gate run on master, which is the backstop — do not restore diff-cover
-to a PR lane.
+combined gate run in the merge queue (and on a dispatch or direct master push),
+before the merge — do not restore diff-cover to a PR lane.
 
-`test-python` (and master-only `coverage`) run pytest directly on the runner
+`test-python` (and `coverage`) run pytest directly on the runner
 against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by
 `scripts/ci/test-services.sh` via the composite action
 `actions/setup-python-test-env`. Plain `docker run`, not GitHub `services:`,
