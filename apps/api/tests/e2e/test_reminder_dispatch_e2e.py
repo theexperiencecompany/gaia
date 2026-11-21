@@ -40,7 +40,6 @@ REMINDER_TASKS = "app.tasks.reminder_tasks"
 def _make_scheduler() -> ReminderScheduler:
     with patch("app.services.reminder_service.BaseSchedulerService.__init__"):
         scheduler = ReminderScheduler.__new__(ReminderScheduler)
-        scheduler.redis_settings = None
         scheduler.arq_pool = None
         return scheduler
 
