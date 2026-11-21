@@ -38,7 +38,7 @@ from tests.e2e._harness.tasks_views import (
     Delivered,
     Finishes,
     GaiaRun,
-    KeepsHolding,
+    KeepsWaiting,
     OpensSubtasks,
     Reports,
     RunOutcome,
@@ -95,6 +95,7 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         parent_id=body.get("parent_todo_id"),
         open_children=body.get("sub_todo_count", 0),
         pending_approval=body.get("pending_approval") is not None,
+        next_run=datetime.fromisoformat(body["scheduled_at"]) if body.get("scheduled_at") else None,
     )
 
 
@@ -115,7 +116,6 @@ class TasksDriver:
         self._pool = pool
         self._executor = executor
         self._comms = comms
-        self._one_offs: set[str] = set()
 
     # The account.
 
@@ -195,19 +195,24 @@ class TasksDriver:
         )
         (created,) = [t for t in await self._gaia_tasks() if t.id not in before] or [None]
         assert created is not None, f"GAIA did not take the task on: {said}"
-        self._one_offs.add(created.id)
         return created
 
-    async def run_due(self, task_id: str, *runs: GaiaRun) -> list[str]:
-        """Let the task's armed runs fire, GAIA doing each run as scripted; return what each job said."""
-        down = Breaks() in runs
-        assert not down or len(runs) == 1, "a run where the provider is down is scripted alone"
-        for run in runs:
-            self._queue_tracked(task_id, run)
-        with self._executor.provider_down() if down else nullcontext():
-            outcomes = [await self._run(job) for job in await self._armed(task_id)]
+    async def run_due(self, task_id: str, run: GaiaRun) -> str:
+        """Let time pass to the task's next armed run and fire it, GAIA working as scripted.
+
+        Returns what the worker said of the job, for a journey that checks it was skipped.
+        """
+        armed = await self._armed(task_id)
+        assert armed, f"nothing is armed to run task {task_id}"
+        await self._queue_tracked(task_id, run)
+        with self._executor.provider_down() if isinstance(run, Breaks) else nullcontext():
+            outcome = await self._run(armed[0])
         self._all_turns_taken()
-        return outcomes
+        return outcome
+
+    async def has_run_armed(self, task_id: str) -> bool:
+        """Whether anything will run the task again."""
+        return bool(await self._armed(task_id))
 
     def _all_turns_taken(self) -> None:
         """Fail unless GAIA was asked for exactly the turns the journey scripted."""
@@ -216,14 +221,24 @@ class TasksDriver:
         assert self._executor.pending == 0, "GAIA was scripted for more work than it was asked for"
         assert self._comms.pending == 0, "a scripted reply or delivery was never asked for"
 
-    def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
+    async def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
+        """Queue GAIA's turns for one run of a tracked todo, and comms' write-up when it is delivered."""
+        todo = _ok(await self._client.get(f"{TODOS}/{task_id}"))
+        delivered = todo["notify_on_run"]
+        # A one-off run that neither closes nor re-arms its todo is nudged once to.
+        one_off = not todo["recurrence"] and not todo["trigger_subscriptions"]
+
+        def tell(text: str) -> None:
+            if delivered:
+                self._comms.then([text])
+
         match run:
             case Finishes(report):
                 self._executor.then(
                     [call("complete_tracked_todo", {"todo_id": task_id, "summary": report}), report]
                 )
-                self._comms.then([report])
-            case KeepsHolding(report):
+                tell(report)
+            case KeepsWaiting(report):
                 self._executor.then(
                     [
                         call(
@@ -233,12 +248,10 @@ class TasksDriver:
                         report,
                     ]
                 )
-                self._comms.then([report])
+                tell(report)
             case Reports(report):
-                # A one-off run that neither closes nor re-arms its task is nudged once to.
-                nudged = task_id in self._one_offs
-                self._executor.then([report, report] if nudged else [report])
-                self._comms.then([report])
+                self._executor.then([report, report] if one_off else [report])
+                tell(report)
             case Asks(question, if_no_reply, default):
                 ask: dict[str, Any] = {
                     "todo_id": task_id,
@@ -250,7 +263,7 @@ class TasksDriver:
                 if default is not None:
                     ask["default_action"] = default
                 self._executor.then([call("update_tracked_todo", ask), question])
-                self._comms.then([question])
+                tell(question)
             case OpensSubtasks(titles, report):
                 self._executor.then(
                     [
@@ -274,7 +287,7 @@ class TasksDriver:
                         report,
                     ]
                 )
-                self._comms.then([report])
+                tell(report)
             case Breaks():
                 pass
 
@@ -284,7 +297,7 @@ class TasksDriver:
             "conversation_id"
         ]
         self._comms.then([call("call_executor", {"task": reply}, call_id="tc_answer"), ON_IT])
-        self._queue_tracked(task_id, then)
+        await self._queue_tracked(task_id, then)
         stream_id = str(uuid4())
         await stream_manager.start_stream(
             stream_id=stream_id, conversation_id=conversation_id, user_id=self._user_id
@@ -337,6 +350,10 @@ class TasksDriver:
     async def counts(self) -> Counts:
         body = _ok(await self._client.get(f"{TODOS}/counts"))
         return Counts(today=body["today"], overdue=body["overdue"], completed=body["completed"])
+
+    async def subtasks_of(self, task_id: str) -> list[TaskView]:
+        """Return the sub-tasks listed under a task, open and done."""
+        return await self._list(parent_todo_id=task_id)
 
     async def runs(self, task_id: str) -> list[RunView]:
         """Return the task's run history, oldest first, as its activity log records each run."""

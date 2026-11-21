@@ -41,6 +41,8 @@ class TaskView:
     parent_id: str | None = None
     open_children: int = 0
     pending_approval: bool = False
+    #: When GAIA next looks at the task.
+    next_run: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -101,8 +103,8 @@ class Asks:
 
 
 @dataclass(frozen=True)
-class KeepsHolding:
-    """GAIA checks back on an unanswered question and keeps waiting."""
+class KeepsWaiting:
+    """GAIA checks on what it waits for, finds it not there yet, and keeps waiting."""
 
     report: str
 
@@ -121,7 +123,7 @@ class OpensSubtasks:
 
 
 #: What GAIA does on one run, as a journey scripts it.
-GaiaRun = Finishes | Reports | Asks | KeepsHolding | Breaks | OpensSubtasks
+GaiaRun = Finishes | Reports | Asks | KeepsWaiting | Breaks | OpensSubtasks
 
 
 @dataclass(frozen=True)

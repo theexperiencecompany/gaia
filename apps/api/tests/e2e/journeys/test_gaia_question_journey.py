@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.e2e._harness.tasks_driver import TasksDriver
-from tests.e2e._harness.tasks_views import Asks, Finishes, KeepsHolding, NoReply, Reports
+from tests.e2e._harness.tasks_views import Asks, Finishes, KeepsWaiting, NoReply, Reports
 
 pytestmark = pytest.mark.e2e
 
@@ -68,7 +68,7 @@ class TestNobodyAnswers:
         task_id = await _asked(tasks, NoReply.HOLD)
 
         for _ in range(3):
-            await tasks.run_due(task_id, KeepsHolding("Still waiting on your choice."))
+            await tasks.run_due(task_id, KeepsWaiting("Still waiting on your choice."))
             still = await tasks.get(task_id)
             assert still is not None and still.done is False
         await tasks.run_due(task_id, Reports(GAVE_UP))
@@ -76,4 +76,4 @@ class TestNobodyAnswers:
         closed = await tasks.get(task_id)
         assert closed is not None and closed.done is True
         assert GAVE_UP in (await tasks.delivered())[-1].body
-        assert await tasks.run_due(task_id) == []
+        assert not await tasks.has_run_armed(task_id)

@@ -45,4 +45,4 @@ class TestAOneOffGaiaTask:
         (told,) = await tasks.delivered()
         assert TITLE in told.title
         # Failed for good: nothing is armed to run it again.
-        assert await tasks.run_due(task.id) == []
+        assert not await tasks.has_run_armed(task.id)
