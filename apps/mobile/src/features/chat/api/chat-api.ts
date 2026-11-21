@@ -110,6 +110,9 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     imageData: apiMsg.image_data ?? null,
     metadata: apiMsg.metadata ?? undefined,
     replyToMessage: apiMsg.replyToMessage ?? null,
+    reactions: apiMsg.reaction
+      ? [{ emoji: apiMsg.reaction.emoji, ackId: apiMsg.message_id }]
+      : null,
     todoRunWake: apiMsg.todo_run_wake ?? null,
   };
 }
