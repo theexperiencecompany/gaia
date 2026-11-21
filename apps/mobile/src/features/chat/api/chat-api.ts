@@ -110,8 +110,6 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     imageData: apiMsg.image_data ?? null,
     metadata: apiMsg.metadata ?? undefined,
     replyToMessage: apiMsg.replyToMessage ?? null,
-    kind: apiMsg.kind ?? null,
-    reacts_to_message_id: apiMsg.reacts_to_message_id ?? null,
     todoRunWake: apiMsg.todo_run_wake ?? null,
   };
 }
