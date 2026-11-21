@@ -4,7 +4,7 @@ import pytest
 
 from app.constants.todos import TodoCompleter
 from app.models.brief_item_models import ItemState
-from app.services.briefing.claims import claim_problems
+from app.services.briefing.claims import claim_problems, duration_problems, goal_problems
 from app.services.briefing.slots import BriefFact, SlotValues
 
 pytestmark = pytest.mark.unit
@@ -218,3 +218,89 @@ class TestCreditForFinishedWork:
     )
     def test_work_credited_to_whoever_finished_it_may_be_said(self, written: str) -> None:
         assert claim_problems("message", written, self._VALUES) == []
+
+
+_FOUNDER = SlotValues(
+    facts={
+        1: BriefFact(title="YC founders outreach sequence", kind=ItemState.YOU),
+        2: BriefFact(title="Emails to churned subscribers", kind=ItemState.YOU, goal_work=True),
+        3: BriefFact(
+            title="Blueprint-grid site redesign", kind=ItemState.YOU, words="updated 4 days ago"
+        ),
+    },
+    counts={},
+)
+
+
+@pytest.mark.regression
+class TestAGoalClaimInOtherWords:
+    """Founder's Nov 22: "That's the one that feeds the 300-user goal" of a sequence no goal links."""
+
+    def test_a_sentence_that_points_back_is_held_to_the_last_ones_facts(self) -> None:
+        text = "[The sequence](fact:1) waits on you. That's the one that feeds the 300-user goal."
+
+        assert goal_problems("message", text, _FOUNDER) == [
+            "the message ties facts 1 to a goal, but they are not linked to one; only a goal's "
+            "linked todos are its work, so say them apart"
+        ]
+
+    def test_a_goal_sentence_about_its_own_work_or_no_fact_stands(self) -> None:
+        text = "Still aiming for 300 users? [The emails](fact:2) are that goal's work."
+
+        assert goal_problems("message", text, _FOUNDER) == []
+
+
+@pytest.mark.regression
+class TestHowLongSomethingStood:
+    """Founder's Nov 22: "still sitting unread" and "for a while" of a sequence no line dates."""
+
+    @pytest.mark.parametrize(
+        ("text", "claim"),
+        [
+            ("Your YC founders sequence is still sitting unread", "still"),
+            (
+                "The outreach sequence has been waiting on your approval for a while.",
+                "been waiting",
+            ),
+            ("[The sequence](fact:1) is in draft. It has sat there for weeks.", "for weeks"),
+        ],
+    )
+    def test_a_duration_said_of_an_undated_fact_is_named(self, text: str, claim: str) -> None:
+        assert duration_problems("headline", text, _FOUNDER) == [
+            f"the headline says {claim!r} of facts 1, but their lines carry no date; say how "
+            "long something stood only where its line dates it"
+        ]
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            SlotValues(
+                facts={1: BriefFact(title="YC founders outreach sequence", seen_before=True)},
+                counts={},
+            ),
+            SlotValues(
+                facts={
+                    1: BriefFact(
+                        title="YC founders outreach sequence", time="Mon Nov 16", time_is_day=True
+                    )
+                },
+                counts={},
+            ),
+        ],
+    )
+    def test_a_fact_an_earlier_brief_showed_or_its_time_dates_may_be_still_open(
+        self, values: SlotValues
+    ) -> None:
+        assert duration_problems("headline", "The YC founders sequence is still open", values) == []
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[The redesign](fact:3) still has two comments to answer.",
+            "[The sequence](fact:1) is still running.",
+            "Want me to run [the sequence](fact:1) again?",
+            "The day is still clear.",
+        ],
+    )
+    def test_an_age_in_its_line_a_running_state_an_offer_or_no_fact_stands(self, text: str) -> None:
+        assert duration_problems("message", text, _FOUNDER) == []

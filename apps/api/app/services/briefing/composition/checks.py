@@ -37,9 +37,8 @@ from app.models.brief_composition_models import (
 )
 from app.models.brief_item_models import GroupState
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.services.briefing.claims import dependency_problems, goal_problems
+from app.services.briefing.claims import dependency_problems, duration_problems, goal_problems
 from app.services.briefing.fact_pool.pool import FactPool
-from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.slots import SlotError, SlotValues, render_slots, slot_problems
 
 #: The strings each kind of block writes.
@@ -244,8 +243,11 @@ def _own_problems(
     said = f"{where} text"
     return [
         *text,
-        *dependency_problems(said, _shown(block.text or "", values), pool_block(pool)),
-        *goal_problems(said, block.text or "", values),
+        *(
+            problem
+            for check in (goal_problems, dependency_problems, duration_problems)
+            for problem in check(said, block.text or "", values)
+        ),
     ]
 
 

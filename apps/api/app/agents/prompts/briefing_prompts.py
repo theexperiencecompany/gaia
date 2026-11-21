@@ -11,6 +11,7 @@ from app.agents.prompts.brief_fact_prompts import FACT_LINES_NOTE
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
     DEPENDENCY_CLAIMS,
+    DURATION_CLAIMS,
     FREQUENCY_CLAIMS,
     LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
@@ -168,8 +169,11 @@ happens unless a fact you were given says it. These words are sent back wherever
 them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its own point
 ("clear today. The day is open.") is padding.
 NEVER LINK FACTS BY CAUSE: two facts side by side are not one blocking the other. Say that one
-thing causes, blocks or frees another only where a fact says so; these words are sent back
-wherever no fact uses them: {", ".join(DEPENDENCY_CLAIMS)}.
+thing causes, blocks or frees another only where the line of a fact the sentence names says so;
+these words are sent back in any other sentence: {", ".join(DEPENDENCY_CLAIMS)}.
+NEVER CLAIM HOW LONG: say how long something has stood, or that it is still or again so, only of
+a fact whose line dates it (its time, "already shown", an age such as "updated 4 days ago").
+These words are sent back of any other fact: {", ".join(DURATION_CLAIMS)}.
 """.strip()
 
 # How every brief's prose reads, past what its headline and lede are written from.

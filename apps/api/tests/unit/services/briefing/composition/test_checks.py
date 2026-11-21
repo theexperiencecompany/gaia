@@ -598,7 +598,7 @@ def test_a_note_linking_two_facts_by_a_cause_no_fact_states_is_sent_back() -> No
     """Founder replay: "Clearing the auth error first unblocks the rest" tied facts no line tied."""
     assert _problems({"kind": "note", "text": "Clearing [[fact:1]] unblocks [[fact:2]]."}) == [
         "the block 1 (note) text says 'unblocks': that one thing causes, blocks or gates "
-        "another, and no fact says so; state each fact on its own, as its line does"
+        "another, and no fact it names says so; state each fact on its own, as its line does"
     ]
     assert _problems({"kind": "note", "text": "Clear [[fact:1]], then [[fact:2]]."}) == []
 

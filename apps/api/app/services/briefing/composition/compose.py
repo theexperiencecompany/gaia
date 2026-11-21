@@ -48,12 +48,17 @@ class Composed:
 
 
 def pool_values(pool: FactPool) -> SlotValues:
-    """Return what a composition's slots render: each item's title and due date, each series' figures."""
+    """Return what a composition's slots render and its claims are held to: each item's line, each series' figures."""
     clock = pool.context.clock
     linked = {title for goal in pool.goals for title in goal.linked}
     return SlotValues(
         facts={
-            i: candidate_fact(c, clock, goal_work=c.todo_id is not None and c.title in linked)
+            i: candidate_fact(
+                c,
+                clock,
+                words=" ".join(w for w in (c.standing, c.detail) if w) or None,
+                goal_work=c.todo_id is not None and c.title in linked,
+            )
             for i, c in pool.items.items()
         },
         counts={},

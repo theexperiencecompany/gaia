@@ -31,7 +31,12 @@ from app.models.brief_slot_models import FactField, FactSlot, LinkSlot
 from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services.briefing.checked_call import CheckedCall, Rejected, checked_structured_call
-from app.services.briefing.claims import claim_problems, dependency_problems, goal_problems
+from app.services.briefing.claims import (
+    claim_problems,
+    dependency_problems,
+    duration_problems,
+    goal_problems,
+)
 from app.services.briefing.facts import Facts
 from app.services.briefing.formats import opening_line
 from app.services.briefing.slots import (
@@ -88,8 +93,7 @@ class Writing:
     lead: int | None
     #: What recent briefs printed; a line of it said again is sent back.
     recent: RecentLines = field(default_factory=RecentLines)
-    #: The facts the voice was shown; a claim of how often something happens, or of what blocks
-    #: what, must be among them.
+    #: The facts the voice was shown; a claim of how often something happens must be among them.
     grounds: str = ""
 
 
@@ -171,7 +175,8 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
     problems += [
         problem
         for name in _VOICED_FIELDS
-        for problem in goal_problems(name, getattr(voice, name), writing.values)
+        for check in (goal_problems, dependency_problems, duration_problems)
+        for problem in check(name, getattr(voice, name), writing.values)
     ]
     lead = writing.lead
     if lead is not None and lead not in referenced_facts(voice.message):
@@ -187,11 +192,6 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
     except ValidationError as exc:
         return _length_problems(exc)
     said = _repeat_problems(draft, writing.recent) + _frequency_problems(draft, writing.grounds)
-    said += [
-        problem
-        for name in _VOICED_FIELDS
-        for problem in dependency_problems(name, getattr(draft, name), writing.grounds)
-    ]
     return said or draft
 
 

@@ -180,31 +180,34 @@ class TestAVoiceThatRepeatsOrOverclaims:
 class TestAVoiceThatLinksFactsByCause:
     """Founder replay: a failed LinkedIn connect was said to block a draft sequence no fact tied to it."""
 
-    _GROUNDS = (
-        "1. [PumpGTM] needs you: LinkedIn connect failure | 401 auth checkpoint blocked the "
-        "sender on Nov 20\n2. [PumpGTM] needs you: YC founders outreach sequence | draft, "
-        "awaiting approval"
+    _VALUES = SlotValues(
+        facts={
+            1: BriefFact(
+                title="LinkedIn connect failure",
+                words="401 auth checkpoint blocked the sender on Nov 20",
+            ),
+            2: BriefFact(title="YC founders outreach sequence", words="draft, awaiting approval"),
+        },
+        counts={},
     )
 
     @pytest.mark.regression
-    async def test_a_cause_no_fact_states_is_sent_back_from_every_field(
+    async def test_a_cause_no_fact_it_names_states_is_sent_back_from_every_field(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         claimed = _voice(
             headline="The LinkedIn auth error is holding up your outreach",
-            lede="A failed connect on LinkedIn is blocking the sequence.",
-            message="[Reply to Dan](fact:1) first. Fix that and the outreach path opens up.",
+            lede="A [failed connect](fact:1) is blocking [the sequence](fact:2).",
+            message="[The connect](fact:1) failed. Fix that and the outreach path opens up.",
         )
-        asked = AsyncMock(side_effect=[claimed, _voice()])
+        asked = AsyncMock(side_effect=[claimed, _voice(message="[The connect](fact:1) failed.")])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        await written_brief(
-            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, grounds=self._GROUNDS)
-        )
+        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
         problems = [
             f"the {field} says {claim!r}: that one thing causes, blocks or gates another, and no "
-            "fact says so; state each fact on its own, as its line does"
+            "fact it names says so; state each fact on its own, as its line does"
             for field, claim in (
                 ("headline", "holding up"),
                 ("lede", "blocking"),
@@ -215,18 +218,31 @@ class TestAVoiceThatLinksFactsByCause:
             f"PROMPT\n\n{voice_correction_note(problems, claimed.model_dump_json(indent=2))}"
         )
 
-    async def test_a_cause_a_fact_states_may_be_voiced(
+    async def test_a_cause_the_named_facts_line_states_may_be_voiced(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        grounded = _voice(lede="The sender is blocked until you clear the checkpoint.")
+        grounded = _voice(
+            message="[The sender](fact:1) is blocked until you clear the checkpoint.",
+        )
         asked = AsyncMock(side_effect=[grounded])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
-        voice, _ = await written_brief(
-            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, grounds=self._GROUNDS)
-        )
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
         assert voice == grounded
+
+    async def test_a_cause_another_fact_states_does_not_ground_this_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        borrowed = _voice(
+            message="[The connect](fact:1) failed. [The sequence](fact:2) is blocked."
+        )
+        asked = AsyncMock(side_effect=[borrowed, _voice(message="[The connect](fact:1) failed.")])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
+
+        assert asked.await_count == 2
 
 
 @pytest.mark.regression
@@ -264,7 +280,10 @@ async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
 class TestAVoiceThatSaysATitleTwice:
     """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
 
-    _VALUES = SlotValues(facts={1: BriefFact(title="Northwind invoice")}, counts={})
+    _VALUES = SlotValues(
+        facts={1: BriefFact(title="Northwind invoice", time="Mon Nov 3", time_is_day=True)},
+        counts={},
+    )
 
     async def test_a_title_written_and_slotted_in_one_sentence_is_sent_back(
         self, monkeypatch: pytest.MonkeyPatch
@@ -425,7 +444,7 @@ class TestTheBriefsWideEvent:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
-        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Still none.")])
+        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Nothing new.")])
         monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
 
         async with captured_wide_event() as event:
