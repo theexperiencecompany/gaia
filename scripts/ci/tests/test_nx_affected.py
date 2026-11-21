@@ -9,9 +9,7 @@ selected every project, so a JS bump ran all five Python slices.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-import subprocess
 
 from doc_shape import sequence
 from lib import nx_affected
@@ -46,15 +44,7 @@ CODE_TARGETS = ("build", "lint", "test", "type-check")
 
 
 def affected_tasks(*args: str) -> set[str]:
-    out = subprocess.run(
-        ["pnpm", "exec", "nx", "affected", "-t", *CODE_TARGETS, "--explain=stdout", *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return set(json.loads(out[out.index("{") :])["affected"])
+    return set(nx_affected.explain(list(CODE_TARGETS), list(args)))
 
 
 def affected(*args: str) -> set[str]:

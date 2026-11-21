@@ -85,9 +85,13 @@ class Check:
         return self.branch is None or self.branch == branch
 
 
+# Each affected task, with every reason nx gives for reaching it.
+Reasons = dict[str, list[dict[str, str]]]
+
+
 @dataclass(frozen=True)
 class Selection:
-    tasks: dict[str, list[dict[str, str]]]
+    tasks: Reasons
 
 
 def _project(task: str) -> str:
@@ -166,13 +170,23 @@ def tracked_files() -> list[str]:
     return [f for f in out.splitlines() if (REPO_ROOT / f).is_file()]
 
 
+def explain(targets: list[str], range_args: list[str], stdin: str | None = None) -> Reasons:
+    """Ask nx which tasks of these targets a range reaches, each with why."""
+    # A file, as for the graph above: nx prints --explain=stdout with console.log
+    # and then calls process.exit, and on the box the read came back cut at 8192 bytes.
+    with tempfile.TemporaryDirectory() as scratch:
+        written = Path(scratch) / "explain.json"
+        _nx("affected", "-t", *targets, f"--explain={written}", *range_args, stdin=stdin)
+        explained = json.loads(written.read_text())
+    assert isinstance(explained, dict)
+    affected: Reasons = explained["affected"]
+    return affected
+
+
 def select(range_args: list[str], stdin: str | None = None) -> Selection:
     known = checks()
     targets = sorted({_target(task) for task in known} | {IMAGE_TARGET})
-    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args, stdin=stdin)
-    explained = _json_after_banner(out, "{")
-    assert isinstance(explained, dict)
-    affected = explained["affected"]
+    affected = explain(targets, range_args, stdin)
     return Selection(
         tasks={
             task: reasons
