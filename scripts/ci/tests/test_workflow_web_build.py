@@ -34,3 +34,12 @@ def test_the_landing_check_runs_on_every_build_after_the_maps_leave_the_deploy()
     assert "apps/web/.next/" not in str(steps[remove]["run"]), (
         "it would delete the maps the check reads"
     )
+
+
+def test_only_a_master_build_takes_the_production_environment() -> None:
+    """Regression: a dispatch on a PR branch asked for production, which refuses every branch but master."""
+    job = mapping(mapping(yaml.safe_load(WEB_BUILD.read_text()))["jobs"])["cf-build"]
+    assert job["environment"] == (
+        "${{ (github.ref == 'refs/heads/master' && (github.event_name == 'push' || "
+        "github.event_name == 'workflow_dispatch')) && 'production' || '' }}"
+    )
