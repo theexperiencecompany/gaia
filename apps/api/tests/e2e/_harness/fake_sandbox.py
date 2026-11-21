@@ -138,7 +138,7 @@ class FakeAsyncSandbox:
         del kwargs
         return True
 
-    async def beta_pause(self) -> None:
+    async def pause(self) -> None:
         pass
 
     async def set_timeout(self, **kwargs: Any) -> None:

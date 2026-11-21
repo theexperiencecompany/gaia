@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Annotated
 
-from e2b import AsyncSandbox, NotFoundException
+from e2b import NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
@@ -28,7 +28,7 @@ from app.constants.log_tags import LogTag
 from app.constants.media import MAX_IMAGE_FILE_BYTES
 from app.decorators import with_doc, with_rate_limiting
 from app.services import gaia_task_files
-from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.sandbox import CodingSandbox, SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, JuiceFSUnavailable, fs_timer, read_user_file
 from app.services.storage.juicefs import (
     page_bounds,
@@ -323,7 +323,7 @@ def _format_read(
     return numbered + footer
 
 
-async def _read_sandbox_bytes(sbx: AsyncSandbox, abs_path: str, max_bytes: int) -> bytes:
+async def _read_sandbox_bytes(sbx: CodingSandbox, abs_path: str, max_bytes: int) -> bytes:
     # Native-dev fallback (host JuiceFS absent): no server-side range read, so
     # slurp the whole file — cap the size first via get_info so a huge file
     # can't OOM the worker.
@@ -343,7 +343,7 @@ async def _read_sandbox_bytes(sbx: AsyncSandbox, abs_path: str, max_bytes: int) 
 
 
 async def _read_file_sandbox(
-    sbx: AsyncSandbox,
+    sbx: CodingSandbox,
     abs_path: str,
     offset: int,
     limit: int,

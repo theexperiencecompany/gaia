@@ -37,6 +37,7 @@ from app.services.sandbox import (
     pause_idle_sandbox,
     renew_sandbox,
 )
+from app.services.sandbox.local_sandbox import LocalDockerSandbox
 from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import SandboxContext, log
 
@@ -130,6 +131,10 @@ async def _tick_lab_sandbox(ctx: ArqJobContext, user_id: str) -> LabTickOutcome:
 async def _keep_lab_sandbox(user_id: str) -> None:
     """Save the agents' home, then renew the sandbox when E2B's lifetime cap is near."""
     async with acquire_sandbox(user_id) as sbx:
+        if isinstance(sbx, LocalDockerSandbox):
+            raise TypeError(
+                "agent-lab keep-warm reads E2B's lifetime cap; a local sandbox has none"
+            )
         info = await sbx.get_info()
         seconds_left = (info.end_at - datetime.now(UTC)).total_seconds()
         await save_agents_home(user_id, sbx)

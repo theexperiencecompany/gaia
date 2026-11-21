@@ -1,7 +1,7 @@
 """Layer 1 — E2B SDK contract guards.
 
 The whole sandbox layer rests on assumptions about the e2b SDK surface:
-the pause method is beta_pause (not pause), connect auto-resumes, files
+pause keeps memory so connect resumes in place, connect auto-resumes, files
 ops raise specific exception types, EntryInfo carries modified_time, etc.
 
 Mocked behavior tests CANNOT catch an SDK upgrade that renames these — they
@@ -29,14 +29,12 @@ from e2b.sandbox.filesystem.filesystem import EntryInfo, WriteInfo
 from e2b.sandbox_async.filesystem.filesystem import Filesystem
 
 
-def test_pause_method_is_beta_pause_not_plain_pause() -> None:
-    # The original prod outage: code called getattr(sbx, "pause") which was
-    # None, silently disabling idle-pause. The method is `beta_pause`.
-    assert hasattr(AsyncSandbox, "beta_pause"), "AsyncSandbox.beta_pause vanished"
-    assert not hasattr(AsyncSandbox, "pause"), (
-        "AsyncSandbox grew a plain `pause` — the lifecycle code uses `beta_pause`; "
-        "reconcile before this silently diverges"
-    )
+def test_pause_is_the_sdk_pause_and_keeps_memory_by_default() -> None:
+    # getattr(sbx, "pause") was None before e2b 2.37 and silently disabled idle-pause.
+    # The lifecycle calls pause() bare and needs the memory snapshot for in-place resume.
+    assert callable(getattr(AsyncSandbox, "pause", None)), "AsyncSandbox.pause vanished"
+    keep_memory = inspect.signature(AsyncSandbox.pause).parameters["keep_memory"]
+    assert keep_memory.default is True, "pause() stopped keeping memory by default"
 
 
 def test_resume_does_not_exist_connect_is_the_resume_path() -> None:
@@ -55,7 +53,7 @@ def test_connect_accepts_timeout_kwarg() -> None:
 
 
 def test_lifecycle_surface_present() -> None:
-    for method in ("is_running", "connect", "set_timeout", "kill", "beta_pause"):
+    for method in ("is_running", "connect", "set_timeout", "kill", "pause"):
         assert hasattr(AsyncSandbox, method), f"AsyncSandbox.{method} missing"
 
 
