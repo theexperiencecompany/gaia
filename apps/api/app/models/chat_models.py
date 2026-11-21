@@ -24,6 +24,7 @@ __all__ = [
     "ConversationSyncItem",
     "ImageData",
     "MessageModel",
+    "ModelTokenUsage",
     "PinnedUpdate",
     "SourceCategory",
     "StarredUpdate",
@@ -32,6 +33,16 @@ __all__ = [
     "UpdateDescriptionRequest",
     "UpdateMessagesRequest",
 ]
+
+
+class ModelTokenUsage(TypedDict):
+    """One model's token counts for a turn, in the shape LangChain's UsageMetadata records them."""
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    input_token_details: NotRequired[dict[str, int]]
+    output_token_details: NotRequired[dict[str, int]]
 
 
 class ImageData(BaseModel):
@@ -165,7 +176,8 @@ class MessageModel(BaseModel):
     todo_run_wake: TodoRunWake | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
-    metadata: dict[str, Any] | None = None
+    # The turn's token usage per model name, as LangChain's usage callback records it.
+    metadata: dict[str, ModelTokenUsage] | None = None
     replyToMessage: ReplyToMessageData | None = None
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.
@@ -173,6 +185,9 @@ class MessageModel(BaseModel):
     # True on a bot turn the user stopped with Stop; the client shows a quiet
     # "Stopped" line under it. None everywhere else.
     stopped: bool | None = None
+    # True on a bot reply whose entry holds its place in the order (opened when the
+    # user first saw it) while its turn is still running. None once the turn saves it.
+    in_progress: bool | None = None
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None

@@ -23,6 +23,8 @@ interface BgMessageEvent {
     type: "bot" | "user";
     response: string;
     message_id: string;
+    /** The message's place in the conversation's order. */
+    seq: number;
     date: string;
     kind?: string;
     reacts_to_message_id?: string;
@@ -79,6 +81,7 @@ export function useBgMessageWebSocket() {
       createdAt: new Date(message.date),
       updatedAt: new Date(message.date),
       messageId: message.message_id,
+      seq: message.seq,
       kind: message.kind ?? null,
       reacts_to_message_id: message.reacts_to_message_id ?? null,
       tool_data: message.tool_data ?? null,

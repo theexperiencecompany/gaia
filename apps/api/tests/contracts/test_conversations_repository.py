@@ -71,10 +71,10 @@ async def _seed_subagent_group(repo: ConversationRepository, doc: ConversationDo
     assert await repo.append_message_tool_data(
         doc.conversation_id,
         user_id=doc.user_id,
-        message_id=ids[0],
+        message_id=list(ids)[0],
         entries=[_subagent_group("row-1")],
     )
-    return ids[0]
+    return list(ids)[0]
 
 
 @pytest.fixture
@@ -94,6 +94,15 @@ class TestConversationCrud:
         # createdAt stays the caller-provided ISO string; _id is not surfaced.
         assert fetched.createdAt == doc.createdAt
         assert fetched.id == ""
+
+    async def test_create_with_messages_raises_and_writes_nothing(self, repo):
+        doc = _doc(messages=[{"type": "user", "response": "hi", "seq": 1}])
+        with pytest.raises(ValueError) as refused:
+            await repo.create(doc)
+        assert str(refused.value) == (
+            "create() writes only the head; append the messages with append_messages()"
+        )
+        assert await repo.get(doc.conversation_id, user_id=doc.user_id) is None
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_cid(), user_id=_uid()) is None
@@ -420,7 +429,7 @@ class TestMessages:
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
-        assert [m.message_id for m in fetched.messages] == ids
+        assert [m.message_id for m in fetched.messages] == list(ids)
 
     async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
         doc = _doc()
@@ -455,7 +464,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="pin me")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.set_message_pinned(
             doc.conversation_id, user_id=doc.user_id, message_id=mid, pinned=True
         )
@@ -476,7 +485,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="r")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.append_message_tool_data(
             doc.conversation_id,
             user_id=doc.user_id,
@@ -501,7 +510,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="r")],
         )
         assert ids is not None
-        mid = ids[0]
+        mid = list(ids)[0]
         assert await repo.append_message_tool_data(
             doc.conversation_id,
             user_id=doc.user_id,
@@ -553,7 +562,7 @@ class TestMessages:
         assert not await repo.extend_subagent_group(
             doc.conversation_id,
             user_id=doc.user_id,
-            message_id=ids[0],
+            message_id=list(ids)[0],
             group=SavedSubagentGroup(subagent_id="missing"),
         )
 
@@ -594,7 +603,7 @@ class TestMessages:
         )
         assert ids is not None
 
-        stored = await repo.get_message(doc.conversation_id, ids[0], user_id=doc.user_id)
+        stored = await repo.get_message(doc.conversation_id, list(ids)[0], user_id=doc.user_id)
         assert stored is not None and stored.tool_data is not None
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
@@ -611,7 +620,7 @@ class TestMessages:
             messages=[MessageModel(type="bot", response="owned")],
         )
         assert ids is not None
-        found = await repo.find_owner_of_message(doc.user_id, ids[0])
+        found = await repo.find_owner_of_message(doc.user_id, list(ids)[0])
         assert found == doc.conversation_id
         assert await repo.find_owner_of_message(doc.user_id, "no-such") is None
 
@@ -638,7 +647,7 @@ class TestMessageSettlementWrites:
             ],
         )
         assert ids is not None and len(ids) == 2
-        return doc, ids[0], ids[1]
+        return doc, list(ids)[0], list(ids)[1]
 
     async def test_set_response_writes_only_the_named_message(self, repo):
         doc, user_mid, bot_mid = await self._seed(repo)
@@ -1218,3 +1227,85 @@ async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
     owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
 
     assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
+
+
+def _reply_entry(
+    user_id: str, conversation_id: str, *, at: datetime, in_progress: bool
+) -> dict[str, object]:
+    """Return a reply entry as a died turn leaves it: opened and in progress at the given time."""
+    return {
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "seq": 1,
+        "id": f"{conversation_id}-1",
+        "at": at,
+        "type": "bot",
+        "response": "partial",
+        "in_progress": in_progress,
+    }
+
+
+class TestUnfinishedReplySweep:
+    """The maintenance sweep's reads and writes of in-progress reply entries."""
+
+    async def test_list_unfinished_reply_owners_returns_only_stale_in_progress_replies(
+        self, repo, entries_collection
+    ):
+        opened_before = datetime.now(UTC)
+        await entries_collection.insert_many(
+            [
+                _reply_entry("u1", "c1", at=opened_before - timedelta(hours=1), in_progress=True),
+                _reply_entry("u2", "c2", at=opened_before + timedelta(hours=1), in_progress=True),
+                _reply_entry("u3", "c3", at=opened_before - timedelta(hours=1), in_progress=False),
+            ]
+        )
+
+        assert await repo.list_unfinished_reply_owners(opened_before=opened_before) == {
+            ("u1", "c1")
+        }
+
+    async def test_fail_unfinished_replies_returns_zero_when_given_no_owners(self, repo):
+        assert (
+            await repo.fail_unfinished_replies(
+                opened_before=datetime.now(UTC), error="interrupted", owners=set()
+            )
+            == 0
+        )
+
+    async def test_fail_unfinished_replies_settles_only_the_owners_it_is_given(
+        self, repo, entries_collection
+    ):
+        opened_before = datetime.now(UTC)
+        for user_id, conversation_id in (("u1", "c1"), ("u2", "c2"), ("u3", "c3")):
+            await entries_collection.insert_one(
+                _reply_entry(
+                    user_id,
+                    conversation_id,
+                    at=opened_before - timedelta(hours=1),
+                    in_progress=True,
+                )
+            )
+
+        failed = await repo.fail_unfinished_replies(
+            opened_before=opened_before,
+            error="interrupted",
+            owners={("u1", "c1"), ("u2", "c2")},
+        )
+
+        assert failed == 2
+        by_conversation = {
+            entry["conversation_id"]: entry
+            for entry in await entries_collection.find({}).to_list(length=None)
+        }
+        assert (by_conversation["c1"]["error"], by_conversation["c1"].get("in_progress")) == (
+            "interrupted",
+            None,
+        )
+        assert (by_conversation["c2"]["error"], by_conversation["c2"].get("in_progress")) == (
+            "interrupted",
+            None,
+        )
+        assert (by_conversation["c3"].get("error"), by_conversation["c3"]["in_progress"]) == (
+            None,
+            True,
+        )

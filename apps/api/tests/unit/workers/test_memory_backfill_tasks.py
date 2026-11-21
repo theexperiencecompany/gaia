@@ -21,8 +21,7 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDocument, ConversationEntry
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -62,7 +61,7 @@ def _conversation(
         user_id=USER_ID,
         conversation_id=conversation_id,
         createdAt=created_at,
-        messages=[MessageModel(**m) for m in msgs],
+        messages=[ConversationEntry(**m, seq=n) for n, m in enumerate(msgs, 1)],
     )
 
 

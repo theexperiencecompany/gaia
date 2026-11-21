@@ -15,6 +15,7 @@ import pytest
 
 from app.models.conversation_models import (
     ConversationDescriptionHit,
+    ConversationEntry,
     ConversationMessageHit,
     ConversationSearchResults,
 )
@@ -54,15 +55,15 @@ def _conversation_results() -> ConversationSearchResults:
         messages=[
             ConversationMessageHit(
                 conversation_id="conv1",
-                message={
-                    "type": "bot",
-                    "response": "test response about Python",
-                    "message_id": "m1",
-                },
+                message=ConversationEntry(
+                    type="bot", response="test response about Python", message_id="m1", seq=1
+                ),
             ),
             ConversationMessageHit(
                 conversation_id="conv2",
-                message={"type": "bot", "response": "Python programming", "message_id": "m2"},
+                message=ConversationEntry(
+                    type="bot", response="Python programming", message_id="m2", seq=1
+                ),
             ),
         ],
         conversations=[

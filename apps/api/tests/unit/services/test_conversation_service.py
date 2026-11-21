@@ -339,12 +339,12 @@ class TestListConversations:
 
 class TestUpdateMessages:
     async def test_appends_and_returns_ids(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = ["m1"]
+        mock_repo.append_messages.return_value = {"m1": 4}
         request = UpdateMessagesRequest(
             conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
         )
         result = await update_messages(request, test_user)
-        assert result.message_ids == ["m1"]
+        assert (result.message_ids, result.message_seqs) == (["m1"], [4])
         assert result.conversation_id == "conv_abc"
         assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
 
@@ -417,7 +417,13 @@ class TestGetStarredMessages:
         mock_repo.list_pinned_messages.return_value = [
             ConversationMessageHit(
                 conversation_id="conv_1",
-                message={"type": "bot", "response": "test", "message_id": "m1", "pinned": True},
+                message={
+                    "type": "bot",
+                    "response": "test",
+                    "message_id": "m1",
+                    "pinned": True,
+                    "seq": 1,
+                },
             )
         ]
         result = await get_starred_messages(test_user)

@@ -25,6 +25,7 @@ from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageKind, MessageModel
+from app.models.conversation_models import UpdateMessagesResponse
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
@@ -34,6 +35,16 @@ from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
 from app.utils.agent_utils import format_sse_response
 from tests.conftest import FAKE_USER
+
+
+@pytest.fixture(autouse=True)
+def _no_opened_reply() -> Any:
+    """No reply here was opened first, so each save appends (the one DB write these tests stand in for)."""
+    with patch(
+        "app.services.chat.persistence.conversation_repository.fill_message",
+        new=AsyncMock(return_value=False),
+    ):
+        yield
 
 
 async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[list[str], bool]:
@@ -52,6 +63,22 @@ async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[li
 
 USER = AuthenticatedUser(user_id="u1", email="u1@test.local")
 CONV = "conv-1"
+
+
+SAVED_SEQ = 4
+PLACED_FRAME = f"data: {json.dumps({'bot_message_seq': SAVED_SEQ})}\n\n"
+
+
+def _saved_at(seq: int) -> AsyncMock:
+    return AsyncMock(
+        return_value=UpdateMessagesResponse(
+            conversation_id=CONV,
+            message="Messages updated",
+            modified_count=1,
+            message_ids=["saved"],
+            message_seqs=[seq],
+        )
+    )
 
 
 def _body(message: str = "what's on my calendar?") -> MessageRequestWithHistory:
@@ -77,13 +104,13 @@ async def persist(
             new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
         ),
         patch.object(chat_stream, "stream_manager", sm),
-        patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
+        patch("app.services.chat.persistence.update_messages", new=_saved_at(SAVED_SEQ)) as update,
     ):
         await _persist_turn("s1", _body(), user, CONV, state)
 
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
-    return bot, published
+    return bot, [c for c in published if c != PLACED_FRAME]
 
 
 async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any], Any]:
@@ -100,13 +127,35 @@ async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any]
         ),
         patch.object(chat_stream, "stream_manager", sm),
         patch.object(chat_stream, "log") as mock_log,
-        patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
+        patch("app.services.chat.persistence.update_messages", new=_saved_at(SAVED_SEQ)) as update,
     ):
         await _persist_turn("s1", _body(), USER, CONV, state)
 
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
-    return bot, published, mock_log
+    return bot, [p for p in published if p[1] != PLACED_FRAME], mock_log
+
+
+class TestAReplyFirstShownAtItsSave:
+    async def test_it_takes_its_place_at_the_end_and_the_client_learns_its_seq(self):
+        published: list[str] = []
+        sm = AsyncMock()
+        sm.publish_chunk = AsyncMock(side_effect=lambda _sid, c: published.append(c))
+        state = _StreamState()
+        state.complete_message = "Done."
+
+        with (
+            patch.object(
+                chat_stream,
+                "recover_stream_state",
+                new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+            ),
+            patch.object(chat_stream, "stream_manager", sm),
+            patch("app.services.chat.persistence.update_messages", new=_saved_at(SAVED_SEQ)),
+        ):
+            await _persist_turn("s1", _body(), USER, CONV, state)
+
+        assert published == [PLACED_FRAME]
 
 
 class TestFollowUpActions:
@@ -358,7 +407,9 @@ class TestTheSubstitutionIsRecordedExactly:
     async def test_a_model_that_spent_tokens_on_no_text_is_recorded_as_such(self):
         state = _StreamState()
         state.complete_message = ""
-        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 64}}
+        state.usage_metadata = {
+            "gemini": {"input_tokens": 120, "output_tokens": 64, "total_tokens": 184}
+        }
 
         _, _, mock_log = await persist_with_log(state)
 
@@ -374,7 +425,9 @@ class TestTheSubstitutionIsRecordedExactly:
     async def test_a_model_that_produced_nothing_at_all_is_told_apart(self):
         state = _StreamState()
         state.complete_message = ""
-        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 0}}
+        state.usage_metadata = {
+            "gemini": {"input_tokens": 120, "output_tokens": 0, "total_tokens": 120}
+        }
 
         _, _, mock_log = await persist_with_log(state)
 
@@ -416,11 +469,15 @@ class TestUsageMetadata:
         """The cost and usage views read it back off the saved message."""
         state = _StreamState()
         state.complete_message = "Done."
-        state.usage_metadata = {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+        state.usage_metadata = {
+            "gpt-6-luna": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
+        }
 
         bot, _ = await persist(state)
 
-        assert bot.metadata == {"gpt-6-luna": {"input_tokens": 120, "output_tokens": 30}}
+        assert bot.metadata == {
+            "gpt-6-luna": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
+        }
 
 
 class TestStoppedTurns:

@@ -3,10 +3,10 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 import type {
+  ConversationEntry,
   ConversationSummary,
   ConversationSyncItem,
   ConversationSyncRow,
-  MessageModelOutput,
   SystemPurpose as SystemPurposeLiteral,
 } from "@shared/api/generated";
 
@@ -134,7 +134,7 @@ export type Conversation = ConversationSummary;
  * fields as optional; this is the one place that conversion is stated.
  */
 export const toClientMessages = (
-  messages: MessageModelOutput[],
+  messages: ConversationEntry[],
 ): MessageType[] => messages as unknown as MessageType[];
 
 export type SyncedConversation = ConversationSyncRow;

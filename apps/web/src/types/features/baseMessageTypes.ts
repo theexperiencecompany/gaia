@@ -66,6 +66,10 @@ export interface ConversationMessage extends Partial<BaseMessageData> {
   type: "user" | "bot";
   response: string; // The main content field for conversations
   loading?: boolean;
+  // The server's place for the message in its conversation's order.
+  seq?: number;
+  // A reply whose turn is still running: its place is taken, its content not yet saved.
+  in_progress?: boolean | null;
   queued?: boolean; // Held in the send queue (greyed-out user bubble)
   failed?: boolean; // Send never reached the backend
   disclaimer?: string;

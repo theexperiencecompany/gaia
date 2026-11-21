@@ -13,6 +13,7 @@ import {
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { compareMessageOrder } from "@/lib/db/messageOrder";
 import { useChatStore } from "@/stores/chatStore";
 import {
   hasAnyLiveTurn,
@@ -78,8 +79,7 @@ const mergeMessageLists = (
       // but keep locally-retained tool cards the backend copy may still be missing.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     } else {
-      // Always prefer the remote version here: local timestamps can drift ahead of the server's
-      // via optimistic updates (e.g. abort). The only exception is 'sending', handled above.
+      // The remote copy is authoritative; the only exception is 'sending', handled above.
       messageMap.set(msg.id, withPreservedToolData(msg, existing));
     }
   });
@@ -88,10 +88,7 @@ const mergeMessageLists = (
   // replaces the optimistic record above naturally. Sends the server never received stay
   // visible and are marked failed by the turn lifecycle — never silently deleted.
 
-  // Convert back to array and sort by creation time
-  return Array.from(messageMap.values()).toSorted(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-  );
+  return Array.from(messageMap.values()).toSorted(compareMessageOrder);
 };
 
 const mapApiMessagesToStored = (
@@ -109,10 +106,11 @@ const mapApiMessagesToStored = (
       conversationId,
       content: message.response,
       role,
-      status: message.loading ? "sending" : "sent",
+      status: message.loading || message.in_progress ? "sending" : "sent",
       createdAt,
       updatedAt: createdAt,
       messageId: message.message_id,
+      seq: message.seq ?? undefined,
       fileIds: message.fileIds,
       fileData: message.fileData,
       toolName: message.selectedTool ?? null,

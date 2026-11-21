@@ -175,13 +175,12 @@ class TestFinalizeStreamBackstop:
 
     async def test_the_final_event_names_each_distinct_tool_the_turn_used(self) -> None:
         state = _state(cancelled=False, saved=True)
-        state.tool_entries.extend(
-            [
-                {"tool_name": "search", "data": {}},
-                {"tool_name": "search", "data": {}},
-                {"tool_name": "fetch", "data": {}},
-            ]
-        )
+        # The last row is a legacy card saved without a tool name.
+        state.tool_data["tool_data"] = [
+            {"tool_name": "search", "data": {}},
+            {"tool_name": "search", "data": {}},
+            {"data": {}},
+        ]
 
         with (
             patch.object(chat_stream, "stream_manager") as sm,
@@ -193,7 +192,7 @@ class TestFinalizeStreamBackstop:
                 "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
 
-        assert sorted(log.set.call_args.kwargs["tool_types"]) == ["fetch", "search"]
+        assert sorted(log.set.call_args.kwargs["tool_types"]) == ["search"]
         assert log.set.call_args.kwargs["tool_calls_count"] == 3
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
@@ -268,25 +267,30 @@ class TestResolvePendingApprovalTurnApproves:
             conversation_id="conv-1",
         )
         classifier = AsyncMock(return_value="approve")
+        opener = AsyncMock(return_value=2)
+        user = AuthenticatedUser(user_id=USER_ID)
+        state = _StreamState()
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
+            patch.object(chat_stream, "open_bot_reply", new=opener),
             patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
             result = await _resolve_pending_approval_turn(
-                body,
-                AuthenticatedUser(user_id=USER_ID),
-                "conv-1",
-                "stream-1",
-                _StreamState(),
-                "whatsapp",
+                body, user, "conv-1", "stream-1", state, "whatsapp"
             )
 
         assert result is True
         classifier.assert_awaited_once_with(
             "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
+        )
+        opener.assert_awaited_once_with(body, user, "conv-1", state.bot_message_id)
+        stream_id, placed = sm.publish_chunk.await_args_list[0].args
+        assert (stream_id, json.loads(placed.removeprefix("data: "))) == (
+            "stream-1",
+            {"bot_message_seq": 2},
         )
 
 
@@ -432,6 +436,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
         with (
             patch.object(chat_stream, "call_agent", fake_call_agent),
             patch.object(chat_stream, "stream_manager", sm),
+            patch.object(chat_stream, "open_bot_reply", new=AsyncMock(return_value=2)),
             patch("app.services.chat.chunks.stream_manager", sm),
             patch("app.utils.stream_publishers.stream_manager", sm),
         ):

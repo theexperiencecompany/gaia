@@ -23,7 +23,7 @@ def test_a_stored_row_carries_its_commit_time() -> None:
     )
 
     assert (row.user_id, row.conversation_id, row.at) == ("u1", "c1", at)
-    assert (row.entry.seq, row.entry.message.message_id) == (4, "m1")
+    assert (row.entry.seq, row.entry.message_id) == (4, "m1")
 
 
 def test_content_hash_ignores_key_order() -> None:
