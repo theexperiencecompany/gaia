@@ -22,11 +22,12 @@ BACKEND = "gaia-prod_gaia-backend"
 WORKER = "gaia-prod_arq_worker"
 ENV_SECRET = "mongodb://user:hunter2@mongo/gaia"
 
+TEMPLATE_ENV = ["ENV=production", f"MONGO_HINT={ENV_SECRET}"]
 TEMPLATE = {
     "ContainerSpec": {
         "Image": "ghcr.io/theexperiencecompany/gaia:2611.20.old0000@sha256:aaa",
         "Dir": "/app/apps/api",
-        "Env": ["ENV=production", f"MONGO_HINT={ENV_SECRET}"],
+        "Env": TEMPLATE_ENV,
         "Secrets": [
             {
                 "SecretName": "gaia_infisical_project_id",
@@ -281,7 +282,7 @@ def test_jobs_run_the_new_image_with_the_backends_secrets_networks_and_env(tmp_p
         "-m",
         "scripts.migrate_conversations",
     ]
-    assert (state / "env-check").read_text().splitlines() == TEMPLATE["ContainerSpec"]["Env"]
+    assert (state / "env-check").read_text().splitlines() == TEMPLATE_ENV
     assert ENV_SECRET not in json.dumps(calls) + result.stdout + result.stderr
 
 
