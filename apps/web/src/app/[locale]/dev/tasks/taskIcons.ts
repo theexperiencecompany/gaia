@@ -28,5 +28,6 @@ export const NEEDS: Record<Need, { label: string; Icon: IconComponent }> = {
   approval: { label: "Needs approval", Icon: CheckmarkCircle02Icon },
   question: { label: "Has a question", Icon: BubbleChatIcon },
   reconnect: { label: "Needs reconnecting", Icon: Link01Icon },
+  connect: { label: "Needs an app", Icon: Link01Icon },
   blind: { label: "Can't see it", Icon: ViewOffIcon },
 };

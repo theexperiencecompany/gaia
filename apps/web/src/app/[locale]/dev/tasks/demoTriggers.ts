@@ -96,6 +96,7 @@ const LINEAR_TEAM: PickSetting = {
 export const DEMO_TRIGGERS: DemoTrigger[] = [
   { slug: "gmail_new_message", app: "gmail", name: "New email" },
   { slug: "gmail_email_sent", app: "gmail", name: "Email sent" },
+  { slug: "gmail_poll_inbox", app: "gmail", name: "New emails in inbox" },
   {
     slug: "calendar_event_created",
     app: "googlecalendar",

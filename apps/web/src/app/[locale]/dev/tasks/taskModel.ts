@@ -109,6 +109,8 @@ export interface TaskWhen {
   kind: WhenKind;
   /** How it reads in one short line; built from the fields below by whenModel. */
   label?: string;
+  /** The full schedule in words, where the short label had to fall back to a generic one. */
+  detail?: string;
   overdue?: boolean;
   isToday?: boolean;
   /** Days from today until it is due or next runs; drives soonest-first order. */
@@ -138,7 +140,7 @@ export interface TaskWhen {
  * What blocks GAIA on the user. Two real mechanisms:
  * approval: a pending HIL ledger row (todo.pending_approval), approve or deny.
  * question: waiting_on="user" with todo.question; answered by replying in chat.
- * A lost connection is not an ask: it is pause_reason plus the missing app (see Task).
+ * A lost or missing app is not an ask: it is pause_reason plus the missing app (see Task).
  */
 export interface TaskAsk {
   kind: "approval" | "question";
@@ -154,7 +156,7 @@ export interface TaskAsk {
 }
 
 /** What a task needs from you, in the list's words. */
-export type Need = TaskAsk["kind"] | "reconnect" | "blind";
+export type Need = TaskAsk["kind"] | "reconnect" | "connect" | "blind";
 
 /** todo.waiting_on, for a one-off GAIA task between runs. */
 export type WaitingOn = "time" | "event" | "user" | "sub_todos" | "unplanned";
@@ -226,8 +228,15 @@ export interface Task {
   integrations: string[];
   /** missing_integrations / blocked_on_integrations: those not connected right now. */
   disconnected?: string[];
-  /** pause_reason / deactivated_reason: why the system switched it off; unset when you did. */
-  pauseReason?: "integration_expired" | "user_dormant" | "watch_blind";
+  /**
+   * pause_reason / deactivated_reason: why the system switched it off; unset when you did.
+   * integration_missing: made from a template whose app isn't connected (blocked_on_integrations).
+   */
+  pauseReason?:
+    | "integration_expired"
+    | "integration_missing"
+    | "user_dormant"
+    | "watch_blind";
   source?: TaskSource;
   priority: Priority;
   /** GAIA's working document (canvas_content), by its fixed sections. */
@@ -258,6 +267,7 @@ export function needOf(task: Task): Need | undefined {
   if (task.state === "done") return undefined;
   if (task.ask) return task.ask.kind;
   if (task.pauseReason === "integration_expired") return "reconnect";
+  if (task.pauseReason === "integration_missing") return "connect";
   // A watch that can't see asks for a fix, unless you stopped it yourself.
   const isStopped = task.state === "paused" && !task.pauseReason;
   if (task.when.watch?.blind && !isStopped) return "blind";

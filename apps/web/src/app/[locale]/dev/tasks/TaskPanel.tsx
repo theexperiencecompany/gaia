@@ -17,6 +17,7 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { toneVariants } from "@/components/shared/tone";
 import { cn } from "@/lib/utils";
+import { type PublishInput, PublishStep } from "../explore/PublishStep";
 import TaskAsk, { type AskAnswer } from "./TaskAsk";
 import TaskCheckbox from "./TaskCheckbox";
 import TaskIcon from "./TaskIcon";
@@ -38,6 +39,10 @@ interface TaskPanelProps {
   onOpen: (task: Task) => void;
   /** Turns GAIA's offer on a to-do into a subtask GAIA owns. */
   onAcceptOffer: (task: Task, title: string) => void;
+  /** Whether a copy of this task is on Explore as a template. */
+  isPublished?: boolean;
+  onPublish?: (input: PublishInput) => void;
+  onUnpublish?: () => void;
 }
 
 interface MenuAction {
@@ -54,6 +59,7 @@ function taskMenu(
   update: (patch: Partial<Task>) => void,
   resume: () => void,
   remove: () => void,
+  publish: MenuAction,
 ): MenuAction[] {
   const isGaia = task.assignee === "gaia";
   const isOff = task.state === "paused";
@@ -77,7 +83,7 @@ function taskMenu(
       isOff
         ? { key: "enable", label: "Enable", Icon: PlayIcon, onPress: resume }
         : { key: "disable", label: "Disable", Icon: PauseIcon, onPress: stop },
-      { key: "publish", label: "Publish to the community", Icon: Share01Icon },
+      publish,
     );
   }
   actions.push({
@@ -103,7 +109,11 @@ export default function TaskPanel({
   onDelete,
   onOpen,
   onAcceptOffer,
+  isPublished = false,
+  onPublish,
+  onUnpublish,
 }: TaskPanelProps) {
+  const [isPublishing, setIsPublishing] = useState(false);
   const isYours = task.assignee === "you";
   const isDone = task.state === "done";
   const isOff = task.state === "paused";
@@ -134,7 +144,20 @@ export default function TaskPanel({
   );
 
   const resume = () => update({ state: repeats ? "standing" : "running" });
-  const menu = taskMenu(task, update, resume, () => onDelete(task));
+  const publish: MenuAction = isPublished
+    ? {
+        key: "unpublish",
+        label: "Unpublish",
+        Icon: Share01Icon,
+        onPress: onUnpublish,
+      }
+    : {
+        key: "publish",
+        label: "Publish to the community",
+        Icon: Share01Icon,
+        onPress: () => setIsPublishing(true),
+      };
+  const menu = taskMenu(task, update, resume, () => onDelete(task), publish);
 
   const runNow = () =>
     update({
@@ -231,6 +254,17 @@ export default function TaskPanel({
           update={update}
           onChangeWatch={() => setIsWhenOpen(true)}
         />
+
+        {isPublishing && onPublish && !isPublished && (
+          <PublishStep
+            task={task}
+            onPublish={(input) => {
+              onPublish(input);
+              setIsPublishing(false);
+            }}
+            onCancel={() => setIsPublishing(false)}
+          />
+        )}
 
         <TaskProperties
           task={task}

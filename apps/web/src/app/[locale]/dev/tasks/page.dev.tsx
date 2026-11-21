@@ -7,8 +7,12 @@ import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
+import { toast } from "@/lib/toast";
+import { EXPLORE_PATH } from "../explore/TemplateRow";
 import { DEMO_TASKS } from "./demoTasks";
-import { blankTask, NewGaiaTask, NewTodoRow } from "./NewTask";
+import { NewGaiaTask } from "./NewGaiaTask";
+import { blankTask, NewTodoRow } from "./NewTask";
 import NewTaskButton from "./NewTaskButton";
 import type { AskAnswer } from "./TaskAsk";
 import TaskPanel from "./TaskPanel";
@@ -228,6 +232,19 @@ export default function TasksDemoPage() {
       ],
     });
   const [creating, setCreating] = useState<Assignee | null>(null);
+  const [published, setPublished] = useState<string[]>([]);
+  const publish = (task: Task) => {
+    setPublished((ids) => [...ids, task.id]);
+    toast.success("Published to Explore", {
+      description: "People can find it and make their own copy.",
+    });
+  };
+  const unpublish = (task: Task) => {
+    setPublished((ids) => ids.filter((id) => id !== task.id));
+    toast.info("Unpublished", {
+      description: "Tasks people already made from it keep working.",
+    });
+  };
   const startNew = (assignee: Assignee) => {
     setOpenTask(null);
     setCreating(assignee);
@@ -302,7 +319,18 @@ export default function TasksDemoPage() {
                 <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-white">
                   Tasks
                 </h1>
-                <NewTaskButton onPick={startNew} />
+                <div className="flex items-center gap-1">
+                  <LinkButton
+                    href={EXPLORE_PATH}
+                    size="sm"
+                    variant="quiet"
+                    tone="muted"
+                    hoverTone="bright"
+                  >
+                    Explore
+                  </LinkButton>
+                  <NewTaskButton onPick={startNew} />
+                </div>
               </div>
 
               {needsYou.length > 0 && (
@@ -376,6 +404,9 @@ export default function TasksDemoPage() {
                 onDelete={remove}
                 onOpen={open}
                 onAcceptOffer={acceptOffer}
+                isPublished={published.includes(opened.id)}
+                onPublish={() => publish(opened)}
+                onUnpublish={() => unpublish(opened)}
               />
             ) : (
               <NewGaiaTask

@@ -6,7 +6,7 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { AppIcon } from "./AppIcon";
 import { APP_NAMES } from "./demoTriggers";
 import { PropertyRow } from "./PropertyRow";
-import type { Task } from "./taskModel";
+import { isRepeating, type Task } from "./taskModel";
 
 /** An app's logo, named on hover. */
 function AppLogo({ id }: { id: string }) {
@@ -41,13 +41,19 @@ export default function TaskApps({
   const connected = task.integrations.filter((id) => !missing.includes(id));
   const next = missing[0];
   const wasConnected = task.pauseReason === "integration_expired";
+  // Paused for want of an app, lost or never connected: connecting the last one starts it.
+  const isWaitingOnApps =
+    wasConnected || task.pauseReason === "integration_missing";
 
   const connect = () => {
     const rest = missing.filter((id) => id !== next);
-    const isClear = rest.length === 0 && wasConnected;
+    const isClear = rest.length === 0 && isWaitingOnApps;
     update({
       disconnected: rest,
-      ...(isClear && { pauseReason: undefined, state: "standing" }),
+      ...(isClear && {
+        pauseReason: undefined,
+        state: isRepeating(task.when) ? "standing" : "running",
+      }),
     });
   };
 

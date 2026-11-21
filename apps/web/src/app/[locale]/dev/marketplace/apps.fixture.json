@@ -1,0 +1,1978 @@
+[
+  {
+    "integrationId": "googlecalendar",
+    "slug": "googlecalendar",
+    "name": "Google Calendar",
+    "description": "Schedule meetings and manage your calendar events",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 56,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Schedule meetings by describing your availability in plain English, and GAIA books the slot instantly",
+        "Get a morning briefing of every event happening today, delivered to your chat",
+        "Find open time slots across multiple calendars with a single question",
+        "Create recurring events, set reminders, and invite attendees without opening Calendar",
+        "Reschedule or cancel events on the fly by just telling GAIA what changed"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "googledocs",
+    "slug": "googledocs",
+    "name": "Google Docs",
+    "description": "Create, edit, and share documents in your workspace",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 33,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create a fully formatted Google Doc by describing what you need, and GAIA writes and structures it",
+        "Search across all your documents and pull out specific information without opening Drive",
+        "Update or append to an existing document by just telling GAIA what to change",
+        "Generate meeting notes, project briefs, or reports from a short description",
+        "Copy and repurpose existing documents into new ones with a single instruction"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "googledrive",
+    "slug": "googledrive",
+    "name": "Google Drive",
+    "description": "Search, organize, share, and retrieve your files in Google Drive",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 90,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Find any file by name, type, or content without digging through folders",
+        "Ask GAIA to organize files: create folders, move files, and tidy up your Drive",
+        "Share a file or folder with someone at the right permission level in one instruction",
+        "Pull a file from Drive straight into an email as an attachment",
+        "Save notes, summaries, or generated content to Drive as a new file"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "gmail",
+    "slug": "gmail",
+    "name": "Gmail",
+    "description": "Manage emails, compose messages, and organize your inbox",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 66,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Send emails by describing who you're writing to and what you want to say, and GAIA drafts and sends it",
+        "Get a briefing every morning of what needs your reply, what you're waiting on, and today's events",
+        "Search your inbox by topic, sender, or keyword instantly from chat",
+        "Reply to emails with a quick instruction like \"reply and say I'll join at 3 PM\"",
+        "Trigger workflows when specific emails arrive, like logging leads from contact form submissions"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "notion",
+    "slug": "notion",
+    "name": "Notion",
+    "description": "Manage pages, databases, and workspace content",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 50,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create new Notion pages and database entries by describing them in plain English",
+        "Search across your entire Notion workspace and pull out specific information instantly",
+        "Add meeting notes, action items, or journal entries to Notion without opening the app",
+        "Query Notion databases: filter, sort, and summarise records with natural language",
+        "Trigger workflows when new Notion pages are created in a specific database"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "twitter",
+    "slug": "twitter",
+    "name": "Twitter",
+    "description": "Post tweets, read timelines, and manage your account",
+    "category": "social_media",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 75,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Post tweets and threads by describing what you want to say, and GAIA writes and publishes them",
+        "Search Twitter for mentions, keywords, or trending topics and get a clean summary",
+        "Monitor mentions of your handle and get notified in chat when someone tags you",
+        "Draft replies to tweets by giving GAIA context on how you want to respond",
+        "Research what's being said about a topic or competitor with a single question"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "googlesheets",
+    "slug": "googlesheets",
+    "name": "Google Sheets",
+    "description": "Create, read, and update spreadsheets",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 50,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Add rows to a Google Sheet by describing the data, and GAIA finds the right sheet and inserts it",
+        "Query spreadsheet data with plain English, like 'what's the total revenue in column D for March?'",
+        "Create new spreadsheets with pre-filled data from a short description",
+        "Update or overwrite cell ranges without touching a formula",
+        "Trigger workflows when new rows are added to a tracking sheet"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "linkedin",
+    "slug": "linkedin",
+    "name": "LinkedIn",
+    "description": "Share posts and engage with your professional network",
+    "category": "social_media",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 24,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Post LinkedIn updates by describing your message, and GAIA writes and publishes in your voice",
+        "Search for people, companies, or jobs on LinkedIn with plain English queries",
+        "Draft personalised connection request messages for specific profiles",
+        "Get a summary of a LinkedIn profile or company page without opening the app",
+        "Research prospects before a sales call by pulling their LinkedIn context into chat"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "github",
+    "slug": "github",
+    "name": "GitHub",
+    "description": "Manage repositories, issues, pull requests, and automate your development workflow",
+    "category": "developer",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 790,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create issues, PRs, and branches by describing them, and GAIA handles all the GitHub API calls",
+        "Get a daily summary of open pull requests, failing CI checks, and pending reviews",
+        "Search code, commits, and issues across all your repositories with plain English",
+        "Automate release notes from merged PRs with a single instruction",
+        "Trigger GAIA workflows when a PR is opened, merged, or a CI check fails"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "reddit",
+    "slug": "reddit",
+    "name": "Reddit",
+    "description": "Post content, manage comments, and engage with communities on Reddit",
+    "category": "social_media",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 19,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Search Reddit for discussions, reviews, or opinions on any topic with plain English",
+        "Monitor a subreddit for new posts matching your keywords and get alerted in chat",
+        "Summarise the top posts and comments from any subreddit this week",
+        "Draft and post Reddit submissions to relevant communities",
+        "Research what real users say about a product or competitor by searching Reddit threads"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "airtable",
+    "slug": "airtable",
+    "name": "Airtable",
+    "description": "Create and manage bases, tables, and records with AI-powered automation",
+    "category": "business",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 25,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Add records to any Airtable base by describing the data, and GAIA finds the right table and inserts it",
+        "Query your Airtable bases with plain English: filter, sort, and summarise records",
+        "Create new Airtable records from inputs in other tools (emails, forms, Slack messages)",
+        "Update or patch existing records by describing what changed",
+        "Get a daily summary of new records added to your CRM, project tracker, or content calendar"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "linear",
+    "slug": "linear",
+    "name": "Linear",
+    "description": "Manage issues, projects, and track development progress with AI assistance",
+    "category": "developer",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 30,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create Linear issues and assign them by just describing the bug or feature request",
+        "Get a daily standup summary: open issues, blockers, and what's in progress on your team",
+        "Move issues between cycles or change their status with a plain English command",
+        "Search for issues by keyword, assignee, or label instantly from chat",
+        "Trigger GAIA workflows when Linear issues are created, updated, or completed"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "slack",
+    "slug": "slack",
+    "name": "Slack",
+    "description": "Send messages, manage channels, and automate team communication",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 155,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Send messages to any Slack channel or DM directly from GAIA chat",
+        "Get a summary of what was discussed in a Slack channel while you were away",
+        "Set up GAIA to post automated updates to Slack, like daily briefings or workflow results",
+        "Search Slack for past conversations, decisions, or files with plain English",
+        "Trigger GAIA workflows when specific messages are posted in a Slack channel"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "hubspot",
+    "slug": "hubspot",
+    "name": "HubSpot",
+    "description": "Manage CRM contacts, deals, and automate sales and marketing workflows",
+    "category": "business",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 232,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create contacts, companies, and deals in HubSpot by describing them in plain English",
+        "Get a pipeline summary (open deals, stage distribution, and total value) without opening HubSpot",
+        "Log calls, emails, and notes to CRM records with a quick chat message",
+        "Search for contacts or deals by name, company, or deal stage instantly",
+        "Run scheduled workflows that report on your pipeline, like a Monday summary of open deals"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "googletasks",
+    "slug": "googletasks",
+    "name": "Google Tasks",
+    "description": "Create, manage, and organize your tasks and to-do lists",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 17,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create tasks and to-dos by just describing what you need to do, and GAIA adds them instantly",
+        "Get a list of all your due tasks for today or this week from a single question",
+        "Mark tasks as complete without opening Google Tasks",
+        "Organise tasks into lists by project or area of life",
+        "Set up workflows that automatically create Google Tasks from emails or calendar events"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "todoist",
+    "slug": "todoist",
+    "name": "Todoist",
+    "description": "Manage tasks, projects, and productivity workflows with advanced task management",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 112,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Add tasks to Todoist by describing them, with due dates, priorities, and labels",
+        "Get a daily briefing of your Todoist tasks due today delivered to your chat",
+        "Complete, reschedule, or reprioritise tasks with a quick plain English message",
+        "Search and filter tasks across all projects without opening Todoist",
+        "Trigger GAIA workflows when high-priority tasks are overdue"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "microsoft_teams",
+    "slug": "microsoft_teams",
+    "name": "Microsoft Teams",
+    "description": "Collaborate with teams, send messages, manage channels, and automate team workflows",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 32,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Send messages to any Teams channel or person directly from GAIA chat",
+        "Get a summary of what was discussed in a Teams channel while you were away",
+        "Post automated updates from other tools into Teams channels",
+        "Search Teams conversations for past decisions, links, or files",
+        "Run scheduled workflows that scan your Teams channels for keywords and send you a digest"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "zoom",
+    "slug": "zoom",
+    "name": "Zoom",
+    "description": "Create and manage Zoom meetings, webinars, and video conferencing",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 19,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Schedule Zoom meetings by describing the participants and time, and GAIA creates the invite",
+        "Get a list of your upcoming Zoom meetings for today or this week",
+        "Generate Zoom meeting links instantly and share them in chat",
+        "Access meeting recordings and get a summary of what was discussed",
+        "Run scheduled workflows that log new meeting recordings and summaries to Notion"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "googlemeet",
+    "slug": "googlemeet",
+    "name": "Google Meet",
+    "description": "Schedule and manage video meetings with Google Meet",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 10,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create Google Meet links instantly and share them in any chat or email",
+        "Schedule meetings with automatic Google Meet links attached",
+        "Get a list of upcoming meetings with their Meet links for quick access",
+        "Start an instant meeting and get the link without opening Google Calendar",
+        "Combine with Gmail to send meeting invitations with Meet links automatically"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "google_maps",
+    "slug": "google_maps",
+    "name": "Google Maps",
+    "description": "Search locations, get directions, and manage place information",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 21,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Search for nearby restaurants, cafes, or businesses with a plain English query",
+        "Get directions between two locations and estimated travel times",
+        "Find the best-rated places of a specific type within a given area",
+        "Look up business details, including address, hours, phone, and reviews, instantly",
+        "Combine with Calendar to get directions to your next meeting automatically"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "asana",
+    "slug": "asana",
+    "name": "Asana",
+    "description": "Manage projects, tasks, and team workflows with comprehensive project management",
+    "category": "business",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 87,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create Asana tasks and assign them by just describing what needs to be done",
+        "Get a daily summary of tasks due today and what's overdue across all your projects",
+        "Update task status, due dates, and assignees with a plain English command",
+        "Search for tasks across all your Asana projects by keyword or assignee",
+        "Trigger GAIA workflows when tasks are completed or new ones are added to a project"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "trello",
+    "slug": "trello",
+    "name": "Trello",
+    "description": "Organize projects with boards, lists, and cards for visual task management",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 324,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create Trello cards by describing them, and GAIA adds them to the right list and board",
+        "Get a summary of what's in progress, blocked, or done across your Trello boards",
+        "Move cards between lists with a plain English command, no drag and drop needed",
+        "Add labels, due dates, and checklists to cards by describing what you want",
+        "Run scheduled workflows that summarise your boards, like a weekly digest of what moved to Done"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "instagram",
+    "slug": "instagram",
+    "name": "Instagram",
+    "description": "Manage your Instagram account, post content, and engage with your audience",
+    "category": "social_media",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 32,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Search Instagram for posts, hashtags, or profiles with plain English queries",
+        "Get engagement stats for recent posts without opening the Instagram app",
+        "Research competitor accounts or trending content in your niche",
+        "Monitor brand mentions and get alerted when your handle is tagged",
+        "Find the top-performing posts in a specific hashtag for content inspiration"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "clickup",
+    "slug": "clickup",
+    "name": "ClickUp",
+    "description": "Manage tasks, projects, and workflows with comprehensive project management",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 128,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Create ClickUp tasks across any Space, Folder, or List by describing them",
+        "Get a daily overview of what's due, in progress, and overdue across your ClickUp workspace",
+        "Update task status, priority, and assignees with a quick plain English message",
+        "Search tasks across all your ClickUp Spaces by keyword, tag, or assignee",
+        "Run scheduled workflows that report which ClickUp tasks changed status"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "calcom",
+    "slug": "calcom",
+    "name": "Cal.com",
+    "description": "Manage bookings, availability, and booking links on Cal.com",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "See every upcoming Cal.com booking with attendees and meeting links in one message",
+        "Book a meeting on any of your event types by saying who and roughly when, and GAIA finds an open slot",
+        "Reschedule or cancel a booking in plain English without opening Cal.com",
+        "Get the right booking link for the right meeting type whenever you need to share one",
+        "Run a scheduled workflow that briefs you every morning on the day's Cal.com bookings"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "calendly",
+    "slug": "calendly",
+    "name": "Calendly",
+    "description": "View scheduled meetings, share scheduling links, and manage Calendly events",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 53,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Ask what's on your Calendly this week and see each meeting with its invitees",
+        "Generate a single-use scheduling link for one person in seconds",
+        "Check which times are still open on an event type before you share it",
+        "Cancel a scheduled Calendly meeting with a reason, after you approve it",
+        "Get a daily briefing of new Calendly bookings through a scheduled workflow"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "outlook",
+    "slug": "outlook",
+    "name": "Outlook",
+    "description": "Read and draft email, manage your calendar, and schedule meetings in Microsoft Outlook",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 297,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Summarise your unread Outlook mail and draft replies for the ones that need an answer",
+        "Search your Outlook inbox in plain English: 'the invoice Priya sent last month'",
+        "Find a meeting time that works for everyone and send the invite with a Teams link",
+        "Get today's Outlook calendar as a morning briefing in your chat",
+        "Draft emails in your voice and send them only after you approve"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "jira",
+    "slug": "jira",
+    "name": "Jira",
+    "description": "Track issues, manage sprints, and move work through your Jira workflow",
+    "category": "developer",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 99,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "See every Jira issue assigned to you, ranked by priority, in one message",
+        "Create Jira issues by describing the bug or task, and GAIA fills in the project and type",
+        "Move issues through your workflow with a plain English command",
+        "Turn meeting notes into Jira issues with owners and descriptions",
+        "Get a weekly summary of what your team moved to Done through a scheduled workflow"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "dropbox",
+    "slug": "dropbox",
+    "name": "Dropbox",
+    "description": "Search, read, organize, and share files in your Dropbox",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 175,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Find any file in your Dropbox by describing it, no folder digging",
+        "Summarise a document stored in Dropbox without downloading it yourself",
+        "Organise files into folders with a single instruction",
+        "Create a share link for a file, after you approve exposing it",
+        "Save files GAIA generates (reports, decks, spreadsheets) straight into Dropbox"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "deepwiki",
+    "slug": "deepwiki",
+    "name": "DeepWiki",
+    "description": "AI-powered documentation for any GitHub repository. Ask questions and explore codebases.",
+    "category": "developer",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 3,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Ask deep technical questions about any GitHub repository and get expert answers",
+        "Understand how a codebase is structured before diving into it",
+        "Get documentation and usage examples for any open-source library instantly",
+        "Research how popular projects have solved specific engineering problems",
+        "Ask 'how does authentication work in this repo?' and get a clear explanation"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "hackernews",
+    "slug": "hackernews",
+    "name": "Hacker News",
+    "description": "Browse and search Hacker News stories, comments, and discussions.",
+    "category": "news",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 4,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Get a daily summary of the top Hacker News posts without opening the site",
+        "Search HN for discussions about a specific technology or company",
+        "Find the most upvoted posts and comments on any topic in the last week",
+        "Monitor Hacker News for mentions of your product or brand",
+        "Stay current on tech industry news and trends through your GAIA chat"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "yelp",
+    "slug": "yelp",
+    "name": "Yelp",
+    "description": "Search for local businesses, restaurants, and read reviews.",
+    "category": "lifestyle",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 6,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Find top-rated restaurants, bars, or services near any location instantly",
+        "Get business details, including hours, address, phone, and reviews, with a single question",
+        "Search for businesses by cuisine, category, or specific requirements like pet-friendly",
+        "Compare multiple options with ratings, price range, and review summaries",
+        "Plan a dinner, event, or errand by finding exactly the right places in your area"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "context7",
+    "slug": "context7",
+    "name": "Context7",
+    "description": "Fetch up-to-date, version-specific documentation and code examples for any library or framework.",
+    "category": "developer",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 2,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Get up-to-date documentation for any library or framework directly in your chat",
+        "Ask 'how do I use useQuery in React Query v5?' and get the current API with examples",
+        "Avoid outdated AI answers by pulling live docs for rapidly changing libraries",
+        "Get code examples for specific library features without leaving your workflow",
+        "Research how to integrate two libraries together using their latest documentation"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "perplexity",
+    "slug": "perplexity",
+    "name": "Perplexity",
+    "description": "AI-powered web search with detailed, contextually relevant results and citations.",
+    "category": "productivity",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 1,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Get real-time web search results with cited sources directly in your GAIA chat",
+        "Research any topic and get a concise, sourced summary without leaving your workflow",
+        "Ask current events questions that require up-to-date information",
+        "Fact-check claims or verify information with live web sources",
+        "Combine web research with other tools: research a company on the web, then create a CRM record"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "agentmail",
+    "slug": "agentmail",
+    "name": "AgentMail",
+    "description": "AgentMail is the email inbox API for AI agents. It gives agents their own email inboxes, like Gmail does for humans.",
+    "category": "communication",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Give GAIA its own email inbox to send and receive emails on your behalf",
+        "Set up GAIA as an email agent that handles inbound requests automatically",
+        "Send emails from a dedicated GAIA address without using your personal Gmail",
+        "Build automated email workflows where GAIA receives, processes, and responds to emails",
+        "Use email as a trigger source for GAIA automations"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "posthog",
+    "slug": "posthog",
+    "name": "PostHog",
+    "description": "Product analytics and experimentation platform - track events, analyze user funnels, run A/B tests, manage feature flags, and query session recordings.",
+    "category": "business",
+    "iconUrl": null,
+    "source": "platform",
+    "creator": null,
+    "toolCount": 1,
+    "publishedAt": null,
+    "content": {
+      "useCases": [
+        "Query your PostHog analytics data with plain English, like 'how many users signed up this week?'",
+        "Get conversion funnel analysis and drop-off points from a single question",
+        "Set up GAIA to deliver daily or weekly product analytics briefings to Slack",
+        "Investigate user behaviour around a specific feature without writing HogQL",
+        "Trigger GAIA alerts when key metrics like DAU or conversion rate drop below a threshold"
+      ]
+    },
+    "tools": []
+  },
+  {
+    "integrationId": "23ca28b1-fd37-419b-a6d9-59444f7433df",
+    "slug": "postman-full-mcp-developer",
+    "name": "Postman Full",
+    "description": "Complete Postman API platform with 100+ tools - manage collections, run tests, mock servers, generate documentation, and collaborate on API development.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-01T20:15:49.840000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "f2085c49-3a29-4496-bcd9-65061494e59e",
+    "slug": "postman-code-eu-mcp-developer",
+    "name": "Postman Code (EU)",
+    "description": "Postman code generation tools for EU users - search APIs and generate client code with full GDPR compliance and EU data sovereignty.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-03T20:15:49.650000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "0d9fb8e4-2073-4c78-a2b9-84f0f1092193",
+    "slug": "gumroad-mcp-finance",
+    "name": "Gumroad",
+    "description": "Manage your Gumroad creator account - track sales and revenue, manage digital products, handle customer data, and analyze purchase analytics.",
+    "category": "finance",
+    "iconUrl": "https://logos.composio.dev/api/gumroad",
+    "source": "custom",
+    "creator": {
+      "name": "Dev Patel",
+      "picture": "https://workoscdn.com/images/v1/RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-18T20:15:49.955000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "c91fb704-2525-46b1-b656-80ae482ca570",
+    "slug": "sequential-thinking-mcp-capabilities",
+    "name": "Sequential Thinking",
+    "description": "An MCP server that enables dynamic, reflective problem-solving through structured thinking sequences with branching, revision, and hypothesis exploration capabilities.",
+    "category": "capabilities",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=smithery.ai&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Dhruv Maradiya",
+      "picture": "https://workoscdn.com/images/v1/dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-06T20:29:29.252000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "fa572c1f-a7c2-4634-ac68-f8f280323be3",
+    "slug": "browser-tool-mcp-capabilities",
+    "name": "Browser Tool",
+    "description": "Automate web browser interactions - navigate URLs, click elements, fill forms, take screenshots, extract page content, and execute JavaScript on any webpage.",
+    "category": "capabilities",
+    "iconUrl": "https://cdn.jsdelivr.net/gh/ComposioHQ/open-logos@master//composio-logo.png",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-23T20:29:24.829000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "9f5810bd-7705-4932-9bbe-33a5e791f4d9",
+    "slug": "dropbox-mcp-productivity",
+    "name": "Dropbox",
+    "description": "Full Dropbox integration for file management - upload, download, share files and folders, manage permissions, and sync content across your cloud storage.",
+    "category": "productivity",
+    "iconUrl": "https://logos.composio.dev/api/dropbox",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2025-11-09T20:29:24.398000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "57fc490a-8fbb-47f3-96c0-ae5ba1544304",
+    "slug": "open-web-search-mcp-capabilities",
+    "name": "Open Web Search",
+    "description": "Multi-engine web search aggregator - query Bing, Baidu, DuckDuckGo, Brave, Exa, and GitHub simultaneously without requiring individual API keys.",
+    "category": "capabilities",
+    "iconUrl": "https://api.smithery.ai/servers/Aas-ee/open-websearch/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-26T20:15:49.838000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "7c0be0ce-c4ba-4282-8396-8a555896d50b",
+    "slug": "shopify-mcp-finance",
+    "name": "Shopify",
+    "description": "Full Shopify store management - create and update products, process orders, manage inventory, handle customers, and access sales analytics.",
+    "category": "finance",
+    "iconUrl": "https://logos.composio.dev/api/shopify",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2026-01-12T20:29:25.489000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "1389813a-2ff0-4237-803d-ee7ea9b74e19",
+    "slug": "zoho-mail-mcp-communication",
+    "name": "Zoho Mail",
+    "description": "Manage your Zoho Mail inbox - read, compose, send, and organize emails, handle attachments, manage folders, and search through your email history.",
+    "category": "communication",
+    "iconUrl": "https://cdn.jsdelivr.net/gh/ComposioHQ/open-logos@master//zoho.png",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-17T20:29:27.730000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "0cc26bb7-9a93-4551-ab0f-059cd4c879fa",
+    "slug": "wakatime-mcp-analytics",
+    "name": "WakaTime",
+    "description": "Access your WakaTime coding metrics - view time spent per project, language, and editor, track daily/weekly goals, and analyze productivity patterns.",
+    "category": "analytics",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=wakatime.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Khyati Sheth",
+      "picture": "https://workoscdn.com/images/v1/GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-08T20:29:30.837000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "12ad2ec8-9d32-4a5a-b60c-3ecb034737dc",
+    "slug": "postman-minimal-eu-mcp-developer",
+    "name": "Postman Minimal (EU)",
+    "description": "Lightweight Postman integration for EU users - essential API tools with GDPR-compliant data processing and European data residency.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-05T20:15:49.900000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "da365d0f-f5cf-4d74-a059-17a870a9ef33",
+    "slug": "brave-search-mcp-other",
+    "name": "Brave Search",
+    "description": "Independent, privacy-focused web search via Brave - get unbiased search results, news, and web content without tracking or personalization bubbles.",
+    "category": "other",
+    "iconUrl": "https://api.smithery.ai/servers/brave/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Vidhi Rahi",
+      "picture": "https://workoscdn.com/images/v1/l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-19T20:29:26.907000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "e60000c4-c82f-41ad-99e4-17601acaf0ee",
+    "slug": "fetch-mcp-capabilities",
+    "name": "Web Fetch",
+    "description": "Fetch any web page as clean, LLM-ready markdown or raw HTML, with built-in retries, caching, and anti-bot handling.",
+    "category": "capabilities",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=smithery.ai&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-18T20:15:51.176000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "e391615d-d5c1-40fa-ab53-c548401ae1bd",
+    "slug": "scrapegraph-ai-mcp-ai-ml",
+    "name": "ScrapeGraph AI",
+    "description": "AI-powered web scraping that uses LLMs to intelligently extract structured data from any webpage without writing custom selectors or parsers.",
+    "category": "ai-ml",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=scrapegraphai.com&sz=64",
+    "source": "custom",
+    "creator": {
+      "name": "Darsh Panchal",
+      "picture": "https://workoscdn.com/images/v1/71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-18T20:29:24.458000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "d10e2148-1cbf-4896-bf14-1a8f2cf99a5c",
+    "slug": "prisma-mcp-developer",
+    "name": "Prisma",
+    "description": "Database management with Prisma ORM - introspect schemas, generate migrations, run type-safe queries, and manage your database directly from the agent.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=prisma.io&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Dev Patel",
+      "picture": "https://workoscdn.com/images/v1/RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI"
+    },
+    "toolCount": 13,
+    "publishedAt": "2025-11-02T20:29:27.981000Z",
+    "tools": [
+      {
+        "name": "create_prisma_postgres_database",
+        "description": "Create a new managed Prisma Postgres database.\n    Specify a name that makes sense to the user - maybe the name of the project they are working on.\n    Specify "
+      },
+      {
+        "name": "list_prisma_postgres_databases",
+        "description": "Fetch a list of available Prisma Postgres Databases for user's workspace.\n    Each database in the response includes an 'id' field which should be used as the '"
+      },
+      {
+        "name": "delete_prisma_postgres_database",
+        "description": "Delete a Prisma Postgres database with the given database id.\n    Inform the user that this is a permanent action and cannot be undone. Ask them to confirm that"
+      },
+      {
+        "name": "create_prisma_postgres_connection_string",
+        "description": "Create a new Connection String for a Prisma Postgres database with the given id.\n    To obtain the correct input parameters use the List-Prisma-Postgres-Databas"
+      },
+      {
+        "name": "delete_prisma_postgres_connection_string",
+        "description": "Delete a Connection String with the given connection string id.\n    Inform the user that this is a permanent action and cannot be undone. Ask them to confirm th"
+      },
+      {
+        "name": "fetch_workspace_details",
+        "description": "Fetch the details of a Prisma Postgres workspace with the given project id.\n    To obtain the correct input parameters use the List-Prisma-Postgres-Databases to"
+      },
+      {
+        "name": "list_prisma_postgres_connection_strings",
+        "description": "Fetch a list of available Prisma Postgres Database Connection Strings for the given database id.\n    To obtain a list of available database ids, use the List-Pr"
+      },
+      {
+        "name": "create_prisma_postgres_backup",
+        "description": "Create a new managed Prisma Postgres Backup.\n    Note: On-demand backup creation is not currently supported. Backups are created automatically by the system.\n  "
+      },
+      {
+        "name": "list_prisma_postgres_backups",
+        "description": "Fetch a list of available Prisma Postgres Backups for the given database id.\n    To obtain a list of available database ids, use the List-Prisma-Postgres-Databa"
+      },
+      {
+        "name": "create_prisma_postgres_recovery",
+        "description": "Restore a Prisma Postgres Database to a new database with the given Backup id.\n    To obtain the correct input parameters use the List-Prisma-Postgres-Backups t"
+      }
+    ]
+  },
+  {
+    "integrationId": "d7e9ce6c-410d-4db3-a71c-70852cd31bef",
+    "slug": "google-classroom-mcp-education",
+    "name": "Google Classroom",
+    "description": "Manage Google Classroom as a teacher or student - create courses, post assignments, grade submissions, manage rosters, and track student progress.",
+    "category": "education",
+    "iconUrl": "https://cdn.jsdelivr.net/gh/ComposioHQ/open-logos@master/classroom.svg",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-23T20:29:24.432000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "d696a2f2-489e-41b4-bc66-b0ff3f1e090f",
+    "slug": "doi-resolver-mcp-education",
+    "name": "OpenAlex",
+    "description": "Search the OpenAlex catalog of 270M+ scholarly works — resolve DOIs to metadata, authors, citations, and references.",
+    "category": "education",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=github.com&sz=64",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2026-01-26T20:15:51.992000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "dca7d909-68df-46cb-b9ae-8e3bd437c9d8",
+    "slug": "code-interpreter-mcp-developer",
+    "name": "Code Interpreter",
+    "description": "Execute Python, JavaScript, and other code in a secure sandboxed environment with file I/O support, package installation, and persistent session state.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=smithery.ai&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-06T20:15:51.206000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "eedce57b-59d7-4357-9058-a2d0e77ea93a",
+    "slug": "polymarket-mcp-analytics",
+    "name": "Polymarket",
+    "description": "Access Polymarket prediction markets - view current odds, track market movements, get event details, and analyze betting sentiment on real-world outcomes.",
+    "category": "analytics",
+    "iconUrl": "https://api.smithery.ai/servers/aryankeluskar/polymarket-mcp/icon",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 7,
+    "publishedAt": "2026-01-25T20:15:49.696000Z",
+    "tools": [
+      {
+        "name": "search_markets",
+        "description": "Search Polymarket prediction markets with filters. Find active markets, filter by tags, volume, liquidity, and more. Perfect for market discovery and analysis."
+      },
+      {
+        "name": "get_market",
+        "description": "Get detailed information about a specific market by slug. Returns probabilities, volume, liquidity, outcomes, and full market data."
+      },
+      {
+        "name": "search_events",
+        "description": "Search Polymarket events. Events group related markets together (e.g., 'Presidential Election 2024' contains multiple markets). Great for discovering market clu"
+      },
+      {
+        "name": "get_event",
+        "description": "Get detailed information about a specific event by slug, including all related markets."
+      },
+      {
+        "name": "list_tags",
+        "description": "List all available tags/categories for filtering markets and events. Use tag IDs with search_markets or search_events."
+      },
+      {
+        "name": "get_trades",
+        "description": "Get recent trade activity from Polymarket's Data API. Analyze trading patterns, volume, and market sentiment."
+      },
+      {
+        "name": "analyze_market",
+        "description": "Get comprehensive market analysis including probabilities, trading activity, and AI-friendly insights. Combines market data with recent trades."
+      }
+    ]
+  },
+  {
+    "integrationId": "ffbba356-e61b-4061-a7d5-2532525091a9",
+    "slug": "postman-code-mcp-developer",
+    "name": "Postman Code",
+    "description": "Postman tools focused on API development - search API definitions, generate client SDKs in multiple languages, and create request code snippets.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-05T20:15:49.258000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "34c04813-5aa3-49e8-9f6a-fd41481eb25a",
+    "slug": "bible-mcp-other",
+    "name": "Bible",
+    "description": "Access Bible text across multiple translations - search verses, retrieve passages by reference, compare translations, and explore biblical content.",
+    "category": "other",
+    "iconUrl": "https://api.smithery.ai/servers/cameronapak/free-use-bible-mcp/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-17T20:29:28.206000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "d6368870-023f-4756-84e1-b6d49ff03170",
+    "slug": "linkup-mcp-capabilities",
+    "name": "Linkup",
+    "description": "Real-time web search API that provides fresh, accurate results from across the internet with source attribution and content extraction capabilities.",
+    "category": "capabilities",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=linkup.so&sz=128",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2025-11-23T20:29:26.816000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "40ebe174-ac1f-451a-9a3d-9a4e47bf4480",
+    "slug": "postman-full-eu-mcp-developer",
+    "name": "Postman Full (EU)",
+    "description": "Complete Postman API platform for EU users - full 100+ tool suite with GDPR compliance, EU data residency, and European infrastructure.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-12T20:15:49.432000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "c68d9201-9334-48e2-8382-59e2325fe910",
+    "slug": "scientific-computation-mcp-analytics",
+    "name": "Wolfram",
+    "description": "Rigorous computational intelligence via Wolfram — solve math, linear algebra, and calculus, handle units, and query curated scientific data.",
+    "category": "analytics",
+    "iconUrl": "https://api.smithery.ai/servers/wolframmcp/Wolfram/icon",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2025-11-07T20:29:30.023000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "658fe035-616e-425c-b656-5a9ab8470efd",
+    "slug": "google-scholar-mcp-education",
+    "name": "Google Scholar",
+    "description": "Search Google Scholar for academic papers - find research articles, get citation counts, discover author profiles, and access publication metadata.",
+    "category": "education",
+    "iconUrl": "https://api.smithery.ai/servers/google/scholar/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Dhruv Maradiya",
+      "picture": "https://workoscdn.com/images/v1/dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI"
+    },
+    "toolCount": 1,
+    "publishedAt": "2025-11-25T20:29:28.219000Z",
+    "tools": [
+      {
+        "name": "search_papers",
+        "description": "Search Google Scholar for academic papers, books, theses, and citations. Returns organic results with title, authors, snippet, citation count, and PDF links."
+      }
+    ]
+  },
+  {
+    "integrationId": "e00de9f0-ebaa-4bc4-b3b0-f0f496ca8db1",
+    "slug": "paypal-mcp-finance",
+    "name": "PayPal",
+    "description": "PayPal business integration - send and receive payments, create invoices, manage subscriptions, process refunds, and access transaction history.",
+    "category": "finance",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=paypal.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Dev Patel",
+      "picture": "https://workoscdn.com/images/v1/RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-15T20:29:24.166000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "2f145795-0f16-4049-9845-3f82c2227aae",
+    "slug": "youtube-mcp-analytics",
+    "name": "YouTube",
+    "description": "YouTube data access - search videos, retrieve transcripts and captions, get channel info, fetch video statistics, and explore playlists and comments.",
+    "category": "analytics",
+    "iconUrl": "https://api.smithery.ai/servers/sfiorini/youtube-mcp/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Darsh Panchal",
+      "picture": "https://workoscdn.com/images/v1/71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A"
+    },
+    "toolCount": 7,
+    "publishedAt": "2025-11-02T20:29:29.918000Z",
+    "tools": [
+      {
+        "name": "videos_getVideo",
+        "description": "Get detailed information about a YouTube video including URL"
+      },
+      {
+        "name": "videos_searchVideos",
+        "description": "Search for videos on YouTube and return results with URLs"
+      },
+      {
+        "name": "transcripts_getTranscript",
+        "description": "Get the transcript of a YouTube video"
+      },
+      {
+        "name": "channels_getChannel",
+        "description": "Get information about a YouTube channel"
+      },
+      {
+        "name": "channels_listVideos",
+        "description": "Get videos from a specific channel"
+      },
+      {
+        "name": "playlists_getPlaylist",
+        "description": "Get information about a YouTube playlist"
+      },
+      {
+        "name": "playlists_getPlaylistItems",
+        "description": "Get videos in a YouTube playlist"
+      }
+    ]
+  },
+  {
+    "integrationId": "c8cce4d2-1bb8-4e88-9fe0-26f54d1a29f7",
+    "slug": "neon-database-mcp-developer",
+    "name": "Neon Database",
+    "description": "Manage serverless Postgres databases on Neon - create branches, run queries, manage schemas, and scale your database infrastructure on demand.",
+    "category": "developer",
+    "iconUrl": "https://mcp.neon.tech/apple-touch-icon.png",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-15T20:15:52.112000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "a9b4110e-0e6a-4b1d-b465-21e5e8c5c9e6",
+    "slug": "postman-minimal-mcp-developer",
+    "name": "Postman Minimal",
+    "description": "Lightweight Postman integration with essential API tools - send requests, inspect responses, and test endpoints without the full toolkit overhead.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=postman.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-08T20:15:49.113000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "8d2ab5c6-55f6-4611-a795-c6932a3150bd",
+    "slug": "strava-mcp-personal",
+    "name": "Strava",
+    "description": "Access your Strava fitness data - view activities, analyze performance metrics, track training progress, explore segments, and connect with your athletic network.",
+    "category": "personal",
+    "iconUrl": "https://api.smithery.ai/servers/strava/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Dhruv Maradiya",
+      "picture": "https://workoscdn.com/images/v1/dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-25T20:15:49.700000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "0f1a3a36-dda0-4641-bd7a-3743a98753ce",
+    "slug": "arxiv-mcp-education",
+    "name": "arXiv",
+    "description": "Search and retrieve preprints from arXiv covering physics, mathematics, computer science, biology, and more - get abstracts, PDFs, and citation info.",
+    "category": "education",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=arxiv.org&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vinit Thakkar",
+      "picture": "https://workoscdn.com/images/v1/TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-13T20:29:25.088000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "aff7c4bc-a82c-48c7-b437-d9f8b720f1f2",
+    "slug": "wix-mcp-other",
+    "name": "Wix",
+    "description": "Manage Wix websites and business tools - update site content, manage blog posts, handle e-commerce products, and configure site settings programmatically.",
+    "category": "other",
+    "iconUrl": "https://static.wixstatic.com/ficons/5839f2_ea37ecb30286494b86d12c0f1f3a77f5%7Emv2.ico",
+    "source": "custom",
+    "creator": {
+      "name": "Darsh Panchal",
+      "picture": "https://workoscdn.com/images/v1/71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-10T20:29:24.428000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "97fb0feb-3b12-4784-94d5-caf7610203a6",
+    "slug": "paper-search-v2-mcp-education",
+    "name": "Paper Search v2",
+    "description": "Enhanced academic paper search with multi-database support, improved relevance scoring, abstract summarization, and related paper recommendations.",
+    "category": "education",
+    "iconUrl": "https://api.smithery.ai/servers/TitanSneaker/paper-search-mcp-openai-v2/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Dev Patel",
+      "picture": "https://workoscdn.com/images/v1/RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-12-30T20:15:51.936000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "5e1acb47-ae7a-439a-a998-5eb2ac41b03e",
+    "slug": "supabase-mcp-developer",
+    "name": "Supabase",
+    "description": "Build and manage Supabase projects - create tables, manage auth, run SQL queries, configure storage, and build backend services with the open-source Firebase alternative.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=supabase.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "Vidhi Rahi",
+      "picture": "https://workoscdn.com/images/v1/l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-01-17T20:29:28.220000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "5167f98d-25b8-4bf9-95e9-21b03fae9a6c",
+    "slug": "astro-docs-mcp-developer",
+    "name": "Astro Docs",
+    "description": "Search and retrieve Astro framework documentation - find guides, API references, component examples, and best practices for building fast static websites.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=astro.build&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Dev Patel",
+      "picture": "https://workoscdn.com/images/v1/RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI"
+    },
+    "toolCount": 1,
+    "publishedAt": "2026-01-05T20:15:51.964000Z",
+    "tools": [
+      {
+        "name": "search_astro_docs",
+        "description": "Search the official Astro framework docs"
+      }
+    ]
+  },
+  {
+    "integrationId": "db4b2a47-03ea-4efd-8ffd-0debded54dbc",
+    "slug": "render-mcp-developer",
+    "name": "Render",
+    "description": "Manage cloud infrastructure on Render - deploy web services, provision databases, configure environment variables, scale resources, and monitor applications.",
+    "category": "developer",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=render.com&sz=128",
+    "source": "custom",
+    "creator": {
+      "name": "SAHIL SONI",
+      "picture": "https://workoscdn.com/images/v1/D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI"
+    },
+    "toolCount": 24,
+    "publishedAt": "2025-12-03T20:29:34.356000Z",
+    "tools": [
+      {
+        "name": "create_cron_job",
+        "description": "Create a new cron job in your Render account. A cron job is a scheduled task that runs on a recurring schedule specified using cron syntax. Cron jobs are ideal "
+      },
+      {
+        "name": "create_key_value",
+        "description": "Create a new Key Value instance in your Render account"
+      },
+      {
+        "name": "create_postgres",
+        "description": "Create a new Postgres instance in your Render account"
+      },
+      {
+        "name": "create_static_site",
+        "description": "Create a new static site in your Render account. Apps that consist entirely of statically served assets (commonly HTML, CSS, and JS). Static sites have a public"
+      },
+      {
+        "name": "create_web_service",
+        "description": "Create a new web service in your Render account. A web service is a public-facing service that can be accessed by users on the internet. By default, these servi"
+      },
+      {
+        "name": "get_deploy",
+        "description": "Retrieve the details of a particular deploy for a particular service."
+      },
+      {
+        "name": "get_key_value",
+        "description": "Retrieve a Key Value instance by ID"
+      },
+      {
+        "name": "get_metrics",
+        "description": "Get performance metrics for any Render resource (services, Postgres databases, key-value stores). Supports CPU usage/limits/targets, memory usage/limits/targets"
+      },
+      {
+        "name": "get_postgres",
+        "description": "Retrieve a Postgres instance by ID"
+      },
+      {
+        "name": "get_selected_workspace",
+        "description": "Get the currently selected workspace"
+      }
+    ]
+  },
+  {
+    "integrationId": "5c397249-c205-480c-a275-b43502648727",
+    "slug": "pixellab-mcp-ai-ml",
+    "name": "PixelLab",
+    "description": "AI-powered image generation and editing - create images from text prompts, modify existing images, apply style transfers, and generate variations.",
+    "category": "ai-ml",
+    "iconUrl": "https://api.smithery.ai/servers/samedii/pixellab/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Dhruv Maradiya",
+      "picture": "https://workoscdn.com/images/v1/dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-29T20:15:51.732000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "7d521fdc-626f-4756-a456-b61b52d07206",
+    "slug": "paper-search-openai-mcp-education",
+    "name": "Paper Search (OpenAI)",
+    "description": "Search academic papers across ArXiv, PubMed, and Semantic Scholar using natural language queries with AI-powered relevance ranking and summarization.",
+    "category": "education",
+    "iconUrl": "https://api.smithery.ai/servers/adamamer20/paper-search-mcp-openai/icon",
+    "source": "custom",
+    "creator": null,
+    "toolCount": 0,
+    "publishedAt": "2025-11-24T20:29:28.239000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "f5b94aa5-1672-49a0-950d-8c21891e08f2",
+    "slug": "semantic-scholar-mcp-education",
+    "name": "Semantic Scholar",
+    "description": "Access Semantic Scholar's database of 200M+ academic papers - search by topic, author, or citation, get paper recommendations, and explore citation graphs.",
+    "category": "education",
+    "iconUrl": "https://api.smithery.ai/servers/hamid-vakilzadeh/mcpsemanticscholar/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Dhruv Maradiya",
+      "picture": "https://workoscdn.com/images/v1/dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-13T20:15:52.035000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "793eafc4-66fc-4ff6-b038-fbb8ee05120b",
+    "slug": "duckduckgo-search-mcp-capabilities",
+    "name": "DuckDuckGo Search",
+    "description": "Privacy-respecting web search via DuckDuckGo - get search results, news, images, and instant answers without user tracking or filter bubbles.",
+    "category": "capabilities",
+    "iconUrl": "https://api.smithery.ai/servers/OEvortex/ddg_search/icon",
+    "source": "custom",
+    "creator": {
+      "name": "Vidhi Rahi",
+      "picture": "https://workoscdn.com/images/v1/l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ"
+    },
+    "toolCount": 0,
+    "publishedAt": "2025-11-14T20:29:27.754000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "33f6d6e1-2336-4184-bdc4-7b2fec5735a2",
+    "slug": "granola-mcp-productivity",
+    "name": "Granola",
+    "description": "Meeting notes",
+    "category": "productivity",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=granola.ai&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 0,
+    "publishedAt": "2026-06-22T04:40:22.786000Z",
+    "tools": []
+  },
+  {
+    "integrationId": "d65fb69f-c908-4f76-a552-7f593ea53077",
+    "slug": "keyloom-mcp-capabilities",
+    "name": "keyloom",
+    "description": "-",
+    "category": "capabilities",
+    "iconUrl": "https://www.keyloom.app/icon.png?icon.22fa8ec1.png",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 4,
+    "publishedAt": "2026-06-22T04:41:20.275000Z",
+    "tools": [
+      {
+        "name": "list_components",
+        "description": "List every video component you can fill and render — id, title, description, category, brand-locked flag. Call first to discover ids."
+      },
+      {
+        "name": "get_component_schema",
+        "description": "Get one component's fields, default props, agent notes, and natural dimensions. Read this before render_component so you fill props correctly."
+      },
+      {
+        "name": "render_component",
+        "description": "Start rendering one component to an MP4 with the given props (merged over defaults). Returns a renderId + bucketName immediately — poll get_render_status with t"
+      },
+      {
+        "name": "get_render_status",
+        "description": "Poll a render started by render_component. Returns { done, progress }, plus a downloadable url + filename once done is true."
+      }
+    ]
+  },
+  {
+    "integrationId": "df614419-d489-4b32-ae9a-ede89bbd71ee",
+    "slug": "resend-mcp-communication",
+    "name": "Resend",
+    "description": "",
+    "category": "communication",
+    "iconUrl": "https://mcp.resend.com/icon.svg",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 139,
+    "publishedAt": "2026-11-11T18:41:25.956000Z",
+    "tools": [
+      {
+        "name": "get-tiptap-json-content",
+        "description": "**Purpose:** Retrieve the existing TipTap JSON content of a broadcast or template, optionally bundled with the TipTap schema reference. Also connects the agent "
+      },
+      {
+        "name": "connect-to-editor",
+        "description": "**Purpose:** Show agent presence in the Resend dashboard editor. Users will see an agent avatar while connected.\n\n**When to use:**\n- To signal to dashboard user"
+      },
+      {
+        "name": "disconnect-from-editor",
+        "description": "Remove agent presence from the Resend dashboard editor. Call this when done editing."
+      },
+      {
+        "name": "create-api-key",
+        "description": "Create a new API key in Resend. The token is only shown once upon creation, so you MUST display it to the user."
+      },
+      {
+        "name": "list-api-keys",
+        "description": "List all API keys from Resend. Returns API key names, IDs, and creation dates. Don't bother telling the user the IDs or creation dates unless they ask for them."
+      },
+      {
+        "name": "update-api-key",
+        "description": "Rename an existing API key in Resend. Only the name can be changed — permission and domain restrictions are fixed at creation and cannot be updated."
+      },
+      {
+        "name": "remove-api-key",
+        "description": "Remove an API key by ID from Resend. Before using this tool, you MUST double-check with the user that they want to remove this API key. Reference the NAME of th"
+      },
+      {
+        "name": "create-automation",
+        "description": "**Purpose:** Create an automation workflow that triggers on events and executes a sequence of steps.\n\n**When to use:**\n- User wants to set up automated email se"
+      },
+      {
+        "name": "update-automation",
+        "description": "**Purpose:** Update an automation's name, status, or workflow.\n\n**When to use:**\n- User wants to rename an automation\n- User wants to enable or disable an autom"
+      },
+      {
+        "name": "get-automation",
+        "description": "**Purpose:** Get details of a specific automation (with its workflow) or list all automations.\n\n**Modes:**\n- With `id`: Returns full automation details includin"
+      }
+    ]
+  },
+  {
+    "integrationId": "eefb1327-c788-423c-b118-cd92a35a1d65",
+    "slug": "adspo-mcp-other",
+    "name": "Adspo",
+    "description": "Connect Adspo to GAIA and run its 10 other actions — search brands, get brand, get brand creatives — with plain-English commands, no code needed.",
+    "category": "other",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=adspo.co&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 10,
+    "publishedAt": "2026-10-12T18:29:58.485000Z",
+    "tools": [
+      {
+        "name": "search_brands",
+        "description": "Search for brands by name or domain. Returns brand profiles with follower counts, ad activity, and traffic data."
+      },
+      {
+        "name": "get_brand",
+        "description": "Get full profile for a brand including ad metrics, competitor list, image/video breakdown, and website traffic."
+      },
+      {
+        "name": "get_brand_creatives",
+        "description": "Get ad creatives for a specific brand. Always use this when the user wants to see or explore a brand's ads — it renders a gallery the user can look at. Each cre"
+      },
+      {
+        "name": "get_creatives",
+        "description": "Browse ad creatives across all brands with filters. Always use this when the user wants to see or explore ads — it renders a gallery the user can look at. Each "
+      },
+      {
+        "name": "get_creative",
+        "description": "Get one creative by ID, shown as a gallery card. Includes the ads behind it, and for videos the transcript is fetched too. Use this when the user points at a sp"
+      },
+      {
+        "name": "get_creative_transcript",
+        "description": "Get the full transcript for a video creative, including the raw text and timestamped segments."
+      },
+      {
+        "name": "get_spaces",
+        "description": "List the user's spaces. Spaces are workspaces that split out your workflow and boards."
+      },
+      {
+        "name": "get_boards",
+        "description": "List the user's boards. Pass space_id to filter by space, or empty string for boards with no space."
+      },
+      {
+        "name": "get_board_creatives",
+        "description": "Get creatives saved to a board, ordered by when they were saved. Always use this when the user wants to see what is on a board — it renders a gallery the user c"
+      },
+      {
+        "name": "get_usage",
+        "description": "Check API credit usage — how many credits used, remaining, and when the quota resets."
+      }
+    ]
+  },
+  {
+    "integrationId": "c987fad3-ba18-4ec5-a547-b27c2f592151",
+    "slug": "pumpgtm-mcp-other",
+    "name": "PumpGTM",
+    "description": "Connect PumpGTM to GAIA and run its 25 other actions — get x play review, review x play candidates, manage x play — with plain-English commands, no code needed.",
+    "category": "other",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=pumpgtm.com&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 73,
+    "publishedAt": "2026-10-12T18:29:29.736000Z",
+    "tools": [
+      {
+        "name": "get_webhook_play_setup",
+        "description": "Read setup instructions for HubSpot form signups or a generic Webhook Play. Omit playId for creation links; pass it for the setup URL, relevant OAuth or webhook"
+      },
+      {
+        "name": "get_x_play_review",
+        "description": "For Plays enabled for batch review (every Buying intent Play is), fetch 1–200 saved public profiles, review progress, Play revision and selected sequence. Each "
+      },
+      {
+        "name": "review_x_play_candidates",
+        "description": "Save explicit customer fit choices, or apply criteria the customer authorized, to up to 200 candidates read from get_x_play_review. Put the reason for each deci"
+      },
+      {
+        "name": "list_x_plays",
+        "description": "Read the workspace's X Plays: without playId, every X Play; with playId, that one Play. Each Play carries its revision (needed to change it), running state, att"
+      },
+      {
+        "name": "create_x_play",
+        "description": "Create a Buying intent Play from one signal, or several combined into one scored review list (signals): people who follow several competitors, engage with compe"
+      },
+      {
+        "name": "edit_x_play",
+        "description": "Change an X Play's name, audience rules, buying signal fields or attached sequence, exactly as the customer asked. Read the Play with list_x_plays first and pas"
+      },
+      {
+        "name": "set_x_play_status",
+        "description": "Pause or resume an X Play, or turn its automatic enrollment on or off, only when the customer asks. Read the Play with list_x_plays first and pass its revision "
+      },
+      {
+        "name": "sequence_email_settings",
+        "description": "PumpGTM supports HTML email with clickable inline images and GIF video thumbnails. For a Sequence email's messageTmpl, put ![Watch video](https://public.example"
+      },
+      {
+        "name": "preview_email",
+        "description": "Render one saved Sequence email step with sample values, its sender signature and the current workspace HTML/plain-text policy. Returns the exact subject, text "
+      },
+      {
+        "name": "send_test_email",
+        "description": "Send ONE saved Sequence email step now to the customer's own test inbox, only when they explicitly ask for a test. Works from drafts and paused sequences, witho"
+      }
+    ]
+  },
+  {
+    "integrationId": "fcc589b1-ed0c-4a70-a07d-8bb6120c8c2e",
+    "slug": "whoop-mcp-personal",
+    "name": "Whoop",
+    "description": "24/7 monitoring across sleep, strain, stress, and heart health, WHOOP gives you a complete view of your health",
+    "category": "personal",
+    "iconUrl": "https://calm-forge-de2rt.run.mcp-use.com/mcp-use/public/favicon.png",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 9,
+    "publishedAt": "2026-06-28T01:51:03.894000Z",
+    "tools": [
+      {
+        "name": "whoop_overview",
+        "description": "Single-call snapshot of the user's current WHOOP status: latest recovery, last sleep, current day strain, plus profile and body measurements. Call this first fo"
+      },
+      {
+        "name": "whoop_recovery",
+        "description": "Recovery history: recovery %, HRV (ms), resting HR, SpO2, skin temp. Defaults to the last 7 days; pass start/end for a specific range."
+      },
+      {
+        "name": "whoop_sleep",
+        "description": "Sleep history: performance/efficiency/consistency %, hours slept, stage breakdown (minutes), respiratory rate, sleep need. Defaults to the last 7 days; pass sta"
+      },
+      {
+        "name": "whoop_strain",
+        "description": "Daily strain history (physiological cycles): day strain 0-21, average/max HR, calories. Defaults to the last 7 days; pass start/end for a specific range."
+      },
+      {
+        "name": "whoop_workouts",
+        "description": "Workout history: sport, strain, average/max HR, calories, duration, distance, HR-zone minutes. Defaults to the last 14 days; pass start/end for a specific range"
+      },
+      {
+        "name": "whoop_profile",
+        "description": "User profile and body measurements in one call: name, email, height (m), weight (kg), max HR."
+      },
+      {
+        "name": "whoop_get_cycle",
+        "description": "Fetch one physiological cycle by id (from whoop_strain records), including its recovery and sleep for full day context."
+      },
+      {
+        "name": "whoop_get_sleep",
+        "description": "Fetch one sleep activity by its UUID (from whoop_sleep records)."
+      },
+      {
+        "name": "whoop_get_workout",
+        "description": "Fetch one workout by its UUID (from whoop_workouts records)."
+      }
+    ]
+  },
+  {
+    "integrationId": "355bec81-5406-44b5-b8bc-df6104e56be7",
+    "slug": "dodo-payments-mcp-finance",
+    "name": "Dodo Payments",
+    "description": "Manage your Payments Infrastructure",
+    "category": "finance",
+    "iconUrl": "https://mcp.dodopayments.com/favicon.ico",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 2,
+    "publishedAt": "2026-06-26T08:16:59.660000Z",
+    "tools": [
+      {
+        "name": "search_docs",
+        "description": "Search SDK documentation to find methods, parameters, and usage examples for interacting with the API. Use this before writing code when you need to discover th"
+      },
+      {
+        "name": "dodo_payments_execute",
+        "description": "Note: this tool is called execute on its own server, so its docs, results and other tools may refer to it as execute. Here it is named dodo_payments_execute; al"
+      }
+    ]
+  },
+  {
+    "integrationId": "66a32476-8781-471f-b263-0f24dcb06646",
+    "slug": "manufact-mcp-capabilities",
+    "name": "Manufact",
+    "description": "Manage and deploy custom MCP's",
+    "category": "capabilities",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=manufact.com&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 20,
+    "publishedAt": "2026-06-26T08:14:28.826000Z",
+    "tools": [
+      {
+        "name": "list_organizations",
+        "description": "List organizations the authenticated user can access. Returns minimal rows (id, name, slug, role). This is the source of truth for `organizationId`, which every"
+      },
+      {
+        "name": "get_organization_stats",
+        "description": "Get summary stats for an organization: server count, deployment count, gateway tool-call count, and distinct session count. Does not return the server roster — "
+      },
+      {
+        "name": "invite_org_member",
+        "description": "Send an invitation to join an organization with a specified role."
+      },
+      {
+        "name": "list_org_invitations",
+        "description": "List pending invitations for an organization."
+      },
+      {
+        "name": "cancel_org_invitation",
+        "description": "Cancel a pending invitation."
+      },
+      {
+        "name": "list_servers",
+        "description": "List MCP servers in an organization as compact rows (id, slug, name, status, tags). Uses native offset pagination. This is the source of truth for `serverId`; u"
+      },
+      {
+        "name": "get_server",
+        "description": "Get core details for one MCP server (id, slug, name, description, tags, status, latestDeploymentStatus, activeDeploymentId, repoFullName, productionBranch, depl"
+      },
+      {
+        "name": "update_server",
+        "description": "Update an existing server's deploy configuration (start command, build command, port, Dockerfile path, root dir) and/or metadata (name, description, tags, produ"
+      },
+      {
+        "name": "get_server_domain",
+        "description": "Get the main custom domain and verification status for a server (domain, verified, status, sslStatus, cnameTarget, verificationErrors). Note: the main server do"
+      },
+      {
+        "name": "list_deployments",
+        "description": "List deployments as compact rows (id, name, status, serverId, gitBranch, createdAt). Paginated server-side; pass `serverId` to scope to a single server's deploy"
+      }
+    ]
+  },
+  {
+    "integrationId": "c7a72ba1-dea2-4b09-a394-d163e869ffee",
+    "slug": "world-cup-mcp-other",
+    "name": "World Cup",
+    "description": "Ask GAIA anything about the world cup",
+    "category": "other",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=mcp-use.com&sz=256",
+    "source": "custom",
+    "creator": {
+      "name": "Aryan",
+      "picture": "https://workoscdn.com/images/v1/bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo"
+    },
+    "toolCount": 18,
+    "publishedAt": "2026-06-24T22:59:08.433000Z",
+    "tools": [
+      {
+        "name": "get_matches",
+        "description": "Query FIFA World Cup 2026 matches. Filter by date, date range, team, group, venue, round, or status. Returns enriched match data with team names, venue details,"
+      },
+      {
+        "name": "get_teams",
+        "description": "Query FIFA World Cup 2026 teams. Filter by group, confederation, or host status. Returns team details including FIFA ranking and flag emoji."
+      },
+      {
+        "name": "get_groups",
+        "description": "Get FIFA World Cup 2026 group details. Returns teams, venues, and match schedule for each group. Optionally filter to a specific group."
+      },
+      {
+        "name": "get_venues",
+        "description": "Query FIFA World Cup 2026 venues across the USA, Mexico, and Canada. Filter by country, city, or region. Returns full venue details including capacity, coordina"
+      },
+      {
+        "name": "get_schedule",
+        "description": "Get the full FIFA World Cup 2026 tournament schedule organized by date. Optionally filter to a specific date range. Each day includes all matches with team name"
+      },
+      {
+        "name": "get_team_profile",
+        "description": "Get a detailed profile for any FIFA World Cup 2026 team. Returns coach, playing style, key players with clubs, World Cup history, and qualifying summary. Use te"
+      },
+      {
+        "name": "get_nearby_venues",
+        "description": "Find venues near a given World Cup venue, sorted by distance. Useful for planning multi-match trips. Returns distance in miles and kilometers between all venue "
+      },
+      {
+        "name": "get_city_guide",
+        "description": "Get a travel guide for any FIFA World Cup 2026 host city. Returns highlights, getting there, food & drink recommendations, things to do, and local tips. Accepts"
+      },
+      {
+        "name": "get_historical_matchups",
+        "description": "Head-to-head World Cup history between any two teams. Returns all tournament meetings, aggregate stats, and a narrative summary. Accepts team ID or FIFA code (e"
+      },
+      {
+        "name": "what_to_know_now",
+        "description": "Zero-query temporal briefing for the FIFA World Cup 2026. No parameters needed — just brief me. Automatically detects the current tournament phase and returns t"
+      }
+    ]
+  }
+]

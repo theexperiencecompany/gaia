@@ -1,17 +1,17 @@
 "use client";
 
-import { CheckListIcon, Flag02Icon, WebhookIcon } from "@icons";
+import { CheckListIcon, Flag02Icon } from "@icons";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
-import { AppIcon, IntegrationStack } from "./AppIcon";
+import { IntegrationStack } from "./AppIcon";
 import { type ChipTone, MetaChip } from "./MetaChip";
 import TaskCheckbox from "./TaskCheckbox";
 import { TaskIconTile } from "./TaskIconTile";
-import { NEEDS, WHEN_ICONS } from "./taskIcons";
+import { NEEDS } from "./taskIcons";
 import { isRepeating, type Need, needOf, type Task } from "./taskModel";
-import { WatchIcon } from "./WatchIcon";
+import { WhenChip } from "./WhenChip";
 
 interface TaskRowProps {
   task: Task;
@@ -59,48 +59,13 @@ function Leading({ task, onToggleDone }: TaskRowProps) {
   );
 }
 
-/**
- * When a task is due or runs, always as one chip. Colour is kept for the two that
- * need you today; an event trigger leads with the app that fires it.
- */
 function When({ task }: { task: Task }) {
-  const { when } = task;
   // A task that is switched off has no next run to show.
   if (task.state === "paused")
-    return <MetaChip>{isRepeating(when) ? "Disabled" : "Stopped"}</MetaChip>;
-  if (!when.label) return null;
-  // A watch shows what it reads and the latest reading: the one number you'd open it for.
-  if (when.watch)
     return (
-      <MetaChip icon={<WatchIcon source={when.watch.source} size={14} />}>
-        {when.watch.reading?.value ?? when.label}
-      </MetaChip>
+      <MetaChip>{isRepeating(task.when) ? "Disabled" : "Stopped"}</MetaChip>
     );
-  const Icon = WHEN_ICONS[when.kind];
-  const tone: ChipTone = when.overdue
-    ? "danger"
-    : when.isToday
-      ? "success"
-      : when.kind === "schedule"
-        ? "info"
-        : "default";
-
-  return (
-    <MetaChip
-      tone={tone}
-      icon={
-        when.app ? (
-          <AppIcon id={when.app} size={14} />
-        ) : when.webhook ? (
-          <WebhookIcon className="size-3.5" />
-        ) : (
-          <Icon className="size-3.5" />
-        )
-      }
-    >
-      {when.overdue ? `Overdue, ${when.label}` : when.label}
-    </MetaChip>
-  );
+  return <WhenChip when={task.when} />;
 }
 
 export default function TaskRow(props: TaskRowProps) {

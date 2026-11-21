@@ -330,6 +330,8 @@
   .textarea.gaia-input-sunken,
   .input-group.gaia-input-sunken,
   .date-input-group.gaia-input-sunken,
+  .select__trigger.gaia-input-sunken,
+  .select__trigger.gaia-input-sunken:hover,
   .gaia-input-sunken .combo-box__input-group,
   .gaia-input-sunken .combo-box__input-group:hover {
     border: none;
@@ -346,6 +348,7 @@
   .input.gaia-input-sunken,
   .input-group.gaia-input-sunken,
   .date-input-group.gaia-input-sunken,
+  .select__trigger.gaia-input-sunken,
   .gaia-input-sunken .combo-box__input-group {
     height: var(--gaia-control-editor-height);
     min-height: var(--gaia-control-editor-height);
