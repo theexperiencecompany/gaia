@@ -40,6 +40,7 @@ import pytest
 from app.agents.context.slots import (
     BACKGROUND_EXECUTOR_NAME,
     PRESENCE_NOTE_MARKER,
+    REACTION_NOTE_MARKER,
     SUMMARY_SOURCE,
     is_conversation_summary,
 )
@@ -911,15 +912,20 @@ async def test_a_presence_note_ahead_of_the_task_is_not_history_that_stops_the_s
     assert "the task" not in model.prompts[0]
 
 
-async def test_a_presence_note_among_old_history_is_removed_but_never_summarized() -> None:
-    # A stale "the user is on X" line restated in the summary would read as current.
+@pytest.mark.parametrize(
+    "marker",
+    [PRESENCE_NOTE_MARKER, REACTION_NOTE_MARKER],
+)
+async def test_a_gaia_note_among_old_history_is_removed_but_never_summarized(marker: str) -> None:
+    # A stale note GAIA wrote (surface change, or a replayed reaction note) restated in the
+    # summary would read as current.
     model = _recording_model()
     mw = _middleware(model=model, trigger=("messages", 4), keep=("messages", 2), archive=None)
     history: list[AnyMessage] = [
         HumanMessage("old question", id="q1"),
         HumanMessage(
             "[Surface change: the user is now writing from Telegram.]",
-            additional_kwargs={PRESENCE_NOTE_MARKER: True},
+            additional_kwargs={marker: True},
             id="note",
         ),
         AIMessage("old answer", id="a1"),

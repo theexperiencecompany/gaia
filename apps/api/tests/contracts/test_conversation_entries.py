@@ -444,6 +444,19 @@ async def test_search_skips_a_todos_chat(repo: ConversationRepository, held: Hel
     assert await repo.has_sent_message(uid) is True
 
 
+async def test_search_skips_a_todos_chat_once_its_entries_are_flushed(
+    repo: ConversationRepository, held: HeldFlushes
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    todo_chat = await _chat(repo, uid, todo_id="todo-1")
+    await _append(todo_chat, uid, [_message("t1", "needle")])
+    await held.run_all()
+    await repo.flush_outbox(todo_chat, user_id=uid)
+
+    found = await repo.search(uid, pattern="needle")
+    assert found.messages == []
+
+
 async def test_a_head_written_before_log_head_existed_starts_its_log_at_one(
     repo: ConversationRepository, raw_collection: Any, held: HeldFlushes
 ) -> None:

@@ -11,6 +11,7 @@ Covers:
 - PUT /conversations/{id}/description — update description
 - PATCH /conversations/{id}/read — mark as read
 - PATCH /conversations/{id}/unread — mark as unread
+- PUT /conversations/{id}/messages/{msg_id}/pin — pin a message
 - GET /messages/pinned — get pinned messages
 """
 
@@ -363,3 +364,23 @@ class TestPinnedMessages:
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"
         assert results[0]["item"]["bubbles"] == ["pinned answer"]
+
+
+class TestPinMessage:
+    """PUT /api/v1/conversations/{id}/messages/{msg_id}/pin."""
+
+    async def test_pinning_a_message_the_log_lacks_is_a_404_naming_the_message(
+        self, client: AsyncClient, owned_conversations: set[tuple[str, str]]
+    ):
+        owned_conversations.add(("conv_123", FAKE_USER.user_id))
+        with patch(
+            "app.services.conversation_service.conversation_log_repository.set_pinned",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            resp = await client.put(
+                "/api/v1/conversations/conv_123/messages/missing/pin", json={"pinned": True}
+            )
+
+        assert resp.status_code == 404
+        assert resp.json() == {"message": "Message not found in conversation"}
