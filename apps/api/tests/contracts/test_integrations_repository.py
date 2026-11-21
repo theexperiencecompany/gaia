@@ -90,6 +90,18 @@ class TestIntegrationsRepository:
 
         assert await repo.find_by_id_prefix_or_name(iid) is None
 
+    async def test_deleting_a_tools_stub_invalidates_the_cached_find(self, repo, raw_collection):
+        iid = f"stubbed-{uuid.uuid4().hex}"
+        stub = f"stub-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Before"))
+        await repo.store_tools(stub, [StoredIntegrationTool(name="t1")])
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "Before"
+        await raw_collection.update_one({"integration_id": iid}, {"$set": {"name": "After"}})
+
+        assert await repo.delete_tools_stub(stub)
+
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "After"
+
     async def test_get_custom_and_for_user_guards(self, repo):
         owner = "owner-1"
         iid = f"cc-{uuid.uuid4().hex}"
