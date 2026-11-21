@@ -6,10 +6,8 @@ export function circularNeighbours<T>(
 ): T[] {
   if (index < 0 || items.length < 2) return [];
   return offsets.flatMap((offset) => {
-    const neighbour = items[(index + offset + items.length * 2) % items.length];
-    return neighbour === undefined || neighbour === items[index]
-      ? []
-      : [neighbour];
+    const sibling = items[(index + offset + items.length * 2) % items.length];
+    return sibling === undefined || sibling === items[index] ? [] : [sibling];
   });
 }
 

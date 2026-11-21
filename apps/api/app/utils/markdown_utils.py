@@ -84,9 +84,9 @@ def split_yaml_frontmatter(content: str) -> tuple[str, str] | None:
     frontmatter_lines: list[str] = []
     for idx in range(1, len(lines)):
         if lines[idx].strip() == "---":
-            frontmatter_raw = "".join(frontmatter_lines).rstrip("\r\n")
+            frontmatter_text = "".join(frontmatter_lines).rstrip("\r\n")
             body = "".join(lines[idx + 1 :])
-            return frontmatter_raw, body
+            return frontmatter_text, body
         frontmatter_lines.append(lines[idx])
 
     return None
