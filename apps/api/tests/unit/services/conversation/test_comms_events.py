@@ -1,6 +1,8 @@
 """Graph stream events to step events: typed payloads from the shared translator, the summary call, the outcome."""
 
-from unittest.mock import AsyncMock
+from collections.abc import Iterator
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.runnables import RunnableConfig
@@ -10,11 +12,13 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.constants.chat import ConversationSource
 from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.core.lazy_loader import providers
+from app.db.repositories.short_links import short_link_repository
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
     ResponseEvent,
     ToolDataEvent,
 )
+from app.models.short_link_models import RecordTarget, ShortLinkTargetType
 from app.services.conversation import graph_payloads
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.ports import (
@@ -28,6 +32,8 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.services.links.placeholders import link_placeholder
+from app.services.links.urls import build_url
 from app.utils import agent_utils
 from shared.py.conversation_wire import ToolDataEntry
 
@@ -322,3 +328,49 @@ async def test_text_held_when_the_answer_is_final_streams_before_it() -> None:
         Streamed(payload=ResponseEvent(response="<")),
         Answered(outcome=Silent()),
     ]
+
+
+PLACEHOLDER = link_placeholder(RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1"))
+LIVE_URL = build_url("ab12cd")
+
+
+@pytest.fixture
+def live_link() -> Iterator[AsyncMock]:
+    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        yield live
+
+
+def streamed_text(events: list[object]) -> str:
+    return "".join(
+        event.payload.response
+        for event in events
+        if isinstance(event, Streamed) and isinstance(event.payload, ResponseEvent)
+    )
+
+
+async def test_a_link_held_when_the_answer_is_final_streams_as_the_users_link(
+    live_link: AsyncMock,
+) -> None:
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
+    final = await mapper.map(((), "custom", {"main_response_complete": True}))
+    assert streamed_text([*streamed, *final]) == f"see {LIVE_URL}"
+    assert live_link.await_args.args[0] == "u-1"
+
+
+async def test_a_link_held_when_the_stream_ends_streams_as_the_users_link(
+    live_link: AsyncMock,
+) -> None:
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    streamed = await mapper.map(token(f"see {PLACEHOLDER}"))
+    owed = await mapper.finish()
+    assert streamed_text([*streamed, *owed]) == f"see {LIVE_URL}"
+    assert live_link.await_args.args[0] == "u-1"
+
+
+async def test_the_reply_outcome_carries_its_links_resolved(live_link: AsyncMock) -> None:
+    mapper = CommsEventMapper("u-1", WEB_RUN)
+    await mapper.map(answer(f"see {PLACEHOLDER}"))
+    assert (await mapper.finish())[-1] == Finished(outcome=Replied(text=f"see {LIVE_URL}"))
+    assert live_link.await_args.args[0] == "u-1"

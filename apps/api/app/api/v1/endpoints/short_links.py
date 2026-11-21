@@ -198,7 +198,9 @@ async def link_preview_meta_route(
     """What a chat preview or the page's metadata may show for a link, for anyone. No auth."""
     log.set(short_link={"operation": "meta", "slug_hash": hash_short_link_slug(slug)})
     meta = await preview_meta(await _looked_up(request, slug))
-    response.headers["Cache-Control"] = _META_CACHE if meta.live else _DEAD_META_CACHE
+    response.headers["Cache-Control"] = (  # pragma: no mutate — case-insensitive name
+        _META_CACHE if meta.live else _DEAD_META_CACHE
+    )
     return meta
 
 
@@ -316,7 +318,7 @@ async def get_short_link_pdf_route(
     user: Annotated[AuthenticatedUser | None, Depends(get_optional_user)],
 ) -> Response:
     """What a link points at as a file to save (an artifact's A4 PDF), for whoever the link opens for."""
-    log.set(operation="pdf", short_link={"slug_hash": hash_short_link_slug(slug)})
+    log.set(short_link={"operation": "pdf", "slug_hash": hash_short_link_slug(slug)})
     link = await openable_link(await get_link(slug), _viewer(request, user))
     export = REGISTRY[link.target.type].export
     if export is None:

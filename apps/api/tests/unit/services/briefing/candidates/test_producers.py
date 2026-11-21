@@ -553,6 +553,7 @@ class TestAppSignals:
             SignalImportance.HIGH,
         )
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
+        assert found.ref == OutsideRef(integration_id="linear", external_id="ENG-42")
         assert found.due_at == signal.due_at
         assert (found.action, found.outcome) == (None, None)
         assert (found.moved, found.is_repeat) == (True, False)
@@ -599,6 +600,7 @@ class TestCalendar:
             BriefingEvent(date="2026-11-10", start="11:00", title="Sequoia", location="Zoom"),
             BriefingEvent(date="2026-11-10", title="Diwali"),
             BriefingEvent(date="2026-11-13", start="15:00", title="Pitch to Accel"),
+            BriefingEvent(date="2026-11-10", title="Offsite", location="Goa"),
         ]
 
         found = calendar_candidates(events, "2026-11-10")
@@ -607,6 +609,7 @@ class TestCalendar:
             (True, "Sequoia", "11:00 AM", "Zoom", BriefAction.ATTEND),
             (True, "Diwali", None, "all day", BriefAction.ATTEND),
             (True, "Pitch to Accel", "Fri 3:00 PM", None, BriefAction.ATTEND),
+            (True, "Offsite", None, "all day | Goa", BriefAction.ATTEND),
         ]
         assert {c.app for c in found} == {"Google Calendar"}
 
@@ -751,6 +754,7 @@ class TestReminders:
             BriefAction.ATTEND,
         )
         assert read.await_args.args == (USER_ID, start, end)
+        assert str(found.seen_as) == "reminder:rem-1"
 
 
 def _run(
@@ -845,6 +849,7 @@ class TestFailedRuns:
                 BriefAction.RETRY,
             ),
         ]
+        assert [str(c.seen_as) for c in found] == ["workflow:wf-sync", "workflow:wf-digest"]
         assert list_since.await_args.kwargs == {"exclude_workflow_ids": ["wf-brief"], "limit": 200}
         assert list_since.await_args.args == (USER_ID, since)
         assert find_system.await_args.args == (USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)

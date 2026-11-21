@@ -277,6 +277,7 @@ class TestExternalPlatformDeliver:
             status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is True
+        assert status.error_message == "discord: not linked or nothing to send"
 
     async def test_deliver_maps_failed_to_error_not_skipped(self) -> None:
         # A post that failed is a real failure, NOT a skip, so retries and
@@ -292,6 +293,7 @@ class TestExternalPlatformDeliver:
             status = await DiscordChannelAdapter().deliver(_payload("hello"), "user-1")
         assert status.status == NotificationStatus.FAILED
         assert status.skipped is False
+        assert status.error_message == "discord: outbound post failed"
 
 
 class TestExternalAdapterIdentity:

@@ -129,6 +129,18 @@ class TestTodoDeliverable:
             repo.get = AsyncMock(return_value=None)
             assert await _project(ShortLinkTargetType.TODO_DELIVERABLE, "x", "t1") is None
 
+    async def test_a_todo_previews_by_its_title_with_no_image(self):
+        todo = TodoDocument(id="t1", user_id="owner", title="Reply to Acme", canvas_content=CANVAS)
+        target = RecordTarget(type=ShortLinkTargetType.TODO_DELIVERABLE, id="t1")
+        with patch("app.services.links.targets.todo_deliverable.todo_repository") as repo:
+            repo.get = AsyncMock(return_value=todo)
+            facts = await REGISTRY[ShortLinkTargetType.TODO_DELIVERABLE].preview(
+                "owner", target, None
+            )
+
+        assert facts == PreviewFacts(title="Reply to Acme", image_url=None)
+        repo.get.assert_awaited_once_with("t1", user_id="owner")
+
 
 def _brief_with_items(*todo_ids: str) -> BriefingModel:
     return BriefingModel(

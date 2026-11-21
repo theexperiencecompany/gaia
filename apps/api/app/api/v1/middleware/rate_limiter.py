@@ -238,7 +238,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         app: FastAPI = request.app
         limiter_for_app: Limiter = app.state.limiter
-        if not limiter_for_app.enabled:
+        if not limiter_for_app.enabled or settings.DEV_UNLIMITED_RATE_LIMITS:
             return await call_next(request)
 
         # An unrouted path is a 404 with no route to limit; per-route decorator limits apply on top.

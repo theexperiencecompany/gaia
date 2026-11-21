@@ -1382,10 +1382,16 @@ class TestRunResultRoutesByDelivery:
         return wf
 
     async def _route(
-        self, delivery: WorkflowDelivery, *, broke_through: bool = False, carried: bool = True
+        self,
+        delivery: WorkflowDelivery,
+        *,
+        broke_through: bool = False,
+        carried: bool = True,
+        log: MagicMock | None = None,
     ) -> tuple[AsyncMock, AsyncMock]:
         notify, hold = AsyncMock(), AsyncMock()
         with (
+            patch("app.workers.tasks.workflow_tasks.log", log or MagicMock()),
             patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
             patch("app.workers.tasks.workflow_tasks.hold_for_brief", hold),
             patch(
@@ -1432,9 +1438,16 @@ class TestRunResultRoutesByDelivery:
         notify.assert_not_awaited()
 
     async def test_brief_with_no_brief_to_carry_it_notifies_now(self) -> None:
-        notify, hold = await self._route(WorkflowDelivery.BRIEF, carried=False)
+        log = MagicMock()
+        notify, hold = await self._route(WorkflowDelivery.BRIEF, carried=False, log=log)
         notify.assert_awaited_once()
         hold.assert_not_awaited()
+        log.set.assert_called_once_with(workflow_delivery="now")
+
+    async def test_the_wide_event_names_the_delivery_the_result_took(self) -> None:
+        log = MagicMock()
+        await self._route(WorkflowDelivery.BRIEF, log=log)
+        log.set.assert_called_once_with(workflow_delivery="brief")
 
     async def test_silent_sends_and_holds_nothing(self) -> None:
         notify, hold = await self._route(WorkflowDelivery.SILENT)

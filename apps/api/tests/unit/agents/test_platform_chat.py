@@ -40,6 +40,7 @@ class _Posted:
 
     session: AsyncMock
     accept: AsyncMock
+    ports: MagicMock
     returned: OutboundResult
 
     @property
@@ -53,10 +54,11 @@ class _Posted:
 async def _post(text: str = TEXT, image_url: str | None = None) -> _Posted:
     session = AsyncMock(return_value="dm-conv")
     accept = AsyncMock()
+    ports = MagicMock()
     with (
         patch.object(BotService, "get_or_create_session", session),
         patch.object(platform_chat, "accept", accept),
-        patch.object(platform_chat, "runtime_ports", MagicMock()),
+        patch.object(platform_chat, "runtime_ports", ports),
         # Noon on a UTC clock: outside the default 22-8 quiet hours.
         patch.object(user_repository, "get", AsyncMock(return_value=AWAKE_USER)),
         time_machine.travel(NOON_UTC, tick=False),
@@ -72,7 +74,7 @@ async def _post(text: str = TEXT, image_url: str | None = None) -> _Posted:
                 image_url=image_url,
             ),
         )
-    return _Posted(session, accept, returned)
+    return _Posted(session, accept, ports, returned)
 
 
 async def test_the_message_goes_to_the_users_dm_session() -> None:
@@ -92,6 +94,7 @@ async def test_it_is_logged_as_one_notice_keyed_by_the_callers_id() -> None:
 
     assert posted.returned is OutboundResult.PUBLISHED
     posted.accept.assert_awaited_once()
+    assert posted.accept.await_args.args[0] is posted.ports.return_value
     assert posted.notice == Notice(
         id="notice:n-1", text=TEXT, origin="notification from ai_agent", image_url=None
     )

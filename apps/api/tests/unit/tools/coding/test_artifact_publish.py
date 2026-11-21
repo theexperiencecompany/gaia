@@ -77,7 +77,9 @@ async def test_publish_artifact_puts_the_file_on_the_run_as_a_card() -> None:
     ]
 
 
-async def test_a_write_under_artifacts_is_carded_relative_to_the_artifacts_root() -> None:
+async def test_a_write_under_artifacts_is_carded_relative_to_the_artifacts_root(
+    mint: AsyncMock,
+) -> None:
     written = WrittenFile(
         "u1", MountRole.ARTIFACTS, "c1", "/workspace/sessions/c1/artifacts/a/b.md"
     )
@@ -85,6 +87,12 @@ async def test_a_write_under_artifacts_is_carded_relative_to_the_artifacts_root(
     (card,) = await _cards(lambda: publish_artifact_write(written, 3, MTIME))
 
     assert _card(card)["path"] == "a/b.md"
+    mint.assert_awaited_once_with(
+        "u1",
+        WorkspaceFileTarget(
+            type=ShortLinkTargetType.WORKSPACE_FILE, conversation_id="c1", path="a/b.md"
+        ),
+    )
 
 
 async def test_a_write_outside_artifacts_puts_no_card_and_returns_no_link(

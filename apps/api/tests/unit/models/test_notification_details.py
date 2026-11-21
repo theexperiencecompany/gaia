@@ -7,7 +7,7 @@ import pytest
 
 from app.constants.notifications import NotificationKind
 from app.models.notification.details_models import NotificationDetails
-from app.models.notification.notification_models import NotificationRequest
+from app.models.notification.notification_models import NotificationRequest, notification_id
 
 _CARD = {
     "briefing_id": "brief-1",
@@ -69,6 +69,11 @@ PRODUCER_DETAILS: dict[str, dict[str, object]] = {
     },
     "memory seeded": {"kind": "memory_ready"},
     "gmail personalised": {"kind": "gmail_personalized"},
+    "approval waiting (hil/notify)": {
+        "kind": "approval",
+        "conversation_id": "conv-1",
+        "approval_id": "appr-1",
+    },
 }
 
 REFUSED_DETAILS: dict[str, dict[str, object]] = {
@@ -89,6 +94,7 @@ REFUSED_DETAILS: dict[str, dict[str, object]] = {
 def _request(details: dict[str, object] | None) -> NotificationRequest:
     return NotificationRequest.model_validate(
         {
+            "id": notification_id("user-1", "todo", "todo-1"),
             "user_id": "user-1",
             "source": "background_job",
             "content": {"title": "t", "body": "b"},

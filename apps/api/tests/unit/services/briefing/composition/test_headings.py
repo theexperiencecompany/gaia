@@ -274,4 +274,6 @@ async def test_an_item_an_earlier_brief_saw_unchanged_is_shown_as_not_new(model:
 
     prompt = model.await_args.args[1]
     assert "- item 1: Offsite venues | waiting on you | action review | not new" in prompt
+    # The rule names the very marker the item carries, or "new" headings are judged blind.
+    assert 'only items not marked "not new"' in prompt
     assert "- item 2: Investor update | done | outcome sent\n" in prompt + "\n"

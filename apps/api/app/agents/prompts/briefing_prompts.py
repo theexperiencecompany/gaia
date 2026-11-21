@@ -335,6 +335,12 @@ class RecentLines:
         return [*self.headlines, *self.ledes, *self.captions, *self.openings]
 
 
+_RECENT_LINES_HEADING = (
+    "## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
+    "lines, or open the same way)"
+)
+
+
 def _recent_lines_block(recent: RecentLines) -> str:
     groups = (
         ("Headlines", recent.headlines),
@@ -347,10 +353,7 @@ def _recent_lines_block(recent: RecentLines) -> str:
     ]
     if not listed:
         return ""
-    return (
-        "\n## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
-        "lines, or open the same way)\n" + "\n".join(listed) + "\n"
-    )
+    return f"\n{_RECENT_LINES_HEADING}\n" + "\n".join(listed) + "\n"
 
 
 _GOAL_QUESTION = """
@@ -389,6 +392,56 @@ _GOODBYE_NOTE = (
     "goodbye.\n"
 )
 
+_WIND_DOWN_WARN_NOTE = (
+    "\nGAIA has had nothing to work on for days: no goal, no lanes. Say so "
+    "plainly in ONE short message and warn honestly: unless they tell you "
+    "what they're working on, tomorrow's brief is the last one and the "
+    "nightly work pauses with it. Not a guilt trip, plain operational "
+    "honesty; end on the one question that restarts everything (what are "
+    "you working on right now?).\n"
+)
+
+_WINBACK_NOTE = (
+    "\nThis user has ignored the last several briefings; this is the one "
+    'message before GAIA goes quiet. Set mood to "winback" and send ONE '
+    "short message. Lead with the single most valuable specific sitting in "
+    "the facts: the finished deliverable they never opened, named "
+    "concretely ('the 12-investor list is still sitting here; want it, or "
+    "should I bin it?'). End on one binary choice: they want it, or they "
+    "tell GAIA what changed. Then say plainly, in one line of its own, that any "
+    "reply keeps these briefs coming and that without one the daily briefs pause "
+    "after today ('Reply with anything to keep these coming; otherwise I'll pause "
+    "them after today.'). If the facts hold "
+    "nothing of value, ask one concrete question about whether the goal "
+    "itself is still right ('still raising, or has the plan moved?'). Never "
+    "'just checking in', never 'we miss you', never a guilt-trip, never a "
+    "feature tour.\n"
+)
+
+_FIRST_BRIEF_NOTE = (
+    "\nThis is the user's first briefing: make it land, reference their goal "
+    "by name, keep it warm and specific.\n"
+)
+
+#: The first-week note's ask, left out once a goal was asked about inside GOAL_QUESTION_REASK.
+_ASK_FOR_GOAL = "no goal known, ask for one; "
+
+_FIRST_WEEK_NOTE = (
+    "\nThis user joined GAIA this week. After today's facts, close on ONE concrete "
+    "step that gets them real value, chosen from THEIR GAIA SETUP and the goal "
+    "knowledge: no app connected yet, offer to connect the one their goal or work "
+    "most needs; {ask_for_goal}otherwise name one thing you can do "
+    "with an app they already connected. Never name an app, goal or capability "
+    "those facts don't support.\n"
+)
+
+_LIGHTER_CADENCE_NOTE = (
+    "\nThis user hasn't opened GAIA in over a week. Don't guilt them and don't go "
+    "quiet: in one short line, offer a lighter rhythm than THEIR GAIA SETUP shows "
+    "(weekdays only, just the Sunday digest, or no briefs) and say a one-word reply "
+    "changes it.\n"
+)
+
 
 @dataclass(frozen=True)
 class VoiceSituation:
@@ -422,62 +475,17 @@ def build_briefing_voice_prompt(
     """
     wind_down_note = ""
     if situation.wind_down is WindDown.WARN:
-        wind_down_note = (
-            "\nGAIA has had nothing to work on for days: no goal, no lanes. Say so "
-            "plainly in ONE short message and warn honestly: unless they tell you "
-            "what they're working on, tomorrow's brief is the last one and the "
-            "nightly work pauses with it. Not a guilt trip, plain operational "
-            "honesty; end on the one question that restarts everything (what are "
-            "you working on right now?).\n"
-        )
+        wind_down_note = _WIND_DOWN_WARN_NOTE
     elif situation.wind_down is WindDown.FINAL:
         wind_down_note = _GOODBYE_NOTE
-    winback_note = (
-        (
-            "\nThis user has ignored the last several briefings; this is the one "
-            'message before GAIA goes quiet. Set mood to "winback" and send ONE '
-            "short message. Lead with the single most valuable specific sitting in "
-            "the facts: the finished deliverable they never opened, named "
-            "concretely ('the 12-investor list is still sitting here; want it, or "
-            "should I bin it?'). End on one binary choice: they want it, or they "
-            "tell GAIA what changed. Then say plainly, in one line of its own, that any "
-            "reply keeps these briefs coming and that without one the daily briefs pause "
-            "after today ('Reply with anything to keep these coming; otherwise I'll pause "
-            "them after today.'). If the facts hold "
-            "nothing of value, ask one concrete question about whether the goal "
-            "itself is still right ('still raising, or has the plan moved?'). Never "
-            "'just checking in', never 'we miss you', never a guilt-trip, never a "
-            "feature tour.\n"
-        )
-        if situation.winback
-        else ""
-    )
-    first_note = (
-        "\nThis is the user's first briefing: make it land, reference their goal "
-        "by name, keep it warm and specific.\n"
-        if situation.is_first_briefing
-        else ""
-    )
+    winback_note = _WINBACK_NOTE if situation.winback else ""
+    first_note = _FIRST_BRIEF_NOTE if situation.is_first_briefing else ""
     # A goal asked for inside GOAL_QUESTION_REASK is not asked for again, in the first week too.
-    ask_for_goal = "" if situation.goal_asked_recently else "no goal known, ask for one; "
+    ask_for_goal = "" if situation.goal_asked_recently else _ASK_FOR_GOAL
     first_week_note = (
-        "\nThis user joined GAIA this week. After today's facts, close on ONE concrete "
-        "step that gets them real value, chosen from THEIR GAIA SETUP and the goal "
-        "knowledge: no app connected yet, offer to connect the one their goal or work "
-        f"most needs; {ask_for_goal}otherwise name one thing you can do "
-        "with an app they already connected. Never name an app, goal or capability "
-        "those facts don't support.\n"
-        if situation.first_week
-        else ""
+        _FIRST_WEEK_NOTE.format(ask_for_goal=ask_for_goal) if situation.first_week else ""
     )
-    cadence_note = (
-        "\nThis user hasn't opened GAIA in over a week. Don't guilt them and don't go "
-        "quiet: in one short line, offer a lighter rhythm than THEIR GAIA SETUP shows "
-        "(weekdays only, just the Sunday digest, or no briefs) and say a one-word reply "
-        "changes it.\n"
-        if situation.offer_lighter_cadence
-        else ""
-    )
+    cadence_note = _LIGHTER_CADENCE_NOTE if situation.offer_lighter_cadence else ""
     goal_note = _GOAL_ASKED if situation.goal_asked_recently else _GOAL_QUESTION
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
     return f"""{_SPEAKER}
@@ -518,28 +526,35 @@ today's facts is the work it asked for, and then you voice that fact, not the me
 """
 
 
+_REJECTED_NOTE = """## YOUR LAST BRIEF WAS REJECTED
+It did not match today's facts:
+{problems}
+This was your last brief:
+{last}
+Change only what each problem names, keep every other word and slot as it was, then return the \
+whole voice."""
+
+_UNREADABLE_NOTE = """## YOUR LAST REPLY COULD NOT BE READ
+It was not a whole voice:
+{problems}
+This was your last reply:
+{last}
+Change only what each problem names, keep everything else as it was, and return the whole \
+voice, with every field filled."""
+
+
+def _listed(problems: list[str]) -> str:
+    return "\n".join(f"- {problem}" for problem in problems)
+
+
 def voice_correction_note(problems: list[str], last: str) -> str:
     """Return the retry instruction: how the last brief broke the facts, and that brief to mend."""
-    listed = "\n".join(f"- {problem}" for problem in problems)
-    return (
-        "## YOUR LAST BRIEF WAS REJECTED\n"
-        f"It did not match today's facts:\n{listed}\n"
-        f"This was your last brief:\n{last}\n"
-        "Change only what each problem names, keep every other word and slot as it was, "
-        "then return the whole voice."
-    )
+    return _REJECTED_NOTE.format(problems=_listed(problems), last=last)
 
 
 def voice_unreadable_note(problems: list[str], last: str) -> str:
     """Return the retry instruction: why the last reply was no whole voice, and that reply."""
-    listed = "\n".join(f"- {problem}" for problem in problems)
-    return (
-        "## YOUR LAST REPLY COULD NOT BE READ\n"
-        f"It was not a whole voice:\n{listed}\n"
-        f"This was your last reply:\n{last}\n"
-        "Change only what each problem names, keep everything else as it was, and return the "
-        "whole voice, with every field filled."
-    )
+    return _UNREADABLE_NOTE.format(problems=_listed(problems), last=last)
 
 
 _WEEKLY_HEADLINE = """
@@ -622,13 +637,25 @@ users?"), and never a generic "keep the momentum going".
 """
 
 
-def _first_brief_close(first_brief: str | None) -> str:
-    if first_brief is None:
-        return "Their briefs are turned off, so never promise them one."
-    return (
-        f"Close by letting them know their first brief lands {first_brief}.\n"
-        "Keep it light, one short line for that, not a sales pitch."
-    )
+_BRIEFS_OFF_CLOSE = "Their briefs are turned off, so never promise them one."
+
+_FIRST_BRIEF_CLOSE = """Close by letting them know their first brief lands {first_brief}.
+Keep it light, one short line for that, not a sales pitch."""
+
+_HELLO_OFFER = """Say hi to {first_name} by name, warm and quick. Then, from what you know
+about their goal below, name that goal in plain words and OFFER one specific
+first deliverable as a QUESTION they can answer with one word ("want me to pull
+together a shortlist of seed funds that back API startups tonight?"). Concrete
+and grounded in their actual goal, never a vague "want me to help you get
+started?". One clear offer, not a menu.
+NEVER promise finished work ("I'll have X ready by tomorrow"): nothing runs
+until they say yes, so a promise here is a lie they discover in the morning.
+The question IS the point, their yes is what starts the work."""
+
+_HELLO_ASK = """Say hi to {first_name} by name, warm and quick. You don't know their goal
+yet, so ask ONE specific question that gets you there, grounded in anything you
+do know from the context below. Not "what are your goals?" but a real, pointed
+question a sharp friend would ask. One question, not three."""
 
 
 def build_day_zero_hello_prompt(
@@ -638,22 +665,12 @@ def build_day_zero_hello_prompt(
 
     first_brief is when their first brief lands ("tomorrow at 7:12 AM"); None when briefs are off.
     """
-
-    if has_goal:
-        task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know
-about their goal below, name that goal in plain words and OFFER one specific
-first deliverable as a QUESTION they can answer with one word ("want me to pull
-together a shortlist of seed funds that back API startups tonight?"). Concrete
-and grounded in their actual goal, never a vague "want me to help you get
-started?". One clear offer, not a menu.
-NEVER promise finished work ("I'll have X ready by tomorrow"): nothing runs
-until they say yes, so a promise here is a lie they discover in the morning.
-The question IS the point, their yes is what starts the work."""
-    else:
-        task = f"""Say hi to {first_name} by name, warm and quick. You don't know their goal
-yet, so ask ONE specific question that gets you there, grounded in anything you
-do know from the context below. Not "what are your goals?" but a real, pointed
-question a sharp friend would ask. One question, not three."""
+    task = (_HELLO_OFFER if has_goal else _HELLO_ASK).format(first_name=first_name)
+    close = (
+        _BRIEFS_OFF_CLOSE
+        if first_brief is None
+        else _FIRST_BRIEF_CLOSE.format(first_brief=first_brief)
+    )
 
     return f"""You are GAIA, texting {first_name} for the first time. They just connected a
 chat platform to you, so this message lands in that chat like a text from a
@@ -665,7 +682,7 @@ friend, not an onboarding email.
 ## YOUR MESSAGE
 {task}
 
-{_first_brief_close(first_brief)}
+{close}
 
 ## VOICE
 Text like a real person who is genuinely glad they showed up. Contractions

@@ -32,6 +32,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import MEMORY_SETTINGS_URL, NotificationKind
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.db.repositories.users import user_repository
+from app.models.mail_models import GmailMessageSummary
 from app.models.notification.details_models import GmailPersonalizedNotification
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -320,7 +321,7 @@ async def _run_triage(
     profession: str,
 ) -> InboxTriage | None:
     await inbox_ctx.first_batch_ready.wait()
-    emails = list(inbox_ctx.emails)
+    emails = [GmailMessageSummary.model_validate(email) for email in inbox_ctx.emails]
     if not emails:
         log.info(
             f"{LogTag.ONBOARDING} triage skipped",

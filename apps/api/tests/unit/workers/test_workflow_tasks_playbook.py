@@ -2295,34 +2295,6 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
 
 @pytest.mark.asyncio
 class TestTheRunCompletionNotificationEdges:
-    async def test_a_workflow_with_no_id_still_notifies_under_an_empty_id(self) -> None:
-        """Workflow.id is optional on the model; the notification contract is a string, so the empty string — not a stand-in — is what it gets."""
-        workflow = _workflow().model_copy(update={"id": None})
-        completion = AsyncMock()
-        with patch(f"{MODULE}.notify_workflow_result", completion):
-            await _notify_run_finished(
-                workflow,
-                "exec_1",
-                "conv_1",
-                "Agenda sent.",
-                delivery=WorkflowDelivery.NOW,
-                broke_through=False,
-            )
-
-        assert completion.await_args_list == [
-            call(
-                workflow_id="",
-                workflow_title="Daily agenda",
-                user_id=USER_ID,
-                run=WorkflowRunResult(
-                    execution_id="exec_1",
-                    conversation_id="conv_1",
-                    text="Agenda sent.",
-                    message_class=ProactiveMessageClass.ROUTINE,
-                ),
-            )
-        ]
-
     async def test_a_delivery_failure_is_named_and_never_fails_the_run(self) -> None:
         workflow = _workflow()
         log_seam = MagicMock()

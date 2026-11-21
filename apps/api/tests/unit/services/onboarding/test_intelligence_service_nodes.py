@@ -19,9 +19,11 @@ import pytest
 from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
+from app.models.mail_models import GmailMessagesResponse, GmailMessageSummary
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
+    InboxTriageOutput,
     ProfileCardDesign,
     SocialProfile,
     UserProfileMetadata,
@@ -262,7 +264,7 @@ class TestRunTriage:
             await _run_triage(USER, ctx, "lawyer")
 
         assert triage_inbox.await_args.args[0] == USER
-        assert triage_inbox.await_args.args[1] == [{"id": "1"}]
+        assert triage_inbox.await_args.args[1] == [GmailMessageSummary(id="1")]
         assert triage_inbox.await_args.kwargs == {"profession": "lawyer"}
 
     async def test_triage_reads_a_snapshot_not_the_live_buffer(self) -> None:
@@ -270,9 +272,11 @@ class TestRunTriage:
         ctx = InboxScanContext()
         ctx.emails.append({"id": "1"})
         ctx.first_batch_ready.set()
-        captured: list[list[dict]] = []
+        captured: list[list[GmailMessageSummary]] = []
 
-        async def triage_inbox(user_id: str, emails: list[dict], **kwargs: Any) -> InboxTriage:
+        async def triage_inbox(
+            user_id: str, emails: list[GmailMessageSummary], **kwargs: Any
+        ) -> InboxTriage:
             captured.append(emails)
             return _triage()
 
@@ -280,7 +284,37 @@ class TestRunTriage:
             await _run_triage(USER, ctx, "dev")
 
         ctx.emails.append({"id": "2"})
-        assert captured[0] == [{"id": "1"}]
+        assert captured[0] == [GmailMessageSummary(id="1")]
+
+    @pytest.mark.regression
+    async def test_the_triage_prompt_names_real_senders_and_drops_noreply_ones(self) -> None:
+        """The scan buffers Gmail messages dumped by alias; triage read "sender", which only "from" carries."""
+        ctx = InboxScanContext()
+        ctx.emails.extend(
+            GmailMessagesResponse(
+                messages=[
+                    GmailMessageSummary.model_validate(
+                        {"id": "1", "from": "priya@client.com", "subject": "Contract redlines"}
+                    ),
+                    GmailMessageSummary.model_validate(
+                        {"id": "2", "from": "noreply@shop.com", "subject": "Your receipt"}
+                    ),
+                ]
+            ).raw_messages()
+        )
+        ctx.first_batch_ready.set()
+        prompts: list[str] = []
+
+        async def structured(_schema: type, prompt: str, **_: Any) -> InboxTriageOutput:
+            prompts.append(prompt)
+            return InboxTriageOutput(summary="s", important_emails=[], patterns=[])
+
+        with patch("app.services.onboarding.inbox_triage_service.ainvoke_structured", structured):
+            await _run_triage(USER, ctx, "dev")
+
+        [prompt] = prompts
+        assert "- priya@client.com | Contract redlines |" in prompt
+        assert "Your receipt" not in prompt
 
 
 # ---------------------------------------------------------------------------

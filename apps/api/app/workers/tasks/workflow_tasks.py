@@ -557,7 +557,7 @@ async def _notify_workflow_paused_for_integrations(
         await notification_service.notify(
             NotificationRequest(
                 id=notification_id(
-                    workflow.user_id, "workflow_paused", workflow.id or "", fired_at.isoformat()
+                    workflow.user_id, "workflow_paused", workflow.id, fired_at.isoformat()
                 ),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.INTEGRATION_EXPIRED,
@@ -627,9 +627,7 @@ async def _notify_workflow_failed(
         occurrence = execution_id or datetime.now(UTC).date().isoformat()
         await notification_service.notify(
             NotificationRequest(
-                id=notification_id(
-                    workflow.user_id, "workflow_failed", workflow.id or "", occurrence
-                ),
+                id=notification_id(workflow.user_id, "workflow_failed", workflow.id, occurrence),
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.WORKFLOW_FAILED,
                 type=NotificationType.ERROR,
@@ -978,7 +976,6 @@ async def _notify_run_finished(
     brief will carry it; silent leaves it in its conversation. Best-effort: the result
     is already there.
     """
-    log.set(workflow_delivery=delivery.value)
     try:
         if delivery is WorkflowDelivery.BRIEF and not await brief_will_carry(workflow.user_id):
             log.info(
@@ -986,6 +983,7 @@ async def _notify_run_finished(
                 workflow_id=workflow.id,
             )
             delivery = WorkflowDelivery.NOW
+        log.set(workflow_delivery=delivery.value)
         if delivery is WorkflowDelivery.SILENT:
             log.info(
                 f"{LogTag.WORKER} Run result kept in its conversation (silent)",
@@ -994,9 +992,7 @@ async def _notify_run_finished(
         elif delivery is WorkflowDelivery.BRIEF:
             await hold_for_brief(
                 workflow.user_id,
-                HeldSource(
-                    BriefItemSource.WORKFLOW, workflow.id or "", workflow.title, conversation_id
-                ),
+                HeldSource(BriefItemSource.WORKFLOW, workflow.id, workflow.title, conversation_id),
                 [text],
             )
             log.info(
@@ -1005,7 +1001,7 @@ async def _notify_run_finished(
             )
         else:
             await notify_workflow_result(
-                workflow_id=workflow.id or "",
+                workflow_id=workflow.id,
                 workflow_title=workflow.title,
                 user_id=workflow.user_id,
                 run=WorkflowRunResult(

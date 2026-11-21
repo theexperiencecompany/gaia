@@ -35,6 +35,7 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.constants.briefing import (
+    BRIEF_NOTIFICATION_PRIORITY,
     IDLE_DORMANT_DAYS,
     BriefForm,
     BriefingBag,
@@ -51,8 +52,11 @@ from app.models.brief_document_models import (
 )
 from app.models.brief_payload_models import BriefingMood
 from app.models.notification.notification_models import (
+    ActionStyle,
     ChannelDeliveryStatus,
     NotificationStatus,
+    RedirectConfig,
+    notification_id,
 )
 from app.models.user_models import UserDocument
 from app.services.briefing import delivery, errors
@@ -327,6 +331,34 @@ class TestHowARunEnds:
 
         assert [c.channel_type for c in world.notify.await_args.args[0].channels] == ["inapp"]
         assert "briefing.email_not_sent" not in [w["msg"] for w in event.get("warnings", [])]
+
+    async def test_a_reader_who_turned_email_off_is_notified_in_app_only(
+        self, world: World
+    ) -> None:
+        world.user.notification_channel_prefs = {"email": False}
+        world.notify.return_value = notified(delivered("inapp"))
+
+        await run_brief(USER, BriefingKind.DAILY)
+
+        assert [c.channel_type for c in world.notify.await_args.args[0].channels] == ["inapp"]
+
+    async def test_the_notification_is_keyed_by_its_brief_and_opens_it_in_place(
+        self, world: World
+    ) -> None:
+        await run_brief(USER, BriefingKind.DAILY)
+
+        request = world.notify.await_args.args[0]
+        assert (request.id, request.priority) == (
+            notification_id(USER, "brief", BRIEF_ID),
+            BRIEF_NOTIFICATION_PRIORITY,
+        )
+        [action] = request.content.actions
+        assert (action.style, action.config.redirect) == (
+            ActionStyle.PRIMARY,
+            RedirectConfig(
+                url=f"/brief/{BRIEF_ID}", open_in_new_tab=False, close_notification=True
+            ),
+        )
 
     async def test_a_resumed_delivery_reports_the_channels_earlier_steps_reached(
         self, world: World

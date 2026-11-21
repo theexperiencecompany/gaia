@@ -1,11 +1,12 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
+from collections.abc import Sequence
 import time
-from typing import Any
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.constants.log_tags import LogTag
+from app.models.mail_models import GmailMessageSummary
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
 from shared.py.wide_events import log
 
@@ -28,15 +29,14 @@ _MEANINGFUL_LABELS = {
 }
 
 
-def _is_noise_email(email: dict[str, Any]) -> bool:
-    sender = email.get("sender", "").lower()
-    snippet = email.get("snippet", "").lower()[:200]
+def _is_noise_email(email: GmailMessageSummary) -> bool:
+    sender = email.sender.lower()
+    snippet = email.snippet.lower()[:200]
     return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or ("unsubscribe" in snippet)
 
 
-def _format_labels(email: dict[str, Any]) -> str:
-    labels = email.get("labelIds") or email.get("label_ids") or []
-    kept = [lbl for lbl in labels if lbl in _MEANINGFUL_LABELS]
+def _format_labels(email: GmailMessageSummary) -> str:
+    kept = [lbl for lbl in email.label_ids if lbl in _MEANINGFUL_LABELS]
     if not kept:
         return ""
     pretty = [lbl.replace("CATEGORY_", "").lower() for lbl in kept]
@@ -45,7 +45,7 @@ def _format_labels(email: dict[str, Any]) -> str:
 
 async def triage_inbox(
     user_id: str,
-    emails: list[dict[str, Any]],
+    emails: Sequence[GmailMessageSummary],
     profession: str = "",
 ) -> InboxTriage | None:
     """Triage a list of emails to surface what's important."""
@@ -61,18 +61,16 @@ async def triage_inbox(
     t0 = time.monotonic()
     try:
         filtered = [e for e in emails if not _is_noise_email(e)]
-        unread = [e for e in filtered if e.get("is_unread", False)]
-        read = [e for e in filtered if not e.get("is_unread", False)]
+        unread = [e for e in filtered if e.is_unread]
+        read = [e for e in filtered if not e.is_unread]
         noise_dropped = len(emails) - len(filtered)
         sampled = (unread[:60] + read[:40])[:100]
 
         email_lines = []
         for e in sampled:
-            sender = e.get("sender", "Unknown")
-            subject = e.get("subject", "(no subject)")
-            snippet = e.get("snippet", "")
-            labels = _format_labels(e)
-            email_lines.append(f"- {labels}{sender} | {subject} | {snippet}")
+            sender = e.sender or "Unknown"
+            subject = e.subject or "(no subject)"
+            email_lines.append(f"- {_format_labels(e)}{sender} | {subject} | {e.snippet}")
 
         email_list_text = "\n".join(email_lines)
 

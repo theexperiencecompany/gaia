@@ -253,12 +253,8 @@ async def _quiet(run: Run, pool: FactPool) -> BriefingRunOutcome:
         run.clock,
         spec,
         quiet_note(run.clock, spec, facts),
-        Sending(
-            push=True,
-            pool=PoolCounts.of(pool),
-            held_ids=_carried(reads.gathered),
-            settlement=run.standing.settlement(),
-        ),
+        # A quiet note carries no goal question and no goodbye, so it settles nothing.
+        Sending(push=True, pool=PoolCounts.of(pool), held_ids=_carried(reads.gathered)),
     )
     return BriefingRunOutcome.SENT
 

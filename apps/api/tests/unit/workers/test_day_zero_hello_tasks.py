@@ -186,7 +186,10 @@ class TestDelivery:
         assert "texting Ada for the first time" in prompt
         assert "- raise a seed round" in prompt
         assert "OFFER one specific" in prompt
-        assert seams.agent.await_args.kwargs["config"] == {"configurable": {"user_id": _USER}}
+        assert seams.agent.await_args.kwargs == {
+            "label": _TASK,
+            "config": {"configurable": {"user_id": _USER}},
+        }
 
     @pytest.mark.parametrize(
         ("schedule", "promised"),

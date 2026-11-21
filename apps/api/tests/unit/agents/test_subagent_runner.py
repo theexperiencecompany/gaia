@@ -37,6 +37,7 @@ from app.agents.llm.lane import AgentRole
 from app.agents.prompts.workflow_prompts import WORKFLOW_DELIVERY_SECTIONS
 from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
 from app.constants.general import EXECUTOR_INTEGRATION_ID
+from app.constants.graphs import GraphName
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
@@ -655,12 +656,20 @@ class TestExecuteSubagentStream:
                 "app.agents.core.subagents.subagent_runner.SubagentCancel",
                 return_value=fake_cancel,
             ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.close_open_tool_calls",
+                new_callable=AsyncMock,
+            ) as close_calls,
         ):
             result = await execute_subagent_stream(ctx)
 
         assert "<subagent_cancelled>" in result.text
         assert "should not reach" not in result.text
         fake_cancel.clear.assert_awaited_once()
+        assert close_calls.await_args_list == [
+            call(mock_graph, ctx.config),
+            call(mock_graph, ctx.config),
+        ]
 
     @pytest.mark.regression
     async def test_a_run_whose_stream_the_user_stopped_reports_it_stopped(self):
@@ -676,12 +685,16 @@ class TestExecuteSubagentStream:
                 new_callable=AsyncMock,
                 return_value=True,
             ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.record_interruption",
+                new_callable=AsyncMock,
+            ) as record,
         ):
-            result = await execute_subagent_stream(
-                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
-            )
+            ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            result = await execute_subagent_stream(ctx)
 
         assert result.stopped is True
+        record.assert_awaited_once_with(mock_graph, ctx.config)
 
     async def test_a_run_that_finishes_is_not_stopped(self):
         async def _fake_astream(*args, **kwargs):
@@ -696,12 +709,16 @@ class TestExecuteSubagentStream:
                 new_callable=AsyncMock,
                 return_value=False,
             ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.close_open_tool_calls",
+                new_callable=AsyncMock,
+            ) as close_calls,
         ):
-            result = await execute_subagent_stream(
-                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
-            )
+            ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            result = await execute_subagent_stream(ctx)
 
         assert result.stopped is False
+        close_calls.assert_awaited_once_with(mock_graph, ctx.config)
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -1242,7 +1259,7 @@ class TestPrepareExecutorExecution:
                 "app.agents.core.graph_manager.GraphManager.get_graph",
                 new_callable=AsyncMock,
                 return_value=mock_graph,
-            ),
+            ) as get_graph,
             patch(
                 "app.agents.core.subagents.subagent_runner.build_agent_config",
                 return_value={"configurable": {"thread_id": "executor_t1"}},
@@ -1277,6 +1294,7 @@ class TestPrepareExecutorExecution:
         assert ctx.agent_name == "executor_agent"
         assert ctx.integration_id == "executor"
         assert ctx.subagent_graph is mock_graph
+        get_graph.assert_awaited_once_with(GraphName.EXECUTOR)
         # A fresh executor run starts with no todos carried over from the last one.
         assert ctx.initial_state["todos"] == []
 

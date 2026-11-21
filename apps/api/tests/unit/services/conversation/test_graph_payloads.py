@@ -483,3 +483,50 @@ async def test_a_link_placeholder_streamed_in_pieces_reaches_the_user_as_its_lin
             shown = shown.take(payload)
     assert shown.text == f"Here it is: [the plan]({build_url('ab12cd')}) and more"
     assert payloads[0] == ResponseEvent(response="Here it is: ")
+
+
+async def test_a_reply_ending_on_a_link_placeholder_flushes_as_its_link() -> None:
+    placeholder = link_placeholder(
+        RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    )
+    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
+    state = GraphStreamState()
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        streamed = [
+            payload
+            async for payload in payloads_for_stream_event(
+                _chunk("m1", f"Open {placeholder}"), state, True, None, "u1"
+            )
+        ]
+        owed = await flush_held_payloads(state, "u1")
+
+    assert streamed == [ResponseEvent(response="Open ")]
+    assert owed == [ResponseEvent(response=build_url("ab12cd"))]
+    assert live.await_args.args[0] == "u1"
+
+
+async def test_a_preamble_ending_on_a_link_placeholder_is_said_as_its_link_at_the_hand_off() -> (
+    None
+):
+    placeholder = link_placeholder(
+        RecordTarget(type=ShortLinkTargetType.OPENUI_ARTIFACT, id="art_1")
+    )
+    handoff = AIMessage(
+        id="m1",
+        content=f"Drafted {placeholder}",
+        tool_calls=[{"name": "handoff", "args": {"task": "x"}, "id": "c1"}],
+    )
+    live = AsyncMock(return_value=SimpleNamespace(slug="ab12cd"))
+    state = GraphStreamState()
+    with patch.object(short_link_repository, "get_live_for_target", live):
+        payloads = [
+            payload
+            for event in (_chunk("m1", f"Drafted {placeholder}"), _node_end(handoff))
+            async for payload in payloads_for_stream_event(event, state, True, None, "u1")
+        ]
+
+    assert [p for p in payloads if isinstance(p, ResponseEvent)] == [
+        ResponseEvent(response="Drafted "),
+        ResponseEvent(response=build_url("ab12cd")),
+    ]
+    assert live.await_args.args[0] == "u1"

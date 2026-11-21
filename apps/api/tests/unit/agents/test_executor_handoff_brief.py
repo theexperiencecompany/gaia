@@ -165,7 +165,13 @@ async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     ) as mock_dispatch:
         await call_executor.ainvoke(
             {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
-            config={"configurable": {"conversation_step": _ASKING_STEP, **configurable}},
+            config={
+                "configurable": {
+                    "conversation_step": _ASKING_STEP,
+                    "user_id": "u-1",
+                    **configurable,
+                }
+            },
         )
     return mock_dispatch.call_args.kwargs["task"]
 

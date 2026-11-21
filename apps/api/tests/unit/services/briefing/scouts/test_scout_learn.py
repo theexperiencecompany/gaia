@@ -322,6 +322,29 @@ class TestLearnFreezeReplay:
         assert [s.people_you for s in learned.signals] == [["Priya"]]
         assert [s.people_you for s in replayed] == [["Priya"]]
 
+    async def test_a_learn_that_froze_nothing_still_marks_the_user_on_what_it_found(
+        self,
+    ) -> None:
+        signals = [
+            {
+                "external_id": "ENG-12",
+                "kind": "open issue",
+                "title": "Fix the login redirect",
+                "why": "due this evening",
+                "importance": "high",
+                "people": ["Priya", "Sam"],
+            }
+        ]
+        mine = replace(LINEAR, handles=frozenset({"priya"}))
+        app = _App([_ISSUE])
+        with _seams(app, _report(steps=[], sources=[], signals=signals)):
+            learned = await learn_scout(USER, USER_ID, mine, _tools(app), _SPEND)
+
+        assert learned.freeze_problem == "the report froze no calls"
+        assert [(s.external_id, s.people, s.people_you) for s in learned.signals] == [
+            ("ENG-12", ["Priya", "Sam"], ["Priya"])
+        ]
+
     async def test_a_malformed_item_neither_stops_the_freeze_nor_the_replay(self) -> None:
         """A nameless creator or an untitled issue failed the freeze, so the scout never learned."""
         nameless = {**_ISSUE, "id": "ENG-13", "creator": {"id": 7}}

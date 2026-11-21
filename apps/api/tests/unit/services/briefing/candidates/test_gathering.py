@@ -29,11 +29,13 @@ from app.models.brief_candidate_models import (
 )
 from app.models.brief_item_models import ItemState
 from app.models.brief_models import PendingBriefItemDocument
-from app.models.brief_payload_models import BriefingEvent
+from app.models.brief_payload_models import BriefingEvent, UnreadSource
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.scout_models import (
     RememberedSignal,
     ScoutOutcome,
     ScoutResult,
+    ScoutSkipReason,
     Sighting,
     Signal,
     SignalImportance,
@@ -52,6 +54,7 @@ from app.services.briefing.clock import UserClock
 from app.services.briefing.fact_pool.render import stands_part
 from app.services.briefing.scouts.service import ScoutSignals
 from app.services.briefing.work import TrackedWork
+from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
@@ -268,6 +271,21 @@ class TestHowMemoryKeysACandidate:
         )
 
         assert sighting(approval) == Sighting("gaia", "approval:ap_1", "you")
+
+    def test_an_app_signal_is_kept_under_its_apps_own_id_and_state(self) -> None:
+        signal = _gmail_signal("t-maya", "Term sheet").signal.model_copy(
+            update={"state": "awaiting reply"}
+        )
+        candidate = BriefCandidate(
+            origin=CandidateOrigin.APP_SIGNAL,
+            source="gmail",
+            app="Gmail",
+            state=ItemState.YOU,
+            title="Term sheet",
+            signal=signal,
+        )
+
+        assert sighting(candidate) == Sighting("gmail", "t-maya", "awaiting reply")
 
     def test_a_held_result_or_an_event_is_new_each_time(self) -> None:
         held = BriefCandidate(
@@ -593,3 +611,89 @@ async def test_reminders_are_read_from_the_users_day_start_to_the_spans_end(
     )
 
     find.assert_awaited_once_with(USER_ID, CLOCK.day_start(), due_before)
+
+
+async def test_approvals_are_read_for_the_user_and_one_a_tracked_todo_parked_on_is_left_to_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def ledger(approval_id: str, owner_id: str) -> ApprovalLedgerDocument:
+        return ApprovalLedgerDocument(
+            approval_id=approval_id,
+            conversation_id="conv-1",
+            user_id=USER_ID,
+            fingerprint=f"fp-{approval_id}",
+            tool_name="GMAIL_SEND_EMAIL",
+            summary=f"Send {approval_id}",
+            owner_run_type="todo",
+            owner_id=owner_id,
+        )
+
+    pending = AsyncMock(return_value=[ledger("ap_own", "t1"), ledger("ap_free", "t9")])
+    monkeypatch.setattr(approval_ledger_repository, "list_pending_for_user", pending)
+    approve = _tracked("t1", "Approve the MSA", NEEDS_REPLY_LABEL)
+
+    gathered = await _gathered(TrackedWork(blocked=[approve]), _scouts())
+
+    pending.assert_awaited_once_with(USER_ID)
+    assert [c.title for c in gathered.pool.values()] == ["Approve the MSA", "Send ap_free"]
+
+
+async def test_failed_runs_are_read_for_the_user_since_the_last_brief(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    since = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
+    system = AsyncMock(return_value=[])
+    runs = AsyncMock(return_value=[])
+    monkeypatch.setattr(workflow_repository, "find_system_workflows", system)
+    monkeypatch.setattr(workflow_executions_repository, "list_since", runs)
+    sources = CandidateSources(TrackedWork(), _scouts(), [], CLOCK.day_start(days_ago=-1), [])
+
+    await gather_candidates(USER_ID, CLOCK, since, NOW, sources)
+
+    assert system.await_args.args[0] == USER_ID
+    assert runs.await_args.args == (USER_ID, since)
+
+
+async def test_held_results_look_up_the_users_own_inbox_desk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    desk = AsyncMock(return_value=None)
+    monkeypatch.setattr(todo_repository, "find_latest_by_external_ref", desk)
+    held = PendingBriefItemDocument(
+        id="h-1",
+        user_id=USER_ID,
+        source=BriefItemSource.WORKFLOW,
+        source_id="wf-1",
+        source_title="Digest",
+        conversation_id="conv-h",
+        text="Revenue up 4%",
+    )
+    sources = CandidateSources(
+        TrackedWork(), _scouts(), [], CLOCK.day_start(days_ago=-1), [], held=[held]
+    )
+
+    await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
+
+    desk.assert_awaited_once_with(USER_ID, INBOX_DESK_REF)
+
+
+async def test_an_app_the_brief_could_not_read_is_named_with_why() -> None:
+    scouts = ScoutSignals(
+        results=[
+            ScoutResult(integration_id="gmail", app="Gmail", outcome=ScoutOutcome.REPLAYED),
+            ScoutResult(
+                integration_id="slack",
+                app="Slack",
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.BUDGET,
+            ),
+        ],
+        remembered=[],
+        criteria={},
+    )
+
+    gathered = await _gathered(TrackedWork(), scouts)
+
+    assert gathered.sources_unavailable == [
+        UnreadSource(app="Slack", reason=ScoutSkipReason.BUDGET)
+    ]

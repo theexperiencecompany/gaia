@@ -65,6 +65,15 @@ class TestStatedGoals:
         assert goals == [StatedGoal("Raising a seed round", ("Accel",))]
         assert format_goal_block(goals) == "- Raising a seed round"
 
+    async def test_each_goal_is_its_own_line(self, recall: AsyncMock) -> None:
+        recall.return_value = _recalled(
+            _memory("Raising a seed round"), _memory("Hiring a designer")
+        )
+
+        goals = await stated_goals(USER_ID)
+
+        assert format_goal_block(goals) == "- Raising a seed round\n- Hiring a designer"
+
     async def test_memory_is_asked_what_the_user_is_working_on(self, recall: AsyncMock) -> None:
         await stated_goals(USER_ID)
 
