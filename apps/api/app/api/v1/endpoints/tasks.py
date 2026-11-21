@@ -10,6 +10,7 @@ from app.schemas.tasks import (
     ChecklistItemCreateRequest,
     ChecklistItemUpdateRequest,
     TaskBulkResponse,
+    TaskChatResponse,
     TaskCountsResponse,
     TaskCreateRequest,
     TaskIdsRequest,
@@ -140,6 +141,17 @@ async def get_task_notes(
     return TaskNotesResponse(
         notes=task.notes or "", observations=task.observations or "", log=task.log or ""
     )
+
+
+@router.post("/tasks/{task_id}/conversation")
+async def open_task_conversation(
+    task_id: str, user_id: Annotated[str, Depends(get_user_id)]
+) -> TaskChatResponse:
+    """Open the chat a GAIA task's runs execute in, creating it before its first run."""
+    log.set(user={"id": user_id}, task={"operation": "open_conversation", "id": task_id})
+    conversation_id = await task_service.open_conversation(user_id, task_id)
+    log.set_ns("task", conversation_id=conversation_id)
+    return TaskChatResponse(conversation_id=conversation_id)
 
 
 @router.put("/tasks/{task_id}")

@@ -13,7 +13,7 @@ import re
 from pydantic import BaseModel
 
 from app.constants.cache import TASK_CACHE_PREFIX
-from app.constants.tasks import Assignee, TaskFlag, TaskRunState, WhenKind
+from app.constants.tasks import Assignee, TaskFlag, TaskRunState, TaskRunStatus, WhenKind
 from app.constants.trigger_gates import GATE_RECENT_SKIPS_KEPT
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
@@ -590,6 +590,14 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             task_id, user_id, {"user_id": user_id, "completed": True}, update
         )
 
+    async def update_if_open(
+        self, task_id: str, user_id: str, *, update: TaskUpdate
+    ) -> TaskDocument | None:
+        """Apply update only while the task is still open (compare-and-set)."""
+        return await self._apply_update(
+            task_id, user_id, {"user_id": user_id, "completed": False}, update
+        )
+
     async def update_if_next_check_at(
         self, task_id: str, user_id: str, *, expected: datetime | None, update: TaskUpdate
     ) -> TaskDocument | None:
@@ -781,29 +789,21 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         return claimed
 
     async def finish_run(
-        self,
-        task_id: str,
-        *,
-        user_id: str,
-        run_state: TaskRunState,
-        when: When | None = None,
-        next_check_at: datetime | None = None,
-        successful: bool,
+        self, task_id: str, *, user_id: str, ran: TaskRunStatus | None
     ) -> TaskDocument | None:
-        """Leave a run: its run state, its next time, and the run counted, in one write."""
-        fields: dict[str, object] = {
-            "run_state": run_state.value,
-            "last_run_at": datetime.now(UTC),
-            NEXT_CHECK_FIELD: next_check_at,
-        }
-        if when is not None:
-            fields["when"] = when.model_dump()
-        increments = {"total_runs": 1, "occurrence_count": 1}
-        if successful:
-            increments["successful_runs"] = 1
-        return await self._apply_raw_update(
-            self._scoped(task_id, user_id), {"$set": fields, "$inc": increments}, scope=user_id
-        )
+        """Put a claimed task back to idle; a run that ran (ran is its outcome) is counted.
+
+        The run's next time is not written here: the run itself, or the settling after
+        it, moved it with a compare-and-set of its own.
+        """
+        update: dict[str, dict[str, object]] = {"$set": {"run_state": TaskRunState.IDLE.value}}
+        if ran is not None:
+            update["$set"]["last_run_at"] = datetime.now(UTC)
+            increments: dict[str, object] = {"total_runs": 1, "occurrence_count": 1}
+            if ran is TaskRunStatus.SUCCESS:
+                increments["successful_runs"] = 1
+            update["$inc"] = increments
+        return await self._apply_raw_update(self._scoped(task_id, user_id), update, scope=user_id)
 
     async def activate(self, task_id: str, *, user_id: str, when: When) -> TaskDocument | None:
         """Switch the task on, idle, with its freshly worked out next time."""

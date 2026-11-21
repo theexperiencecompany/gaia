@@ -126,8 +126,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {
                 "user_id": user_id,
                 "is_onboarding_demo": {"$ne": True},
-                # A tracked todo's chat is its runs' log, not a chat the user had.
-                "todo_id": None,
+                # A tracked todo's or task's chat is its runs' log, not a chat the user had.
+                **_UNBOUND,
             }
         )
 
@@ -147,8 +147,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     # own updatedAt bumps would let a user's automation vouch for
                     # them as "active" forever, defeating the dormancy sweep.
                     "is_system_generated": {"$ne": True},
-                    # Same for a tracked todo's chat, bumped by every run's report.
-                    "todo_id": None,
+                    # Same for a tracked todo's or task's chat, bumped by every run's report.
+                    **_UNBOUND,
                     "$or": [
                         {"updatedAt": {"$gte": since}},
                         {"createdAt": {"$gte": since.isoformat()}},
@@ -722,6 +722,24 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.todo_id
 
+    async def find_task_conversation_id(self, user_id: str, task_id: str) -> str | None:
+        """Return the id of the chat bound to a GAIA task, or None before its first open or run."""
+        row = await self._find_one_projected(
+            {"user_id": user_id, "task_id": {"$eq": task_id, "$type": "string"}},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "conversation_id": 1},  # pragma: no mutate
+            _ConversationIdRow,
+        )
+        return None if row is None else row.conversation_id
+
+    async def delete_for_tasks(self, user_id: str, task_ids: Sequence[str]) -> list[str]:
+        """Delete the chats bound to these tasks, returning their ids for checkpoint cleanup."""
+        query = {"user_id": user_id, "task_id": {"$in": list(task_ids), "$type": "string"}}
+        ids = await self._distinct("conversation_id", query)
+        if ids:
+            await self._delete_many(query, scope=user_id)
+        return ids
+
     async def try_create(self, doc: ConversationDocument) -> bool:
         """Insert the conversation; False when a unique index already holds its key.
 
@@ -800,7 +818,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         rows = await self._aggregate(
             [
                 # A tracked todo's chat is reached from its todo, never from search.
-                {"$match": {"user_id": user_id, "todo_id": None}},
+                {"$match": {"user_id": user_id, **_UNBOUND}},
                 {
                     "$facet": {
                         "messages": [
@@ -832,7 +850,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def delete_all_chats_for_user(self, user_id: str) -> list[str]:
         """Delete the user's chats, keeping each tracked todo's, which goes only with its todo."""
-        query = {"user_id": user_id, "todo_id": None}
+        query = {"user_id": user_id, **_UNBOUND}
         ids = await self._distinct("conversation_id", query)
         await self._delete_many(query, scope=user_id)
         return ids
@@ -874,9 +892,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     # ---- internal helpers ----
 
     def _listed(self) -> dict[str, object]:
-        # Bot conversations live on their platform and a tracked todo's chat on its
-        # todo: neither is listed. {todo_id: None} matches a null AND a missing field.
-        return {"source": {"$nin": _BOT_SOURCE_VALUES}, "todo_id": None}
+        # Bot conversations live on their platform and a tracked todo's or task's chat
+        # on it: none is listed.
+        return {"source": {"$nin": _BOT_SOURCE_VALUES}, **_UNBOUND}
 
     def _active_filter(self, user_id: str) -> dict[str, object]:
         # Background runs stay out of the sidebar unless one holds a live approval
@@ -915,6 +933,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
 
 conversation_repository = ConversationRepository()
+
+#: A chat bound to no tracked todo and no task; null matches a missing field too.
+_UNBOUND: dict[str, object] = {"todo_id": None, "task_id": None}
 
 
 def _todo_binding(todo_id: str) -> dict[str, object]:

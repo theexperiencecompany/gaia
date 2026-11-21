@@ -37,6 +37,8 @@ class TaskRunDocument(MongoDocument):
     conversation_id: str | None = None
     summary: str | None = None
     error_message: str | None = None
+    #: What became of the run's result: sent on a chat app, in the app, or why it was not.
+    delivery: str | None = None
     #: What started the run: manual, schedule, an app event's trigger name, or imported_activity.
     trigger_type: str
     #: What the run did, in order; the next run reads it as what came before.
@@ -62,5 +64,6 @@ class TaskRunUpdate(BaseModel):
     duration_seconds: float | None = None
     summary: str | None = None
     error_message: str | None = None
+    delivery: str | None = None
     conversation_id: str | None = None
     trace: list[RecordedCall] | None = None

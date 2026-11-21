@@ -7,10 +7,10 @@ executions were: a record is written twice and read a page at a time.
 
 from datetime import UTC, datetime
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.constants.tasks import TaskRunKind, TaskRunStatus
 from app.db.repositories.base import MongoRepository
 from app.models.task_run_models import TaskRunDocument, TaskRunUpdate
-from app.models.workflow_execution_models import RecordedCall
 
 #: A finished run whose calls happened; a skipped one did nothing to remember.
 _TRACED_STATUSES = [TaskRunStatus.SUCCESS.value, TaskRunStatus.FAILED.value]
@@ -24,35 +24,25 @@ class TaskRunsRepository(MongoRepository[TaskRunDocument, TaskRunUpdate]):
     identity_field = "run_id"
     cache_policy = None
 
-    async def complete(
-        self,
-        run_id: str,
-        *,
-        status: TaskRunStatus,
-        summary: str | None = None,
-        error_message: str | None = None,
-        conversation_id: str | None = None,
-        trace: list[RecordedCall] | None = None,
-    ) -> TaskRunDocument | None:
-        """Write a run's one terminal state, its duration taken from started_at; None if not found."""
+    async def complete(self, run_id: str, ending: TaskRunUpdate) -> TaskRunDocument | None:
+        """Write a run's one terminal state (ending), its duration taken from started_at.
+
+        None when no such run is still running, so a replayed finish never overwrites one.
+        """
+        if ending.status in (None, TaskRunStatus.RUNNING):
+            raise ValueError(f"run {run_id} cannot end in status {ending.status}")
         run = await self.get(run_id)
-        if run is None:
+        if run is None or run.status is not TaskRunStatus.RUNNING:
             return None
         completed_at = datetime.now(UTC)
-        given = {
-            "summary": summary,
-            "error_message": error_message,
-            "conversation_id": conversation_id,
-            "trace": trace,
-        }
-        return await self.update(
+        return await self._apply_update(
             run_id,
-            TaskRunUpdate.model_validate(
-                {
-                    "status": status,
+            REPO_GLOBAL_SCOPE,
+            {"status": TaskRunStatus.RUNNING.value},
+            ending.model_copy(
+                update={
                     "completed_at": completed_at,
                     "duration_seconds": (completed_at - run.started_at).total_seconds(),
-                    **{field: value for field, value in given.items() if value},
                 }
             ),
         )
@@ -91,6 +81,21 @@ class TaskRunsRepository(MongoRepository[TaskRunDocument, TaskRunUpdate]):
         total = await self._count(filt)
         rows = await self._find(filt, sort=[("started_at", -1)], limit=limit, skip=offset)
         return rows, total
+
+    async def latest_finished(
+        self, task_id: str, user_id: str, *, limit: int
+    ) -> list[TaskRunDocument]:
+        """Return the task's latest finished runs, newest first: what came of its recent runs."""
+        return await self._find(
+            {
+                "task_id": task_id,
+                "user_id": user_id,
+                "kind": TaskRunKind.RUN.value,
+                "status": {"$nin": [TaskRunStatus.RUNNING.value]},
+            },
+            sort=[("started_at", -1)],
+            limit=limit,
+        )
 
     async def delete_for_tasks(self, user_id: str, task_ids: list[str]) -> int:
         """Delete every record of these tasks, as deleting a task does."""

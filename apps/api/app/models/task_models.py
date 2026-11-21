@@ -368,6 +368,12 @@ class TaskDocument(UserScopedDocument):
             raise ValueError("a task the system paused is not active")
         return self
 
+    def updated_by(self, update: "TaskUpdate") -> "TaskDocument":
+        """Return the task as it reads once update is written, validated like a stored one."""
+        return TaskDocument.model_validate(
+            {**self.model_dump(), **update.model_dump(exclude_unset=True)}
+        )
+
     def _gaia_only_values(self) -> dict[str, object]:
         return {
             "watch": self.when.kind is WhenKind.WATCH,

@@ -29,6 +29,7 @@ from app.agents.core.background.comms_narrator import (
     record_platform_delivery,
 )
 from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.task_run_delivery import deliver_task_run_result
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result,
@@ -127,6 +128,10 @@ async def deliver_result(
         if run.todo_run is not None:
             await _record_todo_run_report(run, result_text, result_type, tool_data)
             await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
+            return None, None
+        if run.task_run is not None:
+            await _record_todo_run_report(run, result_text, result_type, tool_data)
+            await deliver_task_run_result(run, run.task_run, result_text, result_type)
             return None, None
         return await _narrate_and_deliver(
             run, result_text + outcome_note, result_type, tool_data, returned_note
@@ -237,7 +242,7 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
             user=run.user,
             # A tracked todo's chat is reused by every run, so a stopped one is capped too.
             max_messages=TODO_CONVERSATION_MAX_MESSAGES
-            if run.todo_run
+            if run.todo_run or run.task_run
             else CONVERSATION_MAX_MESSAGES,
         )
     except HTTPException as e:

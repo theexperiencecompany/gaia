@@ -16,7 +16,7 @@ from app.constants.delivery_alerts import (
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
-from app.constants.tasks import RUN_TASK_JOB
+from app.constants.tasks import FINISH_TASK_RUN_JOB, RUN_TASK_JOB
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     PROVISION_INBOX_DESK_TASK,
@@ -66,7 +66,7 @@ from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
-from app.workers.tasks.task_run_tasks import recover_tasks, run_task
+from app.workers.tasks.task_run_tasks import finish_task_run, recover_tasks, run_task
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     finish_tracked_todo_run,
@@ -148,6 +148,9 @@ _finish_tracked_todo_run = func(
     name=TODO_RUN_FINISH_TASK,
     max_tries=TODO_RUN_FINISH_MAX_TRIES,
 )
+_finish_task_run = func(
+    arq_task(finish_task_run), name=FINISH_TASK_RUN_JOB, max_tries=TODO_RUN_FINISH_MAX_TRIES
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -185,6 +188,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _run_task,
+    _finish_task_run,
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,

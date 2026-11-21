@@ -152,6 +152,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "add_memory": "Remembering that",
     "search_memory": "Searching memory",
     # ── Native: tracked todos (GAIA working memory) ────────────────────
+    "create_task": "Taking this on",
+    "update_task": "Updating the task",
+    "complete_task": "Wrapping that up",
     "create_tracked_todo": "Tracking this",
     "update_tracked_todo": "Updating what I'm tracking",
     "search_todo_context": "Checking what I'm tracking",

@@ -24,7 +24,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import InApp
-from app.services.tracked_todo_service import starting_canvas
+from app.services.tasks.notes import starting_canvas
 
 pytestmark = pytest.mark.unit
 

@@ -288,6 +288,36 @@ async def get_or_create_todo_conversation(user_id: str, todo_id: str, title: str
     return winner
 
 
+async def get_or_create_task_conversation(user_id: str, task_id: str, title: str) -> str:
+    """Return the id of a GAIA task's one chat, creating it on first use.
+
+    A racing second create loses on the unique (user_id, task_id) index and reads the winner's.
+    """
+    if existing := await conversation_repository.find_task_conversation_id(user_id, task_id):
+        return existing
+    document = ConversationDocument(
+        user_id=user_id,
+        conversation_id=str(uuid4()),
+        description=title,
+        task_id=task_id,
+        createdAt=datetime.now(UTC).isoformat(),
+    )
+    if await conversation_repository.try_create(document):
+        return document.conversation_id
+    winner = await conversation_repository.find_task_conversation_id(user_id, task_id)
+    if winner is None:
+        raise RuntimeError(
+            f"the chat of task {task_id} was claimed by a concurrent create but cannot be read"
+        )
+    return winner
+
+
+async def delete_task_conversations(user_id: str, task_ids: list[str]) -> None:
+    """Delete the chats of deleted tasks, with the storage each one left behind."""
+    for conversation_id in await conversation_repository.delete_for_tasks(user_id, task_ids):
+        await _cleanup_conversation_storage(user_id, conversation_id)
+
+
 async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
     """Delete the chats of deleted tracked todos, with the storage each one left behind."""
     for conversation_id in await conversation_repository.delete_for_todos(user_id, todo_ids):
@@ -503,6 +533,7 @@ async def batch_sync_conversations(
                 artifacts=document.artifacts,
                 has_live_approval=document.has_live_approval,
                 todo_id=document.todo_id,
+                task_id=document.task_id,
                 source=document.source,
             )
         )

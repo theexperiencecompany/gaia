@@ -118,7 +118,8 @@ from app.models.trigger_subscription_models import (
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.providers.provider_credentials_service import ProviderConfig
-from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
+from app.services.tasks.notes import starting_canvas
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
 from app.services.triggers.todo_trigger_window import buffer_todo_trigger_event

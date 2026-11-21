@@ -40,6 +40,17 @@ class RepeatRuleError(AppError):
         )
 
 
+class NoChatError(AppError):
+    """Raised (409) when the user opens the chat of a to-do: only GAIA's tasks have one."""
+
+    def __init__(self, task_id: str) -> None:
+        super().__init__(
+            message=f"Task {task_id} is a to-do; only GAIA's tasks have a chat",
+            status_code=HTTPStatus.CONFLICT,
+            code="task_has_no_chat",
+        )
+
+
 class ClosedParentError(AppError):
     """Raised (409) when a subtask would reopen, or be filed, under a parent that is done."""
 

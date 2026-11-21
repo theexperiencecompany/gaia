@@ -3795,6 +3795,17 @@
               }
             ]
           },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
           "todo_id": {
             "anyOf": [
               {
@@ -4222,6 +4233,17 @@
               }
             ]
           },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
           "todo_id": {
             "anyOf": [
               {
@@ -4259,6 +4281,7 @@
           "artifacts",
           "has_live_approval",
           "todo_id",
+          "task_id",
           "source"
         ],
         "title": "ConversationSyncRow",
@@ -18353,6 +18376,20 @@
         "title": "TaskBulkResponse",
         "type": "object"
       },
+      "TaskChatResponse": {
+        "description": "The chat a GAIA task's runs execute in, opened from the task.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "TaskChatResponse",
+        "type": "object"
+      },
       "TaskCountsResponse": {
         "properties": {
           "completed": {
@@ -18918,6 +18955,17 @@
             ],
             "title": "Conversation Id"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery"
+          },
           "duration_seconds": {
             "anyOf": [
               {
@@ -19000,6 +19048,7 @@
           "summary",
           "error_message",
           "conversation_id",
+          "delivery",
           "log_text"
         ],
         "title": "TaskRunResponse",
@@ -40635,6 +40684,69 @@
           }
         },
         "summary": "Update Task",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/conversation": {
+      "post": {
+        "description": "Open the chat a GAIA task's runs execute in, creating it before its first run.",
+        "operationId": "tasks_open_task_conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Open Task Conversation",
         "tags": [
           "Tasks"
         ]

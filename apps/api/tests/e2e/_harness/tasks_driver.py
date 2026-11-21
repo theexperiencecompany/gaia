@@ -27,7 +27,8 @@ from httpx import AsyncClient, Response
 from pydantic import BaseModel
 import time_machine
 
-from app.agents.tools.tracked_todo_tools import create_tracked_todo, subscribe_todo_to_trigger
+from app.agents.tools.task_tools import create_task
+from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
@@ -369,12 +370,13 @@ class TasksDriver:
     async def hand_to_gaia(self, title: str, *, notify: bool = True) -> TaskView:
         """Hand GAIA a one-off task, as its create tool does when the user asks in chat."""
         before = {t.id for t in await self._gaia_tasks()}
-        said = await create_tracked_todo.ainvoke(
+        said = await create_task.ainvoke(
             {
                 "title": title,
+                "assignee": "gaia",
                 "waiting_on": "time",
-                "scheduled_at": FIRST_LOOK,
-                "notify_on_run": notify,
+                "next_check": FIRST_LOOK,
+                "notify": notify,
             },
             config={"configurable": {"user_id": self._user_id}},
         )
@@ -430,8 +432,56 @@ class TasksDriver:
         )
         assert not self._narrations, "a replay was scripted, but the run never replayed"
 
+    async def _queue_task_run(self, task_id: str, run: GaiaRun) -> None:
+        """Queue GAIA's turns for one run of a GAIA task, and comms' write-up when it is delivered."""
+        task = _ok(await self._client.get(f"{TASKS}/{task_id}"))
+        delivered = task["notify"]
+        # A one-off run that neither closes nor re-arms its task is nudged once to.
+        one_off = task["when"]["kind"] != "repeat" and not task["subscriptions"]
+
+        def tell(text: str) -> None:
+            if delivered:
+                self._comms.then([text])
+
+        match run:
+            case Finishes(report):
+                self._executor.then(
+                    [call("complete_task", {"task_id": task_id, "summary": report}), report]
+                )
+                tell(report)
+            case KeepsWaiting(report):
+                self._executor.then(
+                    [
+                        call("update_task", {"task_id": task_id, "next_check": QUESTION_EXPIRES}),
+                        report,
+                    ]
+                )
+                tell(report)
+            case Reports(report):
+                self._executor.then([report, report] if one_off else [report])
+                tell(report)
+            case Asks(question, if_no_reply, default):
+                ask: dict[str, Any] = {
+                    "task_id": task_id,
+                    "waiting_on": "user",
+                    "question": question,
+                    "if_no_reply": if_no_reply.value,
+                    "next_check": QUESTION_EXPIRES,
+                }
+                if default is not None:
+                    ask["default_action"] = default
+                self._executor.then([call("update_task", ask), question])
+                tell(question)
+            case Breaks():
+                pass
+            case _:
+                raise NotImplementedError(f"a GAIA task cannot be scripted to {run} yet")
+
     async def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
         """Queue GAIA's turns for one run of a tracked todo, and comms' write-up when it is delivered."""
+        if _is_task(task_id):
+            await self._queue_task_run(task_id, run)
+            return
         todo = _ok(await self._client.get(f"{TODOS}/{task_id}"))
         delivered = todo["notify_on_run"]
         # A one-off run that neither closes nor re-arms its todo is nudged once to.
@@ -533,7 +583,7 @@ class TasksDriver:
 
     async def answer(self, task_id: str, reply: str, then: GaiaRun) -> None:
         """Reply in the task's chat, GAIA picking the task up from the reply."""
-        conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
+        conversation_id = _ok(await self._client.post(f"{_base(task_id)}/{task_id}/conversation"))[
             "conversation_id"
         ]
         self._comms.then([call("call_executor", {"task": reply}, call_id="tc_answer"), ON_IT])
@@ -910,6 +960,16 @@ class TasksDriver:
                 )
                 for e in reversed(body["executions"])
             ]
+        if _is_task(task_id):
+            body = _ok(await self._client.get(f"{TASKS}/{task_id}/runs"))
+            return [
+                RunView(
+                    outcome=_WORKFLOW_RUN_STATUS[r["status"]],
+                    reason=r["summary"] or r["error_message"],
+                )
+                for r in reversed(body["runs"])
+                if r["status"] in _WORKFLOW_RUN_STATUS
+            ]
         return [
             RunView(outcome=_RUN_EVENTS[event], reason=detail or None)
             for event, detail in await self._activity(task_id)
@@ -942,9 +1002,9 @@ class TasksDriver:
                 workflow_id=task_id, user_id=self._user_id, workflow_title=workflow
             )
         else:
-            conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
-                "conversation_id"
-            ]
+            conversation_id = _ok(
+                await self._client.post(f"{_base(task_id)}/{task_id}/conversation")
+            )["conversation_id"]
         synced = _ok(
             await self._client.post(
                 "/api/v1/conversations/batch-sync",
@@ -978,7 +1038,7 @@ class TasksDriver:
         ]
 
     async def _gaia_tasks(self) -> list[TaskView]:
-        return await self._list(labels=GAIA_TRACKED_LABEL)
+        return [*await self._tasks(assignee="gaia"), *await self._list(labels=GAIA_TRACKED_LABEL)]
 
     async def _tasks(self, **params: str) -> list[TaskView]:
         body = _ok(await self._client.get(TASKS, params=params))

@@ -170,6 +170,8 @@ class TaskRunResponse(ResponseModel):
     summary: str | None
     error_message: str | None
     conversation_id: str | None
+    #: What became of the run's result: sent on a chat app, in the app, or why it was not.
+    delivery: str | None
     #: The old activity log's lines for this stretch, verbatim, on a migrated record.
     log_text: str | None
 
@@ -184,6 +186,12 @@ class TaskRunResponse(ResponseModel):
 class TaskRunListResponse(ResponseModel):
     runs: list[TaskRunResponse]
     total: int
+
+
+class TaskChatResponse(ResponseModel):
+    """The chat a GAIA task's runs execute in, opened from the task."""
+
+    conversation_id: str
 
 
 class TaskNotesResponse(ResponseModel):

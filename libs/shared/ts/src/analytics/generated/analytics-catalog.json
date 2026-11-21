@@ -7347,6 +7347,33 @@
       }
     },
     {
+      "event": "task:chat_opened",
+      "class": "TaskChatOpened",
+      "owner": "server",
+      "domain": "task",
+      "description": "A user opened a GAIA task's chat from the task.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened a GAIA task's chat from the task.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "TaskChatOpened",
+        "type": "object"
+      }
+    },
+    {
       "event": "task:created",
       "class": "TaskCreated",
       "owner": "server",
@@ -7475,6 +7502,174 @@
           "held_for_quiet_hours"
         ],
         "title": "TaskNudged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:open_state_repaired",
+      "class": "TaskOpenStateRepaired",
+      "owner": "server",
+      "domain": "task",
+      "description": "A one-off GAIA task's run ended with no next step, so code set one.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A one-off GAIA task's run ended with no next step, so code set one.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "waiting_on": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Waiting On"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "TaskOpenStateRepaired",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:run_failed",
+      "class": "TaskRunFailed",
+      "owner": "server",
+      "domain": "task",
+      "description": "A GAIA task's run failed and will not be retried: the task is marked failed.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A GAIA task's run failed and will not be retried: the task is marked failed.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "task_id",
+          "attempts"
+        ],
+        "title": "TaskRunFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:run_result_delivered",
+      "class": "TaskRunResultDelivered",
+      "owner": "server",
+      "domain": "task",
+      "description": "A GAIA task's run result reached, or failed to reach, the user; destination is where it was routed.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A GAIA task's run result reached, or failed to reach, the user; destination is where it was routed.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "outcome": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "delivered": {
+            "title": "Delivered",
+            "type": "boolean"
+          },
+          "trigger_type": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Trigger Type",
+            "type": "string"
+          },
+          "repeats": {
+            "title": "Repeats",
+            "type": "boolean"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Platform"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "enum": [
+                  "chat_app",
+                  "in_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination"
+          },
+          "destination_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "recent_activity",
+                  "priority",
+                  "active_in_app",
+                  "no_chat_app"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Destination Basis"
+          }
+        },
+        "required": [
+          "task_id",
+          "outcome",
+          "delivered",
+          "trigger_type",
+          "repeats"
+        ],
+        "title": "TaskRunResultDelivered",
         "type": "object"
       }
     },

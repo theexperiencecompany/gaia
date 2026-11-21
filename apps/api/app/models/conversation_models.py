@@ -86,6 +86,8 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
+    #: The GAIA task whose chat this is, on the same terms as todo_id.
+    task_id: str | None = None
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -271,6 +273,8 @@ class ConversationSyncRow(ResponseModel):
     has_live_approval: bool | None = None
     # The tracked todo this chat belongs to; clients keep such a chat out of their lists.
     todo_id: str | None = None
+    # The GAIA task this chat belongs to; clients keep such a chat out of their lists too.
+    task_id: str | None = None
     # Where the chat originated; a bot chat is never listed, so clients need it to keep one cached.
     source: ConversationSource | None = None
 

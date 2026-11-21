@@ -186,6 +186,57 @@ TASK_DEEP_LINK: Final = "/tasks?taskId={task_id}"
 TASKS_PAGE: Final = "/tasks"
 VIEW_TASK_LABEL: Final = "View task"
 
+#: How long a GAIA task's run may stay running before recovery takes it as a dead worker's.
+STALE_RUN_AFTER: Final = timedelta(minutes=45)
+#: How soon a run that found its chat busy with another run checks again.
+EXECUTOR_BUSY_RECHECK: Final = timedelta(minutes=1)
+#: The durable job that finishes a run's delivery when the task store failed it in-process.
+FINISH_TASK_RUN_JOB: Final = "finish_task_run"
+FINISH_TASK_RUN_JOB_PREFIX: Final = "task-run-finish:"
+#: How much of a run's final report its run record keeps as the summary.
+RUN_SUMMARY_CHARS: Final = 500
+#: How many earlier runs a run's prompt and its delivery note read.
+RECENT_RUNS_READ: Final = 3
+#: The surface a paywalled GAIA task run is attributed to in the funnel.
+PAYWALL_FEATURE_GAIA_TASK: Final = "gaia_task"
+
+
+class TaskRunTrigger(StrEnum):
+    """What started one run of a GAIA task, as its run record names it."""
+
+    SCHEDULE = "schedule"
+    APP_EVENT = "app_event"
+    WAIT_MET = "wait_met"
+    APPROVAL = "approval"
+    SUBTASK = "subtask"
+    MANUAL = "manual"
+
+
+class TaskLogEvent(StrEnum):
+    """A lifecycle event the engine writes to a GAIA task's log, as "- <iso> [event] detail"."""
+
+    CREATED = "created"
+    SCHEDULED = "scheduled"
+    WAITING_CHANGED = "waiting_changed"
+    RETRY_SCHEDULED = "retry_scheduled"
+    MARKED_FAILED = "marked_failed"
+    OPEN_STATE_REPAIRED = "open_state_repaired"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    MAINTENANCE = "maintenance"
+
+
+class TaskRunDeliveryOutcome(StrEnum):
+    """What became of a GAIA task run's result, for its run record and analytics."""
+
+    DELIVERED = "delivered"
+    UNDELIVERED = "undelivered"
+    SILENCED = "silenced"
+    NOTIFY_OFF = "notify_off"
+    NARRATION_FAILED = "narration_failed"
+    INVALID_DIRECTIVE = "invalid_directive"
+
+
 # Repeat shortcuts: intervals step from now (drift is fine); anchored steps keep the wall-clock time.
 REPEAT_INTERVALS: Final[dict[str, timedelta]] = {
     "every_4h": timedelta(hours=4),

@@ -30,11 +30,12 @@ from app.models.todo_models import (
 from app.services.analytics_service import capture
 from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.tasks.notes import starting_canvas
 from app.services.todo_activity import record_field_changes
 from app.services.todo_canvas_storage import repair_notes
 from app.services.todo_observations import with_carried_lines
 from app.services.todos.errors import ExternalRefTakenError
-from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
 from app.utils.redis_utils import RedisPoolManager

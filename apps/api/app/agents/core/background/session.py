@@ -84,6 +84,18 @@ class TodoRun:
 
 
 @dataclass(frozen=True)
+class TaskRun:
+    """The GAIA task a background executor run is working, its run record, and what woke it."""
+
+    task_id: str
+    #: The task_runs record this run finishes.
+    run_id: str
+    trigger_type: str
+    #: Read when the run starts, as TodoRun.runs_once is.
+    runs_once: bool
+
+
+@dataclass(frozen=True)
 class RunIdentity:
     """The caller-supplied identity of one executor run.
 
@@ -158,6 +170,8 @@ class ExecutorRun:
     #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
     #: todo's chat, which keeps its report, and its result goes through todo delivery.
     todo_run: TodoRun | None = None
+    #: Set only on a GAIA task's own run, on the same terms as todo_run.
+    task_run: TaskRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
@@ -236,7 +250,7 @@ class ExecutorRun:
         A detached run does, and so does a tracked todo's run, which streams into
         its todo's chat with no comms turn in front of it.
         """
-        return self.is_queued or self.todo_run is not None
+        return self.is_queued or self.todo_run is not None or self.task_run is not None
 
     @property
     def render_message_id(self) -> str | None:

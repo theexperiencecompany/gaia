@@ -123,9 +123,13 @@ export type ServerEventName =
   | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
+  | "task:chat_opened"
   | "task:created"
   | "task:deleted"
   | "task:nudged"
+  | "task:open_state_repaired"
+  | "task:run_failed"
+  | "task:run_result_delivered"
   | "task:toggled"
   | "task:updated"
   | "todos:chat_opened"
@@ -1373,6 +1377,12 @@ export interface EventProperties {
     "description_length": number;
     "attachment_count": number;
   };
+  "task:chat_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+  };
   "task:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1399,6 +1409,33 @@ export interface EventProperties {
     "repeats": boolean;
     "channel": "in_app" | "chat_app";
     "held_for_quiet_hours": boolean;
+  };
+  "task:open_state_repaired": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "waiting_on"?: string;
+  };
+  "task:run_failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "attempts": number;
+  };
+  "task:run_result_delivered": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "outcome": string;
+    "delivered": boolean;
+    "trigger_type": string;
+    "repeats": boolean;
+    "platform"?: string;
+    "destination"?: "chat_app" | "in_app";
+    "destination_basis"?: "recent_activity" | "priority" | "active_in_app" | "no_chat_app";
   };
   "task:toggled": {
     "actor": "user" | "agent";

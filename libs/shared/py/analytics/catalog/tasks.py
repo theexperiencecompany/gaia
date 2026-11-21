@@ -3,13 +3,18 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.properties import Identifier
 
 __all__ = [
     "NudgeChannel",
+    "TaskChatOpened",
     "TaskCreated",
     "TaskDeleted",
     "TaskNudged",
+    "TaskOpenStateRepaired",
+    "TaskRunFailed",
+    "TaskRunResultDelivered",
     "TaskToggled",
     "TaskUpdated",
 ]
@@ -63,6 +68,53 @@ class TaskDeleted(ServerEvent):
     budget_per_user_day: ClassVar[int] = 20
 
     count: int
+
+
+class TaskRunResultDelivered(ServerEvent):
+    """A GAIA task's run result reached, or failed to reach, the user; destination is where it was routed."""
+
+    event: ClassVar[str] = "task:run_result_delivered"
+    # One per run: an hourly task alone delivers 24 a day.
+    budget_per_user_day: ClassVar[int] = 50
+
+    task_id: Identifier
+    outcome: Identifier
+    delivered: bool
+    trigger_type: Identifier
+    repeats: bool
+    platform: Identifier | None = None
+    destination: ProactiveDestinationKind | None = None
+    destination_basis: ProactiveDestinationBasis | None = None
+
+
+class TaskChatOpened(ServerEvent):
+    """A user opened a GAIA task's chat from the task."""
+
+    event: ClassVar[str] = "task:chat_opened"
+    budget_per_user_day: ClassVar[int] = 100
+
+    task_id: Identifier
+
+
+class TaskRunFailed(ServerEvent):
+    """A GAIA task's run failed and will not be retried: the task is marked failed."""
+
+    event: ClassVar[str] = "task:run_failed"
+    budget_per_user_day: ClassVar[int] = 20
+
+    task_id: Identifier
+    attempts: int
+
+
+class TaskOpenStateRepaired(ServerEvent):
+    """A one-off GAIA task's run ended with no next step, so code set one."""
+
+    event: ClassVar[str] = "task:open_state_repaired"
+    budget_per_user_day: ClassVar[int] = 20
+
+    task_id: Identifier
+    # What the task was waiting on when the run that left it without a next step woke.
+    waiting_on: Identifier | None = None
 
 
 class TaskNudged(ServerEvent):

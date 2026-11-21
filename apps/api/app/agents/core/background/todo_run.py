@@ -37,6 +37,7 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
+    TaskRun,
     TodoRun,
     executor_failure,
     mark_executor_failed,
@@ -83,7 +84,8 @@ class TodoRunRequest:
     """One tracked todo run: whose, which todo, the brief, and the todo's chat it runs in."""
 
     user: AuthenticatedUser
-    todo_run: TodoRun
+    #: A tracked todo's run, or a GAIA task's: the one the result is delivered for.
+    todo_run: TodoRun | TaskRun
     todo_title: str
     task: str
     conversation_id: str
@@ -146,7 +148,8 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
                     t_dispatch_perf=time.perf_counter(),
                 ),
             ),
-            todo_run=request.todo_run,
+            todo_run=request.todo_run if isinstance(request.todo_run, TodoRun) else None,
+            task_run=request.todo_run if isinstance(request.todo_run, TaskRun) else None,
         )
         run_task = spawn_background_task(
             run_executor_background(run=run, task=request.task, configurable=configurable),
@@ -207,7 +210,9 @@ async def _todo_run_configurable(request: TodoRunRequest, stream_id: str) -> Age
         ),
         lane=AgentLane(role=AgentRole.EXECUTOR),
         turn=AgentTurn(
-            active_todo_id=request.todo_run.todo_id,
+            active_todo_id=request.todo_run.todo_id
+            if isinstance(request.todo_run, TodoRun)
+            else None,
             execution_mode="background",
             # The todo's own title authorizes its gated calls the way a live
             # turn's words would; the run brief is generated and never does.

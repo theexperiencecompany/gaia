@@ -4654,6 +4654,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks/{task_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Task Conversation
+         * @description Open the chat a GAIA task's runs execute in, creating it before its first run.
+         */
+        post: operations["tasks_open_task_conversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tasks/{task_id}/notes": {
         parameters: {
             query?: never;
@@ -7747,6 +7767,8 @@ export interface components {
             /** Starred */
             starred?: boolean | null;
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
+            /** Task Id */
+            task_id?: string | null;
             /** Todo Id */
             todo_id?: string | null;
             /** Updatedat */
@@ -7884,6 +7906,8 @@ export interface components {
             /** Starred */
             starred: boolean | null;
             system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Task Id */
+            task_id: string | null;
             /** Todo Id */
             todo_id: string | null;
             /** Updatedat */
@@ -14816,6 +14840,14 @@ export interface components {
             /** Succeeded */
             succeeded: string[];
         };
+        /**
+         * TaskChatResponse
+         * @description The chat a GAIA task's runs execute in, opened from the task.
+         */
+        TaskChatResponse: {
+            /** Conversation Id */
+            conversation_id: string;
+        };
         /** TaskCountsResponse */
         TaskCountsResponse: {
             /** Completed */
@@ -14990,6 +15022,8 @@ export interface components {
             completed_at: string | null;
             /** Conversation Id */
             conversation_id: string | null;
+            /** Delivery */
+            delivery: string | null;
             /** Duration Seconds */
             duration_seconds: number | null;
             /** Error Message */
@@ -17704,6 +17738,7 @@ export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
 export type TaskBulkResponse = components['schemas']['TaskBulkResponse'];
+export type TaskChatResponse = components['schemas']['TaskChatResponse'];
 export type TaskCountsResponse = components['schemas']['TaskCountsResponse'];
 export type TaskCreateRequest = components['schemas']['TaskCreateRequest'];
 export type TaskFlag = components['schemas']['TaskFlag'];
@@ -30416,6 +30451,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_open_task_conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskChatResponse"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

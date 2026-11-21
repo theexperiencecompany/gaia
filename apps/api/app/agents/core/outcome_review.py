@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from app.agents.core.delegation_window import current_delegation
 from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.agents import (
-    OUTCOME_COMPLETE_TOOL,
+    OUTCOME_COMPLETE_TOOLS,
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOL,
     OUTCOME_TRACKED_TODO_TOOLS,
@@ -71,7 +71,7 @@ def _wakes_later(call: ToolCall) -> bool:
 
 def _keeps_a_todo_awake(call: ToolCall) -> bool:
     """Return whether this call closes a todo or gives it its next check."""
-    return _effective_call(call)[0] == OUTCOME_COMPLETE_TOOL or _wakes_later(call)
+    return _effective_call(call)[0] in OUTCOME_COMPLETE_TOOLS or _wakes_later(call)
 
 
 def _briefed_with(delegation: Sequence[AnyMessage], tag: str) -> bool:

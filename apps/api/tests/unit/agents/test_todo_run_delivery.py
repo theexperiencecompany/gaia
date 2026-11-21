@@ -26,7 +26,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
-from app.services.tracked_todo_service import CANVAS_TEMPLATE
+from app.services.tasks.notes import CANVAS_TEMPLATE
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from tests.helpers import captured_wide_event

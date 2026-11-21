@@ -29,13 +29,14 @@ from app.models.todo_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
+from app.services.tasks.notes import starting_canvas
 from app.services.todos import inbox_desk
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.todos.inbox_desk import (
     provision_inbox_desk,
     queue_inbox_desk_provision,
 )
-from app.services.tracked_todo_service import TrackedTodoService, starting_canvas
+from app.services.tracked_todo_service import TrackedTodoService
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosInboxDeskProvisioned
 from tests.helpers import captured_wide_event, local_timezone

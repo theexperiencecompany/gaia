@@ -50,6 +50,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.services.canvas_markdown import normalize_canvas, section_body
+from app.services.tasks.notes import CANVAS_TEMPLATE, starting_canvas
 from app.services.todos import errors as todo_errors
 from app.services.todos.errors import (
     CanvasShapeError,
@@ -58,11 +59,9 @@ from app.services.todos.errors import (
 )
 from app.services.todos.open_state import require_open_state
 from app.services.tracked_todo_service import (
-    CANVAS_TEMPLATE,
     TrackedTodoService,
     _reconcile_parent_completion,
     require_sub_todo_parent,
-    starting_canvas,
     tracked_todo_service,
 )
 from app.services.triggers.subscription_service import SubscriptionError

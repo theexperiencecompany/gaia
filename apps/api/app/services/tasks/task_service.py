@@ -24,10 +24,15 @@ from app.models.task_run_models import TaskRunDocument
 from app.models.todo_models import SubTask
 from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
 from app.services.analytics_service import capture
+from app.services.conversation_service import (
+    delete_task_conversations,
+    get_or_create_task_conversation,
+)
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks.arming import arm_task
 from app.services.tasks.errors import (
     ClosedParentError,
+    NoChatError,
     RepeatRuleError,
     SubtaskNotFoundError,
     TaskNotFoundError,
@@ -37,7 +42,13 @@ from app.services.user_service import get_profile_timezone
 from app.utils.auth_utils import require_owner
 from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.tasks import TaskCreated, TaskDeleted, TaskToggled, TaskUpdated
+from shared.py.analytics.catalog.tasks import (
+    TaskChatOpened,
+    TaskCreated,
+    TaskDeleted,
+    TaskToggled,
+    TaskUpdated,
+)
 from shared.py.wide_events import log
 
 
@@ -137,7 +148,7 @@ def _round_fields(current: TaskDocument, update: TaskUpdate) -> TaskUpdate:
     touched = {"when", "completed", "notify"} & update.model_fields_set
     if current.assignee is not Assignee.USER or not touched:
         return update
-    after = current.model_copy(update=update.model_dump(exclude_unset=True))
+    after = current.updated_by(update)
     nudge = first_nudge_at(after)
     if isinstance(after.when, RepeatWhen) and current.nudge_at and not after.completed:
         nudge = current.nudge_at
@@ -187,8 +198,9 @@ async def delete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
     """Delete the user's tasks and every subtask under them; returns the requested ids that existed."""
     existing = {task.id for task in await task_repository.find_by_ids(user_id, task_ids)}
     doomed = await _with_subtasks(user_id, [t for t in task_ids if t in existing])
-    # The runs first: a failed task delete keeps the task, and a retry deletes both.
+    # The runs and chats first: a failed task delete keeps the task, and a retry deletes all.
     await task_run_repository.delete_for_tasks(user_id, doomed)
+    await delete_task_conversations(user_id, doomed)
     deleted = await task_repository.bulk_delete(user_id, doomed) if doomed else 0
     log.set_ns("task", deleted=deleted)
     if deleted:
@@ -202,6 +214,16 @@ async def list_runs(
     """Return a page of the task's run records, newest first, and their total."""
     await require_task(user_id, task_id)
     return await task_run_repository.list_for_task(task_id, user_id, limit=limit, offset=offset)
+
+
+async def open_conversation(user_id: str, task_id: str) -> str:
+    """Return the id of a GAIA task's chat, creating it when no run has yet."""
+    task = await require_task(user_id, task_id)
+    if task.assignee is not Assignee.GAIA:
+        raise NoChatError(task_id)
+    conversation_id = await get_or_create_task_conversation(user_id, task.id, task.title)
+    capture(UserId(user_id), TaskChatOpened(task_id=task.id))
+    return conversation_id
 
 
 async def delete_task(user_id: str, task_id: str) -> None:

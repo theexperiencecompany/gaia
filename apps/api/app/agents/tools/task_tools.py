@@ -1,0 +1,327 @@
+"""The agent's task tools: create, change and close a task, GAIA's or the user's own.
+
+A GAIA task runs from its body and notes on its next check, its repeat or the app events
+it subscribes to; a to-do (assignee user) is never run, only nudged when it falls due.
+The notes are files under /workspace/gaia-tasks/ the agent edits with the file tools.
+"""
+
+from datetime import UTC, datetime
+from typing import Annotated
+
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+
+from app.config.oauth_config import get_integration_by_id
+from app.constants.tasks import Assignee, WhenKind
+from app.constants.todos import (
+    NEXT_CHECK_DURATION,
+    NEXT_CHECK_DURATION_UNITS,
+    NoReplyPlan,
+    WaitingOn,
+)
+from app.db.repositories.tasks import task_repository
+from app.decorators import with_doc
+from app.models.agent_models import get_user_id, read_agent_configurable
+from app.models.task_models import (
+    DateWhen,
+    NoWhen,
+    RepeatWhen,
+    TaskDocument,
+    TaskUpdate,
+)
+from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
+from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.tasks import task_service
+from app.services.tasks.errors import ClosedParentError, RepeatRuleError, TaskNotFoundError
+from app.services.tasks.gaia_tasks import complete_gaia_task, create_gaia_task, update_gaia_task
+from app.services.tasks.notes import CANVAS_TEMPLATE, with_ownership
+from app.services.tasks.open_state import (
+    NEXT_CHECK_HINT,
+    WAITING_ON_CHOICES,
+    describe_open_state,
+    waiting_after,
+)
+from app.services.tasks.todo_rounds import first_repeat
+from app.services.todos.errors import OpenStateError
+from app.services.user_service import get_profile_timezone
+from app.templates.docstrings.task_tool_docs import COMPLETE_TASK, CREATE_TASK, UPDATE_TASK
+from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
+
+_NEXT_CHECK_DESC = (
+    "GAIA tasks: when GAIA next looks at it, as a duration from now ('30m', '4h', '3d', '1w') "
+    f"or an ISO datetime with the user's offset. {NEXT_CHECK_HINT}"
+)
+_WAITING_ON_DESC = (
+    f"GAIA tasks that do not repeat: what it waits for until next_check: {WAITING_ON_CHOICES}."
+)
+_QUESTION_DESC = "With waiting_on='user': the exact question you asked them."
+_IF_NO_REPLY_DESC = (
+    "With waiting_on='user': what happens when the question expires unanswered: 'ask_again' "
+    "(one re-ask per task), 'proceed' (carry out default_action), 'hold' (nothing can move "
+    "without the answer)."
+)
+_DEFAULT_ACTION_DESC = "With if_no_reply='proceed': exactly what you will do if they never answer."
+_DUE_DESC = "ISO datetime, with the user's offset, it is due by."
+_REPEAT_DESC = (
+    "How often it repeats: 'daily', 'weekly', 'every_4h', 'every_1h', or a 5-field cron in the "
+    "user's own wall-clock time ('0 9 * * 1-5'). A repeating task needs no next_check."
+)
+_NOTIFY_DESC = (
+    "Whether the user hears about it: a GAIA task's results, a to-do's nudge when due. "
+    "Set it only when the user asks to stop or resume hearing about it."
+)
+
+
+class _Refused(Exception):
+    """A tool input the model must fix; its message is returned to the model as is."""
+
+
+def _actor(config: RunnableConfig) -> str:
+    conversation_id = read_agent_configurable(config).conversation_id
+    return f"GAIA in conversation {conversation_id[:8]}" if conversation_id else "GAIA"
+
+
+def _parse_moment(value: str, field: str, *, future: bool) -> datetime:
+    """Read a duration from now ('4h') or an ISO datetime that carries its offset."""
+    if duration := NEXT_CHECK_DURATION.fullmatch(value.strip()):
+        amount = int(duration[1])
+        if amount == 0:
+            raise _Refused(f"Error: {field} must be in the future.")
+        return datetime.now(UTC) + NEXT_CHECK_DURATION_UNITS[duration[2]] * amount
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        raise _Refused(
+            f"Error: invalid {field} '{value}'. Pass an ISO datetime with offset, or a "
+            "duration like '4h', '3d', '1w'."
+        ) from None
+    if parsed.tzinfo is None:
+        raise _Refused(f"Error: {field} '{value}' must include a timezone offset.")
+    if future and parsed <= datetime.now(UTC):
+        raise _Refused(f"Error: {field} must be in the future.")
+    return parsed
+
+
+async def _when(
+    user_id: str, due: str | None, repeat: str | None
+) -> NoWhen | DateWhen | RepeatWhen:
+    if repeat:
+        try:
+            validate_repeat_rule(repeat)
+        except InvalidScheduleError as e:
+            raise _Refused(f"Error: {e}") from e
+        return first_repeat(RepeatWhen(rule=repeat), (await get_profile_timezone(user_id)).value)
+    if due:
+        return DateWhen(at=_parse_moment(due, "due", future=False))
+    return NoWhen()
+
+
+async def _missing_apps(user_id: str, needed: list[str]) -> str | None:
+    connected = await get_connected_integration_ids(user_id)
+    missing = [i for i in needed if i not in connected]
+    if not missing:
+        return None
+    names = ", ".join(app.name if (app := get_integration_by_id(i)) else i for i in missing)
+    return (
+        f"Error: {names} is not connected, so no later run of this task could do its work. "
+        "Nothing was saved. Activate it first and create the task once it is connected."
+    )
+
+
+async def _owned_references(user_id: str, references: list[str], task_id: str | None) -> None:
+    found = {t.id for t in await task_repository.find_by_ids(user_id, references)}
+    unknown = [r for r in references if r not in found or r == task_id]
+    if unknown:
+        raise _Refused(
+            f"Error: no other task of this user has the id {', '.join(unknown)}. "
+            "Nothing was saved; pass ids from list_tasks."
+        )
+
+
+def _refusal(refused: OpenStateError, verb: str) -> str:
+    problems = "\n".join(f"- {p}" for p in refused.problems)
+    return f"Error: the task was not {verb}, because it would have no valid next step:\n{problems}"
+
+
+@tool
+@with_doc(CREATE_TASK)
+async def create_task(
+    config: RunnableConfig,
+    title: Annotated[str, "Short title for the task"],
+    assignee: Annotated[Assignee, "'gaia' for work GAIA does, 'user' for the user's own to-do"],
+    body: Annotated[str | None, "What the task is about, in a few sentences"] = None,
+    due: Annotated[str | None, _DUE_DESC] = None,
+    repeat: Annotated[str | None, _REPEAT_DESC] = None,
+    waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
+    next_check: Annotated[str | None, _NEXT_CHECK_DESC] = None,
+    question: Annotated[str | None, _QUESTION_DESC] = None,
+    if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
+    default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
+    notify: Annotated[bool, _NOTIFY_DESC] = True,
+    parent_id: Annotated[str | None, "The open task this one is a subtask of"] = None,
+    done_when: Annotated[
+        list[str] | None,
+        "GAIA tasks: the checkable conditions that make it done, one each, as the user means "
+        "them ('the feature is live for users', not 'a PR exists'). Every run checks them.",
+    ] = None,
+    evidence: Annotated[
+        str | None, "GAIA tasks: where proof of each condition will show up and how a run checks it"
+    ] = None,
+    expires_at: Annotated[
+        str | None, "GAIA tasks: ISO datetime after which it no longer matters, with offset"
+    ] = None,
+    references: Annotated[
+        list[str] | None, "GAIA tasks: ids of earlier tasks whose Learnings every run reads"
+    ] = None,
+    needs_integrations: Annotated[
+        list[str] | None,
+        "GAIA tasks: integration ids its later runs depend on; nothing is created while one "
+        "is not connected",
+    ] = None,
+) -> str:
+    user_id = get_user_id(config)
+    try:
+        when = await _when(user_id, due, repeat)
+        if assignee is Assignee.USER:
+            created = await task_service.create_task(
+                user_id,
+                TaskCreateRequest(
+                    title=title, body=body or "", when=when, parent_id=parent_id, notify=notify
+                ),
+            )
+            return f"To-do created (id {created.id}): {created.title}."
+        if refusal := await _missing_apps(user_id, needs_integrations or []):
+            return refusal
+        if references:
+            await _owned_references(user_id, references, None)
+        if (
+            parent_id is not None
+            and (await task_service.require_task(user_id, parent_id)).completed
+        ):
+            raise ClosedParentError(parent_id)
+        draft = TaskDocument(
+            user_id=user_id,
+            title=title,
+            body=body or "",
+            assignee=Assignee.GAIA,
+            when=when,
+            parent_id=parent_id,
+            notify=notify,
+            notes=with_ownership(CANVAS_TEMPLATE.format(title=title), done_when or [], evidence),
+            references=references or [],
+            integration_ids=needs_integrations or [],
+            source_conversation_id=read_agent_configurable(config).conversation_id,
+            expires_at=_parse_moment(expires_at, "expires_at", future=True) if expires_at else None,
+        )
+        if when.kind is not WhenKind.REPEAT:
+            draft.next_check_at = (
+                _parse_moment(next_check, "next_check", future=True) if next_check else None
+            )
+            if waiting_on is not None:
+                draft.waiting = waiting_after(
+                    None,
+                    on=waiting_on,
+                    question=question,
+                    if_no_reply=if_no_reply,
+                    default_action=default_action,
+                )
+        created = await create_gaia_task(draft, by=_actor(config))
+    except _Refused as refused:
+        return str(refused)
+    except OpenStateError as refused:
+        return _refusal(refused, "created")
+    except (TaskNotFoundError, ClosedParentError, RepeatRuleError) as refused:
+        return f"Error: {refused.message} Nothing was saved."
+    return (
+        f"Task created (id {created.id}): {created.title}. "
+        f"{describe_open_state(created, datetime.now(UTC))}."
+    )
+
+
+@tool
+@with_doc(UPDATE_TASK)
+async def update_task(
+    config: RunnableConfig,
+    task_id: Annotated[str, "Id of the task to change"],
+    title: Annotated[str | None, "New title"] = None,
+    body: Annotated[str | None, "New details"] = None,
+    due: Annotated[str | None, _DUE_DESC] = None,
+    waiting_on: Annotated[WaitingOn | None, _WAITING_ON_DESC] = None,
+    next_check: Annotated[str | None, _NEXT_CHECK_DESC] = None,
+    question: Annotated[str | None, _QUESTION_DESC] = None,
+    if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
+    default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
+    notify: Annotated[bool | None, _NOTIFY_DESC] = None,
+) -> str:
+    user_id = get_user_id(config)
+    try:
+        task = await task_service.require_task(user_id, task_id)
+        fields: dict[str, object] = {
+            name: value
+            for name, value in {"title": title, "body": body, "notify": notify}.items()
+            if value is not None
+        }
+        if due is not None:
+            fields["when"] = DateWhen(at=_parse_moment(due, "due", future=False))
+        if task.assignee is Assignee.USER:
+            if not fields:
+                return "No fields to update. Provide at least one field to change."
+            await task_service.update_task(
+                user_id, task_id, TaskUpdateRequest.model_validate(fields)
+            )
+            return f"Updated to-do {task_id}: {', '.join(fields)}."
+        if next_check is not None:
+            fields["next_check_at"] = _parse_moment(next_check, "next_check", future=True)
+        if waiting_on is not None or question is not None:
+            fields["waiting"] = waiting_after(
+                task.waiting,
+                on=waiting_on or (task.waiting.on if task.waiting else WaitingOn.TIME),
+                question=question,
+                if_no_reply=if_no_reply,
+                default_action=default_action,
+            )
+        if not fields:
+            return "No fields to update. Provide at least one field to change."
+        updated = await update_gaia_task(task, TaskUpdate.model_validate(fields), by=_actor(config))
+    except _Refused as refused:
+        return str(refused)
+    except OpenStateError as refused:
+        return _refusal(refused, "updated")
+    except TaskNotFoundError as missing:
+        return f"Error: {missing.message}"
+    return (
+        f"Updated task {task_id}: {', '.join(fields)}. "
+        f"{describe_open_state(updated, datetime.now(UTC))}."
+    )
+
+
+@tool
+@with_doc(COMPLETE_TASK)
+async def complete_task(
+    config: RunnableConfig,
+    task_id: Annotated[str, "Id of the task to mark done"],
+    summary: Annotated[str, "One or two sentences on what was achieved"],
+    stop_repeat: Annotated[
+        bool, "True only when the user asked to stop a repeating task entirely"
+    ] = False,
+) -> str:
+    user_id = get_user_id(config)
+    try:
+        task = await task_service.require_task(user_id, task_id)
+    except TaskNotFoundError as missing:
+        return f"Error: {missing.message}"
+    if isinstance(task.when, RepeatWhen) and not stop_repeat:
+        return (
+            f"Error: task {task_id} repeats ({task.when.rule}). One finished run never ends a "
+            "standing schedule: leave it open, or if the user asked to stop it entirely, call "
+            "complete_task again with stop_repeat=true."
+        )
+    if task.assignee is Assignee.USER:
+        await task_service.update_task(user_id, task_id, TaskUpdateRequest(completed=True))
+        return f"To-do {task_id} marked done."
+    if await complete_gaia_task(task, summary) is None:
+        return f"Task {task_id} was already done."
+    return f"Task {task_id} completed."
+
+
+tools = [create_task, update_task, complete_task]
