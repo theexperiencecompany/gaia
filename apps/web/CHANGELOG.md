@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.27.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.26.0...web-v0.27.0) (2026-11-21)
+
+
+### Features
+
+* **api:** resume a chat, todo or workflow once the user connects or configures what it asked for ([#1779](https://github.com/theexperiencecompany/gaia/issues/1779)) ([e99a935](https://github.com/theexperiencecompany/gaia/commit/e99a935b339fd666c409883d9093ac413b6fd8d2))
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+* **delivery:** presence-aware, one-place proactive messaging ([#1523](https://github.com/theexperiencecompany/gaia/issues/1523)) ([39887cf](https://github.com/theexperiencecompany/gaia/commit/39887cfe9e9fe0b6c7a1fe5daa916cf09eac2b2f))
+* **inbox:** JEV buckets the desk's mail into reply, waiting, act, fyi and junk; gate skips stay bounded ([#1667](https://github.com/theexperiencecompany/gaia/issues/1667)) ([29f0697](https://github.com/theexperiencecompany/gaia/commit/29f0697a512c1d0fcd8037c49e2795f21073bbe3))
+* **onboarding:** first conversations users can trust, in their language ([#1584](https://github.com/theexperiencecompany/gaia/issues/1584)) ([9326f82](https://github.com/theexperiencecompany/gaia/commit/9326f82aaf40dfd220c99d8fb7d9a1ff6ea0b241))
+* **settings:** open a linked Telegram, WhatsApp or iMessage chat from linked accounts ([#1633](https://github.com/theexperiencecompany/gaia/issues/1633)) ([b6eb365](https://github.com/theexperiencecompany/gaia/commit/b6eb36542021563f8dfbaa855b9763f0ce4f955e))
+* **settings:** quiet hours are the user's own, set on a noon-to-noon slider ([#1664](https://github.com/theexperiencecompany/gaia/issues/1664)) ([074b108](https://github.com/theexperiencecompany/gaia/commit/074b1089d6e92d0b64988fbcdbf4b53f13db9939))
+* **todos:** give every tracked todo its own chat, led by what woke each run ([#1561](https://github.com/theexperiencecompany/gaia/issues/1561)) ([7fa8464](https://github.com/theexperiencecompany/gaia/commit/7fa84648be37066f58b4929dc0f8a0c468d8f1f9))
+* **web:** migrate HeroUI v2 → v3 (perf 77→100) ([#1577](https://github.com/theexperiencecompany/gaia/issues/1577)) ([61acd9c](https://github.com/theexperiencecompany/gaia/commit/61acd9c8b6cfacbebb5d161714756addd1dbe991))
+* **web:** nonce-based Content-Security-Policy at the edge, report-only first ([#1764](https://github.com/theexperiencecompany/gaia/issues/1764)) ([297ab43](https://github.com/theexperiencecompany/gaia/commit/297ab43a046ff47dc5fbc2930a4c97d46933d469))
+* **web:** see, edit and turn off a job's Runs only when rule ([#1661](https://github.com/theexperiencecompany/gaia/issues/1661)) ([e89213c](https://github.com/theexperiencecompany/gaia/commit/e89213c039dfe86ae238d1d0bdf0cbc8b896243a))
+* **web:** the visible fixes from the heygaia.io audit ([#1539](https://github.com/theexperiencecompany/gaia/issues/1539)) ([fc67d3d](https://github.com/theexperiencecompany/gaia/commit/fc67d3d8301634b4cd807ab6e3a5ee8c18861bc1))
+* **workflows:** GAIA writes a job's Runs only when condition as it creates it ([#1660](https://github.com/theexperiencecompany/gaia/issues/1660)) ([6beec4d](https://github.com/theexperiencecompany/gaia/commit/6beec4d9752b9c504d20bd6eb68907f8cc180343))
+
+
+### Bug Fixes
+
+* **bots:** point every bot link at one set of handles ([#1672](https://github.com/theexperiencecompany/gaia/issues/1672)) ([68858b3](https://github.com/theexperiencecompany/gaia/commit/68858b3cc47eacf4552a860e09050958500231e1))
+* **browser:** serve the live view under /api/v1 so its socket upgrades behind every proxy ([#1578](https://github.com/theexperiencecompany/gaia/issues/1578)) ([35625ca](https://github.com/theexperiencecompany/gaia/commit/35625ca019f70c057165ac0a95d2c26780bacba8))
+* **chat:** bot DM chats stay cached and sync incrementally instead of reloading in full ([#1691](https://github.com/theexperiencecompany/gaia/issues/1691)) ([3f85a3f](https://github.com/theexperiencecompany/gaia/commit/3f85a3f40c898a8319641af3f6225dca87eee365))
+* **checkout:** keep the Dodo overlay in the app and never strand a payer ([#1587](https://github.com/theexperiencecompany/gaia/issues/1587)) ([ae8550b](https://github.com/theexperiencecompany/gaia/commit/ae8550bc4f5da7ae743ae24e6baac4ab06e89bbc))
+* **ci:** a dispatched run off master builds the web bundle as a check ([#1844](https://github.com/theexperiencecompany/gaia/issues/1844)) ([62756e3](https://github.com/theexperiencecompany/gaia/commit/62756e38329b1ea54701b62b31ceecc0517331a1))
+* **ci:** commit hooks install node_modules once in a fresh worktree ([#1818](https://github.com/theexperiencecompany/gaia/issues/1818)) ([fba3a25](https://github.com/theexperiencecompany/gaia/commit/fba3a2569a9806a2bfb5d82aa4f9fa46d9dd923f))
+* **ci:** stop six tooling traps agents hit landing a stacked PR ([#1730](https://github.com/theexperiencecompany/gaia/issues/1730)) ([7371fe8](https://github.com/theexperiencecompany/gaia/commit/7371fe8250245ff8d5fe1c5ae665575eb4910aa8))
+* **comms:** one GAIA that reacts instead of replying "on it" and never claims unconfirmed work ([#1669](https://github.com/theexperiencecompany/gaia/issues/1669)) ([254537b](https://github.com/theexperiencecompany/gaia/commit/254537b4982dc1d6b2752516a5a3ba8bfd161407))
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+* **dev:** a worktree's web dev server reads its own apps/web/.env ([#1821](https://github.com/theexperiencecompany/gaia/issues/1821)) ([fd6f261](https://github.com/theexperiencecompany/gaia/commit/fd6f2616f6278a03e17cf746fb14e7f7022e85ed))
+* **dev:** the web dev server targets this worktree's API port ([#1598](https://github.com/theexperiencecompany/gaia/issues/1598)) ([c40d623](https://github.com/theexperiencecompany/gaia/commit/c40d6231b5bc843c01540619f54ec186bce7f5b7))
+* **executor:** a finished background result is never thrown away; Stop stops the run ([#1586](https://github.com/theexperiencecompany/gaia/issues/1586)) ([0a3a7e2](https://github.com/theexperiencecompany/gaia/commit/0a3a7e2873ddcd7c976b1c4535679667bc3a6e68))
+* **integrations:** one connect card per run, then calls to that integration are refused ([#1583](https://github.com/theexperiencecompany/gaia/issues/1583)) ([60eb7c7](https://github.com/theexperiencecompany/gaia/commit/60eb7c7684cb5c3f6822885b5cb7a607c1b9a997))
+* **integrations:** plain error copy when a connect fails ([#1662](https://github.com/theexperiencecompany/gaia/issues/1662)) ([7213bd1](https://github.com/theexperiencecompany/gaia/commit/7213bd19dc9ae18b79b9e2a17361ede264b6d227))
+* **onboarding:** one server event per wizard step, retrying answers save, wait for the bot link, log out ([#1591](https://github.com/theexperiencecompany/gaia/issues/1591)) ([735f860](https://github.com/theexperiencecompany/gaia/commit/735f8606c2cdfcabf67d2ee4470bc7f131d6c23a))
+* **seo:** Core SEO and Links: meta descriptions in window, indexable /signup, /manifesto folded into /about ([#1763](https://github.com/theexperiencecompany/gaia/issues/1763)) ([4fa4407](https://github.com/theexperiencecompany/gaia/commit/4fa440723ad379b8cd5ff74db39227356f39bcf4))
+* **seo:** every page description fits the snippet window, and the audit fails on warnings ([#1531](https://github.com/theexperiencecompany/gaia/issues/1531)) ([167d58c](https://github.com/theexperiencecompany/gaia/commit/167d58ca73ae927155e0c4abd5bc5159c3a45963))
+* **seo:** full-crawl Links and URL Structure to 100, family pages ship half the CSS ([#1797](https://github.com/theexperiencecompany/gaia/issues/1797)) ([dad3377](https://github.com/theexperiencecompany/gaia/commit/dad3377db52ed03387c354463b07094c22c7f935))
+* **seo:** give hub children, categories and paginated hubs a contextual inbound link ([#1740](https://github.com/theexperiencecompany/gaia/issues/1740)) ([f590a9e](https://github.com/theexperiencecompany/gaia/commit/f590a9e27629e5af50c197bcbe7e7a2efe9ab3da))
+* **seo:** live-crawl findings after [#1797](https://github.com/theexperiencecompany/gaia/issues/1797), and no session-only calls for signed-out visitors ([#1822](https://github.com/theexperiencecompany/gaia/issues/1822)) ([494728e](https://github.com/theexperiencecompany/gaia/commit/494728e7373af05feac2c26e19003203b4ed4bdb))
+* **seo:** paginated hubs self-canonicalise with their own titles, /features caching, app-route and dev-host leaks ([#1719](https://github.com/theexperiencecompany/gaia/issues/1719)) ([5a32a3b](https://github.com/theexperiencecompany/gaia/commit/5a32a3b22a4cf338921a67ef5f75c6021d8b0fc4))
+* **seo:** real fixes for the squirrelscan Links, URL, Content, Images and title findings ([#1702](https://github.com/theexperiencecompany/gaia/issues/1702)) ([1d90922](https://github.com/theexperiencecompany/gaia/commit/1d90922d2f6bccb282875a82569f17b20b034ec4))
+* **seo:** retry dropped connections in the post-deploy audit, regenerate the live squirrel baseline ([#1828](https://github.com/theexperiencecompany/gaia/issues/1828)) ([0d638b6](https://github.com/theexperiencecompany/gaia/commit/0d638b677721137a398b770741c65052b5a44488))
+* **seo:** what an independent squirrelscan audit of heygaia.io found ([#1535](https://github.com/theexperiencecompany/gaia/issues/1535)) ([3724461](https://github.com/theexperiencecompany/gaia/commit/3724461e118da4b8a91b18a3260ff914c4c18763))
+* usage stops at 100% of the monthly allowance with a clear reset date; visible attachment limits ([#1582](https://github.com/theexperiencecompany/gaia/issues/1582)) ([fcfa685](https://github.com/theexperiencecompany/gaia/commit/fcfa6850cafff3a21fa27d7148b57bcde0f85618))
+* **usage:** budget-wall cards name the wall that bound, and bots relay its message ([#1663](https://github.com/theexperiencecompany/gaia/issues/1663)) ([f97cea1](https://github.com/theexperiencecompany/gaia/commit/f97cea101c56c03adb9ec265dffbc6938f9007f3))
+* **voice:** route each room to its own environment's agent and speak backend errors ([#1769](https://github.com/theexperiencecompany/gaia/issues/1769)) ([343526b](https://github.com/theexperiencecompany/gaia/commit/343526b99a9342273a40d9203d0ff0371bf1f64e))
+* **web:** /contact form looped on re-render (React [#301](https://github.com/theexperiencecompany/gaia/issues/301)) ([#1537](https://github.com/theexperiencecompany/gaia/issues/1537)) ([5ffe91b](https://github.com/theexperiencecompany/gaia/commit/5ffe91b9811a91498ca06c3cc6711bcd832cbd90))
+* **web:** a todo's coloured chips take their text colour from their chip colour ([#1666](https://github.com/theexperiencecompany/gaia/issues/1666)) ([bcddbf5](https://github.com/theexperiencecompany/gaia/commit/bcddbf59c31b5005160376e677f0123468ff6c10))
+* **web:** clear squirrel's crawl, image, social and schema leftovers at their source ([#1739](https://github.com/theexperiencecompany/gaia/issues/1739)) ([f345259](https://github.com/theexperiencecompany/gaia/commit/f3452595f452fee13bcf5145c373f093f12691af))
+* **web:** direct CDN URLs for author avatars (Ahrefs broken images) ([#1575](https://github.com/theexperiencecompany/gaia/issues/1575)) ([f626977](https://github.com/theexperiencecompany/gaia/commit/f626977743220d193b7d6912cbaa4e7c69c66a5e))
+* **web:** HttpOnly locale cookie (Security 96) ([#1559](https://github.com/theexperiencecompany/gaia/issues/1559)) ([b23ac96](https://github.com/theexperiencecompany/gaia/commit/b23ac96efc66ba07e6b37208c8bdafd6b48d72ce))
+* **web:** landing hubs open with a short line instead of a paragraph wall ([#1701](https://github.com/theexperiencecompany/gaia/issues/1701)) ([40c2c4b](https://github.com/theexperiencecompany/gaia/commit/40c2c4bf1d43b10f52a6fc8b484f0f530ddebaaa))
+* **web:** lowercase the pt-BR locale segment (URL Structure 100) ([#1574](https://github.com/theexperiencecompany/gaia/issues/1574)) ([e19c069](https://github.com/theexperiencecompany/gaia/commit/e19c069851636d84bca68ccf0a1448ae3749e6e7))
+* **web:** one owner removes the deployed source maps; the landing check runs on every build ([#1614](https://github.com/theexperiencecompany/gaia/issues/1614)) ([118c5b8](https://github.com/theexperiencecompany/gaia/commit/118c5b8b367e35f700ca1f1a68accd125376e99b))
+* **web:** recover stale-deploy module errors behind the route error boundary ([#1485](https://github.com/theexperiencecompany/gaia/issues/1485)) ([2b2eb98](https://github.com/theexperiencecompany/gaia/commit/2b2eb984e644ce220e7232faf07f0808cbdca397))
+* **web:** repair the chat composer, workflow card widths, and settings flyouts ([#1857](https://github.com/theexperiencecompany/gaia/issues/1857)) ([571ff7b](https://github.com/theexperiencecompany/gaia/commit/571ff7bb5a40bd8716b82b6f6835e27e18fb173d))
+* **web:** restore /feed and stop serving source maps ([#1563](https://github.com/theexperiencecompany/gaia/issues/1563)) ([7243781](https://github.com/theexperiencecompany/gaia/commit/72437810b971d29c76730a9741f1286fda8351a2))
+* **web:** retry server API reads during the build instead of failing on a slow response ([#1648](https://github.com/theexperiencecompany/gaia/issues/1648)) ([1539b0e](https://github.com/theexperiencecompany/gaia/commit/1539b0e4e26129771ecb80cf21c4b413d2e57735))
+* **web:** scan tracked files with one git grep in the public-images test ([#1643](https://github.com/theexperiencecompany/gaia/issues/1643)) ([43e0e5e](https://github.com/theexperiencecompany/gaia/commit/43e0e5e235d939d59e6c81304a982361a9072fc0))
+* **web:** unpaid accounts never touch the paid app shell ([#1585](https://github.com/theexperiencecompany/gaia/issues/1585)) ([34c1b73](https://github.com/theexperiencecompany/gaia/commit/34c1b73e6371f519d164a719f9d5892c628d5c87))
+
+
+### Performance Improvements
+
+* **web:** a third less JavaScript on phones (marketing 46→59 on home), no visible change ([#1766](https://github.com/theexperiencecompany/gaia/issues/1766)) ([890996d](https://github.com/theexperiencecompany/gaia/commit/890996df5c601edea66ee3094882d08addbd2262))
+* **web:** drop the 1920w phone_dock variant (last oversized image) ([#1576](https://github.com/theexperiencecompany/gaia/issues/1576)) ([f888784](https://github.com/theexperiencecompany/gaia/commit/f888784d02e43ecae8d5e2fb14bfb2eed3c98e00))
+* **web:** fixed-width phone_dock so the 1920w variant cannot exist ([f888784](https://github.com/theexperiencecompany/gaia/commit/f888784d02e43ecae8d5e2fb14bfb2eed3c98e00))
+* **web:** marketing pages stop loading the chat stack, PostHog SDK and OpenUI CSS ([#1540](https://github.com/theexperiencecompany/gaia/issues/1540)) ([63d885e](https://github.com/theexperiencecompany/gaia/commit/63d885e35fd2e27773213c4a2337097f75a91063))
+* **web:** max-age + Last-Modified for the ISR hub pages ([#1571](https://github.com/theexperiencecompany/gaia/issues/1571)) ([91b3ad9](https://github.com/theexperiencecompany/gaia/commit/91b3ad9eb92f2aefdf029f5baf8d5458710b29d3))
+* **web:** phone_dock at display width, fewer duplicate image loads ([#1570](https://github.com/theexperiencecompany/gaia/issues/1570)) ([bfc8c70](https://github.com/theexperiencecompany/gaia/commit/bfc8c70bd00c25f944948eeb5f75488596603a5c))
+* **web:** request phone_dock at its display width, stop double-loading it ([bfc8c70](https://github.com/theexperiencecompany/gaia/commit/bfc8c70bd00c25f944948eeb5f75488596603a5c))
+* **web:** strip source-map comments, extend hub caching, cap phone_dock ([#1573](https://github.com/theexperiencecompany/gaia/issues/1573)) ([07fe512](https://github.com/theexperiencecompany/gaia/commit/07fe51202069c0d77d295340cbf8162ca65a2380))
+
 ## [0.26.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.25.0...web-v0.26.0) (2026-10-26)
 
 
