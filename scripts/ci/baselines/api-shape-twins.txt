@@ -74,7 +74,6 @@ apps/web/src/config/registries/toolRegistry.ts:TypedToolDataEntry=ApprovalReques
 apps/web/src/features/auth/utils/toCurrentUser.ts:CurrentUser=AuthenticatedUserResponse
 apps/web/src/features/blog/components/BlogMetadata.tsx:TeamMember=AuthorDetails
 apps/web/src/features/chat/components/bubbles/bot/ChartDisplay.tsx:ChartData=SupportRequestCreate
-apps/web/src/features/chat/components/bubbles/user/ChatBubbleUser.tsx:BubbleIndicatorsProps=UserMessage
 apps/web/src/features/chat/components/composer/ComposerLeft.tsx:DropdownItemConfig=NotificationAction
 apps/web/src/features/chat/components/memory/MemoryIndicator.tsx:MemoryItem=NotificationRequest
 # One of the ten raw-apiauth feature files the concurrent migration is moving
