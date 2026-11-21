@@ -145,8 +145,14 @@ export default function RightSidebarSlot() {
             overflow: "hidden",
           }}
         >
-          {isOpen && closeButton}
-          <Slot />
+          {/* Full width from the first frame, so content slides in instead of reflowing as the sidebar widens. */}
+          <div
+            className="flex min-h-0 flex-1 flex-col"
+            style={{ width: sidebarWidth }}
+          >
+            {isOpen && closeButton}
+            <Slot />
+          </div>
         </aside>
       )}
     </>

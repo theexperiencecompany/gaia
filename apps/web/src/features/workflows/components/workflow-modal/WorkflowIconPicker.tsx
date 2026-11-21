@@ -1,6 +1,6 @@
 import { Input, Popover, Tooltip } from "@heroui/react";
 import { PlusSignIcon, Search01Icon } from "@icons";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { type Control, useController } from "react-hook-form";
 import {
   inputVariants,
@@ -26,6 +26,8 @@ import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 interface WorkflowIconPickerProps {
   control: Control<WorkflowFormData>;
   isReadOnly?: boolean;
+  /** Shown in the tile until an icon is chosen; a plus by default. */
+  empty?: ReactNode;
 }
 
 interface IconGridProps {
@@ -59,6 +61,7 @@ function IconGrid({ icons, selectedName, onPick }: IconGridProps) {
 export default function WorkflowIconPicker({
   control,
   isReadOnly = false,
+  empty,
 }: WorkflowIconPickerProps) {
   const { field: iconField } = useController({ control, name: "icon" });
   const { field: colorField } = useController({ control, name: "icon_color" });
@@ -114,6 +117,7 @@ export default function WorkflowIconPicker({
       <GaiaButton
         isIconOnly
         variant={selected ? "default-soft" : "tertiary"}
+        shape="sm"
         aria-label={selected ? "Change workflow icon" : "Add workflow icon"}
         className="-mt-0.5 size-10 min-w-10 shrink-0"
         style={selected ? tintedBg : undefined}
@@ -121,7 +125,7 @@ export default function WorkflowIconPicker({
         {selected ? (
           <selected.Icon size={20} style={{ color }} />
         ) : (
-          <PlusSignIcon className="size-5 text-zinc-500" />
+          (empty ?? <PlusSignIcon className="size-5 text-zinc-500" />)
         )}
       </GaiaButton>
       <Popover.Content
