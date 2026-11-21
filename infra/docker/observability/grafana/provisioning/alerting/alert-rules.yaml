@@ -1809,7 +1809,8 @@ groups:
 
       # 29. A comms model call ran over a minute. A chat reply that long is a
       # runaway: the 3,998-break replies of October ran ~100 s to the output
-      # limit. Counted per call, not as a p95, so a single one shows up.
+      # limit. Counted per call, not as a p95, so a single one shows up. The slow-call
+      # counter is derived before increase(), which extrapolates two counters apart.
       - uid: gaia-comms-reply-runaway
         title: A chat reply ran to an abnormal length
         condition: C
@@ -1819,7 +1820,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: sum(increase(llm_call_seconds_count{agent="comms_agent"}[15m])) - sum(increase(llm_call_seconds_bucket{agent="comms_agent",le="60.0"}[15m]))
+              expr: sum(increase((llm_call_seconds_count{agent="comms_agent"} - ignoring(le) llm_call_seconds_bucket{agent="comms_agent",le="60.0"})[15m:1m]))
               instant: true
           - refId: B
             datasourceUid: __expr__

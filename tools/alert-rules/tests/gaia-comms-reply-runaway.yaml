@@ -41,3 +41,27 @@ tests:
       - eval_time: 30m
         alertname: gaia-comms-reply-runaway
         exp_alerts: []
+
+  - name: gaia-comms-reply-runaway stays quiet on a fast call after a slow one older than the window
+    interval: 1m
+    input_series:
+      - series: 'llm_call_seconds_count{agent="comms_agent",model="m"}'
+        values: '1x19 2x10'
+      - series: 'llm_call_seconds_bucket{agent="comms_agent",model="m",le="60.0"}'
+        values: '0x19 1x10'
+    alert_rule_test:
+      - eval_time: 23m
+        alertname: gaia-comms-reply-runaway
+        exp_alerts: []
+
+  - name: gaia-comms-reply-runaway stays quiet across a counter reset with only fast calls after it
+    interval: 1m
+    input_series:
+      - series: 'llm_call_seconds_count{agent="comms_agent",model="m"}'
+        values: '5x10 0+1x20'
+      - series: 'llm_call_seconds_bucket{agent="comms_agent",model="m",le="60.0"}'
+        values: '4x10 0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: gaia-comms-reply-runaway
+        exp_alerts: []
