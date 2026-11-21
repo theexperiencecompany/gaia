@@ -39,6 +39,7 @@ from tests.e2e._harness.tasks_views import (
     Finishes,
     GaiaRun,
     KeepsWaiting,
+    NeedsApproval,
     OpensSubtasks,
     Reports,
     RunOutcome,
@@ -48,12 +49,23 @@ from tests.e2e._harness.tasks_views import (
     TaskView,
 )
 from tests.e2e._harness.transcript import Transcript
-from tests.e2e._harness.turn_queue import TurnQueue
+from tests.e2e._harness.turn_queue import APPROVAL_ID_FROM_PROMPT, TurnQueue
 
 TODOS = "/api/v1/todos"
 NOTIFICATIONS = "/api/v1/notifications"
 #: When a one-off GAIA task first looks at its work, as a user handing it over leaves it.
 FIRST_LOOK = "1h"
+HIL_PREFERENCES = "/api/v1/approvals/preferences"
+#: The action a NeedsApproval run reaches: pure, and outside the executor's initial tools.
+GATED_ACTION = "create_flowchart"
+GATED_ACTION_ARGS = {"description": "the plan's three steps", "direction": "LR"}
+#: The card an approved action leaves in the chat once GAIA has taken it.
+APPROVED_ACTION_CARD = "approve"
+_REDEEM = {
+    "task_description": "take the approved action",
+    "tool_name": "approve",
+    "data": {"id": APPROVAL_ID_FROM_PROMPT},
+}
 #: What GAIA says in the chat while it picks the work up.
 ON_IT = "On it."
 #: When GAIA checks back on a question it asked.
@@ -288,6 +300,19 @@ class TasksDriver:
                     ]
                 )
                 tell(report)
+            case NeedsApproval(asking):
+                self._executor.then(
+                    [
+                        call(
+                            "retrieve_tools",
+                            {"exact_tool_names": [GATED_ACTION]},
+                            call_id="tc_find",
+                        ),
+                        call(GATED_ACTION, GATED_ACTION_ARGS, call_id="tc_gated"),
+                        *([asking, asking] if one_off else [asking]),
+                    ]
+                )
+                tell(asking)
             case Breaks():
                 pass
 
@@ -316,6 +341,45 @@ class TasksDriver:
             "".join([chunk async for chunk in stream_manager.subscribe_stream(stream_id)])
         )
         assert transcript.is_done, "the reply's chat turn never finished"
+        await drain_background_runs()
+        self._all_turns_taken()
+
+    async def ask_before_acting(self) -> None:
+        """Set the user's approval settings to ask before the action GAIA takes in NeedsApproval."""
+        _ok(
+            await self._client.put(
+                HIL_PREFERENCES,
+                json={"mode": "always_ask", "tool_overrides": {GATED_ACTION: True}},
+            )
+        )
+
+    async def approve(self, task_id: str, report: str) -> None:
+        """Approve the action the task waits on; GAIA takes it and reports."""
+        self._executor.then([call("execute", _REDEEM, call_id="tc_redeem"), report, report, report])
+        await self._decide(task_id, {"decision": "approve"}, report, runs=2)
+
+    async def deny(self, task_id: str, report: str) -> None:
+        """Deny the action the task waits on; GAIA skips it and reports."""
+        self._executor.then([report, report])
+        await self._decide(task_id, {"decision": "deny", "feedback": "not now"}, report, runs=1)
+
+    async def _decide(
+        self, task_id: str, verdict: dict[str, str], report: str, *, runs: int
+    ) -> None:
+        todo = _ok(await self._client.get(f"{TODOS}/{task_id}"))
+        pending = todo["pending_approval"]
+        assert pending is not None, "the task waits on no approval"
+        if todo["notify_on_run"]:
+            self._comms.then([report] * runs)
+        _ok(
+            await self._client.post(
+                f"/api/v1/approvals/{pending['approval_id']}/decision", json=verdict
+            )
+        )
+        await drain_background_runs()
+        for job in await self._armed(task_id):
+            if job.function == "resume_tracked_todo":
+                await self._run(job)
         await drain_background_runs()
         self._all_turns_taken()
 
@@ -384,10 +448,21 @@ class TasksDriver:
         )
         (row,) = synced["conversations"]
         return [
-            ChatLine(by_user=m["type"] == "user", text=m["response"])
+            ChatLine(
+                by_user=m["type"] == "user",
+                text=m["response"],
+                cards=tuple(
+                    str((entry.get("data") or {}).get("tool_name", entry.get("tool_name")))
+                    for entry in m.get("tool_data") or []
+                ),
+            )
             for m in row["messages"]
-            if m["response"]
+            if m["response"] or m.get("tool_data")
         ]
+
+    async def approved_actions_taken(self, task_id: str) -> int:
+        """Count the approved actions the task's chat shows GAIA took, one card each."""
+        return sum(line.cards.count(APPROVED_ACTION_CARD) for line in await self.chat(task_id))
 
     async def _activity(self, task_id: str) -> list[tuple[str, str]]:
         body = _ok(await self._client.get(f"{TODOS}/{task_id}/canvas"))

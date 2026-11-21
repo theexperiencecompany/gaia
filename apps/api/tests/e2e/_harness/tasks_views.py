@@ -115,6 +115,13 @@ class Breaks:
 
 
 @dataclass(frozen=True)
+class NeedsApproval:
+    """GAIA reaches an action the user asked to approve first, and waits on the approval."""
+
+    asking: str
+
+
+@dataclass(frozen=True)
 class OpensSubtasks:
     """GAIA splits the work into sub-tasks and waits for them."""
 
@@ -123,7 +130,7 @@ class OpensSubtasks:
 
 
 #: What GAIA does on one run, as a journey scripts it.
-GaiaRun = Finishes | Reports | Asks | KeepsWaiting | Breaks | OpensSubtasks
+GaiaRun = Finishes | Reports | Asks | KeepsWaiting | Breaks | OpensSubtasks | NeedsApproval
 
 
 @dataclass(frozen=True)
@@ -132,6 +139,8 @@ class ChatLine:
 
     by_user: bool
     text: str
+    #: The tool cards the message shows, by the tool each one is for.
+    cards: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
