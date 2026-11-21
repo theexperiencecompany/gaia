@@ -247,11 +247,26 @@ class TasksDriver:
 
     # To-dos the user does themselves.
 
-    async def create_todo(self, title: str, *, due: datetime | None = None) -> TaskView:
+    async def create_todo(
+        self, title: str, *, due: datetime | None = None, repeat: str | None = None
+    ) -> TaskView:
+        """Create a to-do the user does themselves; repeat is a cron the to-do comes back on."""
         payload: dict[str, Any] = {"title": title}
         if due is not None:
             payload["due_date"] = due.isoformat()
+        if repeat is not None:
+            payload["recurrence"] = repeat
         return _task_view(_ok(await self._client.post(TODOS, json=payload)))
+
+    async def pass_time_until(self, when: datetime) -> None:
+        """Let the clock reach when, every run armed for any task by then firing in its turn."""
+        while due := [
+            j
+            for j in sorted(await self._pool.queued_jobs(), key=lambda j: j.score)
+            if j.function in _RUN_JOBS and j.score <= when.timestamp() * 1000
+        ]:
+            await self._run(due[0])
+        self._all_turns_taken()
 
     async def edit(
         self, task_id: str, *, title: str | None = None, due: datetime | None = None
