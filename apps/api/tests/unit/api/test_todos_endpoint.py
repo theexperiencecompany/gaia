@@ -6,9 +6,9 @@ happy path with the service faked, and analytics captures on mutations.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta, tzinfo
-from typing import Self
+from datetime import UTC, datetime, time
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from httpx import AsyncClient
 import pytest
@@ -24,6 +24,8 @@ from app.models.todo_models import (
     ProjectResponse,
     SearchMode,
     SubTask,
+    TodoCounts,
+    TodoDayWindow,
     TodoDocument,
     TodoListParams,
     TodoListResponse,
@@ -38,12 +40,25 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 from app.utils.log_identifiers import user_text_shape
+from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled, TodosUpdated
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
 from tests.conftest import FAKE_USER
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
+_TZ_BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"
+_IST_HEADER = {"x-timezone": "Asia/Kolkata"}
+
+
+def _is_ist_midnight(instant: datetime) -> bool:
+    return instant.astimezone(ZoneInfo("Asia/Kolkata")).time() == time.min
+
+
+# 01:00 IST on 2026-11-18.
+_IST_WINDOW = TodoDayWindow.for_timezone(
+    Timezone.parse("Asia/Kolkata"), datetime(2026, 11, 17, 19, 30, tzinfo=UTC)
+)
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture"
 GATE_SERVICE = "app.services.todos.subscription_gate"
 
@@ -130,6 +145,43 @@ class TestListTodos:
         # The explicit range must survive resolution into the search params.
         assert params.due_date_start == datetime(2026, 1, 1, tzinfo=UTC)
         assert params.due_date_end == datetime(2026, 2, 1, tzinfo=UTC)
+
+    async def test_list_buckets_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.TodoService.list_todos",
+                new_callable=AsyncMock,
+                return_value=_empty_list_response(),
+            ) as list_todos,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos?due_today=true", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        params = list_todos.await_args.args[1]
+        assert params.day_window is not None
+        assert _is_ist_midnight(params.day_window.today_start)
+        assert params.due_date_start == params.day_window.today_start
+
+    async def test_counts_bucket_on_the_callers_home_timezone(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.compute_counts",
+                new_callable=AsyncMock,
+                return_value=TodoCounts(today=2),
+            ) as compute_counts,
+            patch(_TZ_BACKFILL, new_callable=AsyncMock),
+        ):
+            resp = await client.get("/api/v1/todos/counts", headers=_IST_HEADER)
+
+        assert resp.status_code == 200
+        assert resp.json()["today"] == 2
+        assert _is_ist_midnight(compute_counts.await_args.kwargs["window"].today_start)
 
     async def test_list_logs_the_search_context(self, client: AsyncClient) -> None:
         with (
@@ -441,52 +493,32 @@ class TestListQueryHelpers:
 
         assert params.filters_applied == ["date_range"]
 
-    def test_due_today_is_the_utc_day_bounds(self):
-        search = TodoListParams(due_today=True).to_search_params()
-        start, end = search.due_date_start, search.due_date_end
+    def test_due_today_is_the_users_local_day(self):
+        search = TodoListParams(due_today=True).to_search_params(_IST_WINDOW)
 
-        today = datetime.now(UTC).date()
-        assert start == datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        assert end == datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-        # Aware UTC, not a naive local datetime — the bounds are timezone-tagged.
-        assert start is not None and start.tzinfo is UTC
-        assert end is not None and end.tzinfo is UTC
+        assert (search.due_date_start, search.due_date_end) == _IST_WINDOW.today
 
-    def test_due_today_asks_for_utc_now(self, monkeypatch: pytest.MonkeyPatch):
-        now_calls: list[tzinfo | None] = []
+    def test_due_this_week_starts_after_today(self):
+        search = TodoListParams(due_this_week=True).to_search_params(_IST_WINDOW)
 
-        class _RecordingDatetime(datetime):
-            @classmethod
-            def now(cls, tz: tzinfo | None = None) -> Self:
-                now_calls.append(tz)
-                return super().now(tz)
+        assert (search.due_date_start, search.due_date_end) == _IST_WINDOW.upcoming
+        assert search.due_date_start == _IST_WINDOW.tomorrow_start
 
-        monkeypatch.setattr("app.models.todo_models.datetime", _RecordingDatetime)
+    def test_the_window_reaches_the_overdue_filter(self):
+        search = TodoListParams(overdue=True).to_search_params(_IST_WINDOW)
 
-        TodoListParams(due_today=True).to_search_params()
-
-        # A naive local ``datetime.now()`` would silently shift the day bounds
-        # for non-UTC deployments; the tz is the observable contract here.
-        assert now_calls == [UTC]
-
-    def test_due_this_week_is_a_seven_day_window(self):
-        search = TodoListParams(due_this_week=True).to_search_params()
-        start, end = search.due_date_start, search.due_date_end
-
-        assert start is not None and end is not None
-        assert end - start == timedelta(days=7)
-        assert start.tzinfo is UTC and end.tzinfo is UTC
+        assert search.required_day_window == _IST_WINDOW
 
     def test_explicit_range_passes_through(self):
         after = datetime(2026, 1, 1, tzinfo=UTC)
         before = datetime(2026, 2, 1, tzinfo=UTC)
 
-        search = TodoListParams(due_after=after, due_before=before).to_search_params()
+        search = TodoListParams(due_after=after, due_before=before).to_search_params(_IST_WINDOW)
 
         assert (search.due_date_start, search.due_date_end) == (after, before)
 
     def test_no_date_filter_is_none(self):
-        search = TodoListParams().to_search_params()
+        search = TodoListParams().to_search_params(_IST_WINDOW)
 
         assert (search.due_date_start, search.due_date_end) == (None, None)
 
@@ -507,7 +539,7 @@ class TestListQueryHelpers:
             include_stats=True,
             due_after=after,
             due_before=before,
-        ).to_search_params()
+        ).to_search_params(_IST_WINDOW)
 
         assert params.q == "x"
         assert params.mode == SearchMode.TEXT

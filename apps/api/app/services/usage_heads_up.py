@@ -8,6 +8,7 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    notification_id,
 )
 from app.services.cost_budget import format_reset_date, monthly_allowance_window
 from app.services.notification_service import notification_service
@@ -25,8 +26,9 @@ async def notify_monthly_heads_up_once(user_id: str) -> None:
         if not await client.set(key, "1", nx=True, ex=MONTHLY_BUDGET_TTL_SECONDS):
             return
         reset = format_reset_date(reset_at)
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(user_id, "usage_heads_up", "monthly", window),
                 user_id=user_id,
                 source=NotificationSourceEnum.USAGE_LIMIT,
                 content=NotificationContent(

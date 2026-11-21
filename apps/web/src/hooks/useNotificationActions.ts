@@ -4,18 +4,18 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  type ActionResult,
   type ActionResultData,
   ActionStyle,
   ActionType,
   type ApiCallConfig,
   type ModalConfig,
   type NotificationAction,
+  type NotificationActionResult,
   type RedirectConfig,
 } from "@/types/features/notificationTypes";
 
 interface UseNotificationActionsOptions {
-  onSuccess?: (result: ActionResult) => void;
+  onSuccess?: (result: NotificationActionResult) => void;
   onError?: (error: Error) => void;
   onModalOpen?: (config: ModalConfig) => void;
 }
@@ -130,7 +130,7 @@ export function useNotificationActions(
       if (result.success) {
         toast.success(result.message);
         // The API types `data` as an open record; an executed action's payload is ActionResultData.
-        const actionResult: ActionResult = {
+        const actionResult: NotificationActionResult = {
           success: result.success,
           message: result.message,
           data: result.data as ActionResultData | null,

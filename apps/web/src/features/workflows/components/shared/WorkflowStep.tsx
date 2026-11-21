@@ -3,7 +3,7 @@
 import { Chip } from "@heroui/react";
 import { getToolDisplayName } from "@shared/icons";
 import { shapeVariants } from "@/components/shared/shape";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
 interface WorkflowStepProps {
@@ -62,16 +62,11 @@ export default function WorkflowStep({
             })}
           >
             <div className="min-w-fit">
-              {getToolCategoryIcon(
-                step.category,
-                {
-                  size: iconSize,
-                  width: iconSize,
-                  height: iconSize,
-                  showBackground: false,
-                },
-                getIntegrationIconUrl(step.category),
-              )}
+              <IntegrationIcon
+                integrationId={step.category}
+                iconUrl={getIntegrationIconUrl(step.category)}
+                size={iconSize}
+              />
             </div>
             {categoryLabel}
           </Chip>

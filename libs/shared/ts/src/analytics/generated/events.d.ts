@@ -35,6 +35,7 @@ export type ServerEventName =
   | "chat:message_submitted"
   | "chat:message_unpinned"
   | "chat:turn_reacted"
+  | "chat:work_stopped"
   | "device:approved"
   | "device:revoked"
   | "device:self_paired"
@@ -333,7 +334,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "decision"?: "approve" | "deny";
+    "outcome"?: "approved" | "denied";
     "batch"?: boolean;
     "decisions"?: number;
     "resolved"?: number;
@@ -474,9 +475,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": string;
-    "emoji"?: string;
-    "delivery"?: "message" | "reaction" | "badge" | "fallback_text";
+    "outcome": "message" | "silence";
   };
   "chat:composer_plus_menu_clicked": {
     "item_id": "upload_file";
@@ -538,7 +537,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "stream_id": string;
     "conversation_id": string;
-    "voice_mode": boolean;
     "is_new_conversation": boolean;
     "delegated": boolean;
     "queued": boolean;
@@ -553,7 +551,6 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "stream_id": string;
     "conversation_id": string;
-    "voice_mode": boolean;
     "is_new_conversation": boolean;
     "delegated": boolean;
     "queued": boolean;
@@ -620,6 +617,16 @@ export interface EventProperties {
     "voice_mode_enabled": boolean;
     "conversation_id"?: string;
     "blocked_reason"?: "upgrade_required";
+  };
+  "chat:work_stopped": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "executor_stopped": boolean;
+    "pending_tasks": number;
+    "subagents": number;
+    "approvals": number;
+    "browser_jobs": number;
   };
   "cta:get_started_clicked": {
     "location"?: "chat_demo";
@@ -761,6 +768,7 @@ export interface EventProperties {
     "approval_id": string;
     "ledger_version": number;
     "revoker": string;
+    "outcome": "expired" | "cancelled" | "withdrawn";
   };
   "image:described": {
     "actor": "user" | "agent";
@@ -1117,7 +1125,7 @@ export interface EventProperties {
   "paywall:modal_viewed": {
     "dismissible": boolean;
     "has_discount_code": boolean;
-    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
+    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
   };
   "pin:viewed": {
     "conversation_id": string;
@@ -1508,7 +1516,7 @@ export interface EventProperties {
     "author"?: "gaia" | "user";
     "outcome": "run" | "skip" | "hold" | "bypass";
     "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
-    "urgent_choice"?: "incident" | "service_down" | "meeting";
+    "urgent_choice"?: "incident" | "service_down" | "meeting" | "can_wait";
     "enforced": boolean;
     "latency_ms"?: number;
   };

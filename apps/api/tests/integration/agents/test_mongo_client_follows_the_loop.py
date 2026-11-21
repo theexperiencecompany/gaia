@@ -6,18 +6,13 @@ closed and died with "Event loop is closed" — whichever test happened to run s
 Two tests in order are enough to make that deterministic.
 """
 
-import os
-
 import pytest
 
 from app.db.mongodb.collections import get_async_collection
 
 # Needs real services: the hermetic fence returns a MagicMock. Not the real/ tier --
 # its conftest patches get_async_collection, the accessor that resolves the cached client.
-pytestmark = pytest.mark.skipif(
-    os.environ.get("USE_REAL_SERVICES", "0") != "1",
-    reason="needs real Mongo: the hermetic fence returns a MagicMock for the shared client",
-)
+pytestmark = pytest.mark.real_services
 
 
 class TestMongoClientFollowsTheLoop:

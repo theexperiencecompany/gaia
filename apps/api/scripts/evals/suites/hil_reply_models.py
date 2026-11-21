@@ -11,7 +11,7 @@ from app.models.message_models import MessageDict
 
 
 class ReplyBackend(StrEnum):
-    """Which classifier a run drove — HIL_REPLY_EVAL_BACKEND, journaled on every row."""
+    """Which classifier a run drove, journaled on every row; llm rows are from before JEV was the only one."""
 
     JEV = "jev"
     LLM = "llm"

@@ -4,11 +4,11 @@ from collections.abc import Callable, Coroutine
 import socket
 from typing import Any, ClassVar
 
-from arq.connections import RedisSettings
 from arq.cron import CronJob
 from arq.typing import StartupShutdown
 from arq.worker import Function
 
+from app.config.arq_redis import arq_redis_settings
 from app.config.settings import settings
 
 #: The cap on one job, enforced by the task envelope (app.workers.task_envelope)
@@ -27,7 +27,7 @@ WorkerFunction = Function | Callable[..., Coroutine[Any, Any, str]]
 class WorkerSettings:
     """ARQ worker settings: Redis connection, task functions, scheduled jobs, and performance settings."""
 
-    redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
+    redis_settings = arq_redis_settings()
 
     # Populated from the main worker file. Not ARQ's WorkerCoroutine protocol:
     # tasks arrive wrapped by instrument_task, and a Callable never

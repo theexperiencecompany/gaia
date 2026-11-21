@@ -71,6 +71,37 @@ class TestIntegrationsRepository:
         await repo.create(_integration(f"x-{uuid.uuid4().hex}", "Nope"))
         assert await repo.find_by_id_prefix_or_name(f"missing-{uuid.uuid4().hex}") is None
 
+    async def test_find_by_id_prefix_or_name_is_served_from_cache(self, repo, raw_collection):
+        iid = f"cached-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Before"))
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "Before"
+
+        await raw_collection.update_one({"integration_id": iid}, {"$set": {"name": "Behind"}})
+
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "Before"
+
+    async def test_a_repository_write_invalidates_the_cached_find(self, repo):
+        owner = "owner-cache"
+        iid = f"inval-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Doomed", created_by=owner))
+        assert await repo.find_by_id_prefix_or_name(iid) is not None
+
+        assert await repo.delete_custom(iid, owner)
+
+        assert await repo.find_by_id_prefix_or_name(iid) is None
+
+    async def test_deleting_a_tools_stub_invalidates_the_cached_find(self, repo, raw_collection):
+        iid = f"stubbed-{uuid.uuid4().hex}"
+        stub = f"stub-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Before"))
+        await repo.store_tools(stub, [StoredIntegrationTool(name="t1")])
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "Before"
+        await raw_collection.update_one({"integration_id": iid}, {"$set": {"name": "After"}})
+
+        assert await repo.delete_tools_stub(stub)
+
+        assert (await repo.find_by_id_prefix_or_name(iid)).name == "After"
+
     async def test_get_custom_and_for_user_guards(self, repo):
         owner = "owner-1"
         iid = f"cc-{uuid.uuid4().hex}"

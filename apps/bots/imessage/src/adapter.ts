@@ -1,20 +1,22 @@
 import {
+  type ActiveBotConversation,
   BaseBotAdapter,
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
   type BotCommand,
   type BotFileData,
   buildAuthLinkMessage,
+  type ConversationSurface,
   consumeInboundLinkCode,
   createBotLogger,
   extractSubcommandArgs,
   friendlyMediaError,
-  handleStreamingChat,
   hashLogIdentifier,
-  type IncomingMedia,
+  type IncomingAttachment,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
+  neverReopened,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -26,9 +28,7 @@ import {
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
-  STREAMING_DEFAULTS,
   sanitizeErrorForLog,
-  unfetchableMediaMessage,
   unsupportedMediaMessage,
   WEBHOOK_MAX_BODY_BYTES,
   wideLog,
@@ -38,6 +38,7 @@ import {
   attachment,
   type Message,
   reaction,
+  reply,
   type Space,
   Spectrum,
 } from "spectrum-ts";
@@ -103,7 +104,6 @@ export class ImessageAdapter extends BaseBotAdapter {
   private spectrumApp: SpectrumApp | null = null;
   private imInstance: ImessageInstance | null = null;
 
-  private readonly messageQueues = new Map<string, Promise<void>>();
   private readonly recentMessageIds = new Set<string>();
   private readonly adapterLogger = createBotLogger("imessage", "adapter");
 
@@ -223,88 +223,68 @@ export class ImessageAdapter extends BaseBotAdapter {
 
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
-      this.enqueueForUser(handle, () =>
-        this.handleIncomingMessage(
-          handle,
-          space,
-          receivedAt,
-          text,
-          message.id,
-        ).catch((err) =>
+      void this.arrivals
+        .run(handle, () =>
+          this.handleIncomingMessage(
+            handle,
+            space,
+            receivedAt,
+            text,
+            message.id,
+          ),
+        )
+        .catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
           }),
-        ),
-      );
+        );
       return;
     }
 
     if (content.type === "attachment" || content.type === "voice") {
-      this.enqueueForUser(handle, () =>
-        this.handleMediaMessage(handle, space, receivedAt, [content]).catch(
-          (err) =>
-            this.adapterLogger.error("media_message_processing_failed", {
-              user_hash: handleHash,
-              message_id: message.id,
-              ...sanitizeErrorForLog(err),
-            }),
-        ),
-      );
+      void this.arrivals
+        .run(handle, () =>
+          this.handleMediaMessage(handle, space, receivedAt, [content]),
+        )
+        .catch((err) =>
+          this.adapterLogger.error("media_message_processing_failed", {
+            user_hash: handleHash,
+            message_id: message.id,
+            ...sanitizeErrorForLog(err),
+          }),
+        );
       return;
     }
 
     if (content.type === "group") {
-      this.enqueueForUser(handle, () =>
-        this.handleMultiPartMessage(
-          handle,
-          space,
-          receivedAt,
-          content.items,
-        ).catch((err) =>
+      void this.arrivals
+        .run(handle, () =>
+          this.handleMultiPartMessage(handle, space, receivedAt, content.items),
+        )
+        .catch((err) =>
           this.adapterLogger.error("multipart_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
           }),
-        ),
-      );
+        );
       return;
     }
 
     if (content.type === "contact") {
-      this.enqueueForUser(handle, async () => {
-        try {
-          await this.sendImessageText(
-            space,
-            unsupportedMediaMessage(content.type),
-          );
-        } catch (err) {
-          this.adapterLogger.error("unsupported_media_handling_failed", {
-            user_hash: handleHash,
-            message_type: content.type,
-            ...sanitizeErrorForLog(err),
-          });
-        }
-      });
+      void this.sendImessageText(
+        space,
+        unsupportedMediaMessage(content.type),
+      ).catch((err: unknown) =>
+        this.adapterLogger.error("unsupported_media_handling_failed", {
+          user_hash: handleHash,
+          message_type: content.type,
+          ...sanitizeErrorForLog(err),
+        }),
+      );
     }
-  }
-
-  private enqueueForUser(handle: string, fn: () => Promise<void>): void {
-    const previous = this.messageQueues.get(handle) ?? Promise.resolve();
-    const task = previous.catch(() => undefined).then(() => fn());
-    this.messageQueues.set(handle, task);
-    task.then(
-      () => {
-        if (this.messageQueues.get(handle) === task)
-          this.messageQueues.delete(handle);
-      },
-      () => {
-        if (this.messageQueues.get(handle) === task)
-          this.messageQueues.delete(handle);
-      },
-    );
   }
 
   private async handleIncomingMessage(
@@ -364,7 +344,7 @@ export class ImessageAdapter extends BaseBotAdapter {
             await this.sendImessageText(space, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(
+          await this.postImessageMessage(
             handle,
             space,
             receivedAt,
@@ -384,7 +364,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(
+      await this.postImessageMessage(
         handle,
         space,
         receivedAt,
@@ -397,7 +377,12 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
   }
 
-  private async handleStreamingMessage(
+  /**
+   * Posts the user's message and follows its conversation in this space. iMessage
+   * cannot edit, so each reply is sent once it is final, as a threaded reply when
+   * it answers an earlier message.
+   */
+  private async postImessageMessage(
     handle: string,
     space: Space,
     receivedAt: number,
@@ -412,78 +397,70 @@ export class ImessageAdapter extends BaseBotAdapter {
       );
       return;
     }
-
-    let lastEditFn: ((t: string) => Promise<void>) | null = null;
-    let finalMessageSent = false;
-
-    try {
-      await handleStreamingChat(
-        this.gaia,
-        {
-          message: text || "Please describe the attached file.",
-          platform: "imessage",
-          platformUserId: handle,
-          channelId: space.id,
-          // iMessage handles DMs only; group spaces are ignored upstream.
-          isDm: true,
-          platformMessageId: messageId,
-          receivedAt,
-          ...(attachments.length > 0
-            ? {
-                fileIds: attachments.map((a) => a.fileId),
-                fileData: attachments,
-              }
-            : {}),
-        },
-        async (formatted: string) => {
-          if (finalMessageSent) return;
-          finalMessageSent = true;
-          if (lastEditFn) {
-            await lastEditFn(formatted);
-          } else {
-            const sent = await this.sendImessageText(space, formatted);
-            lastEditFn = sent.edit;
-          }
-        },
-        async (newText: string) => {
-          const sent = await this.sendImessageText(space, newText);
-          lastEditFn = sent.edit;
-          return sent.edit;
-        },
-        async (authUrl: string) => {
-          await this.sendImessageText(
-            space,
-            renderForPlatform(buildAuthLinkMessage(authUrl), "imessage"),
-          );
-        },
-        async (errMsg: string) => {
-          await this.sendImessageText(space, errMsg);
-        },
-        STREAMING_DEFAULTS.imessage,
-        this.analyticsFor(handle),
-        async (emoji: string) => {
-          // Media turns carry no inbound message id, so there is nothing to react to.
-          if (!messageId) return REACTION_OUTCOME.NO_TARGET;
-          return this.reactToMessage(handle, messageId, emoji, false);
-        },
-      );
-    } catch (err) {
-      this.adapterLogger.error("streaming_failed", {
-        user_hash: hashLogIdentifier(handle),
-        ...sanitizeErrorForLog(err),
-      });
-      try {
+    await this.postAndFollow(
+      {
+        message: text || "Please describe the attached file.",
+        platform: "imessage",
+        platformUserId: handle,
+        channelId: space.id,
+        // iMessage handles DMs only; group spaces are ignored upstream.
+        isDm: true,
+        platformMessageId: messageId,
+        receivedAt,
+        ...(attachments.length > 0
+          ? {
+              fileIds: attachments.map((a) => a.fileId),
+              fileData: attachments,
+            }
+          : {}),
+      },
+      this.conversationSurface(handle, space),
+      async (authUrl: string) => {
         await this.sendImessageText(
           space,
-          "An error occurred. Please try again.",
+          renderForPlatform(buildAuthLinkMessage(authUrl), "imessage"),
         );
-      } catch (sendErr) {
-        this.adapterLogger.error("streaming_error_message_send_failed", {
-          user_hash: hashLogIdentifier(handle),
-          ...sanitizeErrorForLog(sendErr),
-        });
-      }
-    }
+      },
+    );
+  }
+
+  protected async resumeSurface({
+    platform_user_id: handle,
+  }: ActiveBotConversation): Promise<ConversationSurface> {
+    // DM-only, as deliverOutbound: the handle names the space.
+    return this.conversationSurface(handle, await this.im.space.create(handle));
+  }
+
+  /** The space a conversation follows into: threaded replies, tapbacks and typing. */
+  private conversationSurface(
+    handle: string,
+    space: Space,
+  ): ConversationSurface {
+    return {
+      send: async (text, replyTo) => {
+        const target = replyTo ? await space.getMessage(replyTo) : undefined;
+        if (replyTo && !target) {
+          this.adapterLogger.warn("reply_target_not_found", {
+            target_platform_message_id: replyTo,
+          });
+        }
+        const sent = await space.send(target ? reply(text, target) : text);
+        // iMessage cannot edit or unsend here: the follower never streams to it.
+        return {
+          id: sent?.id ?? "",
+          edit: async (updated: string) => {
+            await space.send(updated);
+          },
+        };
+      },
+      reopen: neverReopened("imessage"),
+      react: (platformMessageId, emoji, replaces) =>
+        this.reactToMessage(handle, platformMessageId, emoji, false, replaces),
+      startTyping: () => {
+        void space.startTyping().catch(() => undefined);
+        return () => void space.stopTyping().catch(() => undefined);
+      },
+    };
   }
 
   /** Sends the one-time welcome to an unlinked, first-time user (the base adapter's gate). */
@@ -590,56 +567,32 @@ export class ImessageAdapter extends BaseBotAdapter {
     try {
       await this.ensureWelcomed(handle, space);
 
-      const uploaded: BotFileData[] = [];
-      const transcripts: string[] = [];
-      let filePrompt = "";
-
-      for (const [index, content] of contents.entries()) {
-        const isVoiceNote = content.type === "voice";
-        if (!content.id) {
-          this.adapterLogger.info("media_unfetchable", {
-            user_hash: handleHash,
-            media_kind: kinds[index],
-            reason: "no_attachment_id",
-          });
-          await this.sendImessageText(
-            space,
-            unfetchableMediaMessage(kinds[index], isVoiceNote),
-          );
-          continue;
-        }
-
-        const incoming: IncomingMedia = {
-          kind: kinds[index],
-          isVoiceNote,
-          mimeType: content.mimeType,
-          filename: content.name,
-          sizeBytes: content.size,
-          caption,
-        };
-        const outcome = await this.resolveIncomingMedia(
-          incoming,
-          (maxBytes) => readMediaBytes(content, maxBytes),
-          handle,
-          space.id,
-        );
-
-        if (outcome.action === "reply") {
-          await this.sendImessageText(space, outcome.text);
-        } else if (outcome.attachments.length > 0) {
-          uploaded.push(...outcome.attachments);
-          if (!filePrompt) filePrompt = outcome.text;
-        } else {
-          transcripts.push(outcome.text);
-        }
-      }
-
-      const text =
-        transcripts.length > 0 ? transcripts.join("\n\n") : filePrompt;
+      const items = contents.map(
+        (content, index): IncomingAttachment => ({
+          media: {
+            kind: kinds[index],
+            isVoiceNote: content.type === "voice",
+            mimeType: content.mimeType,
+            filename: content.name,
+            sizeBytes: content.size,
+            caption,
+          },
+          // A part with no attachment id carries metadata but no bytes.
+          download: content.id
+            ? (maxBytes) => readMediaBytes(content, maxBytes)
+            : undefined,
+        }),
+      );
+      const {
+        notice,
+        text,
+        attachments: uploaded,
+      } = await this.resolveIncomingMedia(items, handle, space.id);
+      if (notice) await this.sendImessageText(space, notice);
       if (uploaded.length > 0 || text) {
         // Media turns carry no inbound message id (the media pipeline drops
         // it), so a later reaction to one falls back to a text bubble.
-        await this.handleStreamingMessage(
+        await this.postImessageMessage(
           handle,
           space,
           receivedAt,
@@ -738,7 +691,9 @@ export class ImessageAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
+    _replaces: string | null,
   ): Promise<ReactionOutcome> {
+    // A sender has one tapback per iMessage, so a new one replaces the last.
     // The SDK maps the six classic tapbacks to native kinds and sends any other
     // emoji as an emoji reaction, so no emoji is refused here.
     try {

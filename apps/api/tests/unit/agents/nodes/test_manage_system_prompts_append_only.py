@@ -52,7 +52,7 @@ def _config(provider: LLMProviderName | None) -> RunnableConfig:
 
 
 def _turn(n: int, *, stable: str = "stable context") -> list[AnyMessage]:
-    """Return what construct_langchain_messages writes into the thread at the start of turn n."""
+    """Return what comms_turn_messages writes into the thread at the start of turn n."""
     return [
         SystemMessage(content="static prompt"),
         SystemMessage(content=stable, additional_kwargs={DYNAMIC_CONTEXT_MARKER: True}),

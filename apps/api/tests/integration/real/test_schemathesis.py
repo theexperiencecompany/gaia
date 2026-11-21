@@ -78,7 +78,7 @@ SCOPED_OPERATIONS: set[tuple[str, str]] = {
     ("POST", "/api/v1/conversations"),
     ("GET", "/api/v1/users/me"),
     ("PATCH", "/api/v1/users/me"),
-    ("GET", "/api/v1/integrations/status"),
+    ("GET", "/api/v1/integrations/me"),
     ("GET", "/api/v1/health"),
 }
 

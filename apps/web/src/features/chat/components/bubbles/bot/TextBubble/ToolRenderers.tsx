@@ -193,9 +193,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   calendar_fetch_data: (data) => (
     <CalendarListCard events={Array.isArray(data) ? data : [data]} />
   ),
-  // Restored-history only: old conversations still carry this key, and a
-  // null renderer left them blank. Read-only list, no draft or add flows
-  // (those moved to HIL approvals by design).
   calendar_list_fetch_data: (data) => (
     <CalendarListFetchSection calendars={Array.isArray(data) ? data : [data]} />
   ),
@@ -397,20 +394,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   // HIL approval — grouped so many decisions don't stack a full card each:
   // pending show side by side, settled are removed (reply reflects them).
-  // Each approval_id is one entry, replaced in place via upsertApprovalToolData.
+  // The screen draws exactly one card per approval, from its log entries.
   approval_request: (data) => {
-    const raw = (Array.isArray(data) ? data : [data]) as ApprovalRequestData[];
-    // A resumed stream replays the gate-time PENDING frame after the decision
-    // already settled it — collapse by approval_id, settled wins over pending.
-    // (Sibling identity is owned by the keyed wrapper at the call site.)
-    const byId = new Map<string, ApprovalRequestData>();
-    for (const item of raw) {
-      const prev = byId.get(item.approval_id);
-      if (!prev || prev.status === "pending" || item.status !== "pending") {
-        byId.set(item.approval_id, item);
-      }
-    }
-    return <ApprovalRequestGroup items={[...byId.values()]} />;
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as ApprovalRequestData[];
+    return <ApprovalRequestGroup items={items} />;
   },
 };
 

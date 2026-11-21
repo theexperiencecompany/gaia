@@ -10,22 +10,31 @@ from pymongo.errors import OperationFailure
 
 from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
+from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELDS
+from app.db.repositories.conversation_sweep import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository
 from app.helpers.integration_helpers import dedup_server_url_key
 from shared.py.wide_events import log
 
-# Security-critical index builds: these unique indexes enforce invariants, so
-# unlike performance indexes (warn-and-continue) a failed build aborts boot
-# rather than running healthy with the constraint silently absent.
+# Unique indexes that enforce invariants (conversations: the entries' seq and id the
+# outbox flush dedupes on): a failed build aborts boot instead of warn-and-continue.
 SECURITY_CRITICAL_COLLECTIONS = frozenset(
-    {"auth_credentials", "auth_invites", "instance_settings", "provider_credentials"}
+    {
+        "auth_credentials",
+        "auth_invites",
+        "conversations",
+        "instance_settings",
+        "provider_credentials",
+    }
 )
 
 # Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
@@ -117,7 +126,6 @@ async def create_all_indexes() -> None:
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
-            create_hil_approvals_indexes(),
             create_approval_ledger_indexes(),
             create_pending_platform_registration_indexes(),
             create_browser_profiles_indexes(),
@@ -159,7 +167,6 @@ async def create_all_indexes() -> None:
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
-            "hil_approvals",
             "approval_ledger",
             "pending_platform_registrations",
             "browser_profiles",
@@ -263,6 +270,17 @@ async def create_user_indexes() -> None:
 # One chat per tracked todo: the atomic backstop that makes a racing second create
 # (a run and an "Open chat" tap at once) fail, so the loser reads the winner's chat.
 # Only chats bound to a todo are in the filter. Shared with the contract suite.
+CONVERSATION_ID_UNIQUE_KEYS: IndexKeys = [("conversation_id", 1)]
+CONVERSATION_ID_UNIQUE_OPTIONS: IndexOptions = {"unique": True, "name": "conversation_id_unique"}
+# The boot check: a head whose embedded messages array no pass marked, or the old build wrote since.
+UNMIGRATED_HEAD_KEYS: IndexKeys = [("migrated_fingerprint", 1)]
+UNMIGRATED_HEAD_OPTIONS: IndexOptions = {
+    "name": "embedded_messages_migrated",
+    "partialFilterExpression": {"messages.0": {"$exists": True}},
+}
+# The boot check: a head with no source this build knows (SOURCELESS_HEADS reads its bounds).
+CONVERSATION_SOURCE_KEYS: IndexKeys = [("source", 1)]
+CONVERSATION_SOURCE_OPTIONS: IndexOptions = {"name": "conversation_source"}
 CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
 CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
     "unique": True,
@@ -271,9 +289,63 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
+# The sweeper's scan, paged by _id: only heads it has something to finish on, a few among every conversation.
+CONVERSATION_SWEEP_KEYS: IndexKeys = [("_id", 1), ("conversation_id", 1)]
+CONVERSATION_SWEEP_OPTIONS: IndexOptions = {
+    "name": SWEEP_INDEX_NAME,
+    "partialFilterExpression": SWEEP_DUE_FILTER,
+}
+
+
+# A conversation's entries: one seq and one id per entry (the protocol's two uniqueness
+# guarantees), then one index per cross-conversation read the repository makes.
+#: The boot check: an entry still holding a field this stack renamed, one empty index per field.
+RENAMED_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
+    (
+        [(name, 1)],
+        {"name": f"renamed_{name}", "partialFilterExpression": {name: {"$exists": True}}},
+    )
+    for name in RENAMED_ENTRY_FIELDS
+]
+CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
+    (
+        [("user_id", 1), ("conversation_id", 1), ("seq", 1)],
+        {"unique": True, "name": "user_conversation_seq_unique"},
+    ),
+    (
+        [("user_id", 1), ("conversation_id", 1), ("id", 1)],
+        {"unique": True, "name": "user_conversation_id_unique"},
+    ),
+    # the quoted user messages a cross-conversation read looks up
+    ([("user_id", 1), ("id", 1)], {"name": "user_entry_id"}),
+    # find_owner_of_message and the settles a message read looks up beside its window
+    (
+        [("user_id", 1), ("reply_id", 1)],
+        {
+            "name": "user_entry_reply_id",
+            "partialFilterExpression": {"reply_id": {"$type": "string"}},
+        },
+    ),
+    # has_sent_message
+    ([("user_id", 1), ("kind", 1)], {"name": "user_entry_kind"}),
+    # list_pinned_messages
+    (
+        [("user_id", 1), ("at", 1)],
+        {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
+    ),
+    # the boot check: an entry still in the old message shape, which only those carry a type
+    (
+        [("type", 1)],
+        {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
+    ),
+    *RENAMED_ENTRY_INDEXES,
+]
+
+
 async def create_conversation_indexes() -> None:
-    """Create indexes for conversations collection."""
+    """Create indexes for the conversations heads and their conversation_entries."""
     conversations_collection = get_async_collection("conversations")
+    entries_collection = get_async_collection(CONVERSATION_ENTRIES_COLLECTION)
     try:
         # Create all conversation indexes concurrently
         await asyncio.gather(
@@ -281,20 +353,31 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("user_id", 1), ("createdAt", -1)]),
             # For specific conversation lookups (extremely critical for performance)
             conversations_collection.create_index([("user_id", 1), ("conversation_id", 1)]),
+            # One conversation per id across every user: the thread, events stream and locks key on it.
+            conversations_collection.create_index(
+                CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
+            ),
+            conversations_collection.create_index(UNMIGRATED_HEAD_KEYS, **UNMIGRATED_HEAD_OPTIONS),
+            conversations_collection.create_index(
+                CONVERSATION_SOURCE_KEYS, **CONVERSATION_SOURCE_OPTIONS
+            ),
             # For starred conversations queries
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]
             ),
-            # For message pinning operations (nested array queries)
-            conversations_collection.create_index([("user_id", 1), ("messages.message_id", 1)]),
-            # For message pinning aggregations
-            conversations_collection.create_index([("user_id", 1), ("messages.pinned", 1)]),
             # For "active since <date>" range queries (e.g. the cost/usage dashboard).
             # updatedAt is the only activity timestamp stored as a real BSON date —
             # createdAt is an ISO string and can't be range-queried efficiently.
             conversations_collection.create_index([("updatedAt", -1)]),
             conversations_collection.create_index(
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
+            ),
+            conversations_collection.create_index(
+                CONVERSATION_SWEEP_KEYS, **CONVERSATION_SWEEP_OPTIONS
+            ),
+            *(
+                entries_collection.create_index(keys, **options)
+                for keys, options in CONVERSATION_ENTRY_INDEXES
             ),
         )
 
@@ -530,6 +613,8 @@ async def create_notification_indexes() -> None:
     try:
         # Create all notification indexes concurrently
         await asyncio.gather(
+            # One document per notification id: a retried producer upserts onto it.
+            notifications_collection.create_index("id", unique=True),
             # For user-specific notifications
             notifications_collection.create_index([("user_id", 1), ("created_at", -1)]),
             # For unread notifications
@@ -927,10 +1012,9 @@ async def create_wait_indexes() -> None:
 async def create_approval_ledger_indexes() -> None:
     """Create indexes for the approval_ledger collection.
 
-    Unique on approval_id (the CAS filter keys on it). Partial unique on
-    (conversation_id, fingerprint) over live states IS the dedup atomicity —
-    the loser of a concurrent propose reads the winner's id. (conversation_id,
-    state) serves OPEN PENDINGS; (state, executing_started_at) the reconciler.
+    Partial unique (conversation_id, fingerprint) over live rows IS the dedup atomicity: the
+    loser of a concurrent propose reads the winner's id. delivering_since serves the sweep
+    of decisions whose hand-off failed, (action, executing_started_at) the reconciler.
     """
     approval_ledger_collection = get_async_collection("approval_ledger")
     try:
@@ -939,13 +1023,18 @@ async def create_approval_ledger_indexes() -> None:
             approval_ledger_collection.create_index(
                 [("conversation_id", 1), ("fingerprint", 1)],
                 unique=True,
-                partialFilterExpression={
-                    "state": {"$in": ["pending", "approved"]},
-                },
-                name="conv_fingerprint_live_unique",
+                partialFilterExpression=LIVE_ROW_FILTER,
+                name=LIVE_ROW_INDEX_NAME,
             ),
-            approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
-            approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+            approval_ledger_collection.create_index([("conversation_id", 1), ("outcome", 1)]),
+            approval_ledger_collection.create_index(
+                [("owner_run_type", 1), ("owner_id", 1), ("created_at", 1)]
+            ),
+            approval_ledger_collection.create_index([("action", 1), ("executing_started_at", 1)]),
+            approval_ledger_collection.create_index(
+                "delivering_since",
+                partialFilterExpression={"delivering_since": {"$type": "date"}},
+            ),
         )
     except Exception as e:
         log.error(
@@ -1494,31 +1583,6 @@ async def create_installed_skills_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating installed_skills indexes",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise
-
-
-async def create_hil_approvals_indexes() -> None:
-    """Create indexes for the hil_approvals collection.
-
-    (status, resumed_at, decided_at) serves the crashed-resume sweep: the resumed_at=null
-    bound keeps it off the majority-resumed audit trail, which must never scan the full
-    collection.
-    """
-    hil_approvals_collection = get_async_collection("hil_approvals")
-    try:
-        await asyncio.gather(
-            hil_approvals_collection.create_index([("conversation_id", 1), ("status", 1)]),
-            hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
-            hil_approvals_collection.create_index(
-                [("status", 1), ("resumed_at", 1), ("decided_at", 1)]
-            ),
-        )
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating hil_approvals indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

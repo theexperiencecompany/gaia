@@ -35,7 +35,6 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.memory import fast_recall
@@ -50,6 +49,7 @@ from app.services.device.device_service import (
     get_device_manifest,
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.hil.pending import pending_approvals
 from app.services.integrations.integration_accounts import (
     describe_account,
     get_account_record,
@@ -60,7 +60,7 @@ from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
-from app.utils.artifact_utils import artifact_url_base
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.request_coalescing import coalesce_request
 from app.utils.user_preferences_utils import OnboardingPreferencesRecord
 from shared.py.wide_events import log
@@ -382,7 +382,7 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
     return (
         f"Session directory: {session_dir(ctx.vfs_session_id)}\n"
         f"Public artifact URL: a file at `artifacts/<name>` is served at "
-        f"{artifact_url_base(ctx.vfs_session_id)}/<name>"
+        f"{FILE_LINKS.artifact_base(ctx.vfs_session_id)}/<name>"
     )
 
 
@@ -614,17 +614,16 @@ async def build_provider_metadata_block(integration_id: str, user_id: str) -> st
 
 
 async def build_open_pendings_block(ctx: SectionContext) -> str:
-    """Open approval pendings for this conversation, oldest first.
+    """Approvals this conversation's log has waiting on the user, oldest first.
 
-    Ledger state, not per-run state: without this a future turn never sees
-    what past turns left undecided, and "revoke anything stale" never fires.
-    Degrades to nothing (with a warning) rather than failing the turn over an
-    enrichment block. Cap keeps a hoarding conversation out of the cache prefix.
+    Without this a future turn never sees what past turns left undecided, and "revoke
+    anything stale" never fires. Degrades to nothing (with a warning) rather than failing
+    the turn over an enrichment block. Cap keeps a hoarding conversation out of the cache prefix.
     """
-    if not ctx.conversation_id:
+    if not ctx.conversation_id or not ctx.user_id:
         return ""
     try:
-        pendings = await approval_ledger_repository.list_open(ctx.conversation_id)
+        pendings = await pending_approvals(ctx.conversation_id, ctx.user_id)
     except Exception as e:
         log.warning(
             "open_pendings_fetch_failed",
@@ -633,17 +632,10 @@ async def build_open_pendings_block(ctx: SectionContext) -> str:
         return ""
     if not pendings:
         return ""
-    # Belt-and-suspenders behind the conversation scoping: a foreign row must
-    # never render into this user's agent context. Legacy rows without an
-    # owner stay visible rather than silently dropping legit pendings.
-    if ctx.user_id:
-        pendings = [doc for doc in pendings if not doc.user_id or doc.user_id == ctx.user_id]
-        if not pendings:
-            return ""
     shown = pendings[:10]
     lines = [
-        f"- {doc.approval_id} | {doc.tool_name} | {_pending_age(doc.created_at)} | {doc.summary}"
-        for doc in shown
+        f"- {row.approval_id} | {row.tool_name} | {_pending_age(row.created_at)} | {row.summary}"
+        for row in (pending.row for pending in shown)
     ]
     if len(pendings) > len(shown):
         lines.append(f"(+{len(pendings) - len(shown)} more open)")

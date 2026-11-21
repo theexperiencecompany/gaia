@@ -52,6 +52,7 @@ def _load_suites() -> None:
         "hil_judge",
         "hil_reply",
         "trigger_gate",
+        "reaction_ack",
         "longmemeval",
         "regression",
         "browser",

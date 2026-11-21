@@ -26,32 +26,37 @@ from app.core.provider_registration import boot_process
 from app.db.rabbitmq import declare_outbound_topology_on_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import init_mongodb_async
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
 from app.workers.browser_worker import browser_reaper_cron, build_browser_worker
 from app.workers.config.worker_settings import WorkerSettings
+from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
 from tests.integration.real.browser._stack.processes import REAPER_HEALTH_KEY
 
 
 async def start_app_services(context: Literal["main_app", "arq_worker"]) -> None:
-    """Register the providers and bring up the stores a browser task runs on."""
+    """Register the providers, bring up the stores a browser task runs on, and install the conversation runtime."""
     settings.WORKER_TYPE = context
     boot_process(context)
     await init_mongodb_async()
     await redis_cache.verify_connection()
     await declare_outbound_topology_on_startup()
+    install_runtime_ports(build_runtime_ports())
 
 
 async def serve_browser_queue() -> None:
-    """Boot the worker's services, then serve the browser queue and the main worker's browser reaper until killed.
+    """Boot the worker's services, then serve the browser queue and the main worker's two liveness sweeps until killed.
 
-    Production runs the reaper as one of the main worker's crons; here a main-queue
-    worker with that one cron stands in for it, so a killed worker is made good.
+    Production runs the browser reaper and the conversation sweep as main-worker crons; here a
+    main-queue worker with those two stands in for it, so a killed worker is made good: the
+    reaper tells the result it left, and the sweep logs the run it killed as lost.
     Each worker refreshes its ARQ health key once it polls: the stack's readiness signal.
     """
     await start_app_services("arq_worker")
     worker = build_browser_worker()
     reaper = Worker(
         functions=[],
-        cron_jobs=[browser_reaper_cron()],
+        cron_jobs=[browser_reaper_cron(), conversation_sweep_cron()],
         redis_settings=WorkerSettings.redis_settings,
         handle_signals=False,
         health_check_key=REAPER_HEALTH_KEY,

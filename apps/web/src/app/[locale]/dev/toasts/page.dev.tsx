@@ -6,14 +6,14 @@ import { toast } from "@/lib/toast";
 const LONG_MESSAGE =
   "This is a deliberately long toast message that exceeds fifty characters so it wraps into the description panel instead of the pill.";
 
-interface Trigger {
+interface ToastTrigger {
   label: string;
   run: () => void;
 }
 
 interface Group {
   title: string;
-  triggers: Trigger[];
+  triggers: ToastTrigger[];
 }
 
 const GROUPS: Group[] = [

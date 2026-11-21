@@ -26,7 +26,8 @@ const REPO_ROOT = process.env.GAIA_REPO_ROOT;
 const STUB_BASE_URL = process.env.LLM_STUB_BASE_URL;
 const STUB_MODEL = "gaia-e2e-stub";
 const COMPOSER_PLACEHOLDER = "What can I do for you today?";
-const CHAT_STREAM_PATH = "/chat-stream";
+const SEND_PATH = /\/conversations\/[^/]+\/messages$/;
+const HTTP_ACCEPTED = 202;
 
 const ADMIN = {
   email: "admin@selfhost.example",
@@ -73,23 +74,21 @@ async function signUp(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Create account" }).click();
 }
 
-/** Send one chat message and return the whole streamed response body. */
-async function sendChat(page: Page, message: string): Promise<string> {
+/** Send one chat message and wait for the server to accept it; the reply arrives on the events stream. */
+async function sendChat(page: Page, message: string): Promise<void> {
   await page.goto("/c");
   const composer = visible(
     page.getByPlaceholder(COMPOSER_PLACEHOLDER, { exact: false }),
   );
   await expect(composer).toBeVisible();
-  const stream = page.waitForResponse(
+  const accepted = page.waitForResponse(
     (response: Response) =>
-      response.url().includes(CHAT_STREAM_PATH) &&
+      SEND_PATH.test(new URL(response.url()).pathname) &&
       response.request().method() === "POST",
   );
   await composer.fill(message);
   await composer.press("Enter");
-  const response = await stream;
-  expect(response.status()).toBe(200);
-  return response.text();
+  expect((await accepted).status()).toBe(HTTP_ACCEPTED);
 }
 
 async function newPage(browser: Browser): Promise<Page> {
@@ -253,13 +252,15 @@ test.describe("self-host journey", () => {
 
   test("code runs in the local sandbox and returns its real output", async () => {
     // 6*7*1000003 = 42000126: the result appears nowhere in the command text.
-    const streamed = await sendChat(
+    await sendChat(
       adminPage,
       `[[tool:bash {"command":"echo $((6*7*1000003))"}]] [[say:Code ran.]]`,
     );
     await expect(
       visible(adminPage.getByText("Code ran.")).first(),
     ).toBeVisible();
-    expect(streamed).toContain("42000126");
+    await expect(
+      visible(adminPage.getByText("42000126")).first(),
+    ).toBeVisible();
   });
 });
