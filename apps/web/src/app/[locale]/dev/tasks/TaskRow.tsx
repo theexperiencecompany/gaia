@@ -11,14 +11,10 @@ import {
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
+import { IntegrationStack } from "./AppIcons";
 import TaskCheckbox from "./TaskCheckbox";
-import {
-  type ChipTone,
-  IntegrationStack,
-  MetaChip,
-  TaskIconTile,
-  WhenChip,
-} from "./TaskParts";
+import { type ChipTone, MetaChip, WhenChip } from "./TaskChips";
+import { TaskIconTile } from "./TaskParts";
 import type { Task } from "./taskModel";
 
 interface TaskRowProps {

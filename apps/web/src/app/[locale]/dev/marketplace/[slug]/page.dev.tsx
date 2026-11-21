@@ -13,7 +13,8 @@ import {
   TEMPLATES,
   toTemplate,
 } from "../../explore/templateModel";
-import { GaiaMark, PropertyRow } from "../../tasks/TaskParts";
+import { PropertyRow } from "../../tasks/PropertyRow";
+import { GaiaMark } from "../../tasks/TaskParts";
 import TaskSection from "../../tasks/TaskSection";
 import {
   categoryLabel,

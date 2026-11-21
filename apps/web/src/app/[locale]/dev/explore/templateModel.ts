@@ -40,7 +40,7 @@ export interface TemplateData {
   published_at: string | null;
 }
 
-export const GAIA_CREATOR_ID = "system";
+const GAIA_CREATOR_ID = "system";
 
 export interface Template {
   data: TemplateData;

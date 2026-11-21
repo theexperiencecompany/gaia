@@ -1,7 +1,9 @@
 "use client";
 
 import { LinkButton } from "@/components/shared/LinkButton";
-import { IntegrationStack, TaskIconTile, WhenChip } from "../tasks/TaskParts";
+import { IntegrationStack } from "../tasks/AppIcons";
+import { WhenChip } from "../tasks/TaskChips";
+import { TaskIconTile } from "../tasks/TaskParts";
 import { creatorLabel, type Template } from "./templateModel";
 
 export const EXPLORE_PATH = "/dev/explore";

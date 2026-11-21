@@ -4,7 +4,7 @@ import { type Template, type TemplateData, toTemplate } from "./templateModel";
 
 export const ALL = "all";
 /** The shelf for templates their publisher filed under no category. */
-export const OTHER = "Other";
+const OTHER = "Other";
 
 export interface Shelf {
   category: string;

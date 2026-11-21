@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { appName } from "../marketplace/appModel";
-import { AppIcon } from "../tasks/TaskParts";
+import { AppIcon } from "../tasks/AppIcons";
 import { CatalogLayout } from "./CatalogLayout";
 import { CategoryBar } from "./CategoryBar";
 import { ExploreShelves } from "./ExploreShelves";

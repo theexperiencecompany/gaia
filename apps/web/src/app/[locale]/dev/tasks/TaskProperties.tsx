@@ -9,7 +9,8 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { shapeVariants } from "@/components/shared/shape";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types/features/todoTypes";
-import { AppIcon, PropertyRow } from "./TaskParts";
+import { AppIcon } from "./AppIcons";
+import { PropertyRow } from "./PropertyRow";
 import { isRepeating, type Task } from "./taskModel";
 import WhenField from "./WhenField";
 

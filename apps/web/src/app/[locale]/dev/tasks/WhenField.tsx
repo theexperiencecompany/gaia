@@ -29,8 +29,10 @@ import { describeCron } from "@/features/workflows/utils/cronUtils";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
+import { AppIcon } from "./AppIcons";
 import { APP_NAMES, DEMO_TRIGGERS } from "./demoTriggers";
-import { AppIcon, PropertyRow, WHEN_ICONS } from "./TaskParts";
+import { PropertyRow } from "./PropertyRow";
+import { WHEN_ICONS } from "./TaskChips";
 import type { TaskWhen } from "./taskModel";
 import {
   DEFAULT_REPEAT,

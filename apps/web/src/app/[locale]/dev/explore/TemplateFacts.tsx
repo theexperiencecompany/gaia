@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appName, MARKETPLACE_PATH } from "../marketplace/appModel";
 
-import { AppIcon, GaiaMark, PropertyRow, WhenChip } from "../tasks/TaskParts";
+import { AppIcon } from "../tasks/AppIcons";
+import { PropertyRow } from "../tasks/PropertyRow";
+import { WhenChip } from "../tasks/TaskChips";
+import { GaiaMark } from "../tasks/TaskParts";
 import { creatorLabel, type Template } from "./templateModel";
 
 /** A value in the facts that leads somewhere: an app's page, a category. */

@@ -11,7 +11,9 @@ import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { toneVariants } from "@/components/shared/tone";
-import { IntegrationStack, TaskIconTile, WhenChip } from "../tasks/TaskParts";
+import { IntegrationStack } from "../tasks/AppIcons";
+import { WhenChip } from "../tasks/TaskChips";
+import { TaskIconTile } from "../tasks/TaskParts";
 import type { Task } from "../tasks/taskModel";
 import { TEMPLATES } from "./templateModel";
 
