@@ -123,6 +123,11 @@ export type ServerEventName =
   | "subscription:lapsed"
   | "subscription:renewed"
   | "support:form_submitted"
+  | "task:created"
+  | "task:deleted"
+  | "task:nudged"
+  | "task:toggled"
+  | "task:updated"
   | "todos:chat_opened"
   | "todos:created"
   | "todos:deleted"
@@ -1367,6 +1372,50 @@ export interface EventProperties {
     "title_length": number;
     "description_length": number;
     "attachment_count": number;
+  };
+  "task:created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "assignee": string;
+    "when_kind": string;
+    "priority": string;
+    "has_body": boolean;
+    "checklist_count": number;
+    "is_subtask": boolean;
+  };
+  "task:deleted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "count": number;
+  };
+  "task:nudged": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "repeats": boolean;
+    "channel": "in_app" | "chat_app";
+    "held_for_quiet_hours": boolean;
+  };
+  "task:toggled": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "completed": boolean;
+    "task_id"?: string;
+    "is_checklist"?: boolean;
+    "bulk_count"?: number;
+  };
+  "task:updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "task_id": string;
+    "changed_fields": (string)[];
+    "is_checklist"?: boolean;
   };
   "thanks:page_viewed": Record<string, never>;
   "todos:chat_opened": {

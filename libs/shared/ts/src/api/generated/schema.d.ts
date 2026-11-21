@@ -4602,6 +4602,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description List the user's tasks, newest first, narrowed by the query.
+         */
+        get: operations["tasks_list_tasks"];
+        put?: never;
+        /**
+         * Create Task
+         * @description Make a to-do the user does themselves.
+         */
+        post: operations["tasks_create_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task
+         * @description Return one of the user's tasks.
+         */
+        get: operations["tasks_get_task"];
+        /**
+         * Update Task
+         * @description Edit a task; fields left out stay as they are.
+         */
+        put: operations["tasks_update_task"];
+        post?: never;
+        /**
+         * Delete Task
+         * @description Delete a task and every subtask under it.
+         */
+        delete: operations["tasks_delete_task"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/subtasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Subtask
+         * @description Add an item to the task's checklist.
+         */
+        post: operations["tasks_create_subtask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{task_id}/subtasks/{subtask_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Subtask
+         * @description Rename a checklist item or tick it off.
+         */
+        put: operations["tasks_update_subtask"];
+        post?: never;
+        /**
+         * Delete Subtask
+         * @description Remove an item from the task's checklist.
+         */
+        delete: operations["tasks_delete_subtask"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Bulk Delete Tasks
+         * @description Delete several tasks at once, with every subtask under them.
+         */
+        delete: operations["tasks_bulk_delete_tasks"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/bulk/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Complete Tasks
+         * @description Tick off several tasks at once.
+         */
+        post: operations["tasks_bulk_complete_tasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Counts
+         * @description Count the user's open tasks due today, this week and overdue, and their done ones.
+         */
+        get: operations["tasks_get_task_counts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/todos": {
         parameters: {
             query?: never;
@@ -6114,6 +6270,12 @@ export interface components {
             workspace_id?: string;
         };
         /**
+         * Assignee
+         * @description Who does a task: the user (a to-do), or GAIA.
+         * @enum {string}
+         */
+        Assignee: "user" | "gaia";
+        /**
          * AuthenticatedUserResponse
          * @description The full ``GET /me`` payload.
          *
@@ -7126,6 +7288,18 @@ export interface components {
             /** Priority */
             priority: ("whatsapp" | "telegram" | "discord" | "slack" | "imessage")[];
         };
+        /** ChecklistItemCreateRequest */
+        ChecklistItemCreateRequest: {
+            /** Title */
+            title: string;
+        };
+        /** ChecklistItemUpdateRequest */
+        ChecklistItemUpdateRequest: {
+            /** Completed */
+            completed?: boolean | null;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * CheckoutSource
          * @description Where in the product a checkout was started.
@@ -8064,6 +8238,24 @@ export interface components {
             toolsCount?: number | null;
         };
         /**
+         * DateWhen
+         * @description Due at one moment: a to-do's due date, or the date a one-off GAIA task is due by.
+         */
+        DateWhen: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "date";
+            /** Timezone */
+            timezone?: string | null;
+        };
+        /**
          * DeactivationReason
          * @description Why the system paused a reminder or deactivated a workflow.
          *
@@ -8714,6 +8906,34 @@ export interface components {
             /** Updated timezone offset in (+|-)HH:MM format */
             timezone_offset?: string | null;
         };
+        /**
+         * EventWhen
+         * @description Comes round only on the app events in the task's subscriptions.
+         */
+        EventWhen: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "event";
+        };
+        /**
+         * ExternalRef
+         * @description The outside object a todo is about; at most one open todo per user holds a given ref.
+         */
+        ExternalRef: {
+            /** Account */
+            account?: string | null;
+            /** Id */
+            id: string;
+            source: components["schemas"]["ExternalRefSource"];
+        };
+        /**
+         * ExternalRefSource
+         * @description The kind of outside object a todo is about.
+         * @enum {string}
+         */
+        ExternalRefSource: "gmail_thread" | "inbox_desk";
         /**
          * FeaturePeriodUsage
          * @description One feature's usage within one window (day or month).
@@ -11280,6 +11500,24 @@ export interface components {
              */
             total: number;
         };
+        /** NewItemsCondition */
+        NewItemsCondition: {
+            /** Item Key */
+            item_key: string;
+            /** Matching */
+            matching?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "new_items";
+        };
+        /**
+         * NoReplyPlan
+         * @description What a todo waiting on the user does when its question expires unanswered.
+         * @enum {string}
+         */
+        NoReplyPlan: "ask_again" | "proceed" | "hold";
         /** NoteModel */
         NoteModel: {
             /** Content */
@@ -11644,6 +11882,17 @@ export interface components {
             trigger_name: "notion_page_updated";
         };
         /**
+         * NoWhen
+         * @description Nothing brings the task round: an undated to-do, or GAIA work it runs when asked.
+         */
+        NoWhen: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "none";
+        };
+        /**
          * OAuthClientMetadataResponse
          * @description The OAuth Client ID Metadata Document authorization servers fetch.
          *
@@ -11861,6 +12110,24 @@ export interface components {
          * @enum {string}
          */
         OnboardingStep: "started" | "questions_answered" | "paywall_reached" | "paid_reveal_seen" | "first_chat_opened";
+        /**
+         * OpenCondition
+         * @description No single source: a daily model check, promoted to a typed watch once a source appears.
+         */
+        OpenCondition: {
+            /**
+             * Daily Call Cap
+             * @default 1
+             */
+            daily_call_cap?: number;
+            /** Question */
+            question: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "open";
+        };
         /**
          * PaginatedNotificationsResponse
          * @description Response model for paginated notifications
@@ -12808,6 +13075,22 @@ export interface components {
             success: boolean;
         };
         /**
+         * Question
+         * @description What GAIA asked the user, and what it does if they never answer.
+         */
+        Question: {
+            /** Default Action */
+            default_action?: string | null;
+            /**
+             * Hold Checks
+             * @default 0
+             */
+            hold_checks?: number;
+            if_no_reply?: components["schemas"]["NoReplyPlan"] | null;
+            /** Text */
+            text: string;
+        };
+        /**
          * QuietHours
          * @description When the user's quiet hours start and end on their own clock; the span may cross midnight.
          */
@@ -13139,6 +13422,41 @@ export interface components {
              * @description User ID who owns this reminder
              */
             user_id: string;
+        };
+        /**
+         * RepeatWhen
+         * @description Comes round on a schedule: a 5-field cron, or a shortcut (daily, weekly, every_4h, every_1h).
+         *
+         *     The rule is checked where it is written, not here, so a stored schedule that breaks
+         *     today's rule still loads and can be fixed (it is paused as invalid_schedule).
+         */
+        RepeatWhen: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "repeat";
+            /** Next Run */
+            next_run?: string | null;
+            /** Rule */
+            rule: string;
+            /** Timezone */
+            timezone?: string | null;
+        };
+        /** ReplyByCondition */
+        ReplyByCondition: {
+            /**
+             * Deadline
+             * Format: date-time
+             */
+            deadline: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "reply_by";
+            /** Thread Ref */
+            thread_ref: string;
         };
         /**
          * ReplyToMessageData
@@ -13963,6 +14281,18 @@ export interface components {
              */
             starred: boolean;
         };
+        /** StateCondition */
+        StateCondition: {
+            /** States */
+            states: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "state";
+            /** Terminal States */
+            terminal_states?: string[];
+        };
         /**
          * StaticReminderPayload
          * @description Payload for STATIC agent reminders.
@@ -14452,6 +14782,199 @@ export interface components {
          * @enum {string}
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
+        /**
+         * TaskBulkResponse
+         * @description Which of the requested tasks a bulk action changed, and which it could not find.
+         */
+        TaskBulkResponse: {
+            /** Not Found */
+            not_found: string[];
+            /** Succeeded */
+            succeeded: string[];
+        };
+        /** TaskCountsResponse */
+        TaskCountsResponse: {
+            /** Completed */
+            completed: number;
+            /** Overdue */
+            overdue: number;
+            /** Today */
+            today: number;
+            /** Upcoming */
+            upcoming: number;
+        };
+        /**
+         * TaskCreateRequest
+         * @description A task the user makes from the app or a chat app; GAIA's own tasks come from its tools.
+         */
+        TaskCreateRequest: {
+            /**
+             * Body
+             * @default
+             */
+            body?: string;
+            /**
+             * Notify
+             * @description Whether the user is told when it comes due
+             * @default true
+             */
+            notify?: boolean;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** @default none */
+            priority?: components["schemas"]["Priority"];
+            /** Subtasks */
+            subtasks?: components["schemas"]["SubTaskInput"][];
+            /** Title */
+            title: string;
+            /**
+             * When
+             * @description A date, a repeat, or nothing
+             */
+            when?: (components["schemas"]["NoWhen"] | components["schemas"]["DateWhen"] | components["schemas"]["RepeatWhen"]) | null;
+        };
+        /**
+         * TaskFlag
+         * @description A state a task is in that the engine or GAIA's prompts read; formerly a system label.
+         * @enum {string}
+         */
+        TaskFlag: "failed" | "blocked" | "waiting_for_reply" | "waiting_for_approval" | "needs_reply" | "action_needed";
+        /**
+         * TaskIdsRequest
+         * @description The tasks a bulk action applies to.
+         */
+        TaskIdsRequest: {
+            /** Task Ids */
+            task_ids: string[];
+        };
+        /** TaskListResponse */
+        TaskListResponse: {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TaskResponse
+         * @description A task as the list and its side panel show it.
+         */
+        TaskResponse: {
+            /** Active */
+            active: boolean;
+            assignee: components["schemas"]["Assignee"];
+            /** Body */
+            body: string;
+            /** Completed */
+            completed: boolean;
+            /** Completed At */
+            completed_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            external_ref: components["schemas"]["ExternalRef"] | null;
+            /** Icon */
+            icon: string | null;
+            /** Icon Color */
+            icon_color: string | null;
+            /** Id */
+            id: string;
+            /** Integration Ids */
+            integration_ids: string[];
+            /** Last Run At */
+            last_run_at: string | null;
+            /**
+             * Missing Integrations
+             * @description Apps the task uses that are not connected
+             */
+            missing_integrations: string[];
+            /**
+             * Next Check At
+             * @description When GAIA next looks at a one-off task
+             */
+            next_check_at: string | null;
+            /** Notify */
+            notify: boolean;
+            /**
+             * Open Subtask Count
+             * @description Open tasks filed under this one
+             */
+            open_subtask_count: number;
+            /** Parent Id */
+            parent_id: string | null;
+            /** @description Why the system switched it off; none when the user stopped it */
+            pause_reason: components["schemas"]["DeactivationReason"] | null;
+            priority: components["schemas"]["Priority"];
+            run_state: components["schemas"]["TaskRunState"];
+            /** Source Integration */
+            source_integration: string | null;
+            /** Status Flags */
+            status_flags: components["schemas"]["TaskFlag"][];
+            /** Subscriptions */
+            subscriptions: components["schemas"]["TriggerSubscriptionView"][];
+            /** Subtasks */
+            subtasks: components["schemas"]["SubTaskOutput"][];
+            /** Successful Runs */
+            successful_runs: number;
+            /** System Key */
+            system_key: string | null;
+            /** Title */
+            title: string;
+            /** Total Runs */
+            total_runs: number;
+            /** Updated At */
+            updated_at: string | null;
+            waiting: components["schemas"]["Waiting"] | null;
+            /** When */
+            when: components["schemas"]["NoWhen"] | components["schemas"]["DateWhen"] | components["schemas"]["RepeatWhen"] | components["schemas"]["EventWhen"] | components["schemas"]["WatchWhen"];
+        };
+        /**
+         * TaskRunState
+         * @description Whether a GAIA task is idle, mid-run, or finished every run it will ever make.
+         * @enum {string}
+         */
+        TaskRunState: "idle" | "running" | "ended";
+        /**
+         * TaskUpdateRequest
+         * @description A partial edit: a field left out stays as it is.
+         */
+        TaskUpdateRequest: {
+            /** Body */
+            body?: string | null;
+            /** Completed */
+            completed?: boolean | null;
+            /** Notify */
+            notify?: boolean | null;
+            priority?: components["schemas"]["Priority"] | null;
+            /** Title */
+            title?: string | null;
+            /** When */
+            when?: (components["schemas"]["NoWhen"] | components["schemas"]["DateWhen"] | components["schemas"]["RepeatWhen"]) | null;
+        };
+        /** ThresholdCondition */
+        ThresholdCondition: {
+            direction: components["schemas"]["ThresholdDirection"];
+            /** Rearm Band */
+            rearm_band?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "threshold";
+            /** Unit */
+            unit?: string | null;
+            /** Value */
+            value: number;
+        };
+        /**
+         * ThresholdDirection
+         * @enum {string}
+         */
+        ThresholdDirection: "above" | "below";
         /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
@@ -15532,6 +16055,21 @@ export interface components {
             title?: string | null;
             trigger_config?: components["schemas"]["TriggerConfig"] | null;
         };
+        /** UptimeCondition */
+        UptimeCondition: {
+            /**
+             * Expected Status
+             * @default 200
+             */
+            expected_status?: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            template: "uptime";
+            /** Url */
+            url: string;
+        };
         /** URLRequest */
         URLRequest: {
             /** Urls */
@@ -15878,6 +16416,155 @@ export interface components {
              * @description LiveKit server WebSocket URL
              */
             serverUrl: string | null;
+        };
+        /**
+         * Waiting
+         * @description What an open one-off GAIA task waits for until its next check.
+         */
+        Waiting: {
+            on: components["schemas"]["WaitingOn"];
+            question?: components["schemas"]["Question"] | null;
+        };
+        /**
+         * WaitingOn
+         * @description What an open, non-recurring tracked todo is waiting for until its next check.
+         * @enum {string}
+         */
+        WaitingOn: "time" | "event" | "user" | "sub_todos" | "unplanned";
+        /**
+         * Watch
+         * @description A change the user asked GAIA to tell them about, as GAIA compiled it from their sentence.
+         */
+        Watch: {
+            /** Cadence Seconds */
+            cadence_seconds: number;
+            /** Condition */
+            condition: components["schemas"]["ThresholdCondition"] | components["schemas"]["StateCondition"] | components["schemas"]["NewItemsCondition"] | components["schemas"]["ReplyByCondition"] | components["schemas"]["UptimeCondition"] | components["schemas"]["OpenCondition"];
+            confirm?: components["schemas"]["WatchConfirm"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Sentence */
+            sentence: string;
+            source?: components["schemas"]["WatchSource"] | null;
+            state?: components["schemas"]["WatchState"];
+            /** @default first_match */
+            tell?: components["schemas"]["WatchTell"];
+            /** @default first_alert */
+            until?: components["schemas"]["WatchEnd"];
+        };
+        /**
+         * WatchBlindEpisode
+         * @description The source cannot be read: why, since when, and whether the user was told.
+         */
+        WatchBlindEpisode: {
+            /**
+             * Checks
+             * @default 1
+             */
+            checks?: number;
+            /** Reason */
+            reason: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Told
+             * @default false
+             */
+            told?: boolean;
+        };
+        /**
+         * WatchConfirm
+         * @description How many consecutive readings must agree, and how far apart, before the watch fires.
+         */
+        WatchConfirm: {
+            /**
+             * Gap Seconds
+             * @default 0
+             */
+            gap_seconds?: number;
+            /**
+             * Readings
+             * @default 1
+             */
+            readings?: number;
+        };
+        /**
+         * WatchEnd
+         * @description What ends a watch, besides its expiry.
+         * @enum {string}
+         */
+        WatchEnd: "first_alert" | "terminal_value" | "reply" | "deadline" | "expiry_only";
+        /**
+         * WatchReading
+         * @description What the last check of a watch saw; blind is never unchanged and never fires.
+         * @enum {string}
+         */
+        WatchReading: "matched" | "quiet" | "blind";
+        /**
+         * WatchSource
+         * @description Where a watch reads its value, and how to read it there.
+         */
+        WatchSource: {
+            /** Account Id */
+            account_id?: string | null;
+            /** Extract */
+            extract?: string | null;
+            /** Locator */
+            locator: string;
+            rung: components["schemas"]["WatchSourceRung"];
+        };
+        /**
+         * WatchSourceRung
+         * @description Where a watch reads its value, cheapest first.
+         * @enum {string}
+         */
+        WatchSourceRung: "connector" | "api" | "feed" | "page" | "browser" | "agent";
+        /**
+         * WatchState
+         * @description What code knows of a watch between checks; written only by the check, never by a model.
+         */
+        WatchState: {
+            blind?: components["schemas"]["WatchBlindEpisode"] | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Fired At */
+            fired_at?: string | null;
+            /** Last Checked At */
+            last_checked_at?: string | null;
+            last_reading?: components["schemas"]["WatchReading"] | null;
+            /** Last Value */
+            last_value?: string | null;
+            /**
+             * Matched Streak
+             * @default 0
+             */
+            matched_streak?: number;
+            /** Told Keys */
+            told_keys?: string[];
+        };
+        /**
+         * WatchTell
+         * @description When a watch tells the user: on the first match, or on every new match.
+         * @enum {string}
+         */
+        WatchTell: "first_match" | "every_match";
+        /**
+         * WatchWhen
+         * @description Comes round when a watched value changes the way the user asked.
+         */
+        WatchWhen: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "watch";
+            watch: components["schemas"]["Watch"];
         };
         /**
          * WebSearchResult
@@ -16444,6 +17131,7 @@ export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
+export type Assignee = components['schemas']['Assignee'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
@@ -16511,6 +17199,8 @@ export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus
 export type ChannelPreferences = components['schemas']['ChannelPreferences'];
 export type ChannelPreferencesUpdate = components['schemas']['ChannelPreferencesUpdate'];
 export type ChannelPriorityList = components['schemas']['ChannelPriorityList'];
+export type ChecklistItemCreateRequest = components['schemas']['ChecklistItemCreateRequest'];
+export type ChecklistItemUpdateRequest = components['schemas']['ChecklistItemUpdateRequest'];
 export type CheckoutSource = components['schemas']['CheckoutSource'];
 export type CommunityIntegrationCreator = components['schemas']['CommunityIntegrationCreator'];
 export type CommunityIntegrationItem = components['schemas']['CommunityIntegrationItem'];
@@ -16556,6 +17246,7 @@ export type CredentialProviderName = components['schemas']['CredentialProviderNa
 export type CredentialSource = components['schemas']['CredentialSource'];
 export type CronValidationResponse = components['schemas']['CronValidationResponse'];
 export type CustomIntegrationConnectionResult = components['schemas']['CustomIntegrationConnectionResult'];
+export type DateWhen = components['schemas']['DateWhen'];
 export type DeactivationReason = components['schemas']['DeactivationReason'];
 export type DegradedHealthResponse = components['schemas']['DegradedHealthResponse'];
 export type DeleteAllConversationsResponse = components['schemas']['DeleteAllConversationsResponse'];
@@ -16593,6 +17284,9 @@ export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
+export type EventWhen = components['schemas']['EventWhen'];
+export type ExternalRef = components['schemas']['ExternalRef'];
+export type ExternalRefSource = components['schemas']['ExternalRefSource'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
 export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
@@ -16733,6 +17427,8 @@ export type ModalConfig = components['schemas']['ModalConfig'];
 export type MultiURLResponse = components['schemas']['MultiURLResponse'];
 export type MyIntegrationItem = components['schemas']['MyIntegrationItem'];
 export type MyIntegrationsResponse = components['schemas']['MyIntegrationsResponse'];
+export type NewItemsCondition = components['schemas']['NewItemsCondition'];
+export type NoReplyPlan = components['schemas']['NoReplyPlan'];
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
@@ -16755,6 +17451,7 @@ export type NotionAllPageEventsConfig = components['schemas']['NotionAllPageEven
 export type NotionNewPageInDbConfig = components['schemas']['NotionNewPageInDbConfig'];
 export type NotionPageContentUpdatedConfig = components['schemas']['NotionPageContentUpdatedConfig'];
 export type NotionPageUpdatedConfig = components['schemas']['NotionPageUpdatedConfig'];
+export type NoWhen = components['schemas']['NoWhen'];
 export type OAuthClientMetadataResponse = components['schemas']['OAuthClientMetadataResponse'];
 export type OnboardingAnswers = components['schemas']['OnboardingAnswers'];
 export type OnboardingNeed = components['schemas']['OnboardingNeed'];
@@ -16766,6 +17463,7 @@ export type OnboardingResetResponse = components['schemas']['OnboardingResetResp
 export type OnboardingResponse = components['schemas']['OnboardingResponse'];
 export type OnboardingStatusResponse = components['schemas']['OnboardingStatusResponse'];
 export type OnboardingStep = components['schemas']['OnboardingStep'];
+export type OpenCondition = components['schemas']['OpenCondition'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
@@ -16811,6 +17509,7 @@ export type PublishIntegrationResponse = components['schemas']['PublishIntegrati
 export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResponse'];
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
+export type Question = components['schemas']['Question'];
 export type QuietHours = components['schemas']['QuietHours'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
@@ -16827,6 +17526,8 @@ export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type RepeatWhen = components['schemas']['RepeatWhen'];
+export type ReplyByCondition = components['schemas']['ReplyByCondition'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
@@ -16875,6 +17576,7 @@ export type StarredVoicesResponse = components['schemas']['StarredVoicesResponse
 export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
+export type StateCondition = components['schemas']['StateCondition'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
@@ -16902,6 +17604,17 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type TaskBulkResponse = components['schemas']['TaskBulkResponse'];
+export type TaskCountsResponse = components['schemas']['TaskCountsResponse'];
+export type TaskCreateRequest = components['schemas']['TaskCreateRequest'];
+export type TaskFlag = components['schemas']['TaskFlag'];
+export type TaskIdsRequest = components['schemas']['TaskIdsRequest'];
+export type TaskListResponse = components['schemas']['TaskListResponse'];
+export type TaskResponse = components['schemas']['TaskResponse'];
+export type TaskRunState = components['schemas']['TaskRunState'];
+export type TaskUpdateRequest = components['schemas']['TaskUpdateRequest'];
+export type ThresholdCondition = components['schemas']['ThresholdCondition'];
+export type ThresholdDirection = components['schemas']['ThresholdDirection'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
@@ -16953,6 +17666,7 @@ export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneRespon
 export type UpdateUserFeatureFlagRequest = components['schemas']['UpdateUserFeatureFlagRequest'];
 export type UpdateVoiceRequest = components['schemas']['UpdateVoiceRequest'];
 export type UpdateWorkflowRequest = components['schemas']['UpdateWorkflowRequest'];
+export type UptimeCondition = components['schemas']['UptimeCondition'];
 export type URLRequest = components['schemas']['URLRequest'];
 export type URLResponse = components['schemas']['URLResponse'];
 export type UsageActivityResponse = components['schemas']['UsageActivityResponse'];
@@ -16969,6 +17683,18 @@ export type VoiceListResponse = components['schemas']['VoiceListResponse'];
 export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
+export type Waiting = components['schemas']['Waiting'];
+export type WaitingOn = components['schemas']['WaitingOn'];
+export type Watch = components['schemas']['Watch'];
+export type WatchBlindEpisode = components['schemas']['WatchBlindEpisode'];
+export type WatchConfirm = components['schemas']['WatchConfirm'];
+export type WatchEnd = components['schemas']['WatchEnd'];
+export type WatchReading = components['schemas']['WatchReading'];
+export type WatchSource = components['schemas']['WatchSource'];
+export type WatchSourceRung = components['schemas']['WatchSourceRung'];
+export type WatchState = components['schemas']['WatchState'];
+export type WatchTell = components['schemas']['WatchTell'];
+export type WatchWhen = components['schemas']['WatchWhen'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
@@ -29323,6 +30049,573 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SupportRequestSubmissionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_list_tasks: {
+        parameters: {
+            query?: {
+                assignee?: components["schemas"]["Assignee"] | null;
+                completed?: boolean | null;
+                due_after?: string | null;
+                due_before?: string | null;
+                flag?: components["schemas"]["TaskFlag"] | null;
+                has_due?: boolean | null;
+                overdue?: boolean;
+                page?: number;
+                parent_id?: string | null;
+                per_page?: number;
+                priority?: components["schemas"]["Priority"] | null;
+                q?: string | null;
+                top_level?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_create_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_get_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_update_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_delete_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_create_subtask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_update_subtask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subtask_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_delete_subtask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subtask_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_bulk_delete_tasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBulkResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_bulk_complete_tasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIdsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskBulkResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    tasks_get_task_counts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskCountsResponse"];
                 };
             };
             /** @description Unprocessable Entity */

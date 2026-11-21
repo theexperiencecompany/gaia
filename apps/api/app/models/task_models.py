@@ -282,6 +282,8 @@ class TaskDocument(UserScopedDocument):
     when: When = Field(default_factory=NoWhen)
     #: When a one-off GAIA task next looks at its work; not its due date.
     next_check_at: datetime | None = None
+    #: When a to-do's owed nudge goes out: its due time, or the end of the quiet hours it fell in.
+    nudge_at: datetime | None = None
     subscriptions: list[TriggerSubscription] = Field(default_factory=list)
 
     # Liveness, kept apart from run state: an inactive task never runs.
@@ -402,6 +404,7 @@ class TaskUpdate(BaseModel):
     parent_id: str | None = None
     when: When | None = None
     next_check_at: datetime | None = None
+    nudge_at: datetime | None = None
     subscriptions: list[TriggerSubscription] | None = None
     active: bool | None = None
     pause_reason: DeactivationReason | None = None

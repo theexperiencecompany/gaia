@@ -39,6 +39,8 @@ from app.utils.occurrence import occurrence_window
 #: The two fields a GAIA task's next run lives in: a repeating task's schedule, a one-off's next check.
 NEXT_RUN_FIELD = "when.next_run"
 NEXT_CHECK_FIELD = "next_check_at"
+#: The field a to-do's owed nudge lives in.
+NUDGE_FIELD = "nudge_at"
 _SHORT_ID = re.compile(r"[0-9a-f]{8}")
 _UPCOMING_DAYS = 7
 
@@ -378,6 +380,16 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             limit=limit,
         )
 
+    async def find_due_todos_all_users(self, *, now: datetime, limit: int) -> list[TaskDocument]:
+        """Every user's to-dos that came round by now: a repeat's next round, or an owed nudge."""
+        return await self._find(
+            {
+                "assignee": Assignee.USER.value,
+                "$or": [_due_at(NEXT_RUN_FIELD, now), _due_at(NUDGE_FIELD, now)],
+            },
+            limit=limit,
+        )
+
     async def find_stale_running_all_users(
         self, *, cutoff: datetime, limit: int
     ) -> list[TaskDocument]:
@@ -584,6 +596,22 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
         """Apply update only while the next check is still expected (compare-and-set)."""
         return await self._apply_update(
             task_id, user_id, {"user_id": user_id, NEXT_CHECK_FIELD: expected}, update
+        )
+
+    async def update_if_next_run(
+        self, task_id: str, user_id: str, *, expected: datetime, update: TaskUpdate
+    ) -> TaskDocument | None:
+        """Apply update only while the repeat's next run is still expected (compare-and-set)."""
+        return await self._apply_update(
+            task_id, user_id, {"user_id": user_id, NEXT_RUN_FIELD: expected}, update
+        )
+
+    async def update_if_nudge_at(
+        self, task_id: str, user_id: str, *, expected: datetime, update: TaskUpdate
+    ) -> TaskDocument | None:
+        """Apply update only while the owed nudge is still expected (compare-and-set)."""
+        return await self._apply_update(
+            task_id, user_id, {"user_id": user_id, NUDGE_FIELD: expected}, update
         )
 
     async def add_subscription(

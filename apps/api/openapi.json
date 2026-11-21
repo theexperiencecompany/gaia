@@ -573,6 +573,15 @@
         "title": "AsanaTaskTriggerConfig",
         "type": "object"
       },
+      "Assignee": {
+        "description": "Who does a task: the user (a to-do), or GAIA.",
+        "enum": [
+          "user",
+          "gaia"
+        ],
+        "title": "Assignee",
+        "type": "string"
+      },
       "AuthenticatedUserResponse": {
         "additionalProperties": true,
         "description": "The full ``GET /me`` payload.\n\n``build_user_context()`` (``app/utils/auth_utils.py``) spreads the entire\n``UserDocument`` into ``request.state.user`` (see that class's docstring)\nplus a handful of auth-context fields layered on top: ``user_id``\n(replacing ``_id``), ``auth_provider``, and per-auth-path flags present on\nonly *some* paths \u2014 a plain WorkOS session sets none of them, the agent\ntoken path sets ``impersonated``, bots set ``bot_authenticated``, and the\ndev bypass sets ``dev_bypass``. This model mirrors ``UserDocument``'s\ndeclared fields at the point where the endpoint returns them, rather than\nsubclassing it, so the DB document's shape and this response's shape can\nevolve independently. ``extra=\"allow\"`` for the same reason\n``UserDocument`` has it: undeclared historical fields on the document\nstill need to reach this response. ``onboarding`` holds\n``get_user_onboarding_status()``'s processed shape, not the raw\n``UserDocument.onboarding`` blob it overwrites.",
@@ -2896,6 +2905,53 @@
         "title": "ChannelPriorityList",
         "type": "object"
       },
+      "ChecklistItemCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ChecklistItemCreateRequest",
+        "type": "object"
+      },
+      "ChecklistItemUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ChecklistItemUpdateRequest",
+        "type": "object"
+      },
       "CheckoutSource": {
         "description": "Where in the product a checkout was started.\n\nThe server is the single emitter of ``payment:checkout_started``, so the\nattribution the funnel reads has to arrive on the request. Closed and\nrepository-owned: it mirrors ``CheckoutSource`` in\n``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new\nsurface adds a member on both sides in the same change.",
         "enum": [
@@ -5010,6 +5066,38 @@
         "title": "CustomIntegrationConnectionResult",
         "type": "object"
       },
+      "DateWhen": {
+        "description": "Due at one moment: a to-do's due date, or the date a one-off GAIA task is due by.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "const": "date",
+            "default": "date",
+            "title": "Kind",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "DateWhen",
+        "type": "object"
+      },
       "DeactivationReason": {
         "description": "Why the system paused a reminder or deactivated a workflow.\n\nAn automatic resume only touches tasks carrying the reason it owns, so a task\nthe user switched off themselves (no reason) is never silently re-enabled.",
         "enum": [
@@ -6327,6 +6415,58 @@
         ],
         "title": "EventUpdateRequest",
         "type": "object"
+      },
+      "EventWhen": {
+        "description": "Comes round only on the app events in the task's subscriptions.",
+        "properties": {
+          "kind": {
+            "const": "event",
+            "default": "event",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "EventWhen",
+        "type": "object"
+      },
+      "ExternalRef": {
+        "description": "The outside object a todo is about; at most one open todo per user holds a given ref.",
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ExternalRefSource"
+          }
+        },
+        "required": [
+          "source",
+          "id"
+        ],
+        "title": "ExternalRef",
+        "type": "object"
+      },
+      "ExternalRefSource": {
+        "description": "The kind of outside object a todo is about.",
+        "enum": [
+          "gmail_thread",
+          "inbox_desk"
+        ],
+        "title": "ExternalRefSource",
+        "type": "string"
       },
       "FeaturePeriodUsage": {
         "description": "One feature's usage within one window (day or month).",
@@ -11672,6 +11812,60 @@
         "title": "MyIntegrationsResponse",
         "type": "object"
       },
+      "NewItemsCondition": {
+        "properties": {
+          "item_key": {
+            "minLength": 1,
+            "title": "Item Key",
+            "type": "string"
+          },
+          "matching": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matching"
+          },
+          "template": {
+            "const": "new_items",
+            "default": "new_items",
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_key"
+        ],
+        "title": "NewItemsCondition",
+        "type": "object"
+      },
+      "NoReplyPlan": {
+        "description": "What a todo waiting on the user does when its question expires unanswered.",
+        "enum": [
+          "ask_again",
+          "proceed",
+          "hold"
+        ],
+        "title": "NoReplyPlan",
+        "type": "string"
+      },
+      "NoWhen": {
+        "description": "Nothing brings the task round: an undated to-do, or GAIA work it runs when asked.",
+        "properties": {
+          "kind": {
+            "const": "none",
+            "default": "none",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "title": "NoWhen",
+        "type": "object"
+      },
       "NoteModel": {
         "properties": {
           "content": {
@@ -12979,6 +13173,33 @@
         ],
         "title": "OnboardingStep",
         "type": "string"
+      },
+      "OpenCondition": {
+        "description": "No single source: a daily model check, promoted to a typed watch once a source appears.",
+        "properties": {
+          "daily_call_cap": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Daily Call Cap",
+            "type": "integer"
+          },
+          "question": {
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "template": {
+            "const": "open",
+            "default": "open",
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "OpenCondition",
+        "type": "object"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
@@ -14898,6 +15119,48 @@
         "title": "PushTokenResponse",
         "type": "object"
       },
+      "Question": {
+        "description": "What GAIA asked the user, and what it does if they never answer.",
+        "properties": {
+          "default_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Action"
+          },
+          "hold_checks": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Hold Checks",
+            "type": "integer"
+          },
+          "if_no_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoReplyPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "Question",
+        "type": "object"
+      },
       "QuietHours": {
         "additionalProperties": false,
         "description": "When the user's quiet hours start and end on their own clock; the span may cross midnight.",
@@ -15563,6 +15826,76 @@
           "updated_at"
         ],
         "title": "ReminderResponse",
+        "type": "object"
+      },
+      "RepeatWhen": {
+        "description": "Comes round on a schedule: a 5-field cron, or a shortcut (daily, weekly, every_4h, every_1h).\n\nThe rule is checked where it is written, not here, so a stored schedule that breaks\ntoday's rule still loads and can be fixed (it is paused as invalid_schedule).",
+        "properties": {
+          "kind": {
+            "const": "repeat",
+            "default": "repeat",
+            "title": "Kind",
+            "type": "string"
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          },
+          "rule": {
+            "minLength": 1,
+            "title": "Rule",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "title": "RepeatWhen",
+        "type": "object"
+      },
+      "ReplyByCondition": {
+        "properties": {
+          "deadline": {
+            "format": "date-time",
+            "title": "Deadline",
+            "type": "string"
+          },
+          "template": {
+            "const": "reply_by",
+            "default": "reply_by",
+            "title": "Template",
+            "type": "string"
+          },
+          "thread_ref": {
+            "minLength": 1,
+            "title": "Thread Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_ref",
+          "deadline"
+        ],
+        "title": "ReplyByCondition",
         "type": "object"
       },
       "ReplyToMessageData": {
@@ -17116,6 +17449,36 @@
         "title": "StartPairingResponse",
         "type": "object"
       },
+      "StateCondition": {
+        "properties": {
+          "states": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "States",
+            "type": "array"
+          },
+          "template": {
+            "const": "state",
+            "default": "state",
+            "title": "Template",
+            "type": "string"
+          },
+          "terminal_states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Terminal States",
+            "type": "array"
+          }
+        },
+        "required": [
+          "states"
+        ],
+        "title": "StateCondition",
+        "type": "object"
+      },
       "StaticReminderPayload": {
         "description": "Payload for STATIC agent reminders.",
         "properties": {
@@ -18005,6 +18368,674 @@
           "other"
         ],
         "title": "SystemPurpose",
+        "type": "string"
+      },
+      "TaskBulkResponse": {
+        "description": "Which of the requested tasks a bulk action changed, and which it could not find.",
+        "properties": {
+          "not_found": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Found",
+            "type": "array"
+          },
+          "succeeded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Succeeded",
+            "type": "array"
+          }
+        },
+        "required": [
+          "succeeded",
+          "not_found"
+        ],
+        "title": "TaskBulkResponse",
+        "type": "object"
+      },
+      "TaskCountsResponse": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "today": {
+            "title": "Today",
+            "type": "integer"
+          },
+          "upcoming": {
+            "title": "Upcoming",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "today",
+          "upcoming",
+          "overdue",
+          "completed"
+        ],
+        "title": "TaskCountsResponse",
+        "type": "object"
+      },
+      "TaskCreateRequest": {
+        "additionalProperties": false,
+        "description": "A task the user makes from the app or a chat app; GAIA's own tasks come from its tools.",
+        "properties": {
+          "body": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Body",
+            "type": "string"
+          },
+          "notify": {
+            "default": true,
+            "description": "Whether the user is told when it comes due",
+            "title": "Notify",
+            "type": "boolean"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority",
+            "default": "none"
+          },
+          "subtasks": {
+            "items": {
+              "$ref": "#/components/schemas/SubTaskInput"
+            },
+            "title": "Subtasks",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "when": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "date": "#/components/schemas/DateWhen",
+                    "none": "#/components/schemas/NoWhen",
+                    "repeat": "#/components/schemas/RepeatWhen"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NoWhen"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DateWhen"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RepeatWhen"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A date, a repeat, or nothing",
+            "title": "When"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "TaskCreateRequest",
+        "type": "object"
+      },
+      "TaskFlag": {
+        "description": "A state a task is in that the engine or GAIA's prompts read; formerly a system label.",
+        "enum": [
+          "failed",
+          "blocked",
+          "waiting_for_reply",
+          "waiting_for_approval",
+          "needs_reply",
+          "action_needed"
+        ],
+        "title": "TaskFlag",
+        "type": "string"
+      },
+      "TaskIdsRequest": {
+        "additionalProperties": false,
+        "description": "The tasks a bulk action applies to.",
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "TaskIdsRequest",
+        "type": "object"
+      },
+      "TaskListResponse": {
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "per_page": {
+            "title": "Per Page",
+            "type": "integer"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks",
+          "total",
+          "page",
+          "per_page"
+        ],
+        "title": "TaskListResponse",
+        "type": "object"
+      },
+      "TaskResponse": {
+        "description": "A task as the list and its side panel show it.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assignee": {
+            "$ref": "#/components/schemas/Assignee"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "icon_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Color"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "integration_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Integration Ids",
+            "type": "array"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "missing_integrations": {
+            "description": "Apps the task uses that are not connected",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Integrations",
+            "type": "array"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When GAIA next looks at a one-off task",
+            "title": "Next Check At"
+          },
+          "notify": {
+            "title": "Notify",
+            "type": "boolean"
+          },
+          "open_subtask_count": {
+            "description": "Open tasks filed under this one",
+            "title": "Open Subtask Count",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeactivationReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the system switched it off; none when the user stopped it"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "run_state": {
+            "$ref": "#/components/schemas/TaskRunState"
+          },
+          "source_integration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Integration"
+          },
+          "status_flags": {
+            "items": {
+              "$ref": "#/components/schemas/TaskFlag"
+            },
+            "title": "Status Flags",
+            "type": "array"
+          },
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/TriggerSubscriptionView"
+            },
+            "title": "Subscriptions",
+            "type": "array"
+          },
+          "subtasks": {
+            "items": {
+              "$ref": "#/components/schemas/SubTaskOutput"
+            },
+            "title": "Subtasks",
+            "type": "array"
+          },
+          "successful_runs": {
+            "title": "Successful Runs",
+            "type": "integer"
+          },
+          "system_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Key"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_runs": {
+            "title": "Total Runs",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "waiting": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Waiting"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "when": {
+            "discriminator": {
+              "mapping": {
+                "date": "#/components/schemas/DateWhen",
+                "event": "#/components/schemas/EventWhen",
+                "none": "#/components/schemas/NoWhen",
+                "repeat": "#/components/schemas/RepeatWhen",
+                "watch": "#/components/schemas/WatchWhen"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NoWhen"
+              },
+              {
+                "$ref": "#/components/schemas/DateWhen"
+              },
+              {
+                "$ref": "#/components/schemas/RepeatWhen"
+              },
+              {
+                "$ref": "#/components/schemas/EventWhen"
+              },
+              {
+                "$ref": "#/components/schemas/WatchWhen"
+              }
+            ],
+            "title": "When"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "body",
+          "assignee",
+          "priority",
+          "completed",
+          "completed_at",
+          "subtasks",
+          "parent_id",
+          "open_subtask_count",
+          "when",
+          "next_check_at",
+          "subscriptions",
+          "active",
+          "pause_reason",
+          "run_state",
+          "waiting",
+          "status_flags",
+          "notify",
+          "external_ref",
+          "expires_at",
+          "icon",
+          "icon_color",
+          "integration_ids",
+          "missing_integrations",
+          "total_runs",
+          "successful_runs",
+          "last_run_at",
+          "system_key",
+          "source_integration",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TaskResponse",
+        "type": "object"
+      },
+      "TaskRunState": {
+        "description": "Whether a GAIA task is idle, mid-run, or finished every run it will ever make.",
+        "enum": [
+          "idle",
+          "running",
+          "ended"
+        ],
+        "title": "TaskRunState",
+        "type": "string"
+      },
+      "TaskUpdateRequest": {
+        "additionalProperties": false,
+        "description": "A partial edit: a field left out stays as it is.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed"
+          },
+          "notify": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notify"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Priority"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "when": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "date": "#/components/schemas/DateWhen",
+                    "none": "#/components/schemas/NoWhen",
+                    "repeat": "#/components/schemas/RepeatWhen"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NoWhen"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DateWhen"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RepeatWhen"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When"
+          }
+        },
+        "title": "TaskUpdateRequest",
+        "type": "object"
+      },
+      "ThresholdCondition": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/ThresholdDirection"
+          },
+          "rearm_band": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rearm Band"
+          },
+          "template": {
+            "const": "threshold",
+            "default": "threshold",
+            "title": "Template",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "value"
+        ],
+        "title": "ThresholdCondition",
+        "type": "object"
+      },
+      "ThresholdDirection": {
+        "enum": [
+          "above",
+          "below"
+        ],
+        "title": "ThresholdDirection",
         "type": "string"
       },
       "TodoCanvasResponse": {
@@ -20572,6 +21603,31 @@
         "title": "UpdateWorkflowRequest",
         "type": "object"
       },
+      "UptimeCondition": {
+        "properties": {
+          "expected_status": {
+            "default": 200,
+            "title": "Expected Status",
+            "type": "integer"
+          },
+          "template": {
+            "const": "uptime",
+            "default": "uptime",
+            "title": "Template",
+            "type": "string"
+          },
+          "url": {
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "UptimeCondition",
+        "type": "object"
+      },
       "UsageActivityResponse": {
         "description": "Year activity grid + the user's standing, from the daily rollups.",
         "properties": {
@@ -21206,6 +22262,369 @@
           "conversation_id"
         ],
         "title": "VoiceTokenResponse",
+        "type": "object"
+      },
+      "Waiting": {
+        "description": "What an open one-off GAIA task waits for until its next check.",
+        "properties": {
+          "on": {
+            "$ref": "#/components/schemas/WaitingOn"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Question"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "on"
+        ],
+        "title": "Waiting",
+        "type": "object"
+      },
+      "WaitingOn": {
+        "description": "What an open, non-recurring tracked todo is waiting for until its next check.",
+        "enum": [
+          "time",
+          "event",
+          "user",
+          "sub_todos",
+          "unplanned"
+        ],
+        "title": "WaitingOn",
+        "type": "string"
+      },
+      "Watch": {
+        "description": "A change the user asked GAIA to tell them about, as GAIA compiled it from their sentence.",
+        "properties": {
+          "cadence_seconds": {
+            "minimum": 60.0,
+            "title": "Cadence Seconds",
+            "type": "integer"
+          },
+          "condition": {
+            "discriminator": {
+              "mapping": {
+                "new_items": "#/components/schemas/NewItemsCondition",
+                "open": "#/components/schemas/OpenCondition",
+                "reply_by": "#/components/schemas/ReplyByCondition",
+                "state": "#/components/schemas/StateCondition",
+                "threshold": "#/components/schemas/ThresholdCondition",
+                "uptime": "#/components/schemas/UptimeCondition"
+              },
+              "propertyName": "template"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ThresholdCondition"
+              },
+              {
+                "$ref": "#/components/schemas/StateCondition"
+              },
+              {
+                "$ref": "#/components/schemas/NewItemsCondition"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyByCondition"
+              },
+              {
+                "$ref": "#/components/schemas/UptimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/OpenCondition"
+              }
+            ],
+            "title": "Condition"
+          },
+          "confirm": {
+            "$ref": "#/components/schemas/WatchConfirm"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "sentence": {
+            "minLength": 1,
+            "title": "Sentence",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/WatchState"
+          },
+          "tell": {
+            "$ref": "#/components/schemas/WatchTell",
+            "default": "first_match"
+          },
+          "until": {
+            "$ref": "#/components/schemas/WatchEnd",
+            "default": "first_alert"
+          }
+        },
+        "required": [
+          "sentence",
+          "condition",
+          "expires_at",
+          "cadence_seconds"
+        ],
+        "title": "Watch",
+        "type": "object"
+      },
+      "WatchBlindEpisode": {
+        "description": "The source cannot be read: why, since when, and whether the user was told.",
+        "properties": {
+          "checks": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Checks",
+            "type": "integer"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "told": {
+            "default": false,
+            "title": "Told",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason",
+          "since"
+        ],
+        "title": "WatchBlindEpisode",
+        "type": "object"
+      },
+      "WatchConfirm": {
+        "description": "How many consecutive readings must agree, and how far apart, before the watch fires.",
+        "properties": {
+          "gap_seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Gap Seconds",
+            "type": "integer"
+          },
+          "readings": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Readings",
+            "type": "integer"
+          }
+        },
+        "title": "WatchConfirm",
+        "type": "object"
+      },
+      "WatchEnd": {
+        "description": "What ends a watch, besides its expiry.",
+        "enum": [
+          "first_alert",
+          "terminal_value",
+          "reply",
+          "deadline",
+          "expiry_only"
+        ],
+        "title": "WatchEnd",
+        "type": "string"
+      },
+      "WatchReading": {
+        "description": "What the last check of a watch saw; blind is never unchanged and never fires.",
+        "enum": [
+          "matched",
+          "quiet",
+          "blind"
+        ],
+        "title": "WatchReading",
+        "type": "string"
+      },
+      "WatchSource": {
+        "description": "Where a watch reads its value, and how to read it there.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "extract": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extract"
+          },
+          "locator": {
+            "minLength": 1,
+            "title": "Locator",
+            "type": "string"
+          },
+          "rung": {
+            "$ref": "#/components/schemas/WatchSourceRung"
+          }
+        },
+        "required": [
+          "rung",
+          "locator"
+        ],
+        "title": "WatchSource",
+        "type": "object"
+      },
+      "WatchSourceRung": {
+        "description": "Where a watch reads its value, cheapest first.",
+        "enum": [
+          "connector",
+          "api",
+          "feed",
+          "page",
+          "browser",
+          "agent"
+        ],
+        "title": "WatchSourceRung",
+        "type": "string"
+      },
+      "WatchState": {
+        "description": "What code knows of a watch between checks; written only by the check, never by a model.",
+        "properties": {
+          "blind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchBlindEpisode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Value"
+          },
+          "matched_streak": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Matched Streak",
+            "type": "integer"
+          },
+          "told_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Told Keys",
+            "type": "array"
+          }
+        },
+        "title": "WatchState",
+        "type": "object"
+      },
+      "WatchTell": {
+        "description": "When a watch tells the user: on the first match, or on every new match.",
+        "enum": [
+          "first_match",
+          "every_match"
+        ],
+        "title": "WatchTell",
+        "type": "string"
+      },
+      "WatchWhen": {
+        "description": "Comes round when a watched value changes the way the user asked.",
+        "properties": {
+          "kind": {
+            "const": "watch",
+            "default": "watch",
+            "title": "Kind",
+            "type": "string"
+          },
+          "watch": {
+            "$ref": "#/components/schemas/Watch"
+          }
+        },
+        "required": [
+          "watch"
+        ],
+        "title": "WatchWhen",
         "type": "object"
       },
       "WebSearchResult": {
@@ -38371,6 +39790,899 @@
         "summary": "Submit a support or feature request with images",
         "tags": [
           "Support"
+        ]
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "description": "List the user's tasks, newest first, narrowed by the query.",
+        "operationId": "tasks_list_tasks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Assignee"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignee"
+            }
+          },
+          {
+            "in": "query",
+            "name": "completed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Priority"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            }
+          },
+          {
+            "in": "query",
+            "name": "parent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_level",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Top Level",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_due",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Due"
+            }
+          },
+          {
+            "in": "query",
+            "name": "overdue",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Overdue",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "due_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "due_before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "flag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TaskFlag"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Tasks",
+        "tags": [
+          "Tasks"
+        ]
+      },
+      "post": {
+        "description": "Make a to-do the user does themselves.",
+        "operationId": "tasks_create_task",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Create Task",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/bulk": {
+      "delete": {
+        "description": "Delete several tasks at once, with every subtask under them.",
+        "operationId": "tasks_bulk_delete_tasks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBulkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Bulk Delete Tasks",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/bulk/complete": {
+      "post": {
+        "description": "Tick off several tasks at once.",
+        "operationId": "tasks_bulk_complete_tasks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBulkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Bulk Complete Tasks",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/counts": {
+      "get": {
+        "description": "Count the user's open tasks due today, this week and overdue, and their done ones.",
+        "operationId": "tasks_get_task_counts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Task Counts",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "delete": {
+        "description": "Delete a task and every subtask under it.",
+        "operationId": "tasks_delete_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Delete Task",
+        "tags": [
+          "Tasks"
+        ]
+      },
+      "get": {
+        "description": "Return one of the user's tasks.",
+        "operationId": "tasks_get_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Task",
+        "tags": [
+          "Tasks"
+        ]
+      },
+      "put": {
+        "description": "Edit a task; fields left out stay as they are.",
+        "operationId": "tasks_update_task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Task",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/subtasks": {
+      "post": {
+        "description": "Add an item to the task's checklist.",
+        "operationId": "tasks_create_subtask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChecklistItemCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Create Subtask",
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/subtasks/{subtask_id}": {
+      "delete": {
+        "description": "Remove an item from the task's checklist.",
+        "operationId": "tasks_delete_subtask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "required": true,
+            "schema": {
+              "title": "Subtask Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Delete Subtask",
+        "tags": [
+          "Tasks"
+        ]
+      },
+      "put": {
+        "description": "Rename a checklist item or tick it off.",
+        "operationId": "tasks_update_subtask",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "subtask_id",
+            "required": true,
+            "schema": {
+              "title": "Subtask Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChecklistItemUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Subtask",
+        "tags": [
+          "Tasks"
         ]
       }
     },

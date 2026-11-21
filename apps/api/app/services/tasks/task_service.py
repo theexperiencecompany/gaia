@@ -1,0 +1,265 @@
+"""The user's tasks: making, reading, editing, ticking off and deleting them, and their checklists.
+
+Every write that can change when a to-do comes round (its date, its repeat, its completion,
+its notify switch) recomputes the nudge it owes and arms the task's next time.
+"""
+
+from datetime import UTC, datetime
+import uuid
+
+from app.constants.tasks import Assignee
+from app.db.repositories.tasks import task_repository
+from app.models.task_models import (
+    NoWhen,
+    RepeatWhen,
+    TaskCounts,
+    TaskDocument,
+    TaskPage,
+    TaskQuery,
+    TaskUpdate,
+    When,
+)
+from app.models.todo_models import SubTask
+from app.schemas.tasks import TaskCreateRequest, TaskResponse, TaskUpdateRequest
+from app.services.analytics_service import capture
+from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.tasks.arming import arm_task
+from app.services.tasks.errors import (
+    ClosedParentError,
+    RepeatRuleError,
+    SubtaskNotFoundError,
+    TaskNotFoundError,
+)
+from app.services.tasks.todo_rounds import first_nudge_at, first_repeat
+from app.services.user_service import get_profile_timezone
+from app.utils.auth_utils import require_owner
+from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
+from shared.py.analytics import UserId
+from shared.py.analytics.catalog.tasks import TaskCreated, TaskDeleted, TaskToggled, TaskUpdated
+from shared.py.wide_events import log
+
+
+async def task_responses(user_id: str, tasks: list[TaskDocument]) -> list[TaskResponse]:
+    """Project tasks onto TaskResponse with their open subtask counts and missing apps."""
+    counts = await task_repository.count_open_subtasks(user_id, [task.id for task in tasks])
+    needs_apps = any(task.integration_ids for task in tasks)
+    connected = await get_connected_integration_ids(user_id) if needs_apps else set()
+    return [
+        TaskResponse.from_document(
+            task, open_subtask_count=counts.get(task.id, 0), connected=connected
+        )
+        for task in tasks
+    ]
+
+
+async def task_response(user_id: str, task: TaskDocument) -> TaskResponse:
+    (response,) = await task_responses(user_id, [task])
+    return response
+
+
+async def require_task(user_id: str, task_id: str) -> TaskDocument:
+    """Return the user's task, or raise TaskNotFoundError."""
+    task = await task_repository.get(task_id, user_id=user_id)
+    if task is None:
+        raise TaskNotFoundError(task_id)
+    return task
+
+
+async def _ready_when(user_id: str, when: When) -> When:
+    """Check a repeat's rule and give it its first next time."""
+    if not isinstance(when, RepeatWhen):
+        return when
+    try:
+        validate_repeat_rule(when.rule)
+    except InvalidScheduleError as e:
+        raise RepeatRuleError(e) from e
+    # The next time is always worked out here, never taken from the client.
+    fresh = when.model_copy(update={"next_run": None})
+    return first_repeat(fresh, (await get_profile_timezone(user_id)).value)
+
+
+async def _require_open_parent(user_id: str, parent_id: str) -> None:
+    if (await require_task(user_id, parent_id)).completed:
+        raise ClosedParentError(parent_id)
+
+
+def _with_ids(subtasks: list[SubTask]) -> list[SubTask]:
+    return [s if s.id else s.model_copy(update={"id": str(uuid.uuid4())}) for s in subtasks]
+
+
+async def create_task(user_id: str, request: TaskCreateRequest) -> TaskDocument:
+    """Make a to-do the user does themselves, filed under parent_id when given."""
+    await require_owner(user_id)
+    if request.parent_id is not None:
+        await _require_open_parent(user_id, request.parent_id)
+    draft = TaskDocument(
+        user_id=user_id,
+        title=request.title,
+        body=request.body,
+        assignee=Assignee.USER,
+        priority=request.priority,
+        subtasks=_with_ids(request.subtasks),
+        parent_id=request.parent_id,
+        when=await _ready_when(user_id, request.when) if request.when else NoWhen(),
+        notify=request.notify,
+    )
+    draft.nudge_at = first_nudge_at(draft)
+    created = await task_repository.create(draft)
+    await arm_task(created)
+    log.set_ns("task", id=created.id, when_kind=created.when.kind.value)
+    capture(
+        UserId(user_id),
+        TaskCreated(
+            task_id=created.id,
+            assignee=created.assignee.value,
+            when_kind=created.when.kind.value,
+            priority=created.priority.value,
+            has_body=bool(created.body),
+            checklist_count=len(created.subtasks),
+            is_subtask=created.parent_id is not None,
+        ),
+    )
+    return created
+
+
+async def list_tasks(user_id: str, query: TaskQuery) -> TaskPage:
+    return await task_repository.list_page(user_id=user_id, query=query)
+
+
+async def task_counts(user_id: str) -> TaskCounts:
+    return await task_repository.compute_counts(user_id=user_id)
+
+
+def _round_fields(current: TaskDocument, update: TaskUpdate) -> TaskUpdate:
+    """Add the nudge a to-do owes once update lands, when update touches when it comes round."""
+    touched = {"when", "completed", "notify"} & update.model_fields_set
+    if current.assignee is not Assignee.USER or not touched:
+        return update
+    after = current.model_copy(update=update.model_dump(exclude_unset=True))
+    nudge = first_nudge_at(after)
+    if isinstance(after.when, RepeatWhen) and current.nudge_at and not after.completed:
+        nudge = current.nudge_at
+    return update.model_copy(update={"nudge_at": nudge})
+
+
+async def update_task(user_id: str, task_id: str, request: TaskUpdateRequest) -> TaskDocument:
+    """Apply the user's edit; ticking a task off or reopening it stamps or clears completed_at."""
+    current = await require_task(user_id, task_id)
+    fields = request.model_dump(exclude_unset=True)
+    if request.when is not None:
+        fields["when"] = await _ready_when(user_id, request.when)
+    if request.completed is not None:
+        fields["completed_at"] = datetime.now(UTC) if request.completed else None
+        if request.completed is False and current.parent_id is not None:
+            await _require_open_parent(user_id, current.parent_id)
+    update = _round_fields(current, TaskUpdate(**fields))
+    if not update.model_fields_set:
+        return current
+    updated = await task_repository.update(task_id, user_id=user_id, update=update)
+    if updated is None:
+        raise TaskNotFoundError(task_id)
+    await arm_task(updated)
+    log.set_ns("task", id=task_id, changed=sorted(request.model_fields_set))
+    if request.completed is not None:
+        capture(UserId(user_id), TaskToggled(task_id=task_id, completed=request.completed))
+    else:
+        capture(
+            UserId(user_id),
+            TaskUpdated(task_id=task_id, changed_fields=sorted(request.model_fields_set)),
+        )
+    return updated
+
+
+async def _with_subtasks(user_id: str, task_ids: list[str]) -> list[str]:
+    """Return task_ids and every task filed under them, at any depth."""
+    found = list(dict.fromkeys(task_ids))
+    frontier = found
+    while frontier:
+        children = [c.id for c in await task_repository.find_subtasks(user_id, frontier)]
+        frontier = [c for c in children if c not in found]
+        found.extend(frontier)
+    return found
+
+
+async def delete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
+    """Delete the user's tasks and every subtask under them; returns the requested ids that existed."""
+    existing = {task.id for task in await task_repository.find_by_ids(user_id, task_ids)}
+    doomed = await _with_subtasks(user_id, [t for t in task_ids if t in existing])
+    deleted = await task_repository.bulk_delete(user_id, doomed) if doomed else 0
+    log.set_ns("task", deleted=deleted)
+    if deleted:
+        capture(UserId(user_id), TaskDeleted(count=deleted))
+    return [t for t in task_ids if t in existing]
+
+
+async def delete_task(user_id: str, task_id: str) -> None:
+    if not await delete_tasks(user_id, [task_id]):
+        raise TaskNotFoundError(task_id)
+
+
+async def complete_tasks(user_id: str, task_ids: list[str]) -> list[str]:
+    """Tick off each of the user's tasks; returns the ids that existed."""
+    done: list[str] = []
+    for task_id in dict.fromkeys(task_ids):
+        try:
+            await update_task(user_id, task_id, TaskUpdateRequest(completed=True))
+        except TaskNotFoundError:
+            continue
+        done.append(task_id)
+    return done
+
+
+async def add_subtask(user_id: str, task_id: str, title: str) -> TaskDocument:
+    item = SubTask(id=str(uuid.uuid4()), title=title, completed=False)
+    updated = await task_repository.add_subtask(task_id, user_id=user_id, subtask=item)
+    if updated is None:
+        raise TaskNotFoundError(task_id)
+    capture(
+        UserId(user_id),
+        TaskUpdated(task_id=task_id, changed_fields=["subtasks"], is_checklist=True),
+    )
+    return updated
+
+
+async def update_subtask(
+    user_id: str,
+    task_id: str,
+    subtask_id: str,
+    *,
+    title: str | None,
+    completed: bool | None,
+) -> TaskDocument:
+    current = await require_task(user_id, task_id)
+    if not any(s.id == subtask_id for s in current.subtasks):
+        raise SubtaskNotFoundError(task_id, subtask_id)
+    if title is None and completed is None:
+        return current
+    updated = await task_repository.set_subtask_fields(
+        task_id, user_id=user_id, subtask_id=subtask_id, title=title, completed=completed
+    )
+    if updated is None:
+        raise TaskNotFoundError(task_id)
+    if completed is not None:
+        capture(
+            UserId(user_id), TaskToggled(task_id=task_id, completed=completed, is_checklist=True)
+        )
+    else:
+        capture(
+            UserId(user_id),
+            TaskUpdated(task_id=task_id, changed_fields=["subtasks"], is_checklist=True),
+        )
+    return updated
+
+
+async def delete_subtask(user_id: str, task_id: str, subtask_id: str) -> TaskDocument:
+    current = await require_task(user_id, task_id)
+    if not any(s.id == subtask_id for s in current.subtasks):
+        raise SubtaskNotFoundError(task_id, subtask_id)
+    updated = await task_repository.remove_subtask(task_id, user_id=user_id, subtask_id=subtask_id)
+    if updated is None:
+        raise TaskNotFoundError(task_id)
+    capture(
+        UserId(user_id),
+        TaskUpdated(task_id=task_id, changed_fields=["subtasks"], is_checklist=True),
+    )
+    return updated

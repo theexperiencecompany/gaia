@@ -999,6 +999,7 @@ TASK_SYSTEM_KEY_OPTIONS: IndexOptions = {
     "partialFilterExpression": {"system_key": {"$type": "string"}},
 }
 _GAIA_ONLY = {"assignee": "gaia"}
+_USER_ONLY = {"assignee": "user"}
 
 
 async def create_task_indexes() -> None:
@@ -1059,6 +1060,17 @@ async def create_task_indexes() -> None:
                 [("active", 1), ("run_state", 1), ("next_check_at", 1)],
                 name="task_due_check",
                 partialFilterExpression={**_GAIA_ONLY, "next_check_at": {"$type": "date"}},
+            ),
+            # find_due_todos_all_users: a repeating to-do's next round, and an owed nudge.
+            tasks_collection.create_index(
+                [("when.next_run", 1)],
+                name="task_todo_due_repeat",
+                partialFilterExpression={**_USER_ONLY, "when.next_run": {"$type": "date"}},
+            ),
+            tasks_collection.create_index(
+                [("nudge_at", 1)],
+                name="task_todo_due_nudge",
+                partialFilterExpression={"nudge_at": {"$type": "date"}},
             ),
             tasks_collection.create_index(
                 [("run_state", 1), ("updated_at", 1)],

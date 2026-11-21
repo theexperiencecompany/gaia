@@ -1,0 +1,51 @@
+"""Domain errors raised by the task services."""
+
+from http import HTTPStatus
+
+from app.utils.errors import AppError
+from app.utils.schedule import InvalidScheduleError
+
+
+class TaskNotFoundError(AppError):
+    """Raised (404) when the user has no task with the id."""
+
+    def __init__(self, task_id: str) -> None:
+        super().__init__(
+            message=f"Task {task_id} not found",
+            status_code=HTTPStatus.NOT_FOUND,
+            code="task_not_found",
+        )
+
+
+class SubtaskNotFoundError(AppError):
+    """Raised (404) when the task's checklist has no item with the id."""
+
+    def __init__(self, task_id: str, subtask_id: str) -> None:
+        super().__init__(
+            message=f"Task {task_id} has no checklist item {subtask_id}",
+            status_code=HTTPStatus.NOT_FOUND,
+            code="subtask_not_found",
+        )
+
+
+class RepeatRuleError(AppError):
+    """Raised (422) when a repeat rule breaks the recurring-schedule rule."""
+
+    def __init__(self, error: InvalidScheduleError) -> None:
+        super().__init__(
+            message=str(error),
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+            code="invalid_schedule",
+            public={"reason": error.reason.value},
+        )
+
+
+class ClosedParentError(AppError):
+    """Raised (409) when a subtask would reopen, or be filed, under a parent that is done."""
+
+    def __init__(self, parent_id: str) -> None:
+        super().__init__(
+            message=f"Task {parent_id} is done; reopen it first",
+            status_code=HTTPStatus.CONFLICT,
+            code="parent_completed",
+        )

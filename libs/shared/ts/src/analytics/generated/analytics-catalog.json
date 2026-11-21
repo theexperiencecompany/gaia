@@ -7347,6 +7347,235 @@
       }
     },
     {
+      "event": "task:created",
+      "class": "TaskCreated",
+      "owner": "server",
+      "domain": "task",
+      "description": "The user made a task.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user made a task.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "assignee": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Assignee",
+            "type": "string"
+          },
+          "when_kind": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "When Kind",
+            "type": "string"
+          },
+          "priority": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Priority",
+            "type": "string"
+          },
+          "has_body": {
+            "title": "Has Body",
+            "type": "boolean"
+          },
+          "checklist_count": {
+            "title": "Checklist Count",
+            "type": "integer"
+          },
+          "is_subtask": {
+            "title": "Is Subtask",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task_id",
+          "assignee",
+          "when_kind",
+          "priority",
+          "has_body",
+          "checklist_count",
+          "is_subtask"
+        ],
+        "title": "TaskCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:deleted",
+      "class": "TaskDeleted",
+      "owner": "server",
+      "domain": "task",
+      "description": "The user deleted one task or several, with the subtasks filed under them.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user deleted one task or several, with the subtasks filed under them.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "TaskDeleted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:nudged",
+      "class": "TaskNudged",
+      "owner": "server",
+      "domain": "task",
+      "description": "A to-do came round (fell due, or came back on its repeat) and the user was told.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A to-do came round (fell due, or came back on its repeat) and the user was told.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "repeats": {
+            "title": "Repeats",
+            "type": "boolean"
+          },
+          "channel": {
+            "enum": [
+              "in_app",
+              "chat_app"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "held_for_quiet_hours": {
+            "title": "Held For Quiet Hours",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task_id",
+          "repeats",
+          "channel",
+          "held_for_quiet_hours"
+        ],
+        "title": "TaskNudged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:toggled",
+      "class": "TaskToggled",
+      "owner": "server",
+      "domain": "task",
+      "description": "A task or a checklist item was ticked off or reopened.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A task or a checklist item was ticked off or reopened.",
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Task Id"
+          },
+          "is_checklist": {
+            "default": false,
+            "title": "Is Checklist",
+            "type": "boolean"
+          },
+          "bulk_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Bulk Count"
+          }
+        },
+        "required": [
+          "completed"
+        ],
+        "title": "TaskToggled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:updated",
+      "class": "TaskUpdated",
+      "owner": "server",
+      "domain": "task",
+      "description": "The user edited a task or its checklist.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user edited a task or its checklist.",
+        "properties": {
+          "task_id": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Task Id",
+            "type": "string"
+          },
+          "changed_fields": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+              "type": "string"
+            },
+            "title": "Changed Fields",
+            "type": "array"
+          },
+          "is_checklist": {
+            "default": false,
+            "title": "Is Checklist",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task_id",
+          "changed_fields"
+        ],
+        "title": "TaskUpdated",
+        "type": "object"
+      }
+    },
+    {
       "event": "thanks:page_viewed",
       "class": "ThanksPageViewed",
       "owner": "web",
