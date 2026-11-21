@@ -41,6 +41,7 @@ def _repo(tmp_path: Path) -> Path:
     tests = root / "apps" / "api" / "tests"
     tests.mkdir(parents=True)
     (tests / "test_x.py").write_text("def test_x():\n    assert True\n")
+    (tests.parent / "pytest.ini").write_text("[pytest]\n")
     _git(root, "init", "-q")
     _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
     _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
@@ -340,6 +341,61 @@ def test_regression_proof_proves_a_module_marked_through_pytestmark(tmp_path: Pa
     # The fixture has no API venv, so the run stops after selection; what matters is that it got there.
     verdict = _verdicts(tmp_path).get("regression-proof", {})
     assert verdict.get("status") != "skip", verdict
+
+
+PINNED_TEST = (
+    "import pytest\n\npytestmark = pytest.mark.regression\n\n\ndef test_bug():\n    assert True\n"
+)
+
+
+def _regression_proof_in_scope(tmp_path: Path, test_path: str, *flags: str) -> dict[str, object]:
+    """Commit one pinned test at ``test_path``, run regression-proof with ``flags``; return its verdicts."""
+    root = _repo(tmp_path)
+    pinned = root / "apps" / "api" / test_path
+    pinned.parent.mkdir(parents=True, exist_ok=True)
+    pinned.write_text(PINNED_TEST)
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "pin")
+    subprocess.run(
+        ["bash", str(root / "scripts" / "ci" / "pytest.sh"), "regression-proof", *flags, "HEAD~1"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    return {lane: doc["status"] for lane, doc in _verdicts(tmp_path).items()}
+
+
+def test_regression_proof_on_the_pr_tier_proves_a_unit_test_under_its_own_lane(
+    tmp_path: Path,
+) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path,
+        "tests/unit/workers/test_pinned.py",
+        "--services",
+        "false",
+        "--lane",
+        "lint-python/regression-proof",
+    )
+    # The fixture has no API venv, so the run stops after the scope; what matters is that it got there.
+    assert lanes == {"lint-python/regression-proof": "error"}, lanes
+
+
+def test_regression_proof_on_the_pr_tier_leaves_a_service_tier_test_to_the_queue(
+    tmp_path: Path,
+) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path, "tests/e2e/test_pinned.py", "--services", "false", "--lane", "lint-python/rp"
+    )
+    assert lanes == {"lint-python/rp": "skip"}
+
+
+def test_regression_proof_in_the_queue_leaves_a_unit_test_to_the_pr_tier(tmp_path: Path) -> None:
+    lanes = _regression_proof_in_scope(
+        tmp_path, "tests/unit/workers/test_pinned.py", "--services", "true"
+    )
+    assert lanes == {"regression-proof": "skip"}
 
 
 def _flake_gate_on_exit(tmp_path: Path, code: int, **env: str) -> int:

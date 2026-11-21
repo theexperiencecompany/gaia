@@ -46,6 +46,11 @@ def run_hook(command: str, *, background: bool = False, tool: str = "Bash") -> t
         "sleep 2m && gh pr view 1",
         "make build; sleep 300; tail -5 log",
         "while :; do\n  sleep 45\ndone",
+        "for w in a b c; do gh pr checks $w; sleep 5; done",
+        "bash -c 'while true; do gh pr checks 1; sleep 5; done'",
+        "bash <<'EOF'\nwhile true; do gh run view 9 --json status; sleep 5; done\nEOF",
+        "while gh run view 9 --json status -q .status | grep -q queued; do :; done",
+        "cat <<< x\nwhile true; do gh pr checks 1; sleep 5; done\nx",
     ],
 )
 def test_hand_polling_and_long_sleeps_are_blocked_with_the_watch_advice(command: str) -> None:
@@ -66,9 +71,36 @@ def test_hand_polling_and_long_sleeps_are_blocked_with_the_watch_advice(command:
         "for f in a b; do git add $f; done",
         "git commit -m 'stop sleeping on CI'",
         "pytest tests/unit/test_sleep_backoff.py",
+        "gh run list --json databaseId -q '.[].databaseId' | while read id; do gh run view $id; done",
     ],
 )
 def test_one_shot_reads_short_sleeps_and_unrelated_loops_are_allowed(command: str) -> None:
+    assert run_hook(command) == (0, "")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param(
+            "gh run list --workflow ci.yml --limit 50 --json databaseId,conclusion"
+            ' | python3 -c "import json, sys\nrs = json.load(sys.stdin)\nfor r in rs: print(r)"',
+            id="python-c-program",
+        ),
+        pytest.param(
+            "gh run list --limit 40 --json databaseId,conclusion > /tmp/runs.json\n"
+            "python3 - <<'EOF'\nimport json\nfor r in json.load(open('/tmp/runs.json')):\n"
+            "    print(r)\nEOF",
+            id="python-heredoc",
+        ),
+        pytest.param(
+            "for w in ci.yml build.yml seo-crawl.yml; do"
+            " gh run list --workflow $w --limit 40 --json databaseId,conclusion > /tmp/$w.json; done",
+            id="for-over-a-fixed-list",
+        ),
+    ],
+)
+def test_fetching_ci_history_once_is_not_polling(command: str) -> None:
+    """A loop keyword in a Python program, or a bounded loop reading distinct state, waits on nothing."""
     assert run_hook(command) == (0, "")
 
 

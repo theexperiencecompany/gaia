@@ -42,6 +42,10 @@ Subcommands:
     pytest-verdict <junit.xml> --lane L --exit-code N [--path-prefix P] [--out DIR]
         Turn a pytest JUnit report into a verdict: one finding per failed test,
         at its own file and line, with the assertion tail as the detail.
+    regression-proof-scope --services true|false <file> ...
+        Print the changed test files one tier proves: false keeps those only
+        service-free slices own (lint-python, every push), true the rest (the
+        integration slice, in the queue). Driven by `pytest.sh regression-proof`.
     regression-proof-select <pr_file> <base_file> [<pr_file> <base_file> ...]
         Print one pytest node id per line for every `@pytest.mark.regression`
         test the PR ADDS. Driven by `pytest.sh regression-proof`.
@@ -65,6 +69,11 @@ Subcommands:
         of each check a step ran, and fail when any check failed. With --check,
         post just that finished check (run-job calls it as each one ends); the
         job's post then skips it.
+    reuse-plan --repo R --workflow W --branch B --base B --head-sha S --run-id N --event E
+        Write `reused`: the checks whose last pass on this PR still holds.
+    queue-verified --repo R --workflow W --sha S
+        Write `queue_run` / `queue_run_url`: the green merge_group run that
+        already checked S, or empty (full tier), including when the API fails.
 
 Interpreters: the JUnit readers need defusedxml and are invoked with
 `uv run --no-project` (the PEP 723 block above is what supplies it); the rest
@@ -88,7 +97,7 @@ import sys
 import time
 from typing import NamedTuple, TypedDict
 
-from lib import nx_affected, output_findings
+from lib import nx_affected, output_findings, test_slices
 from lib.github import GitHub, GitHubError, Json, field_of, records, text_of
 from lib.output_findings import Finding
 
@@ -828,6 +837,20 @@ def _test_ids(source: str, *, marked_only: bool) -> set[str]:
 
 def _mark_present_in_text(source: str) -> bool:
     return f"mark.{REGRESSION_MARK}" in source
+
+
+def cmd_regression_proof_scope(args: list[str]) -> int:
+    """Print the changed test files one tier's regression-proof run owns."""
+    parser = argparse.ArgumentParser(prog="verdict.py regression-proof-scope")
+    parser.add_argument("--services", choices=("true", "false"), required=True)
+    parser.add_argument("files", nargs="*", help="repo-relative apps/api/tests paths")
+    opts = parser.parse_args(args)
+    slices = test_slices.load()
+    wants_services = opts.services == "true"
+    for path in opts.files:
+        if test_slices.needs_services(path.removeprefix("apps/api/"), slices) == wants_services:
+            print(path)
+    return 0
 
 
 def cmd_regression_proof_select(args: list[str]) -> int:
@@ -1868,18 +1891,76 @@ def cmd_reuse_plan(args: list[str]) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# queue-verified — a master push of a commit the merge queue already passed.
+#
+# GitHub fast-forwards master to the group commit it tested, so the push run
+# checks the same SHA a second time. A green `merge_group` run of this workflow
+# on that SHA is the verdict this run reuses; anything less proves nothing and
+# the run takes the full tier.
+# ---------------------------------------------------------------------------
+
+QUEUE_EVENT = "merge_group"
+
+
+def _queue_pass(gh: GitHub, repo: str, workflow: str, sha: str) -> Json | None:
+    """Return a successful merge_group run of workflow on sha from this repo, or None."""
+    listing = gh.get(
+        f"repos/{repo}/actions/workflows/{workflow}/runs"
+        f"?event={QUEUE_EVENT}&head_sha={sha}&status=success&per_page=20"
+    )
+    for run in records(listing, "workflow_runs"):
+        head_repo = run.get("head_repository")
+        if (
+            run.get("event") == QUEUE_EVENT
+            and run.get("head_sha") == sha
+            and run.get("conclusion") == "success"
+            and isinstance(head_repo, dict)
+            and head_repo.get("full_name") == repo
+        ):
+            return run
+    return None
+
+
+def cmd_queue_verified(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="verdict.py queue-verified")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--workflow", required=True, help="the workflow file name, e.g. ci.yml")
+    parser.add_argument("--sha", required=True, help="the pushed commit")
+    opts = parser.parse_args(args)
+
+    try:
+        run = _queue_pass(GitHub.from_env(), opts.repo, opts.workflow, opts.sha)
+    except GitHubError as err:
+        print(f"::warning::queue-verified: merge_group runs are unreadable ({err}) — full tier")
+        run = None
+    run_id = str(field_of(run, "id", int)) if run else ""
+    run_url = text_of(run, "html_url") if run else ""
+    outputs = os.environ.get("GITHUB_OUTPUT")
+    if outputs:
+        with Path(outputs).open("a") as handle:
+            handle.write(f"queue_run={run_id}\nqueue_run_url={run_url}\n")
+    if run:
+        print(f"queue-verified: {opts.sha[:12]} passed the merge queue in run {run_id} ({run_url})")
+    else:
+        print(f"queue-verified: no green {QUEUE_EVENT} run on {opts.sha[:12]} — full tier")
+    return 0
+
+
 SUBCOMMANDS = {
     "emit": cmd_emit,
     "consolidate": cmd_consolidate,
     "check-ownership": cmd_check_ownership,
     "dir": cmd_dir,
     "pytest-verdict": cmd_pytest_verdict,
+    "regression-proof-scope": cmd_regression_proof_scope,
     "regression-proof-select": cmd_regression_proof_select,
     "regression-proof-verdict": cmd_regression_proof_verdict,
     "check": cmd_check,
     "sarif": cmd_sarif,
     "post-statuses": cmd_post_statuses,
     "reuse-plan": cmd_reuse_plan,
+    "queue-verified": cmd_queue_verified,
 }
 
 

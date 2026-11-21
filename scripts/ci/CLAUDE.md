@@ -22,7 +22,7 @@ lane without grepping the workflow first.
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
 | The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
-| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
+| Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-scope`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan`, `queue-verified` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
@@ -50,7 +50,7 @@ reporting a line that no longer matches as merely removable — so a baseline ca
 be emptied without reddening the PR that empties it.
 
 Growing one is the founder's call, never the author's. `baselines.py growth`
-(the `baseline-growth` check in repo-policy, on a PR and in the merge queue)
+(the `baseline-growth` check in lint-node, on a PR and in the merge queue)
 fails a change that adds an entry to any of these files, to
 `tools/lints/*_baseline.txt` or `apps/api/tests/meta/*_baseline.txt`, or to a
 module-level `*ALLOWLIST*` literal in `tools/lints/*.py` — or that loosens a
@@ -71,7 +71,8 @@ through — retries, timeouts, and a raised `GitHubError` instead of an empty
 answer; a caller with a safe fallback catches it at the call site), `log.sh` (the log
 convention), `runner-host.sh` (`ci_on_the_box`: whether this job is on the home
 box, read from the runner name `gaia-home-<n>` and never from
-`RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`),
+`RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`) and
+`runner_host.py` (the same answer, `on_the_box()`, for `runner.py` and `mutation.py`),
 `webhook.sh` (`post_webhook`, the one Discord/Slack webhook sender: `deploy.sh
 notify` sources it and `analytics.py csp-soak` runs it through bash),
 `csp_soak.py` (the CSP soak's header classification, HogQL query and Slack
@@ -135,16 +136,19 @@ A module's `cost` is `20 s + mutants x 0.30 s` in the unit pool, and
 `20 s + mutants x (0.19 s + test files x 0.061 s)` in services (one mutant
 worker, because contract tests share a Redis DB). `plan` picks the shard COUNT
 from the cost: each pool gets the fewest shards whose packing keeps every shard
-within `SHARD_BUDGET_SECONDS` (600). The budget is a third of the deadline on
-purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
+within `SHARD_BUDGET_SECONDS` (420), a module over it taking a shard alone.
+420 s plus a shard's setup ends before ts-build-test (616 s median on a PR), so
+packing never lengthens a PR's wall clock, and it sits well under the deadline
+on purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
 mutants, took 245 s on one run and 563 s on the next), and replaying both #1799
 runs' measured durations kept the worst 600 s shard at 1133 s. Measured beats
 estimated: each shard uploads `mutation-durations-N` (`shard.durations.json`,
 the seconds every started module took), `detect` runs `mutation.py history` to
 download those from the PR's five newest earlier runs, and `plan` costs a
 measured module at its newest measurement, falling back to the estimate. A
-plan below one wave is topped up to `MUTATION_WAVE` (6), because shards that
-run at once cost no wall clock. A plan above `MAX_SHARDS` (24, four waves, far
+plan is never topped up to fill a wave: on GitHub-hosted runners every shard
+paid ~70-160 s of checkout and install (a 3-shard run spent 377 s of setup on
+71 s of mutants) and held one of the org's 20 job slots. A plan above `MAX_SHARDS` (24, four waves, far
 under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
 each shard over budget. Concurrency stays at `max-parallel: 6`, so the shards
 past the first wave queue. Spare shards go to the pool with the most cost per
@@ -242,8 +246,9 @@ Two rules make it safe to have in the gate at all:
   acquirer.
 
 Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.py shard` takes
-EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting to `nproc/2`
-via `mutant_workers`, and printed as `mutation shard: N mutant worker(s), N
+EXACTLY its `MUTMUT_MAX_CHILDREN` mutant-worker count (defaulting through
+`mutant_workers` to `nproc/2` on the box and to every vCPU off it, where the
+shard has the runner to itself, and printed as `mutation shard: N mutant worker(s), N
 host CPU token(s)` so a shard's weight is never invisible), and the nx `build`
 step takes `NX_PARALLEL` via `runner.py with-slots N -- <cmd>` (the wrapper exists
 so a scriptless lane's step stays one command line). A lane must ask for what it

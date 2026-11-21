@@ -8,13 +8,21 @@ name: SEO crawl
 # red and posts a short alert to Slack and Discord. A crawl that fixed something
 # opens (or updates) the PR that drops it from the baseline.
 #
-# Runs nightly and behind every production web deploy (deploy-web.yml calls it).
-# Alerting only: it runs after the deploy, so it never blocks or rolls one back.
+# Runs nightly and behind every production web deploy, as its own run:
+# deploy-web.yml dispatches it with `deployed_sha`, which also runs the
+# search-engine audit of the live site (`smoke-web.sh audit`). Alerting only:
+# it runs after the deploy, so it never blocks, rolls back or reddens one.
 on:
   schedule:
     - cron: "41 1 * * *"
   workflow_dispatch:
-  workflow_call:
+    inputs:
+      deployed_sha:
+        description: The commit a production web deploy just shipped (empty = crawl only)
+        type: string
+        default: ""
+
+run-name: ${{ inputs.deployed_sha && format('SEO after deploying {0}', inputs.deployed_sha) || 'SEO crawl' }}
 
 # Two crawls of the same site at once would only race to open the same baseline PR.
 concurrency:
@@ -34,8 +42,11 @@ jobs:
       contents: write # push the baseline branch
       pull-requests: write # open the baseline PR
     steps:
+      # The deployed commit's baseline, not master's tip: a newer commit can edit
+      # the baseline before this run starts. A schedule run keeps the default ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.deployed_sha || '' }}
           fetch-depth: 1
 
       - name: Crawl the live site with squirrelscan as a plain full audit does
@@ -58,4 +69,29 @@ jobs:
           USERNAME: Gaia SEO
           COLOR: "#ff6b6b"
           MESSAGE: "${{ steps.squirrel.outputs.alert || '🔴 **SEO crawl of heygaia.io** did not finish, squirrel could not audit the site (log in the run)' }}"
+        run: bash scripts/ci/deploy.sh notify
+
+  audit:
+    name: SEO audit (post-deploy)
+    if: inputs.deployed_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.deployed_sha }}
+          persist-credentials: false
+      - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
+        id: audit
+        run: bash scripts/ci/smoke-web.sh audit
+      # continue-on-error on the send only: a lost webhook must not hide the red audit.
+      - name: Notify — SEO audit failed after a deploy
+        if: ${{ failure() && steps.audit.outcome == 'failure' }}
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          USERNAME: Gaia SEO
+          COLOR: "#ff6b6b"
+          MESSAGE: "🔴 **SEO audit of heygaia.io** failed after deploying `${{ inputs.deployed_sha }}` (findings in the run)"
         run: bash scripts/ci/deploy.sh notify

@@ -32,6 +32,22 @@ CADDY_STUB = """\
 #!/usr/bin/env bash
 echo "v2.10.2"
 """
+# curl that hands back a corrupt Fortress archive the first $CORRUPT_FORTRESS
+# times, as a dropped connection did, then the real one; it counts every Fortress fetch.
+CURL_WRAPPER = """\
+#!/usr/bin/env bash
+case "$*" in
+  *"$FORTRESS_RELEASE_URL"*)
+    echo x >> "$FORTRESS_FETCHES"
+    if [ "$(wc -l < "$FORTRESS_FETCHES")" -le "$CORRUPT_FORTRESS" ]; then
+      while [ "$1" != "-o" ]; do shift; done
+      echo "truncated" > "$2"
+      exit 0
+    fi
+    ;;
+esac
+exec {real} "$@"
+"""
 
 
 def _executable(path: Path, body: str) -> None:
@@ -68,15 +84,19 @@ def _locate(
     obscura: bool,
     caddy_sha512: str | None = None,
     fortress_sha256: str | None = None,
+    corrupt_fortress: int = 0,
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     # Only what the script runs besides the engines: a host's own Chrome must not be found.
-    tools = ("bash", "dirname", "curl", "sed", "uname", "rm", "sha256sum", "sha512sum", "tar")
+    tools = ("bash", "dirname", "sed", "uname", "rm", "sha256sum", "sha512sum", "tar", "wc")
     for tool in (*tools, "gzip", "mkdir"):
         found = shutil.which(tool)
         assert found is not None
         (bin_dir / tool).symlink_to(found)
+    real_curl = shutil.which("curl")
+    assert real_curl is not None
+    _executable(bin_dir / "curl", CURL_WRAPPER.format(real=real_curl))
     if chrome:
         _executable(bin_dir / "google-chrome", CHROME_STUB)
     runner_temp = tmp_path / "runner"
@@ -96,6 +116,8 @@ def _locate(
         "CADDY_SHA512": caddy_sha512 or release_sha512,
         "FORTRESS_RELEASE_URL": fortress_url,
         "FORTRESS_SHA256": fortress_sha256 or fortress_sha256_pinned,
+        "FORTRESS_FETCHES": str(tmp_path / "fortress-fetches"),
+        "CORRUPT_FORTRESS": str(corrupt_fortress),
     }
     result = subprocess.run(
         ["bash", str(SCRIPT), "locate"], env=env, capture_output=True, text=True, check=False
@@ -147,3 +169,28 @@ def test_a_missing_chrome_fails(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "google-chrome is not on this runner" in result.stdout + result.stderr
     assert github_env.read_text() == ""
+
+
+def _fortress_fetches(tmp_path: Path) -> int:
+    return len((tmp_path / "fortress-fetches").read_text().splitlines())
+
+
+def test_a_fortress_download_that_arrives_corrupt_is_fetched_and_verified_again(
+    tmp_path: Path,
+) -> None:
+    # Four merge-queue ejections (9-11 Nov) were this 278 MB archive failing a pin it matches.
+    result, github_env = _locate(tmp_path, chrome=True, obscura=True, corrupt_fortress=1)
+
+    assert result.returncode == 0, result.stderr
+    assert _fortress_fetches(tmp_path) == 2
+    assert "::warning::" in result.stderr
+    assert "FORTRESS_BIN=" in github_env.read_text()
+
+
+def test_a_fortress_download_corrupt_every_time_fails_after_three_tries(tmp_path: Path) -> None:
+    result, github_env = _locate(tmp_path, chrome=True, obscura=True, corrupt_fortress=99)
+
+    assert result.returncode != 0
+    assert _fortress_fetches(tmp_path) == 3
+    assert re.search(r"fortress \S+ failed its checksum", result.stdout + result.stderr)
+    assert "FORTRESS_BIN" not in github_env.read_text()

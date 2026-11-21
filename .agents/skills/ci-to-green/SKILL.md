@@ -89,7 +89,9 @@ mapped tests and a ready replay selector. Fix in this order:
 ## 4. regression-proof
 
 It runs the PR's **newly marked** `@pytest.mark.regression` tests against the base app
-and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing.
+and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing. A test only
+the unit slices own is proven on every push (lint-python's `regression-proof` check); one
+that needs services, in the integration slice in the merge queue.
 
 - The test imports a **module** that doesn't exist on base, or tests a feature base
   doesn't have: the test is gap-fill, so remove the mark (`apps/api/tests/CLAUDE.md`).
@@ -102,7 +104,8 @@ and needs each one to FAIL there. An ERROR (import) or SKIP proves nothing.
 Verify locally. It diffs `base...HEAD`, so commit first:
 
 ```bash
-cd apps/api && USE_REAL_SERVICES=1 bash ../../scripts/ci/pytest.sh regression-proof origin/master
+bash scripts/ci/pytest.sh regression-proof --services false origin/master  # the PR check
+cd apps/api && USE_REAL_SERVICES=1 bash ../../scripts/ci/pytest.sh regression-proof --services true origin/master
 ```
 
 ## 5. Prove mutation locally, slow and sure
