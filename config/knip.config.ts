@@ -126,32 +126,13 @@ const config: KnipConfig = {
     "apps/web/src/features/calendar/**",
     "apps/web/src/components/layout/sidebar/**/Calendar*.tsx",
 
-    // Dev-only galleries/pages: *.dev.tsx are excluded from production builds
-    // and exist for local component/tool exploration.
-    "apps/web/src/app/**/dev/**",
-    "apps/web/src/**/*.dev.tsx",
-
-    // ErrorBoundary is reusable infra; its only current consumers are the dev
-    // galleries above, so it reads as unused once those are ignored.
-    "apps/web/src/components/shared/ErrorBoundary.tsx",
-
-    // ToolCallsSection is consumed only by the /dev/tool-gallery page
-    // (ignored above), so knip can't see the import. Kept for the gallery.
-    "apps/web/src/features/chat/components/bubbles/bot/ToolCallsSection.tsx",
-
-    // OpenUI playground + example DSLs are consumed only by the
-    // /dev/openui-samples page (page.dev.tsx, ignored above), so knip can't
-    // see the import. Kept for the dev gallery.
-    "apps/web/src/features/chat/components/dev/OpenUIPlayground.tsx",
-    "apps/web/src/config/openui/examples/index.ts",
-
     // BuiltForEveryone: landing "positioning" section, parked — its dynamic
     // import and render are commented out in app/[locale]/(landing)/client.tsx.
     // Kept intact for re-enablement, not dead code.
     "apps/web/src/features/landing/components/sections/BuiltForEveryone.tsx",
 
     // Wake-word ("Hey GAIA"): recently merged, currently wired only into the
-    // dev/wake-word gallery (ignored above). Work-in-progress, not dead.
+    // dev/wake-word gallery. Work-in-progress, not dead.
     "apps/web/src/features/wake-word/**",
 
     // Date helpers consumed only by the parked calendar feature (ignored above).
@@ -278,6 +259,8 @@ const config: KnipConfig = {
       entry: [
         // Next.js App Router conventions
         "src/app/**/page.{ts,tsx}",
+        // Dev-only routes: next.config.mjs adds the dev.tsx page extension in development.
+        "src/app/**/page.dev.{ts,tsx}",
         "src/app/**/layout.{ts,tsx}",
         "src/app/**/loading.{ts,tsx}",
         "src/app/**/error.{ts,tsx}",
