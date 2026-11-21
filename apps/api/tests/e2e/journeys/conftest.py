@@ -38,6 +38,7 @@ OWNED_COLLECTIONS = (
     "waits",
     "user_integrations",
 )
+PLAYBOOK_RUNNER = "app.services.workflow.playbook.runner"
 #: The modules an app connect reaches Composio from; the double answers every call.
 COMPOSIO_USERS = (
     "app.services.oauth.oauth_service",
@@ -137,4 +138,8 @@ async def tasks(
                 comms=comms,
             )
             await driver.subscribe()
+            # A playbook replay writes its result up with a structured model call of its own.
+            seams.enter_context(
+                patch(f"{PLAYBOOK_RUNNER}.ainvoke_structured", new=driver.narrate_replay)
+            )
             yield driver

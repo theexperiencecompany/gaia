@@ -7,6 +7,7 @@ files can later run against /tasks by swapping this module's implementation.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
@@ -21,6 +22,7 @@ from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
 from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
+from pydantic import BaseModel
 import time_machine
 
 from app.agents.tools.tracked_todo_tools import create_tracked_todo, subscribe_todo_to_trigger
@@ -36,8 +38,11 @@ from app.models.oauth_models import OAuthIntegration
 from app.models.payment_models import PlanType
 from app.services.chat import stream as chat_stream
 from app.services.oauth.oauth_service import handle_oauth_connection
+from app.services.workflow.conversation_service import get_or_create_workflow_conversation
+from app.services.workflow.playbook.record import CALL_ID_SEPARATOR
 from app.utils.auth_utils import require_owner
 from app.worker import TASK_FUNCTIONS
+from app.workers.tasks.workflow_tasks import REPLAY_SUMMARY
 from shared.py.wide_events import spawn_logged_task
 from tests.e2e._harness.app_events import gate_judge, signed_webhook_headers
 from tests.e2e._harness.background import drain_background_runs
@@ -54,9 +59,11 @@ from tests.e2e._harness.tasks_views import (
     NeedsApproval,
     OpensSubtasks,
     RepeatingTaskView,
+    ReplaysPlaybook,
     Reports,
     RunOutcome,
     RunView,
+    SavesPlaybook,
     Subtask,
     TaskNotFoundError,
     TaskView,
@@ -213,6 +220,9 @@ class TasksDriver:
         self._executor = executor
         self._comms = comms
         self._last_fired: JobDef | None = None
+        #: The results scripted for playbook replays' write-ups, in order.
+        self._narrations: deque[str] = deque()
+        self._unscripted_narrations: list[str] = []
 
     # The account.
 
@@ -337,6 +347,10 @@ class TasksDriver:
             assert not model.unscripted, f"GAIA took a turn nothing scripted: {model.unscripted}"
         assert self._executor.pending == 0, "GAIA was scripted for more work than it was asked for"
         assert self._comms.pending == 0, "a scripted reply or delivery was never asked for"
+        assert not self._unscripted_narrations, (
+            f"unscripted write-up: {self._unscripted_narrations}"
+        )
+        assert not self._narrations, "a replay was scripted, but the run never replayed"
 
     async def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
         """Queue GAIA's turns for one run of a tracked todo, and comms' write-up when it is delivered."""
@@ -648,17 +662,47 @@ class TasksDriver:
         if not _is_workflow(task_id):
             await self._queue_tracked(task_id, run)
             return
+        workflow = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]
+        hand_off = [call("call_executor", {"task": f"run {task_id}"}, call_id="tc_run"), ON_IT]
         match run:
             case Reports(report):
-                self._comms.then(
-                    [call("call_executor", {"task": f"run {task_id}"}, call_id="tc_run"), ON_IT]
-                )
+                self._comms.then(hand_off)
                 self._executor.then([_DECLINE_PLAYBOOK, report])
-                workflow = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}"))["workflow"]
-                if workflow["notify_on_completion"]:
-                    self._comms.then([report])
+            case SavesPlaybook(report):
+                self._comms.then(hand_off)
+                self._executor.then(
+                    [
+                        call(
+                            "retrieve_tools",
+                            {"exact_tool_names": [GATED_ACTION]},
+                            call_id="tc_find",
+                        ),
+                        call(GATED_ACTION, GATED_ACTION_ARGS, call_id="tc_work"),
+                        call(
+                            "write_playbook",
+                            {
+                                "description": "Draw the plan's flowchart.",
+                                "steps": [{"call": f"{GATED_ACTION}{CALL_ID_SEPARATOR}1"}],
+                                "result_brief": "Say the flowchart is drawn.",
+                            },
+                            call_id="tc_playbook",
+                        ),
+                        report,
+                    ]
+                )
+            case ReplaysPlaybook(report):
+                self._narrations.append(report)
             case _:
                 raise NotImplementedError(f"a repeating task cannot be scripted to {run}")
+        if workflow["notify_on_completion"] and not isinstance(run, ReplaysPlaybook):
+            self._comms.then([report])
+
+    async def narrate_replay(self, schema: type[BaseModel], prompt: str, **_: object) -> BaseModel:
+        """Answer a playbook replay's write-up call with the journey's scripted result."""
+        if not self._narrations:
+            self._unscripted_narrations.append(prompt[-300:])
+            raise AssertionError("a replay was written up with no result scripted")
+        return schema.model_validate({"result": self._narrations.popleft()})
 
     async def ask_before_acting(self) -> None:
         """Set the user's approval settings to ask before the action GAIA takes in NeedsApproval."""
@@ -741,7 +785,11 @@ class TasksDriver:
         if _is_workflow(task_id):
             body = _ok(await self._client.get(f"{WORKFLOWS}/{task_id}/executions"))
             return [
-                RunView(outcome=_WORKFLOW_RUN_STATUS[e["status"]], reason=e.get("summary"))
+                RunView(
+                    outcome=_WORKFLOW_RUN_STATUS[e["status"]],
+                    reason=e.get("summary"),
+                    replayed=e.get("summary") == REPLAY_SUMMARY,
+                )
                 for e in reversed(body["executions"])
             ]
         return [
@@ -760,9 +808,15 @@ class TasksDriver:
 
     async def chat(self, task_id: str) -> list[ChatLine]:
         """Return the task's own chat as the user opens it from the task, oldest first."""
-        conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
-            "conversation_id"
-        ]
+        if _is_workflow(task_id):
+            workflow = (await self.get_repeating(task_id)).title
+            conversation_id = await get_or_create_workflow_conversation(
+                workflow_id=task_id, user_id=self._user_id, workflow_title=workflow
+            )
+        else:
+            conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
+                "conversation_id"
+            ]
         synced = _ok(
             await self._client.post(
                 "/api/v1/conversations/batch-sync",

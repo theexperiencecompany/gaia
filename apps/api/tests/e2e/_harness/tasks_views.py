@@ -57,6 +57,8 @@ class RunView:
     outcome: RunOutcome
     #: Why a skipped or failed run did not do its work, when the history says.
     reason: str | None = None
+    #: The run replayed the task's saved calls instead of reasoning the work out.
+    replayed: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,8 +132,32 @@ class OpensSubtasks:
     report: str
 
 
+@dataclass(frozen=True)
+class SavesPlaybook:
+    """GAIA does a repeating task's work with a tool call and saves the calls to replay next time."""
+
+    report: str
+
+
+@dataclass(frozen=True)
+class ReplaysPlaybook:
+    """GAIA replays the saved calls without reasoning the work out, and writes up their result."""
+
+    report: str
+
+
 #: What GAIA does on one run, as a journey scripts it.
-GaiaRun = Finishes | Reports | Asks | KeepsWaiting | Breaks | OpensSubtasks | NeedsApproval
+GaiaRun = (
+    Finishes
+    | Reports
+    | Asks
+    | KeepsWaiting
+    | Breaks
+    | OpensSubtasks
+    | NeedsApproval
+    | SavesPlaybook
+    | ReplaysPlaybook
+)
 
 
 @dataclass(frozen=True)
