@@ -619,6 +619,7 @@ class TestCreateAllIndexes:
             ("create_local_invite_indexes", "auth_invites"),
             ("create_instance_settings_indexes", "instance_settings"),
             ("create_provider_credential_indexes", "provider_credentials"),
+            ("create_conversation_indexes", "conversations"),
         ],
     )
     async def test_create_all_indexes_security_critical_failure_raises(

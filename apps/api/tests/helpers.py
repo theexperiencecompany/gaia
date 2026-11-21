@@ -389,12 +389,15 @@ def local_timezone(tz_name: str) -> Iterator[None]:
 async def stored_conversation(
     conversations: AsyncIOMotorCollection, conversation_id: str
 ) -> dict[str, Any] | None:
-    """Read a stored conversation's head with its messages, as the repository assembles them from entries."""
+    """Read a stored conversation's head with its messages, each in the shape its entry stores."""
     head = await conversations.find_one({"conversation_id": conversation_id})
     if head is None:
         return None
     doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
-    messages = [] if doc is None else [m.model_dump(exclude_none=True) for m in doc.messages]
+    messages = [
+        {key: value for key, value in m.model_dump().items() if value is not None}
+        for m in ([] if doc is None else doc.messages)
+    ]
     return {**head, "messages": messages}
 
 

@@ -1207,17 +1207,19 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return retried.matched_count > 0
 
     async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
-        """Delete the user's conversations matching match and their entries, returning their ids."""
-        query = {"user_id": user_id, **match}
-        ids = await self._distinct("conversation_id", query)
+        """Delete the user's conversations matching match and their entries, returning their ids.
+
+        Heads, entries and the result are the one set read up front, so a chat created
+        meanwhile is neither deleted nor left without its entries.
+        """
+        ids = await self._distinct("conversation_id", {"user_id": user_id, **match})
         if not ids:
             return []
+        these = {"user_id": user_id, "conversation_id": {"$in": ids}}
         with store_errors("delete"):  # pragma: no mutate — error label only
             # Conversations are uncached (cache_policy None): there is no cache entry to evict.
-            await self._raw_collection().delete_many(query)
-            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
-                {"user_id": user_id, "conversation_id": {"$in": ids}}
-            )
+            await self._raw_collection().delete_many({**match, **these})
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(these)
         return ids
 
     def _with_messages(
