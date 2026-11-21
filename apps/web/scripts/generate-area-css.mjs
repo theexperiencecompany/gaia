@@ -25,7 +25,8 @@ const STYLES = path.join(APP, "styles");
 const OUT = path.join(STYLES, "generated");
 export const AREAS = ["marketing", "content", "directory", "app"];
 const ROUTE_FILES = ["layout", "template", "loading", "error", "not-found"];
-const ROUTE_FILE = /^(?:page|layout|template|loading|error|not-found|default|route)\.tsx?$/;
+// next.config.mjs adds the dev.tsx page extension in development, so app/[locale]/dev/** routes are page.dev.tsx.
+const ROUTE_FILE = /^(?:page|layout|template|loading|error|not-found|default|route)(?:\.dev)?\.tsx?$/;
 const CODE = /\.(?:tsx?|jsx?|mjs)$/;
 const HEROUI_REACT = "@heroui/react";
 const HEROUI_STYLES = "@heroui/styles";
@@ -110,7 +111,7 @@ function areasOfPage(page, byFile) {
 export function assertEveryPageHasOneArea() {
   const byFile = areaImports();
   const wrong = walkDir(APP)
-    .filter((f) => /^page\.tsx?$/.test(path.basename(f)))
+    .filter((f) => /^page(?:\.dev)?\.tsx?$/.test(path.basename(f)))
     .map((page) => ({ page, areas: [...areasOfPage(page, byFile)] }))
     .filter(({ areas }) => areas.length !== 1);
   if (wrong.length) {
