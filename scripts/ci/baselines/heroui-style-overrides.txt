@@ -103,7 +103,6 @@ apps/web/src/features/mail/components/EmailComposeCard.tsx:GaiaButton:px-6
 apps/web/src/features/memory/components/MemoryRow.tsx:Chip.Label:px-1.5
 apps/web/src/features/pins/components/PinsPage.tsx:SearchField.Group:pr-1
 apps/web/src/features/pricing/components/UpgradeModal.tsx:Modal.Dialog:p-4
-apps/web/src/features/settings/components/NestedMenuTooltip.tsx:Tooltip.Content:p-0
 apps/web/src/features/settings/components/composio/ComposioCatalogModal.tsx:Modal.Body:pb-6
 apps/web/src/features/settings/components/desktop/AppIconPicker.tsx:GaiaButton:p-1
 apps/web/src/features/settings/components/desktop/ShortcutRecorder.tsx:GaiaButton:px-3
