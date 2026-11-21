@@ -252,6 +252,8 @@ class TestOnlyBreaksSoFar:
             f"{BR}<NEW_MESS",
             f"{BR}<",
             f"{BR} [ /",
+            f"{BR}<NEW_MESSAGE_BREAK ",
+            f"{BR}[NEW LINE BREAK /",
         ],
     )
     def test_breaks_whitespace_and_a_half_written_break_are_still_nothing(self, text):
@@ -290,6 +292,8 @@ class TestShownSoFar:
             ("< 5 items left", "< 5 items left"),
             ("<❤️>", "<❤️>"),
             ("Hi<NE<", "Hi"),
+            ("Hi<NEW_MESSAGE_BREAK ", "Hi"),
+            ("Hi<NEW_MESSAGE_BREAK /", "Hi"),
         ],
     )
     def test_only_a_break_still_being_written_is_held(self, text: str, shown: str) -> None:

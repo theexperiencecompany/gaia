@@ -8,13 +8,39 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+import re
 
-from app.constants.agents import agent_tag_tail_start, strip_internal_agent_tags
+from app.constants.agents import AGENT_TAG_NAMES_PATTERN, AgentTag
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
 from app.utils.errors import ShownTextTakenBackError
 from app.utils.file_links import FileLinks, unfinished_path_start
 from app.utils.message_breaks import shown_so_far, split_message_bubbles
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubbleTextDelta
+
+#: A framed payload, open to the end when the echo stops before it closes, or a stray closer.
+_AGENT_PAYLOAD_PATTERN = re.compile(
+    rf"<({AGENT_TAG_NAMES_PATTERN})(?:\s[^>]*)?>.*?(?:</\1\s*>|\Z)|</(?:{AGENT_TAG_NAMES_PATTERN})\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+#: The end of streamed text that may still become a tag: "<", "<deliv", "</deliv", "<last_run a=".
+_AGENT_TAG_TAIL_PATTERN = re.compile(
+    "</?(?:"
+    + "|".join(sorted({re.escape(tag[:end]) for tag in AgentTag for end in range(len(tag) + 1)}))
+    + rf"|(?:{AGENT_TAG_NAMES_PATTERN})\s[^>]*)$",
+    re.IGNORECASE,
+)
+
+
+def _strip_internal_agent_tags(text: str) -> str:
+    """Remove every internal payload a model echoed into user-facing text, framing and body alike."""
+    return _AGENT_PAYLOAD_PATTERN.sub("", text)
+
+
+def _agent_tag_tail_start(text: str) -> int:
+    """Return where streamed text may still be writing an internal tag; len(text) when it is not."""
+    found = _AGENT_TAG_TAIL_PATTERN.search(text)
+    return found.start() if found else len(text)
 
 
 @dataclass(frozen=True)
@@ -41,11 +67,10 @@ class ReplyText:
             case ResponseEvent(response=chunk):
                 return replace(self, raw=self.raw + chunk)
             case MessageBoundaryEvent():
-                return ReplyText(
-                    raw=self.raw,
-                    message_start=len(self.raw),
-                    break_pending=len(self.raw) > self.message_start,
-                )
+                # A payload left open ends with its message, so it can't hide the next one.
+                ended = _strip_internal_agent_tags(self.raw[self.message_start :])
+                raw = self.raw[: self.message_start] + ended
+                return ReplyText(raw=raw, message_start=len(raw), break_pending=bool(ended))
 
     @property
     def text(self) -> str:
@@ -60,12 +85,12 @@ class ReplyText:
         open_message = shown_so_far(self.raw[self.message_start :])
         open_message = open_message[: unfinished_path_start(open_message)]
         return _joined_bubbles(
-            self.raw[: self.message_start] + open_message[: agent_tag_tail_start(open_message)]
+            self.raw[: self.message_start] + open_message[: _agent_tag_tail_start(open_message)]
         )
 
 
 def _joined_bubbles(raw: str) -> str:
-    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(strip_internal_agent_tags(raw)))
+    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(_strip_internal_agent_tags(raw)))
 
 
 def screen_bubbles(text: str, conversation_id: str, links: FileLinks) -> tuple[str, ...]:

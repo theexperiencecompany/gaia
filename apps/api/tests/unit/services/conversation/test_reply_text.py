@@ -2,7 +2,8 @@
 
 import pytest
 
-from app.models.conversation_frame_models import ResponseEvent
+from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
+from app.models.stream_events import MessageBoundaryPayload
 from app.services.conversation.reply_text import ReplyText, bubble_deltas, screen_bubbles
 from app.utils.errors import ShownTextTakenBackError
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubbleTextDelta
@@ -137,3 +138,37 @@ def test_a_lookalike_tag_is_ordinary_text() -> None:
 
     assert reply.text == "Use <deliverables> and a<b."
     assert reply.shown == reply.text
+
+
+def test_a_bare_closing_tag_still_streaming_is_never_shown() -> None:
+    before = ReplyText().take(ResponseEvent(response="Done.</delivery_instr"))
+    after = before.take(ResponseEvent(response="uctions> More."))
+
+    assert before.shown == "Done."
+    assert after.shown.startswith(before.shown)
+    assert after.text == "Done. More."
+
+
+def test_a_note_left_open_at_a_message_boundary_hides_only_its_own_message() -> None:
+    boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
+    reply = (
+        ReplyText()
+        .take(ResponseEvent(response="Status.<delivery_instructions>internal"))
+        .take(boundary)
+        .take(ResponseEvent(response="Please choose a date."))
+    )
+
+    assert reply.text == f"Status.{NEW_MESSAGE_BREAKER}Please choose a date."
+    assert reply.shown == reply.text
+
+
+def test_a_message_that_was_only_an_open_note_opens_no_bubble() -> None:
+    boundary = MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1"))
+    reply = (
+        ReplyText()
+        .take(ResponseEvent(response="<delivery_instructions>internal"))
+        .take(boundary)
+        .take(ResponseEvent(response="Hello."))
+    )
+
+    assert reply.text == "Hello."

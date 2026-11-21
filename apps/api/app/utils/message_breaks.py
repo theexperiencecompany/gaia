@@ -26,16 +26,11 @@ _SENTINEL_WORD_SEQUENCES: tuple[tuple[str, ...], ...] = (
 
 _SEPARATOR = r"[\s_-]*"
 _OPEN = r"[<\[]\s*/?\s*"
-_CLOSE = r"\s*/?\s*[>\]]"
+_CLOSE_OPENING = r"\s*/?\s*"
+_CLOSE = _CLOSE_OPENING + r"[>\]]"
+_WHOLE_SPELLINGS = "|".join(_SEPARATOR.join(words) for words in _SENTINEL_WORD_SEQUENCES)
 
-MESSAGE_BREAK_SENTINEL_RE = re.compile(
-    _OPEN
-    + "(?:"
-    + "|".join(_SEPARATOR.join(words) for words in _SENTINEL_WORD_SEQUENCES)
-    + ")"
-    + _CLOSE,
-    re.IGNORECASE,
-)
+MESSAGE_BREAK_SENTINEL_RE = re.compile(_OPEN + f"(?:{_WHOLE_SPELLINGS})" + _CLOSE, re.IGNORECASE)
 
 
 def _word_prefixes(word: str) -> str:
@@ -59,11 +54,14 @@ def _partial_sequence(words: tuple[str, ...]) -> str:
     return f"{_word_prefixes(words[0])}(?:{pattern})?"
 
 
-#: A sentinel truncated by a chunk boundary, anchored to the end of the text.
-#: At least one character is required: a bare trailing ``<`` is ordinary text
-#: far more often than a half-received sentinel.
+#: A sentinel a chunk boundary cut short, or a whole one still missing its bracket, at
+#: the end of text. A bare trailing ``<`` is ordinary text far more often than a sentinel.
 PARTIAL_MESSAGE_BREAK_RE = re.compile(
-    _OPEN + "(?:" + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES) + ")$",
+    _OPEN
+    + "(?:"
+    + "|".join(_partial_sequence(w) for w in _SENTINEL_WORD_SEQUENCES)
+    + f"|(?:{_WHOLE_SPELLINGS}){_CLOSE_OPENING}"
+    + ")$",
     re.IGNORECASE,
 )
 
@@ -71,10 +69,8 @@ PARTIAL_MESSAGE_BREAK_RE = re.compile(
 #: A streamed tail that may still become a break, down to a lone "<" or "[".
 _BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
 
-_EDGE_BREAKS_RE = re.compile(
-    rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*|(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*$",
-    re.IGNORECASE,
-)
+_LEADING_BREAKS_RE = re.compile(rf"^(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*", re.IGNORECASE)
+_TRAILING_BREAKS_RE = re.compile(rf"(?:\s*{MESSAGE_BREAK_SENTINEL_RE.pattern})+\s*$", re.IGNORECASE)
 
 
 def is_only_message_breaks(text: str) -> bool:
@@ -87,9 +83,19 @@ def count_message_breaks(text: str) -> int:
     return len(MESSAGE_BREAK_SENTINEL_RE.findall(text))
 
 
+def strip_leading_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text opens with."""
+    return _LEADING_BREAKS_RE.sub("", text)
+
+
+def strip_trailing_message_breaks(text: str) -> str:
+    """Drop the run of sentinels a text closes with."""
+    return _TRAILING_BREAKS_RE.sub("", text)
+
+
 def strip_edge_message_breaks(text: str) -> str:
     """Drop the run of sentinels a text opens or closes with, keeping the ones between bubbles."""
-    return _EDGE_BREAKS_RE.sub("", text)
+    return strip_trailing_message_breaks(strip_leading_message_breaks(text))
 
 
 def strip_partial_message_break(text: str) -> str:

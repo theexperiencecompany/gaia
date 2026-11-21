@@ -157,8 +157,42 @@ class TestTheRetryDoesNotReplayAPoisonedHistory:
         assert handler.requests[1].messages[0].content == [
             "plain",
             reasoning,
-            {"type": "text", "text": "sure"},
+            {"type": "text", "text": f"{NEW_MESSAGE_BREAKER}sure"},
         ]
+
+    @pytest.mark.parametrize(
+        ("content", "retried"),
+        [
+            ([f"{NEW_MESSAGE_BREAKER}hello{NEW_MESSAGE_BREAKER}"], ["hello"]),
+            (
+                [
+                    {"type": "text", "text": f"one{NEW_MESSAGE_BREAKER}"},
+                    {"type": "text", "text": "two"},
+                ],
+                [
+                    {"type": "text", "text": f"one{NEW_MESSAGE_BREAKER}"},
+                    {"type": "text", "text": "two"},
+                ],
+            ),
+            (
+                [NEW_MESSAGE_BREAKER, f"{NEW_MESSAGE_BREAKER}hi", NEW_MESSAGE_BREAKER * 2],
+                ["", "hi", ""],
+            ),
+        ],
+    )
+    async def test_a_block_reply_is_trimmed_at_its_outer_edges_only(
+        self, content: list[str | dict[str, str]], retried: list[str | dict[str, str]]
+    ):
+        handler = _ScriptedHandler(EMPTY, ANSWER)
+
+        await EmptyCompletionRetryMiddleware().awrap_model_call(
+            _request().override(
+                messages=[AIMessage(content=content), HumanMessage(content="and?")]
+            ),
+            handler,
+        )
+
+        assert handler.requests[1].messages[0].content == retried
 
     async def test_the_first_call_is_sent_the_history_untouched(self):
         handler = _ScriptedHandler(ANSWER)

@@ -35,6 +35,8 @@ from app.utils.message_breaks import (
     is_only_message_breaks,
     split_message_bubbles,
     strip_edge_message_breaks,
+    strip_leading_message_breaks,
+    strip_trailing_message_breaks,
 )
 from app.utils.multimodal import (
     ContentBlockText,
@@ -121,18 +123,35 @@ def is_empty_completion(response: ModelResponse) -> bool:
 
 
 def _without_edge_breaks(content: MessageContent) -> MessageContent:
+    """Trim the break runs at the reply's outer edges; a break between its blocks parts two bubbles."""
     if isinstance(content, str):
         return strip_edge_message_breaks(content)
-    return [_block_without_edge_breaks(block) for block in content]
+    texts = [_item_text(item) for item in content]
+    worded = [
+        i for i, text in enumerate(texts) if text is not None and not is_only_message_breaks(text)
+    ]
+    first, last = (worded[0], worded[-1]) if worded else (len(content), -1)
+    trimmed: list[ContentItem] = []
+    for index, (item, text) in enumerate(zip(content, texts, strict=True)):
+        if text is None:
+            trimmed.append(item)
+            continue
+        if not first <= index <= last:
+            text = ""
+        if index == first:
+            text = strip_leading_message_breaks(text)
+        if index == last:
+            text = strip_trailing_message_breaks(text)
+        trimmed.append(text if isinstance(item, str) else {**item, "text": text})
+    return trimmed
 
 
-def _block_without_edge_breaks(block: ContentItem) -> ContentItem:
-    if not isinstance(block, dict):
-        return block
-    parsed = ContentBlockText.model_validate(block)
-    if parsed.type != "text" or not isinstance(parsed.text, str):
-        return block
-    return {**block, "text": strip_edge_message_breaks(parsed.text)}
+def _item_text(item: ContentItem) -> str | None:
+    """Return a content item's text when it is text a user sees, else None."""
+    if isinstance(item, str):
+        return item
+    parsed = ContentBlockText.model_validate(item)
+    return parsed.text if parsed.type == "text" and isinstance(parsed.text, str) else None
 
 
 def _retry_history(messages: list[AnyMessage]) -> list[AnyMessage]:

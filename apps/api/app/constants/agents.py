@@ -10,7 +10,8 @@ and a tag reads as machine framing rather than text worth copying, which is
 exactly how [EXECUTOR_RESULT] kept surfacing in user-facing replies.
 
 This module owns the vocabulary AND the framing, so the site that writes a tag
-and the site that strips one (strip_internal_agent_tags) can never disagree.
+and the site that strips one (app/services/conversation/reply_text.py) can never
+disagree.
 """
 
 from enum import StrEnum
@@ -71,34 +72,10 @@ REQUEST_AGENT_TAGS: frozenset[AgentTag] = frozenset(
     {AgentTag.USER_INTERJECTION, AgentTag.SUBAGENT_INTERJECTION}
 )
 
-_AGENT_TAG_NAMES = "|".join(tag.value for tag in AgentTag)
+#: Every internal tag name as one regex alternation, for the patterns that find them.
+AGENT_TAG_NAMES_PATTERN = "|".join(tag.value for tag in AgentTag)
 
-_LEADING_AGENT_TAG_PATTERN = re.compile(rf"<(?:{_AGENT_TAG_NAMES})(?=[\s>])", re.IGNORECASE)
-
-#: A framed payload, open to the end when the echo stops before it closes, or a stray closer.
-_AGENT_PAYLOAD_PATTERN = re.compile(
-    rf"<({_AGENT_TAG_NAMES})(?:\s[^>]*)?>.*?(?:</\1\s*>|\Z)|</(?:{_AGENT_TAG_NAMES})\s*>",
-    re.IGNORECASE | re.DOTALL,
-)
-
-#: The end of streamed text that may still become an opening tag: "<", "<deliv", "<last_run a=".
-_AGENT_TAG_TAIL_PATTERN = re.compile(
-    "<(?:"
-    + "|".join(sorted({re.escape(tag[:end]) for tag in AgentTag for end in range(len(tag) + 1)}))
-    + rf"|(?:{_AGENT_TAG_NAMES})\s[^>]*)$",
-    re.IGNORECASE,
-)
-
-
-def strip_internal_agent_tags(text: str) -> str:
-    """Remove every internal payload a model echoed into user-facing text, framing and body alike."""
-    return _AGENT_PAYLOAD_PATTERN.sub("", text)
-
-
-def agent_tag_tail_start(text: str) -> int:
-    """Return where streamed text may still be opening an internal tag; len(text) when it is not."""
-    found = _AGENT_TAG_TAIL_PATTERN.search(text)
-    return found.start() if found else len(text)
+_LEADING_AGENT_TAG_PATTERN = re.compile(rf"<(?:{AGENT_TAG_NAMES_PATTERN})(?=[\s>])", re.IGNORECASE)
 
 
 def leading_agent_tag(text: str) -> AgentTag | None:
