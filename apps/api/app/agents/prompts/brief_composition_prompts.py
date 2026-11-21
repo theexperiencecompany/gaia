@@ -37,6 +37,8 @@ What is noise:
 - Newsletters, receipts, notifications, automated digests, promotions, social pings.
 - Anything done or closed, unless finishing it is the news.
 - An item earlier briefs already showed that has not moved ("mentioned 3 times", nothing new).
+- An app item nobody has updated in a month or more ("last updated 90 days ago"), unless it is
+  due or someone waits on the user: something that moved this week outranks it.
 - Routine chores, shopping, entertainment, reference material.
 - A failed run that recovered, a one-off sync blip, a retry nobody needs to see.
 - A chart of a flat or tiny series, or one that repeats a list already in the brief.

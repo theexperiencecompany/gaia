@@ -34,15 +34,17 @@ def _days_ago(then: datetime, clock: UserClock) -> str:
 
 
 def _created(signal: Signal, clock: UserClock) -> str | None:
-    """Say when the app dates an item's creation and last update; None when it does not."""
+    """Say when the app dates an item's creation and last update; None when it dates neither."""
     created = as_utc(signal.created_at)
-    if created is None:
-        return None
-    note = f"created {clock.day_of(created).isoformat()} ({_days_ago(created, clock)})"
     updated = as_utc(signal.updated_at)
+    parts = (
+        []
+        if created is None
+        else [f"created {clock.day_of(created).isoformat()} ({_days_ago(created, clock)})"]
+    )
     if updated is not None:
-        note += f", last updated {_days_ago(updated, clock)}"
-    return note
+        parts.append(f"last updated {_days_ago(updated, clock)}")
+    return ", ".join(parts) or None
 
 
 def _first_sighting(signal: Signal, clock: UserClock) -> str:

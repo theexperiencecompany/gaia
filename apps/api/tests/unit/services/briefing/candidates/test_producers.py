@@ -586,6 +586,46 @@ class TestAppSignals:
         assert (found.moved, found.is_repeat) == (False, True)
 
 
+@pytest.mark.regression
+def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:
+    """The founder's GitHub: Jun 2025 issues and a Jun 30 PR led two PR threads updated this week."""
+
+    def github(external_id: str, updated: datetime | None, **extra: object) -> RememberedSignal:
+        signal = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id=external_id,
+            kind="open issue assigned to the user",
+            title=f"item {external_id}",
+            updated_at=updated,
+            **extra,
+        )
+        return RememberedSignal(signal=signal)
+
+    found = app_signal_candidates(
+        [
+            github("issue-111", datetime(2025, 6, 18, 22, 33, tzinfo=UTC)),
+            github("issue-110", datetime(2025, 6, 18, 22, 33, tzinfo=UTC)),
+            github("pr-2", datetime(2026, 6, 30, 3, 2, tzinfo=UTC)),
+            github("undated", None),
+            github("thread-18", NOW - timedelta(days=1)),
+            github("thread-17", NOW - timedelta(days=2)),
+            github("overdue", datetime(2026, 3, 1, tzinfo=UTC), importance=SignalImportance.HIGH),
+        ],
+        CLOCK,
+    )
+
+    assert [c.ref.external_id for c in found if c.ref is not None] == [
+        "overdue",
+        "thread-18",
+        "thread-17",
+        "pr-2",
+        "issue-111",
+        "issue-110",
+        "undated",
+    ]
+
+
 class TestIntegrationName:
     def test_an_id_the_catalog_does_not_hold_names_itself_in_the_error(self) -> None:
         with pytest.raises(KeyError) as raised:
