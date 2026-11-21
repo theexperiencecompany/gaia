@@ -1,4 +1,5 @@
 import type { Task, TaskAsk } from "./taskModel";
+import { watchStatus } from "./watchModel";
 import { checkDay } from "./whenModel";
 
 /** A sentence ends in one full stop, whatever GAIA's line ended with. */
@@ -9,6 +10,9 @@ const sentence = (text: string) => `${text.replace(/[.\s]+$/, "")}.`;
  * what it waits on and when it looks again (waiting_on and scheduled_at).
  */
 export function statusLine(task: Task): string | undefined {
+  // A watch stands where its latest reading is; one that can't see says so in its ask.
+  if (task.when.watch)
+    return task.when.watch.blind ? undefined : watchStatus(task);
   const next = task.nextCheck ? checkDay(task.nextCheck) : undefined;
   if (task.state !== "waiting" || !next) return task.status;
   switch (task.waitingOn) {

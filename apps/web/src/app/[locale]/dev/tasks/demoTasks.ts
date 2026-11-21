@@ -1,5 +1,6 @@
 import { addDays, setHours, startOfHour } from "date-fns";
 
+import { WATCH_TASKS } from "./demoWatchTasks";
 import type { Task } from "./taskModel";
 import { inDays, NO_WHEN, onEvent, onSchedule } from "./whenModel";
 
@@ -625,4 +626,5 @@ export const DEMO_TASKS: Task[] = [
       },
     ],
   },
+  ...WATCH_TASKS,
 ];

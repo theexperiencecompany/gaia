@@ -19,28 +19,41 @@ const END_MODES: { key: EndMode; label: string }[] = [
   { key: "date", label: "On" },
 ];
 
-/** Where a newly chosen limit starts: ten runs, or a month from today. */
-const FIRST_RUNS = 10;
+/** What a limit counts: a repeat's runs, or the times a watch tells you. */
+type Unit = "runs" | "alerts";
+
+const COUNTED: Record<
+  Unit,
+  { label: string; one: string; many: string; first: number }
+> = {
+  runs: { label: "Runs", one: "run", many: "runs", first: 10 },
+  alerts: { label: "Alerts", one: "alert", many: "alerts", first: 1 },
+};
+
+/** Where a newly chosen date limit starts: a month from today. */
 const FIRST_DATE_DAYS = 30;
 
 const modeOf = (ends?: TaskEnds): EndMode =>
   ends?.afterRuns ? "runs" : ends?.onDate ? "date" : "never";
 
 /**
- * When a repeating task stops on its own: never, after a number of runs
- * (max_occurrences) or on a date (stop_after). One of the two, never both.
+ * When a repeating task or a watch stops on its own: never, after a number of
+ * runs or alerts (max_occurrences) or on a date (stop_after). One, never both.
  */
 export default function WhenEnds({
   ends,
   onChange,
+  unit = "runs",
 }: {
   ends?: TaskEnds;
   onChange: (ends?: TaskEnds) => void;
+  unit?: Unit;
 }) {
   const mode = modeOf(ends);
+  const counted = COUNTED[unit];
   const choose = (next: EndMode) => {
     if (next === "never") onChange(undefined);
-    if (next === "runs") onChange({ afterRuns: FIRST_RUNS });
+    if (next === "runs") onChange({ afterRuns: counted.first });
     if (next === "date")
       onChange({
         onDate: format(addDays(new Date(), FIRST_DATE_DAYS), "yyyy-MM-dd"),
@@ -60,17 +73,17 @@ export default function WhenEnds({
         </div>
       </Field>
       {mode === "runs" && (
-        <Field label="Runs">
+        <Field label={counted.label}>
           <InputGroup
             className={inputVariants({ variant: "sunken", className: "w-44" })}
           >
             <InputGroup.Input
-              aria-label="Number of runs"
+              aria-label={`Number of ${counted.many}`}
               inputMode="numeric"
               value={String(ends?.afterRuns ?? "")}
               onChange={(event) => {
-                const runs = Number(event.target.value.replace(/\D/g, ""));
-                onChange({ afterRuns: runs > 0 ? runs : FIRST_RUNS });
+                const count = Number(event.target.value.replace(/\D/g, ""));
+                onChange({ afterRuns: count > 0 ? count : counted.first });
               }}
               className={toneVariants({
                 tone: "white",
@@ -78,7 +91,9 @@ export default function WhenEnds({
               })}
             />
             <InputGroup.Suffix>
-              <span className="pe-2 text-sm text-zinc-500">runs</span>
+              <span className="pe-2 text-sm text-zinc-500">
+                {ends?.afterRuns === 1 ? counted.one : counted.many}
+              </span>
             </InputGroup.Suffix>
           </InputGroup>
         </Field>

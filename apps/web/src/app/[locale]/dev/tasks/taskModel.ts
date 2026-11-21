@@ -7,7 +7,7 @@ import type { Priority, SubTask } from "@/types/features/todoTypes";
 
 export type Assignee = "you" | "gaia";
 
-export type WhenKind = "anytime" | "at" | "schedule" | "event";
+export type WhenKind = "anytime" | "at" | "schedule" | "event" | "watch";
 
 /** An event's own settings: trigger_config.trigger_data, by the trigger schema's keys. */
 export type TriggerData = Record<string, string | string[] | number | boolean>;
@@ -16,6 +16,93 @@ export type TriggerData = Record<string, string | string[] | number | boolean>;
 export interface TaskEnds {
   afterRuns?: number;
   onDate?: string;
+}
+
+/** when.watch.template: the typed kinds a watch compiles to; there are no free-form operators. */
+export type WatchKind =
+  | "threshold"
+  | "state"
+  | "new_items"
+  | "reply_by"
+  | "uptime"
+  | "open";
+
+/** when.watch.source.rung: how GAIA reads the value, cheapest first. */
+export type WatchRung =
+  | "connector"
+  | "api"
+  | "feed"
+  | "page"
+  | "browser"
+  | "agent";
+
+/** What GAIA reads: when.watch.source, picked once by the model when the sentence is read. */
+export interface WatchSource {
+  rung: WatchRung;
+  /** A connected app it reads through (connector rung): the integration id, for its logo. */
+  app?: string;
+  /** The site it reads (api, feed, page, browser): its host, for its icon. */
+  site?: string;
+  /** The thing on it, as it reads: "Billy bookcase", "AI 101 on Dec 3". */
+  label: string;
+}
+
+/** when.watch.condition, per template. Amounts are in the source's own unit. */
+export interface WatchCondition {
+  /** threshold: below or above the value. */
+  direction?: "below" | "above";
+  value?: number;
+  /** threshold: the unit as it reads before the number ("$", "₹") or after it ("°F"). */
+  unit?: string;
+  /** state: the value it waits for, and the values it can take. */
+  target?: string;
+  states?: string[];
+  /** state: the final values; reaching one ends the watch. */
+  finalStates?: string[];
+  /** new_items: what counts as a new item, as it reads. */
+  items?: string;
+  /** reply_by: whose reply, and the deadline (ISO). */
+  from?: string;
+  deadline?: string;
+}
+
+/** Why GAIA can't read the value: when.watch.blind_reason. Each has one suggested fix. */
+export type BlindReason = "signed_out" | "blocked" | "page_changed";
+
+export interface TaskWatch {
+  /** when.watch.sentence: the user's words, read once by the model. */
+  sentence: string;
+  /** when.watch.template. */
+  kind: WatchKind;
+  source: WatchSource;
+  condition: WatchCondition;
+  /** when.watch.last_value and last_checked_at (ISO): the latest reading. */
+  reading?: { value: string; at: string };
+  /** when.watch.cadence_minutes, never under the source's floor. */
+  everyMinutes: number;
+  /** when.watch.confirm: scraped values and uptime are read twice, a minute apart, before telling you. */
+  confirmTwice: boolean;
+  /** when.watch.expires_at (ISO): every watch ends by this, 90 days out and renewable. */
+  expiresAt: string;
+  /** when.watch.blind_reason and blind_since (ISO): unset while GAIA can see it. */
+  blind?: { reason: BlindReason; since: string };
+  /** when.watch.ended_reason and ended_at (ISO): how it ended, in a line. */
+  ended?: { why: string; at: string };
+  /** when.watch.alert_count: times it has told you, read against ends.afterRuns. */
+  alerts: number;
+}
+
+/** How a webhook's deliveries are verified: subscriptions[].signature. */
+export type WebhookSigning = "none" | "secret" | "stripe" | "github";
+
+export interface TaskWebhook {
+  /** subscriptions[].webhook_id: the random, rotatable part of the task's URL. */
+  id: string;
+  signing: WebhookSigning;
+  /** subscriptions[].secret: shown once, when the signing that needs it is chosen. */
+  secret?: string;
+  /** subscriptions[].last_received_at (ISO), after the first delivery. */
+  lastReceived?: string;
 }
 
 export interface TaskWhen {
@@ -39,7 +126,11 @@ export interface TaskWhen {
   triggerData?: TriggerData;
   /** Event: the workflow gate's condition, "only when ...". */
   condition?: string;
-  /** Schedule or event: max_occurrences / stop_after. */
+  /** Event: the task's own webhook, when trigger is WEBHOOK_TRIGGER. */
+  webhook?: TaskWebhook;
+  /** Watch: when.watch, the change GAIA checks for. */
+  watch?: TaskWatch;
+  /** Schedule, event or watch: max_occurrences / stop_after. */
   ends?: TaskEnds;
 }
 
@@ -63,7 +154,7 @@ export interface TaskAsk {
 }
 
 /** What a task needs from you, in the list's words. */
-export type Need = TaskAsk["kind"] | "reconnect";
+export type Need = TaskAsk["kind"] | "reconnect" | "blind";
 
 /** todo.waiting_on, for a one-off GAIA task between runs. */
 export type WaitingOn = "time" | "event" | "user" | "sub_todos" | "unplanned";
@@ -93,8 +184,8 @@ export interface TaskRun {
   summary: string;
   /** duration_seconds, as it reads. */
   duration: string;
-  /** trigger_type: manual, schedule, or the app whose event started it. */
-  trigger: "manual" | "schedule" | string;
+  /** trigger_type: manual, schedule, watch, webhook, or the app whose event started it. */
+  trigger: "manual" | "schedule" | "watch" | "webhook" | string;
   trace: RunCall[];
   /** error_message, on a failed run. */
   error?: string;
@@ -136,7 +227,7 @@ export interface Task {
   /** missing_integrations / blocked_on_integrations: those not connected right now. */
   disconnected?: string[];
   /** pause_reason / deactivated_reason: why the system switched it off; unset when you did. */
-  pauseReason?: "integration_expired" | "user_dormant";
+  pauseReason?: "integration_expired" | "user_dormant" | "watch_blind";
   source?: TaskSource;
   priority: Priority;
   /** GAIA's working document (canvas_content), by its fixed sections. */
@@ -167,5 +258,8 @@ export function needOf(task: Task): Need | undefined {
   if (task.state === "done") return undefined;
   if (task.ask) return task.ask.kind;
   if (task.pauseReason === "integration_expired") return "reconnect";
+  // A watch that can't see asks for a fix, unless you stopped it yourself.
+  const isStopped = task.state === "paused" && !task.pauseReason;
+  if (task.when.watch?.blind && !isStopped) return "blind";
   return undefined;
 }

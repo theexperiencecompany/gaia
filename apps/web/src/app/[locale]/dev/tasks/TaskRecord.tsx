@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { AppIcon } from "./AppIcon";
 import { APP_NAMES } from "./demoTriggers";
 import { isRepeating, type Task, type TaskRun } from "./taskModel";
+import { WEBHOOK_TRIGGER } from "./whenModel";
 
 const RUN_OUTCOME: Record<TaskRun["outcome"], { label: string; tone: string }> =
   {
@@ -47,6 +48,8 @@ function Notes({ task }: { task: Task }) {
 function startedBy(trigger: TaskRun["trigger"]): string {
   if (trigger === "manual") return "Started by you";
   if (trigger === "schedule") return "On schedule";
+  if (trigger === "watch") return "When it saw the change";
+  if (trigger === WEBHOOK_TRIGGER) return "From the webhook";
   return `From ${APP_NAMES[trigger] ?? trigger}`;
 }
 
@@ -160,7 +163,8 @@ export default function TaskRecord({ task }: { task: Task }) {
   };
   const notes = { key: "notes", title: "Notes", body: <Notes task={task} /> };
   const sections: { key: string; title: string; body: ReactNode }[] =
-    isRepeating(task.when) ? [runs, notes] : [notes, runs];
+    // Each time a watch tells you is a run, so a watch leads with them as a repeat does.
+    isRepeating(task.when) || task.when.watch ? [runs, notes] : [notes, runs];
   return (
     <div className="rounded-2xl bg-zinc-800/50 p-3">
       <Tabs aria-label="GAIA's record" className={tabs.base()}>

@@ -9,7 +9,7 @@ import {
 
 import { describeCron } from "@/features/workflows/utils/cronUtils";
 import { DEMO_TRIGGERS } from "./demoTriggers";
-import type { TaskEnds, TaskWhen, TriggerData } from "./taskModel";
+import type { TaskEnds, TaskWebhook, TaskWhen, TriggerData } from "./taskModel";
 
 export const NO_WHEN: TaskWhen = { kind: "anytime" };
 
@@ -177,11 +177,26 @@ export function onSchedule(cron: string, timezone: string): TaskWhen {
   };
 }
 
-/** When something happens in an app, with its settings and an optional "only when". */
+/** trigger_name of the task's own webhook, which belongs to no app. */
+export const WEBHOOK_TRIGGER = "webhook";
+
+/** Where deliveries go: the API's hooks route and the task's random id. */
+export const WEBHOOK_BASE = "https://api.heygaia.io/api/v1/hooks/";
+
+const WEBHOOK_ID_LENGTH = 24;
+
+/** A webhook with a fresh, unguessable id for its URL, and no signature check yet. */
+export const newWebhook = (): TaskWebhook => ({
+  id: crypto.randomUUID().replaceAll("-", "").slice(0, WEBHOOK_ID_LENGTH),
+  signing: "none",
+});
+
+/** When something happens in an app or arrives at the task's webhook, with an optional "only when". */
 export function onEvent(
   trigger: string,
   condition?: string,
   triggerData?: TriggerData,
+  webhook?: TaskWebhook,
 ): TaskWhen {
   const known = DEMO_TRIGGERS.find((item) => item.slug === trigger);
   return {
@@ -189,8 +204,9 @@ export function onEvent(
     trigger,
     app: known?.app,
     triggerData,
+    webhook,
     condition: condition?.trim() ? condition : undefined,
-    label: known?.name ?? trigger,
+    label: webhook ? "Webhook" : (known?.name ?? trigger),
   };
 }
 
