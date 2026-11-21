@@ -6,9 +6,10 @@ name: CI
 # them, 24 of them for under a minute of work behind a runner's setup.
 #
 # Tiers, decided once by `detect` (`tier` output):
-#   fast — every PR push: select-runner, detect, lint-node, lint-python,
-#          lint-mixed, ts-build-test, test-python unit-a + unit-b, mutation of
-#          the changed modules, quality-gate.
+#   fast — every PR push: select-runner, detect, lint-node (with the
+#          repo-wide policy checks), lint-python, lint-mixed, ts-build-test,
+#          test-python unit-a + unit-b, mutation of the changed modules,
+#          quality-gate.
 #   full — merge_group, a master push with no green queue run, dispatch:
 #          everything above plus the integration/bridge/browser slices
 #          (regression-proof rides the integration slice), the dependency
@@ -352,7 +353,9 @@ jobs:
           df -h . | head -n 5
           echo "probe: OK — fallback contract verified (job landed, did not queue forever)"
 
-  # ── lint-node: every TS/JS hygiene check, one setup ──────────────────────
+  # ── lint-node: every TS/JS hygiene check and the repo-wide policy checks ─
+  # The secret scan runs on every change (a key can land in a README), so the
+  # job always starts; uv is for tool-pins, which parses the prek configs as YAML.
   lint-node:
     name: lint-node
     needs: [select-runner, detect]
@@ -381,6 +384,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/task-files
+      - uses: ./.github/actions/setup-uv
       - uses: ./.github/actions/setup-node-pnpm
       # Every check detect picked for this job, through nx (tools/ci/project.json and
       # the code projects' targets); each check's status is posted as it finishes.
@@ -390,6 +394,25 @@ jobs:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
         run: python3 scripts/ci/runner.py run-job lint-node
+      # Only the events that bring new commits, scanned as a range (ci:gitleaks's
+      # metadata.ci.events). A merge group's commits are the PR's, which the PR run
+      # scanned; a dispatch makes the action scan ALL history (4,747 old findings,
+      # run 40050150344). Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
+      - name: gitleaks — secret scanning
+        id: gitleaks
+        continue-on-error: true
+        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-node'], 'ci:gitleaks') && github.actor != 'dependabot[bot]'
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # The default per-finding summary blows GitHub's 1024k step-summary
+          # cap on a history-touching diff; full results are in the sarif.
+          GITLEAKS_ENABLE_SUMMARY: false
+      # The action writes results.sarif in the workspace; each leak is a finding.
+      - name: gitleaks — read its findings into the verdict
+        if: always() && steps.gitleaks.outcome == 'failure'
+        run: python3 scripts/ci/verdict.py sarif --lane lint-node/gitleaks results.sarif
       # Every status run-job did not post (a step's check, a skip, a lost post),
       # a verdict per failed check, then the job's.
       - name: Post one commit status per check (fails if any check failed)
@@ -397,7 +420,7 @@ jobs:
         env:
           JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
           RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
+        run: python3 scripts/ci/verdict.py post-statuses --job lint-node --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -612,84 +635,6 @@ jobs:
         with:
           status: ${{ job.status }}
           name: lint-mixed
-
-  # ── repo-policy: the checks that hold for the whole tree, not one language ─
-  # The secret scan runs on every change (a key can land in a README), so the
-  # job always starts; it needs a checkout, node for bot-handles and uv for
-  # tool-pins, which parses the prek configs as YAML.
-  repo-policy:
-    name: repo-policy
-    needs: [select-runner, detect]
-    if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'repo-policy') }}
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.light) }}
-    # Job-level because a workflow-level `env:` cannot read `needs`.
-    env:
-      JOB_TASKS: ${{ needs.detect.outputs.job_tasks }}
-      REUSED: ${{ needs.detect.outputs.reused || '{}' }}
-      # run-job posts each check's status as it finishes; post-statuses the rest.
-      GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      # Not on a dispatch (an open PR sharing the head would lose its statuses),
-      # nor for a fork or Dependabot (read-only token).
-      # Negated: `cond && '' || x` is always x, since '' is falsy in an expression.
-      NO_POST: ${{ !(contains(fromJSON('["pull_request", "merge_group", "push"]'), github.event_name) && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))) && '--no-post' || '' }}
-      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      statuses: write # one `ci / <area> / <check>` status per check
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          clean: ${{ !startsWith(runner.name, 'gaia-home-') }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./.github/actions/task-files
-      - uses: ./.github/actions/setup-uv
-      - uses: ./.github/actions/setup-node-pnpm
-
-      # Every check detect picked for this job, through nx (tools/ci/project.json and
-      # the code projects' targets); each check's status is posted as it finishes.
-      - name: Run this job's checks through nx
-        continue-on-error: true
-        env:
-          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
-          RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/runner.py run-job repo-policy
-
-      # Only the events that bring new commits, scanned as a range (ci:gitleaks's
-      # metadata.ci.events). A merge group's commits are the PR's, which the PR run
-      # scanned; a dispatch makes the action scan ALL history (4,747 old findings,
-      # run 40050150344). Dependabot runs get Dependabot secrets, so GITLEAKS_LICENSE is empty.
-      - name: gitleaks — secret scanning
-        id: gitleaks
-        continue-on-error: true
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['repo-policy'], 'ci:gitleaks') && github.actor != 'dependabot[bot]'
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          # The default per-finding summary blows GitHub's 1024k step-summary
-          # cap on a history-touching diff; full results are in the sarif.
-          GITLEAKS_ENABLE_SUMMARY: false
-      # The action writes results.sarif in the workspace; each leak is a finding.
-      - name: gitleaks — read its findings into the verdict
-        if: always() && steps.gitleaks.outcome == 'failure'
-        run: python3 scripts/ci/verdict.py sarif --lane repo-policy/gitleaks results.sarif
-      # Every status run-job did not post (a step's check, a skip, a lost post),
-      # a verdict per failed check, then the job's.
-      - name: Post one commit status per check (fails if any check failed)
-        if: always()
-        env:
-          JOB_CHECK_RUN_ID: ${{ job.check_run_id }}
-          RESULTS_FILE: ${{ runner.temp }}/ci-results.json
-        run: python3 scripts/ci/verdict.py post-statuses --job repo-policy --results "$RESULTS_FILE" --job-tasks "$JOB_TASKS" --reused "$REUSED" --step gitleaks=${{ steps.gitleaks.outcome }} --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$GITHUB_RUN_ID" --job-id "$JOB_CHECK_RUN_ID" $NO_POST
-      - name: Upload the verdict
-        if: always()
-        uses: ./.github/actions/upload-verdict
-        with:
-          status: ${{ job.status }}
-          name: repo-policy
 
   # ── python-audit: dependency CVEs + import cost (slow by nature) ─────────
   python-audit:
@@ -1506,7 +1451,6 @@ jobs:
       - lint-node
       - lint-python
       - lint-mixed
-      - repo-policy
       - python-audit
       - ts-build-test
       - scan
@@ -1561,7 +1505,7 @@ jobs:
           # the family the shards report under and how many detect planned, so
           # a shard cancelled before its upload cannot be spoken for by another.
           EXPECT: >-
-            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},repo-policy=${{ needs.repo-policy.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }}
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},lint-node=${{ needs.lint-node.result }},lint-python=${{ needs.lint-python.result }},lint-mixed=${{ needs.lint-mixed.result }},python-audit=${{ needs.python-audit.result }},ts-build-test=${{ needs.ts-build-test.result }},scan=${{ needs.scan.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},docker-image=${{ needs.docker-image.result }},test-mutation@mutation*${{ needs.detect.outputs.mutation_count }}=${{ needs.test-mutation.result }},web-build=${{ needs.web-build.result }},desktop-build=${{ needs.desktop-build.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --out "$RUNNER_TEMP/gate-verdict"
       # Its own directory: the one above holds every lane's verdict, which this
       # job does not own.

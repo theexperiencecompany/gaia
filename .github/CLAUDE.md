@@ -14,7 +14,7 @@ which ran 52 jobs per PR push between them, 24 of them for under a minute of
 work behind a runner's setup.
 
 - **Tiers.** A PR push runs the fast tier: `select-runner`, `detect`,
-  `lint-node`, `lint-python`, `lint-mixed`, `repo-policy`, `ts-build-test`, the `unit-a` and
+  `lint-node` (with the repo-wide policy checks), `lint-python`, `lint-mixed`, `ts-build-test`, the `unit-a` and
   `unit-b` slices, `test-mutation` on the changed modules (a survivor found
   only in the queue is an ejection plus a fix round), `quality-gate`. The merge
   queue (`merge_group`), master and dispatch run the full tier on top: the
@@ -37,7 +37,7 @@ work behind a runner's setup.
   on a verified push: a merge-queue run's caches are scoped to its
   `gh-readonly-queue` ref and no PR can restore them.
 - **Grouped jobs.** Every check inside `lint-node`, `lint-python`,
-  `lint-mixed`, `repo-policy`, `scan`, `python-audit` and `ts-build-test` is an
+  `lint-mixed`, `scan`, `python-audit` and `ts-build-test` is an
   nx target whose `metadata.ci` names its job, its status (`check`, `area`) and
   any `events`/`branch` it is limited to: `tools/ci/project.json` for the
   repo-wide checks, the code projects' own targets for `api:type-check`,
@@ -172,7 +172,7 @@ Four layers, from cheap to precise, all decided in the one `detect` job:
    fails on a gate naming a task nx is never asked about and on a job that does
    not start when detect names it; `test_hook_scopes.py` holds the prek hooks that copy a check's
    files (api-types, analytics-types) equal to its task's inputs;
-   `test_nx_affected.py` pins what the manifests and lockfiles select. Only `repo-policy`'s gitleaks runs on every change.
+   `test_nx_affected.py` pins what the manifests and lockfiles select. Only gitleaks and bot-handles run on every change, so `lint-node` starts on every PR.
    A job or check skipped this way counts as PASSING; a failed `detect` fails
    the gate. A workflow-only (`.yml`) PR runs exactly the checks whose inputs
    name `.github` (harness-tests, tool-pins).

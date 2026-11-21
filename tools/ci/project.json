@@ -944,7 +944,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "suppression-hygiene",
           "area": "python"
         }
@@ -967,7 +967,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "baseline-growth",
           "area": "contracts",
           "events": ["pull_request", "merge_group"]
@@ -991,7 +991,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "tool-pins",
           "area": "python"
         }
@@ -1263,7 +1263,7 @@
       "inputs": ["{workspaceRoot}/**/*"],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "gitleaks",
           "area": "security",
           "events": ["pull_request", "push"],
@@ -1286,7 +1286,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "bot-handles",
           "area": "contracts"
         }
@@ -1308,7 +1308,7 @@
       ],
       "metadata": {
         "ci": {
-          "job": "repo-policy",
+          "job": "lint-node",
           "check": "skills-symlink",
           "area": "contracts"
         }

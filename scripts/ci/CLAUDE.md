@@ -50,7 +50,7 @@ reporting a line that no longer matches as merely removable — so a baseline ca
 be emptied without reddening the PR that empties it.
 
 Growing one is the founder's call, never the author's. `baselines.py growth`
-(the `baseline-growth` check in repo-policy, on a PR and in the merge queue)
+(the `baseline-growth` check in lint-node, on a PR and in the merge queue)
 fails a change that adds an entry to any of these files, to
 `tools/lints/*_baseline.txt` or `apps/api/tests/meta/*_baseline.txt`, or to a
 module-level `*ALLOWLIST*` literal in `tools/lints/*.py` — or that loosens a
