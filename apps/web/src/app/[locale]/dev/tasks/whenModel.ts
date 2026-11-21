@@ -148,6 +148,66 @@ function repeatLabel(repeat: Repeat): string {
   return `Every day, ${at}`;
 }
 
+/** A chip's label for a cron no picker shape and no named pattern covers. */
+export const CUSTOM_SCHEDULE_LABEL = "Custom schedule";
+
+/** A step through the whole field or a span ("A-B", "A-B/N"), or null when it is anything else. */
+function readStep(
+  field: string,
+): { step: number; from?: number; to?: number } | null {
+  const [span, step = "1"] = field.split("/");
+  if (!WHOLE.test(step) || Number(step) === 0) return null;
+  if (span === "*") return { step: Number(step) };
+  const [from, to] = span.split("-");
+  if (!WHOLE.test(from ?? "") || !WHOLE.test(to ?? "")) return null;
+  return { step: Number(step), from: Number(from), to: Number(to) };
+}
+
+function every(step: number, unit: "minute" | "hour"): string {
+  return step === 1 ? `every ${unit}` : `every ${step} ${unit}s`;
+}
+
+/** The most times a day a label lists before it counts them instead. */
+const MAX_LISTED_TIMES = 2;
+
+/** Short labels for the common crons the picker cannot hold: steps and several times a day. */
+function patternLabel(cron: string): string | null {
+  const [minute, hour, dayOfMonth, month, dayOfWeek, ...rest] = cron
+    .trim()
+    .split(/\s+/);
+  if (rest.length > 0 || dayOfMonth !== "*" || month !== "*") return null;
+  const days = dayOfWeek === "*" ? null : readDays(dayOfWeek ?? "");
+  if (dayOfWeek !== "*" && !days) return null;
+  const withDays = (what: string) =>
+    days ? `${weekLabel(days)}, ${what}` : what;
+  const capital = (text: string) => text[0].toUpperCase() + text.slice(1);
+
+  const minuteStep = readStep(minute ?? "");
+  if (hour === "*" && minuteStep && minuteStep.from === undefined) {
+    return capital(withDays(every(minuteStep.step, "minute")));
+  }
+  if (!WHOLE.test(minute ?? "")) return null;
+
+  const hourStep = readStep(hour ?? "");
+  if (hourStep) {
+    const window =
+      hourStep.from === undefined
+        ? ""
+        : `, ${clock(hourStep.from, 0)} to ${clock(hourStep.to ?? 0, 0)}`;
+    return capital(withDays(`${every(hourStep.step, "hour")}${window}`));
+  }
+
+  const hours = (hour ?? "").split(",");
+  if (hours.length < 2 || !hours.every((part) => WHOLE.test(part))) return null;
+  if (hours.length > MAX_LISTED_TIMES) {
+    return capital(withDays(`${hours.length} times a day`));
+  }
+  const times = hours
+    .map((part) => clock(Number(part), Number(minute)))
+    .join(" and ");
+  return withDays(days ? times : `Every day, ${times}`);
+}
+
 /** Days until the repeat next falls due, counting today while its time is still ahead. */
 function daysUntilNext(repeat: Repeat): number | undefined {
   const now = new Date();
@@ -167,11 +227,13 @@ function daysUntilNext(repeat: Repeat): number | undefined {
 /** On repeat: the cron the workflow trigger stores, in the timezone it runs in. */
 export function onSchedule(cron: string, timezone: string): TaskWhen {
   const repeat = fromCron(cron);
+  const named = repeat ? repeatLabel(repeat) : patternLabel(cron);
   return {
     kind: "schedule",
     cron,
     timezone,
-    label: repeat ? repeatLabel(repeat) : (describeCron(cron) ?? cron),
+    label: named ?? CUSTOM_SCHEDULE_LABEL,
+    detail: named ? undefined : (describeCron(cron) ?? cron),
     order: repeat ? daysUntilNext(repeat) : undefined,
   };
 }

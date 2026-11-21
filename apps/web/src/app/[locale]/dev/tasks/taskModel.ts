@@ -13,6 +13,8 @@ export interface TaskWhen {
   kind: WhenKind;
   /** How it reads in one short line; built from the fields below by whenModel. */
   label?: string;
+  /** The full schedule in words, where the short label had to fall back to a generic one. */
+  detail?: string;
   overdue?: boolean;
   isToday?: boolean;
   /** Days from today until it is due or next runs; drives soonest-first order. */

@@ -42,7 +42,14 @@ export function TemplateFacts({
   return (
     <div>
       <PropertyRow label="When">
-        <WhenChip when={template.when} />
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <WhenChip when={template.when} />
+          {template.when.detail && (
+            <span className="text-sm text-zinc-400">
+              {template.when.detail}
+            </span>
+          )}
+        </span>
       </PropertyRow>
       {integration_ids.length > 0 && (
         <PropertyRow label="Apps">
