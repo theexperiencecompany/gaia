@@ -15,6 +15,7 @@
  * 3. Add a handler here following the same pattern
  * 4. Import and call it from each bot's command adapter
  */
+import type { TaskCreateRequest } from "../../api/generated";
 import type { GaiaClient } from "../api";
 import type { CommandContext } from "../types";
 import { recordBotFailure } from "./failure-reasons";
@@ -22,8 +23,8 @@ import {
   COMMAND_HELP,
   formatBotError,
   formatConversationList,
-  formatTodo,
-  formatTodoList,
+  formatTask,
+  formatTaskList,
   formatWorkflow,
   formatWorkflowList,
 } from "./formatters";
@@ -70,50 +71,43 @@ export async function handleWorkflowExecute(
   }
 }
 
-export async function handleTodoList(
+export async function handleTaskList(
   gaia: GaiaClient,
   ctx: CommandContext,
   completed?: boolean,
 ): Promise<string> {
   try {
-    const response = await gaia.listTodos(ctx, { completed });
-    return formatTodoList(response.todos);
+    const response = await gaia.listTasks(ctx, { completed });
+    return formatTaskList(response.tasks);
   } catch (error: unknown) {
-    return reportCommandFailure("list_todos", error, ctx);
+    return reportCommandFailure("list_tasks", error, ctx);
   }
 }
 
-export async function handleTodoCreate(
+export async function handleTaskCreate(
   gaia: GaiaClient,
   title: string,
   ctx: CommandContext,
-  options?: { priority?: "low" | "medium" | "high"; description?: string },
+  options?: Pick<TaskCreateRequest, "priority" | "body">,
 ): Promise<string> {
   try {
-    const todo = await gaia.createTodo(
-      {
-        title,
-        priority: options?.priority,
-        description: options?.description,
-      },
-      ctx,
-    );
-    return `✅ BotTodo created!\n\n${formatTodo(todo)}`;
+    const task = await gaia.createTask({ title, ...options }, ctx);
+    return `✅ Todo created!\n\n${formatTask(task)}`;
   } catch (error: unknown) {
-    return reportCommandFailure("create_todo", error, ctx);
+    return reportCommandFailure("create_task", error, ctx);
   }
 }
 
-export async function handleTodoComplete(
+export async function handleTaskComplete(
   gaia: GaiaClient,
-  todoId: string,
+  taskId: string,
   ctx: CommandContext,
 ): Promise<string> {
   try {
-    const todo = await gaia.completeTodo(todoId, ctx);
-    return `✅ BotTodo marked as complete: ${todo.title}`;
+    const task = await gaia.completeTask(taskId, ctx);
+    return `✅ Todo marked as complete: ${task.title}`;
   } catch (error: unknown) {
-    return reportCommandFailure("complete_todo", error, ctx);
+    return reportCommandFailure("complete_task", error, ctx);
   }
 }
 
@@ -163,20 +157,20 @@ export async function handleWorkflowCreate(
   }
 }
 
-export async function handleTodoDelete(
+export async function handleTaskDelete(
   gaia: GaiaClient,
-  todoId: string,
+  taskId: string,
   ctx: CommandContext,
 ): Promise<string> {
   try {
-    await gaia.deleteTodo(todoId, ctx);
-    return "✅ BotTodo deleted successfully";
+    await gaia.deleteTask(taskId, ctx);
+    return "✅ Todo deleted successfully";
   } catch (error: unknown) {
-    return reportCommandFailure("delete_todo", error, ctx);
+    return reportCommandFailure("delete_task", error, ctx);
   }
 }
 
-export async function dispatchTodoSubcommand(
+export async function dispatchTaskSubcommand(
   gaia: GaiaClient,
   ctx: CommandContext,
   subcommand: string,
@@ -184,19 +178,19 @@ export async function dispatchTodoSubcommand(
 ): Promise<string> {
   switch (subcommand) {
     case "list":
-      return handleTodoList(gaia, ctx);
+      return handleTaskList(gaia, ctx);
     case "add": {
       const title = args.join(" ");
       if (!title) return COMMAND_HELP.todoUsage.add;
-      return handleTodoCreate(gaia, title, ctx);
+      return handleTaskCreate(gaia, title, ctx);
     }
     case "complete": {
       if (!args[0]) return COMMAND_HELP.todoUsage.complete;
-      return handleTodoComplete(gaia, args[0], ctx);
+      return handleTaskComplete(gaia, args[0], ctx);
     }
     case "delete": {
       if (!args[0]) return COMMAND_HELP.todoUsage.delete;
-      return handleTodoDelete(gaia, args[0], ctx);
+      return handleTaskDelete(gaia, args[0], ctx);
     }
     default:
       return COMMAND_HELP.todo;

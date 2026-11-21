@@ -1,4 +1,4 @@
-import type { Conversation, Todo, Workflow } from "@gaia/shared";
+import type { Conversation, Workflow } from "@gaia/shared";
 import {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
@@ -11,8 +11,8 @@ import {
   formatBotError,
   formatConversation,
   formatConversationList,
-  formatTodo,
-  formatTodoList,
+  formatTask,
+  formatTaskList,
   formatWorkflow,
   formatWorkflowList,
   GaiaApiError,
@@ -21,6 +21,7 @@ import {
   renderForPlatform,
 } from "@gaia/shared/bots";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { makeTask } from "../helpers/task-factory";
 
 // ---------------------------------------------------------------------------
 // formatWorkflow
@@ -84,66 +85,80 @@ describe("formatWorkflowList", () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatTodo
+// formatTask
 // ---------------------------------------------------------------------------
-describe("formatTodo", () => {
-  const base: Todo = {
-    id: "t-1",
-    title: "Buy milk",
-    completed: false,
-  };
-
-  it("shows checked checkbox for completed todo", () => {
-    const result = formatTodo({ ...base, completed: true });
+describe("formatTask", () => {
+  it("shows checked checkbox for completed task", () => {
+    const result = formatTask(makeTask({ completed: true }));
     expect(result).toContain("\u2611");
   });
 
-  it("shows empty checkbox for incomplete todo", () => {
-    const result = formatTodo({ ...base, completed: false });
+  it("shows empty checkbox for incomplete task", () => {
+    const result = formatTask(makeTask({ completed: false }));
     expect(result).toContain("\u2B1C");
   });
 
+  it("includes title and ID", () => {
+    const result = formatTask(makeTask());
+    expect(result).toContain("**Buy milk**");
+    expect(result).toContain("`t-1`");
+  });
+
   it("uppercases priority", () => {
-    const result = formatTodo({ ...base, priority: "high" });
+    const result = formatTask(makeTask({ priority: "high" }));
     expect(result).toContain("[HIGH]");
   });
 
-  it("formats due date correctly", () => {
-    const result = formatTodo({ ...base, due_date: "2026-06-15T00:00:00Z" });
-    expect(result).toContain("Due:");
-    // The exact locale format varies, but it should contain the date
-    expect(result).toMatch(/Due:\s*\d/);
-  });
-
-  it("omits priority when not set", () => {
-    const result = formatTodo(base);
+  it('omits priority when it is "none"', () => {
+    const result = formatTask(makeTask({ priority: "none" }));
     expect(result).not.toContain("[");
   });
 
-  it("omits due date when not set", () => {
-    const result = formatTodo(base);
+  it("shows the due date of a dated task", () => {
+    const at = "2026-06-15T12:00:00Z";
+    const result = formatTask(makeTask({ when: { kind: "date", at } }));
+    expect(result).toContain(`Due: ${new Date(at).toLocaleDateString()}`);
+  });
+
+  it("shows the next run of a repeating task as its due date", () => {
+    const nextRun = "2026-07-01T09:00:00Z";
+    const result = formatTask(
+      makeTask({ when: { kind: "repeat", rule: "daily", next_run: nextRun } }),
+    );
+    expect(result).toContain(`Due: ${new Date(nextRun).toLocaleDateString()}`);
+  });
+
+  it("omits due date for a repeat with no next run yet", () => {
+    const result = formatTask(
+      makeTask({ when: { kind: "repeat", rule: "daily", next_run: null } }),
+    );
+    expect(result).not.toContain("Due:");
+  });
+
+  it("omits due date when the task has no date", () => {
+    const result = formatTask(makeTask({ when: { kind: "none" } }));
     expect(result).not.toContain("Due:");
   });
 });
 
 // ---------------------------------------------------------------------------
-// formatTodoList
+// formatTaskList
 // ---------------------------------------------------------------------------
-describe("formatTodoList", () => {
+describe("formatTaskList", () => {
   it("returns create instruction for empty list", () => {
-    const result = formatTodoList([]);
+    const result = formatTaskList([]);
     expect(result).toContain("No todos found");
     expect(result).toContain("/todo add");
   });
 
-  it("formats multiple todos joined by double newlines", () => {
-    const todos: Todo[] = [
-      { id: "1", title: "A", completed: false },
-      { id: "2", title: "B", completed: true },
-    ];
-    const result = formatTodoList(todos);
+  it("formats multiple tasks joined by double newlines", () => {
+    const result = formatTaskList([
+      makeTask({ id: "1", title: "A" }),
+      makeTask({ id: "2", title: "B", completed: true }),
+    ]);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");
+    expect(result.split("\n\n")).toHaveLength(2);
   });
 });
 

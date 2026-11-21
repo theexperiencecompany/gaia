@@ -1,13 +1,16 @@
 import axios, { type AxiosInstance } from "axios";
-import type { DeliveryFailureReport } from "../../api/generated";
+import type {
+  DeliveryFailureReport,
+  TaskCreateRequest,
+  TaskListResponse,
+  TaskResponse,
+  TaskUpdateRequest,
+} from "../../api/generated";
 import type {
   AuthStatus,
   BotConversation,
   BotConversationListResponse,
-  BotCreateTodoRequest,
   BotFileData,
-  BotTodo,
-  BotTodoListResponse,
   BotUserContext,
   BotWorkflow,
   BotWorkflowExecutionRequest,
@@ -380,84 +383,76 @@ export class GaiaClient {
   }
 
   /**
-   * Lists todos for the authenticated user.
-   * Uses the regular /api/v1/todos endpoint via bot middleware auth.
+   * Lists the user's top-level tasks (subtasks are left out).
    */
-  async listTodos(
+  async listTasks(
     ctx: BotUserContext,
-    params?: {
-      completed?: boolean;
-      project_id?: string;
-    },
-  ): Promise<BotTodoListResponse> {
+    params?: { completed?: boolean },
+  ): Promise<TaskListResponse> {
     return this.requestWithAuth(async () => {
-      const queryParams = new URLSearchParams();
+      const queryParams = new URLSearchParams({ top_level: "true" });
       if (params?.completed !== undefined) {
         queryParams.set("completed", String(params.completed));
       }
-      if (params?.project_id) {
-        queryParams.set("project_id", params.project_id);
-      }
-
-      const { data } = await this.client.get(
-        `/api/v1/todos?${queryParams.toString()}`,
+      const { data } = await this.client.get<TaskListResponse>(
+        `/api/v1/tasks?${queryParams.toString()}`,
         { headers: this.userHeaders(ctx) },
       );
-
-      // Map from regular API format (data/meta) to bot format (todos/total)
-      const todos = (data.data || data.todos || []).map(mapTodoResponse);
-      const total = data.meta?.total ?? data.total ?? todos.length;
-
-      return { todos, total };
+      return data;
     }, ctx);
   }
 
   /**
-   * Creates a new todo.
+   * Creates a new task.
    */
-  async createTodo(
-    request: BotCreateTodoRequest,
+  async createTask(
+    request: TaskCreateRequest,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TaskResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post("/api/v1/todos", request, {
-        headers: this.userHeaders(ctx),
-      });
-      return mapTodoResponse(data);
+      const { data } = await this.client.post<TaskResponse>(
+        "/api/v1/tasks",
+        request,
+        { headers: this.userHeaders(ctx) },
+      );
+      return data;
     }, ctx);
   }
 
   /**
-   * Updates a todo.
+   * Updates a task.
    */
-  async updateTodo(
-    todoId: string,
-    updates: Partial<BotCreateTodoRequest>,
+  async updateTask(
+    taskId: string,
+    updates: TaskUpdateRequest,
     ctx: BotUserContext,
-  ): Promise<BotTodo> {
+  ): Promise<TaskResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.put(
-        `/api/v1/todos/${encodeURIComponent(todoId)}`,
+      const { data } = await this.client.put<TaskResponse>(
+        `/api/v1/tasks/${encodeURIComponent(taskId)}`,
         updates,
         { headers: this.userHeaders(ctx) },
       );
-      return mapTodoResponse(data);
+      return data;
     }, ctx);
   }
 
   /**
-   * Marks a todo as complete.
+   * Marks a task as complete.
    */
-  async completeTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
-    return this.updateTodo(todoId, { completed: true }, ctx);
+  async completeTask(
+    taskId: string,
+    ctx: BotUserContext,
+  ): Promise<TaskResponse> {
+    return this.updateTask(taskId, { completed: true }, ctx);
   }
 
   /**
-   * Deletes a todo.
+   * Deletes a task.
    */
-  async deleteTodo(todoId: string, ctx: BotUserContext): Promise<void> {
+  async deleteTask(taskId: string, ctx: BotUserContext): Promise<void> {
     return this.requestWithAuth(async () => {
-      await this.client.delete(`/api/v1/todos/${encodeURIComponent(todoId)}`, {
+      await this.client.delete(`/api/v1/tasks/${encodeURIComponent(taskId)}`, {
         headers: this.userHeaders(ctx),
       });
     }, ctx);
@@ -728,21 +723,6 @@ export class GaiaClient {
       };
     });
   }
-}
-
-/**
- * Maps a todo response from the regular API format to the bot-expected format.
- */
-function mapTodoResponse(data: Record<string, unknown>): BotTodo {
-  return {
-    id: (data.id as string) || "",
-    title: (data.title as string) || "",
-    description: data.description as string | undefined,
-    completed: (data.completed as boolean) || false,
-    priority: data.priority as "low" | "medium" | "high" | undefined,
-    due_date: data.due_date as string | undefined,
-    project_id: data.project_id as string | undefined,
-  };
 }
 
 /**

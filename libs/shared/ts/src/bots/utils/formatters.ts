@@ -9,12 +9,8 @@
  * reason classifyBotFailure gives, then falls back to generic Error messages.
  */
 import { slackifyMarkdown } from "slackify-markdown";
-import type {
-  BotConversation,
-  BotTodo,
-  BotWorkflow,
-  PlatformName,
-} from "../types";
+import type { TaskResponse } from "../../api/generated";
+import type { BotConversation, BotWorkflow, PlatformName } from "../types";
 import { BOT_FAILURE_REASON, classifyBotFailure } from "./failure-reasons";
 import { getErrorReason } from "./logger";
 import { isTableRow, isTableSeparator, PLATFORM_DISPLAY_NAMES } from "./text";
@@ -43,28 +39,42 @@ export function formatWorkflowList(workflows: BotWorkflow[]): string {
   return workflows.map(formatWorkflow).join("\n\n");
 }
 
-/**
- * Formats a todo for display in a bot message.
- */
-export function formatTodo(todo: BotTodo): string {
-  const checkbox = todo.completed ? "☑️" : "⬜";
-  const priority = todo.priority ? ` [${todo.priority.toUpperCase()}]` : "";
-  const dueDate = todo.due_date
-    ? ` | Due: ${new Date(todo.due_date).toLocaleDateString()}`
-    : "";
-
-  return `${checkbox} **${todo.title}**${priority}\nID: \`${todo.id}\`${dueDate}`;
+/** The moment a task next comes due: its date, or a repeat's next run. */
+function taskDueAt(when: TaskResponse["when"]): string | null {
+  switch (when.kind) {
+    case "date":
+      return when.at;
+    case "repeat":
+      return when.next_run ?? null;
+    default:
+      return null;
+  }
 }
 
 /**
- * Formats a list of todos for display.
+ * Formats a task for display in a bot message.
  */
-export function formatTodoList(todos: BotTodo[]): string {
-  if (todos.length === 0) {
+export function formatTask(task: TaskResponse): string {
+  const checkbox = task.completed ? "☑️" : "⬜";
+  const priority =
+    task.priority === "none" ? "" : ` [${task.priority.toUpperCase()}]`;
+  const dueAt = taskDueAt(task.when);
+  const dueDate = dueAt
+    ? ` | Due: ${new Date(dueAt).toLocaleDateString()}`
+    : "";
+
+  return `${checkbox} **${task.title}**${priority}\nID: \`${task.id}\`${dueDate}`;
+}
+
+/**
+ * Formats a list of tasks for display.
+ */
+export function formatTaskList(tasks: TaskResponse[]): string {
+  if (tasks.length === 0) {
     return "No todos found. Create one with `/todo add`";
   }
 
-  return todos.map(formatTodo).join("\n\n");
+  return tasks.map(formatTask).join("\n\n");
 }
 
 /**

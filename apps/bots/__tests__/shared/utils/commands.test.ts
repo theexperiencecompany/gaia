@@ -12,17 +12,21 @@
  * - Subcommand dispatch routes to the right handler
  */
 
+import type {
+  TaskListResponse,
+  TaskResponse,
+} from "@gaia/shared/api/generated";
 import type { CommandContext, GaiaClient } from "@gaia/shared/bots";
 import {
-  dispatchTodoSubcommand,
+  dispatchTaskSubcommand,
   dispatchWorkflowSubcommand,
   GaiaApiError,
   handleConversationList,
   handleNewConversation,
-  handleTodoComplete,
-  handleTodoCreate,
-  handleTodoDelete,
-  handleTodoList,
+  handleTaskComplete,
+  handleTaskCreate,
+  handleTaskDelete,
+  handleTaskList,
   handleWorkflowCreate,
   handleWorkflowDelete,
   handleWorkflowExecute,
@@ -35,6 +39,7 @@ import {
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { captureBotEvents } from "../helpers/capture-bot-event";
+import { makeTask } from "../helpers/task-factory";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -47,6 +52,10 @@ const ctx: CommandContext = {
   profile: null,
 };
 
+function taskList(tasks: TaskResponse[]): TaskListResponse {
+  return { tasks, total: tasks.length, page: 1, per_page: 50 };
+}
+
 function makeGaia() {
   return {
     listWorkflows: vi.fn(),
@@ -54,10 +63,10 @@ function makeGaia() {
     getWorkflow: vi.fn(),
     createWorkflow: vi.fn(),
     deleteWorkflow: vi.fn(),
-    listTodos: vi.fn(),
-    createTodo: vi.fn(),
-    completeTodo: vi.fn(),
-    deleteTodo: vi.fn(),
+    listTasks: vi.fn(),
+    createTask: vi.fn(),
+    completeTask: vi.fn(),
+    deleteTask: vi.fn(),
     listConversations: vi.fn(),
     resetSession: vi.fn(),
     getFrontendUrl: vi.fn().mockReturnValue("https://heygaia.io"),
@@ -236,119 +245,110 @@ describe("handleWorkflowDelete", () => {
 // Task list handlers
 // ---------------------------------------------------------------------------
 
-describe("handleTodoList", () => {
-  it("returns formatted todo list on success", async () => {
+describe("handleTaskList", () => {
+  it("returns formatted task list on success", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockResolvedValue({
-      todos: [
-        { id: "t-1", title: "Buy milk", completed: false },
-        { id: "t-2", title: "Read book", completed: true },
-      ],
-    } as never);
+    vi.mocked(gaia.listTasks).mockResolvedValue(
+      taskList([
+        makeTask({ id: "t-1", title: "Buy milk" }),
+        makeTask({ id: "t-2", title: "Read book", completed: true }),
+      ]),
+    );
 
-    const result = await handleTodoList(gaia, ctx);
+    const result = await handleTaskList(gaia, ctx);
 
-    expect(gaia.listTodos).toHaveBeenCalledWith(ctx, { completed: undefined });
+    expect(gaia.listTasks).toHaveBeenCalledWith(ctx, { completed: undefined });
     expect(result).toContain("Buy milk");
     expect(result).toContain("Read book");
   });
 
   it("passes completed filter when provided", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockResolvedValue({ todos: [] } as never);
+    vi.mocked(gaia.listTasks).mockResolvedValue(taskList([]));
 
-    await handleTodoList(gaia, ctx, true);
+    await handleTaskList(gaia, ctx, true);
 
-    expect(gaia.listTodos).toHaveBeenCalledWith(ctx, { completed: true });
+    expect(gaia.listTasks).toHaveBeenCalledWith(ctx, { completed: true });
   });
 
   it("returns error on API failure", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockRejectedValue(new Error("timeout"));
+    vi.mocked(gaia.listTasks).mockRejectedValue(new Error("timeout"));
 
-    const result = await handleTodoList(gaia, ctx);
+    const result = await handleTaskList(gaia, ctx);
 
     expect(result).toContain("timed out");
   });
 });
 
-describe("handleTodoCreate", () => {
-  it("returns created todo with check emoji", async () => {
+describe("handleTaskCreate", () => {
+  it("returns created task with check emoji", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-new",
-      title: "Finish tests",
-      completed: false,
-    } as never);
+    vi.mocked(gaia.createTask).mockResolvedValue(
+      makeTask({ id: "t-new", title: "Finish tests" }),
+    );
 
-    const result = await handleTodoCreate(gaia, "Finish tests", ctx);
+    const result = await handleTaskCreate(gaia, "Finish tests", ctx);
 
-    expect(gaia.createTodo).toHaveBeenCalledWith(
-      { title: "Finish tests", priority: undefined, description: undefined },
+    expect(gaia.createTask).toHaveBeenCalledWith(
+      { title: "Finish tests" },
       ctx,
     );
-    expect(result).toContain("✅");
+    expect(result).toContain("✅ Todo created!");
     expect(result).toContain("Finish tests");
   });
 
-  it("passes priority and description when provided", async () => {
+  it("passes priority and body when provided", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-x",
-      title: "Urgent task",
-      completed: false,
-      priority: "high",
-    } as never);
+    vi.mocked(gaia.createTask).mockResolvedValue(
+      makeTask({ id: "t-x", title: "Urgent task", priority: "high" }),
+    );
 
-    await handleTodoCreate(gaia, "Urgent task", ctx, {
+    await handleTaskCreate(gaia, "Urgent task", ctx, {
       priority: "high",
-      description: "Very important",
+      body: "Very important",
     });
 
-    expect(gaia.createTodo).toHaveBeenCalledWith(
-      { title: "Urgent task", priority: "high", description: "Very important" },
+    expect(gaia.createTask).toHaveBeenCalledWith(
+      { title: "Urgent task", priority: "high", body: "Very important" },
       ctx,
     );
   });
 
   it("returns auth error on 401", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.createTodo).mockRejectedValue({ response: { status: 401 } });
+    vi.mocked(gaia.createTask).mockRejectedValue({ response: { status: 401 } });
 
-    const result = await handleTodoCreate(gaia, "Task", ctx);
+    const result = await handleTaskCreate(gaia, "Task", ctx);
 
     expect(result).toContain("Authentication required");
     expect(result).toContain("/auth");
   });
 });
 
-describe("handleTodoComplete", () => {
-  it("returns completion message with todo title", async () => {
+describe("handleTaskComplete", () => {
+  it("returns completion message with task title", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.completeTodo).mockResolvedValue({
-      id: "t-1",
-      title: "Buy groceries",
-      completed: true,
-    } as never);
+    vi.mocked(gaia.completeTask).mockResolvedValue(
+      makeTask({ title: "Buy groceries", completed: true }),
+    );
 
-    const result = await handleTodoComplete(gaia, "t-1", ctx);
+    const result = await handleTaskComplete(gaia, "t-1", ctx);
 
-    expect(gaia.completeTodo).toHaveBeenCalledWith("t-1", ctx);
-    expect(result).toContain("✅");
-    expect(result).toContain("Buy groceries");
+    expect(gaia.completeTask).toHaveBeenCalledWith("t-1", ctx);
+    expect(result).toBe("✅ Todo marked as complete: Buy groceries");
   });
 });
 
-describe("handleTodoDelete", () => {
+describe("handleTaskDelete", () => {
   it("returns success message on delete", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.deleteTodo).mockResolvedValue(undefined as never);
+    vi.mocked(gaia.deleteTask).mockResolvedValue(undefined);
 
-    const result = await handleTodoDelete(gaia, "t-1", ctx);
+    const result = await handleTaskDelete(gaia, "t-1", ctx);
 
-    expect(gaia.deleteTodo).toHaveBeenCalledWith("t-1", ctx);
-    expect(result).toContain("✅");
-    expect(result).toContain("deleted");
+    expect(gaia.deleteTask).toHaveBeenCalledWith("t-1", ctx);
+    expect(result).toBe("✅ Todo deleted successfully");
   });
 });
 
@@ -479,72 +479,68 @@ describe("handleNewConversation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// dispatchTodoSubcommand
+// dispatchTaskSubcommand
 // ---------------------------------------------------------------------------
 
-describe("dispatchTodoSubcommand", () => {
+describe("dispatchTaskSubcommand", () => {
   let gaia: ReturnType<typeof makeGaia>;
 
   beforeEach(() => {
     gaia = makeGaia();
-    vi.mocked(gaia.listTodos).mockResolvedValue({ todos: [] } as never);
-    vi.mocked(gaia.createTodo).mockResolvedValue({
-      id: "t-new",
-      title: "New task",
-      completed: false,
-    } as never);
-    vi.mocked(gaia.completeTodo).mockResolvedValue({
-      id: "t-1",
-      title: "Done task",
-      completed: true,
-    } as never);
-    vi.mocked(gaia.deleteTodo).mockResolvedValue(undefined as never);
+    vi.mocked(gaia.listTasks).mockResolvedValue(taskList([]));
+    vi.mocked(gaia.createTask).mockResolvedValue(
+      makeTask({ id: "t-new", title: "New task" }),
+    );
+    vi.mocked(gaia.completeTask).mockResolvedValue(
+      makeTask({ title: "Done task", completed: true }),
+    );
+    vi.mocked(gaia.deleteTask).mockResolvedValue(undefined);
   });
 
-  it("routes 'list' to handleTodoList", async () => {
-    await dispatchTodoSubcommand(gaia, ctx, "list", []);
-    expect(gaia.listTodos).toHaveBeenCalled();
+  it("routes 'list' to handleTaskList", async () => {
+    await dispatchTaskSubcommand(gaia, ctx, "list", []);
+    expect(gaia.listTasks).toHaveBeenCalled();
   });
 
-  it("routes 'add' with title to handleTodoCreate", async () => {
-    await dispatchTodoSubcommand(gaia, ctx, "add", ["Buy", "milk"]);
-    expect(gaia.createTodo).toHaveBeenCalledWith(
+  it("routes 'add' with title to handleTaskCreate", async () => {
+    await dispatchTaskSubcommand(gaia, ctx, "add", ["Buy", "milk"]);
+    expect(gaia.createTask).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Buy milk" }),
       ctx,
     );
   });
 
   it("returns usage hint when 'add' has no title", async () => {
-    const result = await dispatchTodoSubcommand(gaia, ctx, "add", []);
+    const result = await dispatchTaskSubcommand(gaia, ctx, "add", []);
     expect(result).toContain("Usage");
     expect(result).toContain("add");
-    expect(gaia.createTodo).not.toHaveBeenCalled();
+    expect(gaia.createTask).not.toHaveBeenCalled();
   });
 
-  it("routes 'complete' with ID to handleTodoComplete", async () => {
-    await dispatchTodoSubcommand(gaia, ctx, "complete", ["t-1"]);
-    expect(gaia.completeTodo).toHaveBeenCalledWith("t-1", ctx);
+  it("routes 'complete' with ID to handleTaskComplete", async () => {
+    await dispatchTaskSubcommand(gaia, ctx, "complete", ["t-1"]);
+    expect(gaia.completeTask).toHaveBeenCalledWith("t-1", ctx);
   });
 
   it("returns usage hint when 'complete' has no ID", async () => {
-    const result = await dispatchTodoSubcommand(gaia, ctx, "complete", []);
+    const result = await dispatchTaskSubcommand(gaia, ctx, "complete", []);
     expect(result).toContain("Usage");
-    expect(gaia.completeTodo).not.toHaveBeenCalled();
+    expect(gaia.completeTask).not.toHaveBeenCalled();
   });
 
-  it("routes 'delete' with ID to handleTodoDelete", async () => {
-    await dispatchTodoSubcommand(gaia, ctx, "delete", ["t-2"]);
-    expect(gaia.deleteTodo).toHaveBeenCalledWith("t-2", ctx);
+  it("routes 'delete' with ID to handleTaskDelete", async () => {
+    await dispatchTaskSubcommand(gaia, ctx, "delete", ["t-2"]);
+    expect(gaia.deleteTask).toHaveBeenCalledWith("t-2", ctx);
   });
 
   it("returns usage hint when 'delete' has no ID", async () => {
-    const result = await dispatchTodoSubcommand(gaia, ctx, "delete", []);
+    const result = await dispatchTaskSubcommand(gaia, ctx, "delete", []);
     expect(result).toContain("Usage");
-    expect(gaia.deleteTodo).not.toHaveBeenCalled();
+    expect(gaia.deleteTask).not.toHaveBeenCalled();
   });
 
   it("returns full help for unknown subcommand", async () => {
-    const result = await dispatchTodoSubcommand(gaia, ctx, "unknown", []);
+    const result = await dispatchTaskSubcommand(gaia, ctx, "unknown", []);
     expect(result).toContain("/todo");
   });
 });
