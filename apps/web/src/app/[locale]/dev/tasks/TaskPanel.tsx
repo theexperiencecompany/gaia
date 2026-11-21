@@ -10,7 +10,7 @@ import {
   Share01Icon,
   StopCircleIcon,
 } from "@icons";
-import type { ComponentType } from "react";
+import { type ComponentType, useState } from "react";
 
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -24,6 +24,7 @@ import TaskProperties from "./TaskProperties";
 import TaskRecord from "./TaskRecord";
 import TaskSubtasks from "./TaskSubtasks";
 import { isRepeating, type Task } from "./taskModel";
+import WatchTrouble from "./WatchTrouble";
 
 interface TaskPanelProps {
   task: Task;
@@ -110,6 +111,8 @@ export default function TaskPanel({
   const isSwitchedOff = isOff && !task.pauseReason;
   const repeats = isRepeating(task.when);
   const update = (patch: Partial<Task>) => onChange({ ...task, ...patch });
+  // A watch's fix can open the When editor from outside its row.
+  const [isWhenOpen, setIsWhenOpen] = useState(false);
 
   const title = (
     <TextArea
@@ -223,11 +226,19 @@ export default function TaskPanel({
           <TaskAsk task={task} onAnswer={(answer) => onAnswer(task, answer)} />
         )}
 
+        <WatchTrouble
+          task={task}
+          update={update}
+          onChangeWatch={() => setIsWhenOpen(true)}
+        />
+
         <TaskProperties
           task={task}
           update={update}
           parent={parent}
           onOpen={onOpen}
+          isWhenOpen={isWhenOpen}
+          onWhenOpenChange={setIsWhenOpen}
         />
 
         <TaskSubtasks

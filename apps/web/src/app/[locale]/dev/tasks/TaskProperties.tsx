@@ -17,6 +17,7 @@ import TaskApps from "./TaskApps";
 import { TaskIconTile } from "./TaskIconTile";
 import { isRepeating, type Task } from "./taskModel";
 import WhenField from "./WhenField";
+import { ago } from "./watchModel";
 
 type Update = (patch: Partial<Task>) => void;
 
@@ -107,12 +108,17 @@ export default function TaskProperties({
   update,
   parent,
   onOpen,
+  isWhenOpen,
+  onWhenOpenChange,
 }: {
   task: Task;
   update: Update;
   /** The task this one is a subtask of. */
   parent?: Task;
   onOpen: (task: Task) => void;
+  /** Whether the When editor is open, so the panel can open it from a watch's fix. */
+  isWhenOpen: boolean;
+  onWhenOpenChange: (isOpen: boolean) => void;
 }) {
   const isYours = task.assignee === "you";
   const notifyLabel = isYours ? "Nudges" : "Notify me";
@@ -121,6 +127,7 @@ export default function TaskProperties({
     !isYours && !isRepeating(task.when) && task.state !== "paused"
       ? statusLine(task)
       : undefined;
+  const lastReceived = task.when.webhook?.lastReceived;
   return (
     <div>
       {task.origin && (
@@ -163,7 +170,12 @@ export default function TaskProperties({
         onChange={(when) => update({ when })}
         forGaia={!isYours}
         runCount={task.runCount}
+        isOpen={isWhenOpen}
+        onOpenChange={onWhenOpenChange}
       />
+      {lastReceived && (
+        <ReadRow label="Last received">{ago(lastReceived)}</ReadRow>
+      )}
       {!isRepeating(task.when) && <PriorityRow task={task} update={update} />}
       {!isYours && <TaskApps task={task} update={update} />}
       <PropertyRow

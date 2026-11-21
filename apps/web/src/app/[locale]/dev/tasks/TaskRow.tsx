@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckListIcon, Flag02Icon } from "@icons";
+import { CheckListIcon, Flag02Icon, WebhookIcon } from "@icons";
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import TaskCheckbox from "./TaskCheckbox";
 import { TaskIconTile } from "./TaskIconTile";
 import { NEEDS, WHEN_ICONS } from "./taskIcons";
 import { isRepeating, type Need, needOf, type Task } from "./taskModel";
+import { WatchIcon } from "./WatchIcon";
 
 interface TaskRowProps {
   task: Task;
@@ -68,6 +69,13 @@ function When({ task }: { task: Task }) {
   if (task.state === "paused")
     return <MetaChip>{isRepeating(when) ? "Disabled" : "Stopped"}</MetaChip>;
   if (!when.label) return null;
+  // A watch shows what it reads and the latest reading: the one number you'd open it for.
+  if (when.watch)
+    return (
+      <MetaChip icon={<WatchIcon source={when.watch.source} size={14} />}>
+        {when.watch.reading?.value ?? when.label}
+      </MetaChip>
+    );
   const Icon = WHEN_ICONS[when.kind];
   const tone: ChipTone = when.overdue
     ? "danger"
@@ -83,6 +91,8 @@ function When({ task }: { task: Task }) {
       icon={
         when.app ? (
           <AppIcon id={when.app} size={14} />
+        ) : when.webhook ? (
+          <WebhookIcon className="size-3.5" />
         ) : (
           <Icon className="size-3.5" />
         )

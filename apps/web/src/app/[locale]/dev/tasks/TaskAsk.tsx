@@ -7,6 +7,7 @@ import { useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toneVariants } from "@/components/shared/tone";
+import { AskShell } from "./AskShell";
 import { noReplyLine } from "./statusModel";
 import type { Task } from "./taskModel";
 
@@ -100,11 +101,7 @@ export default function TaskAsk({
   const { text, Icon } = LABEL[ask.kind];
 
   return (
-    <section className="space-y-3 rounded-2xl bg-zinc-800 p-4">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
-        <Icon className="size-3.5" />
-        {text}
-      </p>
+    <AskShell label={text} Icon={Icon}>
       <p className="text-sm leading-6 text-zinc-100">{ask.prompt}</p>
 
       {ask.kind === "approval" && (
@@ -142,6 +139,6 @@ export default function TaskAsk({
           )}
         </>
       )}
-    </section>
+    </AskShell>
   );
 }
