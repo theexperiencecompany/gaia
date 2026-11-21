@@ -3,11 +3,13 @@ import { appName } from "../marketplace/appModel";
 import { type Template, type TemplateData, toTemplate } from "./templateModel";
 
 export const ALL = "all";
-/** The shelf for templates their publisher filed under no category. */
-const OTHER = "Other";
 
 export interface Shelf {
-  category: string;
+  id: string;
+  title: string;
+  description?: string;
+  /** The category "Show all" narrows to; the community shelf has none and opens in place. */
+  category?: string;
   templates: Template[];
 }
 
@@ -89,18 +91,29 @@ export function useExplore(
 
   const shelves = useMemo<Shelf[]>(() => {
     if (isNarrowed) return [];
-    const shelved = categories.map((category) => ({
-      category,
-      templates: results.filter((template) =>
-        template.data.categories.includes(category),
-      ),
-    }));
-    const unfiled = results.filter(
-      (template) => template.data.categories.length === 0,
-    );
-    return unfiled.length > 0
-      ? [...shelved, { category: OTHER, templates: unfiled }]
-      : shelved;
+    const byGaia = results.filter((template) => template.isByGaia);
+    const shelved = categories
+      .map((category) => ({
+        id: category,
+        title: category,
+        category,
+        templates: byGaia.filter((template) =>
+          template.data.categories.includes(category),
+        ),
+      }))
+      .filter((shelf) => shelf.templates.length > 0);
+    // Everything people published sits after GAIA's categories, whatever it was filed under.
+    const community = results.filter((template) => !template.isByGaia);
+    if (community.length === 0) return shelved;
+    return [
+      ...shelved,
+      {
+        id: "community",
+        title: "From the community",
+        description: "Made and shared by people who use GAIA.",
+        templates: community,
+      },
+    ];
   }, [isNarrowed, categories, results]);
 
   return {
