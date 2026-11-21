@@ -7,8 +7,10 @@ import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { toast } from "@/lib/toast";
 import { PublishModal } from "../explore/PublishModal";
+import { EXPLORE_PATH } from "../explore/TemplateRow";
 import { DEMO_TASKS } from "./demoTasks";
 import { DEMO_STEPS } from "./demoWorkflows";
 import { NewGaiaTask } from "./NewGaiaTask";
@@ -296,7 +298,18 @@ export default function TasksDemoPage() {
                 <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-white">
                   Tasks
                 </h1>
-                <NewTaskButton onPick={startNew} />
+                <div className="flex items-center gap-1">
+                  <LinkButton
+                    href={EXPLORE_PATH}
+                    size="sm"
+                    variant="quiet"
+                    tone="muted"
+                    hoverTone="bright"
+                  >
+                    Explore
+                  </LinkButton>
+                  <NewTaskButton onPick={startNew} />
+                </div>
               </div>
 
               {needsYou.length > 0 && (
