@@ -592,6 +592,16 @@ class TestNoFreeNumbers:
         ]
 
 
+@pytest.mark.regression
+def test_a_note_linking_two_facts_by_a_cause_no_fact_states_is_sent_back() -> None:
+    """Founder replay: "Clearing the auth error first unblocks the rest" tied facts no line tied."""
+    assert _problems({"kind": "note", "text": "Clearing [[fact:1]] unblocks [[fact:2]]."}) == [
+        "the block 1 (note) text says 'unblocks': that one thing causes, blocks or gates "
+        "another, and no fact says so; state each fact on its own, as its line does"
+    ]
+    assert _problems({"kind": "note", "text": "Clear [[fact:1]], then [[fact:2]]."}) == []
+
+
 _LONG_FACT = "[[fact:14]]"
 _LONG_FACT_CHARS = len(POOL.items[14].title)
 

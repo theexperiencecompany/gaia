@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from app.agents.prompts.brief_fact_prompts import FACT_LINES_NOTE
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
+    DEPENDENCY_CLAIMS,
     FREQUENCY_CLAIMS,
     LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
@@ -166,6 +167,9 @@ NEVER CLAIM HOW OFTEN: you see today, not their history, so never say how often 
 happens unless a fact you were given says it. These words are sent back wherever no fact uses
 them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its own point
 ("clear today. The day is open.") is padding.
+NEVER LINK FACTS BY CAUSE: two facts side by side are not one blocking the other. Say that one
+thing causes, blocks or frees another only where a fact says so; these words are sent back
+wherever no fact uses them: {", ".join(DEPENDENCY_CLAIMS)}.
 """.strip()
 
 # How every brief's prose reads, past what its headline and lede are written from.

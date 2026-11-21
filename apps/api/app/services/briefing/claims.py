@@ -6,12 +6,13 @@ a success, a finished one a failure, or something still waiting on the user done
 another app's item a GAIA todo; nor may it type a figure (a date, a time, an amount) that only
 another fact's time or words hold. A figure in another fact's title names that fact ("the
 Mercury 2FA setup"), so it is never pinned on this one. A sentence that negates ("not yet",
-"hasn't") is left alone: it may be saying the item is not there yet.
+"hasn't") is left alone: it may be saying the item is not there yet. Prose may say one thing
+causes, blocks or gates another only in a word a fact itself uses.
 """
 
 import re
 
-from app.constants.briefing import GAIA_APP_NAME
+from app.constants.briefing import DEPENDENCY_CLAIMS, GAIA_APP_NAME
 from app.constants.todos import TodoCompleter
 from app.models.brief_item_models import ItemState
 from app.services.briefing.slots import (
@@ -40,6 +41,7 @@ _CREDITS: dict[TodoCompleter, re.Pattern[str]] = {
 }
 _CREDITED_AS = {TodoCompleter.GAIA: "GAIA", TodoCompleter.USER: "the user"}
 _SAY_CREDITED = {TodoCompleter.GAIA: "GAIA finished them", TodoCompleter.USER: "they finished them"}
+_DEPENDENCY_RE = re.compile(rf"\b({'|'.join(DEPENDENCY_CLAIMS)})\b", re.IGNORECASE)
 _NEGATES = re.compile(r"\b(?:not|no longer|never|yet)\b|n't\b", re.IGNORECASE)
 
 #: The claims each item state cannot carry, as the pattern that finds them.
@@ -132,3 +134,14 @@ def claim_problems(field: str, text: str, values: SlotValues) -> list[str]:
             for word in sorted(typed & others)
         ]
     return problems
+
+
+def dependency_problems(field: str, text: str, grounds: str) -> list[str]:
+    """Name each cause or dependency the text states in a word no fact in grounds uses."""
+    grounded = {claim.casefold() for claim in _DEPENDENCY_RE.findall(grounds)}
+    return [
+        f"the {field} says {claim!r}: that one thing causes, blocks or gates another, and no "
+        "fact says so; state each fact on its own, as its line does"
+        for claim in dict.fromkeys(c.casefold() for c in _DEPENDENCY_RE.findall(text))
+        if claim not in grounded
+    ]

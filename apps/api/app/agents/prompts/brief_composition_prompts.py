@@ -111,7 +111,8 @@ open; never lead with it when anything new needs the user.
   listed on series ID ({series_fields}). Counting in words what you placed
   ("two replies") is fine. An item's title and detail write its own line's figures as they
   stand, with no slots.
-- Nothing you write says more than its facts say: no person, deadline or outcome they do not hold.
+- Nothing you write says more than its facts say: no person, deadline or outcome they do not hold,
+  and no cause between two facts ("X is blocking Y") unless a fact's line says it.
 
 ## Nothing is mandatory
 No source and no kind of item must appear. Approvals, failures and GAIA's work go in when they

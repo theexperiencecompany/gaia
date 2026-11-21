@@ -177,6 +177,58 @@ class TestAVoiceThatRepeatsOrOverclaims:
         asked.assert_awaited_once()
 
 
+class TestAVoiceThatLinksFactsByCause:
+    """Founder replay: a failed LinkedIn connect was said to block a draft sequence no fact tied to it."""
+
+    _GROUNDS = (
+        "1. [PumpGTM] needs you: LinkedIn connect failure | 401 auth checkpoint blocked the "
+        "sender on Nov 20\n2. [PumpGTM] needs you: YC founders outreach sequence | draft, "
+        "awaiting approval"
+    )
+
+    @pytest.mark.regression
+    async def test_a_cause_no_fact_states_is_sent_back_from_every_field(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        claimed = _voice(
+            headline="The LinkedIn auth error is holding up your outreach",
+            lede="A failed connect on LinkedIn is blocking the sequence.",
+            message="[Reply to Dan](fact:1) first. Fix that and the outreach path opens up.",
+        )
+        asked = AsyncMock(side_effect=[claimed, _voice()])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        await written_brief(
+            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, grounds=self._GROUNDS)
+        )
+
+        problems = [
+            f"the {field} says {claim!r}: that one thing causes, blocks or gates another, and no "
+            "fact says so; state each fact on its own, as its line does"
+            for field, claim in (
+                ("headline", "holding up"),
+                ("lede", "blocking"),
+                ("message", "opens up"),
+            )
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, claimed.model_dump_json(indent=2))}"
+        )
+
+    async def test_a_cause_a_fact_states_may_be_voiced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        grounded = _voice(lede="The sender is blocked until you clear the checkpoint.")
+        asked = AsyncMock(side_effect=[grounded])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(
+            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, grounds=self._GROUNDS)
+        )
+
+        assert voice == grounded
+
+
 class TestAVoiceThatSaysATitleTwice:
     """Regression: "Northwind's invoice is still past due: Northwind invoice." echoed its title."""
 
