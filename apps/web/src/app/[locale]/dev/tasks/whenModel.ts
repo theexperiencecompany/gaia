@@ -149,7 +149,7 @@ function repeatLabel(repeat: Repeat): string {
 }
 
 /** A chip's label for a cron no picker shape and no named pattern covers. */
-export const CUSTOM_SCHEDULE_LABEL = "Custom schedule";
+const CUSTOM_SCHEDULE_LABEL = "Custom schedule";
 
 /** A step through the whole field or a span ("A-B", "A-B/N"), or null when it is anything else. */
 function readStep(
