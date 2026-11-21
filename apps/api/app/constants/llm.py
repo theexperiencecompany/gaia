@@ -150,6 +150,11 @@ PROVIDER_NAME_METADATA_KEY = "provider_name"
 BUDGET_STOP_METADATA_KEY = "budget_stop"
 # The reply a run with its own spend ledger gets once that ledger is spent out.
 LEDGER_STOP_TEXT = "Stopped: this run has spent its budget."
+# What a ledger run is told on each call once its ledger nears that stop, so it answers first.
+LEDGER_WRAPUP_NOTICE = (
+    "[System notice: this run has almost spent its budget. Stop calling tools and give "
+    "your final answer now, from what you have already read.]"
+)
 # The response_metadata keys marking a reply a fallback provider served, and the
 # model it served: read by the SSE downgrade notice and priced by accounting.
 FELL_BACK_METADATA_KEY = "gaia_fell_back"

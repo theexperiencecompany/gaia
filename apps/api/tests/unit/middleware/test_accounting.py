@@ -35,6 +35,7 @@ from app.constants.llm import (
     BUDGET_STOP_METADATA_KEY,
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DEFAULT_MAX_TOKENS,
+    LEDGER_WRAPUP_NOTICE,
     PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION,
     PRO_MONTHLY_COST_BUDGET_USD,
     PROVIDER_NAME_METADATA_KEY,
@@ -886,15 +887,19 @@ async def test_a_budget_check_failure_fails_open_and_still_runs_the_model() -> N
 class _RecordingLedger:
     """A spend ledger that remembers what each call booked, spent out once it holds limit."""
 
-    def __init__(self, limit: float = 1.0) -> None:
+    def __init__(self, limit: float = 1.0, winds_down_at: float = 0.8) -> None:
         self.booked: list[float] = []
         self.limit = limit
+        self.winds_down_at = winds_down_at
 
     async def book(self, cost_usd: float) -> None:
         self.booked.append(cost_usd)
 
     def exhausted(self) -> bool:
         return sum(self.booked) >= self.limit
+
+    def winding_down(self) -> bool:
+        return sum(self.booked) >= self.winds_down_at
 
 
 @pytest.mark.regression
@@ -913,6 +918,32 @@ async def test_a_ledger_that_is_spent_out_stops_the_next_call_before_the_model_r
     assert reply.response_metadata[BUDGET_STOP_METADATA_KEY] is True
     [warning] = [w for w in event["warnings"] if w["msg"] == "ledger_stop"]
     assert (warning["event_name"], warning["agent_name"]) == ("ledger_stop", "brief_scout")
+
+
+@pytest.mark.regression
+async def test_a_ledger_run_near_its_end_is_told_to_answer_now() -> None:
+    """A GitHub scout learn hit its ledger's stop mid-search and wrote no report, so it never froze."""
+    ledger = _RecordingLedger(limit=0.1, winds_down_at=0.08)
+    ledger.booked.append(0.085)
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=ledger)
+    captured, handler = _recording_handler()
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
+        await mw.awrap_model_call(_model_request(), handler)
+        await mw.awrap_model_call(_model_request(), handler)
+
+    assert [r.messages[-1].content for r in captured] == [LEDGER_WRAPUP_NOTICE] * 2
+
+
+async def test_a_ledger_run_with_headroom_is_sent_as_asked() -> None:
+    ledger = _RecordingLedger(limit=0.1, winds_down_at=0.08)
+    ledger.booked.append(0.05)
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=ledger)
+    captured, handler = _recording_handler()
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
+        await mw.awrap_model_call(_model_request(), handler)
+
+    [sent] = captured
+    assert [m.content for m in sent.messages] == ["hi"]
 
 
 @pytest.mark.regression

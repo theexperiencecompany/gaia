@@ -36,6 +36,7 @@ from app.constants.llm import (
     FELL_BACK_METADATA_KEY,
     LANE_FIELD_ID,
     LEDGER_STOP_TEXT,
+    LEDGER_WRAPUP_NOTICE,
     RECURSION_HWM_FRACTION,
     UNKNOWN_MODEL_NAME,
 )
@@ -82,6 +83,10 @@ class SpendLedger(Protocol):
 
     def exhausted(self) -> bool:
         """Whether the run has spent what it may: the wall stops its next call."""
+        ...
+
+    def winding_down(self) -> bool:
+        """Whether the run is near that stop: each next call is told to answer now."""
         ...
 
 
@@ -216,6 +221,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                             response_metadata={BUDGET_STOP_METADATA_KEY: True},
                         )
                     ]
+                )
+            if self.ledger.winding_down():
+                log.info("ledger_wrapup_notice", agent_name=self.agent_name)
+                request = request.override(
+                    messages=[*request.messages, HumanMessage(content=LEDGER_WRAPUP_NOTICE)]
                 )
         else:
             walled = await self._budget_wall(request)
