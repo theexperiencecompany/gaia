@@ -127,6 +127,10 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_email_verdict_indexes(),
             create_wait_indexes(),
+            create_task_indexes(),
+            create_task_run_indexes(),
+            create_task_template_indexes(),
+            create_task_playbook_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -169,6 +173,10 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "email_verdicts",
             "waits",
+            "tasks",
+            "task_runs",
+            "task_templates",
+            "task_playbooks",
         ]
 
         index_results = {}
@@ -269,6 +277,13 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
     "name": "user_todo_conversation_unique",
     "partialFilterExpression": {"todo_id": {"$type": "string"}},
 }
+# One chat per GAIA task, the same backstop keyed on the task.
+CONVERSATION_TASK_BINDING_KEYS: IndexKeys = [("user_id", 1), ("task_id", 1)]
+CONVERSATION_TASK_BINDING_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "user_task_conversation_unique",
+    "partialFilterExpression": {"task_id": {"$type": "string"}},
+}
 
 
 async def create_conversation_indexes() -> None:
@@ -295,6 +310,9 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("updatedAt", -1)]),
             conversations_collection.create_index(
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
+            ),
+            conversations_collection.create_index(
+                CONVERSATION_TASK_BINDING_KEYS, **CONVERSATION_TASK_BINDING_OPTIONS
             ),
         )
 
@@ -946,10 +964,186 @@ async def create_approval_ledger_indexes() -> None:
             ),
             approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
             approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+            # A task list's live approvals, one query per page.
+            approval_ledger_collection.create_index(
+                [("owner_task_id", 1), ("state", 1), ("created_at", 1)],
+                name="owner_task_live",
+                partialFilterExpression={"owner_task_id": {"$type": "string"}},
+            ),
         )
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating approval_ledger indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+# One open task per user per outside object (a Gmail thread, the Inbox desk's mailbox).
+TASK_OPEN_EXTERNAL_REF_KEYS: IndexKeys = [
+    ("user_id", 1),
+    ("external_ref.source", 1),
+    ("external_ref.id", 1),
+]
+TASK_OPEN_EXTERNAL_REF_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "task_open_external_ref_unique",
+    "partialFilterExpression": {"external_ref.id": {"$type": "string"}, "completed": False},
+}
+# One system task per user per definition: the provisioner's backstop against a racing twin.
+TASK_SYSTEM_KEY_KEYS: IndexKeys = [("user_id", 1), ("system_key", 1)]
+TASK_SYSTEM_KEY_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "task_system_key_unique",
+    "partialFilterExpression": {"system_key": {"$type": "string"}},
+}
+_GAIA_ONLY = {"assignee": "gaia"}
+
+
+async def create_task_indexes() -> None:
+    """Create the tasks collection's indexes: one per finder in TasksRepository, ESR ordered."""
+    tasks_collection = get_async_collection("tasks")
+    try:
+        await asyncio.gather(
+            # list_page: newest first, narrowed by completion, priority or assignee.
+            tasks_collection.create_index([("user_id", 1), ("created_at", -1)]),
+            tasks_collection.create_index([("user_id", 1), ("completed", 1), ("created_at", -1)]),
+            tasks_collection.create_index([("user_id", 1), ("priority", 1), ("created_at", -1)]),
+            # compute_counts and the overdue/due-range filters.
+            tasks_collection.create_index(
+                [("user_id", 1), ("completed", 1), ("when.at", 1)],
+                name="task_user_due",
+                partialFilterExpression={"when.kind": "date"},
+            ),
+            # list_open_gaia, list_since, find_active_gaia_for_user.
+            tasks_collection.create_index(
+                [("user_id", 1), ("assignee", 1), ("completed", 1), ("updated_at", -1)],
+                name="task_user_assignee_open",
+            ),
+            # Subtask listing, open counts and cascades.
+            tasks_collection.create_index(
+                [("user_id", 1), ("parent_id", 1), ("completed", 1)],
+                name="task_user_parent",
+                partialFilterExpression={"parent_id": {"$type": "string"}},
+            ),
+            tasks_collection.create_index(
+                TASK_OPEN_EXTERNAL_REF_KEYS, **TASK_OPEN_EXTERNAL_REF_OPTIONS
+            ),
+            tasks_collection.create_index(TASK_SYSTEM_KEY_KEYS, **TASK_SYSTEM_KEY_OPTIONS),
+            # find_live_system_tasks_all_users pages one key across users.
+            tasks_collection.create_index(
+                [("system_key", 1), ("_id", 1)],
+                name="task_system_key_scan",
+                partialFilterExpression={"system_key": {"$type": "string"}},
+            ),
+            # App-event dispatch: per-resource by Composio instance id (cross-user), and
+            # account-level (Gmail) by user and trigger name.
+            tasks_collection.create_index(
+                "subscriptions.composio_trigger_ids",
+                name="task_subscription_trigger_ids",
+                sparse=True,
+            ),
+            tasks_collection.create_index(
+                [("user_id", 1), ("subscriptions.trigger_name", 1)],
+                name="task_user_subscription_trigger_name",
+                sparse=True,
+            ),
+            # find_due_all_users: one partial index per next-time field, the $or's two arms.
+            tasks_collection.create_index(
+                [("active", 1), ("run_state", 1), ("when.next_run", 1)],
+                name="task_due_repeat",
+                partialFilterExpression={**_GAIA_ONLY, "when.next_run": {"$type": "date"}},
+            ),
+            tasks_collection.create_index(
+                [("active", 1), ("run_state", 1), ("next_check_at", 1)],
+                name="task_due_check",
+                partialFilterExpression={**_GAIA_ONLY, "next_check_at": {"$type": "date"}},
+            ),
+            tasks_collection.create_index(
+                [("run_state", 1), ("updated_at", 1)],
+                name="task_stale_running",
+                partialFilterExpression={"run_state": "running"},
+            ),
+            tasks_collection.create_index(
+                [("user_id", 1), ("pause_reason", 1)],
+                name="task_user_pause_reason",
+                partialFilterExpression={"pause_reason": {"$type": "string"}},
+            ),
+            tasks_collection.create_index(
+                [("user_id", 1), ("from_onboarding", 1), ("created_at", -1)],
+                name="task_user_onboarding",
+                partialFilterExpression={"from_onboarding": True},
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating task indexes", error=str(e), error_type=type(e).__name__
+        )
+        raise
+
+
+async def create_task_run_indexes() -> None:
+    """Create indexes for task_runs: the history page, the last-run trace and the id lookup."""
+    task_runs_collection = get_async_collection("task_runs")
+    try:
+        await asyncio.gather(
+            task_runs_collection.create_index("run_id", unique=True),
+            task_runs_collection.create_index(
+                [("task_id", 1), ("user_id", 1), ("kind", 1), ("started_at", -1)]
+            ),
+            task_runs_collection.create_index(
+                [("task_id", 1), ("user_id", 1), ("status", 1), ("started_at", -1)]
+            ),
+            task_runs_collection.create_index([("user_id", 1), ("started_at", -1)]),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating task_runs indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_task_template_indexes() -> None:
+    """Create indexes for task_templates: unique slugs, the two lists, and publish lookups."""
+    templates_collection = get_async_collection("task_templates")
+    try:
+        await asyncio.gather(
+            templates_collection.create_index("slug", unique=True, name="template_slug_unique"),
+            templates_collection.create_index([("origin", 1), ("created_at", -1)]),
+            templates_collection.create_index(
+                [("origin", 1), ("run_count", -1), ("updated_at", -1)]
+            ),
+            templates_collection.create_index(
+                "source_task_id",
+                unique=True,
+                name="template_source_task_unique",
+                partialFilterExpression={"source_task_id": {"$type": "string"}},
+            ),
+            templates_collection.create_index("tool_categories"),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating task_templates indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_task_playbook_indexes() -> None:
+    """Create indexes for task_playbooks: one per task, which also serves the per-run read."""
+    task_playbooks_collection = get_async_collection("task_playbooks")
+    try:
+        await asyncio.gather(
+            task_playbooks_collection.create_index([("task_id", 1), ("user_id", 1)], unique=True),
+            task_playbooks_collection.create_index("playbook_id", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating task_playbooks indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

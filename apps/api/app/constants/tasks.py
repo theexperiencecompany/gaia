@@ -1,0 +1,169 @@
+"""Tasks: the one record for work the user or GAIA does, once or on repeat."""
+
+from datetime import timedelta
+from enum import StrEnum
+import re
+from typing import Final
+
+#: A new task's id: this prefix and 12 hex characters. Migrated tasks keep their own id.
+TASK_ID_PREFIX: Final = "task_"
+TASK_ID_HEX_CHARS: Final = 12
+#: Every id a task may carry: a new task's, a migrated workflow's, or a migrated todo's ObjectId.
+TASK_ID_PATTERN: Final = re.compile(r"task_[0-9a-f]{12}|wf_[0-9a-f]{12}|[0-9a-f]{24}")
+
+#: The Inbox desk's system key; the desk is the one system task that came from a todo.
+INBOX_DESK_SYSTEM_KEY: Final = "gmail:inbox_desk"
+
+#: The trigger name an imported run record carries: it came from a todo's activity log.
+IMPORTED_RUN_TRIGGER: Final = "imported_activity"
+
+# Cadence floors per watch source rung (see WatchSource).
+WATCH_CADENCE_FLOOR_API: Final = timedelta(minutes=1)
+WATCH_CADENCE_FLOOR_PAGE: Final = timedelta(minutes=15)
+WATCH_CADENCE_FLOOR_BROWSER: Final = timedelta(minutes=30)
+WATCH_CADENCE_FLOOR_AGENT: Final = timedelta(minutes=60)
+#: How long a watch lives before it must be renewed.
+WATCH_DEFAULT_LIFETIME: Final = timedelta(days=90)
+#: Blind checks before the user hears about it, once per episode.
+WATCH_BLIND_CHECKS_BEFORE_TELLING: Final = 2
+#: How long a watch stays blind before it pauses itself.
+WATCH_BLIND_PAUSE_AFTER: Final = timedelta(hours=72)
+#: The gap between a scraped reading and the read that confirms it.
+WATCH_CONFIRM_GAP: Final = timedelta(minutes=1)
+
+
+class Assignee(StrEnum):
+    """Who does a task: the user (a to-do), or GAIA."""
+
+    USER = "user"
+    GAIA = "gaia"
+
+
+class WhenKind(StrEnum):
+    """What brings a task round: nothing, a date, a schedule, an app event, or a watched change."""
+
+    NONE = "none"
+    DATE = "date"
+    REPEAT = "repeat"
+    EVENT = "event"
+    WATCH = "watch"
+
+
+class TaskRunState(StrEnum):
+    """Whether a GAIA task is idle, mid-run, or finished every run it will ever make."""
+
+    IDLE = "idle"
+    RUNNING = "running"
+    ENDED = "ended"
+
+
+class TaskFlag(StrEnum):
+    """A state a task is in that the engine or GAIA's prompts read; formerly a system label."""
+
+    #: Retries ran out; nothing runs the task until the user resets it.
+    FAILED = "failed"
+    #: An app the task watches lost its connection, or GAIA marked it blocked on something outside.
+    BLOCKED = "blocked"
+    #: The user waits on the other side of an email thread; a reply unblocks it.
+    WAITING_FOR_REPLY = "waiting_for_reply"
+    #: GAIA marked the task as waiting on an approval; an event can unblock it.
+    WAITING_FOR_APPROVAL = "waiting_for_approval"
+    #: The user owes a reply on the thread.
+    NEEDS_REPLY = "needs_reply"
+    #: The user must act outside the thread (pay, secure, renew); nobody awaits a reply.
+    ACTION_NEEDED = "action_needed"
+
+
+#: Flags that mean the task waits on something outside GAIA.
+BLOCKING_FLAGS: Final = frozenset(
+    {TaskFlag.BLOCKED, TaskFlag.WAITING_FOR_REPLY, TaskFlag.WAITING_FOR_APPROVAL}
+)
+
+
+class WatchTemplate(StrEnum):
+    """The typed shapes a watch's condition takes; there are no free-form operators."""
+
+    THRESHOLD = "threshold"
+    STATE = "state"
+    NEW_ITEMS = "new_items"
+    REPLY_BY = "reply_by"
+    UPTIME = "uptime"
+    OPEN = "open"
+
+
+class WatchSourceRung(StrEnum):
+    """Where a watch reads its value, cheapest first."""
+
+    CONNECTOR = "connector"
+    API = "api"
+    FEED = "feed"
+    PAGE = "page"
+    BROWSER = "browser"
+    AGENT = "agent"
+
+
+#: Rungs whose readings are scraped and need a second, confirming read.
+SCRAPED_RUNGS: Final = frozenset({WatchSourceRung.PAGE, WatchSourceRung.BROWSER})
+
+WATCH_CADENCE_FLOORS: Final[dict[WatchSourceRung, timedelta]] = {
+    WatchSourceRung.CONNECTOR: WATCH_CADENCE_FLOOR_API,
+    WatchSourceRung.API: WATCH_CADENCE_FLOOR_API,
+    WatchSourceRung.FEED: WATCH_CADENCE_FLOOR_API,
+    WatchSourceRung.PAGE: WATCH_CADENCE_FLOOR_PAGE,
+    WatchSourceRung.BROWSER: WATCH_CADENCE_FLOOR_BROWSER,
+    WatchSourceRung.AGENT: WATCH_CADENCE_FLOOR_AGENT,
+}
+
+
+class ThresholdDirection(StrEnum):
+    ABOVE = "above"
+    BELOW = "below"
+
+
+class WatchTell(StrEnum):
+    """When a watch tells the user: on the first match, or on every new match."""
+
+    FIRST_MATCH = "first_match"
+    EVERY_MATCH = "every_match"
+
+
+class WatchEnd(StrEnum):
+    """What ends a watch, besides its expiry."""
+
+    FIRST_ALERT = "first_alert"
+    TERMINAL_VALUE = "terminal_value"
+    REPLY = "reply"
+    DEADLINE = "deadline"
+    EXPIRY_ONLY = "expiry_only"
+
+
+class WatchReading(StrEnum):
+    """What the last check of a watch saw; blind is never unchanged and never fires."""
+
+    MATCHED = "matched"
+    QUIET = "quiet"
+    BLIND = "blind"
+
+
+class TaskRunStatus(StrEnum):
+    """How one run of a GAIA task went: running until its one terminal write."""
+
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+
+
+class TaskRunKind(StrEnum):
+    """A run, or a stretch of a migrated todo's timeline that was no run."""
+
+    RUN = "run"
+    HISTORY = "history"
+
+
+class TemplateOrigin(StrEnum):
+    """Where a template came from: a user's publish, or GAIA's curated set."""
+
+    COMMUNITY = "community"
+    CURATED = "curated"

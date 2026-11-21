@@ -614,3 +614,40 @@ class PlaybookUpdate(BaseModel):
     suspect_streak: int | None = None
     heal_attempts: int | None = None
     updated_at: datetime | None = None
+
+
+class TaskPlaybookDocument(PlaybookBody, MongoDocument):
+    """A repeating task's playbook in task_playbooks: one per task, keyed by playbook_id.
+
+    Valid while body_hash equals task_body_hash(task.body) (app.services.tasks.body_hash).
+    """
+
+    playbook_id: str = Field(default_factory=lambda: f"pb_{uuid.uuid4().hex[:12]}")
+    task_id: str
+    user_id: str
+    body_hash: str
+    authored_run: str | None = None
+    last_run_status: PlaybookRunStatus = PlaybookRunStatus.NOT_RUN
+    last_run_reason: str | None = None
+    suspect_streak: int = 0
+    heal_attempts: int = 0
+    revision: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskPlaybookUpdate(BaseModel):
+    """Partial $set for a task's playbook."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str | None = None
+    steps: list[PlaybookStep] | None = None
+    result_brief: str | None = None
+    body_hash: str | None = None
+    authored_run: str | None = None
+    last_run_status: PlaybookRunStatus | None = None
+    last_run_reason: str | None = None
+    suspect_streak: int | None = None
+    heal_attempts: int | None = None
+    updated_at: datetime | None = None
