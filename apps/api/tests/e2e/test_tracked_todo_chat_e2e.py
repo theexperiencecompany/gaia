@@ -45,11 +45,11 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.memory import ReconcileOutcome
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
-    TODO_CONVERSATION_MAX_MESSAGES,
     TodoActivityEvent,
     TodoWakeKind,
     WaitingOn,
@@ -94,7 +94,7 @@ from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.transcript import Transcript
 from tests.e2e.test_agent_chain import StreamingScriptedModel, streaming_model
-from tests.helpers import worker_redis_url
+from tests.helpers import stored_conversation, worker_redis_url
 
 pytestmark = pytest.mark.e2e
 
@@ -109,7 +109,13 @@ FOLLOW_UP_REPLY = "It is still green; nothing has failed since the last run."
 #: Pure and outside the executor's initial tools: reaching it runs the real
 #: retrieve -> bind -> call hop, and its card is the tool's own real output.
 FLOWCHART = {"description": "the deploy's three checks", "direction": "LR"}
-OWNED_COLLECTIONS = ("todos", "conversations", "notifications", "approval_ledger")
+OWNED_COLLECTIONS = (
+    "todos",
+    "conversations",
+    CONVERSATION_ENTRIES_COLLECTION,
+    "notifications",
+    "approval_ledger",
+)
 
 
 def executor_run(report: str) -> list[Any]:
@@ -194,6 +200,8 @@ async def _binding_index(mongo_db: AsyncIOMotorDatabase) -> None:
     await collection.create_index(
         indexes.CONVERSATION_TODO_BINDING_KEYS, **indexes.CONVERSATION_TODO_BINDING_OPTIONS
     )
+    for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
+        await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
 
 
 @pytest.fixture(autouse=True)
@@ -337,7 +345,9 @@ async def _run(todo_id: str, owner: AuthenticatedUser) -> None:
 
 async def _chat_of(mongo_db: AsyncIOMotorDatabase, todo_id: str) -> dict[str, Any]:
     (chat,) = await mongo_db["conversations"].find({"todo_id": todo_id}).to_list(None)
-    return chat
+    stored = await stored_conversation(mongo_db["conversations"], chat["conversation_id"])
+    assert stored is not None
+    return stored
 
 
 async def _follow_up(conversation_id: str, owner: AuthenticatedUser, message: str) -> Transcript:
@@ -1105,14 +1115,7 @@ class TestStoppingARunFromItsChat:
         """Regression: Stop ended the run as a silent success: no outcome logged, nothing delivered, schedule moved on as done."""
         due = datetime.now(UTC)
         todo_id = await _new_due_tracked_todo(owner, due)
-        conversation_id = await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
-        full = [
-            {"type": "bot", "response": f"run {n}", "message_id": f"seed-{n}", "date": "2026"}
-            for n in range(TODO_CONVERSATION_MAX_MESSAGES)
-        ]
-        await mongo_db["conversations"].update_one(
-            {"conversation_id": conversation_id}, {"$set": {"messages": full}}
-        )
+        await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
         executor = prompt_reading(executor_run(REPORT))
 
         async with open_stack(executor=executor, comms=[NARRATED]) as stack:
@@ -1138,37 +1141,10 @@ class TestStoppingARunFromItsChat:
         assert f"[{TodoActivityEvent.RETRY_SCHEDULED.value}]" not in activity
         # Nothing reached the user: they stopped it.
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
-        # The cards it already streamed stay in the chat, which stays capped.
+        # The cards it already streamed stay in the chat.
         messages = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert len(messages) == TODO_CONVERSATION_MAX_MESSAGES
         assert messages[-1]["message_id"] == started["task_id"]
         assert "create_flowchart" in _card_tool_names(messages[-1])
-
-
-@pytest.mark.usefixtures("mongo_db")
-class TestTheChatKeepsOnlyItsNewestMessages:
-    async def test_a_full_chat_drops_its_oldest_message_for_the_report(
-        self, open_stack: OpenStack, owner: AuthenticatedUser, mongo_db: AsyncIOMotorDatabase
-    ) -> None:
-        todo_id = await _new_tracked_todo(owner)
-        conversation_id = await get_or_create_todo_conversation(owner.user_id, todo_id, TITLE)
-        seeded = [
-            {"type": "bot", "response": f"run {n}", "message_id": f"seed-{n}", "date": "2026"}
-            for n in range(TODO_CONVERSATION_MAX_MESSAGES)
-        ]
-        await mongo_db["conversations"].update_one(
-            {"conversation_id": conversation_id}, {"$set": {"messages": seeded}}
-        )
-
-        async with open_stack(executor=executor_run(REPORT), comms=[NARRATED]):
-            await _run(todo_id, owner)
-
-        messages = (await _chat_of(mongo_db, todo_id))["messages"]
-        assert len(messages) == TODO_CONVERSATION_MAX_MESSAGES
-        # The run's wake and its report push out the two oldest.
-        assert messages[0]["response"] == "run 2"
-        assert messages[-2]["todo_run_wake"]["kind"] == TodoWakeKind.SCHEDULE.value
-        assert messages[-1]["response"] == REPORT
 
 
 @pytest.mark.usefixtures("mongo_db")

@@ -18,7 +18,7 @@ from app.agents.core.background.result_delivery import (
     record_todo_run_wake,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
-from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES, TodoWakeKind
+from app.constants.todos import TodoWakeKind
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.message_models import TodoRunWake
 from app.models.user_models import AuthenticatedUser
@@ -347,10 +347,7 @@ class TestATrackedTodosRunReportIsKeptInItsChat:
         request = save.await_args.args[0]
         (saved,) = request.messages
         assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {
-            "user": USER,
-            "max_messages": TODO_CONVERSATION_MAX_MESSAGES,
-        }
+        assert save.await_args.kwargs == {"user": USER}
         assert (saved.type, saved.response, saved.error, saved.message_id, saved.tool_data) == (
             "bot",
             "Deploy is green.",
@@ -422,10 +419,7 @@ class TestARunsWakeLeadsItInItsChat:
         request = save.await_args.args[0]
         (saved,) = request.messages
         assert request.conversation_id == TODO_CHAT
-        assert save.await_args.kwargs == {
-            "user": USER,
-            "max_messages": TODO_CONVERSATION_MAX_MESSAGES,
-        }
+        assert save.await_args.kwargs == {"user": USER}
         assert (saved.type, saved.response, saved.todo_run_wake) == ("user", "", WAKE)
         assert str(UUID(saved.message_id)) == saved.message_id
         assert _is_utc_iso(saved.date)

@@ -13,6 +13,7 @@ Isolation, so the default -n 4 xdist run is safe:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC
 import os
@@ -22,6 +23,9 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 import pytest
 from redis.asyncio import Redis
 
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.db.mongodb.indexes import CONVERSATION_ENTRY_INDEXES
+from shared.py.wide_events import _spawned_tasks
 from tests.helpers import worker_mongo_db_name, worker_redis_url
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
@@ -66,6 +70,9 @@ async def raw_collection(
     # Namespaced like every other test database (worker_mongo_db_name) so a
     # lane sharing one mongod owns — and can drop — everything it creates.
     coll = client[worker_mongo_db_name()][f"contract_fixture_{worker}_{uuid.uuid4().hex}"]
+    # The one collection a repository writes beside its own: the conversation
+    # repository's entry log, kept apart so heads and entries never mix.
+    entries = coll.database[f"{coll.name}_{CONVERSATION_ENTRIES_COLLECTION}"]
 
     # Both modules that hold the accessor: the base owns every standard path,
     # and notifications binds its own for the one bulk update_many the base
@@ -74,15 +81,27 @@ async def raw_collection(
         # pymongo refuses a non-str name, so a repository that lost its name fails here too.
         if not isinstance(name, str):
             raise TypeError("name must be an instance of str")
-        return coll
+        return entries if name == CONVERSATION_ENTRIES_COLLECTION else coll
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", accessor)
     monkeypatch.setattr("app.db.repositories.notifications.get_async_collection", accessor)
 
     yield coll
 
+    # A flush still in flight would recreate the collections after the drop.
+    await asyncio.gather(*_spawned_tasks, return_exceptions=True)
     await coll.drop()
+    await entries.drop()
     client.close()
+
+
+@pytest.fixture
+async def entries_collection(raw_collection: AsyncIOMotorCollection) -> AsyncIOMotorCollection:
+    """Return the per-test conversation_entries collection beside raw_collection, with its real indexes."""
+    entries = raw_collection.database[f"{raw_collection.name}_{CONVERSATION_ENTRIES_COLLECTION}"]
+    for keys, options in CONVERSATION_ENTRY_INDEXES:
+        await entries.create_index(keys, **options)
+    return entries
 
 
 @pytest.fixture(autouse=True)

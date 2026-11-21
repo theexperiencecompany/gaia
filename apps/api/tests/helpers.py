@@ -44,6 +44,7 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import Field
 import pytest
 import respx
@@ -62,6 +63,7 @@ from app.constants.auth import SESSION_HINT_COOKIE
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversations import conversation_repository
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -359,6 +361,21 @@ def local_timezone(tz_name: str) -> Iterator[None]:
             os.environ["TZ"] = original
         if hasattr(time, "tzset"):
             time.tzset()
+
+
+async def stored_conversation(
+    conversations: AsyncIOMotorCollection, conversation_id: str
+) -> dict[str, Any] | None:
+    """Read a stored conversation's head with its messages, each in the shape its entry stores."""
+    head = await conversations.find_one({"conversation_id": conversation_id})
+    if head is None:
+        return None
+    doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
+    messages = [
+        {key: value for key, value in m.model_dump().items() if value is not None}
+        for m in ([] if doc is None else doc.messages)
+    ]
+    return {**head, "messages": messages}
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

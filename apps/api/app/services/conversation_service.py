@@ -7,7 +7,6 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -297,20 +296,13 @@ async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
 async def update_messages(
     request: UpdateMessagesRequest,
     user: AuthenticatedUser,
-    max_messages: int | None = CONVERSATION_MAX_MESSAGES,
 ) -> UpdateMessagesResponse:
-    """Append messages to a conversation, keeping the newest max_messages.
-
-    A conversation is one Mongo document: past 16MB every later append is
-    rejected and the thread can never be written again. The cap is the $slice
-    the workflow threads already used, now defaulting for every writer.
-    """
+    """Append messages to a conversation, returning the ids they were stored under."""
     user_id = user.user_id
     message_ids = await conversation_repository.append_messages(
         request.conversation_id,
         user_id=user_id,
         messages=request.messages,
-        max_messages=max_messages,
     )
 
     if message_ids is None:
@@ -332,11 +324,13 @@ async def pin_message(
 ) -> PinMessageResponse:
     """Pin or unpin a message within a conversation."""
     user_id = user.user_id
-    document = await conversation_repository.get(conversation_id, user_id=user_id)
-    if document is None:
+    if not await conversation_repository.exists(conversation_id, user_id=user_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if not any(message.message_id == message_id for message in document.messages):
+    if (
+        await conversation_repository.get_message(conversation_id, message_id, user_id=user_id)
+        is None
+    ):
         raise HTTPException(status_code=404, detail="Message not found in conversation")
 
     updated = await conversation_repository.set_message_pinned(

@@ -262,10 +262,6 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert (message.type, message.response, message.error) == ("bot", EXECUTOR_REPORT, None)
         # Under the placeholder id the live stream rendered into, so it replaces it.
         assert message.message_id == run.task_id
-        # Every run adds one, so the chat is capped at its newest messages.
-        assert seams.save_to_conversation.await_args.kwargs["max_messages"] == (
-            todo_constants.TODO_CONVERSATION_MAX_MESSAGES
-        )
         user_id, event = broadcast.await_args.args
         assert user_id == USER.user_id
         assert event["type"] == "conversation.new_message"

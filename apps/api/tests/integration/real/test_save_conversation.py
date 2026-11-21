@@ -12,6 +12,7 @@ import pytest
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.persistence import BotReply, save_bot_reply, save_user_message
 from tests.factories import make_authenticated_user
+from tests.helpers import stored_conversation
 
 
 @pytest.mark.service
@@ -37,7 +38,7 @@ class TestSaveTurnReal:
             body, make_authenticated_user(user_id="save-user-1"), conv_id, "umsg_1"
         )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         user_msg = doc["messages"][0]
         assert user_msg["response"] == "Last turn", (
             "Must use body.messages[-1], not body.messages[0]"
@@ -57,7 +58,7 @@ class TestSaveTurnReal:
 
         await save_user_message(body, make_authenticated_user(user_id="save-user-2"), conv_id, "u1")
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert doc["messages"][0]["response"] == "Fallback content"
 
     async def test_message_ids_applied_in_turn_order(
@@ -78,7 +79,7 @@ class TestSaveTurnReal:
             body, user, conv_id, BotReply(complete_message="Hi", bot_message_id="specific-bmsg")
         )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert [m["message_id"] for m in doc["messages"]] == ["specific-umsg", "specific-bmsg"]
 
     async def test_tool_data_applied_to_bot_message(
@@ -104,6 +105,6 @@ class TestSaveTurnReal:
             BotReply(complete_message="Results", bot_message_id="b", tool_data=tool_data),
         )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         bot_msg = doc["messages"][0]
         assert bot_msg["tool_data"][0]["tool_name"] == "web_search"

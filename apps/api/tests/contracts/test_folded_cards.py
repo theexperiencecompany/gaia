@@ -16,15 +16,18 @@ import uuid
 
 import pytest
 
-from app.constants.chat import FOLDED_CARDS_FIELD, FOLDED_CARDS_KEEP_SECONDS
 from app.constants.log_tags import LogTag
+from app.db.repositories.conversation_entries import FOLDED_CARDS_FIELD, FOLDED_CARDS_KEEP_SECONDS
 from app.db.repositories.conversations import ConversationRepository, conversation_repository
-from app.models.chat_models import MessageModel
+from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.conversation_models import ConversationDocument
 from app.services.folded_cards import save_folded_cards
 from tests.helpers import captured_wide_event
 
-CARD: dict[str, Any] = {"tool_name": "browser_result", "data": {"summary": "Booked."}}
+CARD: ToolDataEntry = {"tool_name": "browser_result", "data": {"summary": "Booked."}}
+
+# Every test here writes entries, so each needs the collection with its unique indexes.
+pytestmark = pytest.mark.usefixtures("entries_collection")
 
 
 @pytest.fixture
@@ -78,7 +81,7 @@ async def test_cards_for_a_saved_message_land_on_it(conversation: ConversationDo
 async def test_cards_that_end_first_wait_and_the_save_takes_them(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
-    own = {"tool_name": "search", "data": {"q": "x"}}
+    own: ToolDataEntry = {"tool_name": "search", "data": {"q": "x"}}
     await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [CARD])
     waiting = (await _raw(raw_collection, conversation))[FOLDED_CARDS_FIELD]
     assert waiting["m1"]["cards"] == [CARD]
@@ -115,7 +118,7 @@ async def test_a_close_and_a_save_racing_each_other_land_every_card_once(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
     for n in range(12):
-        card = {"tool_name": "step", "data": {"n": n}}
+        card: ToolDataEntry = {"tool_name": "step", "data": {"n": n}}
         close = save_folded_cards(
             conversation.conversation_id, conversation.user_id, f"m{n}", [card]
         )
@@ -159,22 +162,6 @@ async def test_text_that_looks_like_an_operator_is_stored_verbatim(
     assert saved.tool_data in (None, [])
 
 
-async def test_the_history_cap_still_holds_when_a_save_takes_waiting_cards(
-    conversation: ConversationDocument,
-) -> None:
-    await _append(conversation, _bot("m0"), max_messages=2)
-    await _append(conversation, _bot("m1"), max_messages=2)
-    await save_folded_cards(conversation.conversation_id, conversation.user_id, "m2", [CARD])
-    await _append(conversation, _bot("m2"), max_messages=2)
-
-    fetched = await conversation_repository.get(
-        conversation.conversation_id, user_id=conversation.user_id
-    )
-    assert fetched is not None
-    assert [m.message_id for m in fetched.messages] == ["m1", "m2"]
-    assert fetched.messages[1].tool_data == [CARD]
-
-
 async def test_cards_waiting_a_day_for_a_message_never_saved_are_dropped_by_the_next_save(
     conversation: ConversationDocument, raw_collection: Any
 ) -> None:
@@ -214,7 +201,7 @@ async def test_readers_never_see_the_waiting_room(
 async def test_two_runs_ending_before_the_message_both_land_on_it(
     conversation: ConversationDocument,
 ) -> None:
-    other = {"tool_name": "subagent_group", "data": {"subagent_id": "row-2"}}
+    other: ToolDataEntry = {"tool_name": "subagent_group", "data": {"subagent_id": "row-2"}}
     await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [CARD])
     await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [other])
 
@@ -232,6 +219,35 @@ async def test_cards_never_wait_on_another_users_conversation(
     assert FOLDED_CARDS_FIELD not in await _raw(raw_collection, conversation)
     [error] = event["errors"]
     assert error["msg"].endswith("found no conversation to fold into; not saved")
+
+
+async def test_cards_wait_on_their_own_users_conversation_at_any_log_head(
+    raw_collection: Any,
+) -> None:
+    shared = f"c-{uuid.uuid4().hex}"
+    first, second = (
+        ConversationDocument.model_validate(
+            {
+                "user_id": f"u-{uuid.uuid4().hex}",
+                "conversation_id": shared,
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+        for _ in range(2)
+    )
+    await ConversationRepository().create(first)
+    await ConversationRepository().create(second)
+
+    for message_id in ("m1", "m2"):
+        assert await conversation_repository.park_folded_cards(
+            shared, user_id=second.user_id, message_id=message_id, entries=[CARD]
+        )
+        await _append(second, _bot(message_id))
+
+    assert await _tool_data(second, "m1") == [CARD]
+    assert await _tool_data(second, "m2") == [CARD]
+    untouched = await raw_collection.find_one({"user_id": first.user_id})
+    assert untouched is not None and FOLDED_CARDS_FIELD not in untouched
 
 
 async def test_cards_added_to_a_day_old_wait_keep_its_age(

@@ -19,6 +19,7 @@ from app.constants import chat as chat_constants
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
 from tests.factories import make_authenticated_user
+from tests.helpers import stored_conversation
 
 
 def _fake_stream(*chunks):
@@ -79,7 +80,7 @@ class TestChatPipelineReal:
                 conversation_id=conv_id,
             )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert doc is not None
         assert len(doc["messages"]) == 2
         assert doc["messages"][0]["type"] == "user"
@@ -158,7 +159,7 @@ class TestChatPipelineReal:
                 conversation_id=conv_id,
             )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert doc is not None
         assert len(doc["messages"]) == 2
 
@@ -178,7 +179,7 @@ class TestChatPipelineReal:
         seen_while_running: list[dict[str, object]] = []
 
         async def _agent_that_reads_mongo() -> AsyncIterator[str]:
-            doc = await conversations_collection.find_one({"conversation_id": conv_id})
+            doc = await stored_conversation(conversations_collection, conv_id)
             seen_while_running.extend(doc["messages"])
             yield f"nostream: {json.dumps({'complete_message': 'Done.'})}"
 
@@ -202,7 +203,7 @@ class TestChatPipelineReal:
         assert [(m["type"], m["response"]) for m in seen_while_running] == [
             ("user", "remind me to stretch")
         ]
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert [(m["type"], m["response"]) for m in doc["messages"]] == [
             ("user", "remind me to stretch"),
             ("bot", "Done."),
@@ -248,7 +249,7 @@ class TestChatPipelineReal:
                 conversation_id=conv_id,
             )
 
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await stored_conversation(conversations_collection, conv_id)
         assert [(m["type"], m["response"]) for m in doc["messages"]] == [
             ("user", "remind me to stretch"),
             ("bot", ""),

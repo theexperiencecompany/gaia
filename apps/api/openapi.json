@@ -3633,7 +3633,7 @@
       },
       "ConversationDocument": {
         "additionalProperties": true,
-        "description": "A conversation and its embedded message history as stored in MongoDB.\n\n``extra=\"allow\"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,\n``metadata``) so a full-document read returns them verbatim, matching the\npre-repository behaviour.",
+        "description": "A conversation as the repository returns it: its head fields and, where read, its entries.\n\n``extra=\"allow\"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,\n``metadata``) so a full-document read returns them verbatim, matching the\npre-repository behaviour.",
         "properties": {
           "artifacts": {
             "items": {

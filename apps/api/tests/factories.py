@@ -8,6 +8,7 @@ from uuid import uuid4
 from bson import ObjectId
 from composio.types import Tool
 import composio_client
+from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
 from app.models.user_models import AuthenticatedUser
@@ -49,19 +50,6 @@ def make_user(**overrides) -> dict:
     return defaults
 
 
-def make_conversation(user_id: str | None = None, **overrides) -> dict:
-    defaults = {
-        "conversation_id": str(uuid4()),
-        "user_id": user_id or make_user_id(),
-        "description": "Test conversation",
-        "messages": [],
-        "created_at": datetime.now(UTC).isoformat(),
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-    defaults.update(overrides)
-    return defaults
-
-
 def make_state(**overrides) -> dict:
     """Build a dict-shaped agent state for tests.
 
@@ -96,20 +84,22 @@ def make_composio_tool(
         input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
         output_parameters=output_parameters
         or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
-        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        toolkit=ItemToolkit(slug="gmail", name="Gmail", logo=""),
         tags=[],
         scopes=[],
         version="latest",
         available_versions=["latest"],
         # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
         # siblings are not.
-        deprecated={
-            "available_versions": ["latest"],
-            "displayName": "Fetch messages",
-            "is_deprecated": False,
-            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
-            "version": "latest",
-        },
+        deprecated=ItemDeprecated.model_validate(
+            {
+                "available_versions": ["latest"],
+                "displayName": "Fetch messages",
+                "is_deprecated": False,
+                "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+                "version": "latest",
+            }
+        ),
         is_deprecated=False,
         no_auth=False,
     )

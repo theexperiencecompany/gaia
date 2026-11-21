@@ -17,6 +17,7 @@ import pytest
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.redis import delete_cache
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingAnswers, OnboardingNeed, OnboardingRequest
 from app.services.onboarding import onboarding_service
@@ -29,6 +30,7 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStep,
 )
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from tests.helpers import stored_conversation
 
 pytestmark = pytest.mark.service
 
@@ -124,9 +126,9 @@ async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured:
         c.args[1] for c in captured.call_args_list if isinstance(c.args[1], OnboardingCompleted)
     ]
     assert [c.linked_platform for c in completions] == ["telegram"]
-    seeded = await mongo_db["conversations"].find_one(
-        {"conversation_id": onboarding["getting_started_conversation_id"]}
+    seeded = await stored_conversation(
+        mongo_db["conversations"], onboarding["getting_started_conversation_id"]
     )
-    await mongo_db["conversations"].delete_many({"user_id": USER_ID})
+    await conversation_repository.delete_all_for_user(USER_ID)
     assert seeded is not None
     assert "Telegram" in json.dumps(seeded["messages"], default=str)
