@@ -78,7 +78,12 @@ export function PublishModal({
               </div>
 
               <TextField value={summary} onChange={setSummary} isRequired>
-                <Label className="text-[13px] text-zinc-400">
+                <Label
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "text-[13px]",
+                  })}
+                >
                   One line for Explore
                 </Label>
                 <Input
@@ -96,7 +101,14 @@ export function PublishModal({
                 placeholder="Choose one"
                 isRequired
               >
-                <Label className="text-[13px] text-zinc-400">Category</Label>
+                <Label
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "text-[13px]",
+                  })}
+                >
+                  Category
+                </Label>
                 <Select.Trigger
                   className={inputVariants({
                     variant: "sunken",
