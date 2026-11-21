@@ -59,8 +59,8 @@ async def live_graphs(
     """Open the executor and comms graphs as the app runs them, each on its scripted model."""
     opened = LiveGraphs()
 
-    async def record_push(_user_id: str, event: dict[str, Any]) -> None:
-        opened.pushed.append(event)
+    async def record_push(user_id: str, message: dict[str, Any]) -> None:
+        opened.pushed.append(message)
 
     memory = MagicMock()
     memory.retain_single = AsyncMock(
