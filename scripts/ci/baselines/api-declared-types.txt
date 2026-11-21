@@ -21,10 +21,6 @@ apps/mobile/src/features/chat/api/chat-api.ts:Message
 apps/mobile/src/features/chat/api/chat-api.ts:UploadFileInput
 apps/mobile/src/features/chat/api/models-api.ts:ModelInfo
 apps/mobile/src/features/chat/api/models-api.ts:ModelSelectionResponse
-apps/mobile/src/features/chat/api/queries.ts:ApiConversation
-apps/mobile/src/features/chat/api/queries.ts:ConversationsResponse
-apps/mobile/src/features/dashboard/api/dashboard-api.ts:ApiConversation
-apps/mobile/src/features/dashboard/api/dashboard-api.ts:ConversationsResponse
 apps/mobile/src/features/dashboard/api/dashboard-api.ts:RemindersListResponse
 apps/mobile/src/features/integrations/api/integrations-api.ts:ConnectIntegrationResult
 apps/mobile/src/features/integrations/api/integrations-api.ts:ConnectionTestResult
@@ -75,7 +71,6 @@ libs/shared/ts/src/chat/approvals.types.ts:ApprovalScope
 libs/shared/ts/src/chat/approvals.types.ts:HilMode
 libs/shared/ts/src/chat/fixtures.ts:ToolFixture
 libs/shared/ts/src/chat/types.ts:ApiFileData
-libs/shared/ts/src/chat/types.ts:ApiToolData
 libs/shared/ts/src/chat/types.ts:ArtifactData
 libs/shared/ts/src/chat/types.ts:CalendarDeleteOptions
 libs/shared/ts/src/chat/types.ts:CalendarEditOptions

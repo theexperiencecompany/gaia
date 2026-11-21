@@ -1,42 +1,28 @@
+import type {
+  ConversationListResponse,
+  ConversationSummary,
+} from "@gaia/shared/api/generated";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Conversation } from "@/features/chat/types";
 import { apiService } from "@/lib/api";
 import { chatDb } from "@/lib/db/chatDb";
 
-interface ApiConversation {
-  _id: string;
-  user_id: string;
-  conversation_id: string;
-  description: string;
-  is_system_generated: boolean;
-  system_purpose: string | null;
-  is_unread?: boolean;
-  is_starred?: boolean;
-  createdAt: string;
-  updatedAt?: string;
-}
+const EPOCH_ISO = new Date(0).toISOString();
 
-interface ConversationsResponse {
-  conversations: ApiConversation[];
-  total: number;
-  page: number;
-  limit: number;
-  total_pages: number;
-}
-
-function normalizeConversation(apiConv: ApiConversation): Conversation {
+function normalizeConversation(apiConv: ConversationSummary): Conversation {
   return {
     id: apiConv.conversation_id,
     title: apiConv.description || "Untitled conversation",
-    created_at: apiConv.createdAt,
-    updated_at: apiConv.updatedAt || apiConv.createdAt,
-    is_unread: apiConv.is_unread,
-    is_starred: apiConv.is_starred,
+    // An undated row sorts as the epoch, as the web list does.
+    created_at: apiConv.createdAt ?? EPOCH_ISO,
+    updated_at: apiConv.updatedAt ?? apiConv.createdAt ?? EPOCH_ISO,
+    is_unread: apiConv.is_unread ?? undefined,
+    is_starred: apiConv.starred ?? undefined,
   };
 }
 
 async function fetchConversationsList(): Promise<Conversation[]> {
-  const data = await apiService.get<ConversationsResponse>(
+  const data = await apiService.get<ConversationListResponse>(
     "/conversations?page=1&limit=100",
   );
   const conversations = (data.conversations || []).map(normalizeConversation);
