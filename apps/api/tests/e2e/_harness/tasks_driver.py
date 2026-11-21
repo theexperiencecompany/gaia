@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 import re
 from typing import Any
+from uuid import uuid4
 
 from arq.connections import ArqRedis
 from arq.constants import default_queue_name, job_key_prefix
@@ -19,13 +20,19 @@ from httpx import AsyncClient, Response
 from app.agents.tools.tracked_todo_tools import create_tracked_todo
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
+from app.services.chat import stream as chat_stream
+from app.utils.auth_utils import require_owner
 from app.worker import TASK_FUNCTIONS
+from tests.e2e._harness.background import drain_background_runs
 from tests.e2e._harness.graph_run import call
 from tests.e2e._harness.tasks_views import (
     Asks,
     Breaks,
+    ChatLine,
     Counts,
     Delivered,
     Finishes,
@@ -39,12 +46,15 @@ from tests.e2e._harness.tasks_views import (
     TaskNotFoundError,
     TaskView,
 )
+from tests.e2e._harness.transcript import Transcript
 from tests.e2e._harness.turn_queue import PROVIDER_DOWN, TurnQueue
 
 TODOS = "/api/v1/todos"
 NOTIFICATIONS = "/api/v1/notifications"
 #: When a one-off GAIA task first looks at its work, as a user handing it over leaves it.
 FIRST_LOOK = "1h"
+#: What GAIA says in the chat while it picks the work up.
+ON_IT = "On it."
 #: When GAIA checks back on a question it asked.
 QUESTION_EXPIRES = "1d"
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
@@ -104,6 +114,7 @@ class TasksDriver:
         self._pool = pool
         self._executor = executor
         self._comms = comms
+        self._one_offs: set[str] = set()
 
     # The account.
 
@@ -183,6 +194,7 @@ class TasksDriver:
         )
         (created,) = [t for t in await self._gaia_tasks() if t.id not in before] or [None]
         assert created is not None, f"GAIA did not take the task on: {said}"
+        self._one_offs.add(created.id)
         return created
 
     async def run_due(self, task_id: str, *runs: GaiaRun) -> list[str]:
@@ -190,9 +202,15 @@ class TasksDriver:
         for run in runs:
             self._queue_tracked(task_id, run)
         outcomes = [await self._run(job) for job in await self._armed(task_id)]
-        assert self._executor.pending == 0, "GAIA was scripted for more runs than fired"
-        assert self._comms.pending == 0, "a scripted delivery was never asked for"
+        self._all_turns_taken()
         return outcomes
+
+    def _all_turns_taken(self) -> None:
+        """Fail unless GAIA was asked for exactly the turns the journey scripted."""
+        for model in (self._executor, self._comms):
+            assert not model.unscripted, f"GAIA took a turn nothing scripted: {model.unscripted}"
+        assert self._executor.pending == 0, "GAIA was scripted for more work than it was asked for"
+        assert self._comms.pending == 0, "a scripted reply or delivery was never asked for"
 
     def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
         match run:
@@ -201,17 +219,21 @@ class TasksDriver:
                     [call("complete_tracked_todo", {"todo_id": task_id, "summary": report}), report]
                 )
                 self._comms.then([report])
-            case Reports(report) | KeepsHolding(report):
-                if isinstance(run, KeepsHolding):
-                    self._executor.then(
-                        [
-                            call(
-                                "update_tracked_todo",
-                                {"todo_id": task_id, "scheduled_at": QUESTION_EXPIRES},
-                            )
-                        ]
-                    )
-                self._executor.then([report])
+            case KeepsHolding(report):
+                self._executor.then(
+                    [
+                        call(
+                            "update_tracked_todo",
+                            {"todo_id": task_id, "scheduled_at": QUESTION_EXPIRES},
+                        ),
+                        report,
+                    ]
+                )
+                self._comms.then([report])
+            case Reports(report):
+                # A one-off run that neither closes nor re-arms its task is nudged once to.
+                nudged = task_id in self._one_offs
+                self._executor.then([report, report] if nudged else [report])
                 self._comms.then([report])
             case Asks(question, if_no_reply, default):
                 ask: dict[str, Any] = {
@@ -251,6 +273,34 @@ class TasksDriver:
                 self._comms.then([report])
             case Breaks():
                 self._executor.then([PROVIDER_DOWN])
+
+    async def answer(self, task_id: str, reply: str, then: GaiaRun) -> None:
+        """Reply in the task's chat, GAIA picking the task up from the reply."""
+        conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
+            "conversation_id"
+        ]
+        self._comms.then([call("call_executor", {"task": reply}, call_id="tc_answer"), ON_IT])
+        self._queue_tracked(task_id, then)
+        stream_id = str(uuid4())
+        await stream_manager.start_stream(
+            stream_id=stream_id, conversation_id=conversation_id, user_id=self._user_id
+        )
+        await chat_stream.run_chat_stream_background(
+            stream_id=stream_id,
+            body=MessageRequestWithHistory(
+                message=reply,
+                messages=[{"role": "user", "content": reply}],
+                conversation_id=conversation_id,
+            ),
+            user=await require_owner(self._user_id),
+            conversation_id=conversation_id,
+        )
+        transcript = Transcript.from_sse(
+            "".join([chunk async for chunk in stream_manager.subscribe_stream(stream_id)])
+        )
+        assert transcript.is_done, "the reply's chat turn never finished"
+        await drain_background_runs()
+        self._all_turns_taken()
 
     async def _armed(self, task_id: str) -> list[JobDef]:
         jobs = sorted(await self._pool.queued_jobs(), key=lambda j: j.score)
@@ -298,6 +348,24 @@ class TasksDriver:
         return [
             Delivered(title=n["content"]["title"], body=n["content"]["body"], channel="inapp")
             for n in reversed(body["notifications"])
+        ]
+
+    async def chat(self, task_id: str) -> list[ChatLine]:
+        """Return the task's own chat as the user opens it from the task, oldest first."""
+        conversation_id = _ok(await self._client.post(f"{TODOS}/{task_id}/conversation"))[
+            "conversation_id"
+        ]
+        synced = _ok(
+            await self._client.post(
+                "/api/v1/conversations/batch-sync",
+                json={"conversations": [{"conversation_id": conversation_id}]},
+            )
+        )
+        (row,) = synced["conversations"]
+        return [
+            ChatLine(by_user=m["type"] == "user", text=m["response"])
+            for m in row["messages"]
+            if m["response"]
         ]
 
     async def _activity(self, task_id: str) -> list[tuple[str, str]]:

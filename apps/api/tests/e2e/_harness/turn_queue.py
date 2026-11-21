@@ -24,6 +24,8 @@ class TurnQueue(StreamingScriptedModel):
     """Answer each model call with the next queued turn; a call nothing was queued for fails loudly."""
 
     _turns: deque[Any] = PrivateAttr(default_factory=deque)
+    #: The tail of each prompt a call came with when nothing was queued; product code may swallow the raise.
+    _unscripted: list[str] = PrivateAttr(default_factory=list)
 
     def then(self, turns: Iterable[Any]) -> None:
         self._turns.extend(turns)
@@ -32,10 +34,15 @@ class TurnQueue(StreamingScriptedModel):
     def pending(self) -> int:
         return len(self._turns)
 
+    @property
+    def unscripted(self) -> list[str]:
+        return list(self._unscripted)
+
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
         self._prompts.append(list(messages))
         if not self._turns:
             prompt = " ".join(str(m.content) for m in messages)[-600:]
+            self._unscripted.append(prompt)
             raise AssertionError(
                 f"the model was called with no turn queued; it was shown: {prompt}"
             )

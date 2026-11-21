@@ -38,9 +38,6 @@ class TaskView:
     #: Set only for a task that GAIA works on.
     by_gaia: bool = False
     failed: bool = False
-    paused: bool = False
-    waiting_on_user: bool = False
-    question: str | None = None
     parent_id: str | None = None
     open_children: int = 0
     pending_approval: bool = False
@@ -125,6 +122,14 @@ class OpensSubtasks:
 
 #: What GAIA does on one run, as a journey scripts it.
 GaiaRun = Finishes | Reports | Asks | KeepsHolding | Breaks | OpensSubtasks
+
+
+@dataclass(frozen=True)
+class ChatLine:
+    """One message in a task's chat, the user's or GAIA's."""
+
+    by_user: bool
+    text: str
 
 
 @dataclass(frozen=True)
