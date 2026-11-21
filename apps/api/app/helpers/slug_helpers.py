@@ -12,8 +12,8 @@ def slugify(text: str, max_length: int = 50) -> str:
     slug = re.sub(r"-+", "-", slug)
 
     if len(slug) > max_length:
-        parts = slug[:max_length].rsplit("-", 1)
-        slug = parts[0] if parts else slug[:max_length]
+        head_parts = slug[:max_length].rsplit("-", 1)
+        slug = head_parts[0] if head_parts else slug[:max_length]
 
     return slug
 
