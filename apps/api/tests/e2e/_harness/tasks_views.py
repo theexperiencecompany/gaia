@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
@@ -72,10 +72,65 @@ class RepeatingTaskView:
     paused_reason: str | None = None
 
 
+class NoReply(StrEnum):
+    """What GAIA does when the user leaves its question unanswered."""
+
+    ASK_AGAIN = "ask_again"
+    PROCEED = "proceed"
+    HOLD = "hold"
+
+
+@dataclass(frozen=True)
+class Finishes:
+    """GAIA does the work, closes the task, and reports."""
+
+    report: str
+
+
+@dataclass(frozen=True)
+class Reports:
+    """GAIA does this run's work and reports; the task stays as it is."""
+
+    report: str
+
+
+@dataclass(frozen=True)
+class Asks:
+    """GAIA asks the user a question and waits for the answer."""
+
+    question: str
+    if_no_reply: NoReply
+    default: str | None = None
+
+
+@dataclass(frozen=True)
+class KeepsHolding:
+    """GAIA checks back on an unanswered question and keeps waiting."""
+
+    report: str
+
+
+@dataclass(frozen=True)
+class Breaks:
+    """The model provider is down for the whole run."""
+
+
+@dataclass(frozen=True)
+class OpensSubtasks:
+    """GAIA splits the work into sub-tasks and waits for them."""
+
+    titles: tuple[str, ...]
+    report: str
+
+
+#: What GAIA does on one run, as a journey scripts it.
+GaiaRun = Finishes | Reports | Asks | KeepsHolding | Breaks | OpensSubtasks
+
+
 @dataclass(frozen=True)
 class Delivered:
-    """A message GAIA posted to the user about a task: in-app, or on a linked platform."""
+    """A message GAIA posted to the user about a task: in the app, or on a linked platform."""
 
-    text: str
+    title: str
+    body: str
     channel: str
-    extra: dict[str, object] = field(default_factory=dict)
