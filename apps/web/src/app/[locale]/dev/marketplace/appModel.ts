@@ -42,3 +42,8 @@ export function isByGaia(app: App): boolean {
 export function findApp(slug: string): App | undefined {
   return APPS.find((app) => app.slug === slug || app.integrationId === slug);
 }
+
+/** An app's name as the integrations config spells it ("PostHog", "Hacker News"). */
+export function appName(id: string): string {
+  return APPS.find((app) => app.integrationId === id)?.name ?? id;
+}

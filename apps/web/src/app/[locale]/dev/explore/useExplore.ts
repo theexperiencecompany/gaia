@@ -1,5 +1,5 @@
-import { getToolDisplayName } from "@shared/icons";
 import { useDeferredValue, useMemo, useState } from "react";
+import { appName } from "../marketplace/appModel";
 import { type Template, type TemplateData, toTemplate } from "./templateModel";
 
 export const ALL = "all";
@@ -23,13 +23,7 @@ function byFeaturedFirst(a: Template, b: Template): number {
 
 function haystack(template: Template): string {
   const { title, summary, body, categories, integration_ids } = template.data;
-  return [
-    title,
-    summary,
-    body,
-    ...categories,
-    ...integration_ids.map(getToolDisplayName),
-  ]
+  return [title, summary, body, ...categories, ...integration_ids.map(appName)]
     .join(" ")
     .toLowerCase();
 }

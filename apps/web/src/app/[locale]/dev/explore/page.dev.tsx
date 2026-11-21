@@ -1,16 +1,14 @@
 "use client";
 
 import { Search01Icon, SparklesIcon } from "@icons";
-import { getToolDisplayName } from "@shared/icons";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { appName } from "../marketplace/appModel";
 import { AppIcon } from "../tasks/TaskParts";
 import { CatalogLayout } from "./CatalogLayout";
 import { CategoryBar } from "./CategoryBar";
 import { ExploreShelves } from "./ExploreShelves";
-import { ExploreSketchB } from "./ExploreSketchB";
 import { EmptyState, LoadingRows } from "./ExploreStates";
 import { FilterSelect, SearchField } from "./FilterFields";
 import { atScale, TEMPLATES } from "./templateModel";
@@ -72,7 +70,7 @@ function Explore() {
   const { filters, setFilters } = explore;
   const appOptions = explore.apps.map((app) => ({
     id: app,
-    label: getToolDisplayName(app),
+    text: appName(app),
     icon: <AppIcon id={app} size={16} />,
   }));
 
@@ -95,10 +93,6 @@ function Explore() {
     </div>
   );
 
-  if (params.get("layout") === "b") {
-    return <ExploreSketchB explore={explore} search={search} />;
-  }
-
   return (
     <CatalogLayout
       title="Explore"
@@ -107,7 +101,7 @@ function Explore() {
         <>
           {search}
           <CategoryBar
-            categories={explore.categories}
+            categories={state === "loading" ? [] : explore.categories}
             value={filters.category}
             onChange={(category) => setFilters({ category })}
           />

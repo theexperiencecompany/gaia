@@ -33,7 +33,7 @@ export default function MarketplacePage() {
             anyLabel="Any category"
             options={market.categories.map((id) => ({
               id,
-              label: categoryLabel(id),
+              text: categoryLabel(id),
             }))}
             value={market.category}
             onChange={market.setCategory}

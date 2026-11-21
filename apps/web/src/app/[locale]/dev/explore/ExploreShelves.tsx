@@ -1,8 +1,7 @@
 "use client";
 
-import { getToolDisplayName } from "@shared/icons";
-
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { appName } from "../marketplace/appModel";
 import TaskSection from "../tasks/TaskSection";
 import { TemplateRow } from "./TemplateRow";
 import { ALL, type ExploreState } from "./useExplore";
@@ -12,7 +11,7 @@ const SHELF_ROWS = 5;
 
 /** What the narrowed list is called: the category, the app, or both. */
 function resultTitle({ filters }: ExploreState): string {
-  const app = filters.app === ALL ? "" : getToolDisplayName(filters.app);
+  const app = filters.app === ALL ? "" : appName(filters.app);
   if (filters.category === ALL) return app ? `With ${app}` : "Results";
   return app ? `${filters.category} with ${app}` : filters.category;
 }

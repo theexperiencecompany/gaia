@@ -4,8 +4,9 @@
  * explore and community workflows, converted by field.
  */
 
-import { getToolDisplayName } from "@shared/icons";
+import type { WorkflowCreator } from "@shared/api/generated";
 
+import { appName } from "../marketplace/appModel";
 import { isRepeating, type Task, type TaskWhen } from "../tasks/taskModel";
 import { NO_WHEN, onEvent, onSchedule } from "../tasks/whenModel";
 import FIXTURE from "./templates.fixture.json";
@@ -15,12 +16,6 @@ export type TemplateWhenData =
   | { kind: "none" }
   | { kind: "repeat"; cron: string; timezone: string }
   | { kind: "event"; trigger_name: string };
-
-export interface TemplateCreator {
-  id: string;
-  name: string;
-  avatar: string | null;
-}
 
 /** One row of task_templates. `summary` is the field the planned model lacks today. */
 export interface TemplateData {
@@ -35,7 +30,8 @@ export interface TemplateData {
   icon_color: string | null;
   when: TemplateWhenData;
   integration_ids: string[];
-  creator: TemplateCreator;
+  /** The publisher, as workflows carry it today. */
+  creator: WorkflowCreator;
   categories: string[];
   /** Curated by GAIA; sorts first. From the "featured" pseudo-category. */
   featured: boolean;
@@ -107,7 +103,7 @@ export function taskFromTemplate(
     title: data.title,
     instructions: data.body,
     assignee: "gaia",
-    state: repeats ? "standing" : "open",
+    state: missing ? "paused" : repeats ? "standing" : "open",
     when: repeats ? template.when : NO_WHEN,
     icon: template.icon,
     integrations: data.integration_ids,
@@ -120,7 +116,7 @@ export function taskFromTemplate(
       ? {
           kind: "connect",
           app: missing,
-          prompt: `GAIA needs ${getToolDisplayName(missing)} for this task. Connect it and the task starts.`,
+          prompt: `GAIA needs ${appName(missing)} for this task. Connect it and the task starts.`,
         }
       : undefined,
   };

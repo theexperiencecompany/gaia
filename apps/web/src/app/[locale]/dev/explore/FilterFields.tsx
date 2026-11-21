@@ -69,7 +69,7 @@ export function SearchField({
 
 export interface FilterOption {
   id: string;
-  label: string;
+  text: string;
   icon?: ReactNode;
 }
 
@@ -110,6 +110,7 @@ export function FilterSelect({
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover
+        placement="bottom end"
         className={overlayVariants({
           surface: "raised",
           className: "min-w-52",
@@ -121,11 +122,11 @@ export function FilterSelect({
             <GaiaListBoxItem
               key={option.id}
               id={option.id}
-              textValue={option.label}
+              textValue={option.text}
             >
               <span className="flex min-w-0 items-center gap-2">
                 {option.icon}
-                <span className="truncate">{option.label}</span>
+                <span className="truncate">{option.text}</span>
               </span>
             </GaiaListBoxItem>
           ))}

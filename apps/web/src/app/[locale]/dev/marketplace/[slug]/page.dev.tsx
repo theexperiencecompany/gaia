@@ -105,9 +105,9 @@ export default function AppPage() {
             <h2 id="asks" className="text-[13px] font-medium text-zinc-500">
               What you can ask
             </h2>
-            <ul className="mt-2 space-y-2">
+            <ul className="mt-2 space-y-1.5">
               {asks.map((ask) => (
-                <li key={ask} className="text-[15px] leading-7 text-zinc-200">
+                <li key={ask} className="text-[15px] leading-6 text-zinc-200">
                   {ask}
                 </li>
               ))}

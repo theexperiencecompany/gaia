@@ -7,6 +7,8 @@ import RightSidebarSlot, {
   RightSidebarSlotProvider,
 } from "@/components/layout/sidebar/RightSidebarSlot";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toast } from "@/lib/toast";
+import { PublishModal } from "../explore/PublishModal";
 import { DEMO_TASKS } from "./demoTasks";
 import { DEMO_STEPS } from "./demoWorkflows";
 import { blankTask, NewGaiaTask, NewTaskButton, NewTodoRow } from "./NewTask";
@@ -221,6 +223,18 @@ export default function TasksDemoPage() {
       ],
     });
   const [creating, setCreating] = useState<Assignee | null>(null);
+  const [published, setPublished] = useState<string[]>([]);
+  const [publishing, setPublishing] = useState<Task | null>(null);
+  const togglePublished = (task: Task) => {
+    if (!published.includes(task.id)) {
+      setPublishing(task);
+      return;
+    }
+    setPublished((ids) => ids.filter((id) => id !== task.id));
+    toast.info("Unpublished", {
+      description: "Tasks people already made from it keep working.",
+    });
+  };
   const startNew = (assignee: Assignee) => {
     setOpenTask(null);
     setCreating(assignee);
@@ -352,6 +366,8 @@ export default function TasksDemoPage() {
                 onChange={replace}
                 onAnswer={answer}
                 onDelete={remove}
+                isPublished={published.includes(opened.id)}
+                onPublishToggle={() => togglePublished(opened)}
               />
             ) : (
               <NewGaiaTask
@@ -362,6 +378,21 @@ export default function TasksDemoPage() {
               />
             )}
           </RightSidebarPanel>
+        )}
+        {publishing && (
+          <PublishModal
+            key={publishing.id}
+            task={publishing}
+            isOpen
+            onOpenChange={(open) => !open && setPublishing(null)}
+            onPublish={() => {
+              setPublished((ids) => [...ids, publishing.id]);
+              setPublishing(null);
+              toast.success("Published to Explore", {
+                description: "People can find it and make their own copy.",
+              });
+            }}
+          />
         )}
       </SelectedTask.Provider>
     </RightSidebarSlotProvider>

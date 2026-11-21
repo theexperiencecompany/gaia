@@ -13,7 +13,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import TaskPanel from "../../tasks/TaskPanel";
 import { TaskIconTile } from "../../tasks/TaskParts";
 import TaskSection from "../../tasks/TaskSection";
-import type { Task } from "../../tasks/taskModel";
+import { isRepeating, type Task } from "../../tasks/taskModel";
 import { TemplateFacts } from "../TemplateFacts";
 import { EXPLORE_PATH, TemplateRow } from "../TemplateRow";
 import {
@@ -126,6 +126,7 @@ export default function TemplatePage() {
               setTask({
                 ...current,
                 ask: undefined,
+                state: isRepeating(current.when) ? "standing" : "open",
                 activity: [
                   ...current.activity,
                   { at: "Just now", text: "You connected the app" },

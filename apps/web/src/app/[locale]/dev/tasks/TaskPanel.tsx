@@ -32,6 +32,9 @@ interface TaskPanelProps {
   onChange: (task: Task) => void;
   onAnswer: (task: Task, answer: AskAnswer) => void;
   onDelete: (task: Task) => void;
+  /** Whether a copy of this task is on Explore as a template. */
+  isPublished?: boolean;
+  onPublishToggle?: () => void;
 }
 
 interface MenuAction {
@@ -52,6 +55,8 @@ export default function TaskPanel({
   onChange,
   onAnswer,
   onDelete,
+  isPublished = false,
+  onPublishToggle,
 }: TaskPanelProps) {
   const isYours = task.assignee === "you";
   const isDone = task.state === "done";
@@ -100,8 +105,9 @@ export default function TaskPanel({
               },
           {
             key: "publish",
-            label: "Publish to the community",
+            label: isPublished ? "Unpublish" : "Publish to the community",
             Icon: Share01Icon,
+            onPress: onPublishToggle,
           },
         ]
       : []),

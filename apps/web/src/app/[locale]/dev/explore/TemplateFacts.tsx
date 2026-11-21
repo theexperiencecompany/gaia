@@ -1,11 +1,10 @@
 "use client";
 
 import { Avatar } from "@heroui/react";
-import { getToolDisplayName } from "@shared/icons";
 import type { ReactNode } from "react";
-
 import { LinkButton } from "@/components/shared/LinkButton";
-import { MARKETPLACE_PATH } from "../marketplace/appModel";
+import { appName, MARKETPLACE_PATH } from "../marketplace/appModel";
+
 import { AppIcon, GaiaMark, PropertyRow, WhenChip } from "../tasks/TaskParts";
 import { creatorLabel, type Template } from "./templateModel";
 
@@ -48,7 +47,7 @@ export function TemplateFacts({
             {integration_ids.map((app) => (
               <FactLink key={app} href={`${MARKETPLACE_PATH}/${app}`}>
                 <AppIcon id={app} size={16} />
-                {getToolDisplayName(app)}
+                {appName(app)}
               </FactLink>
             ))}
           </div>

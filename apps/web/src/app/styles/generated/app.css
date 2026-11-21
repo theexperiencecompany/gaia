@@ -921,14 +921,13 @@
 @source "../../[locale]/dev/explore/CatalogLayout.tsx";
 @source "../../[locale]/dev/explore/CategoryBar.tsx";
 @source "../../[locale]/dev/explore/ExploreShelves.tsx";
-@source "../../[locale]/dev/explore/ExploreSketchB.tsx";
 @source "../../[locale]/dev/explore/ExploreStates.tsx";
 @source "../../[locale]/dev/explore/FilterFields.tsx";
 @source "../../[locale]/dev/explore/page.dev.tsx";
+@source "../../[locale]/dev/explore/PublishModal.tsx";
 @source "../../[locale]/dev/explore/TemplateFacts.tsx";
 @source "../../[locale]/dev/explore/templateModel.ts";
 @source "../../[locale]/dev/explore/TemplateRow.tsx";
-@source "../../[locale]/dev/explore/TemplateTile.tsx";
 @source "../../[locale]/dev/explore/useExplore.ts";
 @source "../../[locale]/dev/marketplace/appModel.ts";
 @source "../../[locale]/dev/marketplace/AppRow.tsx";
