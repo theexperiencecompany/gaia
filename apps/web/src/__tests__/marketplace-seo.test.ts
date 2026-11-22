@@ -295,12 +295,10 @@ function stubBackend(status: number): void {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
   vi.stubEnv("API_BASE_URL_INTERNAL", "http://api.test/api/v1");
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -323,7 +321,6 @@ describe("marketplace cross-links", () => {
   });
 
   it("links a tool to its marketplace page across slug spellings", async () => {
-    vi.setSystemTime(new Date("2030-01-01T00:00:00Z"));
     stubBackend(200);
 
     await expect(getMarketplacePath("google-calendar")).resolves.toBe(
@@ -336,7 +333,6 @@ describe("marketplace cross-links", () => {
   });
 
   it("fails loud when the backend errors instead of silently dropping links", async () => {
-    vi.setSystemTime(new Date("2031-01-01T00:00:00Z"));
     stubBackend(500);
 
     await expect(getMarketplacePath("gmail")).rejects.toThrow(/500/);
