@@ -247,7 +247,7 @@ def _own_problems(
         *(
             problem
             for check in (goal_problems, dependency_problems, duration_problems)
-            for problem in check(said, block.text or "", values)
+            for problem in check(said, block.text, values)
         ),
     ]
 

@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from itertools import zip_longest
 import re
 
 from app.agents.prompts import brief_check_prompts as says
@@ -380,8 +381,8 @@ def _day_at_problems(field_name: str, text: str, values: SlotValues) -> list[str
 def sentence_breaks(text: str) -> list[tuple[str, str]]:
     """Split prose into its sentences and lines, each with the break that follows it."""
     pieces = _SENTENCE_BREAK_RE.split(text)
-    breaks = [*pieces[1::2], ""]
-    return [(s, gap) for s, gap in zip(pieces[::2], breaks, strict=True) if s.strip()]
+    paired = zip_longest(pieces[::2], pieces[1::2], fillvalue="")
+    return [(s, gap) for s, gap in paired if s.strip()]
 
 
 def sentences(text: str) -> list[str]:

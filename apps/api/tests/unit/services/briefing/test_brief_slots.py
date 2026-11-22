@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime
 
 import pytest
+from tests.factories import make_user_id
 from tests.helpers import user_clock
 
 from app.constants.todos import TodoCompleter
@@ -10,6 +11,7 @@ from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
 from app.models.brief_item_models import ItemState
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.brief_slot_models import CountName, SeriesField
+from app.models.scout_models import SignalMemoryDocument
 from app.services.briefing.slots import (
     BriefFact,
     SlotError,
@@ -552,3 +554,14 @@ class TestAPoolItemsFact:
             ItemState.YOU,
             "by Friday",
         )
+
+    def test_it_says_whether_it_is_linked_goal_work(self) -> None:
+        assert candidate_fact(_candidate(), _CLOCK, goal_work=True).goal_work is True
+
+    def test_an_item_an_earlier_brief_showed_unchanged_is_seen_before(self) -> None:
+        shown = SignalMemoryDocument(
+            user_id=make_user_id(), integration_id="gaia", external_id="todo:t1", times_shown=1
+        )
+
+        assert candidate_fact(_candidate(memory=shown), _CLOCK).seen_before is True
+        assert candidate_fact(_candidate(), _CLOCK).seen_before is False
