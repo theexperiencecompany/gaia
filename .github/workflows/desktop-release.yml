@@ -34,11 +34,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-26
             target: mac
-          - os: windows-latest
+          - os: windows-2025-vs2026
             target: win
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: linux
 
     runs-on: ${{ matrix.os }}
@@ -141,7 +141,7 @@ jobs:
     # Release events always publish. Manual dispatches publish only when a tag
     # was given (empty tag = build-only verification run).
     if: github.event_name == 'release' || inputs.tag != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: write # read the quality gate's runs, and re-run one a newer push cancelled

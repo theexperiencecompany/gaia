@@ -96,8 +96,8 @@ jobs:
     # Measured 2026-10-22: a 13 s select-runner sat queued for 28 min in the
     # GitHub-hosted backlog while all 20 home listeners were idle. Point
     # CI_DISPATCH_RUNNER at a Blacksmith label to take it off that queue; unset
-    # keeps ubuntu-latest, so this is a one-variable rollback.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    # keeps ubuntu-24.04, so this is a one-variable rollback.
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 2
     permissions:
       contents: read
@@ -148,7 +148,7 @@ jobs:
     name: watchdog
     needs: [select-runner]
     if: needs.select-runner.outputs.is_self_hosted == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       actions: write # cancel the run
@@ -884,7 +884,7 @@ jobs:
   obscura-bin:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && needs.detect.outputs.engine_slices != '[]' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -1125,7 +1125,7 @@ jobs:
   web-e2e-screen:
     needs: [detect]
     if: ${{ !cancelled() && contains(fromJSON(needs.detect.outputs.jobs), 'web-e2e-screen') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Boot (models, a cold Turbopack compile) plus the web suite, measured 8-15 min
     # locally; the bot scenarios add about 10.
     timeout-minutes: 50
@@ -1201,7 +1201,7 @@ jobs:
     needs: [select-runner, detect, test-python, test-python-engines]
     # No `!cancelled()`: with a slice red there is no complete data to combine.
     if: contains(fromJSON(needs.detect.outputs.tasks), 'api:test') && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1430,7 +1430,7 @@ jobs:
   changelog-sync:
     needs: [detect, ts-build-test]
     if: ${{ !cancelled() && github.event_name != 'merge_group' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 8
@@ -1487,7 +1487,7 @@ jobs:
   cache-warm:
     needs: [detect]
     if: needs.detect.outputs.tier == 'verified'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
     timeout-minutes: 15
@@ -1534,7 +1534,7 @@ jobs:
       # changelog-sync deliberately excluded: non-blocking, it opens a fix PR.
     # Required status check: it must report in seconds, so it rides the same
     # control-plane runner as the dispatcher, and it never waits on anything.
-    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_DISPATCH_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1593,7 +1593,7 @@ jobs:
   # build-images reaches the same group.
   deploy-unwedge:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Above unwedge's 15 min limit: it waits out a gate still inside it.
     timeout-minutes: 20
     permissions:
