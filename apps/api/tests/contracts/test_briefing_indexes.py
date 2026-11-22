@@ -44,7 +44,6 @@ async def test_a_briefs_age_index_carries_no_ttl_so_the_sweep_deletes_its_image_
     assert "created_at_1" in await _index_names(raw_collection)
 
 
-@pytest.mark.regression
 async def test_a_held_result_left_behind_expires_after_its_retention(raw_collection) -> None:
     await indexes.create_pending_brief_item_indexes()
 

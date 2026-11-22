@@ -1,7 +1,7 @@
 """The written message is the brief's one text; each surface frames it, none rewrites it."""
 
 import pytest
-from tests.factories import make_briefing_payload
+from tests.briefing_factories import make_briefing_payload
 
 from app.models.brief_payload_models import NewStamp
 from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader

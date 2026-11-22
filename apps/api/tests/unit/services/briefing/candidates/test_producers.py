@@ -586,7 +586,6 @@ class TestAppSignals:
         assert (found.moved, found.is_repeat) == (False, True)
 
 
-@pytest.mark.regression
 def test_app_signals_lead_with_the_scouts_urgent_then_the_recently_moved() -> None:
     """The founder's GitHub: Jun 2025 issues and a Jun 30 PR led two PR threads updated this week."""
 

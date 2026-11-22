@@ -9,8 +9,9 @@ from datetime import date, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.briefing_helpers import user_clock
 from tests.factories import make_user_id
-from tests.helpers import captured_wide_event, local_timezone, user_clock
+from tests.helpers import captured_wide_event, local_timezone
 
 from app.models.brief_payload_models import BriefingEvent
 from app.models.calendar_models import (

@@ -3,8 +3,8 @@
 from datetime import UTC, date, datetime
 
 import pytest
+from tests.briefing_helpers import user_clock
 from tests.factories import make_user_id
-from tests.helpers import user_clock
 
 from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin

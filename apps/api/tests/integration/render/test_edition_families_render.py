@@ -28,7 +28,7 @@ from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, exp
 from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.render.chromium import chromium_page
 from app.services.render.image import ImageRenderOptions, render_html_to_image
-from tests.factories import make_brief_item
+from tests.briefing_factories import make_brief_item
 
 pytestmark = pytest.mark.asyncio(loop_scope="package")
 

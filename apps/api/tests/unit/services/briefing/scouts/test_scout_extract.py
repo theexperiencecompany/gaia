@@ -80,7 +80,6 @@ class TestReadingItems:
         assert signal.people == ["Aryan Randeriya", "Sam Lee", "ARYAN@HEYGAIA.IO"]
         assert signal.people_you == ["Aryan Randeriya", "ARYAN@HEYGAIA.IO"]
 
-    @pytest.mark.regression
     def test_a_teammate_named_after_the_users_handle_is_not_the_user(self) -> None:
         """A display name is free text anyone can set; only an account's own id field is the user."""
         source = SOURCE.model_copy(
@@ -278,7 +277,6 @@ class TestReadingItems:
 
         assert (signal.due_at, signal.people, signal.state) == (None, ["ana", "bo"], None)
 
-    @pytest.mark.regression
     def test_an_item_in_an_archived_repository_is_left_out(self) -> None:
         """The founder's brief listed unstarted issues from a repo archived as an old snapshot."""
         values = {

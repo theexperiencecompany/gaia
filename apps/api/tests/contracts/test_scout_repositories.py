@@ -50,7 +50,6 @@ class TestSignalMemory:
             0,
         )
 
-    @pytest.mark.regression
     async def test_every_sighting_stamps_when_it_was_last_seen(self, memory):
         """last_seen is what the retention TTL expires a memory by."""
         await memory.record_seen("owner", [_signal("1", "Todo")], _START)
@@ -73,7 +72,6 @@ class TestSignalMemory:
         }["last_seen_ttl"]
         assert ttl == SIGNAL_MEMORY_RETENTION.total_seconds()
 
-    @pytest.mark.regression
     async def test_a_brief_records_all_its_sightings_in_one_write(
         self, memory, raw_collection, monkeypatch: pytest.MonkeyPatch
     ):

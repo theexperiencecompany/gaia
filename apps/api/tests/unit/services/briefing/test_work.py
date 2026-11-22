@@ -11,8 +11,9 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.briefing_helpers import user_clock
 from tests.factories import make_todo, make_user_id
-from tests.helpers import local_timezone, user_clock
+from tests.helpers import local_timezone
 
 from app.constants.briefing import WEEK_LIST_LIMIT
 from app.constants.todos import (

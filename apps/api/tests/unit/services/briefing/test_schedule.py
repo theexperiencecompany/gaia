@@ -163,7 +163,6 @@ def _moves(update: AsyncMock) -> dict[str, tuple[str | None, str | None, object]
 
 
 class TestBriefsAreSpreadAcrossTheirHour:
-    @pytest.mark.regression
     def test_two_users_with_one_hour_fire_at_their_own_minutes(self) -> None:
         """Every brief fired at minute 0 of its hour, the whole hour's users in one second."""
         crons = {
@@ -320,7 +319,6 @@ class TestTheFrequencySwitchesTheBriefs:
 
         seams.activate.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_free_users_briefs_wait_for_pro_as_a_lapsed_subscription(
         self, seams: Seams
     ) -> None:
@@ -597,7 +595,6 @@ class TestTurningBriefsOff:
             UserId(USER_ID), SettingsBriefsOffBlocked(workflow_count=1, via="settings")
         )
 
-    @pytest.mark.regression
     async def test_the_agent_turns_briefs_off_by_saying_where_the_workflows_go(
         self, seams: Seams, delivering: MagicMock
     ) -> None:

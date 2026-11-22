@@ -16,7 +16,8 @@ from httpx import AsyncClient
 from itsdangerous import URLSafeSerializer
 from PIL import Image, JpegImagePlugin
 import pytest
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 import time_machine
 
 from app.config.settings import settings

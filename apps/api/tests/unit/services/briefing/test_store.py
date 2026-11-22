@@ -6,7 +6,8 @@ Faked seams: the briefing repository, the short-link mint, the render and the ed
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 
 from app.config.settings import settings
 from app.constants.briefing import BriefingKind

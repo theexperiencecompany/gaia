@@ -218,7 +218,6 @@ class TestProvisionSystemWorkflows:
         mock_notify.assert_awaited_once_with("user-1", "Gmail", [second])
 
     @pytest.mark.asyncio
-    @pytest.mark.regression
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.workflow_repository")
@@ -1332,7 +1331,6 @@ class TestActivationForPayingUsers:
         is_active.assert_awaited_once_with("user-1")
         mock_service.activate_workflow.assert_awaited_once_with("wf-9", "user-1")
 
-    @pytest.mark.regression
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
     async def test_a_free_users_waits_for_pro_as_a_lapsed_subscription(
@@ -1352,7 +1350,6 @@ class TestActivationForPayingUsers:
             "wf-9", "user-1", reason=DeactivationReason.SUBSCRIPTION_LAPSED
         )
 
-    @pytest.mark.regression
     @patch(f"{MODULE}.WorkflowService")
     @patch(f"{MODULE}.is_paid", new_callable=AsyncMock)
     async def test_an_activation_failure_fails_loud(

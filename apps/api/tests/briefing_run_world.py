@@ -121,6 +121,7 @@ from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
 from app.services.render.image import RenderedImage
 from app.workers.brief_slots import slot_minute
+from tests.briefing_factories import make_briefing_payload
 from tests.briefing_store_fakes import (
     InMemoryApprovalLedger,
     InMemoryBriefings,
@@ -137,7 +138,7 @@ from tests.briefing_store_fakes import (
     InMemoryWorkflows,
     install,
 )
-from tests.factories import make_briefing_payload, make_todo, make_user_id
+from tests.factories import make_todo, make_user_id
 
 USER = make_user_id()
 TZ = "Asia/Kolkata"

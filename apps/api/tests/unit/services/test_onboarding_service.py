@@ -546,7 +546,6 @@ class TestCompleteOnboarding:
 
         capture.assert_not_called()
 
-    @pytest.mark.regression
     async def test_a_replay_provisions_the_briefs_a_failed_first_submit_left_out(
         self,
         mock_repo: MagicMock,

@@ -3,7 +3,7 @@
 from datetime import UTC, date, datetime
 
 import pytest
-from tests.helpers import user_clock
+from tests.briefing_helpers import user_clock
 
 from app.constants.briefing import MAX_BRIEF_ITEMS, BriefAction, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin
@@ -190,7 +190,6 @@ class TestTheLead:
     def test_an_item_the_pool_lacks_is_dropped_and_the_rest_of_its_group_kept(self) -> None:
         assert repaired(_of(_group(_item(99), _item(1))), MANY) == _of(_group(_item(1)))
 
-    @pytest.mark.regression
     def test_a_second_item_the_composer_titles_as_an_earlier_one_is_dropped(self) -> None:
         """Replay: two todos from Mercury's repeated email both read "Mercury application questions"."""
         mercury = "Mercury application questions"
@@ -203,7 +202,6 @@ class TestTheLead:
 
 
 class TestOneHeading:
-    @pytest.mark.regression
     def test_two_groups_of_one_state_under_one_heading_are_one_group_where_the_first_stood(
         self,
     ) -> None:

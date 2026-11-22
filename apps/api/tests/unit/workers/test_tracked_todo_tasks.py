@@ -3599,7 +3599,6 @@ class TestExecuteOnExecutor:
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
 
-    @pytest.mark.regression
     async def test_a_run_an_urgent_event_woke_is_delivered_through_quiet_hours(self):
         """The gate let the event through as urgent, so delivery must not hold the run's report."""
         await self._execute(

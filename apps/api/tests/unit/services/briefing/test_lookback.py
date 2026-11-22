@@ -10,8 +10,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.factories import make_brief_item, make_briefing_payload, make_todo, make_user_id
-from tests.helpers import user_clock
+from tests.briefing_factories import make_brief_item, make_briefing_payload
+from tests.briefing_helpers import user_clock
+from tests.factories import make_todo, make_user_id
 
 from app.constants.briefing import WINBACK_THRESHOLD, BriefingKind
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter

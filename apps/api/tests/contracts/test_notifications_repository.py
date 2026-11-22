@@ -23,7 +23,7 @@ from app.models.notification.notification_models import (
 )
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.view import briefing_card
-from tests.factories import make_briefing_payload
+from tests.briefing_factories import make_briefing_payload
 
 
 def _record(**overrides: object) -> NotificationRecord:

@@ -218,7 +218,6 @@ class TestDelivery:
         assert promised.format(minute=_MINUTE) in prompt
         assert "around 8" not in prompt
 
-    @pytest.mark.regression
     async def test_a_weekdays_user_linking_on_saturday_is_promised_sundays_digest(
         self, seams: Seams
     ) -> None:

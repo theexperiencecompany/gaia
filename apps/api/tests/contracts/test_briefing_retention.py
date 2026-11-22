@@ -21,7 +21,8 @@ from app.db.repositories.briefings import briefing_repository
 from app.models.brief_document_models import BriefDelivery, BriefingModel, EditionRender
 from app.services.briefing.edition_image import store_edition
 from app.workers.tasks.briefing_retention_tasks import sweep_expired_briefings
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 USER_ID = make_user_id()

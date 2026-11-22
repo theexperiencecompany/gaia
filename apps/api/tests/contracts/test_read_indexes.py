@@ -46,7 +46,6 @@ def _served_by(plans: list[str], *keys: str) -> bool:
     return bool(plans) and all(keys and all(key in plan for key in keys) for plan in plans)
 
 
-@pytest.mark.regression
 async def test_pending_ledger_approvals_are_read_by_user_outcome_and_age(
     raw_collection, query_plans: QueryPlans
 ) -> None:
@@ -70,7 +69,6 @@ async def test_pending_ledger_approvals_are_read_by_user_outcome_and_age(
     assert _served_by(plans, "IXSCAN { user_id: 1, outcome: 1, created_at: 1 }"), plans
 
 
-@pytest.mark.regression
 async def test_todos_completed_since_are_read_by_user_completion_and_time(
     raw_collection, query_plans: QueryPlans
 ) -> None:
@@ -94,7 +92,6 @@ async def test_todos_completed_since_are_read_by_user_completion_and_time(
     assert _served_by(plans, "IXSCAN { user_id: 1, completed: 1, completed_at: 1 }"), plans
 
 
-@pytest.mark.regression
 async def test_external_ref_activity_is_read_by_user_source_and_each_time(
     raw_collection, query_plans: QueryPlans
 ) -> None:
@@ -124,7 +121,6 @@ async def test_external_ref_activity_is_read_by_user_source_and_each_time(
     ), plans
 
 
-@pytest.mark.regression
 async def test_bot_replies_read_only_the_users_messages_since_the_cutoff(
     raw_collection, query_plans: QueryPlans
 ) -> None:
@@ -153,7 +149,6 @@ async def test_bot_replies_read_only_the_users_messages_since_the_cutoff(
     assert not any("COLLSCAN" in plan for plan in plans), plans
 
 
-@pytest.mark.regression
 async def test_users_by_activity_status_never_scan_the_collection(
     raw_collection, query_plans: QueryPlans
 ) -> None:
@@ -172,7 +167,6 @@ async def test_users_by_activity_status_never_scan_the_collection(
     assert not any("COLLSCAN" in plan for plan in plans), plans
 
 
-@pytest.mark.regression
 async def test_a_read_only_verdict_is_read_by_tool_shape_and_classifier(
     raw_collection, query_plans: QueryPlans
 ) -> None:

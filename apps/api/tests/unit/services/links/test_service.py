@@ -203,7 +203,6 @@ class TestGaiaAttachedLinks:
 
         assert event["errors"][0]["msg"] == "short_link.mint_failed"
 
-    @pytest.mark.regression
     async def test_a_failed_mint_is_counted_where_the_alert_reads_it(self, repo):
         """The link-mint alert reads gaia_link_mint_total{outcome="failed"}; nothing emitted it, so it could never fire."""
         repo.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
@@ -213,7 +212,6 @@ class TestGaiaAttachedLinks:
 
         assert _mints("failed") == before + 1
 
-    @pytest.mark.regression
     async def test_a_minted_link_is_counted(self, repo):
         repo.create.side_effect = lambda link: link
         before = _mints("minted")

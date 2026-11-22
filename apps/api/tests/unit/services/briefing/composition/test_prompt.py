@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime
 
-from tests.helpers import unfenced, user_clock
+from tests.briefing_helpers import unfenced, user_clock
 
 from app.agents.prompts.brief_composition_prompts import (
     COMPOSITION_EXAMPLES,

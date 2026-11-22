@@ -316,7 +316,6 @@ class TestExecuteWorkflowById:
 
         mock_increment.assert_awaited_once_with(workflow.id, workflow.user_id, is_successful=False)
 
-    @pytest.mark.regression
     async def test_a_failed_run_is_counted_as_a_failed_task(self, ctx):
         """A failed run once returned a string, so the ARQ envelope counted it a success and no alert saw it."""
         workflow = _make_workflow()

@@ -14,7 +14,6 @@ class TestApplyRequested:
 
         assert apply_requested("Migrate things.") is applies
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("typo", ["--aply", "apply", "--apply=yes"])
     def test_a_mistyped_flag_stops_the_run_instead_of_dry_running_it(
         self, monkeypatch: pytest.MonkeyPatch, typo: str

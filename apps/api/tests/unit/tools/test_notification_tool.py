@@ -523,7 +523,6 @@ class TestSendNotificationChannels:
 
         assert _requested_channels(mock_service) == ["inapp"]
 
-    @pytest.mark.regression
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.todo_repository")
     @patch(f"{MODULE}.notification_service")

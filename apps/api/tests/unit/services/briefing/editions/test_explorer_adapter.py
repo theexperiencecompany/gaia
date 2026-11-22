@@ -7,7 +7,7 @@ the vendored JS templates read.
 from typing import Any
 
 import pytest
-from tests.factories import make_brief_item as _item, make_briefing_payload
+from tests.briefing_factories import make_brief_item as _item, make_briefing_payload
 
 from app.constants.briefing import BriefAction, EditionFamily
 from app.models.brief_payload_models import BriefingPayload

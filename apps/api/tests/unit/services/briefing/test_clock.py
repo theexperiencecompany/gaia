@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-from tests.helpers import user_clock
+from tests.briefing_helpers import user_clock
 
 from app.services.briefing.clock import UserClock, due_on, resolve_clock
 from app.services.briefing.fact_pool.pool import PoolContext

@@ -165,7 +165,6 @@ class TestWorkflowNewEvents:
         assert resp.status_code == 200
         mock_capture.assert_called_once_with(UserId(UID), WorkflowUpdated(delivery="brief"))
 
-    @pytest.mark.regression
     async def test_an_update_resending_the_same_delivery_reports_no_change(
         self, client: AsyncClient
     ) -> None:

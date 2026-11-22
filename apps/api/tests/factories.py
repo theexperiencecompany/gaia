@@ -12,10 +12,7 @@ import composio_client
 from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
-from app.constants.briefing import DAILY_KICKER, BriefAction, BriefOutcome, EditionFamily
 from app.constants.chat import ConversationSource
-from app.models.brief_item_models import ItemState
-from app.models.brief_payload_models import BriefingMood, BriefingPayload
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
@@ -32,24 +29,6 @@ def make_user_id() -> str:
     return str(ObjectId())
 
 
-# How a brief item of each kind reads when a test does not say: asks act, the rest report.
-_BRIEF_ITEM_READS_AS: dict[ItemState, dict[str, BriefAction | BriefOutcome]] = {
-    ItemState.YOU: {"action": BriefAction.APPROVE},
-    ItemState.FAILED: {"action": BriefAction.RETRY},
-    ItemState.GAIA: {"outcome": BriefOutcome.STARTED},
-    ItemState.LOOKBACK: {"outcome": BriefOutcome.FINISHED},
-    ItemState.NOTE: {"outcome": BriefOutcome.CHANGED},
-}
-
-
-def make_brief_item(text: str, kind: str = ItemState.NOTE, **fields: Any) -> dict[str, Any]:
-    """Build a BriefingItem's fields; without an action or outcome it reads as its kind does."""
-    reads_as = (
-        {} if {"action", "outcome"} & fields.keys() else _BRIEF_ITEM_READS_AS[ItemState(kind)]
-    )
-    return {"text": text, "kind": kind, **reads_as, **fields}
-
-
 def make_todo(title: str, *labels: str, user_id: str | None = None, **fields: Any) -> TodoDocument:
     """Build a todo titled title, its id the title unless fields name one; open unless fields say."""
     return TodoDocument.model_validate(
@@ -59,22 +38,6 @@ def make_todo(title: str, *labels: str, user_id: str | None = None, **fields: An
             "title": title,
             "labels": list(labels),
             **fields,
-        }
-    )
-
-
-def make_briefing_payload(**overrides: Any) -> BriefingPayload:
-    """Build a daily brief's payload, drawn as a Swiss edition; overrides are BriefingPayload fields."""
-    return BriefingPayload.model_validate(
-        {
-            "kicker": DAILY_KICKER,
-            "template_family": EditionFamily.SWISS,
-            "date": "2026-10-14",
-            "headline": "Your morning, sorted",
-            "lede": "Everything else is moving.",
-            "mood": BriefingMood.CLEAR,
-            "caption": "Onward.",
-            **overrides,
         }
     )
 

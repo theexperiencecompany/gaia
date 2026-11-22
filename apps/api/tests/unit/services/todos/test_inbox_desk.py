@@ -259,7 +259,6 @@ async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace
     seams.capture.assert_not_called()
 
 
-@pytest.mark.regression
 async def test_the_desk_sweeps_an_hour_ahead_of_the_users_own_brief(
     seams: SimpleNamespace,
 ) -> None:

@@ -660,7 +660,6 @@ class TestAcallModel:
         assert sent["recursion_limit"] == _RECURSION_LIMIT
         assert sent["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_a_call_with_no_tools_goes_out_on_the_bare_model(self) -> None:
         """Workers AI answers a 400 to an empty tools array, so a tool-less call must bind none."""

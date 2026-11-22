@@ -906,7 +906,6 @@ class TestOneScoutFailing:
         assert error["error"] == "no tools reachable for github"
         assert error["error_type"] == "AppError"
 
-    @pytest.mark.regression
     async def test_every_scouts_turn_is_counted_for_the_scout_failure_alert(
         self, scouts: Scouts
     ) -> None:

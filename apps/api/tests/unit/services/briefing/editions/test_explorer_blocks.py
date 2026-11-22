@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from tests.factories import make_brief_item, make_briefing_payload
+from tests.briefing_factories import make_brief_item, make_briefing_payload
 
 from app.constants.briefing import EDITION_ROWS_SHOWN, BriefAction, BriefOutcome
 from app.models.brief_composition_models import SectionBlock

@@ -531,7 +531,6 @@ class TestUserCounts:
         b = await repo.create(make_user(email="a2@b.com"))
         assert set(await repo.list_all_ids()) == {a.id, b.id}
 
-    @pytest.mark.regression
     async def test_a_release_step_reads_a_user_no_longer_valid_whole(self, repo, raw_collection):
         """A release step loading whole users failed on one shape an older release left behind."""
         hours = QuietHours(enabled=True, start_hour=23, end_hour=6)

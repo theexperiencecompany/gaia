@@ -90,7 +90,6 @@ class TestUnknownUser:
 
 @pytest.mark.unit
 class TestMidOnboarding:
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "onboarding", [None, OnboardingSubdocument(completed=False)], ids=["none", "unfinished"]
     )

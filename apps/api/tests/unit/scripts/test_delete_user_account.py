@@ -478,7 +478,6 @@ class TestDeleteMongoData:
 class TestDeleteNewStores:
     """The stores the briefing and links work added, which a user_id sweep alone misses."""
 
-    @pytest.mark.regression
     def test_link_reports_the_user_filed_are_deleted_by_reporter(self, capsys: Any) -> None:
         d = _footprint()
         reports = MagicMock()
@@ -500,7 +499,6 @@ class TestDeleteNewStores:
         ]
         assert "[mongo] link_reports: deleted 3" in capsys.readouterr().out.splitlines()
 
-    @pytest.mark.regression
     async def test_every_pinned_snapshots_bytes_are_deleted(self, capsys: Any) -> None:
         snapshots = [
             LinkSnapshot.model_construct(content_id="c-1"),
@@ -519,7 +517,6 @@ class TestDeleteNewStores:
             "[link_content] deleted c-2",
         ]
 
-    @pytest.mark.regression
     async def test_every_brief_edition_image_is_deleted(self, capsys: Any) -> None:
         d = _footprint(edition_keys=["k-1", "k-2"])
 

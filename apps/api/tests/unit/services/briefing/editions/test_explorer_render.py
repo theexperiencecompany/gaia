@@ -12,7 +12,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from tests.factories import make_briefing_payload
+from tests.briefing_factories import make_briefing_payload
 
 from app.constants.briefing import EditionFamily
 from app.models.brief_payload_models import BriefingPayload
@@ -388,7 +388,6 @@ class TestEmbeddedLiterals:
 
 @pytest.mark.unit
 class TestPostalStamp:
-    @pytest.mark.regression
     def test_postal_inlines_the_drawn_citys_art_so_the_render_fetches_nothing(self) -> None:
         """Regression: the stamp loaded from GAIA Cloud's Cloudinary, even on a self-host."""
         image = base64.b64encode(stamp_art("paris").read_bytes()).decode()

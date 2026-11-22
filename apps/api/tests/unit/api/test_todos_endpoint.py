@@ -49,8 +49,8 @@ from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosChatOpened, TodosToggled
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
+from tests.briefing_helpers import briefs_on
 from tests.conftest import FAKE_USER
-from tests.helpers import briefs_on
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 _TZ_BACKFILL = "app.api.v1.dependencies.oauth_dependencies._backfill_user_timezone"

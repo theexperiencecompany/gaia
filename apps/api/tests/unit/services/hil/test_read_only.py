@@ -383,7 +383,6 @@ class TestIsReadOnly:
         assert await is_read_only(_reading_tool("List open tickets and their owners.")) is False
         assert verdicts.judge.await_count == 2
 
-    @pytest.mark.regression
     async def test_a_new_classifier_prompt_judges_a_cached_tool_again(
         self, verdicts: _Verdicts
     ) -> None:
@@ -398,7 +397,6 @@ class TestIsReadOnly:
             assert await is_read_only(_reading_tool()) is False
         assert verdicts.judge.await_count == 2
 
-    @pytest.mark.regression
     async def test_a_new_classifier_model_judges_a_cached_tool_again(
         self, verdicts: _Verdicts
     ) -> None:

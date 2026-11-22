@@ -5025,7 +5025,6 @@ class TestHandleConnectFailureExact:
         monkeypatch.setattr(user_integration_repository, "has_connected_before", connected_before)
         return connected_before
 
-    @pytest.mark.regression
     async def test_missing_oauth_token_marks_the_sign_in_expired_without_deleting_credentials(
         self,
         monkeypatch: pytest.MonkeyPatch,

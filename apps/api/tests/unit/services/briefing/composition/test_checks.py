@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 
 from pydantic import ValidationError
 import pytest
-from tests.helpers import user_clock
+from tests.briefing_helpers import user_clock
 
 from app.constants.briefing import (
     BRIEF_CHART_TITLE_MAX_CHARS,
@@ -601,7 +601,6 @@ class TestNoFreeNumbers:
         ]
 
 
-@pytest.mark.regression
 def test_a_note_linking_two_facts_by_a_cause_no_fact_states_is_sent_back() -> None:
     """Founder replay: "Clearing the auth error first unblocks the rest" tied facts no line tied."""
     assert _problems({"kind": "note", "text": "Clearing [[fact:1]] unblocks [[fact:2]]."}) == [
@@ -611,7 +610,6 @@ def test_a_note_linking_two_facts_by_a_cause_no_fact_states_is_sent_back() -> No
     assert _problems({"kind": "note", "text": "Clear [[fact:1]], then [[fact:2]]."}) == []
 
 
-@pytest.mark.regression
 def test_only_a_goals_linked_todo_may_be_called_its_work() -> None:
     """Founder replay: the churned-subscriber email, linked to no goal, was named goal work."""
     pool = replace(

@@ -20,7 +20,7 @@ from app.models.brief_composition_models import BriefComposition
 from app.models.brief_item_models import ItemState
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
-from tests.helpers import user_clock
+from tests.briefing_helpers import user_clock
 
 pytestmark = pytest.mark.model_onboarding
 

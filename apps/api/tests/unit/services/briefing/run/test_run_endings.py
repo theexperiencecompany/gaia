@@ -160,7 +160,6 @@ class TestHowARunEnds:
         assert world.delivered_to() == [*ORCHESTRATED, "telegram"]
         assert await run_brief(USER, BriefingKind.DAILY) is BriefingRunOutcome.ALREADY_DELIVERED
 
-    @pytest.mark.regression
     async def test_a_render_whose_browser_died_is_run_again_and_delivered(
         self, world: World
     ) -> None:
@@ -204,7 +203,6 @@ class TestHowARunEnds:
         world.voice.assert_awaited_once()
         assert world.today() is None
 
-    @pytest.mark.regression
     async def test_a_resumed_goodbye_still_puts_the_loop_to_sleep_and_spends_its_draw(
         self, world: World
     ) -> None:
@@ -224,7 +222,6 @@ class TestHowARunEnds:
         assert (ladder.wound_down_since, ladder.goal_asked_at) == (NOW, NOW)
         assert world.bags[BriefingBag.EDITION_FAMILY].index == pinned.index + 1
 
-    @pytest.mark.regression
     async def test_a_resumed_brief_marks_what_it_placed_shown(self, world: World) -> None:
         world.scouts = scouted(LOGIN)
         world.post.side_effect = RuntimeError("worker killed")

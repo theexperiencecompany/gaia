@@ -93,7 +93,6 @@ class TestSetBriefingSchedule:
             f"only the weekly digest on Sunday at 5:{MINUTE} PM, no daily brief."
         )
 
-    @pytest.mark.regression
     async def test_turning_briefs_off_says_where_the_brief_workflows_go(self) -> None:
         setter = _setter(BriefingSchedule(frequency=BriefingFrequency.OFF))
         with patch(f"{MODULE}.briefing_schedule.set_briefing_schedule", new=setter):

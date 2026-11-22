@@ -30,7 +30,8 @@ from app.schemas.integrations.responses import (
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowCreated
-from tests.helpers import briefs_on, captured_wide_event
+from tests.briefing_helpers import briefs_on
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers

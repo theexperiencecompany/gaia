@@ -40,8 +40,9 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowPublished,
 )
 from shared.py.wide_events import WorkflowContext, log
+from tests.briefing_helpers import briefs_on
 from tests.conftest import FAKE_USER
-from tests.helpers import briefs_on, users_get
+from tests.helpers import users_get
 
 BASE_URL = "/api/v1/workflows"
 _LOG = "app.api.v1.endpoints.workflows.log"

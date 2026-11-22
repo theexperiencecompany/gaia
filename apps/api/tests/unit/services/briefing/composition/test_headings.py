@@ -8,8 +8,9 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.briefing_helpers import unfenced, user_clock
 from tests.factories import make_user_id
-from tests.helpers import captured_wide_event, unfenced, user_clock
+from tests.helpers import captured_wide_event
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate, CandidateOrigin

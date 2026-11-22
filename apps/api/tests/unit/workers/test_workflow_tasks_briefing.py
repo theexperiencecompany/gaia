@@ -100,7 +100,6 @@ class TestKeyChoosesThePipeline:
         assert summary == BRIEFING_SUMMARY
         assert event["workflow"] == {"briefing_outcome": "sent"}
 
-    @pytest.mark.regression
     async def test_a_daily_run_hands_its_outcome_to_the_held_release(
         self, pipelines: _Pipelines
     ) -> None:

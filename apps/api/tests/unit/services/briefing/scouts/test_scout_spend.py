@@ -76,7 +76,6 @@ class TestBook:
 
         assert await _tally(fake_redis) == pytest.approx(SCOUT_LEARN_RESERVATION_USD + 0.004)
 
-    @pytest.mark.regression
     @pytest.mark.usefixtures("fake_redis")
     async def test_a_learn_winds_down_before_its_reservation_is_spent(self) -> None:
         """A learn learned of its slice only at the stop, too late to write the report it ran for."""

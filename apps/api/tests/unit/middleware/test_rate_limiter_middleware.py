@@ -151,7 +151,6 @@ def test_an_unmatched_path_has_no_handler() -> None:
     assert find_route_handler(_app(), scope) is None
 
 
-@pytest.mark.regression
 @pytest.mark.usefixtures("small_limits")
 async def test_the_app_wide_limit_applies_to_routes_under_api_v1() -> None:
     """Regression: every /api/v1 route was exempt, so the app-wide limit limited nothing."""

@@ -897,7 +897,6 @@ class _RecordingLedger:
         return sum(self.booked) >= self.winds_down_at
 
 
-@pytest.mark.regression
 async def test_a_ledger_run_at_its_cap_is_sent_with_no_tools_so_it_must_answer() -> None:
     """A scout learn told to wrap up kept calling tools, hit the stop and never wrote its report."""
     ledger = _RecordingLedger(winds_down_at=0.08)
@@ -929,7 +928,6 @@ async def test_a_ledger_run_with_headroom_is_sent_as_asked() -> None:
     assert [m.content for m in sent.messages] == ["hi"]
 
 
-@pytest.mark.regression
 async def test_a_ledger_run_books_its_spend_there_and_never_into_the_users_allowance() -> None:
     """Scouts charged the user's day window and starved the free brief writer that ran after them."""
     ledger = _RecordingLedger()

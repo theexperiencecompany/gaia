@@ -55,7 +55,8 @@ from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyOutcome
-from tests.helpers import brief_loop_awake, captured_wide_event
+from tests.briefing_helpers import brief_loop_awake
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 
 pytestmark = pytest.mark.unit
@@ -815,7 +816,6 @@ class TestABriefTodoFeedsTheMorningBrief:
         seams.send.assert_awaited_once()
         seams.hold.assert_not_awaited()
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("kind", [SCHEDULED, WATCHING], ids=["schedule", "watch"])
     async def test_a_brief_todos_written_up_result_is_held_however_its_run_was_woken(
         self, kind: TodoRun

@@ -62,7 +62,8 @@ from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.triggers import TriggerGateEdited
-from tests.helpers import UNKNOWN_USER_ID, briefs_on, users_get
+from tests.briefing_helpers import briefs_on
+from tests.helpers import UNKNOWN_USER_ID, users_get
 
 # ---------------------------------------------------------------------------
 # Shared helpers / constants

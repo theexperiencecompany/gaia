@@ -577,7 +577,6 @@ class TestCreateAllIndexes:
             for p in patches.values():
                 p.stop()
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "creator",
         ["create_briefing_indexes", "create_scout_indexes", "create_signal_memory_indexes"],

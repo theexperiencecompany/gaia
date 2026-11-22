@@ -102,7 +102,6 @@ class TestStopActingForRemovedMember:
             for c in seams.deactivate_workflow.await_args_list
         )
 
-    @pytest.mark.regression
     async def test_a_running_brief_is_stopped_too(self, seams: Seams) -> None:
         await stop_acting_for_removed_member(USER)
 
@@ -110,7 +109,6 @@ class TestStopActingForRemovedMember:
         assert "wf-daily" in stopped
         assert "wf-weekly" not in stopped
 
-    @pytest.mark.regression
     async def test_every_link_they_shared_stops_opening(self, seams: Seams) -> None:
         await stop_acting_for_removed_member(USER)
 

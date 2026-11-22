@@ -247,7 +247,6 @@ class TestTheWeeklyLadder:
         monkeypatch.setattr(briefing_state_repository, "set_idle_day", set_day)
         return set_day
 
-    @pytest.mark.regression
     async def test_the_last_empty_digest_is_a_weekly_only_readers_goodbye(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -195,7 +195,6 @@ class TestWhatIsNew:
             "first seen today, created 2025-06-18 (491 days ago), last updated 491 days ago"
         )
 
-    @pytest.mark.regression
     def test_an_item_the_app_dates_only_by_its_last_update_says_that_update(self) -> None:
         """Two GitHub threads updated this week read as undated, so stale issues outranked them."""
         signal = _signal("27213240598").model_copy(update={"updated_at": NOW - timedelta(days=3)})
@@ -222,7 +221,6 @@ class TestWhatIsNew:
             "first seen today, created 2026-10-21 (yesterday)"
         )
 
-    @pytest.mark.regression
     def test_an_item_seen_before_but_never_mentioned_keeps_its_created_date(self) -> None:
         """Replay: an issue created a week before its first brief was voiced as a new one."""
         signal = _signal("12").model_copy(

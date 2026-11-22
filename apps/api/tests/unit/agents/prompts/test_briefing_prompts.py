@@ -57,7 +57,7 @@ from app.constants.briefing import (
     WindDown,
 )
 from app.services.hil.utils import untrusted_fence
-from tests.helpers import unfenced
+from tests.briefing_helpers import unfenced
 
 _FENCE = untrusted_fence()
 
@@ -190,7 +190,6 @@ class TestTheDailyVoicePrompt:
         between = prompt.split(fenced(bare.goal, _FENCE), 1)[1].split(_GOAL_QUESTION, 1)[0]
         assert between.strip() == ""
 
-    @pytest.mark.regression
     def test_the_slots_state_every_length_cap_the_prose_is_held_to(self) -> None:
         """The writer was never told the cap, so a busy day ran over it on both attempts."""
         caps = (

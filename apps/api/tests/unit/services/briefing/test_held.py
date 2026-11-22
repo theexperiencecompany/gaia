@@ -6,7 +6,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 import time_machine
 
 from app.constants.briefing import (
@@ -128,7 +129,6 @@ class TestBriefWillCarry:
 
         assert not await held.brief_will_carry(seams.user.id)
 
-    @pytest.mark.regression
     async def test_a_dormant_loop_does_not(self, seams: _Seams) -> None:
         seams.state.wind_down = BriefingWindDown(wound_down_since=_NOW - timedelta(days=2))
         seams.last_active_at = _NOW - timedelta(days=5)
@@ -142,7 +142,6 @@ class TestBriefWillCarry:
 
         assert await held.brief_will_carry(seams.user.id)
 
-    @pytest.mark.regression
     async def test_a_winback_backing_off_does_not(self, seams: _Seams) -> None:
         seams.last_active_at = _NOW - timedelta(days=30)
         seams.briefs = [
@@ -167,7 +166,6 @@ class TestBriefWillCarry:
 
 
 class TestReleaseAfterDailyRun:
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "outcome", [BriefingRunOutcome.DORMANT, BriefingRunOutcome.WINBACK_BACKOFF]
     )
@@ -182,7 +180,6 @@ class TestReleaseAfterDailyRun:
         seams.notify.assert_awaited_once()
         seams.consume.assert_awaited_once()
 
-    @pytest.mark.regression
     async def test_a_silent_day_releases_what_it_left_held(self, seams: _Seams) -> None:
         await held.release_after_daily_run(seams.user.id, BriefingRunOutcome.SILENT)
 

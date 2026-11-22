@@ -6,7 +6,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -233,7 +234,6 @@ class TestAVoiceThatLinksFactsByCause:
         counts={},
     )
 
-    @pytest.mark.regression
     async def test_a_cause_no_fact_it_names_states_is_sent_back_from_every_field(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -287,7 +287,6 @@ class TestAVoiceThatLinksFactsByCause:
         assert asked.await_count == 2
 
 
-@pytest.mark.regression
 async def test_a_voice_calling_an_unlinked_todo_goal_work_is_sent_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -564,7 +563,6 @@ class TestALastVoiceThatStillBreaks:
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
         return voice
 
-    @pytest.mark.regression
     async def test_only_the_rejected_sentence_and_the_one_pointing_back_at_it_are_dropped(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -770,7 +768,6 @@ class TestASalvageCountsAndKeepsByField:
         )
         assert (event["dropped_sentences"], event["plain"]) == (4, False)
 
-    @pytest.mark.regression
     async def test_a_message_opening_on_a_recent_line_loses_only_that_sentence(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

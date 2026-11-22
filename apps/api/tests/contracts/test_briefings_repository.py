@@ -28,7 +28,7 @@ from app.models.brief_document_models import (
 )
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingPayload, BriefingSection
-from tests.factories import make_briefing_payload
+from tests.briefing_factories import make_briefing_payload
 from tests.helpers import local_timezone
 
 _EDITION = EditionRender(key="edition-key")

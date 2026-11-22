@@ -253,7 +253,6 @@ class TestAQuietWeek:
         assert (payload.form, payload.kicker) == (BriefForm.QUIET_NOTE, WEEKLY_KICKER)
         assert payload.message == expected_note(BriefingKind.WEEKLY, QuietFacts(calendar=None))
 
-    @pytest.mark.regression
     async def test_a_weekly_only_readers_last_empty_digest_says_goodbye_before_winding_down(
         self, world: World
     ) -> None:

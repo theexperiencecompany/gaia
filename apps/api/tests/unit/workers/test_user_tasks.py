@@ -292,7 +292,6 @@ class TestReactivateUserTask:
         ) as get:
             yield get
 
-    @pytest.mark.regression
     async def test_a_deleted_user_has_nothing_to_resume_and_is_not_retried(
         self, _user_exists: AsyncMock
     ) -> None:
@@ -305,7 +304,6 @@ class TestReactivateUserTask:
         log.set_ns.assert_called_once_with("reactivation", outcome="user_gone")
         assert result == "user u1 is gone: nothing to resume"
 
-    @pytest.mark.regression
     async def test_a_vanished_record_fails_without_a_retry(self) -> None:
         with (
             patch(_REACTIVATE, new_callable=AsyncMock, side_effect=LookupError("gone")),

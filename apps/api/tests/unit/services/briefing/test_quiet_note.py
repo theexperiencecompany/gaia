@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.factories import make_briefing_payload, make_user_id
+from tests.briefing_factories import make_briefing_payload
+from tests.factories import make_user_id
 import time_machine
 
 from app.constants.briefing import (

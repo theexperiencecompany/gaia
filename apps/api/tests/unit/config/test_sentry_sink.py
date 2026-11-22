@@ -641,7 +641,6 @@ def _carried(event: Event) -> str:
     return json.dumps(event, default=str)
 
 
-@pytest.mark.regression
 async def test_a_captured_error_carries_no_link_slug_content_token_or_viewer_ip(
     sentry_events: list[Event],
 ) -> None:
@@ -654,7 +653,6 @@ async def test_a_captured_error_carries_no_link_slug_content_token_or_viewer_ip(
     assert event["request"]["url"] == "http://api.test/api/v1/l/{slug}"
 
 
-@pytest.mark.regression
 async def test_a_trace_carries_no_link_slug_content_token_or_viewer_ip(
     sentry_transactions: list[Event],
 ) -> None:
@@ -691,7 +689,6 @@ def test_spans_sentry_already_trimmed_pass_through() -> None:
     assert event["spans"] is trimmed
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("name", "source"),
     [("process_reminder", TransactionSource.TASK), ("chat turn", TransactionSource.CUSTOM)],

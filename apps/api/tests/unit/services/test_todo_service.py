@@ -839,7 +839,6 @@ class TestUpdateTodo:
         assert result.sub_todo_count == 2
         mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         ("delivery", "released"), [(WorkflowDelivery.NOW, True), (WorkflowDelivery.SILENT, False)]
     )

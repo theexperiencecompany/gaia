@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
+from tests.briefing_helpers import user_clock
 from tests.factories import make_todo, make_user_id
-from tests.helpers import user_clock
 
 from app.agents.prompts.brief_fact_prompts import CALENDAR_UNAVAILABLE, NO_CALENDAR_CONNECTED
 from app.constants.briefing import (

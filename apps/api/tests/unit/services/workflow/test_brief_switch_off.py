@@ -113,7 +113,6 @@ def _released(seams: _Seams) -> None:
 
 
 class TestSwitchingTheDailyBriefOff:
-    @pytest.mark.regression
     async def test_a_lapsed_plan_releases_what_the_brief_held(self, seams: _Seams) -> None:
         """The unpaid-fire gate pauses the brief through the scheduler; its held results were stranded."""
         await WorkflowScheduler().pause_for_reason(
@@ -123,7 +122,6 @@ class TestSwitchingTheDailyBriefOff:
         assert not seams.workflow.activated
         _released(seams)
 
-    @pytest.mark.regression
     async def test_removing_the_member_releases_what_their_brief_held(
         self, seams: _Seams, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -193,7 +191,6 @@ class TestTellMeNow:
         monkeypatch.setattr(workflow_repository, "update_for_user", AsyncMock(return_value=digest))
         return digest
 
-    @pytest.mark.regression
     async def test_switching_a_held_delivery_to_now_releases_only_what_it_held(
         self, seams: _Seams, digest: WorkflowDocument
     ) -> None:

@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock
 
 from pydantic import ValidationError
 import pytest
+from tests.briefing_helpers import user_clock
 from tests.factories import make_user_id
-from tests.helpers import captured_wide_event, user_clock
+from tests.helpers import captured_wide_event
 
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError

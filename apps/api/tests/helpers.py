@@ -12,7 +12,7 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import ExitStack, asynccontextmanager, contextmanager
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 from http.cookies import Morsel, SimpleCookie
@@ -56,28 +56,20 @@ import time_machine
 import uvicorn
 from workos.session import SessionModule
 
-from app.agents.prompts.briefing_prompts import UNTRUSTED_DATA_NOTE
 from app.config.rate_limits import RateLimitConfig
 from app.config.settings import settings
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.auth import SESSION_HINT_COOKIE
-from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.trigger_gates import GateKind
-from app.db.repositories.briefing_state import briefing_state_repository
-from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.users import user_repository
-from app.models.brief_settings_models import BriefingSchedule
-from app.models.briefing_state_models import BriefingStateDocument
 from app.models.conversation_log_models import LoggedEntry, Reply, ReplySettled, UserMessage
 from app.models.conversation_models import LogPage
 from app.models.conversation_screen_models import NoticeItem, ScreenItem, UserItem, WorkItem
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.services.briefing.clock import UserClock
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.screen import project_screen
 from app.services.hil.jev_client import decisions_url
@@ -105,32 +97,6 @@ async def users_get(user_id: str) -> UserDocument | None:
     if user_id == UNKNOWN_USER_ID:
         return None
     return UserDocument.model_validate({"id": user_id, "onboarding": {"completed": True}})
-
-
-def briefs_on(frequency: BriefingFrequency) -> Callable[[str], Awaitable[BriefingStateDocument]]:
-    """Stand in for briefing_state_repository.state_for with briefs that run at frequency."""
-
-    async def state_for(user_id: str) -> BriefingStateDocument:
-        return BriefingStateDocument(
-            user_id=user_id, schedule=BriefingSchedule(frequency=frequency)
-        )
-
-    return state_for
-
-
-@contextmanager
-def brief_loop_awake() -> Iterator[None]:
-    """Serve brief_will_carry's reads past the workflow: a user with no dormancy or winback."""
-    with (
-        patch.object(
-            user_repository, "get", new=AsyncMock(side_effect=lambda uid: UserDocument(id=uid))
-        ),
-        patch.object(
-            briefing_state_repository, "state_for", new=briefs_on(BriefingFrequency.DAILY)
-        ),
-        patch.object(briefing_repository, "list_recent", new=AsyncMock(return_value=[])),
-    ):
-        yield
 
 
 def session_set_cookie(name: str, value: str, max_age: int, *, secure: bool) -> str:
@@ -411,30 +377,6 @@ def email_verdict_answers(
         "probabilities": {"can_wait": can_wait, leaning: 1 - can_wait},
     }
     return {"answers": answers}
-
-
-_FENCE_RE = re.compile(r"<<[0-9a-f]{8,}>>")
-
-
-def unfenced(prompt: str) -> str:
-    """Return the prompt outside its untrusted-data fences; fails unless it has one fence, announced once."""
-    fences = set(_FENCE_RE.findall(prompt))
-    assert len(fences) == 1, f"expected one untrusted-data fence, found {sorted(fences)}"
-    (fence,) = fences
-    announced = UNTRUSTED_DATA_NOTE.format(fence=fence)
-    assert prompt.count(announced) == 1, "the fence is never said to hold data, not instructions"
-    parts = prompt.replace(announced, "").split(fence)
-    assert len(parts) % 2 == 1, "a fence is opened and never closed"
-    return "".join(parts[0::2])
-
-
-def user_clock(tz_name: str, day: date, hour: int = 8) -> UserClock:
-    """Return the brief's clock for a user in tz_name at hour on their local day."""
-    tz = zoneinfo.ZoneInfo(tz_name)
-    now = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
-    return UserClock(
-        tz=tz, now_local=now, date_str=day.isoformat(), day_of_year=now.timetuple().tm_yday
-    )
 
 
 def reaction_answers(

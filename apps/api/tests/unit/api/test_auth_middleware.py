@@ -854,6 +854,7 @@ class TestPostHogSessionJoin:
         assert "$session_id" not in event["properties"]
 
 
+@pytest.mark.usefixtures("recorded_activity")
 class TestRequestAttribution:
     """Each request is attributed once, by the middleware, from how it authenticated and who sent it."""
 

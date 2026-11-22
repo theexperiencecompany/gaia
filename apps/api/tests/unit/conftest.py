@@ -36,9 +36,9 @@ def origin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def recorded_activity() -> Iterator[AsyncMock]:
-    """Stand in for the middleware's activity write, which needs Mongo; yields it for assertions."""
+    """Stand in for the activity middleware's write, which needs Mongo; for tests that drive the full app."""
     with patch("app.api.v1.middleware.activity.mark_user_seen", new_callable=AsyncMock) as record:
         yield record
 

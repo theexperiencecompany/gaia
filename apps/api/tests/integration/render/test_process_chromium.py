@@ -52,7 +52,6 @@ def _kill_driver(playwright: Playwright) -> None:
     os.kill(playwright._impl_obj._connection._transport._proc.pid, signal.SIGKILL)
 
 
-@pytest.mark.regression
 @pytest.mark.integration
 async def test_a_render_after_the_driver_died_launches_a_new_browser() -> None:
     """Replay: a killed driver left the browser connected, so every render on it failed."""
@@ -67,7 +66,6 @@ async def test_a_render_after_the_driver_died_launches_a_new_browser() -> None:
     assert await _render_browser() is not dead
 
 
-@pytest.mark.regression
 @pytest.mark.integration
 async def test_a_browser_past_its_age_whose_driver_died_is_replaced(
     monkeypatch: pytest.MonkeyPatch,

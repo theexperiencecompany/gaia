@@ -111,7 +111,6 @@ class TestAFigureOfAnotherFact:
 
         assert claim_problems("message", written, values) == []
 
-    @pytest.mark.regression
     def test_a_figure_that_names_another_fact_by_its_title_is_not_pinned_on_the_slotted_one(
         self,
     ) -> None:
@@ -232,7 +231,6 @@ _FOUNDER = SlotValues(
 )
 
 
-@pytest.mark.regression
 class TestAGoalClaimInOtherWords:
     """Founder's Nov 22: "That's the one that feeds the 300-user goal" of a sequence no goal links."""
 
@@ -265,7 +263,6 @@ class TestAGoalClaimInOtherWords:
         ]
 
 
-@pytest.mark.regression
 class TestHowLongSomethingStood:
     """Founder's Nov 22: "still sitting unread" and "for a while" of a sequence no line dates."""
 
