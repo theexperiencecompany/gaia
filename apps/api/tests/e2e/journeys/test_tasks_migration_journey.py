@@ -1,8 +1,10 @@
 """Journey: an account built on today's todos and workflows moves into tasks with nothing lost.
 
-The account is made by driving the real system (routes, tools, worker jobs, OAuth connect),
-not by writing documents by hand, except for plain to-dos: those now live only in tasks, so
-the old todos they migrate from are written as the old todos API stored them. The migration then runs on real Mongo, the parity checker
+Workflows, apps, waits and templates are made by driving the real system (routes, worker
+jobs, OAuth connect). Todos now live only in tasks and the engine that ran GAIA's todos is
+gone, so they are written as the old todos API and engine stored them: plain to-dos here,
+GAIA's through the legacy builder, which test_legacy_todos_builder holds to what the old
+engine itself wrote. The migration then runs on real Mongo, the parity checker
 must come back clean, every kind of corruption must be caught, a second run must change
 nothing, and a run killed midway must resume to the same end state.
 """
@@ -24,7 +26,6 @@ from scripts.tasks_migration.migrate import PROGRESS, migrate
 from scripts.tasks_migration.parity import ParityReport, check_parity
 from scripts.tasks_migration.transform import task_from_workflow
 
-from app.agents.tools.tracked_todo_tools import create_tracked_todo
 from app.constants.tasks import INBOX_DESK_SYSTEM_KEY
 from app.constants.waits import WaitCondition
 from app.models.agent_config import AgentConfigurableView
@@ -39,16 +40,9 @@ from app.services.tasks.body_hash import task_body_hash
 from app.services.wait_service import wait_for_user
 from app.services.workflow.service import WorkflowService
 from tests.conftest import FAKE_USER
-from tests.e2e._harness.tasks_driver import TasksDriver
-from tests.e2e._harness.tasks_views import (
-    Asks,
-    Finishes,
-    NeedsApproval,
-    NoReply,
-    OpensReplyTask,
-    OpensSubtasks,
-    SavesPlaybook,
-)
+from tests.e2e._harness.legacy_todos import LegacyTodos
+from tests.e2e._harness.tasks_driver import GATED_ACTION, GATED_ACTION_ARGS, TasksDriver
+from tests.e2e._harness.tasks_views import NoReply, SavesPlaybook
 
 pytestmark = pytest.mark.e2e
 
@@ -99,17 +93,6 @@ async def _legacy_todo(
     return str(todo_id)
 
 
-async def _legacy_gaia_todo(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
-    """Hand GAIA a one-off through today's tracked-todo tool, as chat did; returns its id."""
-    said = await create_tracked_todo.ainvoke(
-        {"title": title, "waiting_on": "time", "scheduled_at": "1h", "notify_on_run": True},
-        config={"configurable": {"user_id": USER}},
-    )
-    row = await db["todos"].find_one({"user_id": USER, "title": title, "labels": "gaia-tracked"})
-    assert row is not None, f"GAIA did not take the task on: {said}"
-    return str(row["_id"])
-
-
 async def _generated_workflow(db: AsyncIOMotorDatabase[dict[str, Any]], title: str) -> str:
     """Give a to-do its generated workflow the way the generation worker does, steps supplied."""
     todo_id = await _legacy_todo(db, title)
@@ -138,13 +121,14 @@ async def _seed_explore_row(db: AsyncIOMotorDatabase[dict[str, Any]]) -> str:
 
 
 async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, Any]]) -> None:
-    """Drive today's system into an account with every kind of todo and workflow."""
+    """Build an account with every kind of todo and workflow, as today's system left it."""
     soon = datetime.now(UTC) + timedelta(days=2)
     await _legacy_todo(db, "Buy groceries", due=soon, checklist=(("Milk", True), ("Bread", False)))
     await _legacy_todo(db, "Pay rent", due=soon, recurrence="0 9 1 * *")
     await _legacy_todo(db, "Return the library book", completed=True)
 
-    dentist = await _legacy_gaia_todo(db, "Find a dentist near the office")
+    legacy = LegacyTodos(db, USER)
+    dentist = await legacy.tracked_todo("Find a dentist near the office")
     await wait_for_user(
         AgentConfigurableView(execution_mode="background", active_todo_id=dentist),
         USER,
@@ -152,23 +136,30 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
         "notion",
         "Notion",
     )
-    asked = await _legacy_gaia_todo(db, "Book the Lisbon flight")
-    await tasks.run_due(asked, Asks(QUESTION, NoReply.HOLD))
-    parent = await _legacy_gaia_todo(db, "Move flats on the 14th")
-    await tasks.run_due(
-        parent, OpensSubtasks(("Get mover quotes", "Book the van"), "Split the move.")
-    )
-    finished = await _legacy_gaia_todo(db, "Renew the car insurance")
-    await tasks.run_due(finished, Finishes("Renewed the insurance."))
+    asked = await legacy.tracked_todo("Book the Lisbon flight")
+    await legacy.asked(asked, QUESTION, NoReply.HOLD.value)
+    parent = await legacy.tracked_todo("Move flats on the 14th")
+    await legacy.split(parent, ("Get mover quotes", "Book the van"), "Split the move.")
+    finished = await legacy.tracked_todo("Renew the car insurance")
+    await legacy.finished(finished, "Renewed the insurance.")
     await _generated_workflow(db, "Plan the offsite")
 
+    # The old build opened the Inbox desk on this connect; the legacy builder writes it,
+    # so the plan is off while Gmail connects and today's build sets nothing up.
+    await tasks.let_subscription_lapse()
     await tasks.connect_app("gmail")
-    watcher = await _legacy_gaia_todo(db, "Wait for the landlord's reply")
-    await tasks.watch_emails_from(watcher, "landlord@example.com")
-    desk = await tasks.inbox_desk()
-    assert desk is not None
-    await tasks.run_due(
-        desk.id, OpensReplyTask("19a6c1f0d2e3b4a5", "Reply to Mads", "One thread needs you.")
+    await tasks.subscribe()
+    watcher = await legacy.tracked_todo("Wait for the landlord's reply")
+    await legacy.watches_emails_from(watcher, "landlord@example.com")
+    desk = await legacy.inbox_desk()
+    gmail = await db["user_integrations"].find_one({"user_id": USER, "integration_id": "gmail"})
+    assert gmail is not None
+    await legacy.desk_opened_reply_task(
+        desk,
+        "19a6c1f0d2e3b4a5",
+        "Reply to Mads",
+        account_id=gmail["primary_account_id"],
+        report="One thread needs you.",
     )
 
     briefing = await tasks.create_repeating_task(
@@ -200,9 +191,10 @@ async def _build_account(tasks: TasksDriver, db: AsyncIOMotorDatabase[dict[str, 
     await tasks.connect_app("googlecalendar")
     await _seed_explore_row(db)
 
-    await tasks.ask_before_acting()
-    gated = await _legacy_gaia_todo(db, "Draw up the launch plan")
-    await tasks.run_due(gated, NeedsApproval("Waiting on your approval."))
+    gated = await legacy.tracked_todo("Draw up the launch plan")
+    await legacy.parked_on_approval(
+        gated, tool_name=GATED_ACTION, summary="Create flowchart", args=GATED_ACTION_ARGS
+    )
 
 
 async def _forget_targets(db: AsyncIOMotorDatabase[dict[str, Any]]) -> None:
