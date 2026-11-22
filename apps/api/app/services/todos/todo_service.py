@@ -405,7 +405,12 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
 def _capture_bulk_update(
     user_id: str, update: TodoUpdate, succeeded: list[str], already_completed: frozenset[str]
 ) -> None:
-    """Capture a bulk update for the todos it changed; a bulk that changed none captures nothing."""
+    """Capture a bulk update for the todos it changed; a bulk that changed none captures nothing.
+
+    An already-completed todo is a no-op only when completion was all the update asked for.
+    """
+    if _drop_completion_fields(update).model_fields_set:
+        already_completed = frozenset()
     written = sum(1 for todo_id in succeeded if todo_id not in already_completed)
     if not written:
         return
