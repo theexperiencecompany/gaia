@@ -224,10 +224,8 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             upsert=True,
         )
         if doc is None:
-            # Unreachable: find_one_and_update(upsert=True, AFTER) always yields a document.
-            raise AppError(
-                message="briefing upsert returned no document"
-            )  # pragma: no mutate — unreachable, so its message cannot be observed
+            # Unreachable (upsert=True, AFTER always yields a document), so its message is unobservable.
+            raise AppError(message="briefing upsert returned no document")  # pragma: no mutate
         return doc
 
     async def record_step(
@@ -247,7 +245,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
 
     async def complete_delivery(self, user_id: str, briefing_id: str) -> None:
         """Mark the brief's delivery complete: every step is done and its held results consumed."""
-        await self._apply_raw_update(
+        await self._apply_raw_update(  # pragma: no mutate — no cache_policy: scope is inert
             {"_id": briefing_id, "user_id": user_id},
             {"$set": {"delivery.completed_at": datetime.now(UTC)}},
             scope=user_id,

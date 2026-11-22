@@ -316,6 +316,47 @@ class TestRunTriage:
         assert "- priya@client.com | Contract redlines |" in prompt
         assert "Your receipt" not in prompt
 
+    async def test_each_triage_line_names_its_labels_sender_and_subject_and_noise_is_judged_case_blind(
+        self,
+    ) -> None:
+        late_unsubscribe = "x" * 190 + "unsubscribe"  # its last letter is the 201st
+        ctx = InboxScanContext()
+        ctx.emails.extend(
+            GmailMessagesResponse(
+                messages=[
+                    GmailMessageSummary.model_validate(
+                        {
+                            "id": "1",
+                            "from": "priya@client.com",
+                            "subject": "Contract redlines",
+                            "snippet": "Sign by Friday",
+                            "labelIds": ["CATEGORY_UPDATES", "INBOX", "IMPORTANT"],
+                        }
+                    ),
+                    GmailMessageSummary.model_validate({"id": "2", "snippet": late_unsubscribe}),
+                    GmailMessageSummary.model_validate(
+                        {"id": "3", "from": "a@b.com", "snippet": "Click to UNSUBSCRIBE"}
+                    ),
+                ]
+            ).raw_messages()
+        )
+        ctx.first_batch_ready.set()
+        prompts: list[str] = []
+
+        async def structured(_schema: type, prompt: str, **_: Any) -> InboxTriageOutput:
+            prompts.append(prompt)
+            return InboxTriageOutput(summary="s", important_emails=[], patterns=[])
+
+        with patch("app.services.onboarding.inbox_triage_service.ainvoke_structured", structured):
+            await _run_triage(USER, ctx, "dev")
+
+        [prompt] = prompts
+        lines = [line for line in prompt.splitlines() if " | " in line]
+        assert lines == [
+            "- [updates, important] priya@client.com | Contract redlines | Sign by Friday",
+            f"- Unknown | (no subject) | {late_unsubscribe}",
+        ]
+
 
 # ---------------------------------------------------------------------------
 # _run_social_profiles

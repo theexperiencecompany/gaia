@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import ClassVar
 
 from pymongo import ReplaceOne, UpdateOne
@@ -338,7 +338,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         said = {
             "kind": EntryKind.USER_MESSAGE.value,
             "surface": {"$in": _BOT_SOURCE_VALUES},
-            "at": {"$gt": since.astimezone(UTC)},
+            "at": {"$gt": since},
         }
         rows = await self._find_entries(user_id, said)
         newest_first = [row.logged.entry for row in reversed(rows)][:limit]
@@ -363,11 +363,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         seen: list[str] = []
         for logged in map(logged_of, stored):
             entry = logged.entry
-            if not isinstance(entry, Reply | Notice):
-                continue
-            for action in entry.follow_up_actions:
-                if action not in seen:
-                    seen.append(action)
+            if isinstance(entry, Reply | Notice):
+                for action in entry.follow_up_actions:
+                    if action not in seen:
+                        seen.append(action)
         return seen
 
     async def owner_ids(self, conversation_id: str) -> set[str]:
@@ -446,7 +445,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, user_id: str, purpose: SystemPurpose
     ) -> ConversationDocument | None:
         """Return the user's one system-generated conversation for a purpose, if it exists."""
-        heads = await self._read_heads(
+        # One conversation per purpose, so heads[0] is it whatever the limit.
+        heads = await self._read_heads(  # pragma: no mutate
             {"user_id": user_id, "is_system_generated": True, "system_purpose": purpose.value},
             limit=1,
         )
