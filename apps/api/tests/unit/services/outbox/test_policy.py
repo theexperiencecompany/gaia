@@ -233,3 +233,31 @@ def test_a_late_notice_is_not_an_answer_even_when_the_user_scheduled_it() -> Non
 
 def test_a_late_notice_must_be_said_even_though_it_is_background() -> None:
     assert must_include(UrgencyClass.BACKGROUND, _late())
+
+
+def test_a_run_waiting_on_the_approvals_it_proposed_is_asked_by_those_approvals() -> None:
+    """Regression: one instruction to save gave two asks 3 seconds apart, the approval's and the run's own."""
+    waiting = _run(OutcomeState.NEEDS_YOU, Initiative.ASKED).model_copy(
+        update={"pending_approvals": ["ap_1"]}
+    )
+
+    decision = decide(waiting, None)
+
+    assert (decision.kind, decision.drop_reason) == (
+        DecisionKind.RECORD_ONLY,
+        DropReason.ASKED_AS_APPROVAL,
+    )
+
+
+def test_a_run_that_needs_the_user_for_something_else_is_still_told() -> None:
+    assert (
+        decide(_run(OutcomeState.NEEDS_YOU, Initiative.ASKED), None).kind is DecisionKind.SEND_NOW
+    )
+
+
+def test_a_finished_run_that_left_an_approval_open_is_still_told() -> None:
+    done = _run(OutcomeState.DONE, Initiative.ASKED).model_copy(
+        update={"pending_approvals": ["ap_1"]}
+    )
+
+    assert decide(done, None).kind is DecisionKind.SEND_NOW

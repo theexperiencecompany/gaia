@@ -1696,6 +1696,29 @@ async def test_c1_an_approval_ask_reaches_the_chat_app_the_user_is_on_as_a_compo
     assert tl.sinks.push == []
 
 
+async def test_a_run_waiting_on_its_approval_is_asked_once_by_the_approval(
+    tl: OutboxTimeline,
+) -> None:
+    """Regression: saving an instruction gave two asks 3 seconds apart: the approval's and the run's."""
+    tl.world.open_approvals.add("ap_1")
+    await tl.active_on(ConversationSource.TELEGRAM)
+    waiting = run_report(
+        _executor_run("web-1"),
+        RunOutcome(report=TaskReport(outcome=OutcomeState.NEEDS_YOU), pending_approvals=["ap_1"]),
+    )
+
+    await tl.submit(_approval())
+    await tl.submit(waiting)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.report_ids == ["hil:ap_1:pending"]
+    assert await _states(tl) == {
+        "hil:ap_1:pending": ItemState.SENT,
+        waiting.report_id: ItemState.DROPPED,
+    }
+
+
 async def test_an_approval_ask_in_the_app_is_pushed_to_a_backgrounded_phone(
     tl: OutboxTimeline,
 ) -> None:

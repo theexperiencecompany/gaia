@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.agents.core.background.decided_approvals import decided_approvals_of
+from app.agents.core.background.decided_approvals import (
+    decided_approvals_of,
+    pending_approvals_of,
+)
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, LedgerState
@@ -118,3 +121,15 @@ class TestDecidedApprovalsOfARun:
         stores["message"].tool_data = [{"tool_name": "web_search", "data": {}}]
 
         assert await decided_approvals_of(_run()) == []
+
+
+async def test_the_approvals_a_run_left_waiting_are_named_by_id_in_the_order_asked() -> None:
+    rows = [_ledger("ap_1", LedgerState.PENDING), _ledger("ap_2", LedgerState.PENDING)]
+    with patch(
+        f"{MODULE}.approval_ledger_repository.list_pending_proposed_by",
+        AsyncMock(return_value=rows),
+    ) as read:
+        pending = await pending_approvals_of(_run())
+
+    read.assert_awaited_once_with("conv-1", "stream-1")
+    assert pending == ["ap_1", "ap_2"]

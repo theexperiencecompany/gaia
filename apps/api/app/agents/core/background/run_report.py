@@ -42,6 +42,7 @@ class RunOutcome(BaseModel):
     result: str = ""
     review_problem: str | None = None
     decided_approvals: list[DecidedApproval] = Field(default_factory=list)
+    pending_approvals: list[str] = Field(default_factory=list)
 
 
 def _unconfirmed(result: str, problem: str | None) -> RunOutcome:
@@ -139,6 +140,7 @@ def workflow_run_report(
         review_problem=outcome.review_problem,
         interrupt_reason=workflow.interrupt_reason,
         decided_approvals=outcome.decided_approvals,
+        pending_approvals=outcome.pending_approvals,
     )
 
 
@@ -178,4 +180,5 @@ def run_report(run: ExecutorRun, outcome: RunOutcome) -> RunReport:
         result=outcome.result,
         review_problem=outcome.review_problem,
         decided_approvals=outcome.decided_approvals,
+        pending_approvals=outcome.pending_approvals,
     )

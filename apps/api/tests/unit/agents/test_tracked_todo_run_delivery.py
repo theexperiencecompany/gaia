@@ -135,6 +135,7 @@ def _seams(
         patch.object(er, "StreamManager", stream_manager),
         patch.object(er, "release_lock_if_owned", AsyncMock()),
         patch.object(er, "ExecutorInbox", inbox),
+        patch.object(er, "pending_approvals_of", AsyncMock(return_value=[])),
         patch("app.services.hil.bridge.flush_held_approval_cards", AsyncMock()),
         patch.object(rc, "update_messages", seams.save_to_conversation),
         patch.object(trd, "submit", seams.submit),

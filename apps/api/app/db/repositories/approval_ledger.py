@@ -235,6 +235,25 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
             ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
         ]
 
+    async def list_pending_proposed_by(
+        self, conversation_id: str, run_id: str
+    ) -> list[ApprovalLedgerDocument]:
+        """Return the approvals the run on run_id proposed that still wait on the user, oldest first."""
+        cursor = (
+            self._raw_collection()
+            .find(
+                {
+                    "conversation_id": conversation_id,
+                    "state": LedgerState.PENDING.value,
+                    "proposing_run_id": run_id,
+                }
+            )
+            .sort("created_at", 1)
+        )
+        return [
+            ApprovalLedgerDocument.model_validate(raw) for raw in await cursor.to_list(length=200)
+        ]
+
     async def find_latest_denied(
         self, fingerprint: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:

@@ -8443,7 +8443,7 @@ export interface components {
          * @description Why an item is recorded and never alerted.
          * @enum {string}
          */
-        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved" | "digested";
+        DropReason: "nothing_new" | "cancelled" | "compose_skipped" | "not_watching" | "expired" | "user_muted" | "already_known" | "moot" | "superseded" | "duplicate" | "unwanted" | "repeat_backoff" | "leak_unresolved" | "digested" | "asked_as_approval";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.

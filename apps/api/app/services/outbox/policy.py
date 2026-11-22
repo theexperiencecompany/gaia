@@ -147,6 +147,15 @@ def is_progress(report: OutboxReport) -> bool:
     return isinstance(report, NoticeReport) and report.outcome is NoticeOutcome.PROGRESS
 
 
+def is_waiting_on_its_approvals(report: OutboxReport) -> bool:
+    """Whether a run needs the user only for approvals it proposed, which ask in their own notices."""
+    return (
+        isinstance(report, RunReport)
+        and report.report.outcome is OutcomeState.NEEDS_YOU
+        and bool(report.pending_approvals)
+    )
+
+
 def record_only_reason(report: OutboxReport, *, watched_live: bool) -> DropReason | None:
     """Return why a report is recorded and never alerted whatever anyone thinks of it, or None.
 
@@ -156,6 +165,8 @@ def record_only_reason(report: OutboxReport, *, watched_live: bool) -> DropReaso
     """
     if is_progress(report) and not watched_live:
         return DropReason.NOT_WATCHING
+    if is_waiting_on_its_approvals(report):
+        return DropReason.ASKED_AS_APPROVAL
     if isinstance(report, RunReport) and report.initiative is not Initiative.ASKED:
         reason = _RECORD_ONLY_OUTCOMES.get(report.report.outcome)
         if reason is not None:

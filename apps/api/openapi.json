@@ -5675,7 +5675,8 @@
           "unwanted",
           "repeat_backoff",
           "leak_unresolved",
-          "digested"
+          "digested",
+          "asked_as_approval"
         ],
         "title": "DropReason",
         "type": "string"

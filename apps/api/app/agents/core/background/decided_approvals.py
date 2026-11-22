@@ -1,7 +1,7 @@
-"""The approvals a run asked for that have been settled: what a report tells the user was decided.
+"""The approvals a run asked for: those settled, which its report tells, and those still pending, which ask for themselves.
 
-Read from the run's own cards, resolved against the stores that hold the decisions, so the
-message says what the user decided rather than what the run's thread last saw.
+Settled ones are read from the run's own cards, resolved against the stores that hold the
+decisions, so the message says what the user decided rather than what the run's thread last saw.
 """
 
 from app.agents.core.background.run_cards import approval_id_of_entry
@@ -66,3 +66,11 @@ async def decided_approvals_of(run: ExecutorRun) -> list[DecidedApproval]:
     ]
     decided = [await _decided(approval_id) for approval_id in approval_ids]
     return [d for d in decided if d is not None]
+
+
+async def pending_approvals_of(run: ExecutorRun) -> list[str]:
+    """Return the ids of the approvals the run proposed that still wait on the user."""
+    rows = await approval_ledger_repository.list_pending_proposed_by(
+        run.conversation_id, run.stream_id
+    )
+    return [row.approval_id for row in rows]

@@ -230,6 +230,7 @@ def _todo_report(finished: FinishedTodoRun, todo: TodoDocument) -> RunReport:
         review_problem=finished.outcome.review_problem,
         interrupt_reason=finished.interrupt_reason,
         decided_approvals=finished.outcome.decided_approvals,
+        pending_approvals=finished.outcome.pending_approvals,
         guidance=ProducerGuidance(
             title=todo.title,
             standing_rules=_canvas_section(

@@ -122,6 +122,13 @@ def _untouched_conversation() -> Iterator[None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_approvals_left_waiting() -> Iterator[None]:
+    """Double the approval ledger read a finished run's report makes, for a run that proposed none."""
+    with patch.object(er, "pending_approvals_of", AsyncMock(return_value=[])):
+        yield
+
+
 class _Boundaries:
     """All patched collaborators for one _finalize_executor_run call."""
 
@@ -148,6 +155,10 @@ class _Boundaries:
         )
         #: The outbox's submit: what the run reports.
         self.deliver = stack.enter_context(patch.object(er, "submit", new_callable=AsyncMock))
+        #: The approvals the run proposed that still wait on the user; none by default.
+        self.pending_approvals = stack.enter_context(
+            patch.object(er, "pending_approvals_of", new_callable=AsyncMock, return_value=[])
+        )
         #: The background browser job the run started that is still running; none by default.
         self.live_job = stack.enter_context(
             patch.object(er, "live_background_job_of", new_callable=AsyncMock, return_value=None)
@@ -1085,6 +1096,18 @@ class TestAReportWaitsForTheBrowserJobItsRunStarted:
         await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "boom", "error")
 
         boundaries.deliver.assert_awaited_once()
+
+
+class TestTheReportNamesTheApprovalsStillWaiting:
+    async def test_the_report_carries_the_approvals_the_run_left_pending(self, boundaries) -> None:
+        """The approval's notice is the ask; the outbox can tell only if the report names it."""
+        boundaries.pending_approvals.return_value = ["ap_1"]
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "Waiting on you.", "final")
+
+        boundaries.pending_approvals.assert_awaited_once()
+        assert boundaries.deliver.await_args.args[0].pending_approvals == ["ap_1"]
 
 
 class TestARunWokenForAnAsksResultReportsAsThatAsk:

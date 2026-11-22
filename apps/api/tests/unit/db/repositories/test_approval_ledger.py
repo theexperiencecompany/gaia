@@ -254,6 +254,21 @@ class TestReads:
         cursor.to_list.assert_awaited_once_with(length=200)
         assert len(docs) == 1 and docs[0].approval_id == "ap_1"
 
+    async def test_a_runs_pending_proposals_are_read_by_its_run_id_oldest_first(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        cursor = _find_returns(collection, [_doc()])
+
+        docs = await repo.list_pending_proposed_by("c1", "stream-1")
+
+        assert collection.find.call_args.args[0] == {
+            "conversation_id": "c1",
+            "state": "pending",
+            "proposing_run_id": "stream-1",
+        }
+        cursor.sort.assert_called_once_with("created_at", 1)
+        assert [doc.approval_id for doc in docs] == ["ap_1"]
+
     async def test_find_live_queries_live_rows_newest_first(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:

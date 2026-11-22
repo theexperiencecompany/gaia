@@ -139,6 +139,8 @@ class DropReason(StrEnum):
     LEAK_UNRESOLVED = "leak_unresolved"
     #: Told in the weekly email to a user who was away, and never alerted in a chat app.
     DIGESTED = "digested"
+    #: The run waits on approvals it proposed, and each approval's own notice is the ask.
+    ASKED_AS_APPROVAL = "asked_as_approval"
 
 
 class ItemFailure(StrEnum):
@@ -252,6 +254,8 @@ class RunReport(_ReportBase):
     turn_message_id: str | None = None
     #: The approvals the run asked for that are settled now; final, whatever the run's own thread says.
     decided_approvals: list[DecidedApproval] = Field(default_factory=list)
+    #: Approvals the run proposed that still waited on the user when it ended: each asks in its own notice.
+    pending_approvals: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _outcome_declared(self) -> Self:
