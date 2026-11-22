@@ -13,6 +13,7 @@ from app.constants.tasks import (
     TODO_DUE_NUDGE_BODY,
     TODO_REPEAT_NUDGE_BODY,
     VIEW_TASK_LABEL,
+    Assignee,
     WhenKind,
 )
 from app.db.repositories.tasks import task_repository
@@ -54,6 +55,18 @@ def task_redirect_action(task_id: str) -> NotificationAction:
             )
         ),
     )
+
+
+def with_round_fields(current: TaskDocument, update: TaskUpdate) -> TaskUpdate:
+    """Add the nudge a to-do owes once update lands, when update touches when it comes round."""
+    touched = {"when", "completed", "notify"} & update.model_fields_set
+    if current.assignee is not Assignee.USER or not touched:
+        return update
+    after = current.updated_by(update)
+    nudge = first_nudge_at(after)
+    if isinstance(after.when, RepeatWhen) and current.nudge_at and not after.completed:
+        nudge = current.nudge_at
+    return update.model_copy(update={"nudge_at": nudge})
 
 
 def first_nudge_at(task: TaskDocument) -> datetime | None:

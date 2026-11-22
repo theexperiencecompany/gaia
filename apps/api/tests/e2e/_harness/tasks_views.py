@@ -11,6 +11,10 @@ class TaskNotFoundError(Exception):
     """The user asked for a task, or a part of one, that is not there."""
 
 
+class TaskRefusedError(Exception):
+    """The app refused the user's change to a task, saying why."""
+
+
 class RunOutcome(StrEnum):
     """How one run of a GAIA task ended, as its run history shows it."""
 

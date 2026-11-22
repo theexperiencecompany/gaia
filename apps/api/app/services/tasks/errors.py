@@ -51,12 +51,8 @@ class NoChatError(AppError):
         )
 
 
-class ClosedParentError(AppError):
-    """Raised (409) when a subtask would reopen, or be filed, under a parent that is done."""
+class SubtaskParentError(AppError):
+    """Raised (409) when a task cannot be filed, moved or reopened under the parent it names."""
 
-    def __init__(self, parent_id: str) -> None:
-        super().__init__(
-            message=f"Task {parent_id} is done; reopen it first",
-            status_code=HTTPStatus.CONFLICT,
-            code="parent_completed",
-        )
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=HTTPStatus.CONFLICT, code="invalid_parent")

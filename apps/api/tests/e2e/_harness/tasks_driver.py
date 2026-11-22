@@ -27,7 +27,7 @@ from httpx import AsyncClient, Response
 from pydantic import BaseModel
 import time_machine
 
-from app.agents.tools.task_tools import create_task
+from app.agents.tools.task_tools import create_task, update_task
 from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
@@ -77,6 +77,7 @@ from tests.e2e._harness.tasks_views import (
     SavesPlaybook,
     Subtask,
     TaskNotFoundError,
+    TaskRefusedError,
     TaskView,
 )
 from tests.e2e._harness.transcript import Transcript
@@ -149,6 +150,8 @@ USER_SETTINGS = "/api/v1/user"
 def _ok(response: Response) -> Any:
     if response.status_code == 404:
         raise TaskNotFoundError(response.text)
+    if response.status_code == 409:
+        raise TaskRefusedError(response.json()["message"])
     assert response.is_success, (
         f"{response.request.method} {response.request.url}: {response.status_code} {response.text}"
     )
@@ -384,6 +387,15 @@ class TasksDriver:
         assert created is not None, f"GAIA did not take the task on: {said}"
         return created
 
+    async def gaia_files_under(self, task_id: str, parent_id: str) -> str:
+        """Have GAIA move one of its tasks under another as its subtask; returns what the tool said."""
+        return str(
+            await update_task.ainvoke(
+                {"task_id": task_id, "parent_id": parent_id},
+                config={"configurable": {"user_id": self._user_id}},
+            )
+        )
+
     async def run_due(self, task_id: str, run: GaiaRun | None = None) -> str:
         """Let time pass to the task's next armed run and fire it, GAIA working as scripted.
 
@@ -472,6 +484,31 @@ class TasksDriver:
                     ask["default_action"] = default
                 self._executor.then([call("update_task", ask), question])
                 tell(question)
+            case OpensSubtasks(titles, report):
+                self._executor.then(
+                    [
+                        *(
+                            call(
+                                "create_task",
+                                {
+                                    "title": title,
+                                    "assignee": "gaia",
+                                    "parent_id": task_id,
+                                    "waiting_on": "time",
+                                    "next_check": FIRST_LOOK,
+                                },
+                                call_id=f"tc_sub_{i}",
+                            )
+                            for i, title in enumerate(titles)
+                        ),
+                        call(
+                            "update_task",
+                            {"task_id": task_id, "waiting_on": "sub_todos", "next_check": "3d"},
+                        ),
+                        report,
+                    ]
+                )
+                tell(report)
             case Breaks():
                 pass
             case _:
@@ -946,6 +983,8 @@ class TasksDriver:
 
     async def subtasks_of(self, task_id: str) -> list[TaskView]:
         """Return the sub-tasks listed under a task, open and done."""
+        if _is_task(task_id):
+            return await self._tasks(parent_id=task_id)
         return await self._list(parent_todo_id=task_id)
 
     async def runs(self, task_id: str) -> list[RunView]:

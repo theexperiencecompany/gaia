@@ -28,12 +28,15 @@ from app.models.task_models import (
     RepeatWhen,
     TaskDocument,
     TaskUpdate,
+    Waiting,
 )
+from app.models.todo_models import default_notify_on_run
 from app.schemas.tasks import TaskCreateRequest, TaskUpdateRequest
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks import task_service
-from app.services.tasks.errors import ClosedParentError, RepeatRuleError, TaskNotFoundError
-from app.services.tasks.gaia_tasks import complete_gaia_task, create_gaia_task, update_gaia_task
+from app.services.tasks.completion import complete_task as close_task
+from app.services.tasks.errors import RepeatRuleError, SubtaskParentError, TaskNotFoundError
+from app.services.tasks.gaia_tasks import create_gaia_task, update_gaia_task
 from app.services.tasks.notes import CANVAS_TEMPLATE, with_ownership
 from app.services.tasks.open_state import (
     NEXT_CHECK_HINT,
@@ -68,7 +71,12 @@ _REPEAT_DESC = (
 )
 _NOTIFY_DESC = (
     "Whether the user hears about it: a GAIA task's results, a to-do's nudge when due. "
-    "Set it only when the user asks to stop or resume hearing about it."
+    "Set it only when the user asks to stop or resume hearing about it; left out, a subtask "
+    "reports to its parent instead of the user."
+)
+_PARENT_DESC = (
+    "The open, top-level task this one is a subtask of; GAIA's subtasks go under GAIA's tasks, "
+    "one level deep"
 )
 
 
@@ -138,6 +146,53 @@ async def _owned_references(user_id: str, references: list[str], task_id: str | 
         )
 
 
+_NO_FIELDS = "No fields to update. Provide at least one field to change."
+
+
+def _move_fields(
+    task: TaskDocument, parent_id: str | None, notify: bool | None
+) -> dict[str, object]:
+    """The fields that file a GAIA task under parent_id; moved, it reports like a new subtask."""
+    if parent_id is None:
+        return {}
+    if task.assignee is Assignee.USER:
+        raise _Refused(
+            f"Error: {task.id} is the user's own to-do; a to-do is filed under a parent when "
+            "it is created. Nothing was saved."
+        )
+    if notify is not None:
+        return {"parent_id": parent_id}
+    return {
+        "parent_id": parent_id,
+        "notify": default_notify_on_run(parent_todo_id=parent_id, external_ref=task.external_ref),
+    }
+
+
+async def _update_todo(task: TaskDocument, fields: dict[str, object]) -> str:
+    if not fields:
+        return _NO_FIELDS
+    await task_service.update_task(task.user_id, task.id, TaskUpdateRequest.model_validate(fields))
+    return f"Updated to-do {task.id}: {', '.join(fields)}."
+
+
+def _waiting_with(
+    task: TaskDocument,
+    on: WaitingOn | None,
+    question: str | None,
+    if_no_reply: NoReplyPlan | None,
+    default_action: str | None,
+) -> Waiting:
+    """What the task waits on once this change lands; what the change leaves out stays as it was."""
+    asked = task.waiting.question if task.waiting else None
+    return waiting_after(
+        task.waiting,
+        on=on or (task.waiting.on if task.waiting else WaitingOn.TIME),
+        question=question or (asked.text if asked else None),
+        if_no_reply=if_no_reply or (asked.if_no_reply if asked else None),
+        default_action=default_action or (asked.default_action if asked else None),
+    )
+
+
 def _refusal(refused: OpenStateError, verb: str) -> str:
     problems = "\n".join(f"- {p}" for p in refused.problems)
     return f"Error: the task was not {verb}, because it would have no valid next step:\n{problems}"
@@ -157,8 +212,8 @@ async def create_task(
     question: Annotated[str | None, _QUESTION_DESC] = None,
     if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
     default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
-    notify: Annotated[bool, _NOTIFY_DESC] = True,
-    parent_id: Annotated[str | None, "The open task this one is a subtask of"] = None,
+    notify: Annotated[bool | None, _NOTIFY_DESC] = None,
+    parent_id: Annotated[str | None, _PARENT_DESC] = None,
     done_when: Annotated[
         list[str] | None,
         "GAIA tasks: the checkable conditions that make it done, one each, as the user means "
@@ -180,6 +235,8 @@ async def create_task(
     ] = None,
 ) -> str:
     user_id = get_user_id(config)
+    if notify is None:
+        notify = default_notify_on_run(parent_todo_id=parent_id, external_ref=None)
     try:
         when = await _when(user_id, due, repeat)
         if assignee is Assignee.USER:
@@ -194,11 +251,6 @@ async def create_task(
             return refusal
         if references:
             await _owned_references(user_id, references, None)
-        if (
-            parent_id is not None
-            and (await task_service.require_task(user_id, parent_id)).completed
-        ):
-            raise ClosedParentError(parent_id)
         draft = TaskDocument(
             user_id=user_id,
             title=title,
@@ -230,7 +282,7 @@ async def create_task(
         return str(refused)
     except OpenStateError as refused:
         return _refusal(refused, "created")
-    except (TaskNotFoundError, ClosedParentError, RepeatRuleError) as refused:
+    except (TaskNotFoundError, SubtaskParentError, RepeatRuleError) as refused:
         return f"Error: {refused.message} Nothing was saved."
     return (
         f"Task created (id {created.id}): {created.title}. "
@@ -252,6 +304,9 @@ async def update_task(
     if_no_reply: Annotated[NoReplyPlan | None, _IF_NO_REPLY_DESC] = None,
     default_action: Annotated[str | None, _DEFAULT_ACTION_DESC] = None,
     notify: Annotated[bool | None, _NOTIFY_DESC] = None,
+    parent_id: Annotated[
+        str | None, "Move it under this task as its subtask. " + _PARENT_DESC
+    ] = None,
 ) -> str:
     user_id = get_user_id(config)
     try:
@@ -263,32 +318,24 @@ async def update_task(
         }
         if due is not None:
             fields["when"] = DateWhen(at=_parse_moment(due, "due", future=False))
+        fields.update(_move_fields(task, parent_id, notify))
         if task.assignee is Assignee.USER:
-            if not fields:
-                return "No fields to update. Provide at least one field to change."
-            await task_service.update_task(
-                user_id, task_id, TaskUpdateRequest.model_validate(fields)
-            )
-            return f"Updated to-do {task_id}: {', '.join(fields)}."
+            return await _update_todo(task, fields)
         if next_check is not None:
             fields["next_check_at"] = _parse_moment(next_check, "next_check", future=True)
-        if waiting_on is not None or question is not None:
-            fields["waiting"] = waiting_after(
-                task.waiting,
-                on=waiting_on or (task.waiting.on if task.waiting else WaitingOn.TIME),
-                question=question,
-                if_no_reply=if_no_reply,
-                default_action=default_action,
+        if any(v is not None for v in (waiting_on, question, if_no_reply, default_action)):
+            fields["waiting"] = _waiting_with(
+                task, waiting_on, question, if_no_reply, default_action
             )
         if not fields:
-            return "No fields to update. Provide at least one field to change."
+            return _NO_FIELDS
         updated = await update_gaia_task(task, TaskUpdate.model_validate(fields), by=_actor(config))
     except _Refused as refused:
         return str(refused)
     except OpenStateError as refused:
         return _refusal(refused, "updated")
-    except TaskNotFoundError as missing:
-        return f"Error: {missing.message}"
+    except (SubtaskParentError, TaskNotFoundError) as refused:
+        return f"Error: {refused.message} Nothing was saved."
     return (
         f"Updated task {task_id}: {', '.join(fields)}. "
         f"{describe_open_state(updated, datetime.now(UTC))}."
@@ -316,12 +363,9 @@ async def complete_task(
             "standing schedule: leave it open, or if the user asked to stop it entirely, call "
             "complete_task again with stop_repeat=true."
         )
-    if task.assignee is Assignee.USER:
-        await task_service.update_task(user_id, task_id, TaskUpdateRequest(completed=True))
-        return f"To-do {task_id} marked done."
-    if await complete_gaia_task(task, summary) is None:
+    if await close_task(task, summary) is None:
         return f"Task {task_id} was already done."
-    return f"Task {task_id} completed."
+    return f"{'To-do' if task.assignee is Assignee.USER else 'Task'} {task_id} completed."
 
 
 tools = [create_task, update_task, complete_task]

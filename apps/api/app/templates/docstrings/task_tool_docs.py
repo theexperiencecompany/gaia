@@ -14,6 +14,11 @@ CREATE_TASK = """
     ISO datetime with the user's offset). Waiting on the user means one question, passed as
     question, with if_no_reply decided now: ask_again, proceed (with default_action) or hold.
 
+    Splitting GAIA work: create each part with parent_id set to the open top-level GAIA task,
+    then set the parent waiting_on "sub_todos" with a backup next_check. Each finished
+    subtask wakes the parent; closing the parent closes its open subtasks. A subtask
+    reports to its parent, not the user, unless notify is set.
+
     Search existing tasks first (list_tasks) and update a match instead of creating a twin.
     Never repeat a task id in user-visible text.
     """
@@ -25,6 +30,7 @@ UPDATE_TASK = """
     - A run of a GAIA task is still open after its work: set waiting_on and a new next_check.
     - You asked the user something: waiting_on "user" with question and if_no_reply.
     - The user changes one of their to-dos (rename it, move its date).
+    - A GAIA task belongs under another open top-level GAIA task: pass parent_id.
 
     The working notes are files: edit /workspace/gaia-tasks/<folder>/canvas.md with the file
     tools, not with this tool. Never repeat a task id in user-visible text.

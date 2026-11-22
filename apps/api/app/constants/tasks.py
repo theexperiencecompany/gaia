@@ -223,6 +223,10 @@ class TaskLogEvent(StrEnum):
     OPEN_STATE_REPAIRED = "open_state_repaired"
     PAUSED = "paused"
     COMPLETED = "completed"
+    SUBTASK_COMPLETED = "subtask_completed"
+    APPROVAL_GRANTED = "approval_granted"
+    APPROVAL_DENIED = "approval_denied"
+    RESUME_DROPPED = "resume_dropped"
     MAINTENANCE = "maintenance"
 
 

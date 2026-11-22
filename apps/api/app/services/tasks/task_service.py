@@ -4,7 +4,6 @@ Every write that can change when a to-do comes round (its date, its repeat, its 
 its notify switch) recomputes the nudge it owes and arms the task's next time.
 """
 
-from datetime import UTC, datetime
 import uuid
 
 from app.constants.tasks import Assignee
@@ -30,14 +29,15 @@ from app.services.conversation_service import (
 )
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.tasks.arming import arm_task
+from app.services.tasks.completion import complete_task
 from app.services.tasks.errors import (
-    ClosedParentError,
     NoChatError,
     RepeatRuleError,
     SubtaskNotFoundError,
     TaskNotFoundError,
 )
-from app.services.tasks.todo_rounds import first_nudge_at, first_repeat
+from app.services.tasks.family import require_reopenable, require_subtask_parent
+from app.services.tasks.todo_rounds import first_nudge_at, first_repeat, with_round_fields
 from app.services.user_service import get_profile_timezone
 from app.utils.auth_utils import require_owner
 from app.utils.schedule import InvalidScheduleError, validate_repeat_rule
@@ -91,11 +91,6 @@ async def _ready_when(user_id: str, when: When) -> When:
     return first_repeat(fresh, (await get_profile_timezone(user_id)).value)
 
 
-async def _require_open_parent(user_id: str, parent_id: str) -> None:
-    if (await require_task(user_id, parent_id)).completed:
-        raise ClosedParentError(parent_id)
-
-
 def _with_ids(subtasks: list[SubTask]) -> list[SubTask]:
     return [s if s.id else s.model_copy(update={"id": str(uuid.uuid4())}) for s in subtasks]
 
@@ -104,7 +99,7 @@ async def create_task(user_id: str, request: TaskCreateRequest) -> TaskDocument:
     """Make a to-do the user does themselves, filed under parent_id when given."""
     await require_owner(user_id)
     if request.parent_id is not None:
-        await _require_open_parent(user_id, request.parent_id)
+        await require_subtask_parent(user_id, request.parent_id, assignee=Assignee.USER)
     draft = TaskDocument(
         user_id=user_id,
         title=request.title,
@@ -143,43 +138,32 @@ async def task_counts(user_id: str) -> TaskCounts:
     return await task_repository.compute_counts(user_id=user_id)
 
 
-def _round_fields(current: TaskDocument, update: TaskUpdate) -> TaskUpdate:
-    """Add the nudge a to-do owes once update lands, when update touches when it comes round."""
-    touched = {"when", "completed", "notify"} & update.model_fields_set
-    if current.assignee is not Assignee.USER or not touched:
-        return update
-    after = current.updated_by(update)
-    nudge = first_nudge_at(after)
-    if isinstance(after.when, RepeatWhen) and current.nudge_at and not after.completed:
-        nudge = current.nudge_at
-    return update.model_copy(update={"nudge_at": nudge})
-
-
 async def update_task(user_id: str, task_id: str, request: TaskUpdateRequest) -> TaskDocument:
-    """Apply the user's edit; ticking a task off or reopening it stamps or clears completed_at."""
+    """Apply the user's edit; ticking a task off closes its subtasks, reopening one stamps it open."""
     current = await require_task(user_id, task_id)
-    fields = request.model_dump(exclude_unset=True)
+    fields = request.model_dump(exclude_unset=True, exclude={"completed"})
     if request.when is not None:
         fields["when"] = await _ready_when(user_id, request.when)
-    if request.completed is not None:
-        fields["completed_at"] = datetime.now(UTC) if request.completed else None
-        if request.completed is False and current.parent_id is not None:
-            await _require_open_parent(user_id, current.parent_id)
-    update = _round_fields(current, TaskUpdate(**fields))
-    if not update.model_fields_set:
-        return current
-    updated = await task_repository.update(task_id, user_id=user_id, update=update)
-    if updated is None:
-        raise TaskNotFoundError(task_id)
-    await arm_task(updated)
-    log.set_ns("task", id=task_id, changed=sorted(request.model_fields_set))
-    if request.completed is not None:
-        capture(UserId(user_id), TaskToggled(task_id=task_id, completed=request.completed))
-    else:
-        capture(
-            UserId(user_id),
-            TaskUpdated(task_id=task_id, changed_fields=sorted(request.model_fields_set)),
+    if request.completed is False and current.completed:
+        await require_reopenable(current)
+        fields.update(completed=False, completed_at=None)
+    update = with_round_fields(current, TaskUpdate(**fields))
+    updated = current
+    if update.model_fields_set:
+        written = await task_repository.update(task_id, user_id=user_id, update=update)
+        if written is None:
+            raise TaskNotFoundError(task_id)
+        updated = written
+        await arm_task(updated)
+    if request.completed and not updated.completed:
+        updated = await complete_task(updated, "Completed by the user") or await require_task(
+            user_id, task_id
         )
+    log.set_ns("task", id=task_id, changed=sorted(request.model_fields_set))
+    if request.completed is False and current.completed:
+        capture(UserId(user_id), TaskToggled(task_id=task_id, completed=False))
+    elif changed := sorted(request.model_fields_set - {"completed"}):
+        capture(UserId(user_id), TaskUpdated(task_id=task_id, changed_fields=changed))
     return updated
 
 

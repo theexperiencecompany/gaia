@@ -54,7 +54,7 @@ from app.services.conversation_service import get_or_create_task_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.tasks.arming import arm_at
-from app.services.tasks.gaia_tasks import complete_gaia_task
+from app.services.tasks.completion import complete_task
 from app.services.tasks.open_state import hold_ran_out, wake_budget_update
 from app.services.tasks.run_brief import build_scheduled_brief, collect_run_context
 from app.services.tasks.run_records import (
@@ -83,7 +83,7 @@ async def run_gaia_task(task: TaskDocument, armed_for: datetime) -> str:
         user = await require_owner(task.user_id)
     except OwnerNotFoundError as missing:
         log.error("task.owner_not_a_user", task_id=task.id, error=str(missing))
-        await complete_gaia_task(task, "closed: its owner is not a GAIA user")
+        await complete_task(task, "closed: its owner is not a GAIA user")
         return f"no_owner:{task.id}"
     if not await is_paid(task.user_id):
         return await _pause_unpaid(task)
@@ -350,7 +350,7 @@ async def _settle(woke: TaskDocument) -> None:
         await _clear_check(current, TaskUpdate(retry_count=0, next_check_at=None))
         return
     if hold_ran_out(current):
-        await complete_gaia_task(
+        await complete_task(
             current, f"closed: the question went unanswered through {MAX_HOLD_CHECKS} checks"
         )
         log.warning("task.unanswered_hold_closed", task_id=woke.id)
