@@ -5,8 +5,10 @@ an earlier build of this stack copied into conversation_entries. A user message 
 imported UserMessage, a bot message an imported Reply, each at its position; a bot message's
 ReplySettled is appended at the tail with a fresh seq, so no seq is ever renumbered. An
 emoji_ack folds into a chat-model reaction on the user message it answered. Re-runs merge by
-entry id and set only the fields whose source changed; the head write is conditional on the
-log_head and the array's whole-array fingerprint as read, so a racing write reports RACED.
+entry id and set only the fields whose source changed; a message the old build has since
+trimmed off its array becomes an empty imported reply at its seq, gone from every read. The
+head write is conditional on the log_head and the array's whole-array fingerprint as read, so
+a racing write reports RACED.
 """
 
 from __future__ import annotations
@@ -381,18 +383,28 @@ def _settle(message: ConversationEntry, reply: Reply, answered: str | None) -> R
     )
 
 
+def _blank(entry_id: str) -> Reply:
+    """Return the empty imported reply that holds a seq no old message fills; no read shows it."""
+    return Reply(id=entry_id, reply_id=entry_id, attempt_id=f"imported:{entry_id}", imported=True)
+
+
 def _sources(
-    head: EmbeddedHead, stored: Sequence[StoredEntry], minted: Sequence[str | None] | None
+    head: EmbeddedHead,
+    stored: Sequence[StoredEntry],
+    minted: Sequence[str | None] | None,
+    aside: Sequence[Mapping[str, object]],
 ) -> tuple[list[_Element], dict[str, StoredEntry], list[StoredEntry]]:
     """Return the old messages in order, the log entries already written by id, and the message-shaped entries.
 
-    Entries past log_head are a raced or dead pass's inserts, which the write removes.
+    aside is the array a pass moved to the archive: its messages come before any the old build
+    appended since. Entries past log_head are a raced or dead pass's inserts, which the write removes.
     """
     counted = [row for row in stored if row.seq <= (head.log_head or 0)]
     shaped = [row for row in counted if "type" in row.message_fields()]
     shaped_ids = {row.id for row in shaped}
     existing = {row.id: row for row in counted if row.id not in shaped_ids}
     elements = [_Element({**row.message_fields(), _ID_FIELD: row.id}, row.seq) for row in shaped]
+    elements += [_Element(dict(element)) for element in aside]
     for n, legacy in enumerate(head.messages):
         fields = legacy.stored()
         if minted is not None and minted[n] is not None:
@@ -577,7 +589,8 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
         minted = minted_ids(head.messages)
         identified = sum(entry_id is not None for entry_id in minted)
         try:
-            plan = self._plan(ref, head, await self._stored(ref), minted=minted)
+            aside = await self._aside(ref, head)
+            plan = self._plan(ref, head, await self._stored(ref), minted=minted, aside=aside)
             relocate = _needs_room(head, plan, minted)
             if identified and apply and not relocate:
                 if not await self._identify(ref, head.fingerprint, minted):
@@ -585,7 +598,7 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
                 head = await self._head(ref)
                 if head is None:
                     return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-                plan = self._plan(ref, head, await self._stored(ref), minted=None)
+                plan = self._plan(ref, head, await self._stored(ref), minted=None, aside=aside)
         except MigrationRefused as exc:
             return MigrationOutcome(ref.conversation_id, MigrationAction.REFUSED, reason=str(exc))
         action = MigrationAction.COPIED if head.log_head is None else MigrationAction.MERGED
@@ -650,12 +663,7 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             return report
         if head.log_head != max(log, default=0) or head.state != state:
             report.mismatches.append("the head's log_head or state is not the fold of its entries")
-        archived = (
-            []
-            if head.messages_archived is None
-            else await self._archived(ref, head.messages_archived)
-        )
-        if elements := [*archived, *(m.stored() for m in head.messages)]:
+        if elements := [*await self._aside(ref, head), *(m.stored() for m in head.messages)]:
             await self._compare_reads(ref, elements, head.conversation_at, report)
         return report
 
@@ -701,12 +709,13 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
         stored: Sequence[StoredEntry],
         *,
         minted: Sequence[str | None] | None,
+        aside: Sequence[Mapping[str, object]],
     ) -> _Plan:
         """Plan the writes that turn the sources into log entries, then fold the result and require it idle.
 
         minted names the ids not yet written into the array, so a dry run plans what apply writes.
         """
-        elements, existing, shaped = _sources(head, stored, minted)
+        elements, existing, shaped = _sources(head, stored, minted, aside)
         planned, folded = _planned(elements, _surface(head.source), head.conversation_at)
         plan = _Plan(folded=folded)
         plan.not_kept = sum(NotKeptFields.model_validate(e.fields).carried() for e in elements)
@@ -728,15 +737,20 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             seq_of[entry.id] = seq
             at = item.at or (prior.at if prior and prior.at else None) or datetime.now(UTC)
             plan.add(ref, LoggedEntry(seq=seq, at=at, entry=entry), prior, in_place=item.seq)
+        for row in existing.values():
+            if row.id not in seq_of and is_imported(logged_of(row).entry):
+                # The old build trimmed it off its array: it leaves the conversation, its seq stays.
+                trimmed = LoggedEntry(
+                    seq=row.seq, at=row.at or datetime.now(UTC), entry=_blank(row.id)
+                )
+                plan.add(ref, trimmed, row, in_place=None)
         placed = set(seq_of.values())
         for row in shaped:
             if row.seq not in placed:
                 # A folded ack already holding a seq stays as an empty imported reply, never a gap.
-                blank = Reply(
-                    id=row.id, reply_id=row.id, attempt_id=f"imported:{row.id}", imported=True
-                )
                 at = row.at or datetime.now(UTC)
-                plan.add(ref, LoggedEntry(seq=row.seq, at=at, entry=blank), None, in_place=row.seq)
+                blank = LoggedEntry(seq=row.seq, at=at, entry=_blank(row.id))
+                plan.add(ref, blank, None, in_place=row.seq)
         if sorted(plan.log) != list(range(1, len(plan.log) + 1)):
             raise MigrationRefused("the log would have a gap in its seqs")
         plan.state = _fold(plan.log)
@@ -810,6 +824,12 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             await self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION).delete_many(
                 {"head_id": ref.head_id, "fingerprint": head.fingerprint}
             )
+
+    async def _aside(self, ref: HeadRef, head: EmbeddedHead) -> list[dict[str, object]]:
+        """Return the array a pass moved off this head, or nothing when it kept its array."""
+        if head.messages_archived is None:
+            return []
+        return await self._archived(ref, head.messages_archived)
 
     async def _archived(self, ref: HeadRef, fingerprint: int) -> list[dict[str, object]]:
         """Return the elements of the array a pass moved off the head, in the order they sat."""
