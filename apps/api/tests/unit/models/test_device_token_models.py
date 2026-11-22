@@ -3,13 +3,15 @@
 from pydantic import ValidationError
 import pytest
 
-from app.models.device_token_models import DeviceTokenUpdate, PlatformType
+from app.models import device_token_models
+from app.models.device_token_models import PlatformType
 
 
+@pytest.mark.regression
 @pytest.mark.parametrize("field", ["platform", "is_active"])
 def test_an_explicit_null_for_a_required_field_is_rejected(field: str) -> None:
     with pytest.raises(ValidationError) as refused:
-        DeviceTokenUpdate.model_validate({field: None})
+        device_token_models.DeviceTokenUpdate.model_validate({field: None})
 
     assert [(e["loc"], e["msg"]) for e in refused.value.errors()] == [
         ((field,), "Value error, cannot be null")
@@ -17,12 +19,12 @@ def test_an_explicit_null_for_a_required_field_is_rejected(field: str) -> None:
 
 
 def test_a_null_device_id_is_allowed_to_clear_it() -> None:
-    update = DeviceTokenUpdate(device_id=None)
+    update = device_token_models.DeviceTokenUpdate(device_id=None)
 
     assert update.model_dump(exclude_unset=True) == {"device_id": None}
 
 
 def test_omitted_fields_stay_out_of_the_write() -> None:
-    update = DeviceTokenUpdate(platform=PlatformType.ANDROID)
+    update = device_token_models.DeviceTokenUpdate(platform=PlatformType.ANDROID)
 
     assert update.model_dump(exclude_unset=True) == {"platform": PlatformType.ANDROID}

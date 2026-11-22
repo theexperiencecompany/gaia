@@ -6,17 +6,15 @@ unique token key is what decides who holds a token.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, tzinfo
 
 from bson import ObjectId
 import pytest
-import time_machine
 
 from app.db.mongodb.indexes import create_device_token_indexes
 from app.db.repositories.device_tokens import DeviceTokensRepository
 from app.models.device_token_models import DeviceTokenUpdate, PlatformType
 from app.utils.errors import EmptyUpdateError
-from tests.helpers import local_timezone
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
 OTHER = "6812f0b3c9a14e2b7d5a91cd"
@@ -24,6 +22,19 @@ TOKEN = "ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]"
 SECOND_TOKEN = "ExponentPushToken[bbbbbbbbbbbbbbbbbbbbbb]"
 LONG_AGO = datetime(2026, 1, 11, 10, 0, tzinfo=UTC)
 REGISTERED_AT = datetime(2026, 3, 4, 23, 30, 15, 123000, tzinfo=UTC)
+KOLKATA_OFFSET = timedelta(hours=5, minutes=30)
+
+
+class _KolkataClock(datetime):
+    """A datetime whose now() is REGISTERED_AT, and whose naive now() reads on a UTC+5:30 wall clock."""
+
+    @classmethod
+    def now(cls, tz: tzinfo | None = None) -> datetime:
+        return (
+            REGISTERED_AT.astimezone(tz)
+            if tz
+            else (REGISTERED_AT + KOLKATA_OFFSET).replace(tzinfo=None)
+        )
 
 
 @pytest.fixture
@@ -45,10 +56,12 @@ async def _register(
 
 class TestDeviceTokensRepository:
     async def test_a_new_token_is_stored_with_exactly_the_documented_fields(
-        self, repo, raw_collection
+        self, repo, raw_collection, monkeypatch
     ):
-        with local_timezone("Asia/Kolkata"), time_machine.travel(REGISTERED_AT, tick=False):
-            is_new = await _register(repo)
+        for module in ("device_tokens", "base"):
+            monkeypatch.setattr(f"app.db.repositories.{module}.datetime", _KolkataClock)
+
+        is_new = await _register(repo)
 
         assert is_new is True
         raw = await raw_collection.find_one({"token": TOKEN})
