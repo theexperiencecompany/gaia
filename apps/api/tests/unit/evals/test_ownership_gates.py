@@ -133,7 +133,7 @@ class TestFollowup:
 
     def test_a_reminder_does_not_satisfy_a_follow_up_gaia_must_wake_for(self) -> None:
         """A reminder only pings the user; "check back" needs GAIA itself to wake."""
-        case = _case(followup="required", followup_kind="todo")
+        case = _case(followup="required", followup_kind="task")
         run = _run(
             _say("I'll check in tomorrow."),
             end_state={
@@ -143,11 +143,11 @@ class TestFollowup:
 
         assert followup_gate(case, run) == 0.0
 
-    def test_a_scheduled_tracked_todo_satisfies_it(self) -> None:
-        case = _case(followup="required", followup_kind="todo")
+    def test_a_scheduled_gaia_task_satisfies_it(self) -> None:
+        case = _case(followup="required", followup_kind="task")
         run = _run(
             _say("I'll check in tomorrow."),
-            end_state={"followups": [{"id": "todo:t", "title": "Lisbon flights", "wake": True}]},
+            end_state={"followups": [{"id": "task:t", "title": "Lisbon flights", "wake": True}]},
         )
 
         assert followup_gate(case, run) == 1.0

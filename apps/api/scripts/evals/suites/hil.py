@@ -20,7 +20,7 @@ plain HTTP, with nothing simulated:
 4. answer it (POST /api/v1/approvals/{approval_id}/decision), which logs an
    ApprovalDecided entry and resumes the work;
 5. keep following the same events until the work's write-up settles, then read
-   the REAL effect back from the domain API (GET /api/v1/todos,
+   the REAL effect back from the domain API (GET /api/v1/tasks,
    GET /api/v1/notifications).
 
 Which tools are gated is not invented either. send_notification is one of the
@@ -326,10 +326,11 @@ class HilTransport:
                 )
             elif key == "approvals":
                 projected[key] = len({str(card.get("approval_id")) for card in cards})
-            elif key == "todos_containing":
-                term = str(verify["todos_containing"]).lower()
-                resp = await client.get(_url("/todos"))
-                rows = resp.json().get("data") or [] if resp.status_code == 200 else []
+            elif key == "tasks_containing":
+                term = str(verify["tasks_containing"]).lower()
+                resp = await client.get(_url("/tasks"), params={"per_page": 100})
+                resp.raise_for_status()
+                rows = resp.json().get("tasks") or []
                 projected[key] = sum(1 for row in rows if term in str(row.get("title", "")).lower())
             elif key == "notifications":
                 resp = await client.get(_url("/notifications"))
