@@ -79,6 +79,8 @@ notify` sources it and `analytics.py csp-soak` runs it through bash),
 `csp_soak.py` (the CSP soak's header classification, HogQL query and Slack
 message behind `analytics.py csp-soak`, kept out of the catalog checks' file),
 `cpu-slots.sh` (the host CPU governor, below),
+`pinned-release.sh` (`fetch_verified`, the one download of a pinned release:
+checked against its digest and fetched again up to `DOWNLOAD_ATTEMPTS` times),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
 `CHANGED_FILES` contract), `checks-commands.mjs` (every `checks.mjs`
