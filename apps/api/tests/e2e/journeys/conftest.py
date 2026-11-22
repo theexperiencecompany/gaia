@@ -104,6 +104,14 @@ async def _clean_user(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[None]:
     )
     for keys, options in indexes.CONVERSATION_ENTRY_INDEXES:
         await mongo_db[CONVERSATION_ENTRIES_COLLECTION].create_index(keys, **options)
+    # The unique ones hold invariants (one open task per thread, one desk per user) the code
+    # leans on, and an index from an older spec would stand in for today's.
+    await mongo_db["tasks"].drop_indexes()
+    for keys, options in (
+        (indexes.TASK_OPEN_EXTERNAL_REF_KEYS, indexes.TASK_OPEN_EXTERNAL_REF_OPTIONS),
+        (indexes.TASK_SYSTEM_KEY_KEYS, indexes.TASK_SYSTEM_KEY_OPTIONS),
+    ):
+        await mongo_db["tasks"].create_index(keys, **options)
     yield
     for user in USERS:
         for collection in OWNED_COLLECTIONS:

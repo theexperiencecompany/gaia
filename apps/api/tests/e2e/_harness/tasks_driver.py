@@ -55,6 +55,7 @@ from app.models.payment_models import PlanType
 from app.schemas.tasks import TaskCreateRequest
 from app.services.conversation.send import submit_message
 from app.services.oauth.oauth_service import handle_oauth_connection
+from app.services.payments.subscription_events import queue_inbox_desk_safely
 from app.services.platform_link_service import PlatformLinkService
 from app.services.tasks import task_service
 from app.services.workflow.conversation_service import get_or_create_workflow_conversation
@@ -149,6 +150,13 @@ _DECLINE_PLAYBOOK = call(
 ON_IT = "On it."
 #: When GAIA checks back on a question it asked.
 QUESTION_EXPIRES = "1d"
+#: When a desk's reply task first follows up on the reply the user owes.
+REPLY_FOLLOW_UP = "2d"
+#: The notes the desk opens a reply task with.
+REPLY_TASK_NOTES = (
+    "## Key Details\nThread {thread_id}: the sender asks the user for a reply.\n\n"
+    "## Current State\nNo draft yet: the user has the answer."
+)
 #: A task tool's list line names its task as "(id <task id>)".
 _TASK_ID_IN_LINE = re.compile(r"\(id ([^)\s]+)\)")
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
@@ -195,6 +203,14 @@ def _when_time(when: dict[str, Any]) -> datetime | None:
     return datetime.fromisoformat(moment) if moment else None
 
 
+def _next_run(body: dict[str, Any]) -> datetime | None:
+    """When GAIA next works on the task: its next check, or a repeating GAIA task's next run."""
+    when = body["when"]
+    if body["assignee"] == "gaia" and when["kind"] == "repeat" and when.get("next_run"):
+        return datetime.fromisoformat(when["next_run"])
+    return datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None
+
+
 def _task_view(body: dict[str, Any]) -> TaskView:
     """Read a /tasks response as the user sees the task."""
     return TaskView(
@@ -210,7 +226,7 @@ def _task_view(body: dict[str, Any]) -> TaskView:
         parent_id=body["parent_id"],
         open_children=body["open_subtask_count"],
         pending_approval=body["pending_approval"] is not None,
-        next_run=datetime.fromisoformat(body["next_check_at"]) if body["next_check_at"] else None,
+        next_run=_next_run(body),
         paused_reason=body["pause_reason"],
         paused_for_apps=tuple(body["blocked_on_integrations"]),
         priority=body["priority"],
@@ -638,6 +654,27 @@ class TasksDriver:
                     ]
                 )
                 # A parked run is written up once its approval is decided, with what the decision starts.
+            case OpensReplyTask(thread_id, title, report):
+                self._executor.then(
+                    [
+                        call(
+                            "create_task",
+                            {
+                                "title": title,
+                                "assignee": "gaia",
+                                "parent_id": task_id,
+                                "gmail_thread_id": thread_id,
+                                "flags": ["needs_reply"],
+                                "waiting_on": "time",
+                                "next_check": REPLY_FOLLOW_UP,
+                                "notes": REPLY_TASK_NOTES.format(thread_id=thread_id),
+                            },
+                            call_id="tc_reply_task",
+                        ),
+                        report,
+                    ]
+                )
+                tell(report)
             case Breaks():
                 # The chat is told the run could not finish; the engine retries it.
                 tell(RUN_BROKE)
@@ -950,6 +987,24 @@ class TasksDriver:
         for job in await self._pool.queued_jobs():
             if job.function == PROVISION_INBOX_DESK_TASK:
                 await self._run(job)
+
+    async def gmail_connects_as_the_plan_starts(self) -> None:
+        """Connect Gmail while the plan's checkout lands, the worker taking up both set-ups together."""
+        background = BackgroundTasks()
+        await handle_oauth_connection(
+            self._user_id,
+            _integration("gmail"),
+            background,
+            connected_account_id=provider_account_id(APP_ACCOUNT),
+        )
+        await background()
+        await queue_inbox_desk_safely(self._user_id)
+        await drain_background_runs()
+        set_ups = [
+            j for j in await self._pool.queued_jobs() if j.function == PROVISION_INBOX_DESK_TASK
+        ]
+        assert len(set_ups) == 2, f"expected two set-ups queued, found {len(set_ups)}"
+        await asyncio.gather(*(self._run(job) for job in set_ups))
 
     async def inbox_desk(self) -> TaskView | None:
         """Return the Inbox desk GAIA keeps for the user, None when there is none."""
