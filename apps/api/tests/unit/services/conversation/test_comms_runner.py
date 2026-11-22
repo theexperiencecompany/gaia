@@ -1,7 +1,7 @@
 """The comms runner on the real comms graph and an in-memory checkpointer, with a scripted model."""
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 import re
 from typing import Any, TypeVar, cast
@@ -26,6 +26,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import INTERRUPTION_MARKER
 from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
+from app.agents.core.nodes.memory_node import memory_node
 from app.agents.middleware.factory import create_comms_history_fold
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.comms_turn_tools import react, stay_silent
@@ -185,6 +186,16 @@ def _tool_registry() -> None:
     """Register the real tool registry: tool cards resolve their categories through it."""
     if not providers.is_initialized("tool_registry"):
         init_tool_registry()
+
+
+@pytest.fixture(autouse=True)
+def _no_memory_side_work() -> Iterator[None]:
+    """Switch off the memory node's spawned retain and precompute: no turn's own, they reach real models."""
+    with (
+        patch(f"{memory_node.__module__}._store_user_memory_background", new=AsyncMock()),
+        patch(f"{memory_node.__module__}._precompute_next_turn_background", new=AsyncMock()),
+    ):
+        yield
 
 
 @pytest.fixture
