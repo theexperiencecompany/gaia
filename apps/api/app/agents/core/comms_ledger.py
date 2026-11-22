@@ -125,14 +125,11 @@ def _ledger_of(config: RunnableConfig) -> _Ledger | None:
 
 
 def _checked(ledger: _Ledger, seqs: Sequence[int]) -> tuple[str, ...]:
-    """Return the ids of seqs; each must be open, or closed by a call of the same model step.
-
-    Naming none is refused unless the run was given no message: a workflow fire's turn has none to name.
-    """
+    """Return the ids of seqs; each must be open, or closed by a call of the same model step."""
     closing = tuple(dict.fromkeys(seqs))
     just_closed = {seq for closure in ledger.closed for seq in closure.seqs}
     unknown = [seq for seq in closing if seq not in ledger.open | just_closed]
-    if (not closing and ledger.given) or unknown:
+    if not closing or unknown:
         open_now = ", ".join(f"#{seq}" for seq in sorted(ledger.open)) or "none"
         raise NotOpenError(
             f"name messages still open in this conversation (open now: {open_now}); "

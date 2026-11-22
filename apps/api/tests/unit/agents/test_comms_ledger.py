@@ -108,12 +108,3 @@ def test_naming_no_message_is_refused_even_with_nothing_open(config: RunnableCon
     assert str(refused.value) == (
         "name messages still open in this conversation (open now: none); not open: no ids given"
     )
-
-
-def test_a_turn_given_no_message_hands_off_naming_none() -> None:
-    """A workflow fire's turn is given no user message, so its hand-off names none and is not refused."""
-    open_ledger("fire-run", {})
-    try:
-        assert named({"configurable": {"comms_run": "fire-run"}}, []) == ()
-    finally:
-        close_ledger("fire-run")
