@@ -8,13 +8,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.db.repositories.short_links import short_link_repository
+from app.models.conversation_frame_models import RetractFrame
 from app.models.conversation_log_models import Reply
+from app.models.conversation_screen_models import ScreenInsertFrame, ScreenUpdateFrame
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.services.conversation.event_stream import event_lines
 from app.services.conversation.shown_links import shown_frame
 from app.services.links.placeholders import link_placeholder
 from app.services.links.urls import build_url
-from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame
+from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ReplyItem
+from tests.factories import make_reply_item
 from tests.unit.services.conversation.log_helpers import settled, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
@@ -93,3 +96,26 @@ async def test_a_placeholder_with_no_live_link_keeps_only_its_label(live_link: A
 
     assert isinstance(shown, ReplyDeltaFrame)
     assert shown.payload == BubbleTextDelta(bubble=0, text="See the plan")
+
+
+@pytest.mark.parametrize("patch_frame", [ScreenInsertFrame, ScreenUpdateFrame])
+async def test_a_patched_reply_reaches_the_client_with_its_link(
+    live_link: AsyncMock, patch_frame: type[ScreenInsertFrame] | type[ScreenUpdateFrame]
+) -> None:
+    frame = patch_frame(item=make_reply_item(f"Open {PLACEHOLDER}"), head=3)
+
+    shown = await shown_frame(USER, frame)
+
+    assert isinstance(shown, ScreenInsertFrame | ScreenUpdateFrame)
+    assert type(shown) is patch_frame
+    assert isinstance(shown.item, ReplyItem)
+    assert shown.item.bubbles == (f"Open {URL}",)
+    assert shown.head == 3
+    assert live_link.await_args.args[0] == USER
+
+
+async def test_a_frame_with_no_text_passes_through_as_it_is(live_link: AsyncMock) -> None:
+    retract = RetractFrame(attempt_id="a1")
+
+    assert await shown_frame(USER, retract) is retract
+    live_link.assert_not_awaited()

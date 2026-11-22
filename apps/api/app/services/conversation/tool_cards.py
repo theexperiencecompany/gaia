@@ -157,13 +157,15 @@ def _take_artifact_delta(cards: list[ToolDataEntry], delta: ArtifactDelta) -> No
     if held is not None and held.status is not ArtifactStatus.STREAMING:
         return  # The run already ended: a late chunk changes nothing.
     draft = ArtifactCard(
-        **delta.model_dump(mode="json", exclude={"delta"}),
+        stream_id=delta.stream_id,
+        kind=delta.kind,
+        title=delta.title,
         status=ArtifactStatus.STREAMING,
         program=(held.program if held is not None and held.program else "") + delta.delta,
     )
     card: ToolDataEntry = {
         "tool_name": ARTIFACT_DONE_EVENT,
-        "data": draft.model_dump(mode="json", exclude_none=True),
+        "data": draft.model_dump(exclude_none=True),
     }
     if index is None:
         cards.append(card)

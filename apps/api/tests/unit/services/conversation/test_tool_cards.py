@@ -331,3 +331,14 @@ def test_two_artifacts_stream_into_their_own_cards() -> None:
         card(ARTIFACT_DONE_EVENT, artifact("s1", "streaming", program="ac")),
         card(ARTIFACT_DONE_EVENT, artifact("s2", "streaming", program="b")),
     )
+
+
+def test_only_an_approval_or_artifact_card_is_replaced_by_its_id() -> None:
+    cards = [
+        card("search", {"approval_id": "a1"}),
+        card("search", {"approval_id": "a1"}),
+        card("weather", {"stream_id": "s1"}),
+        card("weather", {"stream_id": "s1"}),
+    ]
+    folded = fold_cards([ToolDataEvent(tool_data=shown) for shown in cards])
+    assert folded.tool_data == tuple(cards)

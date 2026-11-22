@@ -1392,15 +1392,10 @@ class TestRunResultRoutesByDelivery:
         broke_through: bool = False,
         carried: bool = True,
         log: MagicMock | None = None,
-        run_link: ShortLink | None = None,
-        text: str = "Three meetings today.",
     ) -> tuple[AsyncMock, AsyncMock]:
         notify, hold = AsyncMock(), AsyncMock()
         with (
-            patch("app.workers.tasks.workflow_tasks.attach_link", AsyncMock(return_value=run_link)),
-            patch.object(
-                short_link_repository, "get_live_for_target", AsyncMock(return_value=run_link)
-            ),
+            patch("app.workers.tasks.workflow_tasks.attach_link", AsyncMock(return_value=None)),
             patch("app.workers.tasks.workflow_tasks.log", log or MagicMock()),
             patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
             patch("app.workers.tasks.workflow_tasks.hold_for_brief", hold),
@@ -1413,7 +1408,7 @@ class TestRunResultRoutesByDelivery:
                 self._workflow(),
                 "exec_1",
                 "conv_1",
-                text,
+                "Three meetings today.",
                 delivery=delivery,
                 broke_through=broke_through,
             )
@@ -1465,13 +1460,28 @@ class TestRunResultRoutesByDelivery:
         """Regression: the runtime merge dropped the run's link from the delivered result."""
         target = RecordTarget(type=ShortLinkTargetType.WORKFLOW_RUN, id="exec_1")
         link = ShortLink(slug="run123", user_id=USER_ID, target=target)
-        notify, _ = await self._route(
-            WorkflowDelivery.NOW,
-            run_link=link,
-            text=f"Done: {link_placeholder(target)}",
+        attach, live, notify = (
+            AsyncMock(return_value=link),
+            AsyncMock(return_value=link),
+            AsyncMock(),
         )
+        with (
+            patch("app.workers.tasks.workflow_tasks.attach_link", attach),
+            patch.object(short_link_repository, "get_live_for_target", live),
+            patch("app.workers.tasks.workflow_tasks.notify_workflow_result", notify),
+        ):
+            await _notify_run_finished(
+                self._workflow(),
+                "exec_1",
+                "conv_1",
+                f"Done: {link_placeholder(target)}",
+                delivery=WorkflowDelivery.NOW,
+                broke_through=False,
+            )
         url = build_url("run123")
         assert notify.await_args.kwargs["run"].text == f"Done: {url}\n\n[Open this run]({url})"
+        attach.assert_awaited_once_with(USER_ID, target)
+        assert {call.args[0] for call in live.await_args_list} == {USER_ID}
 
     async def test_silent_sends_and_holds_nothing(self) -> None:
         notify, hold = await self._route(WorkflowDelivery.SILENT)
