@@ -107,11 +107,11 @@ A workflow is an automated sequence of 1-5 HIGHLY OPTIMIZED steps that accomplis
 
 CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
-2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
+2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "tasks", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `activate_integration` to load each step's integration in-context, then run its tools itself via `execute`
 5. Categories like gmail, notion, github, slack, googlecalendar name the integration to activate; the executor activates it and acts on it itself
-6. Categories like todos, reminders, search, development use direct tool execution
+6. Categories like tasks, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
    Examples: summarize fetched content, draft a message or brief, classify items, generate an outline, extract key points, write a report section.
@@ -125,7 +125,7 @@ CRITICAL REQUIREMENTS:
 - **Use descriptive titles**: "Search for client context" not "GMAIL_FETCH_EMAILS"
 - **Focus on intent**: The `category` provides routing, the `description` provides context
 - **Let execution decide**: The executing LLM has full context and will choose optimal tools
-- **Think high-level**: "Create follow-up reminder" instead of "create_todo with title=..."
+- **Think high-level**: "Create follow-up reminder" instead of "create_task with title=..."
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
@@ -179,7 +179,7 @@ TRIGGER-AWARE STEP GENERATION:
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
 ❌ "Generate summary of findings" → LLM will summarize naturally; only add a step if it performs a concrete external action
-❌ "Review and prioritize tasks" → LLM handles prioritization, use list_todos to get external data
+❌ "Review and prioritize tasks" → LLM handles prioritization, use list_tasks to get the user's tasks
 ❌ "Create analysis report" → Vague; specify the concrete external action (e.g. compose_gmail_message to send it)
 ❌ "Evaluate meeting feedback" → LLM evaluates naturally, use search_gmail_messages to get external feedback data
 ❌ "Process email content" → LLM processes inherently, focus on external actions like reply, forward, archive
@@ -274,7 +274,7 @@ WORKFLOW_EXECUTION_PROMPT = """You're running the user's saved workflow on their
 
 Hand the whole workflow to the executor as ONE task in a single call_executor call, with the goal and every step included in that one call. Do not make a separate call_executor call per step and do not split the work across turns: one delegation covers the entire workflow, then let the executor's result come back. Don't summarize anything yourself before the executor returns.
 
-If this workflow only fetches, reads, lists, or summarizes data, do NOT create a tracked todo for it: there is nothing to track or follow up on.
+If this workflow only fetches, reads, lists, or summarizes data, do NOT create a task for it: there is nothing to track or follow up on.
 
 {user_message}"""
 
@@ -337,5 +337,5 @@ EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You're running the user's saved workflow, t
 {workflow_steps}
 {signal_matching_section}{notification_section}
 
-Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a tracked todo for it.
+Use the email above as context for the run, treat the whole workflow as one job, and get it all done in this run. If this workflow only fetches, reads, or summarizes data, do NOT create a task for it.
 """

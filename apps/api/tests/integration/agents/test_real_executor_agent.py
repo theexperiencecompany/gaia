@@ -12,7 +12,7 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 import pytest
 
-from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
+from app.agents.prompts.task_prompts import TASK_SYSTEM_PROMPT
 from app.agents.templates.agent_template import get_executor_prompt
 from app.agents.tools.todo_tools import create_todo_tools
 from tests.helpers import create_fake_llm
@@ -105,7 +105,7 @@ class TestTodoTools:
 
     def test_executor_static_prompt_carries_the_todo_instructions(self):
         """The todo instructions ride the executor's static prompt, not a per-call message."""
-        assert TODO_SYSTEM_PROMPT in get_executor_prompt()
+        assert TASK_SYSTEM_PROMPT in get_executor_prompt()
 
     async def test_plan_tasks_result_states_the_plan(self):
         """plan_tasks' ToolMessage carries the rendered plan, so the thread holds the plan where it was set."""

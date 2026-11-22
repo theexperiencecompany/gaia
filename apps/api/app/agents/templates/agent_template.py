@@ -17,7 +17,7 @@ from typing import Final
 
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT, EXECUTOR_AGENT_PROMPT
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
-from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
+from app.agents.prompts.task_prompts import TASK_SYSTEM_PROMPT
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
@@ -166,7 +166,7 @@ def get_executor_prompt() -> str:
     """Return the static executor prompt; GAIA_CORE is appended, not interpolated, for a stable provider cache."""
     return (
         f"{EXECUTOR_AGENT_PROMPT}\n\n{INSTRUCTION_PRECEDENCE_RULES}\n\n"
-        f"{GAIA_CORE}\n\n{TODO_SYSTEM_PROMPT}"
+        f"{GAIA_CORE}\n\n{TASK_SYSTEM_PROMPT}"
     )
 
 

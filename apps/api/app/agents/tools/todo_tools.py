@@ -14,7 +14,7 @@ current_stream_writer() so the frontend renders progress in real-time.
 
 Each result carries the whole plan as it now stands, so the thread holds the
 current plan where it last changed; the instructions live in the executor's
-static prompt (TODO_SYSTEM_PROMPT).
+static prompt (TASK_SYSTEM_PROMPT).
 """
 
 from datetime import UTC, datetime
@@ -28,7 +28,7 @@ from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
-from app.agents.prompts.todo_prompts import (
+from app.agents.prompts.plan_prompts import (
     PLAN_TASKS_DESCRIPTION,
     UPDATE_TASKS_DESCRIPTION,
 )

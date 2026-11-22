@@ -25,7 +25,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
-from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
+from app.agents.prompts.task_prompts import TASK_SYSTEM_PROMPT
 from app.constants.llm import DEFAULT_LLM_TEMPERATURE, DEFAULT_MODEL_NAME
 from app.constants.trigger_gates import (
     TRIGGER_GATE_QUESTION_KEY,
@@ -131,7 +131,7 @@ async def _author_workflow(client: httpx.AsyncClient, request: CreationRequest) 
 
 async def _author_todo(client: httpx.AsyncClient, request: CreationRequest) -> AuthoredRule:
     messages: list[Message] = [
-        {"role": "system", "content": TODO_SYSTEM_PROMPT},
+        {"role": "system", "content": TASK_SYSTEM_PROMPT},
         {"role": "user", "content": TODO_TASK.format(request=request["request"])},
     ]
     reply = await _chat(client, messages, AuthoringPath.TODO)
