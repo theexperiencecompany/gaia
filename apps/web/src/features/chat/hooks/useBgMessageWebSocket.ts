@@ -22,7 +22,7 @@ import { useStreamStore } from "@/stores/streamStore";
  */
 interface BgMessageEvent {
   type: typeof OUTBOX_MESSAGE_EVENT;
-  kind: OutboxMessageKind;
+  kind: typeof OutboxMessageKind.ConversationMessage;
   conversation_id: string;
   message: {
     type: "bot" | "user";
