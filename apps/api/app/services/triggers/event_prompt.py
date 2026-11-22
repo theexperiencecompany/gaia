@@ -10,7 +10,7 @@ import json
 
 from app.agents.prompts.inbox_desk_prompts import INBOX_DESK_QUIET_HOURS_NOTE
 from app.agents.prompts.quiet_hours_prompts import QUIET_HOURS_BYPASS_NOTE
-from app.agents.prompts.todo_prompts import (
+from app.agents.prompts.task_prompts import (
     SANDBOX_RUN_EVENT_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )

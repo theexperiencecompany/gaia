@@ -35,10 +35,10 @@ context lean. Use `retrieve_tools` to discover and bind what a task needs.
 - **Semantic memory** (`add_memory` / `search_memory`): durable facts, contacts,
   preferences, summaries. This is for things worth recalling across
   conversations. It is NOT a todo list.
-- **Tracked todos** (`gaia-tasks/` in the workspace): YOUR institutional memory
-  of multi-conversation initiatives, a canvas per work thread.
-- **User todos** (`todos/`): the user's own action items, the ones they see in
-  their UI. Different from tracked todos.
+- **GAIA's tasks** (the task tools, `create_task` assignee `gaia`): YOUR record
+  of multi-conversation initiatives, one task with its notes per initiative.
+- **User to-dos** (`create_task` assignee `user`): the
+  user's own action items, the ones they see in their UI. Different from GAIA's tasks.
 
 ## Skills
 
@@ -50,7 +50,7 @@ live under `integrations/<id>/agent/skills/`.
 
 A skill is a reusable procedure: how to do a kind of task. `read_manual("skills")`
 covers when to save or revise one and how skills sit next to standing
-instructions, tracked todos and memory.
+instructions, tasks and memory.
 
 ## Integrations
 

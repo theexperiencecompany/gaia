@@ -1,8 +1,8 @@
 """What GAIA can do, written from the code that does it.
 
-The comms agent used to know nothing about todos, workflows or the built-in
+The comms agent used to know nothing about tasks, workflows or the built-in
 workflows beyond what it improvised, so it either dumped a capability menu or
-promised things that do not exist. This block is generated from the todo
+promised things that do not exist. This block is generated from the task
 model, the trigger enum and the system-workflow registry, so a new built-in
 workflow or trigger type shows up here without anyone editing prose, and
 nothing here can drift from what the product ships.
@@ -22,20 +22,20 @@ from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGR
 
 CAPABILITY_SECTION_HEADER = "## What GAIA can do (written from the code, so it is ground truth)"
 
-_TODOS = (
-    "TODOS: a todo is a structured object GAIA can act on. Each one carries a title, a "
-    "description, up to ten labels, a project, a priority (high, medium, low or none), a due "
-    "date in the user's timezone and a checklist. The strong part: a todo can be TRACKED, which "
-    "means GAIA works it rather than the user. A tracked todo has a scheduled time or a "
-    "recurrence (daily, weekly, every few hours, or a cron expression, always in the user's "
-    "timezone), and GAIA runs it then, keeping a canvas of the work product and a log of what "
-    "it did. A todo can also generate its own workflow (a step-by-step plan) with one ask. "
-    "Todos are created from chat, from email action items, or by workflows."
+_TASKS = (
+    "TASKS: one list holds the user's own to-dos and the work GAIA takes on for them. Each "
+    "task carries a title, details, a priority (high, medium, low or none), a due date in the "
+    "user's timezone and a checklist. A to-do is theirs: GAIA nudges them when it falls due. "
+    "The strong part: a task can be GAIA's, which means GAIA works it rather than the user. "
+    "GAIA's task runs on its next check, on a repeat (daily, weekly, every few hours, or a cron "
+    "expression, always in the user's timezone) or when an app event it listens for arrives "
+    "(a reply lands, a meeting nears), and GAIA keeps notes on the work and a log of what it "
+    "did. Tasks are created from chat, from email action items, or by workflows."
 )
 
 _WORKFLOWS = (
     "WORKFLOWS: a workflow is a multi-step plan GAIA executes on its own with the user's "
-    "connected tools (read mail, draft replies, search the web, write todos, message the "
+    "connected tools (read mail, draft replies, search the web, write tasks, message the "
     "user). The user describes the outcome in plain words and GAIA generates the steps; they "
     "can edit, activate, pause, run on demand, or reset a built-in one to its default. A "
     "workflow that finishes reports back on whatever channel the user is on."
@@ -73,8 +73,8 @@ _TRIGGER_TEXT: dict[TriggerType, str] = {
     TriggerType.MANUAL: "manual, run when the user asks",
     TriggerType.SCHEDULE: "schedule, a cron cadence evaluated in the user's timezone (daily at 8am, weekdays at 9, every Monday)",
     TriggerType.INTEGRATION: "integration events, fired by a connected service (a calendar event starting soon, new mail, a repo event)",
-    TriggerType.SCHEDULED_TODO: "scheduled_todo, a tracked todo firing on its own schedule",
-    TriggerType.TODO_TRIGGER: "todo_trigger, a tracked todo woken by an integration event it watches",
+    TriggerType.SCHEDULED_TODO: "scheduled_todo, one of GAIA's tasks firing on its own schedule",
+    TriggerType.TODO_TRIGGER: "todo_trigger, one of GAIA's tasks woken by an app event it listens for",
 }
 
 
@@ -172,7 +172,7 @@ def build_capability_block() -> str:
     # The built-in list stays last: its header is followed by one workflow per
     # line and nothing else, which is what the model (and a test) reads.
     sections = (
-        _TODOS,
+        _TASKS,
         _WORKFLOWS,
         triggers,
         _REMINDERS,

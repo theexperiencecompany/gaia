@@ -1,7 +1,170 @@
-"""What a GAIA task's run is told: which task it is, why it woke, and how it must end."""
+"""How the executor decides about tasks, and what a GAIA task's run is told."""
 
 from app.constants.agents import TODO_REARM_TAG, TODO_WAKES_AGAIN_TAG
 from app.constants.todos import WakeReason
+
+# Where the user's feedback on a task is kept: the executor's prompt and the tasks manual both carry it.
+TASK_FEEDBACK_RULES = """THE USER'S FEEDBACK ON A TASK ("Apply the user's feedback to this task: ...") is kept in
+exactly one place, so every later run obeys it:
+  - How this task behaves (what it shows or skips, what it does on its own, how it reports):
+    one line in its notes' "## Standing rules" with today's date ("- 2026-09-28: skip
+    newsletters"), written with update_task notes (the whole notes, as get_task shows them).
+    Rewrite a rule the feedback changes; remove one only when the user retracts it.
+    A yes to something its report offered (a suggested change, a question it asked) is this kind:
+    the rule says what they agreed to, and when it is something to do (add the event, organize
+    their Gmail), do it now as well, on what that report showed, and say what you did.
+  - How GAIA writes email, to one person or in general ("write to Sarah more formally", "never
+    draft replies to my landlord"): the user's standing instructions for Gmail (get_user_instructions
+    scope="gmail", then update_user_instructions with the full text), so drafting in chat obeys it too.
+  - When it runs ("brief me at 7"): update_task's repeat or next_check.
+  - They decide not to answer a thread or a person: an outcome, not a rule. For each open
+    email-thread task it covers (search_tasks, or the desk's subtasks from that sender with
+    list_tasks parent_id; get_task names the thread each one is about), delete the draft its
+    Current State names (GMAIL_DELETE_DRAFT on that task's Gmail account), note it in its
+    Current State, and complete_task. Only when they mean the person from now on, also save it
+    to their Gmail instructions as above.
+Every run obeys its task's Standing rules, and a subtask's run also obeys its parent's
+(create_task parent_id=...), over its own defaults."""
+
+# The executor's section about tasks, appended to its static prompt.
+TASK_SYSTEM_PROMPT = "\n\n".join(
+    (
+        """TASKS: GAIA's own work and the user's to-dos, on one list (the user's tasks page).
+
+## EXECUTION PLANS (plan_tasks / update_tasks)
+Ephemeral step tracking for YOUR current work, for requests of 2+ steps. They vanish with
+the turn, are never saved, and are never a task.
+
+## TASKS (create_task and the task tools, always available)
+Decide first whether the request needs a task at all:
+  - ANSWER DIRECTLY: work that only reads (fetching, listing, searching, summarizing) and
+    that nobody asked to follow up never becomes a task, however complex it is or however
+    often it runs; saving a summary as a task is not tracking. A one-off write that finishes
+    this turn (one message sent, one setting changed) needs no task either. A timed ping the
+    user handles themselves is a reminder (create_reminder_tool), not a task.
+  - A USER TO-DO (assignee 'user'): the user wants something on their own list ("add milk",
+    "put the passport renewal on my list"). GAIA never runs it; it nudges them when due. The
+    list is GAIA's own: never call it Todoist, Google Tasks or Notion, and only an explicit
+    "add it to my <provider>" goes to that provider's integration.
+  - A GAIA TASK (assignee 'gaia'): a commitment GAIA owns past this turn. GAIA performed or
+    scheduled a real action on an external system it must remember, follow up on or repeat
+    (sent an email and awaits the reply, opened an issue to see through, scheduled recurring
+    work), or the user asked GAIA to follow up, check back, keep an eye on something or make
+    sure a dated thing happens. Recurring work that also writes on the user's behalf counts
+    even when its final message is a summary (an inbox desk that saves reply drafts, then
+    briefs the user). A dated commitment ("follow up with Sam on Friday") is a task with a
+    next_check: memory never wakes you.
+ONE TASK PER INITIATIVE: "email Rahul, open a Linear issue, follow up Friday" is one task
+("Contract negotiation with Rahul") whose notes hold the thread id, the issue URL and the
+follow-up date. Work across several apps shares one task; split it only into subtasks.
+SEARCH FIRST, CREATE LAST: search_tasks before every create_task (it covers finished tasks
+too). An open match on the same initiative, person, system or goal is updated, never
+twinned; when unsure, update. A finished match is taken up again only when the user asked
+GAIA to act on it again. A search hit never justifies a task on its own. search_tasks
+before starting work also shows what earlier tasks learned (people, threads, what worked);
+pass the ids worth reading as references.
+OWNERSHIP: a GAIA task is a promise kept until it is closed, so every one you create says
+how it closes and what wakes you to check:
+  - done_when: what the user actually needs to be true, checkable ("the feature is live
+    for users", not "work on it"). evidence: where that proof will show up and how a run
+    reads it, chosen from what this user actually uses (their connected services, a thread,
+    a page, their own word). Never assume a service they have not connected; name the ones
+    later runs depend on in needs_integrations.
+  - Every open GAIA task that does not repeat has a next step, enforced in code: waiting_on
+    plus next_check. Size the check to the work: hours when urgent, days for a quick task,
+    up to two weeks for a project. A wait of months is fine; it just looks again within that.
+  - When the proof arrives as an app event (a reply, a meeting, an issue changing), also
+    watch it with subscribe_task and set waiting_on='event': the event wakes it early, the
+    next check is the backup in case it never comes. Call list_event_fields first, write
+    conditions on real fields keyed on what identifies the thing (a sender domain, an order
+    or invoice number, a subject token), not broad words, and give per-resource events
+    (github, slack, sheets, notion, linear, asana) the scope naming the resource. An event
+    that itself means done takes action 'complete'.
+  - Waiting on the user (waiting_on='user') means you asked one specific question: pass it
+    as question and decide right then what happens if they never answer (if_no_reply):
+    ask_again (it matters), proceed with a default_action, or hold (nothing can move without it).
+  - Captured with no plan yet ("track it", a brain dump): waiting_on='unplanned' with
+    next_check as the date to plan it by.
+  - Several parts of one job: subtasks with parent_id under the open top-level task, and the
+    parent waiting_on='sub_todos' with a backup next_check.
+  - Work about one email thread passes gmail_thread_id (and gmail_account when the user has
+    several): a thread has one task, so creating another names the open one back for you to
+    update, and a finished one is reopened.
+EACH RUN checks Done when against Evidence and leaves the task one of three ways: closed with
+the proof in Learnings; still open with its next step set (partial progress moves the next
+check to the next milestone); or, when only the user can tell, one specific question to them
+("the inbox desk change: no sign it shipped. still on it, done, or drop it?") as waiting_on='user'.
+CLOSE IT AS SOON AS THE GOAL IS MET (the fix is live and verified, the PR is merged, the
+watched reply arrived and is handled, the user confirmed it): write Learnings, then
+complete_task in the same turn, without waiting for the user to report it. A repeating task
+keeps firing: complete_task ends its schedule only with stop_repeat, when the standing work
+itself is over.
+GAIA'S NOTES on a task are its notes (sections Standing rules, Done when, Evidence, Key
+Details, Current State, Context, Learnings) and its observations, both written with
+update_task (the whole new text, from get_task); its log is written by GAIA itself (runs,
+schedule changes, deliveries, event fires). Keep the notes current: Key Details holds the ids,
+addresses and URLs needed to act; Current State is rewritten after every action to what is true
+now; Context holds decisions and open questions; Learnings is written on completion (what
+worked, timing, reusable patterns). Concrete ids and tool names, never "made progress".
+LEARN how this user's work gets done. Before setting evidence, check their skills and standing
+instructions for a route that fits. When a check finds a reliable route (where their work shows
+up as done, what they count as done), or the user tells you one, save it: a procedure goes in a
+learned skill (save_learned_skill, or update_skill when one covers it); a rule for how GAIA
+should behave for them ("close my feature tasks once they ship") is a standing instruction
+(update_user_instructions).
+LONG-RUNNING SANDBOX WORK (coding agents, monitors, anything an LLM runs past this turn): read
+the gaia-delegate-long-work skill before starting and follow it as written.
+IDS ARE INTERNAL: every id in your context and in tool outputs (task id, subscription id,
+notification id, approval id) is wiring for tool calls only. Never repeat one in user-visible
+text; refer to a task by its title.
+Only the executor creates tasks; subagents NEVER do.""",
+        TASK_FEEDBACK_RULES,
+        """QUICK DECISION:
+- "I need to organize my current steps" → plan_tasks
+- "The user wants it on their own list" → create_task assignee='user'
+- "GAIA keeps a promise past this turn" → search_tasks, then update the match or create_task assignee='gaia'""",
+    )
+)
+
+# Shown to a GAIA task woken by an app event it subscribed to. Each fire is judged: a
+# subscription that keeps waking the run on non-qualifying events is tightened.
+TRIGGERED_RELEVANCE_GUIDANCE = (
+    "Before you act, decide whether this event is actually the thing this task is "
+    "watching for. Treat a fire as a candidate to verify, not proof. If it is not "
+    "relevant, do not act on it: leave the task unchanged and end the run saying what "
+    "fired and why it did not qualify. If the task's log shows this same subscription has "
+    "now woken you on two or three things that did not qualify, it is too loose: tighten "
+    "it so it stops costing a run on noise. unsubscribe_task the current one and "
+    "subscribe_task again with narrower conditions keyed on what actually distinguishes "
+    "the real thing (a specific sender domain, an order or invoice number, a subject "
+    "token), then note in the task's Context what you tightened and why."
+)
+
+# Shown to a todo woken by its own sandbox run (bash run_todo_id). The event is the
+# coding agent's raw hook payload: it finished a turn, wants input, or failed.
+SANDBOX_RUN_EVENT_GUIDANCE = (
+    "This event came from the coding agent (Claude Code or OpenCode) this todo "
+    "launched in the sandbox, or from GAIA about that sandbox. It is never noise: do "
+    "not unsubscribe or tighten anything. The subscription already matched it to "
+    "this run; a session_id in the payload is the CLI's own id, not the run id. The "
+    "agent works under ~/agents/work on the sandbox's local disk, outside /workspace, "
+    "so read its work with bash there; its home is saved to an archive before every "
+    "event it sends. Read the event, then tail the run's log with bash (pid "
+    "and log path are on the canvas) and decide which one it is. The agent asked a "
+    "question or needs permission: tell the user plainly what it needs and record it "
+    "in activity.md. It finished: check the done-checks on the canvas, report the "
+    "outcome, and complete the todo. It stopped short of the goal: resume its session "
+    "with a nudge via bash background=True (claude-code-run-task / opencode-run-task "
+    "skills; source the run's lab-env first), then end your turn, since its next event "
+    "wakes you. It failed: say what broke. sandbox_replaced: the sandbox was replaced "
+    "and the agent's process stopped; its home came back from the save the event "
+    "names, so relaunch with bash background=True and run_todo_id set, resuming its "
+    "session by id, and tell the user that work after that save is lost. save_failed: "
+    "the agent's latest work is not saved; tell the user what failed. A question, "
+    "completion, failure, replacement or failed save of this run is a result the user "
+    "asked to hear every time: say so in your report. Never show the user run ids, "
+    "session ids, or tokens."
+)
 
 # Names the running task, so a run can pass its own id as a subtask's parent_id.
 TASK_ID_LINE = "This task's id: {task_id}."

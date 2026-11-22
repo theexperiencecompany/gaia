@@ -29,7 +29,6 @@ class TestExecutorPromptDoctrine:
         assert any("activate" in line and "execute" in line for line in mcp_lines)
 
     def test_built_ins_are_activated(self) -> None:
-        assert 'activate_integration("todos")' in EXECUTOR_AGENT_PROMPT
         assert 'activate_integration("gaia_knowledge_guide")' in EXECUTOR_AGENT_PROMPT
         assert 'activate_integration("docgen")' in EXECUTOR_AGENT_PROMPT
 

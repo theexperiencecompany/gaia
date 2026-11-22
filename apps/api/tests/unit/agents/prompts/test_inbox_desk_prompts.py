@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from app.agents.prompts import inbox_desk_prompts, todo_prompts
+from app.agents.prompts import inbox_desk_prompts, task_prompts
 from app.agents.prompts.inbox_desk_prompts import (
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_DESCRIPTION,
@@ -320,7 +320,7 @@ def test_the_desk_organizes_gmail_only_as_the_user_agreed() -> None:
 
 def test_a_yes_to_what_a_report_offered_becomes_a_standing_rule() -> None:
     assert "A yes to something its report offered (a suggested change, a question it asked)" in (
-        " ".join(todo_prompts.TODO_FEEDBACK_RULES.split())
+        " ".join(task_prompts.TASK_FEEDBACK_RULES.split())
     )
 
 
@@ -593,7 +593,7 @@ def test_group_mail_needs_the_user_only_when_the_answer_is_theirs_to_give() -> N
 
 
 def test_a_yes_is_acted_on_in_the_same_turn() -> None:
-    rules = " ".join(todo_prompts.TODO_FEEDBACK_RULES.split())
+    rules = " ".join(task_prompts.TASK_FEEDBACK_RULES.split())
 
     assert "do it now as well, on what that report showed, and say what you did" in rules
 
@@ -783,14 +783,15 @@ def test_not_replying_discards_the_draft_and_closes_the_thread() -> None:
 
 
 def test_feedback_not_to_reply_is_an_outcome_applied_to_each_thread_it_covers() -> None:
-    """The desk's reply to "don't answer him" runs as feedback, not as the thread todo's run."""
+    """The desk's reply to "don't answer him" runs as feedback, not as the thread task's run."""
     feedback = " ".join(
-        todo_prompts.TODO_SYSTEM_PROMPT.split("THE USER'S FEEDBACK ON A TODO", 1)[1].split()
+        task_prompts.TASK_SYSTEM_PROMPT.split("THE USER'S FEEDBACK ON A TASK", 1)[1].split()
     )
 
     assert "They decide not to answer a thread or a person: an outcome, not a rule." in feedback
     assert "delete the draft its Current State names (GMAIL_DELETE_DRAFT" in feedback
-    assert "list_tracked_todos(gmail_thread_id=...)" in feedback
+    assert "the desk's subtasks from that sender with list_tasks parent_id" in feedback
+    assert "get_task names the thread each one is about" in feedback
 
 
 def test_action_mail_from_automated_senders_is_fetched_too() -> None:

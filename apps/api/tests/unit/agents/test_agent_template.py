@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
-from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
+from app.agents.prompts.task_prompts import TASK_SYSTEM_PROMPT
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
     EXECUTOR_PROMPT_TEMPLATE,
@@ -114,8 +114,8 @@ class TestExecutorPrompt:
         assert get_executor_prompt() == EXECUTOR_PROMPT_TEMPLATE
 
     def test_planning_rules_ride_the_static_prompt(self) -> None:
-        # The todo rules used to be re-sent before every model call; they are static, so they cache.
-        assert TODO_SYSTEM_PROMPT in EXECUTOR_PROMPT_TEMPLATE
+        # The task rules used to be re-sent before every model call; they are static, so they cache.
+        assert TASK_SYSTEM_PROMPT in EXECUTOR_PROMPT_TEMPLATE
 
     def test_prompt_never_points_at_a_card(self) -> None:
         # The executor is channel-blind: it must not describe UI-only approval

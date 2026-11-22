@@ -1,9 +1,9 @@
-"""The user's feedback on a tracked todo: what each tier is shown so it can route and record it.
+"""The user's feedback on a GAIA task: what each tier is shown so it can route and record it.
 
 No model runs here, so its choice is not asserted. What is pinned is the prompt each
 tier actually receives after its pre-model hooks: the comms turn answering a delivered
-todo result sees the routing rule and the todo's id, and the executor that turn hands
-the feedback to is bound to that todo and told where feedback lives.
+task result sees the routing rule and the task's id, and the executor that turn hands
+the feedback to is bound to that task and told where feedback lives.
 """
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
@@ -38,10 +38,10 @@ class TestTheCommsTurnAnsweringADeliveredResult:
     async def test_its_static_prompt_routes_the_feedback_to_the_todo(self) -> None:
         static = text_of(message_in_slot(await _comms_reply_to_the_delivery(), PromptSlot.STATIC))
 
-        assert "FEEDBACK ON A TRACKED TODO IS APPLIED:" in static
+        assert "FEEDBACK ON A TASK IS APPLIED:" in static
         assert (
-            "call_executor(active_todo_id=<that todo's id>, "
-            'task="Apply the user\'s feedback to this todo: <their words>")'
+            "call_executor(active_todo_id=<that task's id>, "
+            'task="Apply the user\'s feedback to this task: <their words>")'
         ) in static
 
     async def test_the_delivered_result_with_its_todo_id_precedes_the_reply(self) -> None:
@@ -70,7 +70,7 @@ class TestFeedbackOnAChatDraft:
     async def test_the_rule_names_only_a_delivered_result_or_a_named_todo(self) -> None:
         static = await self._static()
 
-        assert ("It applies in two cases only: they reply to a result a todo delivered") in static
+        assert ("It applies in two cases only: they reply to a result a task delivered") in static
         assert "Any other feedback, like notes on a draft you are writing together" in static
 
     async def test_the_rule_carries_no_email_writing_examples(self) -> None:
@@ -85,7 +85,7 @@ class TestTheExecutorApplyingTheFeedback:
         messages = await effective_context(
             AgentTier.EXECUTOR,
             ContextSeed(
-                query=f"Apply the user's feedback to this todo: {FEEDBACK}",
+                query=f"Apply the user's feedback to this task: {FEEDBACK}",
                 sources=ContextSources(active_todo=DESK),
                 configurable_overrides={"active_todo_id": DESK.id},
             ),
@@ -101,7 +101,8 @@ class TestTheExecutorApplyingTheFeedback:
     async def test_it_is_told_where_each_kind_of_feedback_lives(self) -> None:
         context = await self._context()
 
-        assert "THE USER'S FEEDBACK ON A TODO" in context
-        assert 'one line in its canvas.md "## Standing rules"' in context
+        assert "THE USER'S FEEDBACK ON A TASK" in context
+        assert 'one line in its notes\' "## Standing rules"' in context
+        assert "written with update_task notes" in context
         assert "update_user_instructions" in context
-        assert "update_tracked_todo's recurrence or scheduled_at" in context
+        assert "update_task's repeat or next_check" in context

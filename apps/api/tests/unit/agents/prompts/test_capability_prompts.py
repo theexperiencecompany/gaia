@@ -5,7 +5,7 @@ import re
 import pytest
 
 from app.agents.prompts.capability_prompts import (
-    _TODOS,
+    _TASKS,
     CAPABILITY_SECTION_HEADER,
     _channels_line,
     _describe_cron,
@@ -143,9 +143,9 @@ class TestCapabilityBlock:
         block = build_capability_block()
         for kind in TriggerType:
             assert kind.value in block
-        # The tracked-todo kinds are explained, not just named.
-        assert "scheduled_todo, a tracked todo firing on its own schedule" in block
-        assert "todo_trigger, a tracked todo woken by an integration event it watches" in block
+        # The GAIA-task kinds are explained, not just named.
+        assert "scheduled_todo, one of GAIA's tasks firing on its own schedule" in block
+        assert "todo_trigger, one of GAIA's tasks woken by an app event it listens for" in block
         assert "TRIGGERS: a run starts one of these ways: manual, run when the user asks;" in block
 
     def test_built_in_workflows_are_one_per_line_under_an_exact_header(self) -> None:
@@ -172,10 +172,10 @@ class TestCapabilityBlock:
             "changes when it runs or what it does by telling GAIA, like any of GAIA's tasks."
         )
 
-    def test_todos_cover_the_tracked_and_recurring_shape(self) -> None:
+    def test_tasks_cover_gaias_own_and_repeating_shape(self) -> None:
         block = build_capability_block()
-        assert "TRACKED" in block
-        assert "recurrence" in block
+        assert "a task can be GAIA's, which means GAIA works it rather than the user" in block
+        assert "on a repeat" in block
         assert "cron expression" in block
 
     def test_the_comms_prompt_carries_the_block_and_the_connect_rule(self) -> None:
@@ -252,4 +252,4 @@ class TestGeneratedLines:
     def test_sections_are_separated_by_one_blank_line_under_the_header(self) -> None:
         block = build_capability_block()
 
-        assert block.startswith(f"{CAPABILITY_SECTION_HEADER}\n\n{_TODOS}\n\n")
+        assert block.startswith(f"{CAPABILITY_SECTION_HEADER}\n\n{_TASKS}\n\n")

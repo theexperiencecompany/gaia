@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Final, Literal, NamedTuple, get_args
 
-from app.agents.prompts.todo_prompts import TODO_FEEDBACK_RULES
+from app.agents.prompts.task_prompts import TASK_FEEDBACK_RULES
 from app.config.settings import settings
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 
@@ -111,144 +111,130 @@ Typical flow:
 
 TRACKED_TODOS_DOC: Final[str] = "".join(
     (
-        """# Tracked todos: GAIA-managed todos with memory
+        """# Tasks: GAIA's own work and the user's to-dos
 
-Tracked todos are **GAIA-managed todos**: they show on the user's todos page, but
-GAIA owns them and keeps working notes as files (a recall doc plus a dated activity
-log) so it can act on them over time. They are distinct from the user's own
-hand-created action items. Create one only when GAIA performs or schedules a real
-action on an external system it needs to remember, follow up on, or repeat; never
-for work that only reads (fetching, listing, summarizing), no matter how often it
-runs. Recurring work that also writes on the user's behalf (an inbox desk that saves
-reply drafts) qualifies even when its final message is a summary.
-When the user says "email Rahul about the contract" and months later asks "what
-happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
+A task is one item on the user's tasks page. Its assignee says whose it is:
 
-**One todo per initiative.** "Email Rahul, create a Linear issue, follow up
-Friday" = ONE tracked todo ("Contract negotiation with Rahul") whose canvas
-holds the email thread id, the Linear issue URL, and the follow-up schedule.
+- **assignee `user`**: a to-do the user does themselves ("add milk to my list").
+  GAIA never runs it; it nudges them when it falls due.
+- **assignee `gaia`**: work GAIA owns past this turn. GAIA performed or scheduled a
+  real action it must remember, follow up on or repeat (sent an email and awaits the
+  reply, opened an issue to see through, scheduled recurring work), or the user asked
+  it to follow up, check back or keep an eye on something. GAIA runs it on its next
+  check, its repeat and the app events it subscribes to, and keeps notes on it.
 
-These live at `/workspace/gaia-tasks/`:
+Never a task: work that only reads (fetching, listing, summarizing), no matter how
+often it runs, and one-off writes that finish this turn. Recurring work that also
+writes on the user's behalf (an inbox desk that saves reply drafts) is a GAIA task
+even when its final message is a summary. When the user says "email Rahul about
+the contract" and months later asks "what happened with Rahul's contract?", the
+task and its notes surface the answer.
 
-    gaia-tasks/
-        index.md                      one-line summary per task, freshest first
-        <slug>-<shortid>/
-            canvas.md                 recall doc: Standing rules / Key Details / Current State / Context / Learnings
-            activity.md               dated log, oldest first: what happened, by whom, outcome
-            observations.md           evidence behind learned patterns, when the todo keeps one (the Inbox desk does)
-            log.md                    system-written audit trail (read-only)
-            meta.json                 labels, due, priority, schedule, refs (read-only)
+**One task per initiative.** "Email Rahul, create a Linear issue, follow up
+Friday" = ONE GAIA task ("Contract negotiation with Rahul") whose notes hold the
+email thread id, the Linear issue URL, and the follow-up date.
 
 ## Tools (always available: no retrieve_tools)
 
-- `create_tracked_todo`: create a todo; the result names its folder.
-  `parent_todo_id=` makes it a sub-todo of a larger tracked job; `references=[...]`
-  links past todos whose Learnings it reads.
-- `update_tracked_todo`: labels, due_date, priority, scheduled_at,
-  recurrence, expires_at, references, parent_todo_id.
-- `complete_tracked_todo`: mark done (requires a completion summary).
-- `search_todo_context`: semantic search over all notes (includes done).
-- `list_tracked_todos`: active tracked todos (≤50) with metadata; filter with
-  `labels=[...]` (todos carrying all of them) or `gmail_thread_id=...`.
-
-The notes are ordinary files for you: `read`, `edit` and `write` work on
-`canvas.md`, `activity.md` and `observations.md` (they are stored on the todo, so this works even
-when the folder is not on disk). `log.md`, `meta.json` and `index.md` are
-generated; edits to them are refused. In `bash`, the folder is a read-only
-projection: `cat` and `grep -r "rahul" gaia-tasks/` are fine, `sed -i` is not.
+- `create_task`: create one (assignee `gaia` or `user`). `parent_id=` makes it a
+  subtask of an open top-level task; `references=[...]` links earlier tasks whose
+  Learnings its runs read; `gmail_thread_id=` ties it to one email thread.
+- `update_task`: title, details, priority, due, repeat, notes, observations,
+  waiting_on / next_check / question, flags, parent_id, notify, references.
+- `complete_task` (with what was achieved; `stop_repeat` ends a repeating one),
+  `complete_tasks` (several of the user's to-dos), `reopen_task`, `delete_tasks`
+  (only when the user asks to delete).
+- `search_tasks`: by meaning, over titles, details and GAIA's notes, finished
+  tasks included. `list_tasks`: a view (`open`, `today`, `upcoming`, `overdue`,
+  `done`), narrowed by exact words, assignee or parent_id. `get_task`: one task in
+  full, with its notes, observations, log, checklist and subscriptions.
+- `edit_checklist`: one checklist item (the small steps inside one task).
+- `list_event_fields`, `subscribe_task`, `unsubscribe_task`: make a GAIA task
+  react to an app event (a reply, a meeting, an issue changing).
 
 ## Search first, create last
 
-Creating is the LAST step. Always `search_todo_context` first.
-- Active match → update its canvas; do NOT create. Same initiative, person,
-  system, or goal = update, even for follow-on steps.
-- Completed match, initiative resuming → create new ONLY if the user explicitly
-  asked GAIA to act on it again.
-- No match → create, only if a WRITE action was performed this turn.
-
-**Create when** GAIA changes something in an external system (email, calendar,
-Slack, Linear, Notion, …) and nothing relevant exists yet.
+Creating is the LAST step. Always `search_tasks` first.
+- Open match → update it; do NOT create. Same initiative, person, system, or
+  goal = update, even for follow-on steps.
+- Finished match, initiative resuming → act on it again ONLY if the user
+  explicitly asked GAIA to.
+- No match → create, only if real follow-up work remains.
 
 **Do NOT create for:** pure lookups with no side effects; steps in your current
 orchestration (use `plan_tasks`); casual conversation; anything clearly
-continuing an existing tracked todo (update that one).
+continuing an existing task (update that one).
 
-Overusing tracked todos degrades search quality and clutters GAIA's memory.
+Overusing tasks degrades search quality and clutters the user's list.
 
-## Two modes
+## Ownership: how a GAIA task closes and what wakes it
 
-- **Immediate** (finishes this conversation): create → delegate → document →
-  complete.
-- **Long-running** (spans conversations / needs follow-up): create with
-  `scheduled_at` → act → update the files → leave open → resume later via active
-  todos or search → eventually complete with learnings.
+- `done_when` (what the user needs to be true, checkable) and `evidence` (where
+  the proof shows and how a run reads it) start its notes' Done when and Evidence.
+- Every open GAIA task that does not repeat has `waiting_on` plus `next_check`:
+  `time`, `event` (a subscription or its thread wakes it; next_check is the
+  backup), `user` (one `question`, with `if_no_reply` decided now), `sub_todos`
+  (its subtasks do the work), or `unplanned` (captured without a plan; next_check
+  is the date to plan it by).
+- Each run checks Done when against Evidence and ends closed with the proof in
+  Learnings, open with its next step set, or with one question to the user.
+- Close it the moment the goal is met; never wait for the user to report it.
 
-## The two files
+## GAIA's notes
 
-`canvas.md` is what you want to recall later. Sections: `Standing rules` (the
-user's instructions for how this todo behaves, one dated line each; every run
-obeys them), `Key Details` (ids, addresses, URLs needed to act), `Current State` (true right now; rewrite it
-after every action), `Context` (decisions, open questions, signals), `Learnings`
-(written ONLY at completion: what worked, timing insights, reusable patterns).
-One section each, plus any of your own. Keep it short and current: `edit` the
-section that changed, never append to the end of the file. A write that
-repeats a section or carries a log or dated entries is refused.
+Every GAIA task carries three texts, shown by `get_task`:
 
-`activity.md` is the chronological record: one dated entry per thing that
-happened (`- 2026-09-02T10:15:00+00:00 Gmail agent: sent ... thread 18f3a2b`),
-oldest first, newest at the end. It is append-only: add entries at the end, and
-a write that changes or drops an earlier one is refused. GAIA records its own
-lifecycle entries here as `- <time> [event] detail` (runs and their outcome,
-schedule and delivery changes, watches, trigger fires, failures, completion).
-After delegation, add what each agent did (tools used, ids, outcome). Never
-write learnings here, and never write activity into canvas.md.
+- **notes**: what you want to recall later. Sections: `Standing rules` (the
+  user's instructions for how this task behaves, one dated line each; every run
+  obeys them), `Done when`, `Evidence`, `Key Details` (ids, addresses, URLs
+  needed to act), `Current State` (true right now; rewrite it after every
+  action), `Context` (decisions, open questions, signals), `Learnings` (written
+  on completion: what worked, timing insights, reusable patterns). One section
+  each, plus any of your own. Write them with `update_task notes=...`, passing the
+  whole new notes; change the section that changed, never append a log.
+- **observations**: the evidence behind learned patterns, when the task keeps one
+  (the Inbox desk does), written the same way with `update_task observations=...`.
+- **log**: written by GAIA itself, oldest first: runs and their outcome, schedule
+  and delivery changes, subscriptions, app events, failures, completion. You
+  never write it; record what matters now in Current State instead.
 
-## Scheduling & recurrence
+## Scheduling & repeats
 
-- `scheduled_at`: ISO datetime, must be future; the background worker
-  auto-executes then.
-- `recurrence`: ALWAYS in the user's stored timezone; pass cron in user-local
-  wall-clock terms, the backend converts to UTC. Shortcuts (`daily`, `weekly`,
-  `every_4h`, `every_1h`) need `scheduled_at` as anchor; cron (`0 9 * * 1-5`)
-  does not: first fire is computed from the cron. If both are passed,
-  `scheduled_at` is ignored.
-- `due_date` (set at creation or via `update_tracked_todo`, with a timezone
-  offset) = deadline; overdue still needs doing. `expires_at` = relevance
-  window; expired is skipped entirely.
-- Execution: Redis-locked (no double-run); retries 3× with 1h then 4h backoff;
-  after 3 failures a `failed` label is added and the user notified; success
-  with recurrence advances `scheduled_at` and re-enqueues.
+- `next_check`: a duration (`4h`, `3d`) or an ISO datetime with the user's
+  offset; the background worker runs the task then.
+- `repeat`: `daily`, `weekly`, `every_4h`, `every_1h`, or a 5-field cron in the
+  user's own wall-clock time; the backend converts it. A repeating task needs no
+  next_check, and one finished run never ends it.
+- `due` = deadline (ISO datetime with offset); overdue still needs doing.
+  `expires_at` = relevance window; expired is skipped entirely.
+- Execution: one run at a time per task; a failed run is retried on a backoff
+  ladder, then a one-off task is marked failed.
 
 ## Results & notifications
 
-When a scheduled or triggered run finishes, GAIA reads its final report and
+When a scheduled or event run finishes, GAIA reads its final report and
 messages the user's chat app (WhatsApp/Telegram/Discord/Slack) only if the run
 found something they need to know or decide; a routine or no-op run sends
 nothing. So end with a factual report of what you did and what changed, and do
 NOT call `send_notification` to announce it, which sends it twice. Every run's
-outcome, sent or not, is recorded in activity.md.
+outcome, sent or not, is recorded in the task's log.
 
-`notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
-turns that delivery off entirely. It is the user's setting: change it only when
-they ask. A silent todo reaches the user only if the run deliberately calls
-`send_notification`.
+`notify` (on `create_task` / `update_task`, default on) turns that delivery
+off entirely. It is the user's setting: change it only when they ask. A silent
+task reaches the user only if the run deliberately calls `send_notification`.
 
-Unrelated to the todo being marked completed, and separate from the failure
-notification above, which always fires.
-
-## The user's feedback on a todo
+## The user's feedback on a task
 
 """,
-        TODO_FEEDBACK_RULES,
+        TASK_FEEDBACK_RULES,
         """
 
 ## Anti-patterns
 
-- Not creating one when GAIA touched an external system (even "just" an email).
-- Multiple todos for one initiative.
+- Not creating one when GAIA touched an external system and something is still open.
+- Multiple tasks for one initiative.
 - Vague notes ("made progress") instead of ids + tool names.
-- Not collecting subagent activity reports before writing activity.md.
-- Appending activity to the end of canvas.md (it belongs in activity.md).
+- A stale Current State after an action.
 - Not searching before creating.
 - Not writing learnings before completing.
 """,
@@ -274,13 +260,12 @@ The user's own action items (the ones they see in their UI) project to:
   project_id, subtasks.
 
 These are read-only projections of MongoDB. The user normally mutates todos via
-the UI; you can mutate them through the todo tools when explicitly asked
+the UI; you can mutate them through the task tools when explicitly asked
 ("mark my dentist todo done"); the projection re-syncs after the tool commits.
 
-This is NOT GAIA's tracked todos (institutional memory). Those live at
-`/workspace/gaia-tasks/` with a canvas + log; see the `tracked-todos` doc.
+This is NOT GAIA's own tasks (work GAIA owns, with its notes); see the `tasks` doc.
 When the user asks "what are my todos / add to my todo list / show my tasks",
-they mean this list, never tracked todos and never a connected task provider:
+they mean this list, never GAIA's tasks and never a connected task provider:
 a todo here is GAIA's own and lives nowhere else, so never report it as Todoist,
 Google Tasks, or Notion. Only an explicit "add it to my <provider>" goes to that
 provider's integration (activate it first).
@@ -409,12 +394,12 @@ to announce one of them sends it to the user twice:
   app). "Keep me posted" there needs no notification on that same channel.
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
-- A finished **tracked todo** run is reported to the user's chat app when it
-  found something that matters, unless that todo has `notify_on_run` off. See
-  the `tracked-todos` doc.
+- A finished **GAIA task** run is reported to the user's chat app when it
+  found something that matters, unless that task has `notify` off. See
+  the `tasks` doc.
 
 When one of these delivers the result, do not announce it again. A silent
-workflow, or a todo with `notify_on_run` off, delivers nothing, so there a
+workflow, or a task with `notify` off, delivers nothing, so there a
 notification is the only way the user hears. Otherwise notify only for something
 genuinely separate and urgent.
 """
@@ -477,9 +462,9 @@ unread email", "when a GitHub PR is opened, post it to Slack", "every Friday at
 
 - **Workflow**: a recurring/triggered automation that re-runs itself. The thing
   that *fires* on a schedule or event.
-- **Tracked todo** (`tracked-todos`): institutional memory of one initiative you
-  act on and follow up over time. Can be scheduled, but it is a record of work,
-  not a reusable automation.
+- **GAIA task** (`tasks`): one initiative GAIA owns and follows up over time,
+  with its notes. Can repeat, but it is a record of work, not a reusable
+  automation.
 - **Reminder**: a one-off time-based nudge to the user, no agent action.
 
 ## The one rule: `create_workflow` is a delegator, not a constructor
@@ -607,7 +592,7 @@ it just nudges. That is the line between a reminder and the rest:
 - **Reminder**: fires a notification to the user at a time. No agent work.
 - **Workflow**: runs the full agent (with tools) on a schedule/event. Use it
   when the automation must DO something (fetch, summarize, post), not just nudge.
-- **Tracked todo**: institutional memory of an initiative GAIA acts on. Can be
+- **GAIA task**: an initiative GAIA owns and acts on, with its notes. Can be
   scheduled, but it records work; it is not a bare nudge.
 
 "Remind me", "ping me", "alert me", "set a timer", "notify me in N minutes" are
@@ -635,21 +620,22 @@ GOALS_DOC: Final[str] = """# Goals: long-term objectives and roadmaps
 A goal is a HIGH-LEVEL, long-term objective the user wants to work toward: "learn
 Spanish", "launch my startup", "run a marathon". GAIA can break a goal into an
 actionable roadmap (phases and tasks) and track progress over time. Goals are
-distinct from todos: a todo is one concrete action ("buy a Spanish textbook"); a
+distinct from tasks: a task is one concrete action ("buy a Spanish textbook"); a
 goal is the ambition those actions serve. Steer ambitions into goals, day-to-day
-actions into todos.
+actions into tasks.
 
 ## How to use it
 
 There is no goals subagent and no dedicated goal tools: break an ambition
-into tracked todos (create_tracked_todo, one per phase or milestone) and
-work those. Report progress as the share of its todos complete.
+into tasks: one top-level task for the goal and a subtask per phase or
+milestone (create_task with parent_id), and work those. Report progress as the
+share of its subtasks complete.
 
-Typical flow: create the tracked todos for the goal's phases, then mark them
-complete as the user makes progress. Deleting the last todo closes the goal;
-deleting anything needs explicit user confirmation.
+Typical flow: create the goal's task and its phases' subtasks, then complete
+them as the user makes progress. Deleting anything needs explicit user
+confirmation.
 
-Tracked todos show on the user's todos view in the app.
+Tasks show on the user's tasks page in the app.
 """
 
 
@@ -670,8 +656,8 @@ or writes, and skills you save from a run that worked.
 - **Skill**: how to do a kind of task (`save_learned_skill`, `update_skill`).
 - **Standing instruction**: how the user wants GAIA to behave from now on,
   for every conversation or one integration (`update_user_instructions`).
-- **Tracked todo**: one piece of ongoing work and its state: dates, progress,
-  people waiting, what was decided (its `canvas.md`).
+- **GAIA task**: one piece of ongoing work and its state: dates, progress,
+  people waiting, what was decided (its notes).
 - **Memory**: facts about the user, captured automatically.
 
 ## When to save a new skill
@@ -831,8 +817,8 @@ docs come to you (injected) or via the `read_manual` tool.
 
 - **Semantic memory** (`add_memory` / `search_memory`): durable facts,
   contacts, preferences. Recall across conversations. NOT a todo list.
-- **Tracked todos** (`/workspace/gaia-tasks/`): YOUR institutional memory of
-  multi-conversation initiatives; one canvas per work thread.
+- **GAIA tasks** (the task tools): YOUR record of multi-conversation
+  initiatives; one task with its notes per initiative.
 - **User todos** (`/workspace/todos/` + external providers): the user's OWN
   action items, the ones in their UI.
 
@@ -869,10 +855,10 @@ these.
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
-| "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
-| "Stop showing me X / brief me at 7" (feedback on a tracked todo) | record it on that todo | `tracked-todos` |
-| "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
-| "Set a goal / make a roadmap / track progress on X" | break it into tracked todos | `tracked-todos` |
+| "Track this / follow up later / what are you tracking?" | the task tools (`create_task` assignee gaia, `list_tasks`) | `tasks` |
+| "Stop showing me X / brief me at 7" (feedback on a task) | record it on that task | `tasks` |
+| "Add to my todo list / what are my tasks?" | `create_task` assignee user / `list_tasks` | `tasks` |
+| "Set a goal / make a roadmap / track progress on X" | break it into a task with subtasks | `tasks` |
 | "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
 | "Text / notify me on WhatsApp/Telegram/Slack" | `send_notification(channels=[...])` | `notifications` |
 | "Automate X / every morning do Y / set up a workflow" | `create_workflow(user_request)` | `workflows` |
@@ -888,7 +874,7 @@ Persist a preference only when it is DURABLE, not a one-off for this turn.
 
 ## Read more (your topic docs)
 
-Before acting on a self-management task (integrations, tracked-todos, user-todos,
+Before acting on a self-management task (integrations, tasks, user-todos,
 sessions/artifacts, notifications, workflows, memory, billing), read that topic's doc with
 `read_manual("<name>")` (no sandbox needed) unless its content is already in your
 context. It is cheap and keeps you from guessing how your own machinery works.
@@ -898,13 +884,13 @@ context. It is cheap and keeps you from guessing how your own machinery works.
   the read-only `account/` projections and the account tools.
 - `integrations`: discover, connect, and configure integrations; per-
   integration standing instructions; the activation model.
-- `tracked-todos`: create / search / update / schedule / complete tracked
-  todos; canvas conventions; recurrence; institutional memory.
+- `tasks`: GAIA's own work and the user's to-dos: when to create one,
+  search / update / schedule / complete, GAIA's notes, repeats.
 - `user-todos`: the user's own todo list and external task providers.
 - `goals`: long-term goals and AI-generated roadmaps; tracking progress
-  (tracked todos).
+  (tasks).
 - `reminders`: one-off and recurring time-based nudges to the user; how a
-  reminder differs from a workflow and a tracked todo (executor-direct tools,
+  reminder differs from a workflow and a task (executor-direct tools,
   no subagent).
 - `sessions-and-artifacts`: working inside a session; producing artifacts.
 - `notifications`: reading the inbox and sending the user a message on a
@@ -914,7 +900,7 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 - `memory`: your long-term memory about the user. the `/workspace/memory/`
   layout, journal, core documents, and the memory tools.
 - `skills`: what a skill is, when to save or revise one from a run, how skills
-  relate to standing instructions and tracked todos; installing and managing.
+  relate to standing instructions and tasks; installing and managing.
 - `documents`: generate downloadable files (PDF, Word, slides, spreadsheets,
   CSV) from a request and its data (the docgen integration).
 - `billing`: the user's plan and payment history, handing them a checkout link
@@ -1058,11 +1044,11 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             body=INTEGRATIONS_DOC,
         ),
         ManualDoc(
-            name="tracked-todos",
-            title="Tracked todos: GAIA's institutional memory",
+            name="tasks",
+            title="Tasks: GAIA's own work and the user's to-dos",
             description=(
-                "When/how to create, search, update, schedule, and complete tracked "
-                "todos; canvas conventions; recurrence; institutional memory."
+                "When to create a task (GAIA's or the user's), and how to search, update, "
+                "schedule, and complete one; GAIA's notes; repeats."
             ),
             body=TRACKED_TODOS_DOC,
         ),
@@ -1077,7 +1063,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Goals: long-term objectives and roadmaps",
             description=(
                 "Long-term goals and AI-generated roadmaps: create, track progress, "
-                "and complete roadmap nodes (tracked todos)."
+                "and complete roadmap nodes (tasks)."
             ),
             body=GOALS_DOC,
         ),
@@ -1086,7 +1072,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Reminders: one-off and recurring time-based nudges",
             description=(
                 "Time-based nudges to the user ('remind me', 'ping me', 'set a "
-                "timer'); how a reminder differs from a workflow and a tracked todo."
+                "timer'); how a reminder differs from a workflow and a task."
             ),
             body=REMINDERS_DOC,
         ),
@@ -1131,7 +1117,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             description=(
                 "What a skill is, when to save or revise one from a run "
                 "(save_learned_skill, update_skill), how skills relate to standing "
-                "instructions and tracked todos; installing and managing them."
+                "instructions and tasks; installing and managing them."
             ),
             body=SKILLS_DOC,
         ),
@@ -1173,7 +1159,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
 ManualTopic = Literal[
     "account",
     "integrations",
-    "tracked-todos",
+    "tasks",
     "user-todos",
     "goals",
     "reminders",

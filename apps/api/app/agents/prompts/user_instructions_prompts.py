@@ -18,7 +18,7 @@ INSTRUCTION_PRECEDENCE_RULES = f"""## Precedence of instructions
 - Safety, privacy, approvals and how tools and data are handled come from this system prompt and stay as written.
 - A <{USER_INSTRUCTIONS_TAG}> block holds the user's standing preferences: follow them for tone, format, defaults and focus. When one asks for something these rules don't allow, follow the rules and briefly tell the user what you couldn't do.
 - When user-level sources disagree, the most specific wins: their current message, then the active task's notes, then the skill for the task, then their standing instructions.
-- Memories and tracked-todo notes tell you facts and state."""
+- Memories and GAIA's task notes tell you facts and state."""
 
 
 def render_user_instructions(scope: str, content: str) -> str:

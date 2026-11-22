@@ -26,12 +26,12 @@ async def read_manual(topic: ManualTopic) -> str:
       read-only account/ projections and the account tools.
     - ``integrations``: connect/configure integrations; per-integration custom
       instructions ("remember this for Gmail").
-    - ``tracked-todos``: create/search/update/schedule/complete tracked todos;
-      canvas conventions; recurrence; institutional memory.
+    - ``tasks``: GAIA's own work and the user's to-dos: when to create one,
+      search/update/schedule/complete, GAIA's notes, repeats.
     - ``user-todos``: the user's own todo list and external task providers.
     - ``goals``: long-term goals and AI-generated roadmaps; tracking progress.
     - ``reminders``: one-off and recurring time-based nudges to the user; how a
-      reminder differs from a workflow and a tracked todo.
+      reminder differs from a workflow and a task.
     - ``sessions-and-artifacts``: working in a session; producing artifacts.
     - ``notifications``: reading the inbox and sending the user a message on a
       channel (``send_notification``); channel linking.

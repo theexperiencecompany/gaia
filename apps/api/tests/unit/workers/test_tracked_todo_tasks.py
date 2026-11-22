@@ -41,11 +41,12 @@ from app.agents.core.background.todo_run import (
     TodoRunCancelledError,
     TodoRunRequest,
 )
-from app.agents.prompts import todo_prompts
+from app.agents.prompts import task_prompts, todo_prompts
 from app.agents.prompts.inbox_desk_prompts import (
     GMAIL_THREAD_ACCOUNT_LINE,
     INBOX_DESK_QUIET_HOURS_NOTE,
 )
+from app.agents.prompts.task_prompts import TRIGGERED_RELEVANCE_GUIDANCE
 from app.agents.prompts.todo_prompts import (
     DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
@@ -56,7 +57,6 @@ from app.agents.prompts.todo_prompts import (
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
     TODO_REARM_BRIEF,
-    TRIGGERED_RELEVANCE_GUIDANCE,
     WAKE_REASON_TEXT,
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
@@ -731,18 +731,18 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _prompt(_doc(title="Fix flaky test"), origin=origin)
 
-        assert todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
+        assert task_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
     def test_sandbox_guidance_marks_run_outcomes_as_asked_for_every_time(self):
         # Live E2B run: the todo completed the delegated work and delivery kept quiet,
         # because nothing told it the user asked to hear the outcome.
-        assert "asked to hear" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+        assert "asked to hear" in task_prompts.SANDBOX_RUN_EVENT_GUIDANCE
 
     def test_sandbox_guidance_says_the_payload_session_id_is_the_clis_own(self):
         # Live E2B run: a woken todo dismissed a real StopFailure as a non-match because
         # the payload's session_id (Claude's) differed from the watched run id.
-        assert "session_id" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+        assert "session_id" in task_prompts.SANDBOX_RUN_EVENT_GUIDANCE
 
     def test_coalesced_events_share_the_one_untrusted_fence(self):
         origin = TriggerOrigin(

@@ -1,6 +1,6 @@
 ---
 name: gaia-custom-instructions
-description: How the user's standing instructions work (for every conversation or one integration), how to read and update them, how they rank against platform rules, and when a preference belongs here rather than in a skill, a tracked todo or memory. Read this when a user states how GAIA or a specific integration should behave from now on.
+description: How the user's standing instructions work (for every conversation or one integration), how to read and update them, how they rank against platform rules, and when a preference belongs here rather than in a skill, a task or memory. Read this when a user states how GAIA or a specific integration should behave from now on.
 target: executor
 ---
 
@@ -51,13 +51,13 @@ instructions.
   before it saves, so keep it short and in their words. If they decline, nothing
   is saved; do not ask again in the same turn.
 
-## Instructions, skill, tracked todo or memory?
+## Instructions, skill, task or memory?
 
 - **Standing instruction:** how GAIA should behave for this user from now on.
 - **Skill:** a reusable procedure for a kind of task (`save_learned_skill`,
   `update_skill`).
-- **Tracked todo:** ongoing work and its state (dates, progress, people
-  waiting).
+- **GAIA task:** ongoing work and its state (dates, progress, people
+  waiting), in its notes.
 - **Memory:** facts about the user. It is captured automatically.
 
 Persist only DURABLE preferences. Do not save one-off requests ("send this one
