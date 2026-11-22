@@ -13,9 +13,11 @@ from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
+import time_machine
 
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
@@ -23,6 +25,7 @@ from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
@@ -119,7 +122,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
         patch(f"{MODULE}.record_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
-        patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
+        patch(f"{MODULE}.notification_service.notify", mocks["notify"]),
         patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
     ]
     return pool, mocks, patches
@@ -290,6 +293,8 @@ class TestHealthCheckExpired:
             "gaia_maintenance_notified:todo-1", "1", ex=SECONDS_PER_DAY
         )
 
+    # 02:00 on the 16th in Kolkata is still the 15th in UTC: the id is dated in UTC.
+    @time_machine.travel(datetime(2026, 1, 16, 2, 0, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False)
     async def test_notify_decision_sends_a_warning_notification(self):
         pool = _pool()
         notify = AsyncMock()
@@ -299,7 +304,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
@@ -309,6 +314,7 @@ class TestHealthCheckExpired:
             "todo-1", "user-1", TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
         )
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "todo_health", "todo-1", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.WARNING
@@ -328,7 +334,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: still expired"),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
         ):
             outcome = await _health_check_expired(_doc(), pool)
 
@@ -344,7 +350,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(side_effect=ValueError("No human message or selected tool")),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             pytest.raises(ValueError, match="No human message"),
         ):
             await _health_check_expired(_doc(), pool)
@@ -439,7 +445,7 @@ class TestNotifyOverdue:
         notify = AsyncMock()
         add_labels = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
             patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
@@ -467,7 +473,7 @@ class TestNotifyOverdue:
         pool.get = AsyncMock(return_value="4")
         notify = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", AsyncMock()),
         ):
             result = await _notify_overdue(_doc(), pool)
@@ -570,12 +576,13 @@ class TestIsUserDaytime:
 class TestSendUserDormantDigest:
     async def test_single_todo_digest(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1", [_doc(title="Unfinished thing", updated_at=NOW - timedelta(days=7))], NOW
             )
 
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "dormant_digest", "", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.INFO
@@ -586,7 +593,7 @@ class TestSendUserDormantDigest:
 
     async def test_multi_todo_digest_counts_and_links_to_the_list(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1",
                 [
@@ -604,7 +611,7 @@ class TestSendUserDormantDigest:
 
     async def test_notification_failure_is_swallowed(self):
         with patch(
-            f"{MODULE}.notification_service.create_notification",
+            f"{MODULE}.notification_service.notify",
             AsyncMock(side_effect=RuntimeError("notification bus down")),
         ):
             await _send_user_dormant_digest("user-1", [_doc()], NOW)
@@ -1018,7 +1025,7 @@ class TestExpiredTierContainment:
         with (
             patch(f"{MODULE}._read_canvas", canvas),
             patch(f"{MODULE}._health_check_verdict", health),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
         ):
             outcome = await _health_check_expired(doc, pool)
 

@@ -25,8 +25,10 @@ from urllib.parse import urlparse
 
 survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
 module_path = sys.argv[4]
-module, mutant_name = survivor.rsplit(".", 1)
-mutant_file = f"{workdir}/mutants/{module.replace('.', '/')}.py"
+mutant_name = survivor.rsplit(".", 1)[1]
+# From the path, not the dotted name: mutmut names a package's __init__.py mutants
+# after the package (app.pkg.x_f__mutmut_1) but writes them to pkg/__init__.py.
+mutant_file = f"{workdir}/mutants/{module_path}"
 src = Path(mutant_file).read_text()
 # The mutants dict is per function, named without the mutant id:
 #   mutants_<base>__mutmut['_mutmut_orig'] = <base>__mutmut_orig

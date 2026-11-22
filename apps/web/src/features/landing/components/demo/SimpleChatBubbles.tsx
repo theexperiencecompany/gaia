@@ -1,6 +1,5 @@
-import { splitMessageByBreaks } from "@shared/utils";
 import Image from "next/image";
-import { type ReactNode, useId } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export function SimpleChatBubbleBot({
@@ -14,14 +13,6 @@ export function SimpleChatBubbleBot({
   parentClassName?: string;
   hideAvatar?: boolean;
 }) {
-  const baseId = useId();
-  // Handle NEW_MESSAGE_BREAK for multiple bubbles with single avatar
-  const childrenString = typeof children === "string" ? children : "";
-  const bubbles = childrenString
-    ? splitMessageByBreaks(childrenString)
-    : [children];
-  const hasMultipleBubbles = bubbles.length > 1;
-
   return (
     <div className={`relative mb-3 flex items-end gap-3 ${parentClassName}`}>
       {!hideAvatar && (
@@ -36,41 +27,14 @@ export function SimpleChatBubbleBot({
           />
         </div>
       )}
-      {hasMultipleBubbles ? (
-        <div className="flex flex-col gap-1">
-          {bubbles.map((bubble, index) => {
-            const isFirst = index === 0;
-            const isLast = index === bubbles.length - 1;
-            const groupedClasses = isFirst
-              ? "imessage-grouped-first"
-              : isLast
-                ? "imessage-grouped-last"
-                : "imessage-grouped-middle";
-
-            return (
-              <div
-                key={`${baseId}-bubble-${bubble}`}
-                className={cn(
-                  "imessage-bubble imessage-from-them text-white",
-                  groupedClasses,
-                  className,
-                )}
-              >
-                {bubble}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div
-          className={cn(
-            "imessage-bubble imessage-from-them text-white",
-            className,
-          )}
-        >
-          {children}
-        </div>
-      )}
+      <div
+        className={cn(
+          "imessage-bubble imessage-from-them text-white",
+          className,
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,7 @@
 # Multi-turn conversations. Each case's `prompt` carries the turns separated by
-# a line containing exactly `---`. The transport sends every turn through
-# /api/v1/chat-stream with the SAME dev user and conversation_id (captured from
-# the first turn's conversation_initialized frame), collecting the full
-# transcript. `messages` sent per turn = accumulated transcript + current turn.
+# a line containing exactly `---`. The transport sends every turn into ONE
+# conversation (POST /api/v1/conversations/{id}/messages) with the same dev
+# user, so the conversation's log carries the history.
 
 - id: quality-followup-two-turn
   ticket: "Multi-turn — remembers the conversation across turns; answers naturally. Suggestion gate disabled: the follow-up generator returned only 2 items on turn 2 in ~40% of observed runs (its FollowUpActions schema lacks min_length=3 — root fix belongs in the node), so a 3-4 gate here flips on model whim. The dedicated suggestion gates live on the everyday cases."

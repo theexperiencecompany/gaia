@@ -1,41 +1,62 @@
-import { Dropdown, Input, Menu, TextField } from "@heroui/react";
+import {
+  Description,
+  Dropdown,
+  Input,
+  Label,
+  Menu,
+  TextField,
+} from "@heroui/react";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
 } from "@shared/chat";
-import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
-import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
-import { useMemo, useRef, useState } from "react";
+import {
+  approvalAgeSeconds,
+  formatApprovalAge,
+  RECONFIRM_AGE_SECONDS,
+} from "@shared/chat";
+import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
+import { useMemo, useState } from "react";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { toast } from "@/lib/toast";
+
+/** Labelled facts in the card's inner panel. */
+function detailRows(
+  rows: readonly ApprovalRequestData["description"]["details"][number][],
+) {
+  return (
+    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
+      {rows.map((detail) => (
+        <div key={detail.label} className="text-xs">
+          <div className="mb-0.5 text-[11px] text-zinc-500">{detail.label}</div>
+          <div className="break-words text-zinc-200">{detail.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
-  onDecided: (status: ApprovalStatus, feedback: string | null) => void;
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
    * so a per-card click can't send a second, conflicting decision for the same id. */
   disabled?: boolean;
-  /** The conversation owning this card — clears that stream's gate instead of
-   * the active one (a sheet or background card can outlive the active chat). */
-  conversationId?: string;
 }
 
-// Statuses a stale tap settles to locally (the real verdict, not the tap);
-// `pending`/`unknown` keep the retry toast, `executing` is a ledger transient.
+/** Every argument of the call, for anyone who wants more than the plain-language facts. */
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const { rows, omitted } = useMemo(() => flattenArgsPreview(args), [args]);
   if (rows.length === 0) return null;
   let lastGroup: string | null = null;
   return (
-    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
+    <div className="mt-2 space-y-2 rounded-2xl bg-zinc-900 p-3">
       {rows.map((row) => {
         const showGroup = row.group !== null && row.group !== lastGroup;
         lastGroup = row.group;
@@ -66,21 +87,27 @@ type Phase = "idle" | "reconfirm" | "submitting";
 
 export default function ApprovalRequestSection({
   data,
-  onDecided,
   disabled = false,
-  conversationId,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  // A stale-v tap committed nothing; the next submit omits v so the CAS —
-  // not the version check — decides. v is an optimization, never a gate. Read
-  // and written only inside submit, never in render — a ref, not state.
-  const versionConflict = useRef(false);
-  const markApprovalDecided = useMarkApprovalDecided();
+  const [showAllArgs, setShowAllArgs] = useState(false);
+  const [openedAt] = useState(() => Date.now());
   const locked = submitting !== null || disabled || phase === "submitting";
 
-  const needsReconfirm = (data.age_seconds ?? 0) >= RECONFIRM_AGE_SECONDS;
+  const ageSeconds = approvalAgeSeconds(data.asked_at, openedAt);
+  const needsReconfirm = (ageSeconds ?? 0) >= RECONFIRM_AGE_SECONDS;
+  const { description } = data;
+  const facts = description.details.filter((detail) => !detail.expandable);
+  const longText = description.details.filter((detail) => detail.expandable);
+  const integrationIcon = data.integration_name
+    ? getToolCategoryIcon(data.integration_name, {
+        width: 20,
+        height: 20,
+        showBackground: false,
+      })
+    : null;
 
   const submit = async (
     decision: ApprovalDecision,
@@ -88,36 +115,24 @@ export default function ApprovalRequestSection({
   ) => {
     setSubmitting(decision);
     setPhase("submitting");
-    // Feedback rides deny only (sheet parity): an approve-with-note would
-    // execute beyond the granted permission, so the server converts it to
-    // deny — the card says so from the start.
-    const attachedFeedback =
-      decision === "deny" ? feedback.trim() || null : null;
+    // A note rides either decision, as on the review sheet: with Approve it is the
+    // change, and the work asks again with it instead of running the call as it stands.
     try {
       const outcome = await chatApi.postApprovalDecision(data.approval_id, {
         decision,
-        feedback: attachedFeedback ?? undefined,
+        feedback: feedback.trim() || undefined,
         scope,
-        v: versionConflict.current
-          ? undefined
-          : (data.ledger_version ?? undefined),
       });
-      // Settle locally: the resolved frame (websocket broadcast or reload) flips
-      // the card to the real outcome — executed, failed, unknown. Reaching the
+      // The server's screen ends the card with the action's result; reaching the
       // catch means the submit genuinely failed.
-      const settled = statusAfterDecision(decision, outcome);
-      if (settled === null) {
-        // Stale version: drop it so the next tap hits the CAS directly.
-        versionConflict.current = true;
+      if (endAfterDecision(decision, outcome) === null) {
         setSubmitting(null);
         setPhase("idle");
-        toast.error("That approval already moved — tap again to confirm");
+        toast.error(APPROVAL_COPY.alreadyDecided);
         return;
       }
-      markApprovalDecided(conversationId);
-      onDecided(settled, attachedFeedback);
     } catch {
-      toast.error("Couldn't submit your decision, please try again");
+      toast.error(APPROVAL_COPY.submitFailed);
       setSubmitting(null);
       setPhase("idle");
     }
@@ -133,15 +148,15 @@ export default function ApprovalRequestSection({
     void submit("approve");
   };
 
-  if (data.status !== "pending") return null;
+  if (data.status !== "waiting") return null;
 
   if (phase === "reconfirm") {
     return (
       <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
         <div className="text-sm leading-snug text-zinc-100">
-          {`Asked ${formatApprovalAge(data.age_seconds).replace("asked ", "")} ago — still want this?`}
+          {`Asked ${formatApprovalAge(ageSeconds).replace("asked ", "")} ago — still want this?`}
         </div>
-        <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
+        <div className="mt-1 text-xs text-zinc-400">{description.headline}</div>
         <div className="mt-3 flex items-center gap-2">
           <GaiaButton
             size="sm"
@@ -151,14 +166,14 @@ export default function ApprovalRequestSection({
             }}
             variant="primary"
           >
-            Yes, still approve
+            {APPROVAL_COPY.reconfirmApprove}
           </GaiaButton>
           <GaiaButton
             variant="default-soft"
             size="sm"
             onPress={() => setPhase("idle")}
           >
-            Back
+            {APPROVAL_COPY.back}
           </GaiaButton>
         </div>
       </div>
@@ -168,31 +183,66 @@ export default function ApprovalRequestSection({
   return (
     <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
       <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
-          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-zinc-900">
+          {integrationIcon ?? (
+            <ShieldAlertIcon
+              width={17}
+              height={17}
+              className="text-amber-400"
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium text-amber-400">
-            Needs approval
+            {APPROVAL_COPY.needsApproval}
+            {data.integration_name && (
+              <span className="font-normal text-zinc-500">
+                {APPROVAL_COPY.inIntegration(data.integration_name)}
+              </span>
+            )}
           </div>
           <div className="text-sm leading-snug text-zinc-100">
-            {formatToolName(data.gated_tool_name)}
+            {description.headline}
           </div>
-          {data.age_seconds != null && (
+          {/* A re-ask after a yes with a change: the server's question leads with that change. */}
+          {description.change_note && description.question && (
+            <div className="mt-1 text-xs leading-snug text-zinc-300">
+              {description.question}
+            </div>
+          )}
+          {ageSeconds != null && (
             <div className="mt-0.5 text-[11px] text-zinc-500">
-              {formatApprovalAge(data.age_seconds)}
+              {formatApprovalAge(ageSeconds)}
             </div>
           )}
         </div>
       </div>
 
-      {data.rationale?.trim() && (
+      {data.auto_reason?.trim() && (
         <div className="mt-2 text-xs leading-snug text-zinc-400">
-          {data.rationale.trim()}
+          {data.auto_reason.trim()}
         </div>
       )}
 
-      <ArgsPreview args={data.args_preview} />
+      {facts.length > 0 && detailRows(facts)}
+
+      {description.details.length === 0 || showAllArgs ? (
+        <>
+          {longText.length > 0 && detailRows(longText)}
+          <ArgsPreview args={data.args_preview} />
+        </>
+      ) : (
+        <GaiaButton
+          className="mt-1"
+          size="sm"
+          variant="ghost"
+          inset="none"
+          tone="faint"
+          onPress={() => setShowAllArgs(true)}
+        >
+          {APPROVAL_COPY.showAllDetails}
+        </GaiaButton>
+      )}
 
       <div className="mt-3 flex items-center gap-2">
         <TextField
@@ -201,7 +251,7 @@ export default function ApprovalRequestSection({
           onChange={setFeedback}
           isDisabled={locked}
         >
-          <Input placeholder="Tell GAIA why (optional)" />
+          <Input placeholder={APPROVAL_COPY.feedbackPlaceholder} />
         </TextField>
         <GaiaButton
           size="sm"
@@ -209,7 +259,7 @@ export default function ApprovalRequestSection({
           onPress={onApproveTap}
           variant="primary"
         >
-          Approve
+          {APPROVAL_COPY.approve}
         </GaiaButton>
         <GaiaButton
           variant="default-soft"
@@ -217,7 +267,7 @@ export default function ApprovalRequestSection({
           isDisabled={locked}
           onPress={() => submit("deny")}
         >
-          Deny
+          {APPROVAL_COPY.deny}
         </GaiaButton>
         {!data.always_asks && (
           <Dropdown>
@@ -226,18 +276,19 @@ export default function ApprovalRequestSection({
               size="sm"
               variant="ghost"
               isDisabled={locked}
-              aria-label="More approval options"
+              aria-label={APPROVAL_COPY.moreOptions}
             >
               <MoreHorizontalIcon width={18} />
             </GaiaButton>
             <Dropdown.Popover placement="bottom end">
-              <Menu aria-label="Approval options">
+              <Menu aria-label={APPROVAL_COPY.optionsMenu}>
                 <Menu.Item
                   id="always"
-                  textValue="Always allow this tool"
+                  textValue={APPROVAL_COPY.alwaysAllow(description.action)}
                   onAction={() => submit("approve", "always_tool")}
                 >
-                  Always allow this tool
+                  <Label>{APPROVAL_COPY.alwaysAllow(description.action)}</Label>
+                  <Description>{APPROVAL_COPY.alwaysAllowHint}</Description>
                 </Menu.Item>
               </Menu>
             </Dropdown.Popover>

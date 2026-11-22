@@ -22,7 +22,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsx watch src/index.ts",
+        "command": "bash ../../../scripts/dev/require-worktree-env.sh && env ${BOT_IMESSAGE_PORT:+BOT_SERVER_PORT=$BOT_IMESSAGE_PORT} pnpm tsx watch src/index.ts",
         "cwd": "{projectRoot}"
       }
     },

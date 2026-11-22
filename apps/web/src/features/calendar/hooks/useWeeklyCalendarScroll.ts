@@ -6,53 +6,38 @@ import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useHorizontalScrollObserver } from "@/features/calendar/hooks/useHorizontalScrollObserver";
-import { useInfiniteCalendarLoader } from "@/features/calendar/hooks/useInfiniteCalendarLoader";
-import { getInitialMonthlyDateRange } from "@/features/calendar/utils/dateRangeUtils";
 import {
-  useCalendarCurrentWeek,
+  generateMonthDates,
+  getInitialMonthlyDateRange,
+  getNextMonthRange,
+  getPreviousMonthRange,
+} from "@/features/calendar/utils/dateRangeUtils";
+import {
   useCalendarSelectedDate,
   useDaysToShow,
   useSetVisibleMonthYear,
 } from "@/stores/calendarStore";
-
-interface UseWeeklyCalendarScrollArgs {
-  selectedCalendars: string[];
-  isInitialized: boolean;
-  loadEvents: (
-    calendarIds?: string[],
-    reset?: boolean,
-    customStartDate?: Date,
-    customEndDate?: Date,
-    direction?: "past" | "future",
-  ) => Promise<unknown>;
-}
 
 interface UseWeeklyCalendarScrollResult {
   containerRef: RefObject<HTMLDivElement | null>;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   extendedDates: Date[];
-  isLoadingPast: boolean;
-  isLoadingFuture: boolean;
 }
 
 /**
  * Owns the weekly calendar's scrolling machinery: the horizontally virtualized
  * date range, dynamic column width, scroll positioning (today/selected date),
- * infinite loading in both directions, and visible month/year sync. Lets
+ * extending the dates a month at a time in both directions, and visible
+ * month/year sync. Lets
  * `WeeklyCalendarView` stay a thin render component.
  */
-export const useWeeklyCalendarScroll = ({
-  selectedCalendars,
-  isInitialized,
-  loadEvents,
-}: UseWeeklyCalendarScrollArgs): UseWeeklyCalendarScrollResult => {
+export const useWeeklyCalendarScroll = (): UseWeeklyCalendarScrollResult => {
   // Refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const firstDateRef = useRef<Date | null>(null);
   const lastDateRef = useRef<Date | null>(null);
-  const hasInitialFetchedRef = useRef<boolean>(false);
   const hasScrolledToTodayRef = useRef<boolean>(false);
 
   // State
@@ -64,7 +49,6 @@ export const useWeeklyCalendarScroll = ({
 
   // Store selectors
   const selectedDate = useCalendarSelectedDate();
-  const currentWeek = useCalendarCurrentWeek();
   const daysToShow = useDaysToShow();
   const setVisibleMonthYear = useSetVisibleMonthYear();
 
@@ -72,14 +56,6 @@ export const useWeeklyCalendarScroll = ({
   // selected-date effect below) still read fresh data when they run without
   // re-running on every change of these.
   const extendedDatesRef = useRef(extendedDates);
-  const selectedCalendarsRef = useRef(selectedCalendars);
-  useEffect(() => {
-    selectedCalendarsRef.current = selectedCalendars;
-  }, [selectedCalendars]);
-  const loadEventsRef = useRef(loadEvents);
-  useEffect(() => {
-    loadEventsRef.current = loadEvents;
-  });
 
   // Memoized values
   // Create single virtualizer instance for all components to share
@@ -147,12 +123,6 @@ export const useWeeklyCalendarScroll = ({
     extendedDates,
   );
 
-  const { loadMorePast, loadMoreFuture, isLoadingPast, isLoadingFuture } =
-    useInfiniteCalendarLoader({
-      selectedCalendars,
-      isInitialized,
-    });
-
   // Update date refs when dates change (extendedDatesRef also feeds the
   // scroll helpers above so they always see the latest list)
   useEffect(() => {
@@ -203,22 +173,8 @@ export const useWeeklyCalendarScroll = ({
           // Date is in current range, scroll to it
           scrollToDate(selectedDate, "smooth");
         } else {
-          // Date is not in range, need to load it
-          // Reset dates to show a range around the selected date
-          const newDates = getInitialMonthlyDateRange(selectedDate);
-          setExtendedDates(newDates);
-
-          // Load events for this range
-          if (selectedCalendarsRef.current.length > 0) {
-            const start = newDates[0];
-            const end = newDates[newDates.length - 1];
-            void loadEventsRef.current(
-              selectedCalendarsRef.current,
-              true,
-              start,
-              end,
-            );
-          }
+          // Date is not in range: show the months around it, whose events load as they appear
+          setExtendedDates(getInitialMonthlyDateRange(selectedDate));
 
           // Scroll to the date after dates are updated
           scrollTimer = setTimeout(() => {
@@ -232,68 +188,33 @@ export const useWeeklyCalendarScroll = ({
     };
   }, [selectedDate, scrollToDate]);
 
-  // Effect 2: Initial fetch of events for 3-month range. Guarded by
-  // hasInitialFetchedRef, so extra runs from changing deps are no-ops until
-  // the calendar selection changes (Effect 3 resets the flag).
+  // Effect 4: Prepend the previous month when scrolling backwards
   useEffect(() => {
-    if (
-      selectedCalendars.length > 0 &&
-      isInitialized &&
-      !hasInitialFetchedRef.current
-    ) {
-      const dates = getInitialMonthlyDateRange(currentWeek);
-      const start = dates[0];
-      const end = dates[dates.length - 1];
+    if (!scrollMetrics.shouldLoadPast || !firstDateRef.current) return;
+    const newDates = generateMonthDates(
+      getPreviousMonthRange(firstDateRef.current).start,
+    );
+    const scrollContainer = scrollContainerRef.current;
+    const prevScrollLeft = scrollContainer?.scrollLeft || 0;
 
-      void loadEvents(selectedCalendars, true, start, end);
-      hasInitialFetchedRef.current = true;
-    }
-  }, [selectedCalendars, isInitialized, currentWeek, loadEvents]);
+    setExtendedDates((prev) => [...newDates, ...prev]);
 
-  // Effect 3: Reset fetch flag when calendars change
+    requestAnimationFrame(() => {
+      if (scrollContainer) {
+        scrollContainer.scrollLeft =
+          prevScrollLeft + newDates.length * columnWidthRef.current;
+      }
+    });
+  }, [scrollMetrics.shouldLoadPast]);
+
+  // Effect 5: Append the next month when scrolling forwards
   useEffect(() => {
-    hasInitialFetchedRef.current = false;
-  }, [selectedCalendars]);
-
-  // Effect 4: Load more past events when scrolling backwards
-  useEffect(() => {
-    if (
-      scrollMetrics.shouldLoadPast &&
-      !isLoadingPast &&
-      firstDateRef.current
-    ) {
-      loadMorePast(firstDateRef.current).then((newDates) => {
-        if (newDates.length > 0) {
-          const scrollContainer = scrollContainerRef.current;
-          const prevScrollLeft = scrollContainer?.scrollLeft || 0;
-
-          setExtendedDates((prev) => [...newDates, ...prev]);
-
-          requestAnimationFrame(() => {
-            if (scrollContainer) {
-              scrollContainer.scrollLeft =
-                prevScrollLeft + newDates.length * columnWidth;
-            }
-          });
-        }
-      });
-    }
-  }, [scrollMetrics.shouldLoadPast, isLoadingPast, loadMorePast, columnWidth]);
-
-  // Effect 5: Load more future events when scrolling forwards
-  useEffect(() => {
-    if (
-      scrollMetrics.shouldLoadFuture &&
-      !isLoadingFuture &&
-      lastDateRef.current
-    ) {
-      loadMoreFuture(lastDateRef.current).then((newDates) => {
-        if (newDates.length > 0) {
-          setExtendedDates((prev) => [...prev, ...newDates]);
-        }
-      });
-    }
-  }, [scrollMetrics.shouldLoadFuture, isLoadingFuture, loadMoreFuture]);
+    if (!scrollMetrics.shouldLoadFuture || !lastDateRef.current) return;
+    const newDates = generateMonthDates(
+      getNextMonthRange(lastDateRef.current).start,
+    );
+    setExtendedDates((prev) => [...prev, ...newDates]);
+  }, [scrollMetrics.shouldLoadFuture]);
 
   // Effect 6: Update visible month/year based on scroll position
   useEffect(() => {
@@ -366,7 +287,5 @@ export const useWeeklyCalendarScroll = ({
     scrollContainerRef,
     columnVirtualizer,
     extendedDates,
-    isLoadingPast,
-    isLoadingFuture,
   };
 };

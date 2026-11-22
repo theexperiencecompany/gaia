@@ -122,8 +122,7 @@ _CACHE_ALLOWED_DIRS = ("db/", "decorators/")
 # a new hand-cache in a service must justify itself, not be allowlisted away.
 CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
     {
-        # agents/ + utils/ — custom-MCP target resolution and display metadata (name/icon)
-        "agents/core/subagents/integration_resolution.py",
+        # utils/ — custom-MCP display metadata (name/icon)
         "utils/agent_utils.py",
         # external-data / derived caches (web, weather, favicon, research)
         "agents/tools/research_tool.py",

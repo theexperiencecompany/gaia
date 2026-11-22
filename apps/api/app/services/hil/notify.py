@@ -1,166 +1,57 @@
-"""Notify a user's clients that an approval is waiting.
+"""Wake a user who is not watching when an approval is waiting.
 
-Two independent best-effort channels — a failure here must never propagate into
-the gate (the SSE card is the primary surface; these only wake a client that
-isn't actively watching the stream):
-
-- in-app WebSocket broadcast (open web/mobile clients);
-- Expo push (backgrounded mobile app), with interactive approve/deny actions.
+The approval's entry in the conversation log is its record: open clients render
+it off the events stream and a bot's conversation follower asks about it. The
+phone is woken by a push. An approval asked in GAIA's own work (a todo's or a
+workflow's chat) has no follower, so it also goes to the chat app that work's
+results go to, as its question and a link to that chat. One notification keyed
+by the approval, so a replayed gate sends nothing twice.
 """
 
-import asyncio
-from typing import TypedDict
-
-import httpx
-from pydantic import BaseModel
-
-from app.constants.log_tags import LogTag
-from app.core.websocket_manager import websocket_manager
-from app.db.repositories.device_tokens import device_token_repository
-from shared.py.wide_events import log
-
-_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
-_EXPO_PUSH_TIMEOUT_SECONDS = 10.0
-# Expo rejects a push request carrying more than 100 messages.
-_EXPO_PUSH_BATCH_SIZE = 100
-_EXPO_DEVICE_NOT_REGISTERED = "DeviceNotRegistered"
-
-
-class _ApprovalPushData(TypedDict):
-    type: str
-    conversation_id: str
-    approval_id: str
+from app.constants.chat import SourceCategory
+from app.constants.notifications import (
+    APPROVAL_CHAT_LINK_LABEL,
+    APPROVAL_PUSH_CATEGORY,
+    APPROVAL_PUSH_TITLE,
+    CHANNEL_TYPE_PUSH,
+)
+from app.db.repositories.conversations import conversation_repository
+from app.models.notification.notification_models import (
+    ChannelConfig,
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    notification_id,
+)
+from app.services.delivery.chat_channel import ChatChannel, resolve_proactive_target
+from app.services.hil.utils import GatedApproval
+from app.services.notification_service import notification_service
+from app.utils.artifact_utils import FILE_LINKS
 
 
-class _ExpoPushMessage(TypedDict):
-    to: str
-    title: str
-    body: str
-    categoryId: str
-    data: _ApprovalPushData
-
-
-class _ExpoTicketDetails(BaseModel):
-    error: str | None = None
-
-
-class _ExpoPushTicket(BaseModel):
-    status: str | None = None
-    details: _ExpoTicketDetails | None = None
-
-
-class _ExpoPushTickets(BaseModel):
-    """Expo's reply to a push request: one ticket per message sent, in order."""
-
-    data: list[_ExpoPushTicket] = []
-
-
-async def notify_approval_pending(
-    user_id: str,
-    conversation_id: str,
-    approval_id: str,
-    summary: str,
-) -> None:
-    """Wake a not-actively-watching client over every channel. Never raises."""
-    await asyncio.gather(
-        _broadcast_in_app(user_id, conversation_id, approval_id, summary),
-        _push_to_devices(user_id, conversation_id, approval_id, summary),
+async def notify_approval_pending(approval: GatedApproval) -> None:
+    """Push the pending approval to the user's phones, and to their chat app when no bot follows its chat."""
+    channels = [ChannelConfig(channel_type=CHANNEL_TYPE_PUSH)]
+    source = await conversation_repository.get_source(
+        approval.conversation_id, user_id=approval.user_id
     )
-
-
-async def _broadcast_in_app(
-    user_id: str, conversation_id: str, approval_id: str, summary: str
-) -> None:
-    """Best-effort in-app WebSocket ping to any open client for this user."""
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id=user_id,
-            message={
-                "type": "hil_approval_pending",
-                "data": {
-                    "conversation_id": conversation_id,
-                    "approval_id": approval_id,
-                    "summary": summary,
-                },
+    if SourceCategory.from_source(source) is SourceCategory.BG:
+        target = await resolve_proactive_target(approval.user_id)
+        if isinstance(target, ChatChannel):
+            channels.append(ChannelConfig(channel_type=target.source.value))
+    page = FILE_LINKS.conversation_page(approval.conversation_id)
+    await notification_service.notify(
+        NotificationRequest(
+            id=notification_id(approval.user_id, "approval", approval.approval_id),
+            user_id=approval.user_id,
+            source=NotificationSourceEnum.APPROVAL,
+            channels=channels,
+            content=NotificationContent(title=APPROVAL_PUSH_TITLE, body=approval.summary),
+            metadata={
+                "type": APPROVAL_PUSH_CATEGORY,
+                "conversation_id": approval.conversation_id,
+                "approval_id": approval.approval_id,
             },
+            message=f"**{approval.question}**\n\n[{APPROVAL_CHAT_LINK_LABEL}]({page})",
         )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} HIL notify: WebSocket broadcast failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-
-
-async def _push_to_devices(
-    user_id: str, conversation_id: str, approval_id: str, summary: str
-) -> None:
-    """Best-effort Expo push to the user's registered devices."""
-    try:
-        tokens = await device_token_repository.list_active_tokens(user_id)
-        if tokens:
-            await _send_expo_push(
-                tokens,
-                conversation_id=conversation_id,
-                approval_id=approval_id,
-                summary=summary,
-            )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} HIL notify: Expo push failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-
-
-async def _send_expo_push(
-    tokens: list[str], *, conversation_id: str, approval_id: str, summary: str
-) -> None:
-    messages: list[_ExpoPushMessage] = [
-        {
-            "to": token,
-            "title": "GAIA needs your approval",
-            "body": summary,
-            "categoryId": "hil_approval",
-            "data": {
-                "type": "hil_approval",
-                "conversation_id": conversation_id,
-                "approval_id": approval_id,
-            },
-        }
-        for token in tokens
-    ]
-
-    dead_tokens: list[str] = []
-    async with httpx.AsyncClient(timeout=_EXPO_PUSH_TIMEOUT_SECONDS) as client:
-        for start in range(0, len(messages), _EXPO_PUSH_BATCH_SIZE):
-            end = start + _EXPO_PUSH_BATCH_SIZE
-            response = await client.post(_EXPO_PUSH_URL, json=messages[start:end])
-            dead_tokens.extend(_dead_tokens_from_receipts(tokens[start:end], response))
-
-    if dead_tokens:
-        await device_token_repository.deactivate(dead_tokens)
-
-
-def _dead_tokens_from_receipts(batch: list[str], response: httpx.Response) -> list[str]:
-    """Return the tokens of this batch that Expo reported as DeviceNotRegistered.
-
-    A ticket flags a permanently dead token (app uninstalled / token expired). A reply
-    that is not JSON, not ticket-shaped, or not one ticket per message reports none.
-    """
-    try:
-        tickets = _ExpoPushTickets.model_validate(response.json()).data
-        receipts = list(zip(batch, tickets, strict=True))
-    except ValueError:
-        return []
-    return [
-        token
-        for token, ticket in receipts
-        if ticket.status == "error"
-        and ticket.details is not None
-        and ticket.details.error == _EXPO_DEVICE_NOT_REGISTERED
-    ]
+    )

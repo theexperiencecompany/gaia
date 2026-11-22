@@ -25,8 +25,8 @@ describe("UnifiedToolThread with a catalog-enabled Composio toolkit", () => {
     const { container } = render(
       <UnifiedToolThread
         timeline={[
-          { kind: "tool", data: call("a") },
-          { kind: "tool", data: call("b") },
+          { kind: "tool", key: "tc-a", data: call("a") },
+          { kind: "tool", key: "tc-b", data: call("b") },
         ]}
         isStreaming={false}
         pendingApprovalToolCallIds={new Set()}

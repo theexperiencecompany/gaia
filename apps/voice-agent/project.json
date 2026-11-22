@@ -109,6 +109,30 @@
         }
       }
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev pytest apps/voice-agent/tests -q -p no:cacheprovider"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/voice-agent/pyproject.toml",
+        "python",
+        "{workspaceRoot}/libs/shared/py/**/*",
+        "^production",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "lint-python",
+          "check": "voice-tests",
+          "area": "tests"
+        }
+      }
+    },
     "format": {
       "executor": "nx:run-commands",
       "options": {

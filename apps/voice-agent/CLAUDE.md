@@ -27,13 +27,14 @@ cd apps/voice-agent && uv run python -m src download-files
 src/
   __main__.py   — CLI entrypoint; dispatches `start` or `download-files`
   agent.py      — prewarm(), entrypoint(), start_worker(), download_files()
-  llm.py        — CustomLLM class (SSE streaming + TTS chunking)
+  conversation.py — VoiceConversation (send turns, follow events, barge-in) + VoiceTurnAgent
+  speech.py     — ReplySpeech (TTS chunking + heard offset)
   config.py     — VoiceAgentSettings + bootstrap_settings() for Infisical
   constants.py  — SSE tokens, TTS thresholds, compiled regexes, system prompt
   utils.py      — sanitize_for_tts, extract_meta_data, now_ts, ms_since
 ```
 
-**CustomLLM** (`llm.py`): A `livekit.agents.llm.LLM` subclass that streams SSE from `POST /api/v1/chat-stream` on the GAIA backend. It reuses a single `aiohttp.ClientSession` across turns and flushes text to ElevenLabs TTS in sentence-sized chunks (flush at sentence boundary ≥40 chars, or hard flush at 120 chars) to minimize latency.
+**VoiceConversation** (`conversation.py`): the session has no LLM. `VoiceTurnAgent.on_user_turn_completed` sends each finished user turn to `POST /api/v1/conversations/{id}/messages` (`voice: true`), which returns at once. One follower per session reads `GET /api/v1/conversations/{id}/events` and speaks every reply opened after the first turn through `session.say()`, flushing each reply to ElevenLabs in sentence-sized chunks (`ReplySpeech` in `speech.py`: sentence boundary ≥40 chars, hard flush at 120). When the user talks over a reply, the speech handle ends interrupted; the follower maps the TTS-aligned transcript of what played back to an offset in the reply's text (rounded down to the last whole chunk heard) and posts it to `POST /api/v1/conversations/{id}/barge-in`, and the step cuts the saved reply to it.
 
 **Startup sequence**: `start_worker()` calls `inject_infisical_secrets()` once in the main process before `cli.run_app()` (`download_files()` skips it — it only fetches public model files, so it can run at Docker-build time with no secrets). Each forked `JobProcess` inherits the resulting env vars and calls `prewarm()`, which calls `bootstrap_settings()` to build `VoiceAgentSettings` from the inherited environment (no network I/O) and loads the Silero VAD model into `proc.userdata`. `MultilingualModel` is constructed per room inside `entrypoint()` because its `__init__` needs a job context. `entrypoint()` reads settings + VAD from `ctx.proc.userdata` — zero Infisical calls per room.
 
@@ -47,7 +48,7 @@ The worker uses the same wide-event facade as the API (`from shared.py.wide_even
 
 **A bare `log.set()` proves nothing here.** Outside a boundary it is silently discarded — no error, no line, the fields simply never reach Loki. This is the one place the voice rules are stricter than the ARQ worker rules, where a `log.set()` alone is accepted.
 
-The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `WorkerOptions(entrypoint_fnc=…, prewarm_fnc=…)` in `agent.py` and the per-turn coroutine behind `CustomLLM.chat` in `llm.py`, so rewiring the worker moves the gate with it. Score the surface with `python3 tools/evlog_map` (it covers `apps/api/app` **and** `apps/voice-agent/src`); CI gates it per-file against the merge base plus a discovery floor (`--min-entries`). Waive a check that genuinely does not apply with `# evlog-map-disable-next-line <check-id> -- <reason>` — the `--` reason is mandatory.
+The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `WorkerOptions(entrypoint_fnc=…, prewarm_fnc=…)` in `agent.py` and `on_user_turn_completed` on the `Agent` subclass in `conversation.py`, so rewiring the worker moves the gate with it. Score the surface with `python3 tools/evlog_map` (it covers `apps/api/app` **and** `apps/voice-agent/src`); CI gates it per-file against the merge base plus a discovery floor (`--min-entries`). Waive a check that genuinely does not apply with `# evlog-map-disable-next-line <check-id> -- <reason>` — the `--` reason is mandatory.
 
 ## Code Style
 

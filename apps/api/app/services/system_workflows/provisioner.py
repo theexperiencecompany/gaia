@@ -26,6 +26,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -194,8 +195,14 @@ async def _notify_workflows_provisioned(
 
     try:
         notification_service = NotificationService()
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(
+                    user_id,
+                    "system_workflows_provisioned",
+                    integration_display_name,
+                    ",".join(sorted(r.title for r in created)),
+                ),
                 user_id=user_id,
                 source=NotificationSourceEnum.SYSTEM_WORKFLOWS_PROVISIONED,
                 type=NotificationType.SUCCESS,

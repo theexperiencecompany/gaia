@@ -8,8 +8,12 @@ from collections.abc import Container, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
+from typing import Annotated
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import InjectedToolCallId, tool
+from langgraph.prebuilt import InjectedState
 from prometheus_client import REGISTRY
 from pydantic import BaseModel, Field, field_validator
 import pytest
@@ -23,6 +27,7 @@ from app.agents.tools.execute.dispatch import (
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import ConnectMode
+from app.constants.log_tags import LogTag
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
@@ -31,7 +36,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.dispatch"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
-CONFIG = {"configurable": {"user_id": USER_ID}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": USER_ID}}
 
 
 class _SendEmailArgs(BaseModel):
@@ -43,7 +48,7 @@ class _SendEmailArgs(BaseModel):
 def _tool(name: str = "GMAIL_SEND_EMAIL", schema: object = _SendEmailArgs) -> MagicMock:
     tool = MagicMock()
     tool.name = name
-    tool.args_schema = schema
+    tool.tool_call_schema = schema
     tool.ainvoke = AsyncMock(return_value={"status": "sent"})
     return tool
 
@@ -225,23 +230,35 @@ class TestAccountChoice:
 
         assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
 
-    async def test_an_account_on_a_tool_without_accounts_is_refused(self) -> None:
+    async def test_an_account_on_a_tool_without_accounts_is_ignored_and_the_call_runs(
+        self,
+    ) -> None:
         tool = _tool(name="todo_create")
         with patch(
             f"{MODULE}.resolve_tool",
             new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
         ):
-            result = await dispatch_tool(
-                user_id=USER_ID,
-                tool_name="todo_create",
-                data={"recipient": "a@b.c", "subject": "hi"},
-                config=CONFIG,
-                account="work",
-            )
+            async with captured_wide_event() as event:
+                result = await dispatch_tool(
+                    user_id=USER_ID,
+                    tool_name="todo_create",
+                    data={"recipient": "a@b.c", "subject": "hi"},
+                    config=CONFIG,
+                    account="work",
+                )
 
-        assert result.error is not None
-        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
-        tool.ainvoke.assert_not_awaited()
+        assert result.ok is True
+        assert result.error is None
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} execute: account ignored, tool has no accounts",
+                "tool_name": "todo_create",
+            }
+        ]
+        tool.ainvoke.assert_awaited_once()
+        assert "composio_account" not in (
+            tool.ainvoke.await_args.kwargs["config"].get("metadata") or {}
+        )
 
     async def test_a_personless_run_cannot_choose_an_account(
         self, account_record: AsyncMock
@@ -264,7 +281,7 @@ class TestAccountChoice:
         assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
         tool.ainvoke.assert_not_awaited()
 
-    async def test_an_integration_without_composio_has_no_accounts_to_choose(
+    async def test_an_integration_without_composio_ignores_a_named_account_and_runs(
         self, account_record: AsyncMock
     ) -> None:
         account_record.return_value = _gmail_accounts(WORK, PERSONAL)
@@ -275,9 +292,11 @@ class TestAccountChoice:
         ):
             result = await _dispatch_send("Personal", tool)
 
-        assert result.error is not None
-        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
-        tool.ainvoke.assert_not_awaited()
+        assert result.ok is True
+        tool.ainvoke.assert_awaited_once()
+        assert "composio_account" not in (
+            tool.ainvoke.await_args.kwargs["config"].get("metadata") or {}
+        )
 
     async def test_the_chosen_account_joins_the_callers_metadata(
         self, account_record: AsyncMock
@@ -406,6 +425,31 @@ class TestDispatchTool:
             UserId(USER_ID),
             ToolUsed(tool_name="GMAIL_SEND_EMAIL", via="execute"),
         )
+
+    async def test_args_the_runtime_injects_are_not_asked_of_the_model(self) -> None:
+        @tool("GMAIL_SEND_EMAIL")
+        def send(
+            to: str,
+            tool_call_id: Annotated[str, InjectedToolCallId],
+            state: Annotated[dict[str, object], InjectedState],
+        ) -> str:
+            """Send an email."""
+            return to
+
+        gated = _tool(schema=send.tool_call_schema)
+        gated.args_schema = send.args_schema
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(gated.name, gated, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture"),
+        ):
+            result = await dispatch_tool(
+                user_id=USER_ID, tool_name="GMAIL_SEND_EMAIL", data={"to": "a@b.c"}, config=CONFIG
+            )
+        assert result.ok is True
+        gated.ainvoke.assert_awaited_once_with({"to": "a@b.c"}, config=CONFIG)
 
     async def test_dict_schema_tool_invokes_with_raw_data(self) -> None:
         tool = _tool(name="MCP_DICT_TOOL", schema={"type": "object"})
@@ -826,18 +870,6 @@ REFUSALS = {
         ),
         warning="execute: args failed schema validation",
         data={"recipient": "a@b.c"},
-    ),
-    "account_on_an_accountless_tool": _Refusal(
-        tool_name="create_todo",
-        resolved=ResolvedTool("create_todo", _INTERNAL, is_integration=False),
-        error=DispatchError(
-            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
-            detail="'create_todo' has no connected accounts to choose between.",
-            hint="Retry without `account`.",
-        ),
-        warning="execute: account not usable",
-        data={"recipient": "a@b.c", "subject": "hi"},
-        account="work",
     ),
     "unknown_account": _Refusal(
         tool_name="GMAIL_SEND_EMAIL",

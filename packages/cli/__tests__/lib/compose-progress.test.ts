@@ -274,6 +274,29 @@ describe("describeComposeProgress while building and starting", () => {
     ).toBe("Starting GAIA: 1 of 1 services up");
   });
 
+  // Order verbatim from Compose v5.5: a service_completed_successfully
+  // dependency is Waiting until it exits, then reports Exited.
+  it("counts a one-shot service up once it exits", () => {
+    const container = (service: string, text: string): ComposeEvent => ({
+      id: `Container gaia-selfhost-${service}-1`,
+      status: text === "Waiting" ? "Working" : "Done",
+      text,
+    });
+    const { phases } = run([
+      container("gaia-migrate", "Started"),
+      container("gaia-migrate", "Waiting"),
+      container("gaia-migrate", "Exited"),
+      container("gaia-backend", "Started"),
+    ]);
+
+    expect(phases.at(-1)?.label).toBe("Starting GAIA: 2 of 2 services up");
+    expect(phases.at(-1)?.parts?.[0]).toEqual({
+      id: "gaia-migrate",
+      label: "data migration",
+      state: "done",
+    });
+  });
+
   it("says the images are unpacking once every layer is downloaded", () => {
     const layer = (id: string, text: string): ComposeEvent => ({
       id,

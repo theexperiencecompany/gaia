@@ -39,7 +39,7 @@ export const helpCommand: BotCommand = {
             "`/settings`: your account and connected apps",
             "`/status`: check if you're linked",
             "`/new`: start a fresh conversation",
-            "`/stop`: cancel the current reply and reset",
+            "`/stop`: stop the current reply and any background work",
             "`/conversations`: pick up a past chat",
             "`/unlink`: disconnect your account",
           ].join("\n"),

@@ -391,7 +391,6 @@ _INDEX_CREATORS = [
     "create_workflow_execution_indexes",
     "create_bot_session_indexes",
     "create_e2b_sandbox_indexes",
-    "create_hil_approvals_indexes",
     "create_approval_ledger_indexes",
     "create_pending_platform_registration_indexes",
     "create_browser_profiles_indexes",
@@ -445,25 +444,88 @@ class TestCreatePlaybookIndexes:
         )
 
 
+def _collections_by_name(mock_get_collection: MagicMock) -> dict[str, MagicMock]:
+    """Give each collection name its own mock, recording every create_index await."""
+    collections: dict[str, MagicMock] = {}
+
+    def collection_for(name: str) -> MagicMock:
+        if name not in collections:
+            collection = MagicMock()
+            collection.create_index = AsyncMock()
+            collections[name] = collection
+        return collections[name]
+
+    mock_get_collection.side_effect = collection_for
+    return collections
+
+
 class TestCreateConversationIndexes:
     @patch("app.db.mongodb.indexes.get_async_collection")
     async def test_a_tracked_todo_has_at_most_one_chat(
         self, mock_get_collection: MagicMock
     ) -> None:
         """A run and an "Open chat" tap at once both create; the unique binding makes one of them lose."""
-        collection = MagicMock()
-        collection.create_index = AsyncMock()
-        mock_get_collection.return_value = collection
+        collections = _collections_by_name(mock_get_collection)
 
         await create_conversation_indexes()
 
-        mock_get_collection.assert_called_once_with("conversations")
-        collection.create_index.assert_any_await(
+        collections["conversations"].create_index.assert_any_await(
             [("user_id", 1), ("todo_id", 1)],
             unique=True,
             name="user_todo_conversation_unique",
             partialFilterExpression={"todo_id": {"$type": "string"}},
         )
+
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_entries_take_one_seq_and_one_id_each_per_conversation(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """The append protocol's duplicate-key handling relies on exactly these two unique indexes."""
+        collections = _collections_by_name(mock_get_collection)
+
+        await create_conversation_indexes()
+
+        assert sorted(collections) == ["conversation_entries", "conversations"]
+        calls = collections["conversation_entries"].create_index.await_args_list
+        assert [(call.args, call.kwargs) for call in calls] == [
+            (
+                ([("user_id", 1), ("conversation_id", 1), ("seq", 1)],),
+                {"unique": True, "name": "user_conversation_seq_unique"},
+            ),
+            (
+                ([("user_id", 1), ("conversation_id", 1), ("id", 1)],),
+                {"unique": True, "name": "user_conversation_id_unique"},
+            ),
+            (([("user_id", 1), ("id", 1)],), {"name": "user_entry_id"}),
+            (
+                ([("user_id", 1), ("reply_id", 1)],),
+                {
+                    "name": "user_entry_reply_id",
+                    "partialFilterExpression": {"reply_id": {"$type": "string"}},
+                },
+            ),
+            (([("user_id", 1), ("kind", 1)],), {"name": "user_entry_kind"}),
+            (
+                ([("user_id", 1), ("at", 1)],),
+                {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
+            ),
+            (
+                ([("type", 1)],),
+                {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
+            ),
+            *[
+                (
+                    ([(field, 1)],),
+                    {
+                        "name": f"renamed_{field}",
+                        "partialFilterExpression": {field: {"$exists": True}},
+                    },
+                )
+                for field in ("summary", "decision", "heard_text", "run.reservation")
+            ],
+        ]
+        heads = [call.args[0] for call in collections["conversations"].create_index.await_args_list]
+        assert [("user_id", 1), ("messages.message_id", 1)] not in heads
 
 
 class TestCreatePaymentIndexes:
@@ -573,6 +635,7 @@ class TestCreateAllIndexes:
             ("create_local_invite_indexes", "auth_invites"),
             ("create_instance_settings_indexes", "instance_settings"),
             ("create_provider_credential_indexes", "provider_credentials"),
+            ("create_conversation_indexes", "conversations"),
         ],
     )
     async def test_create_all_indexes_security_critical_failure_raises(

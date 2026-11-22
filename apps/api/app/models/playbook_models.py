@@ -43,7 +43,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
 #: The key marking an argument value as a replay-time slot, not data. A `$`

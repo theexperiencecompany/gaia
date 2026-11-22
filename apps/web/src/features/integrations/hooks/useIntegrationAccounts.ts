@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
-import { integrationKeys, toolKeys } from "../api/queryKeys";
+import { integrationKeys, invalidateIntegrationCaches } from "../api/queryKeys";
 
 interface AccountUpdate {
   accountId: string;
@@ -32,8 +32,7 @@ export const useIntegrationAccounts = (integrationId: string) => {
 
   const applyResult = (result: IntegrationAccountsResponse) => {
     queryClient.setQueryData(queryKey, result);
-    queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-    queryClient.invalidateQueries({ queryKey: toolKeys.all });
+    invalidateIntegrationCaches(queryClient);
   };
 
   const update = useMutation({
