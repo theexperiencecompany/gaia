@@ -137,6 +137,14 @@ class KeepsWaiting:
 
 
 @dataclass(frozen=True)
+class RewritesNotes:
+    """GAIA rewrites its notes on the task with a file write, then keeps waiting."""
+
+    notes: str
+    report: str
+
+
+@dataclass(frozen=True)
 class Breaks:
     """The model provider is down for the whole run."""
 
@@ -185,6 +193,7 @@ GaiaRun = (
     | Reports
     | Asks
     | KeepsWaiting
+    | RewritesNotes
     | Breaks
     | OpensSubtasks
     | NeedsApproval

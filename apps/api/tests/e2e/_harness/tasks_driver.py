@@ -32,6 +32,8 @@ import time_machine
 
 from app.agents.tools import task_edit_tools, task_list_tools, task_tools
 from app.agents.tools.coding.bash_tool import bash
+from app.agents.tools.coding.read_tool import read
+from app.agents.tools.coding.write_tool import write
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.task_tools import create_task, subscribe_task, update_task
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -90,6 +92,7 @@ from tests.e2e._harness.tasks_views import (
     RepeatingTaskView,
     ReplaysPlaybook,
     Reports,
+    RewritesNotes,
     RunOutcome,
     RunView,
     SavesPlaybook,
@@ -166,6 +169,8 @@ _TASK_ID_IN_LINE = re.compile(r"\(id ([^)\s]+)\)")
 #: The bash tool names a sandbox run it started as "sandbox_run_id: <run id>".
 _SANDBOX_RUN_ID = re.compile(r"sandbox_run_id: ([0-9a-f]+)")
 LAB_EVENTS = "/api/v1/lab/events"
+#: Where GAIA's file tools see the user's tasks, one folder each.
+TASK_FILES = "/workspace/tasks"
 _ACTIVITY_LINE = re.compile(r"^- .*?\[(?P<event>[a-z_]+)\] ?(?P<detail>.*)$")
 _WORKFLOW_RUN_STATUS = {
     "success": RunOutcome.SUCCEEDED,
@@ -555,6 +560,23 @@ class TasksDriver:
             self._user_id, SandboxEventKind.REPLACED, "the sandbox was replaced"
         )
 
+    async def gaia_reads_file(self, path: str) -> str:
+        """Have GAIA read a workspace file with its read tool; returns what the tool said."""
+        return str(await read.ainvoke({"path": path}, config=self._tool_config()))
+
+    async def gaia_writes_file(self, path: str, content: str) -> str:
+        """Have GAIA write a workspace file with its write tool; returns what the tool said."""
+        return str(
+            await write.ainvoke({"path": path, "content": content}, config=self._tool_config())
+        )
+
+    def _tool_config(self) -> RunnableConfig:
+        return {"configurable": {"user_id": self._user_id}}
+
+    async def notes_of(self, task_id: str) -> str:
+        """Return GAIA's notes on the task, as the task's notes tab shows them."""
+        return str(_ok(await self._client.get(f"{TASKS}/{task_id}/notes"))["notes"])
+
     async def run_due(self, task_id: str, run: GaiaRun | None = None) -> str:
         """Let time pass to the task's next armed run and fire it, GAIA working as scripted.
 
@@ -631,9 +653,10 @@ class TasksDriver:
                     [call("complete_task", {"task_id": task_id, "summary": report}), report]
                 )
                 tell(report)
-            case KeepsWaiting(report):
+            case KeepsWaiting(report) | RewritesNotes(report=report):
                 self._executor.then(
                     [
+                        *_notes_rewrite(task_id, run),
                         call("update_task", {"task_id": task_id, "next_check": QUESTION_EXPIRES}),
                         report,
                     ]
@@ -1259,6 +1282,14 @@ class TasksDriver:
     async def _tasks(self, **params: str) -> list[TaskView]:
         body = _ok(await self._client.get(TASKS, params=params))
         return [_task_view(item) for item in body["tasks"]]
+
+
+def _notes_rewrite(task_id: str, run: GaiaRun) -> list[ToolCall]:
+    """Return the file write a run that rewrites its notes makes first; none for any other run."""
+    if not isinstance(run, RewritesNotes):
+        return []
+    path = f"{TASK_FILES}/{task_id}/notes.md"
+    return [call("write", {"path": path, "content": run.notes}, call_id="tc_notes")]
 
 
 def _card_names(cards: Sequence[ToolDataEntry]) -> tuple[str, ...]:
