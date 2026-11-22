@@ -46,6 +46,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
+    LLM_LABEL_METADATA_KEY,
     OPENAI_PROMPT_CACHE_KEY_MAX_CHARS,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
@@ -639,6 +640,25 @@ class TestAcallModel:
 
         result = await agent_node.afunc(state, config, store=store)
         assert "messages" in result
+
+    @pytest.mark.asyncio
+    async def test_the_provider_call_runs_under_the_runs_config_labelled_by_its_agent(
+        self,
+    ) -> None:
+        llm = _make_llm()
+        builder = create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            tools_config=_BINDS_TOOL_A,
+            agent_config=AgentConfig(agent_name="executor_agent"),
+        )
+
+        await _agent_runnable(builder).afunc(_make_state(), _make_config(), store=MagicMock())
+
+        bound = llm.with_config.return_value.bind_tools.return_value
+        sent = bound.ainvoke.await_args.kwargs["config"]
+        assert sent["recursion_limit"] == _RECURSION_LIMIT
+        assert sent["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
     @pytest.mark.regression
     @pytest.mark.asyncio
