@@ -82,8 +82,8 @@ The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and
 `mise seed` is a thin curl wrapper over the two endpoints below — it `POST`s `/dev/users` then `/dev/seed` against the running API. This is the canonical bootstrap:
 
 ```bash
-mise seed                                   # dev@gaia.local with Pro, 5 todos + 2 conversations
-DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
+mise seed                                   # dev@gaia.local with Pro, 5 to-dos + 2 conversations
+DEV_USER=alice@gaia.local SEED_TASKS=3 mise seed
 DEV_USER=free@gaia.local SEED_PRO=false mise seed   # a new free user, to see the paywall
 ```
 
@@ -101,14 +101,14 @@ curl -sfS -X POST "$API/dev/users" -H 'content-type: application/json' \
   -d '{"email":"alice@gaia.local","name":"Alice"}'
 # → {"id":"<mongo_id>","email":"alice@gaia.local","name":"Alice"}
 
-# Seed — real service calls (create_todo, create_conversation_service,
+# Seed — real service calls (task_service.create_task, create_conversation_service,
 # PlatformLinkService.link_account); also marks onboarding complete so specs
 # land on the app shell, not onboarding. platform_links ∈ discord|slack|telegram|whatsapp.
 curl -sfS -X POST "$API/dev/seed" -H 'content-type: application/json' \
-  -d '{"email":"alice@gaia.local","todos":5,"conversations":2,"platform_links":["telegram"]}'
-# → {"email":...,"user_id":...,"todos_created":5,"conversations_created":2,"platforms_linked":["telegram"]}
+  -d '{"email":"alice@gaia.local","tasks":5,"conversations":2,"platform_links":["telegram"]}'
+# → {"email":...,"user_id":...,"tasks_created":5,"conversations_created":2,"platforms_linked":["telegram"]}
 
-# Delete — teardown (removes user + owned todos/conversations/projects).
+# Delete — teardown (removes user + owned tasks/conversations).
 curl -sfS -X DELETE "$API/dev/users/alice@gaia.local"
 ```
 
@@ -140,10 +140,10 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 - **Nesting works.** A tool directive's args end where its JSON value ends, not at the first `]]`, so args may contain a literal `]]` — including a whole nested directive, at any depth. That is how you script a hand-off: `[[tool:handoff {"subagent_id":"gmail","task":"[[tool:GMAIL_FETCH_MESSAGES {\"max_results\":3}]]"}]]`. JSON-encode the args (`json.dumps`) and the escaping takes care of itself.
 - **Limitation:** a `[[say:…]]` body is plain text and ends at the first `]]`, so say text cannot contain that sequence. Put nested scripts in tool args.
 - **A directive opened but never closed → HTTP 500**, not a silent fall-through to the canned reply.
-- **Timing.** A wait belongs to the next tool directive after it, or to the reply when no tool follows; waits add up; a non-integer or negative count → HTTP 500. Each tier waits only on steps it emits itself: comms forwards executor tools at once and the executor waits on them, so `[[tool:create_todo {"title":"a"}]] [[wait:10000]] [[tool:create_todo {"title":"b"}]] [[say:Done]]` gets a quick reply and keeps background work running ~10s between the two todos — the window to send a second message into. A wait before the say is honoured by every tier that says it. `[[wait:3000]] [[say:hi]]` holds the first model output; `[[pace:200]] [[say:a long reply]]` streams it slowly for a mid-text send.
+- **Timing.** A wait belongs to the next tool directive after it, or to the reply when no tool follows; waits add up; a non-integer or negative count → HTTP 500. Each tier waits only on steps it emits itself: comms forwards executor tools at once and the executor waits on them, so `[[tool:create_task {"title":"a","assignee":"user"}]] [[wait:10000]] [[tool:create_task {"title":"b","assignee":"user"}]] [[say:Done]]` gets a quick reply and keeps background work running ~10s between the two to-dos — the window to send a second message into. A wait before the say is honoured by every tier that says it. `[[wait:3000]] [[say:hi]]` holds the first model output; `[[pace:200]] [[say:a long reply]]` streams it slowly for a mid-text send.
 - **Results are re-voiced.** A result payload (`<executor_result>`, `<executor_error>`, `<browser_*>`) handed to a tier after its newest script is answered with its own text, so a background run's result bubble reads the executor's say text.
 
-Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
+Example message that files a to-do then replies: `add a to-do [[tool:create_task {"title":"buy milk","assignee":"user"}]] [[say:Added it.]]`
 
 Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --frozen --isolated --only-group harness pytest tools/llm-stub -q`.
 
@@ -168,11 +168,11 @@ curl -sN "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/events?a
 - Resume: `after=<seq>` replays the log after it; `after=<stream id>` (the frame's `id:`) resumes exactly after that frame.
 - Stop: `POST /api/v1/conversations/{id}/stop`.
 
-**Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
+**Tasks.** `GET /api/v1/tasks` (list), `POST /api/v1/tasks` (create) (`app/api/v1/endpoints/tasks.py`):
 
 ```bash
-curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/todos" -H 'X-Dev-User: alice@gaia.local'
-curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
+curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/tasks" -H 'X-Dev-User: alice@gaia.local'
+curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/tasks" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
   -d '{"title":"from curl"}'
 ```
@@ -183,7 +183,7 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
 # this shell may not have .env.worktree loaded (mise loads it only for tasks)
 [ -f .env.worktree ] && set -a && . ./.env.worktree && set +a
 mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
-  'db.todos.countDocuments({user_id:"<USER_ID>"})'
+  'db.tasks.countDocuments({user_id:"<USER_ID>"})'
 # chat persisted → the conversation + messages exist:
 mongosh "mongodb://localhost:27017/${MONGO_DB_NAME:-GAIA}" --quiet --eval \
   'db.conversations.find({user_id:"<USER_ID>"}).sort({_id:-1}).limit(1).toArray()'
@@ -199,7 +199,7 @@ The full chain is comms → executor. §4's send always enters at comms; this de
 # run the EXECUTOR directly (skips comms entirely)
 curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/executor" \
   -H 'content-type: application/json' \
-  -d '{"email":"dev@gaia.local","task":"[[tool:create_todo {\"title\":\"direct\"}]] [[say:Done.]]"}'
+  -d '{"email":"dev@gaia.local","task":"[[tool:create_task {\"title\":\"direct\",\"assignee\":\"user\"}]] [[say:Done.]]"}'
 ```
 
 - Runs reuse the exact production preparation (`prepare_executor_execution`), so a direct run cannot drift from what comms hands the executor.

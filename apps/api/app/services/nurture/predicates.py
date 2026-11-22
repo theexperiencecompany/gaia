@@ -7,8 +7,9 @@ even for the few that only read the already-fetched user document.
 from collections.abc import Awaitable, Callable, Mapping
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
+from app.constants.tasks import Assignee
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import UserDocument
 from app.services.oauth.oauth_service import check_multiple_integrations_status
@@ -36,8 +37,10 @@ async def google_suite_connected(user: UserDocument) -> bool:
 
 
 async def uses_todos(user: UserDocument) -> bool:
-    """Return True once the user has enough todos to count as using the feature."""
-    return await todo_repository.count_for_user(user.id) >= _TODOS_IN_USE_THRESHOLD
+    """Return True once the user has enough to-dos of their own to count as using the feature."""
+    return (
+        await task_repository.count_for_assignee(user.id, Assignee.USER) >= _TODOS_IN_USE_THRESHOLD
+    )
 
 
 async def has_workflow(user: UserDocument) -> bool:

@@ -5,7 +5,7 @@ from fastapi import HTTPException
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
@@ -34,6 +34,7 @@ from app.services.onboarding.first_question import (
 )
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
+from app.services.tasks.task_service import delete_tasks
 from app.services.workflow.service import WorkflowService
 from app.utils.auth_utils import with_local_onboarding_completed
 from app.utils.background_tasks import spawn_background_task
@@ -389,7 +390,8 @@ async def reset_onboarding(
 
     todos_deleted = 0
     try:
-        todos_deleted = await todo_repository.delete_onboarding_todos(user_id)
+        seeded = await task_repository.list_onboarding(user_id, limit=None)
+        todos_deleted = len(await delete_tasks(user_id, [t.id for t in seeded]))
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} reset_onboarding failed to delete todos",

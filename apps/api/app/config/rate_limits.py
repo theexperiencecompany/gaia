@@ -197,25 +197,23 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         # the activity heatmap / percentile badges with runs nobody performed.
         counts_as_activity=False,
     ),
-    "trigger_todo_executions": TieredRateLimits(
+    "gaia_task_runs": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Mirrors the workflow trial cap
         pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
-            title="Trigger Todo Executions",
-            description="Tracked todos executed by an integration event they subscribed to",
+            title="GAIA Task Runs",
+            description="Runs of GAIA's tasks, on their schedule or on the app events they watch",
         ),
-        # Separate from trigger_workflow_executions so a chatty subscription cannot
-        # exhaust the budget a user's workflows depend on, and vice versa.
-        # System-driven, so it does not count toward activity — same as workflows.
+        # The one budget every GAIA task run charges; workflows join it when they become
+        # tasks, and trigger_workflow_executions goes with them. System-driven, so it does
+        # not count toward activity, same as workflows.
         counts_as_activity=False,
     ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
-    "todo_operations": TieredRateLimits(
+    "task_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience
         pro=RateLimitConfig(day=1500, month=45000),  # month = day x30
-        info=FeatureInfo(
-            title="Todo Operations", description="Create, update, and manage todo items"
-        ),
+        info=FeatureInfo(title="Task Operations", description="Create, update, and manage tasks"),
     ),
     "calendar_management": TieredRateLimits(
         free=RateLimitConfig(day=5, month=50),  # Keep restrictive for trial

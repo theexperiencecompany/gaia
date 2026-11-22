@@ -14,7 +14,7 @@ class SeedDevDataRequest(BaseModel):
     """Seed deterministic sample data for an existing dev user."""
 
     email: str = Field(min_length=3, max_length=320)
-    todos: int = Field(default=0, ge=0, le=100)
+    tasks: int = Field(default=0, ge=0, le=100)
     conversations: int = Field(default=0, ge=0, le=100)
     platform_links: list[str] = Field(
         default_factory=list,
@@ -31,7 +31,7 @@ class SeedDevDataResponse(BaseModel):
 
     email: str
     user_id: str
-    todos_created: int
+    tasks_created: int
     conversations_created: int
     platforms_linked: list[str]
     pro: bool
@@ -43,9 +43,8 @@ class SeedDevDataResponse(BaseModel):
 class DevDeletedCounts(BaseModel):
     """How many rows teardown removed, per collection."""
 
-    todos: int
+    tasks: int
     conversations: int
-    projects: int
     user: int
 
 

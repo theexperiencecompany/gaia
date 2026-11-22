@@ -267,7 +267,6 @@ apps/api/tests/unit/services/test_usage_summary.py	attr-defined
 apps/api/tests/unit/services/test_user_instructions_service.py	misc
 apps/api/tests/unit/services/test_voice_service.py	arg-type
 apps/api/tests/unit/services/todos/test_signal_context.py	arg-type
-apps/api/tests/unit/storage/test_sessions_lifecycle.py	attr-defined
 apps/api/tests/unit/storage/test_storage_bootstrap.py	attr-defined
 apps/api/tests/unit/storage/test_storage_bootstrap.py	func-returns-value
 apps/api/tests/unit/storage/test_vfs_common.py	arg-type

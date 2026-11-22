@@ -128,6 +128,7 @@ export type ServerEventName =
   | "task:created"
   | "task:deleted"
   | "task:event_fired"
+  | "task:inbox_desk_provisioned"
   | "task:nudged"
   | "task:open_state_repaired"
   | "task:run_failed"
@@ -213,6 +214,7 @@ export type WebEventName =
   | "subscription:failed"
   | "subscription:page_viewed"
   | "subscription:plan_viewed"
+  | "task:view_changed"
   | "thanks:page_viewed"
   | "todos:view_changed"
   | "ui:sidebar_collapsed"
@@ -1420,6 +1422,11 @@ export interface EventProperties {
     "trigger_name": string;
     "outcome": "ran" | "coalesced" | "held_for_quiet_hours" | "kept_while_paused" | "notified" | "completed" | "unblocked";
   };
+  "task:inbox_desk_provisioned": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
   "task:nudged": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1489,6 +1496,9 @@ export interface EventProperties {
     "task_id": string;
     "changed_fields": (string)[];
     "is_checklist"?: boolean;
+  };
+  "task:view_changed": {
+    "view_kind": "open" | "today" | "upcoming" | "overdue" | "done";
   };
   "thanks:page_viewed": Record<string, never>;
   "todos:chat_opened": {

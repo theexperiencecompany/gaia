@@ -24,7 +24,6 @@ from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
 from app.services.reminder_service import reminder_scheduler
 from app.services.tasks.subscriptions import resume_tasks_paused_for
-from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -132,7 +131,7 @@ async def reactivate_workflows_for_restored_subscription(user_id: str) -> int:
 
 
 async def resume_paywall_paused_automation(user_id: str) -> int:
-    """Resume the reminders, tracked todos and GAIA tasks paused because user_id was not paid; return the count.
+    """Resume the reminders and GAIA tasks paused because user_id was not paid; return the count.
 
     Every kind is attempted even when one fails; the failures are then raised
     together, so the retry task comes back for whatever is still paused.
@@ -141,7 +140,6 @@ async def resume_paywall_paused_automation(user_id: str) -> int:
     failures: list[Exception] = []
     for resume in (
         reminder_scheduler.resume_paused_for,
-        tracked_todo_service.resume_paused_for,
         resume_tasks_paused_for,
     ):
         try:

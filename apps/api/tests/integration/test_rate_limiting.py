@@ -109,7 +109,7 @@ class TestRateLimitConfiguration:
             "file_upload",
             "generate_image",
             "web_search",
-            "todo_operations",
+            "task_operations",
             "deep_research",
         ]
         for feature in expected_features:
@@ -503,7 +503,7 @@ class TestConcurrentRequests:
         # Use a feature that still has an enforced daily count — chat is now
         # cost-walled (free.day == 0), so it can't exercise the daily counter.
         # Derived from config so retuning the limit never makes this stale.
-        feature = "todo_operations"
+        feature = "task_operations"
         num_requests = get_limits_for_plan(feature, PlanType.FREE).day
 
         with (

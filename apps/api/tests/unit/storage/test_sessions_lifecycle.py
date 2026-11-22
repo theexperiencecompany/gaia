@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from app.agents.workspace.skill_loader import library_hash
 from app.config.settings import settings
 from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions import lifecycle as lc
@@ -480,7 +481,7 @@ async def test_first_materialization_stamps_all_three_signature_markers(
     await lc.materialize_user_integrations(USER, {"gmail"})
     u_root = mount / "users" / USER
     assert [name for name, _ in materializers] == ["skills", "instructions"]
-    assert (u_root / SKILLS_MARKER).read_text() == lc.library_hash()
+    assert (u_root / SKILLS_MARKER).read_text() == library_hash()
     assert (u_root / CONNECTED_MARKER).read_text() == "gmail"
     assert (u_root / INSTRUCTIONS_MARKER).exists()
 

@@ -143,6 +143,10 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             return []
         return await self._find({"_id": {"$in": task_ids}, "user_id": user_id})
 
+    async def count_for_assignee(self, user_id: str, assignee: Assignee) -> int:
+        """Count the user's tasks of one assignee, open and done."""
+        return await self._count({"user_id": user_id, "assignee": assignee.value})
+
     async def count_authored(self, user_id: str) -> int:
         """How many tasks the user made themselves: system tasks left out."""
         return await self._count({"user_id": user_id, "system_key": None})
@@ -226,10 +230,12 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
             completed=_first(facet.completed),
         )
 
-    async def list_onboarding(self, user_id: str, *, limit: int) -> list[TaskDocument]:
+    async def list_onboarding(self, user_id: str, *, limit: int | None) -> list[TaskDocument]:
         """Return the user's onboarding-seeded tasks, newest first."""
         return await self._find(
-            {"user_id": user_id, "from_onboarding": True}, sort=[("created_at", -1)], limit=limit
+            {"user_id": user_id, "from_onboarding": True},
+            sort=[("created_at", -1)],
+            limit=limit or 0,
         )
 
     @cached_query(list[TaskDocument])
@@ -485,10 +491,6 @@ class TasksRepository(UserScopedRepository[TaskDocument, TaskUpdate]):
     async def delete_all_for_user(self, user_id: str) -> int:
         """Delete every task the user owns (account deletion, dev reset)."""
         return await self._delete_many({"user_id": user_id}, scope=user_id)
-
-    async def delete_onboarding(self, user_id: str) -> int:
-        """Delete the user's onboarding-seeded tasks."""
-        return await self._delete_many({"user_id": user_id, "from_onboarding": True}, scope=user_id)
 
     async def add_flags(
         self, task_id: str, *, user_id: str, flags: Collection[TaskFlag]

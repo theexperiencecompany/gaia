@@ -21,6 +21,7 @@ from app.agents.core.background.todo_run import (
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.tasks import (
     EXECUTOR_BUSY_RECHECK,
+    GAIA_TASK_RUN_FEATURE_KEY,
     RUN_TASK_JOB,
     TaskLogEvent,
     TaskRunStatus,
@@ -29,7 +30,6 @@ from app.constants.tasks import (
 from app.constants.todos import (
     MAX_RETRY_ATTEMPTS,
     RETRY_BACKOFF,
-    TRIGGER_TODO_FEATURE_KEY,
     TodoWakeKind,
 )
 from app.db.repositories.tasks import task_repository
@@ -209,7 +209,7 @@ async def _run_claimed(
     # Opened before the cost wall, so a walled run still counts as its window's one run.
     await open_event_window(event_window(task))
     try:
-        await enforce_cost_budget(task.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        await enforce_cost_budget(task.user_id, feature_key=GAIA_TASK_RUN_FEATURE_KEY)
     except CostBudgetExceededException as walled:
         await record_skipped_run(task, TaskRunTrigger.APP_EVENT, f"skipped: {walled.message}")
         return None, f"walled:{task.id}"

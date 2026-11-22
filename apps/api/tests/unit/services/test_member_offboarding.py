@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.scheduler_models import DeactivationReason
-from app.models.todo_models import TodoUpdate
 from app.services.member_offboarding import stop_acting_for_removed_member
 from app.utils.errors import AppError
 from tests.helpers import captured_wide_event
@@ -21,7 +20,7 @@ USER = "member-1"
 class Seams:
     deactivate_workflow: AsyncMock
     pause_reminder: AsyncMock
-    update_todo: AsyncMock
+    pause_task: AsyncMock
     disconnect_platform: AsyncMock
     finders: tuple[AsyncMock, ...]
 
@@ -30,7 +29,7 @@ class Seams:
 def seams() -> Iterator[Seams]:
     workflows = [SimpleNamespace(id="wf-user"), SimpleNamespace(id="wf-system")]
     reminders = [SimpleNamespace(id="rem-1")]
-    todos = [SimpleNamespace(id="todo-1")]
+    tasks = [SimpleNamespace(id="task-1")]
     with (
         patch(
             f"{_MOD}.workflow_repository.find_activated_for_user",
@@ -45,11 +44,11 @@ def seams() -> Iterator[Seams]:
         ) as find_reminders,
         patch(f"{_MOD}.reminder_scheduler.pause_for_reason", new_callable=AsyncMock) as pause,
         patch(
-            f"{_MOD}.todo_repository.find_running_tracked_for_user",
+            f"{_MOD}.task_repository.find_active_gaia_for_user",
             new_callable=AsyncMock,
-            return_value=todos,
-        ) as find_todos,
-        patch(f"{_MOD}.todo_repository.update", new_callable=AsyncMock) as update_todo,
+            return_value=tasks,
+        ) as find_tasks,
+        patch(f"{_MOD}.task_repository.deactivate", new_callable=AsyncMock) as pause_task,
         patch(
             f"{_MOD}.PlatformLinkService.get_linked_platforms",
             new_callable=AsyncMock,
@@ -60,9 +59,9 @@ def seams() -> Iterator[Seams]:
         yield Seams(
             deactivate,
             pause,
-            update_todo,
+            pause_task,
             disconnect,
-            (find_workflows, find_reminders, find_todos, find_platforms),
+            (find_workflows, find_reminders, find_tasks, find_platforms),
         )
 
 
@@ -82,16 +81,14 @@ class TestStopActingForRemovedMember:
             for c in seams.deactivate_workflow.await_args_list
         )
 
-    async def test_scheduled_reminders_and_tracked_todos_are_paused(self, seams: Seams) -> None:
+    async def test_scheduled_reminders_and_gaia_tasks_are_paused(self, seams: Seams) -> None:
         await stop_acting_for_removed_member(USER)
 
         (reminder, reason), _ = seams.pause_reminder.await_args
         assert reminder.id == "rem-1"
         assert reason is DeactivationReason.MEMBER_REMOVED
-        seams.update_todo.assert_awaited_once_with(
-            "todo-1",
-            user_id=USER,
-            update=TodoUpdate(pause_reason=DeactivationReason.MEMBER_REMOVED),
+        seams.pause_task.assert_awaited_once_with(
+            "task-1", user_id=USER, reason=DeactivationReason.MEMBER_REMOVED
         )
 
     async def test_every_bot_platform_is_unlinked(self, seams: Seams) -> None:
@@ -114,7 +111,7 @@ class TestStopActingForRemovedMember:
         assert raised.value.meta == {"user_id": USER, "failed": ["workflow:wf-user"]}
         assert seams.deactivate_workflow.await_count == 2
         seams.pause_reminder.assert_awaited_once()
-        seams.update_todo.assert_awaited_once()
+        seams.pause_task.assert_awaited_once()
         assert seams.disconnect_platform.await_count == 2
 
     async def test_only_the_removed_members_own_items_are_looked_up(self, seams: Seams) -> None:

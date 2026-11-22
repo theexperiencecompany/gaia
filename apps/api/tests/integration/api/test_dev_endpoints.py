@@ -272,7 +272,7 @@ class TestDevRouterMounting:
             return_value=SeedDevDataResponse(
                 email=DEV_EMAIL,
                 user_id="u1",
-                todos_created=3,
+                tasks_created=3,
                 conversations_created=2,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
@@ -285,7 +285,7 @@ class TestDevRouterMounting:
                     "/api/v1/dev/seed",
                     json={
                         "email": DEV_EMAIL,
-                        "todos": 3,
+                        "tasks": 3,
                         "conversations": 2,
                         "platform_links": ["telegram"],
                         "pro": True,
@@ -294,7 +294,7 @@ class TestDevRouterMounting:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["todos_created"] == 3
+        assert body["tasks_created"] == 3
         assert body["conversations_created"] == 2
         assert body["pro"] is True
         mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], pro=True)
@@ -403,8 +403,8 @@ class TestDevServiceLogic:
             ),
             patch.object(user_repository, "complete_onboarding", mock_complete),
             patch.object(
-                dev_service.TodoService, "create_todo", new_callable=AsyncMock
-            ) as mock_todo,
+                dev_service.task_service, "create_task", new_callable=AsyncMock
+            ) as mock_task,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
@@ -412,19 +412,19 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "link_account", new_callable=AsyncMock) as mock_link,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=3, conversations=2, platform_links=["telegram", "slack"]
+                DEV_EMAIL, tasks=3, conversations=2, platform_links=["telegram", "slack"]
             )
 
-        assert mock_todo.await_count == 3
-        assert [c.args[0].title for c in mock_todo.await_args_list] == [
-            "Sample todo 1",
-            "Sample todo 2",
-            "Sample todo 3",
+        assert mock_task.await_count == 3
+        assert [c.args[1].title for c in mock_task.await_args_list] == [
+            "Sample to-do 1",
+            "Sample to-do 2",
+            "Sample to-do 3",
         ]
-        assert {c.args[1] for c in mock_todo.await_args_list} == {result.user_id}
+        assert {c.args[0] for c in mock_task.await_args_list} == {result.user_id}
         assert mock_convo.await_count == 2
         assert mock_link.await_count == 2
-        assert result.todos_created == 3
+        assert result.tasks_created == 3
         assert result.conversations_created == 2
         assert result.platforms_linked == ["telegram", "slack"]
         assert result.user_id == str(oid)
@@ -471,7 +471,7 @@ class TestDevServiceLogic:
             ) as mock_invalidate,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                DEV_EMAIL, tasks=0, conversations=0, platform_links=[], pro=True
             )
 
         assert result.pro is True
@@ -531,7 +531,7 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
         ):
             return await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                DEV_EMAIL, tasks=0, conversations=0, platform_links=["telegram"]
             )
 
     async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
@@ -588,16 +588,16 @@ class TestDevServiceLogic:
                 return_value=user,
             ),
             patch.object(
-                dev_service.TodoService, "create_todo", new_callable=AsyncMock
-            ) as mock_todo,
+                dev_service.task_service, "create_task", new_callable=AsyncMock
+            ) as mock_task,
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    DEV_EMAIL, tasks=1, conversations=0, platform_links=["myspace"]
                 )
 
         assert exc.value.status_code == 400
-        mock_todo.assert_not_awaited()
+        mock_task.assert_not_awaited()
 
     async def test_seed_link_conflict_is_a_409_and_writes_nothing_else(self):
         """A platform account another user holds got an unhandled 500 and half-seeded data."""
@@ -616,8 +616,8 @@ class TestDevServiceLogic:
             ),
             patch.object(user_repository, "complete_onboarding", AsyncMock()),
             patch.object(
-                dev_service.TodoService, "create_todo", new_callable=AsyncMock
-            ) as mock_todo,
+                dev_service.task_service, "create_task", new_callable=AsyncMock
+            ) as mock_task,
             patch.object(
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
@@ -629,12 +629,12 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    DEV_EMAIL, tasks=2, conversations=1, platform_links=["telegram"]
                 )
 
         assert exc.value.status_code == 409
         assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
-        mock_todo.assert_not_awaited()
+        mock_task.assert_not_awaited()
         mock_convo.assert_not_awaited()
 
     async def test_seed_writes_no_link_when_any_platform_conflicts(self):
@@ -667,7 +667,7 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                    DEV_EMAIL, tasks=0, conversations=0, platform_links=["telegram", "slack"]
                 )
 
         assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
@@ -682,7 +682,7 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=[]
+                    DEV_EMAIL, tasks=1, conversations=0, platform_links=[]
                 )
 
         assert exc.value.status_code == 404

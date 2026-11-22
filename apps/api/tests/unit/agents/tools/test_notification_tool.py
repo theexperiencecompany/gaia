@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.tools import StructuredTool
 import pytest
 
-from app.agents.tools.notification_tool import send_notification
+from app.agents.tools.notification_tool import result_is_delivered_automatically, send_notification
+from app.constants.tasks import Assignee
+from app.models.agent_config import AgentConfigurableView
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationContent,
@@ -17,6 +19,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     notification_id,
 )
+from app.models.task_models import TaskDocument
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from tests.factories import make_user_id
@@ -108,3 +111,17 @@ async def test_a_replayed_tool_call_reuses_its_notification_id(seams: Seams) -> 
 
     ids = [call.args[0].id for call in seams.notify.await_args_list]
     assert ids[0] == ids[1] != ids[2]
+
+
+@pytest.mark.parametrize(("notify", "delivered"), [(True, True), (False, False)])
+async def test_a_gaia_task_run_counts_as_delivered_exactly_when_the_task_tells_the_user(
+    notify: bool, delivered: bool
+) -> None:
+    user_id = make_user_id()
+    task = TaskDocument(
+        user_id=user_id, title="Watch the slots", assignee=Assignee.GAIA, notify=notify
+    )
+    configurable = AgentConfigurableView(execution_mode="background", active_task_id=task.id)
+    with patch(f"{MODULE}.task_repository.get", AsyncMock(return_value=task)) as get:
+        assert await result_is_delivered_automatically(configurable, user_id) is delivered
+    get.assert_awaited_once_with(task.id, user_id=user_id)

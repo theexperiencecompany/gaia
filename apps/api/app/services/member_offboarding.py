@@ -11,10 +11,9 @@ from functools import partial
 
 from app.constants.error_codes import MEMBER_OFFBOARDING_INCOMPLETE
 from app.db.repositories.reminders import reminder_repository
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
-from app.models.todo_models import TodoUpdate
 from app.services.platform_link_service import PlatformLinkService, disconnect_platform_account
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.service import WorkflowService
@@ -25,7 +24,7 @@ _REASON = DeactivationReason.MEMBER_REMOVED
 
 
 async def stop_acting_for_removed_member(user_id: str) -> None:
-    """Deactivate workflows, pause reminders and tracked todos, and unlink every bot platform."""
+    """Deactivate workflows, pause reminders and GAIA tasks, and unlink every bot platform."""
     steps: list[tuple[str, Callable[[], Awaitable[object]]]] = []
     for workflow in await workflow_repository.find_activated_for_user(user_id):
         steps.append(
@@ -41,16 +40,11 @@ async def stop_acting_for_removed_member(user_id: str) -> None:
                 partial(reminder_scheduler.pause_for_reason, reminder, _REASON),
             )
         )
-    for todo in await todo_repository.find_running_tracked_for_user(user_id):
+    for task in await task_repository.find_active_gaia_for_user(user_id):
         steps.append(
             (
-                f"tracked_todo:{todo.id}",
-                partial(
-                    todo_repository.update,
-                    todo.id,
-                    user_id=user_id,
-                    update=TodoUpdate(pause_reason=_REASON),
-                ),
+                f"task:{task.id}",
+                partial(task_repository.deactivate, task.id, user_id=user_id, reason=_REASON),
             )
         )
     for platform in await PlatformLinkService.get_linked_platforms(user_id):

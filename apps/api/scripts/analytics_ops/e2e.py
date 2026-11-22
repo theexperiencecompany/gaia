@@ -52,7 +52,7 @@ from shared.py.analytics.catalog.onboarding import (
     OnboardingStarted,
 )
 from shared.py.analytics.catalog.reminders import ReminderCompleted
-from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.analytics.catalog.tasks import TaskRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
     WorkflowExecuted,
@@ -116,8 +116,8 @@ NOT_DRIVABLE = (
     "the ledger row is asserted in Mongo instead",
     f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "
     "sim comms replies itself, so the run never reaches the executor's result delivery",
-    f"{ReminderCompleted.event}, {TodosRunResultDelivered.event} (destination, destination_basis): "
-    "no journey fires a reminder or a tracked todo run",
+    f"{ReminderCompleted.event}, {TaskRunResultDelivered.event} (destination, destination_basis): "
+    "no journey fires a reminder or a GAIA task run",
     f"{NotificationAgentSent.event}: no journey's sim script calls send_notification",
 )
 

@@ -39,7 +39,7 @@ from app.services.user_service import get_profile_timezone
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.todos import TodosInboxDeskProvisioned
+from shared.py.analytics.catalog.tasks import TaskInboxDeskProvisioned
 from shared.py.wide_events import log
 
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
@@ -117,7 +117,7 @@ async def _open_desk(user_id: str, zone: str) -> TaskDocument:
         if twin is None:
             raise
         return twin
-    capture(UserId(user_id), TodosInboxDeskProvisioned())
+    capture(UserId(user_id), TaskInboxDeskProvisioned())
     return desk
 
 

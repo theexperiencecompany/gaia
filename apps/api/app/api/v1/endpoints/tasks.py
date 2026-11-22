@@ -31,7 +31,7 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 #: The plan allowance every task write counts against.
-TASK_WRITES = "todo_operations"
+TASK_WRITES = "task_operations"
 
 
 @router.get("/tasks/counts")

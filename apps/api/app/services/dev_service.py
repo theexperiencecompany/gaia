@@ -22,14 +22,12 @@ from app.constants.payments import (
 )
 from app.constants.platform_links import Platform
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.projects import project_repository
 from app.db.repositories.subscriptions import subscription_repository
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.files_models import FileDocument
 from app.models.payment_models import SubscriptionDocument, SubscriptionStatus
-from app.models.todo_models import TodoModel
 from app.models.user_models import (
     AuthenticatedUser,
     BioStatus,
@@ -42,6 +40,7 @@ from app.schemas.dev_schemas import (
     DevDeletedCounts,
     SeedDevDataResponse,
 )
+from app.schemas.tasks import TaskCreateRequest
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
@@ -52,8 +51,7 @@ from app.services.platform_link_service import (
     PlatformLinkService,
     link_conflict_error,
 )
-from app.services.todos.todo_service import TodoService
-from app.services.triggers.subscription_service import teardown_subscriptions
+from app.services.tasks import task_service
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
@@ -132,7 +130,7 @@ async def attach_dev_file(
 
 async def seed_dev_data(
     email: str,
-    todos: int,
+    tasks: int,
     conversations: int,
     platform_links: list[str],
     *,
@@ -199,8 +197,8 @@ async def seed_dev_data(
 
     await asyncio.gather(
         *(
-            TodoService.create_todo(TodoModel(title=f"Sample todo {i + 1}"), user_id)
-            for i in range(todos)
+            task_service.create_task(user_id, TaskCreateRequest(title=f"Sample to-do {i + 1}"))
+            for i in range(tasks)
         ),
         *(
             create_conversation_service(
@@ -219,14 +217,14 @@ async def seed_dev_data(
         f"{LogTag.DEV} seeded dev data",
         email=email,
         user_id=user_id,
-        todos=todos,
+        tasks=tasks,
         conversations=conversations,
         platforms=platform_links,
     )
     return SeedDevDataResponse(
         email=email,
         user_id=user_id,
-        todos_created=todos,
+        tasks_created=tasks,
         conversations_created=conversations,
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
@@ -263,37 +261,31 @@ async def _holds_other_account(user_id: str, platform: str, platform_user_id: st
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:
-    """Remove a dev user and the todos/conversations/projects it owns."""
+    """Remove a dev user and the tasks/conversations it owns."""
     user = await require_dev_user(email)
     user_id = user.id
 
     # Same rule as every other delete path: unregister while the documents still
     # name their Composio triggers. Dev accounts are exactly where orphaned
     # triggers accumulate unnoticed, because nobody is watching that Composio org.
-    for todo in await todo_repository.list_for_user(user_id):
-        if todo.trigger_subscriptions and todo.id:
-            await teardown_subscriptions(todo.id, user_id, reason="user_deleted")
-
-    todos_deleted = await todo_repository.delete_all_for_user(user_id)
+    owned = await task_repository.list_for_user(user_id)
+    tasks_deleted = len(await task_service.delete_tasks(user_id, [t.id for t in owned]))
     conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))
-    projects_deleted = await project_repository.delete_all_for_user(user_id)
     user_deleted = int(await user_repository.delete(user_id))
 
     log.info(
         f"{LogTag.DEV} deleted dev user",
         email=email,
         user_id=user_id,
-        todos=todos_deleted,
+        tasks=tasks_deleted,
         conversations=conversations_deleted,
-        projects=projects_deleted,
     )
     return DeleteDevUserResponse(
         email=email,
         user_id=user_id,
         deleted=DevDeletedCounts(
-            todos=todos_deleted,
+            tasks=tasks_deleted,
             conversations=conversations_deleted,
-            projects=projects_deleted,
             user=user_deleted,
         ),
     )

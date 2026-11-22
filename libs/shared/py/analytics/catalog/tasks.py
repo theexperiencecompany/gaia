@@ -2,7 +2,7 @@
 
 from typing import ClassVar, Literal
 
-from shared.py.analytics.catalog.base import ServerEvent
+from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.properties import Identifier
 
@@ -13,6 +13,7 @@ __all__ = [
     "TaskCreated",
     "TaskDeleted",
     "TaskEventFired",
+    "TaskInboxDeskProvisioned",
     "TaskNudged",
     "TaskOpenStateRepaired",
     "TaskRunFailed",
@@ -22,6 +23,7 @@ __all__ = [
     "TaskSubscribed",
     "TaskToggled",
     "TaskUpdated",
+    "TaskViewChanged",
 ]
 
 #: Where a to-do's nudge reached the user.
@@ -190,3 +192,20 @@ class TaskEventFired(ServerEvent):
     task_id: Identifier
     trigger_name: Identifier
     outcome: EventFireOutcome
+
+
+class TaskInboxDeskProvisioned(ServerEvent):
+    """The user's Inbox desk task exists and its first morning run is armed."""
+
+    event: ClassVar[str] = "task:inbox_desk_provisioned"
+    # One desk per user: provisioning repeats only on a reconnect race the unique index dedupes.
+    budget_per_user_day: ClassVar[int] = 2
+
+
+class TaskViewChanged(WebEvent):
+    """A user switched task views on the tasks page; pure client navigation."""
+
+    event: ClassVar[str] = "task:view_changed"
+    budget_per_user_day: ClassVar[int] = 50
+
+    view_kind: Literal["open", "today", "upcoming", "overdue", "done"]

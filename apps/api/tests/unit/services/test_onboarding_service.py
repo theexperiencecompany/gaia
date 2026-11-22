@@ -71,6 +71,16 @@ from tests.helpers import captured_wide_event
 SERVICE = "app.services.onboarding.onboarding_service"
 
 
+@pytest.fixture(autouse=True)
+def _no_onboarding_tasks() -> Iterator[None]:
+    """No test here seeds onboarding tasks unless it patches the task repository itself."""
+    with (
+        patch(f"{SERVICE}.task_repository.list_onboarding", AsyncMock(return_value=[])),
+        patch(f"{SERVICE}.delete_tasks", AsyncMock(return_value=[])),
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_repo() -> Iterator[MagicMock]:
     with patch(f"{SERVICE}.user_repository") as repo:
@@ -649,8 +659,8 @@ class TestResetOnboarding:
         conversations.delete.side_effect = _delete
         conversations.delete_onboarding_demos.return_value = 0
 
-        todos = AsyncMock()
-        todos.delete_onboarding_todos.return_value = 0
+        tasks = AsyncMock()
+        tasks.list_onboarding.return_value = []
 
         integrations = AsyncMock()
         integrations.list_for_user.return_value = []
@@ -660,7 +670,7 @@ class TestResetOnboarding:
 
         with (
             patch(f"{SERVICE}.conversation_repository", conversations),
-            patch(f"{SERVICE}.todo_repository", todos),
+            patch(f"{SERVICE}.task_repository", tasks),
             patch(f"{SERVICE}.user_integration_repository", integrations),
             patch(f"{SERVICE}.memory_engine", memory),
             patch(f"{SERVICE}.abort_active_intelligence_job", new_callable=AsyncMock),
@@ -698,7 +708,7 @@ class TestResetOnboarding:
         memory.delete_all.return_value = 3
         with (
             patch(f"{SERVICE}.conversation_repository", AsyncMock()),
-            patch(f"{SERVICE}.todo_repository", AsyncMock()),
+            patch(f"{SERVICE}.task_repository", AsyncMock()),
             patch(f"{SERVICE}.user_integration_repository", integrations),
             patch(f"{SERVICE}.memory_engine", memory),
             patch(f"{SERVICE}.abort_active_intelligence_job", new_callable=AsyncMock),
@@ -719,7 +729,7 @@ class TestResetOnboarding:
         memory = AsyncMock()
         with (
             patch(f"{SERVICE}.conversation_repository", AsyncMock()),
-            patch(f"{SERVICE}.todo_repository", AsyncMock()),
+            patch(f"{SERVICE}.task_repository", AsyncMock()),
             patch(f"{SERVICE}.user_integration_repository", integrations),
             patch(f"{SERVICE}.memory_engine", memory),
             patch(f"{SERVICE}.abort_active_intelligence_job", new_callable=AsyncMock),
@@ -843,7 +853,7 @@ class TestResetOnboarding:
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "User not found"
 
-    async def test_a_failed_todo_delete_is_reported_with_its_cause(
+    async def test_a_failed_task_delete_is_reported_with_its_cause(
         self,
         mock_repo: MagicMock,
         deleted_conversations: list[str],
@@ -853,10 +863,10 @@ class TestResetOnboarding:
         mock_repo.get.return_value = _completed_user(sample_user_id)
 
         with (
-            patch(f"{SERVICE}.todo_repository") as todos,
+            patch(f"{SERVICE}.task_repository") as tasks,
             patch(f"{SERVICE}.log") as log,
         ):
-            todos.delete_onboarding_todos = AsyncMock(side_effect=RuntimeError("mongo down"))
+            tasks.list_onboarding = AsyncMock(side_effect=RuntimeError("mongo down"))
             counts = await reset_onboarding(sample_user_id)
 
         assert counts.todos_deleted == 0

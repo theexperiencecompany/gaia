@@ -318,7 +318,7 @@ class BrowserStack:
         """Mint a user through the real signup path, link a Telegram account, and make them PRO."""
         email = f"browser-stack-{uuid.uuid4().hex[:10]}@gaia.test"
         user = await mint_dev_user(email)
-        seeded = await seed_dev_data(email, todos=0, conversations=0, platform_links=[_TELEGRAM])
+        seeded = await seed_dev_data(email, tasks=0, conversations=0, platform_links=[_TELEGRAM])
         await _make_pro(user.id)
         return BotUser(user_id=user.id, telegram_id=seeded.platform_user_ids[_TELEGRAM])
 

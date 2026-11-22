@@ -204,6 +204,8 @@ RUN_SUMMARY_CHARS: Final = 500
 RECENT_RUNS_READ: Final = 3
 #: The surface a paywalled GAIA task run is attributed to in the funnel.
 PAYWALL_FEATURE_GAIA_TASK: Final = "gaia_task"
+#: The one daily run budget every GAIA task run charges, scheduled or woken by an event.
+GAIA_TASK_RUN_FEATURE_KEY: Final[str] = "gaia_task_runs"
 
 
 class TaskRunTrigger(StrEnum):
@@ -215,6 +217,10 @@ class TaskRunTrigger(StrEnum):
     APPROVAL = "approval"
     SUBTASK = "subtask"
     MANUAL = "manual"
+
+
+#: How many of the tasks onboarding set up the personalization screen shows.
+ONBOARDING_TASK_LIMIT: Final[int] = 3
 
 
 class TaskLogEvent(StrEnum):

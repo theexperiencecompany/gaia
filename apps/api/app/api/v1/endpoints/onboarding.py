@@ -12,8 +12,8 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.log_tags import LogTag
-from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.db.repositories.todos import todo_repository
+from app.constants.tasks import ONBOARDING_TASK_LIMIT
+from app.db.repositories.tasks import task_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import require_active_subscription, tiered_rate_limit
@@ -350,7 +350,7 @@ def _build_writing_style(
 
 async def _load_onboarding_todos(user_id: str) -> list[PersonalizationTodo]:
     try:
-        todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
+        todos = await task_repository.list_onboarding(user_id, limit=ONBOARDING_TASK_LIMIT)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} Failed to fetch onboarding todos",
@@ -361,8 +361,8 @@ async def _load_onboarding_todos(user_id: str) -> list[PersonalizationTodo]:
     return [
         PersonalizationTodo(
             id=t.id,
-            title=t.title or "",
-            description=t.description,
+            title=t.title,
+            description=t.body or None,
             source_email=t.source_email,
         )
         for t in todos

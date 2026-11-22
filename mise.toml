@@ -208,18 +208,18 @@ description = "Give this worktree its own ports, Mongo database, Redis and Rabbi
 run = "uv run --no-project python scripts/dev/wt_env.py"
 
 [tasks.seed]
-description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TODOS, SEED_CONVERSATIONS; SEED_PRO=false with a new DEV_USER for a free user; it never removes Pro from an existing one)"
+description = "Mint + seed the dev bypass user with GAIA Pro against a running API, so chat is not paywalled (override with DEV_USER=email, SEED_TASKS, SEED_CONVERSATIONS; SEED_PRO=false with a new DEV_USER for a free user; it never removes Pro from an existing one)"
 run = '''
 set -eu
 : "${DEV_USER:=dev@gaia.local}"
-: "${SEED_TODOS:=5}"
+: "${SEED_TASKS:=5}"
 : "${SEED_CONVERSATIONS:=2}"
 : "${SEED_PRO:=true}"
 base="http://localhost:${API_PORT:-8000}/api/v1/dev"
 curl -sfS -X POST "$base/users" -H 'content-type: application/json' \
   -d "{\"email\": \"$DEV_USER\"}" > /dev/null
 curl -sfS -X POST "$base/seed" -H 'content-type: application/json' \
-  -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS, \"pro\": $SEED_PRO}"
+  -d "{\"email\": \"$DEV_USER\", \"tasks\": $SEED_TASKS, \"conversations\": $SEED_CONVERSATIONS, \"pro\": $SEED_PRO}"
 echo ""
 echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''

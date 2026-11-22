@@ -22,6 +22,7 @@ from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededExceptio
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.tasks import (
     EXECUTOR_BUSY_RECHECK,
+    GAIA_TASK_RUN_FEATURE_KEY,
     PAYWALL_FEATURE_GAIA_TASK,
     TaskFlag,
     TaskLogEvent,
@@ -34,7 +35,6 @@ from app.constants.todos import (
     OPEN_STATE_REPAIR_CHECK,
     PAUSED_RUN_RECHECK,
     RETRY_BACKOFF,
-    TRIGGER_TODO_FEATURE_KEY,
     TodoWakeKind,
     WaitingOn,
 )
@@ -163,7 +163,7 @@ async def _resume_claimed(
     receipt: str,
 ) -> tuple[TaskRunStatus | None, str | None]:
     try:
-        await enforce_cost_budget(task.user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
+        await enforce_cost_budget(task.user_id, feature_key=GAIA_TASK_RUN_FEATURE_KEY)
     except CostBudgetExceededException as walled:
         await record_skipped_run(task, TaskRunTrigger.APPROVAL, f"skipped: {walled.message}")
         return None, f"walled:{task.id}"
@@ -254,6 +254,16 @@ async def pause_unpaid(task: TaskDocument, trigger: TaskRunTrigger) -> str:
     if paused is not None:
         await record_skipped_run(
             paused, trigger, "paused: runs need an active subscription, and resume when it starts"
+        )
+        await _tell_user(
+            task,
+            "task_paused",
+            NotificationType.WARNING,
+            title=f"Paused: {task.title}",
+            body=(
+                "Your plan has ended, so GAIA stopped working on this task. It picks up again "
+                "as soon as your plan is back."
+            ),
         )
     return f"paused:{task.id} (subscription required)"
 
@@ -360,10 +370,15 @@ async def _after_failure(task: TaskDocument) -> str:
 
 async def notify_occurrence_given_up(task: TaskDocument) -> None:
     """Tell the user a repeat gave up on one run; its next occurrence still runs."""
-    await _notify_run_failed(
+    await _tell_user(
         task,
-        f"This run of '{task.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
-        "It runs again at its next scheduled time.",
+        "task_run_failed",
+        NotificationType.ERROR,
+        title=f"Scheduled Task Failed: {task.title}",
+        body=(
+            f"This run of '{task.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
+            "It runs again at its next scheduled time."
+        ),
     )
 
 
@@ -382,21 +397,29 @@ async def mark_failed(task: TaskDocument, attempt: int) -> str:
         "flag is cleared",
     )
     capture(UserId(task.user_id), TaskRunFailed(task_id=task.id, attempts=MAX_RETRY_ATTEMPTS))
-    await _notify_run_failed(
+    await _tell_user(
         task,
-        f"Your scheduled task '{task.title}' could not be completed after "
-        f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again.",
+        "task_run_failed",
+        NotificationType.ERROR,
+        title=f"Scheduled Task Failed: {task.title}",
+        body=(
+            f"Your scheduled task '{task.title}' could not be completed after "
+            f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again."
+        ),
     )
     return f"failed:{task.id} (max retries reached)"
 
 
-async def _notify_run_failed(task: TaskDocument, body: str) -> None:
+async def _tell_user(
+    task: TaskDocument, kind: str, severity: NotificationType, *, title: str, body: str
+) -> None:
+    """Tell the user what became of the task, with a button that opens it."""
     await notification_service.notify(
         NotificationRequest(
-            # One notice per failed occurrence, however often its finish is retried.
+            # One notice per occurrence and kind, however often its run is retried.
             id=notification_id(
                 task.user_id,
-                "task_run_failed",
+                kind,
                 task.id,
                 str(
                     task.when.next_run if isinstance(task.when, RepeatWhen) else task.next_check_at
@@ -404,13 +427,11 @@ async def _notify_run_failed(task: TaskDocument, body: str) -> None:
             ),
             user_id=task.user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
-            type=NotificationType.ERROR,
+            type=severity,
             content=NotificationContent(
-                title=f"Scheduled Task Failed: {task.title}",
-                body=body,
-                actions=[task_redirect_action(task.id)],
+                title=title, body=body, actions=[task_redirect_action(task.id)]
             ),
-            metadata={"task_id": task.id, "retry_count": MAX_RETRY_ATTEMPTS},
+            metadata={"task_id": task.id},
         )
     )
 

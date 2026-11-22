@@ -7525,6 +7525,24 @@
       }
     },
     {
+      "event": "task:inbox_desk_provisioned",
+      "class": "TaskInboxDeskProvisioned",
+      "owner": "server",
+      "domain": "task",
+      "description": "The user's Inbox desk task exists and its first morning run is armed.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user's Inbox desk task exists and its first morning run is armed.",
+        "properties": {},
+        "title": "TaskInboxDeskProvisioned",
+        "type": "object"
+      }
+    },
+    {
       "event": "task:nudged",
       "class": "TaskNudged",
       "owner": "server",
@@ -7921,6 +7939,39 @@
           "changed_fields"
         ],
         "title": "TaskUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "task:view_changed",
+      "class": "TaskViewChanged",
+      "owner": "web",
+      "domain": "task",
+      "description": "A user switched task views on the tasks page; pure client navigation.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": null,
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user switched task views on the tasks page; pure client navigation.",
+        "properties": {
+          "view_kind": {
+            "enum": [
+              "open",
+              "today",
+              "upcoming",
+              "overdue",
+              "done"
+            ],
+            "title": "View Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "view_kind"
+        ],
+        "title": "TaskViewChanged",
         "type": "object"
       }
     },

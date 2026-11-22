@@ -72,12 +72,16 @@ class TestGoogleSuiteConnected:
 
 
 class TestUsesTodos:
-    @patch("app.services.nurture.predicates.todo_repository.count_for_user", new_callable=AsyncMock)
+    @patch(
+        "app.services.nurture.predicates.task_repository.count_for_assignee", new_callable=AsyncMock
+    )
     async def test_false_below_threshold(self, mock_count) -> None:
         mock_count.return_value = 4
         assert await uses_todos(_user()) is False
 
-    @patch("app.services.nurture.predicates.todo_repository.count_for_user", new_callable=AsyncMock)
+    @patch(
+        "app.services.nurture.predicates.task_repository.count_for_assignee", new_callable=AsyncMock
+    )
     async def test_true_at_threshold(self, mock_count) -> None:
         mock_count.return_value = 5
         assert await uses_todos(_user()) is True

@@ -6,7 +6,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_CHANNEL_TYPES
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_config import AgentConfigurableView, read_agent_configurable
 from app.models.agent_models import current_stream_writer, get_user_id
@@ -287,14 +287,14 @@ def reply_channel_of_run(configurable: AgentConfigurableView) -> ReplyChannel | 
 async def result_is_delivered_automatically(
     configurable: AgentConfigurableView, user_id: str
 ) -> bool:
-    """True for a background workflow or tracked-todo run whose own result is sent to the user."""
+    """True for a background workflow or GAIA task run whose own result is sent to the user."""
     if configurable.execution_mode != "background":
         return False
     if configurable.workflow_id:
         return configurable.workflow_notify_on_completion
-    if configurable.active_todo_id:
-        todo = await todo_repository.get(configurable.active_todo_id, user_id=user_id)
-        return todo is not None and todo.notify_on_run
+    if configurable.active_task_id:
+        task = await task_repository.get(configurable.active_task_id, user_id=user_id)
+        return task is not None and task.notify
     return False
 
 
@@ -347,7 +347,7 @@ async def send_notification(
         if not channels:
             target = await resolve_proactive_target(user_id)
             channels = [CHANNEL_TYPE_INAPP] if isinstance(target, InApp) else [target.source.value]
-            # A workflow or tracked-todo run's result goes to this same place on its own.
+            # A workflow or GAIA task run's result goes to this same place on its own.
             if reply_channel is None and await result_is_delivered_automatically(
                 configurable, user_id
             ):

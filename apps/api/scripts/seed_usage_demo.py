@@ -162,7 +162,7 @@ feature_day = {
     "deep_research": 1,
     "calendar_management": 3,
     "mail_actions": 1,
-    "todo_operations": 8,
+    "task_operations": 8,
     "notes": 4,
     "memory": 6,
     "generate_image": 1,

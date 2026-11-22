@@ -171,7 +171,7 @@ cmd_up() {
   fi
   [ -n "$web" ] && wait_for web "curl -sf --max-time $probe_timeout_s -o /dev/null http://localhost:$(ports_of web)/"
   if [ -n "$seed" ]; then
-    SEED_TODOS=0 SEED_CONVERSATIONS=0 DEV_USER="$DEV_AUTH_BYPASS_EMAIL" mise run seed >/dev/null
+    SEED_TASKS=0 SEED_CONVERSATIONS=0 DEV_USER="$DEV_AUTH_BYPASS_EMAIL" mise run seed >/dev/null
     echo "  $DEV_AUTH_BYPASS_EMAIL minted with Pro"
   fi
   trap - EXIT INT TERM
