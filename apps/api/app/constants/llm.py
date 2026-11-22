@@ -182,9 +182,6 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
 # Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
@@ -551,7 +548,7 @@ LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" counts identical calls issued this run, consecutive or not, regardless of
 # success or failure: a successful call whose result won't change is as much a loop
-# as a failing one (the failure counters above only see status="error").
+# as a failing one (the failure counters above only see failed calls).
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
 # The middleware is a per-process singleton, so counters are keyed by the run

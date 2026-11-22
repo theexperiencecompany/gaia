@@ -1,9 +1,8 @@
 """Push Notification Constants."""
 
-from datetime import timedelta
 from enum import StrEnum
 import re
-from typing import Literal
+from typing import Final, Literal
 
 # Maximum devices a user can register for push notifications
 MAX_DEVICES_PER_USER = 10
@@ -29,6 +28,19 @@ class NotificationChannel(StrEnum):
     EMAIL = "email"
 
 
+# Internal delivery routes, never named by the user or the notify tool, so they are
+# not NotificationChannel members (that enum is what preferences and the tool expose).
+#: Expo push to the user's registered phones.
+CHANNEL_TYPE_PUSH: Final = "push"
+#: A Notice in the conversation the fact belongs to.
+CHANNEL_TYPE_CONVERSATION: Final = "conversation"
+#: The push category the mobile app answers with approve/deny buttons.
+APPROVAL_PUSH_CATEGORY: Final = "hil_approval"
+#: The title a pending approval's push carries.
+APPROVAL_PUSH_TITLE: Final = "GAIA needs your approval"
+#: The link under an approval sent to a chat app, which opens the chat it was asked in.
+APPROVAL_CHAT_LINK_LABEL: Final = "Approve or decline it in GAIA"
+
 # External channel types a notification can be delivered on
 EXTERNAL_NOTIFICATION_CHANNELS = (
     NotificationChannel.TELEGRAM,
@@ -39,8 +51,7 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
 )
 
 # Every channel type a notification may name explicitly (the tool validates
-# against this). One naming none goes in-app plus the user's preferred chat
-# platform; see ``NotificationOrchestrator._default_channels``.
+# against this). One naming none is routed by ``NotificationOrchestrator._route``.
 NOTIFICATION_CHANNEL_TYPES = (NotificationChannel.INAPP, *EXTERNAL_NOTIFICATION_CHANNELS)
 
 # Channels the user can switch on and off. inapp is excluded: it is always
@@ -100,15 +111,6 @@ QUIET_HOURS_EXEMPT: frozenset[ProactiveMessageClass] = frozenset(
 # prefix of its per-message job id.
 DEFERRED_CHAT_MESSAGE_TASK = "deliver_deferred_chat_message"
 DEFERRED_CHAT_MESSAGE_JOB_PREFIX = "deferred-chat-message:"
-
-# Recording a delivered proactive message waits while a run or interrupt holds
-# its thread: the retrying ARQ task, its job-id prefix, the lock holder it writes,
-# and its retry spacing and bound (30 x 1 minute) before it fails loudly.
-PROACTIVE_RECORD_TASK = "record_proactive_delivery"
-PROACTIVE_RECORD_JOB_PREFIX = "proactive-record:"
-PROACTIVE_RECORD_LOCK_HOLDER = "proactive-record"
-PROACTIVE_RECORD_RETRY_DELAY = timedelta(minutes=1)
-PROACTIVE_RECORD_MAX_TRIES = 30
 
 # In-app route a notification action redirects to. Shared so the memory-backfill
 # and Gmail-personalization notifications can't drift onto different pages.
@@ -176,6 +178,8 @@ class NotificationKind(StrEnum):
     MEMORY_READY = "memory_ready"
     #: GAIA personalised itself from the user's Gmail.
     GMAIL_PERSONALIZED = "gmail_personalized"
+    #: A gated action waits on the user's approval.
+    APPROVAL = "approval"
 
 
 #: The kinds a brief's notification takes.

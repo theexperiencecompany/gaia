@@ -105,7 +105,7 @@ interface IntegrationListSectionProps {
 function IntegrationListSection({
   suggestedIntegrations = [],
 }: IntegrationListSectionProps) {
-  const { integrations, connectIntegration, refetch } = useIntegrations();
+  const { integrations, connectIntegration } = useIntegrations();
 
   const connected = integrations
     .filter((i) => i.status === "connected")
@@ -163,7 +163,6 @@ function IntegrationListSection({
                   <SuggestedIntegrationRow
                     key={suggestion.id}
                     suggestion={suggestion}
-                    onConnected={refetch}
                   />
                 ))}
               </ScrollShadow>

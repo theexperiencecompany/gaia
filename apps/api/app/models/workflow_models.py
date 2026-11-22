@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from app.constants.workflows import WorkflowDelivery
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.legacy_delivery import LEGACY_WORKFLOW_NOTIFY_KEY, delivery_from_legacy_flag
 from app.models.scheduler_models import (
     BaseScheduledTask,

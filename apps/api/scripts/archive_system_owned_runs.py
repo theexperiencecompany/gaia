@@ -59,6 +59,7 @@ USER_OWNED_COLLECTIONS = (
     "browser_tasks",
     "calendar",
     "checkout_sessions",
+    "conversation_entries",
     "conversations",
     "device_tokens",
     "e2b_sandboxes",

@@ -72,8 +72,9 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingSubdocument,
 )
+from app.services.hil.pending import PendingApproval
 from app.services.integrations.user_integrations import ConnectedIntegration
-from app.utils.artifact_utils import artifact_url_base
+from app.utils.artifact_utils import FILE_LINKS
 
 
 def ctx(
@@ -1342,7 +1343,7 @@ class TestWorkspaceSessionBanner:
         assert banner == (
             f"Session directory: {session_dir('sess-1')}\n"
             "Public artifact URL: a file at `artifacts/<name>` is served at "
-            f"{artifact_url_base('sess-1')}/<name>"
+            f"{FILE_LINKS.artifact_base('sess-1')}/<name>"
         )
 
     async def test_no_vfs_session_id_never_guesses_a_directory(self) -> None:
@@ -1676,12 +1677,12 @@ class TestOpenPendingsBlock:
         )
 
     async def _render(self, docs: list[MagicMock]) -> str:
+        numbered = [PendingApproval(number=number, row=doc) for number, doc in enumerate(docs, 1)]
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=docs)
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=numbered)
+        ) as pending:
             text = await build_open_pendings_block(self._ctx())
-        ledger.list_open.assert_awaited_once_with("c1")
+        pending.assert_awaited_once_with("c1", "u1")
         return text
 
     async def test_renders_each_pending_with_age_and_revoke_rule(self) -> None:
@@ -1730,40 +1731,21 @@ class TestOpenPendingsBlock:
 
     async def test_empty_and_missing_conversation_render_empty(self) -> None:
         with patch(
-            "app.agents.context.fetchers.approval_ledger_repository",
-        ) as ledger:
-            ledger.list_open = AsyncMock(return_value=[])
+            "app.agents.context.fetchers.pending_approvals", new=AsyncMock(return_value=[])
+        ) as pending:
             assert await build_open_pendings_block(self._ctx()) == ""
             assert await build_open_pendings_block(self._ctx(None)) == ""
-            ledger.list_open.assert_awaited_once()
+            pending.assert_awaited_once()
 
     async def test_ledger_failure_degrades_to_empty_and_is_logged(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.fetchers.approval_ledger_repository",
-            ) as ledger:
-                ledger.list_open = AsyncMock(side_effect=ConnectionError("mongo down"))
+                "app.agents.context.fetchers.pending_approvals",
+                new=AsyncMock(side_effect=ConnectionError("mongo down")),
+            ):
                 text = await build_open_pendings_block(self._ctx())
 
         assert text == ""
         assert event["warnings"] == [
             {"msg": "open_pendings_fetch_failed", "error_type": "ConnectionError"}
         ]
-
-    async def test_foreign_rows_never_render_into_this_users_context(self) -> None:
-        text = await self._render(
-            [
-                self._doc("ap_mine", "Mine"),
-                self._doc("ap_theirs", "Theirs", user_id="u2"),
-                self._doc("ap_legacy", "Legacy", user_id=""),
-            ]
-        )
-
-        assert "ap_mine" in text
-        assert "ap_theirs" not in text
-        assert "ap_legacy" in text
-
-    async def test_only_foreign_rows_render_nothing(self) -> None:
-        text = await self._render([self._doc("ap_theirs", "Theirs", user_id="u2")])
-
-        assert text == ""

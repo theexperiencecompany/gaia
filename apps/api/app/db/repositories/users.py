@@ -61,6 +61,7 @@ from app.models.user_models import (
     UserHours,
     UserUpdate,
 )
+from app.utils.email_utils import canonical_email
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.wide_events import log
 
@@ -83,7 +84,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
         """Return a user by email — the authentication hot path."""
-        return await self._find_one({"email": email})
+        return await self._find_one({"email": canonical_email(email)})
 
     async def find_by_email_ignoring_case(self, email: str) -> list[UserDocument]:
         """Every user whose email equals this one in any case — account erasure refuses all but one."""

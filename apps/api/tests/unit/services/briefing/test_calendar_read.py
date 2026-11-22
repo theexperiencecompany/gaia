@@ -17,6 +17,7 @@ from app.models.calendar_models import (
     CalendarEventsResponse,
     CalendarResponse,
     GoogleCalendarEventResource,
+    GoogleCalendarListEntry,
 )
 from app.services import calendar_service
 from app.services.briefing import calendar_read
@@ -210,7 +211,7 @@ class TestReadCalendar:
         monkeypatch.setattr(
             calendar_service,
             "_resolve_selected_calendars",
-            AsyncMock(return_value=["primary"]),
+            AsyncMock(return_value=[GoogleCalendarListEntry.model_validate(listing["items"][0])]),
         )
 
         assert (await _calendar(1)).gap is CalendarGap.UNAVAILABLE

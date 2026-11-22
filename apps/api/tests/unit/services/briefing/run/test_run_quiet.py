@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import pytest
 from tests.briefing_run_world import (
+    BRIEF_ID,
     CHART,
     DIGEST_REPORT,
     EVENT,
@@ -83,8 +84,8 @@ class TestAQuietDay:
         assert request.content.rich_content is None
         assert [c.channel_type for c in request.channels] == ["inapp", "email"]
         posted = world.post.await_args.kwargs
-        assert (posted["text"], posted["image"]) == (payload.message, None)
-        world.brief_message.assert_awaited_once_with(USER, payload.message, None)
+        assert (posted["message"].text, posted["message"].image_url) == (payload.message, None)
+        world.brief_message.assert_awaited_once_with(USER, BRIEF_ID, payload.message, None)
         assert world.capture.call_args.args[1].form == "quiet_note"
         assert world.bags == bags_before
 
@@ -325,7 +326,7 @@ class TestAQuietWeek:
         assert world.capture.call_args.args == (
             UserId(USER),
             BriefingSent(
-                kind=BriefingKind.WEEKLY,
+                kind=BriefingKind.WEEKLY.value,
                 form="quiet_note",
                 family=None,
                 mood=BriefingMood.IDLE,

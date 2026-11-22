@@ -75,8 +75,9 @@ function printUsage(): void {
     [
       "Usage:",
       "  gaia-sim send --emulate <platform> --user <email> [--out <file>] [--api <url>] [--channel <id>] [--settle <ms>] [--no-outbound] <message>",
-      "  gaia-sim run <scenario.yaml> [--out <file>] [--api <url>] [--settle <ms>]",
+      "  gaia-sim run <scenario.yaml> [--emulate <platform>] [--out <file>] [--api <url>] [--settle <ms>]",
       "",
+      "  --emulate on run: play the scenario on this platform instead of its own.",
       "  --settle <ms>: keep the outbound consumer alive this long after each",
       "                 reply stream closes, so a background-executor answer",
       "                 published afterwards lands in the transcript. SIGTERM",
@@ -133,6 +134,14 @@ function emitTranscript(
 ): void {
   out(transcript.toJsonl());
   if (outPath) log(`Transcript written to ${outPath}`);
+  for (const event of transcript.getEvents()) {
+    if (event.type !== "awaiting-approval") continue;
+    for (const { approvalId, headline } of event.approvals) {
+      log(
+        `Waiting on approval ${approvalId} in ${event.conversationId}: ${headline}`,
+      );
+    }
+  }
 }
 
 async function runSend(args: ParsedArgs): Promise<number> {
@@ -183,7 +192,13 @@ async function runRun(args: ParsedArgs): Promise<number> {
   }
 
   const raw = await readFile(scenarioPath, "utf8");
-  const scenario = parseYaml(raw) as Scenario;
+  const parsed = parseYaml(raw) as Scenario;
+  const emulate = args.flags.emulate;
+  if (emulate !== undefined && !isEmulatablePlatform(emulate)) {
+    log(`Error: --emulate must be one of discord|slack|telegram|whatsapp`);
+    return 1;
+  }
+  const scenario: Scenario = { ...parsed, emulate: emulate ?? parsed.emulate };
   // Platform validation is runScenario's job (single authoritative guard);
   // its throw is caught and reported by main().
 

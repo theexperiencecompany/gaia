@@ -1,0 +1,26 @@
+# Several approvals answered by number, in the order the prompts ask. Two asks in
+# one piece of work get one prompt each: the second is numbered, and the first is
+# never listed again. A number keeps meaning the approval it was shown for until
+# that one is decided: after "yes 1", "no 2" still declines the second, with no
+# classifier needed (JEV is unavailable under sim, as on a self-host without a key).
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/approval-numbered.yaml
+name: approvals by number
+emulate: telegram
+user: bot-approval-pair-scenario@gaia.local
+askBefore: [create_todo]
+settleMs: 8000
+turns:
+  - send: 'two todos [[tool:create_todo {"title":"pair-a"}]] [[tool:create_todo {"title":"pair-b"}]] [[say:Handled both.]]'
+    expect:
+      - bubbles: ["Want me to add “pair-a”", "One more needs your OK:</b>\n2. Add “pair-b”"]
+      - excludes: ["things need your OK"]
+  - send: "yes 1"
+    expect:
+      - excludes: ["“pair-b” to your todos?", "need your OK", "needs your OK"]
+      - noTakeBacks: true
+  - send: "no 2"
+    expect:
+      - contains: "Understood"
+      - excludes: ["needs your OK", "Reply <b>yes</b>"]

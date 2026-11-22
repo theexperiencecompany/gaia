@@ -15,7 +15,7 @@
  * 3. Add a handler here following the same pattern
  * 4. Import and call it from each bot's command adapter
  */
-import type { CreateWorkflowRequest } from "../../api/generated";
+import type { CreateWorkflowRequest, Priority } from "../../api/generated";
 import type { GaiaClient } from "../api";
 import type { CommandContext } from "../types";
 import { recordBotFailure } from "./failure-reasons";
@@ -65,14 +65,10 @@ export async function handleWorkflowExecute(
   gaia: GaiaClient,
   workflowId: string,
   ctx: CommandContext,
-  inputs?: Record<string, unknown>,
 ): Promise<string> {
   try {
-    const response = await gaia.executeWorkflow(
-      { workflow_id: workflowId, inputs },
-      ctx,
-    );
-    return `✅ Workflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
+    const response = await gaia.executeWorkflow(workflowId, ctx);
+    return `✅ Workflow execution started!\nExecution ID: ${response.execution_id}`;
   } catch (error: unknown) {
     return reportCommandFailure("execute_workflow", error, ctx);
   }
@@ -85,7 +81,7 @@ export async function handleTodoList(
 ): Promise<string> {
   try {
     const response = await gaia.listTodos(ctx, { completed });
-    return formatTodoList(response.todos);
+    return formatTodoList(response.data);
   } catch (error: unknown) {
     return reportCommandFailure("list_todos", error, ctx);
   }
@@ -95,7 +91,7 @@ export async function handleTodoCreate(
   gaia: GaiaClient,
   title: string,
   ctx: CommandContext,
-  options?: { priority?: "low" | "medium" | "high"; description?: string },
+  options?: { priority?: Priority; description?: string },
 ): Promise<string> {
   try {
     const todo = await gaia.createTodo(
@@ -106,7 +102,7 @@ export async function handleTodoCreate(
       },
       ctx,
     );
-    return `✅ BotTodo created!\n\n${formatTodo(todo)}`;
+    return `✅ Todo created!\n\n${formatTodo(todo)}`;
   } catch (error: unknown) {
     return reportCommandFailure("create_todo", error, ctx);
   }
@@ -119,7 +115,7 @@ export async function handleTodoComplete(
 ): Promise<string> {
   try {
     const todo = await gaia.completeTodo(todoId, ctx);
-    return `✅ BotTodo marked as complete: ${todo.title}`;
+    return `✅ Todo marked as complete: ${todo.title}`;
   } catch (error: unknown) {
     return reportCommandFailure("complete_todo", error, ctx);
   }
@@ -132,10 +128,7 @@ export async function handleConversationList(
 ): Promise<string> {
   try {
     const response = await gaia.listConversations(ctx, { page, limit: 5 });
-    return formatConversationList(
-      response.conversations,
-      gaia.getFrontendUrl(),
-    );
+    return formatConversationList(response.conversations);
   } catch (error: unknown) {
     return reportCommandFailure("list_conversations", error, ctx);
   }
@@ -154,18 +147,18 @@ export async function handleWorkflowGet(
   }
 }
 
+/** Creates a workflow the user runs on demand; the instructions become its prompt. */
 export async function handleWorkflowCreate(
   gaia: GaiaClient,
-  name: string,
+  title: string,
+  instructions: string,
   ctx: CommandContext,
-  description?: string,
 ): Promise<string> {
   try {
     const workflow = await gaia.createWorkflow(
       {
-        title: name,
-        description,
-        prompt: description || name,
+        title,
+        prompt: instructions,
         trigger_config: { type: "manual", enabled: true },
         delivery: BOT_WORKFLOW_DELIVERY,
       },
@@ -184,7 +177,7 @@ export async function handleTodoDelete(
 ): Promise<string> {
   try {
     await gaia.deleteTodo(todoId, ctx);
-    return "✅ BotTodo deleted successfully";
+    return "✅ Todo deleted successfully";
   } catch (error: unknown) {
     return reportCommandFailure("delete_todo", error, ctx);
   }

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefItemSource
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 
 
 class PendingBriefItemDocument(UserScopedDocument):

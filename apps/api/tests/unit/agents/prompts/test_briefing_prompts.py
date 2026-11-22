@@ -14,17 +14,32 @@ from typing import Any
 import pytest
 
 from app.agents.prompts.briefing_prompts import (
+    _ASK_FOR_GOAL,
+    _BRIEFS_OFF_CLOSE,
+    _FIRST_BRIEF_CLOSE,
+    _FIRST_BRIEF_NOTE,
+    _FIRST_WEEK_NOTE,
     _GOAL_ASKED,
     _GOAL_QUESTION,
+    _GOODBYE_NOTE,
+    _HELLO_ASK,
+    _HELLO_OFFER,
+    _LIGHTER_CADENCE_NOTE,
     _MESSAGE_VOICE,
+    _RECENT_LINES_HEADING,
+    _REJECTED_NOTE,
     _SLOTS,
+    _UNREADABLE_NOTE,
     _VOICE_CONTRACT,
     _WEEKLY_VOICE_CONTRACT,
+    _WINBACK_NOTE,
+    _WIND_DOWN_WARN_NOTE,
     UNTRUSTED_DATA_NOTE,
     RecentLines,
     VoicePromptBlocks,
     VoiceSituation,
     _recent_lines_block,
+    _signals_section,
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
     build_weekly_voice_prompt,
@@ -73,6 +88,16 @@ _SITUATIONS: dict[str, VoiceSituation] = {
     "first-brief": VoiceSituation(is_first_briefing=True),
     "first-week": VoiceSituation(first_week=True),
     "lighter-cadence": VoiceSituation(offer_lighter_cadence=True),
+}
+
+#: The one note each situation adds, exactly.
+_NOTES: dict[str, str] = {
+    "wind-down-warn": _WIND_DOWN_WARN_NOTE,
+    "wind-down-final": _GOODBYE_NOTE,
+    "winback": _WINBACK_NOTE,
+    "first-brief": _FIRST_BRIEF_NOTE,
+    "first-week": _FIRST_WEEK_NOTE.format(ask_for_goal=_ASK_FOR_GOAL),
+    "lighter-cadence": _LIGHTER_CADENCE_NOTE,
 }
 
 
@@ -161,6 +186,9 @@ class TestTheDailyVoicePrompt:
 
         assert fenced("", _FENCE) in prompt  # the lookback and replies, empty, stay fenced
         assert "<their GAIA setup>" not in prompt and "<across their apps>" not in prompt
+        assert _signals_section("", _FENCE) == ""
+        between = prompt.split(fenced(bare.goal, _FENCE), 1)[1].split(_GOAL_QUESTION, 1)[0]
+        assert between.strip() == ""
 
     @pytest.mark.regression
     def test_the_slots_state_every_length_cap_the_prose_is_held_to(self) -> None:
@@ -201,7 +229,7 @@ class TestTheDailyVoicePrompt:
             prompt, fenced(_BLOCKS.goal, _FENCE), _BLOCKS.setup, note, _GOAL_QUESTION
         )
         assert starts == sorted(starts)
-        assert note
+        assert note == _NOTES[name].strip()
         for other, situation in _SITUATIONS.items():
             if other != name:
                 assert _note(situation) not in prompt
@@ -221,7 +249,7 @@ class TestTheDailyVoicePrompt:
         asked = account_note(_GOAL_ASKED, VoiceSituation(first_week=True, goal_asked_recently=True))
 
         assert asks == _note(VoiceSituation(first_week=True))
-        assert asks.replace("no goal known, ask for one; ", "") == asked != asks
+        assert asked == _FIRST_WEEK_NOTE.format(ask_for_goal="").strip() != asks
 
     def test_every_line_recent_briefs_printed_is_listed_before_the_message_voice(self) -> None:
         recent = RecentLines(
@@ -235,8 +263,17 @@ class TestTheDailyVoicePrompt:
 
         starts = _in_order(prompt, _GOAL_QUESTION, block, _MESSAGE_VOICE)
         assert starts == sorted(starts)
-        listed = [line.removeprefix("- ") for line in block.splitlines() if line.startswith("- ")]
-        assert listed == recent.every()
+        assert block == (
+            f"\n{_RECENT_LINES_HEADING}\n"
+            "Headlines:\n- An open day, with room to reset\n"
+            "Captions:\n- A rare blank square on the calendar.\n"
+            "Message openings:\n- Priya replied overnight.\n- Big day for the raise.\n"
+        )
+
+    def test_each_kind_of_recent_line_is_listed_under_its_own_label(self) -> None:
+        block = _recent_lines_block(RecentLines(ledes=["A calm one."]))
+
+        assert block == f"\n{_RECENT_LINES_HEADING}\nLedes:\n- A calm one.\n"
 
     def test_without_recent_briefs_the_goal_guidance_runs_straight_into_the_message_voice(
         self,
@@ -333,6 +370,18 @@ class TestTheRetryNotes:
         assert shown > "\n".join(lines).index("- lede counts 3 drafts")
         assert lines[-1] not in (last, *problems)
 
+    @pytest.mark.parametrize(
+        ("note", "template"),
+        [(voice_correction_note, _REJECTED_NOTE), (voice_unreadable_note, _UNREADABLE_NOTE)],
+        ids=["rejected", "unreadable"],
+    )
+    def test_each_retry_is_its_own_note_around_the_problems_and_the_last_answer(
+        self, note: Callable[[list[str], str], str], template: str
+    ) -> None:
+        last = '{"headline": "{h}"}'
+
+        assert note(["a", "b"], last) == template.format(problems="- a\n- b", last=last)
+
 
 class TestTheDayZeroHello:
     def _hello(self, **kwargs: Any) -> str:
@@ -352,16 +401,17 @@ class TestTheDayZeroHello:
     def test_a_known_goal_and_an_unknown_one_ask_differently(self) -> None:
         with_goal, without = self._hello(has_goal=True), self._hello(has_goal=False)
 
-        assert with_goal != without
-        assert with_goal.replace("<what GAIA knows>", "") != without.replace(
-            "<what GAIA knows>", ""
-        )
+        assert _HELLO_OFFER.format(first_name="Priya") in with_goal
+        assert _HELLO_ASK.format(first_name="Priya") not in with_goal
+        assert _HELLO_ASK.format(first_name="Priya") in without
+        assert _HELLO_OFFER.format(first_name="Priya") not in without
 
     def test_the_first_brief_is_promised_only_when_one_is_coming(self) -> None:
         coming, off = self._hello(), self._hello(first_brief=None)
 
-        assert "tomorrow at 8 AM" in coming
-        assert coming != off
+        assert _FIRST_BRIEF_CLOSE.format(first_brief="tomorrow at 8 AM") in coming
+        assert _BRIEFS_OFF_CLOSE not in coming
+        assert _BRIEFS_OFF_CLOSE in off
         assert "tomorrow at 8 AM" not in off
 
 

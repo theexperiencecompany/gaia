@@ -1,0 +1,23 @@
+# /stop while a subagent the work spawned is still working (its model holds its
+# step), then new work in the same conversation. The stop must leave the work's
+# thread one the model accepts: a real provider, and the stub, refuse a thread
+# holding a call with no result, which once failed every later run.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/stop-during-subagent.yaml
+name: stop during subagent
+emulate: telegram
+user: bot-stop-mid-tool-scenario@gaia.local
+turns:
+  - burst:
+      - send: 'research [[tool:spawn_subagent {"task":"look into it [[wait:45000]] [[say:Sub done.]]","background":false}]] [[say:Never said.]]'
+      - send: "/stop"
+        afterMs: 10000
+    settleMs: 10000
+    expect:
+      - excludes: ["Never said.", "Sub done."]
+  - send: 'one more [[tool:create_todo {"title":"after-tool-stop"}]] [[say:Added after-tool-stop.]]'
+    settleMs: 10000
+    expect:
+      - bubbles: ["Added after-tool-stop."]
+      - excludes: ["couldn't finish"]

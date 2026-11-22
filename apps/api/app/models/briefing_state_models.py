@@ -5,8 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefingBag, EditionChoice
-from app.db.repositories.base import MongoDocument
 from app.models.brief_settings_models import BriefingSchedule
+from app.models.document_models import MongoDocument
 
 
 class BriefingWindDown(BaseModel):

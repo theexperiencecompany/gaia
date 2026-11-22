@@ -1,10 +1,10 @@
 """Bubble-break sentinel parsing — every spelling the model actually emits."""
 
+from itertools import pairwise
 import re
 
 import pytest
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.utils.message_breaks import (
     _OPEN,
     _SENTINEL_WORD_SEQUENCES,
@@ -12,11 +12,16 @@ from app.utils.message_breaks import (
     PARTIAL_MESSAGE_BREAK_RE,
     _partial_sequence,
     _word_prefixes,
+    count_message_breaks,
+    is_only_message_breaks,
     normalize_message_breaks,
+    shown_so_far,
     split_for_caption,
     split_message_bubbles,
+    strip_edge_message_breaks,
     strip_partial_message_break,
 )
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 BR = NEW_MESSAGE_BREAKER
 
@@ -92,6 +97,56 @@ class TestSplitMessageBubbles:
 
     def test_text_without_sentinel_is_one_bubble(self) -> None:
         assert split_message_bubbles("just one thing") == ["just one thing"]
+
+    def test_a_break_inside_a_code_block_is_a_newline(self) -> None:
+        text = (
+            "see<NEW_MESSAGE_BREAK>```py\na = 1<NEW_MESSAGE_BREAK>b = 2\n```<NEW_MESSAGE_BREAK>done"
+        )
+        assert split_message_bubbles(text) == ["see", "```py\na = 1\nb = 2\n```", "done"]
+
+    def test_a_break_inside_an_unclosed_code_block_never_splits(self) -> None:
+        assert split_message_bubbles("```\na<NEW_MESSAGE_BREAK>b") == ["```\na\nb"]
+
+    def test_a_break_inside_an_openui_block_is_a_newline(self) -> None:
+        text = ":::openui\nCard(a)<NEW_MESSAGE_BREAK>Card(b)\n:::<NEW_MESSAGE_BREAK>after"
+        assert split_message_bubbles(text) == [":::openui\nCard(a)\nCard(b)\n:::", "after"]
+
+    def test_a_nested_openui_block_keeps_its_outer_block_whole(self) -> None:
+        text = ":::openui\nA\n:::openui\nB<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
+        assert split_message_bubbles(text) == [":::openui\nA\n:::openui\nB\nC\n:::", "after"]
+
+    def test_every_code_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            "```a<NEW_MESSAGE_BREAK>b```<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            "```c<NEW_MESSAGE_BREAK>d```<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == ["```a\nb```", "mid", "```c\nd```", "end"]
+
+    def test_every_openui_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            ":::openui\nA<NEW_MESSAGE_BREAK>B\n:::<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            ":::openui\nC<NEW_MESSAGE_BREAK>D\n:::<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\nB\n:::",
+            "mid",
+            ":::openui\nC\nD\n:::",
+            "end",
+        ]
+
+    def test_a_break_inside_an_unclosed_openui_block_never_splits(self) -> None:
+        assert split_message_bubbles(":::openui\nA<NEW_MESSAGE_BREAK>B") == [":::openui\nA\nB"]
+
+    def test_a_third_openui_block_is_found_after_the_second(self) -> None:
+        text = (
+            ":::openui\nA\n:::<NEW_MESSAGE_BREAK>:::openui\nB<NEW_MESSAGE_BREAK>C\n:::"
+            "<NEW_MESSAGE_BREAK>:::openui\nD\n:::"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\n:::",
+            ":::openui\nB\nC\n:::",
+            ":::openui\nD\n:::",
+        ]
 
 
 class TestPrefixBuilders:
@@ -220,3 +275,94 @@ class TestNormalizeMessageBreaks:
     def test_is_idempotent(self) -> None:
         once = normalize_message_breaks(f"{BR}a{BR * 2}b{BR}")
         assert normalize_message_breaks(once) == once
+
+
+class TestOnlyBreaksSoFar:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            " \n",
+            f"{BR}{BR}",
+            f"{BR}\n[NEW MESSAGE BREAK]",
+            f"{BR}<NEW_MESS",
+            f"{BR}<",
+            f"{BR} [ /",
+            f"{BR}<NEW_MESSAGE_BREAK ",
+            f"{BR}[NEW LINE BREAK /",
+            "<NE",
+            "<NE<",
+            "<NE<NEW_MESSAGE_BREAK>",
+        ],
+    )
+    def test_breaks_whitespace_and_a_half_written_break_are_still_nothing(self, text):
+        assert is_only_message_breaks(text) is True
+
+    @pytest.mark.parametrize("text", [f"{BR}hi", f"{BR}<b>", "x", f"{BR}{BR}.", "Hi<NE<"])
+    def test_any_visible_character_is_text(self, text):
+        assert is_only_message_breaks(text) is False
+
+    def test_only_complete_breaks_are_counted(self):
+        assert count_message_breaks(f"{BR}[NEW_LINE_BREAK] {BR}<NEW_MESS") == 3
+
+
+class TestEdgeBreaks:
+    def test_runs_at_both_edges_go_and_the_breaks_between_bubbles_stay(self):
+        text = f" {BR}\n{BR}one{BR}{BR}two{BR} \n{BR} "
+
+        assert strip_edge_message_breaks(text) == f"one{BR}{BR}two"
+
+    def test_text_without_edge_breaks_is_unchanged(self):
+        assert strip_edge_message_breaks(f" one{BR}two\n") == f" one{BR}two\n"
+
+    def test_a_breaks_only_text_strips_to_nothing(self):
+        assert strip_edge_message_breaks(BR * 5) == ""
+
+
+class TestLongInputs:
+    def test_a_long_whitespace_run_is_text_not_a_break(self):
+        text = "<" + " " * 50_000 + "x"
+
+        assert strip_edge_message_breaks(text) == text
+        assert shown_so_far(text) == text
+        assert is_only_message_breaks(text) is False
+
+    def test_a_sentinel_left_open_before_a_long_whitespace_run_is_held(self):
+        text = "<NEW_MESSAGE_BREAK" + " " * 50_000
+
+        assert shown_so_far(text) == ""
+        assert is_only_message_breaks(text) is True
+
+    def test_a_long_run_of_lone_brackets_is_held_whole(self):
+        assert shown_so_far("Hi" + "<" * 50_000) == "Hi"
+
+    def test_a_long_run_of_trailing_breaks_strips_to_the_text(self):
+        assert strip_edge_message_breaks("Hi" + f" {BR}" * 10_000 + " ") == "Hi"
+
+
+class TestShownSoFar:
+    @pytest.mark.parametrize(
+        ("text", "shown"),
+        [
+            ("Hello", "Hello"),
+            ("Hello there.<NEW_MESS", "Hello there."),
+            ("Hello there. <", "Hello there. "),
+            ("Hello [", "Hello "),
+            (f"Hello.{BR}Sure", f"Hello.{BR}Sure"),
+            ("< 5 items left", "< 5 items left"),
+            ("<❤️>", "<❤️>"),
+            ("Hi<NE<", "Hi"),
+            ("Hi<NEW_MESSAGE_BREAK ", "Hi"),
+            ("Hi<NEW_MESSAGE_BREAK /", "Hi"),
+        ],
+    )
+    def test_only_a_break_still_being_written_is_held(self, text: str, shown: str) -> None:
+        assert shown_so_far(text) == shown
+
+    def test_what_was_shown_is_always_a_prefix_of_what_is_shown_next(self) -> None:
+        """Clients append each delta; text shown early and then retracted would stay on screen."""
+        text = f"Hi <b>there</b>.{BR}Re: your trip<NEW_LINE_BREAK>ok [then] <❤️>\ndone <"
+        shown = [shown_so_far(text[:end]) for end in range(len(text) + 1)]
+        shown.append(strip_partial_message_break(text))
+        for earlier, later in pairwise(shown):
+            assert later.startswith(earlier)

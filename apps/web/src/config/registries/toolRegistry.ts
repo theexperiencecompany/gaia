@@ -1,8 +1,8 @@
-import type { ToolDataEntry } from "@gaia/shared/api/generated";
 import type {
   MemoryDocument,
   MemoryEntry,
   MemoryEpisode,
+  ToolDataEntry,
 } from "@shared/api/generated";
 import type {
   ApprovalRequestData,
@@ -198,21 +198,3 @@ export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
   tool_data: undefined,
 };
 export type ToolsMessageData = ToolsMessageSchema;
-
-// Tools that should merge multiple calls into one component
-// Add any tool name here - its data will be accumulated into an array
-export const GROUPED_TOOLS = new Set<ToolName>([
-  "approval_request",
-  "search_results",
-  "reddit_data",
-  "integration_connection_required",
-  "integration_list_data",
-  "device_approval_required",
-  "rate_limit_data",
-  "email_fetch_data",
-  "email_compose_data",
-  "email_sent_data",
-  "artifact_data",
-  "memory_data",
-  "browser_task_data",
-]);

@@ -42,6 +42,11 @@ from app.services.composio.auth_config_resolver import (
     resolve_auth_configs,
 )
 from app.services.composio.custom_tools.registry import custom_tools_registry
+from app.services.composio.error_detail import (
+    AuthConfigNotFoundError,
+    composio_error_fields,
+    is_auth_config_not_found,
+)
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,
     StructuredTool,
@@ -140,12 +145,14 @@ class ComposioService:
             }
         except Exception as e:
             log.error(
-                f"{LogTag.COMPOSIO} Error connecting for",
+                f"{LogTag.COMPOSIO} Error minting connect link",
                 provider=provider,
                 user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
+                auth_config_id=auth_config_id,
+                **composio_error_fields(e),
             )
+            if is_auth_config_not_found(e):
+                raise AuthConfigNotFoundError(integration.name, auth_config_id) from e
             raise
 
     async def reauthorize_account(

@@ -3,10 +3,10 @@
 import pytest
 from tests.factories import make_briefing_payload
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.brief_payload_models import NewStamp
 from app.services.briefing.message import brief_message, chat_text, delivered_message, preheader
 from app.utils.message_breaks import split_message_bubbles
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 _LINK = "https://heygaia.io/brief/brief_1"
 _MESSAGE = "Priya's deck is waiting on you.\n\nSequoia at 11:00.\nThen lunch with Dhruv."

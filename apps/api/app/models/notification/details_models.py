@@ -122,6 +122,16 @@ class GmailPersonalizedNotification(BaseModel):
     kind: Literal[NotificationKind.GMAIL_PERSONALIZED]
 
 
+class ApprovalNotification(BaseModel):
+    """A gated action waiting on the user's approval, in the conversation its card waits in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[NotificationKind.APPROVAL]
+    conversation_id: str
+    approval_id: str
+
+
 #: A notification's details, told apart by their kind.
 NotificationDetails = Annotated[
     BriefEditionNotification
@@ -137,6 +147,7 @@ NotificationDetails = Annotated[
     | IntegrationExpiredNotification
     | SystemWorkflowsProvisionedNotification
     | MemoryReadyNotification
-    | GmailPersonalizedNotification,
+    | GmailPersonalizedNotification
+    | ApprovalNotification,
     Field(discriminator="kind"),
 ]

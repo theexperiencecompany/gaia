@@ -13,9 +13,11 @@ from app.agents.prompts.todo_prompts import (
 )
 from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
+from app.agents.tools.finish_task_tool import finish_task
 from app.constants import agents as agent_constants, todos as todo_constants
 from app.constants.desk_buckets import DeskBucket
 from app.constants.email import DEFAULT_SUMMARY_FIELDS
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.todos import (
     ACTION_NEEDED_LABEL,
     BLOCKING_LABELS,
@@ -207,6 +209,35 @@ def test_the_scheduled_report_feeds_the_morning_brief_and_is_never_sent() -> Non
     assert "read in under a minute" in heading
     assert "your reasoning, ids or how you classified anything" in heading
     assert "Nothing new: say only that nothing is new." in INBOX_DESK_RUN_GUIDANCE
+
+
+@pytest.mark.parametrize(
+    ("guidance", "reports_nothing"),
+    [
+        (INBOX_DESK_RUN_GUIDANCE, "Nothing new: say only that nothing is new."),
+        (
+            GMAIL_THREAD_RUN_GUIDANCE,
+            "Otherwise your report is only that nothing needs the user now: the briefing lists "
+            "this thread while it stays open, nudge and draft included.",
+        ),
+        (
+            todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE,
+            "report only that nothing is new, unless a Standing rule asks to hear at any hour; "
+            "the next briefing carries the rest.",
+        ),
+    ],
+    ids=["desk", "thread", "quiet-hours"],
+)
+def test_a_run_told_to_report_nothing_is_told_to_declare_it(
+    guidance: str, reports_nothing: str
+) -> None:
+    """Seen live: a thread's nothing-new note had no typed form, and was sent to the user."""
+    assert f"{reports_nothing} {todo_prompts.NOTHING_FOR_USER_FINISH}" in guidance
+
+
+def test_the_declaration_the_guidance_names_is_finish_tasks_own_argument() -> None:
+    assert "nothing_for_user" in finish_task.args
+    assert f"{FINISH_TASK_NAME} nothing_for_user=true" in todo_prompts.NOTHING_FOR_USER_FINISH
 
 
 def test_the_brief_lists_the_sub_todos_so_the_findings_never_repeat_them() -> None:

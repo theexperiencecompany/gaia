@@ -1,7 +1,7 @@
 from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
@@ -21,6 +21,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
     NotificationView,
+    notification_id,
 )
 from app.services.analytics_service import capture
 from app.services.delivery.chat_channel import (
@@ -303,6 +304,7 @@ async def result_is_delivered_automatically(
 @with_doc(SEND_NOTIFICATION)
 async def send_notification(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     message: Annotated[str, "Notification body text: keep it concise and actionable"],
     title: Annotated[
         str,
@@ -398,6 +400,8 @@ async def send_notification(
         channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
 
         request = NotificationRequest(
+            # The tool call is the fact: a replayed call sends nothing twice.
+            id=notification_id(user_id, "agent_notification", tool_call_id),
             user_id=user_id,
             source=NotificationSourceEnum.AI_AGENT,
             type=resolved_type,
@@ -407,9 +411,7 @@ async def send_notification(
             message_class=configurable.workflow_message_class,
         )
 
-        record = await notification_service.create_notification(request)
-        if not record:
-            return {"error": "Failed to create notification", "success": False}
+        record = (await notification_service.notify(request)).record
         capture(
             UserId(user_id),
             NotificationAgentSent(outcome="sent", **proactive_destination(target)),

@@ -3,7 +3,6 @@
 from datetime import UTC, datetime, timedelta
 
 from arq import ArqRedis
-from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
 from app.constants.workflows import EXECUTE_WORKFLOW_TASK
@@ -56,10 +55,6 @@ class WorkflowScheduler(BaseSchedulerService):
     - Cron expression handling
     - stop_after and max_occurrences support
     """
-
-    def __init__(self, redis_settings: RedisSettings | None = None):
-        """Initialize the workflow scheduler."""
-        super().__init__(redis_settings)
 
     def get_job_name(self) -> str:
         """Get the ARQ job name for workflow processing."""

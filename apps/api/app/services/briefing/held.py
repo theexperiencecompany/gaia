@@ -26,6 +26,7 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    notification_id,
 )
 from app.services.briefing import wind_down
 from app.services.briefing.formats import opening_line
@@ -107,8 +108,9 @@ async def release_held_items(user_id: str, *, source_ids: Collection[str] | None
     ]
     if not held:
         return
-    await notification_service.create_notification(
+    await notification_service.notify(
         NotificationRequest(
+            id=notification_id(user_id, "held_release", ",".join(sorted(doc.id for doc in held))),
             user_id=user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             content=NotificationContent(

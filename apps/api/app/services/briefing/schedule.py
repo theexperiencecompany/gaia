@@ -275,6 +275,8 @@ async def set_briefing_schedule(
     )
     capture(
         UserId(user_id),
-        SettingsBriefingScheduleUpdated(frequency=schedule.frequency, hour=schedule.hour, via=via),
+        SettingsBriefingScheduleUpdated(
+            frequency=schedule.frequency.value, hour=schedule.hour, via=via
+        ),
     )
     return schedule

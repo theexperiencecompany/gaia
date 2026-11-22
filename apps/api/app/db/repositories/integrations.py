@@ -11,8 +11,9 @@ from collections.abc import Collection
 from datetime import UTC, datetime
 import re
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
-from app.db.repositories.base import MongoRepository
+from app.constants.cache import INTEGRATION_CACHE_PREFIX, REPO_GLOBAL_SCOPE
+from app.db.repositories.base import MongoRepository, cached_query
+from app.db.repositories.cache import CachePolicy
 from app.helpers.integration_helpers import dedup_server_url_key
 from app.helpers.slug_helpers import generate_integration_slug
 from app.models.integration_models import (
@@ -58,8 +59,10 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     uses_object_id = False
     identity_field = "integration_id"
     auto_stamp_timestamps = False
-    cache_policy = None
+    # Resolved on every custom-MCP tool lookup; every write here passes its doc_id through the base.
+    cache_policy = CachePolicy(prefix=INTEGRATION_CACHE_PREFIX)
 
+    @cached_query(Integration)
     async def find_by_id_prefix_or_name(self, search: str) -> Integration | None:
         """Resolve a partial id or exact name to an integration.
 
@@ -478,10 +481,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
 
     async def delete_tools_stub(self, integration_id: str) -> bool:
         """Delete the tools-only stub for an id; a full Integration document is never matched."""
-        # Equivalent under mutation: cache_policy is None here, so the scope only feeds no-op eviction.
-        return await self._remove(
-            integration_id, REPO_GLOBAL_SCOPE, _TOOLS_STUB_FILTER
-        )  # pragma: no mutate
+        return await self._remove(integration_id, REPO_GLOBAL_SCOPE, _TOOLS_STUB_FILTER)
 
     async def all_with_tools(self) -> list[IntegrationToolsRecord]:
         """Every integration that has stored tools, projected for the global roll-up."""

@@ -32,6 +32,7 @@ from app.api.v1.middleware.client_type import (
 )
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
     SESSION_HINT_COOKIE,
@@ -114,8 +115,8 @@ def _build_test_app(middleware_kwargs: dict | None = None):
         clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
         return response
 
-    @app.post("/api/v1/chat-stream")
-    async def chat_stream(request: Request):
+    @app.post("/api/v1/conversations/conv-1/messages")
+    async def voice_send(request: Request):
         user = getattr(request.state, "user", None)
         authed = getattr(request.state, "authenticated", False)
         return {"user": user, "authenticated": authed}
@@ -342,7 +343,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
         assert resp.status_code == 200
@@ -359,7 +360,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer bad_token"},
             )
         assert resp.status_code == 200
@@ -380,7 +381,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt_token"},
             )
         assert resp.status_code == 200
@@ -394,7 +395,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         ):
             client = TestClient(app)
             resp = client.post(
-                "/api/v1/chat-stream",
+                "/api/v1/conversations/conv-1/messages",
                 headers={"Authorization": "Bearer agent_jwt"},
             )
         assert resp.status_code == 200
@@ -403,14 +404,14 @@ class TestWorkOSAuthMiddlewareAgentAuth:
 
 
 def _bare_request(
-    path: str = "/api/v1/chat-stream",
+    path: str = "/api/v1/conversations/conv-1/messages",
     method: str = "GET",
     headers: dict[str, str] | None = None,
 ):
     """Build a Request with just the pieces the middleware touches, no ASGI stack.
 
     Helpers run directly, not through TestClient, and the default path is the
-    agent-only chat-stream path: elsewhere an agent token is declined, so an
+    voice worker's send: elsewhere an agent token is declined, so an
     ordinary path would silently assert nothing.
     """
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
@@ -865,7 +866,7 @@ class TestRequestAttribution:
         """Post on the test's own loop, so the user:active gate reaches the per-test fake Redis."""
         transport = ASGITransport(app=TestRequestAttribution._app(state))
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post("/api/v1/chat-stream", headers=headers)
+            await client.post("/api/v1/conversations/conv-1/messages", headers=headers)
         await asyncio.gather(
             *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
         )
@@ -885,7 +886,7 @@ class TestRequestAttribution:
         app.add_middleware(PostHogRequestContextMiddleware)
         app.add_middleware(_Authenticate)
 
-        @app.post("/api/v1/chat-stream")
+        @app.post("/api/v1/conversations/conv-1/messages")
         @app.post("/api/v1/payments/webhooks/dodo")
         async def route() -> dict:
             capture(UserId(GAIA_USER_ID), CHAT_TURN)
@@ -901,27 +902,29 @@ class TestRequestAttribution:
 
     def test_a_web_chat_turn_is_the_users_own_interactive_web_action(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
-        self._client({"user": user}).post("/api/v1/chat-stream")
+        self._client({"user": user}).post("/api/v1/conversations/conv-1/messages")
 
         assert self._attribution(posthog_events) == ("user", "interactive", "web")
 
     def test_the_desktop_app_is_its_own_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
         self._client({"user": user}).post(
-            "/api/v1/chat-stream", headers={CLIENT_TYPE_HEADER: "desktop"}
+            "/api/v1/conversations/conv-1/messages", headers={CLIENT_TYPE_HEADER: "desktop"}
         )
 
         assert self._attribution(posthog_events) == ("user", "interactive", "desktop")
 
     def test_a_bot_request_is_the_bot_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID, bot_authenticated=True)
-        self._client({"user": user, "bot_api_key_valid": True}).post("/api/v1/chat-stream")
+        self._client({"user": user, "bot_api_key_valid": True}).post(
+            "/api/v1/conversations/conv-1/messages"
+        )
 
         assert self._attribution(posthog_events) == ("user", "interactive", "bot")
 
     def test_the_voice_workers_agent_token_is_the_voice_surface(self, posthog_events):
         user = AuthenticatedUser(user_id=GAIA_USER_ID, impersonated=True)
-        self._client({"user": user}).post("/api/v1/chat-stream")
+        self._client({"user": user}).post("/api/v1/conversations/conv-1/messages")
 
         assert self._attribution(posthog_events) == ("user", "interactive", "voice")
 
@@ -954,7 +957,8 @@ class TestRequestAttribution:
         user = AuthenticatedUser(user_id=GAIA_USER_ID)
         with patch("app.api.v1.middleware.auth.log") as mock_log:
             self._client({"user": user}).post(
-                "/api/v1/chat-stream", headers={POSTHOG_SESSION_HEADER: "not a session"}
+                "/api/v1/conversations/conv-1/messages",
+                headers={POSTHOG_SESSION_HEADER: "not a session"},
             )
 
         [event] = _route_events(posthog_events)
@@ -1060,6 +1064,19 @@ class TestDevBypassWithAMongoUser:
             True,
             False,
         )
+
+    def test_a_bot_request_is_left_for_bot_auth_to_identify(self) -> None:
+        """Regression (live test): the bypass overrode the bot session token, so a bot followed as the dev user."""
+        app = _build_test_app()
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ) as get_by_email:
+            resp = TestClient(app).get("/api/v1/protected", headers={BOT_API_KEY_HEADER: "bot-key"})
+
+        get_by_email.assert_not_awaited()
+        assert resp.json() == {"user": None, "authenticated": False}
 
     @pytest.mark.usefixtures("_hosted_urls")
     def test_the_bypass_user_gets_the_signed_in_hint_once(self) -> None:
@@ -1355,7 +1372,8 @@ class TestLocalSessionDispatch:
             ),
         ):
             resp = TestClient(_build_local_probe_app()).post(
-                "/api/v1/chat-stream", headers={"Authorization": "Bearer agent.jwt"}
+                "/api/v1/conversations/conv-1/messages",
+                headers={"Authorization": "Bearer agent.jwt"},
             )
 
         assert (resp.json()["user"], resp.json()["auth_provider"]) == ("kid@gaia.dev", "email")

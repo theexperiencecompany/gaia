@@ -8,10 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.briefing import BriefingKind, EditionFamily
 from app.constants.notifications import BriefNotificationKind
-from app.db.repositories.base import UserScopedDocument
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingPayload
 from app.models.briefing_state_models import BagDraw
+from app.models.document_models import UserScopedDocument
 from app.models.scout_models import Sighting
 
 

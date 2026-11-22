@@ -7,11 +7,10 @@ are files a coding run writes under artifacts/.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 
 
@@ -28,10 +27,12 @@ class ArtifactKind(StrEnum):
 
 
 class ArtifactStatus(StrEnum):
-    """Where a create_artifact run ended, as the chat card shows it."""
+    """Where a create_artifact run stands, as the chat card shows it."""
 
+    STREAMING = "streaming"
     READY = "ready"
     FAILED = "failed"
+    STOPPED = "stopped"
 
 
 class ArtifactFailureReason(StrEnum):
@@ -42,7 +43,7 @@ class ArtifactFailureReason(StrEnum):
 
 
 class ArtifactStreamHeader(BaseModel):
-    """Which artifact a stream frame belongs to: one create_artifact run, keyed by stream_id."""
+    """Which create_artifact run a card belongs to, keyed by stream_id."""
 
     stream_id: str
     kind: ArtifactKind
@@ -50,43 +51,21 @@ class ArtifactStreamHeader(BaseModel):
 
 
 class ArtifactDelta(ArtifactStreamHeader):
-    """A chunk of the first draft's program; the card appends it."""
+    """A chunk of the first draft's program; the run's card appends it while it streams."""
 
     delta: str
 
 
 class ArtifactCard(ArtifactStreamHeader):
-    """Where a create_artifact run ended: the artifact_done tool_data entry's data."""
+    """Where a create_artifact run stands: the artifact_done tool_data entry's data."""
 
     status: ArtifactStatus
+    #: The first draft so far, while status is streaming; a ready card's program is fetched by artifact_id.
+    program: str | None = None
     #: The stored artifact, once status is ready.
     artifact_id: str | None = None
     #: Why it gave up, on a failure the tool caught.
     reason: ArtifactFailureReason | None = None
-
-
-class ArtifactDeltaFrame(BaseModel):
-    """The live-only stream frame carrying an ArtifactDelta."""
-
-    artifact_delta: ArtifactDelta
-
-
-class ArtifactCardEntry(BaseModel):
-    """The tool_data entry an artifact_done payload becomes on the stream and in the stored turn."""
-
-    tool_name: Literal["artifact_done"]
-    data: ArtifactCard
-    timestamp: str
-
-
-class ArtifactCardFrame(BaseModel):
-    """The stream frame carrying an ArtifactCardEntry."""
-
-    tool_data: ArtifactCardEntry
-
-
-#: The chat stream frames whose shape the API publishes.
-ArtifactStreamFrame = ArtifactDeltaFrame | ArtifactCardFrame
 
 
 class OpenUIArtifact(UserScopedDocument):

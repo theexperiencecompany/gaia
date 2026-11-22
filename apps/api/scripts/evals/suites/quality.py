@@ -1,31 +1,23 @@
 """Quality suite — does GAIA sound human and behave well?
 
-Drives the REAL comms → executor path via POST /api/v1/chat-stream (SSE)
-against the live dev API (EVALS_DEV_API_BASE, default
-http://localhost:9460), authenticated through the dev bypass (X-Dev-User
-header, user minted via POST /api/v1/dev/users). This is the same wire the
-web frontend consumes — tool cards, follow-up suggestions, streaming text —
-so the suite observes the exact user-facing surface.
+Drives the REAL comms -> executor path the way every client does: each turn is
+POST /api/v1/conversations/{id}/messages, then the conversation's events stream
+until the message's reply settles (core.live_chat), against the live dev API
+(EVALS_DEV_API_BASE, default http://localhost:9460), authenticated through the
+dev bypass (X-Dev-User header, user minted via POST /api/v1/dev/users).
 
-Wire format (verified Aug 2026, see _parse_frames):
-- each frame is an id: line + data: <json> line + blank line;
-  the stream ends with a bare data: [DONE] line;
-- response frames carry text CHUNKS — concatenate them;
-- tool_data with tool_name == "tool_calls_data" carries the real tool
-  call (nested data.tool_name + data.inputs) — deduped by tool_call_id;
-- follow_up_actions frames exist only for turns that did NOT delegate to
-  the executor (delegated turns deliver suggestions out-of-band via WebSocket
-  + Mongo); the suggestion gate therefore applies to non-delegated cases only;
-- no token usage is reported in any frame — tokens are estimated via
-  core.cost.estimate_tokens (noted in raw);
-- for delegated turns the SSE text is the comms ack; the executor's final
-  answer lands in MongoDB / the WebSocket payload, so communicate strings
-  are matched against what the stream actually carries (documented per case).
+What a turn records:
+- text is the reply that answered the message (the comms reply); work it
+  started is not waited for, so for a delegated turn the text is the ack and
+  communicate strings are matched against it (documented per case);
+- tool calls come from tool_calls_data cards (nested data.tool_name +
+  data.inputs), deduped by tool_call_id;
+- follow_up_actions come from the reply entry;
+- no token usage is reported on the stream: tokens are estimated via
+  core.cost.estimate_tokens (noted in raw).
 
-Multi-turn cases split case.prompt on "\\n---\\n" and send each turn
-through the same conversation: turn 1 gets a fresh conversation id (from the
-conversation_initialized frame), later turns reuse it and send the
-accumulated transcript as messages.
+Multi-turn cases split case.prompt on "\\n---\\n" and send each turn into the
+same conversation, whose log carries the history.
 
 Scoring is deterministic at runtime (no LLM): structural checks always
 (BubbleBoundary, ToolCard), the prompt-derived absolutes always
@@ -43,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -57,6 +48,13 @@ import yaml
 
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.gates import ExtraGates, known_gates, score_gates, validate_gates
+from scripts.evals.core.live_chat import (
+    TOOL_CALLS_CARD,
+    Turn,
+    TurnOptions,
+    called_tools,
+    read_turn,
+)
 from scripts.evals.core.prompt_contracts import ClauseResolutionError, contract_criteria
 from scripts.evals.core.prompt_gates import PROMPT_GATES
 from scripts.evals.core.providers import EvalConfig, ProviderConfig, judge_model
@@ -72,9 +70,9 @@ from scripts.evals.core.scorers import (
     produced_nothing,
 )
 from scripts.evals.core.types import Case, CaseRun, ProviderError
+from shared.py.conversation_wire import ToolDataEntry
 
 DEV_API_BASE = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
-CHAT_STREAM_URL = f"{DEV_API_BASE}/api/v1/chat-stream"
 DEV_USERS_URL = f"{DEV_API_BASE}/api/v1/dev/users"
 DEV_USER_HEADER = "X-Dev-User"
 TURN_SEPARATOR = "\n---\n"
@@ -82,7 +80,6 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "quality"
 
 # Type aliases: ANN401 bans `Any` in annotations but not in aliases; these
 # name the wire shapes without polluting every signature.
-Frame = dict[str, Any]
 TurnRecord = dict[str, Any]
 TurnPayload = dict[str, Any]
 
@@ -110,229 +107,46 @@ def turns_for(case: Case) -> list[str]:
 REACTION_KIND = "reaction"
 
 
-@dataclass
-class _TurnAccumulator:
-    """One turn's state while its SSE frames are reduced, one handler per frame kind."""
+def turn_record(turn: Turn) -> TurnRecord:
+    """Reduce a live turn into the record the suite gates on, with a compact journal for raw."""
+    raw: list[dict[str, Any]] = [{"type": "frame_kinds", "kinds": turn.frame_kinds}]
+    raw.extend(_tool_data_summary(entry) for entry in turn.tool_data)
+    if turn.follow_up_actions is not None:
+        raw.append({"type": "follow_up_actions", "actions": turn.follow_up_actions})
+    if turn.reaction:
+        raw.append({"type": "reaction", "emoji": turn.reaction})
+    if turn.error:
+        raw.append({"type": "error", "detail": _truncate(turn.error, 300)})
+    return {
+        "text": "" if turn.is_empty else turn.reply,
+        "delivered": turn.delivered,
+        "tool_calls": called_tools(turn.tool_data),
+        "follow_up_actions": turn.follow_up_actions,
+        "error": turn.error,
+        "reaction": turn.reaction,
+        "raw": raw,
+    }
 
-    conversation_id: str | None = None
-    chunks: list[str] = field(default_factory=list)
-    tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    seen_call_ids: set[str] = field(default_factory=set)
-    follow_up_actions: list[str] | None = None
-    error: str | None = None
-    reaction: str | None = None
-    raw: list[dict[str, Any]] = field(default_factory=list)
 
-    def response(self, frame: Frame) -> None:
-        self.chunks.append(frame["response"])
-
-    def stream_init(self, frame: Frame) -> None:
-        self.conversation_id = frame.get("conversation_id") or self.conversation_id
-        self.raw.append(
-            {
-                "type": "init",
-                "conversation_id": self.conversation_id,
-                "user_message_id": frame.get("user_message_id"),
-                "bot_message_id": frame.get("bot_message_id"),
-                "stream_id": frame.get("stream_id"),
-            }
-        )
-
-    def conversation_description(self, frame: Frame) -> None:
-        self.raw.append(
-            {"type": "conversation_description", "detail": frame["conversation_description"]}
-        )
-
-    def main_response_complete(self, frame: Frame) -> None:
-        usage = frame.get("usage")
-        self.raw.append(
-            {"type": "main_response_complete", "usage": usage if isinstance(usage, dict) else None}
-        )
-
-    def follow_up(self, frame: Frame) -> None:
-        actions = frame["follow_up_actions"]
-        if isinstance(actions, list):
-            self.follow_up_actions = [a for a in actions if isinstance(a, str)]
-        self.raw.append({"type": "follow_up_actions", "actions": self.follow_up_actions})
-
-    def tool_data(self, frame: Frame) -> None:
-        entries = frame["tool_data"]
-        for entry in entries if isinstance(entries, list) else [entries]:
-            if not isinstance(entry, dict):
-                continue
-            outer = entry.get("tool_name", "")
-            data = entry.get("data")
-            if outer == "tool_calls_data" and isinstance(data, dict):
-                self._tool_call(data)
-            else:
-                self.raw.append(
-                    {
-                        "type": "tool_data",
-                        "tool_name": outer,
-                        "detail": _truncate(json.dumps(data), 200),
-                    }
-                )
-
-    def _tool_call(self, data: dict[str, Any]) -> None:
-        """Record a real tool call once per tool_call_id; journal every sighting."""
-        name = data.get("tool_name", "")
-        inputs = data.get("inputs", {})
-        call_id = data.get("tool_call_id")
-        if call_id and call_id not in self.seen_call_ids:
-            self.seen_call_ids.add(call_id)
-            self.tool_calls.append(
-                {"name": name, "args": inputs if isinstance(inputs, dict) else {}}
-            )
-        self.raw.append(
-            {"type": "tool_data", "tool_name": name, "detail": _truncate(json.dumps(inputs), 200)}
-        )
-
-    def tool_output(self, frame: Frame) -> None:
-        payload = frame["tool_output"]
-        if isinstance(payload, dict):
-            self.raw.append(
-                {
-                    "type": "tool_output",
-                    "tool_call_id": payload.get("tool_call_id"),
-                    "detail": _truncate(str(payload.get("output", "")), 200),
-                }
-            )
-
-    def subagent_start(self, frame: Frame) -> None:
-        start = frame["subagent_start"]
-        self.raw.append(
-            {
-                "type": "subagent_start",
-                "subagent_id": start.get("subagent_id"),
-                "name": start.get("subagent_name"),
-                "agent_type": start.get("agent_type"),
-            }
-        )
-
-    def subagent_end(self, frame: Frame) -> None:
-        end = frame["subagent_end"]
-        self.raw.append(
-            {
-                "type": "subagent_end",
-                "subagent_id": end.get("subagent_id"),
-                "duration_ms": end.get("duration_ms"),
-            }
-        )
-
-    def emoji_ack(self, frame: Frame) -> None:
-        self.reaction = str(frame["emoji_ack"].get("emoji") or "") or None
-        self.raw.append({"type": "emoji_ack", "emoji": self.reaction})
-
-    def stream_error(self, frame: Frame) -> None:
-        self.error = self.error or frame["error"]
-        self.raw.append({"type": "error", "detail": _truncate(frame["error"], 300)})
-
-    def progress(self, frame: Frame) -> None:
-        self.raw.append({"type": "progress", "detail": _truncate(frame["progress"], 120)})
-
-    def reasoning(self, frame: Frame) -> None:
-        self.raw.append({"type": "reasoning", "n_chars": len(json.dumps(frame["reasoning"]))})
-
-    def keepalive(self, frame: Frame) -> None:
-        del frame
-        self.raw.append({"type": "keepalive"})
-
-    def model_fallback(self, frame: Frame) -> None:
-        self.raw.append(
-            {"type": "model_fallback", "detail": json.dumps(frame["model_fallback"])[:120]}
-        )
-
-    def todo_progress(self, frame: Frame) -> None:
-        del frame
-        self.raw.append({"type": "todo_progress"})
-
-    def file_data(self, frame: Frame) -> None:
-        self.raw.append(
-            {"type": "file_data", "detail": _truncate(json.dumps(frame["file_data"]), 200)}
-        )
-
-    def unknown(self, frame: Frame) -> None:
-        self.raw.append({"type": "unknown", "detail": _truncate(json.dumps(frame), 200)})
-
-    def record(self) -> TurnRecord:
+def _tool_data_summary(entry: ToolDataEntry) -> dict[str, Any]:
+    """Summarize one card for the journal: the called tool and its inputs, or the card and its data."""
+    data = entry["data"]
+    if entry["tool_name"] != TOOL_CALLS_CARD or not isinstance(data, dict):
         return {
-            "conversation_id": self.conversation_id,
-            "text": "".join(self.chunks),
-            "tool_calls": self.tool_calls,
-            "follow_up_actions": self.follow_up_actions,
-            "error": self.error,
-            "reaction": self.reaction,
-            "raw": self.raw,
+            "type": "tool_data",
+            "tool_name": entry["tool_name"],
+            "detail": _truncate(json.dumps(data, default=str), 200),
         }
+    return {
+        "type": "tool_data",
+        "tool_name": data.get("tool_name", ""),
+        "detail": _truncate(json.dumps(data.get("inputs", {}), default=str), 200),
+    }
 
 
-_FrameHandler = Callable[[_TurnAccumulator, Frame], None]
-
-#: Each frame kind as (key, required value type or None for mere presence, handler).
-#: A frame is handled by the first kind it matches, so the order is load-bearing.
-_FRAME_KINDS: tuple[tuple[str, type | None, _FrameHandler], ...] = (
-    ("response", str, _TurnAccumulator.response),
-    ("stream_id", None, _TurnAccumulator.stream_init),
-    ("conversation_description", str, _TurnAccumulator.conversation_description),
-    ("main_response_complete", None, _TurnAccumulator.main_response_complete),
-    ("follow_up_actions", None, _TurnAccumulator.follow_up),
-    ("tool_data", None, _TurnAccumulator.tool_data),
-    ("tool_output", None, _TurnAccumulator.tool_output),
-    ("subagent_start", dict, _TurnAccumulator.subagent_start),
-    ("subagent_end", dict, _TurnAccumulator.subagent_end),
-    ("emoji_ack", dict, _TurnAccumulator.emoji_ack),
-    ("error", str, _TurnAccumulator.stream_error),
-    ("progress", str, _TurnAccumulator.progress),
-    ("reasoning", None, _TurnAccumulator.reasoning),
-    ("keepalive", bool, _TurnAccumulator.keepalive),
-    ("model_fallback", dict, _TurnAccumulator.model_fallback),
-    ("todo_progress", None, _TurnAccumulator.todo_progress),
-    ("file_data", None, _TurnAccumulator.file_data),
-)
-
-
-def _frame_handler(frame: Frame) -> _FrameHandler:
-    for key, value_type, handler in _FRAME_KINDS:
-        if key in frame if value_type is None else isinstance(frame.get(key), value_type):
-            return handler
-    return _TurnAccumulator.unknown
-
-
-def _parse_frames(frames: list[Frame]) -> TurnRecord:
-    """Reduce the raw SSE frame list into a turn record.
-
-    Returns conversation_id, text (concatenated response chunks),
-    tool_calls (deduped by tool_call_id), follow_up_actions (last
-    frame wins), error (first error frame), and raw — a compact,
-    truncated frame summary stored on the CaseRun for journaling.
-    """
-    turn = _TurnAccumulator()
-    for frame in frames:
-        _frame_handler(frame)(turn, frame)
-    return turn.record()
-
-
-def _aggregate_usage(raw: list[dict[str, object]]) -> tuple[int, int]:
-    """Sum per-model input/output tokens from main_response_complete frames."""
-    total_in = 0
-    total_out = 0
-    for entry in raw:
-        if entry.get("type") != "main_response_complete":
-            continue
-        usage = entry.get("usage")
-        if not isinstance(usage, dict):
-            continue
-        for model_data in usage.values():
-            if not isinstance(model_data, dict):
-                continue
-            total_in += int(model_data.get("input_tokens", 0) or 0)
-            total_out += int(model_data.get("output_tokens", 0) or 0)
-    return total_in, total_out
-
-
-def _transcript_entries(user_text: str, turn: TurnRecord) -> list[dict[str, str]]:
-    """The transcript lines one exchange adds: the user's turn, then GAIA's text and tap-back."""
-    entries = [{"role": "user", "content": user_text}]
+def _transcript_entries(turn_text: str, turn: TurnRecord) -> list[dict[str, str]]:
+    """Return what one turn adds to the judged transcript: the ask, the reply, and a reaction when one was placed."""
+    entries = [{"role": "user", "content": turn_text}]
     if turn["text"]:
         entries.append({"role": "assistant", "content": turn["text"]})
     if turn["reaction"]:
@@ -346,8 +160,12 @@ def _transcript_entries(user_text: str, turn: TurnRecord) -> list[dict[str, str]
     return entries
 
 
-class ChatStreamTransport:
-    """Multi-turn SSE transport over the real chat-stream endpoint."""
+class ChatTransport:
+    """Multi-turn transport over send + events, the wire every client uses."""
+
+    #: The quality suite grades the reply that answered each message, not the write-up of
+    #: work it started; a transport that grades the delivered answer waits for it.
+    turn_options: ClassVar[TurnOptions] = TurnOptions(wait_for_work=False)
 
     def __init__(self) -> None:
         self.user_prefix: str = "quality"
@@ -371,7 +189,7 @@ class ChatStreamTransport:
         raw: list[dict[str, Any]] = []
         text_parts: list[str] = []
         follow_up_actions: list[str] | None = None
-        conversation_id: str | None = None
+        conversation_id = str(uuid.uuid4())
         error: str | None = None
         start = time.monotonic()
 
@@ -379,19 +197,9 @@ class ChatStreamTransport:
             async with asyncio.timeout(deadline):
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
                     email = await self._mint_user(client, provider, self.case_email(case))
-                    for index, turn_text in enumerate(turns):
-                        # turn_id is a SafePathId (<=64 chars); long case ids
-                        # overflowed it and 422'd every turn. Trim the readable
-                        # part and let the uuid carry uniqueness.
-                        turn_id = f"q-{case.id[:44]}-{index % 100}-{uuid.uuid4().hex[:8]}"
-                        payload: TurnPayload = {
-                            "message": turn_text,
-                            "conversation_id": conversation_id,
-                            "messages": transcript + [{"role": "user", "content": turn_text}],
-                            "turn_id": turn_id,
-                        }
-                        turn = await self._stream_turn(client, payload, provider, email)
-                        conversation_id = turn["conversation_id"] or conversation_id
+                    client.headers[DEV_USER_HEADER] = email
+                    for turn_text in turns:
+                        turn = await self._stream_turn(client, conversation_id, turn_text)
                         transcript.extend(_transcript_entries(turn_text, turn))
                         text_parts.append(turn["text"])
                         tool_calls.extend(turn["tool_calls"])
@@ -404,7 +212,7 @@ class ChatStreamTransport:
         except TimeoutError:
             error = f"case timed out after {deadline:.0f}s"
         except httpx.HTTPError as e:
-            raise ProviderError(provider.name, f"chat-stream transport failed: {e}") from e
+            raise ProviderError(provider.name, f"chat transport failed: {e}") from e
 
         text = " ".join(part for part in text_parts if part).strip()
         if error:
@@ -418,17 +226,15 @@ class ChatStreamTransport:
                 text=text,
                 raw=raw,
                 duration_s=time.monotonic() - start,
-                error=f"stream error frame: {error[:200]}",
+                error=f"turn error: {error[:200]}",
             )
 
-        tokens_in, tokens_out = _aggregate_usage(raw)
-        if tokens_in == 0 and tokens_out == 0:
-            tokens_in = estimate_tokens(
-                " ".join(m["content"] for m in transcript if m["role"] == "user")
-            )
-            tokens_out = estimate_tokens(
-                " ".join(m["content"] for m in transcript if m["role"] == "assistant")
-            )
+        tokens_in = estimate_tokens(
+            " ".join(m["content"] for m in transcript if m["role"] == "user")
+        )
+        tokens_out = estimate_tokens(
+            " ".join(m["content"] for m in transcript if m["role"] == "assistant")
+        )
         tracker.add_manual(provider.name, tokens_in, tokens_out)
         raw.append(
             {
@@ -436,7 +242,7 @@ class ChatStreamTransport:
                 "estimated": True,
                 "input_tokens": tokens_in,
                 "output_tokens": tokens_out,
-                "note": "chat-stream frames carry no token usage; estimated via core.cost.estimate_tokens",
+                "note": "the events stream carries no token usage; estimated via core.cost.estimate_tokens",
             }
         )
         if follow_up_actions is not None:
@@ -484,50 +290,12 @@ class ChatStreamTransport:
     async def _stream_turn(
         self,
         client: httpx.AsyncClient,
-        payload: TurnPayload,
-        provider: ProviderConfig,
-        email: str,
+        conversation_id: str,
+        turn_text: str,
     ) -> TurnRecord:
-        frames: list[Frame] = []
-        clean = False
-        try:
-            async with client.stream(
-                "POST",
-                CHAT_STREAM_URL,
-                json=payload,
-                headers={DEV_USER_HEADER: email},
-            ) as resp:
-                if resp.status_code != 200:
-                    body = (await resp.aread()).decode("utf-8", errors="replace")
-                    raise ProviderError(
-                        provider.name,
-                        f"chat-stream HTTP {resp.status_code}: {(body or '')[:200]}",
-                    )
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        clean = True
-                        break
-                    try:
-                        frames.append(json.loads(data))
-                    except ValueError:
-                        frames.append({"raw": _truncate(data, 200)})
-        except (httpx.ReadError, httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
-            if not frames:
-                raise ProviderError(provider.name, f"chat-stream connection failed: {e}") from e
-
-        turn = _parse_frames(frames)
-        turn["raw"].append({"type": "stream_ended", "clean": clean})
-        if not clean:
-            turn["raw"].append({"type": "stream_note", "detail": "stream closed before [DONE]"})
-        if not frames:
-            raise ProviderError(provider.name, "chat-stream returned no frames")
-        if not clean and not turn["text"] and not turn["tool_calls"]:
-            raise ProviderError(provider.name, "stream ended before any response or tool frames")
-        return turn
+        """Send one message into the case's conversation and record what answered it."""
+        turn = await read_turn(client, DEV_API_BASE, turn_text, conversation_id, self.turn_options)
+        return turn_record(turn)
 
 
 def _suggestion_check(run: CaseRun) -> tuple[float, str]:
@@ -768,7 +536,7 @@ class QualitySuite(Suite):
     def __init__(self, cfg: EvalConfig) -> None:
         del cfg
         self._cases: list[Case] | None = None
-        self._transport = ChatStreamTransport()
+        self._transport = ChatTransport()
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg

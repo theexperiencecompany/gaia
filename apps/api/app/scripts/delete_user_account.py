@@ -75,6 +75,7 @@ from app.models.user_models import UserDocument
 from app.services.briefing.edition_image import delete_edition
 from app.services.links.content import delete_snapshot
 from app.services.platform_link_service import linked_platforms_of
+from app.utils.email_utils import canonical_email
 
 UID_RE = re.compile(r"^[0-9a-f]{24}$")
 JFS_USERS_ROOT = Path("/mnt/jfs/users")
@@ -209,7 +210,7 @@ async def _build_footprint(
     composio = Composio(api_key=settings.COMPOSIO_KEY)
     workos = AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
-    mongo_counts = _mongo_inventory(db, uid, args.email.strip().lower())
+    mongo_counts = _mongo_inventory(db, uid, canonical_email(args.email))
     chroma_counts = _chroma_inventory(chroma, uid)
     redis_keys = _redis_user_keys(redis_client, uid)
     jfs_path = JFS_USERS_ROOT / uid
@@ -257,7 +258,7 @@ async def _build_footprint(
         composio=composio,
         workos=workos,
         uid=uid,
-        email=args.email.strip().lower(),
+        email=canonical_email(args.email),
         platform_links=platform_links,
         conversation_ids=conversation_ids,
         composio_accounts=composio_accounts,
@@ -448,7 +449,7 @@ async def _verify_removal(d: _Footprint) -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    email = args.email.strip().lower()
+    email = canonical_email(args.email)
 
     db: MongoDatabase = MongoClient(settings.MONGO_DB)[MONGO_DATABASE_NAME]
     user = await _resolve_user(email)
@@ -460,7 +461,7 @@ async def _run(args: argparse.Namespace) -> int:
     if args.execute:
         if args.uid != uid:
             sys.exit(f"ABORT: --uid {args.uid!r} does not match resolved uid {uid!r}")
-        if (args.confirm_email or "").strip().lower() != email:
+        if canonical_email(args.confirm_email or "") != email:
             sys.exit("ABORT: --confirm-email does not match email")
 
     print(f"=== mode: {'EXECUTE' if args.execute else 'DRY-RUN'} ===\n")

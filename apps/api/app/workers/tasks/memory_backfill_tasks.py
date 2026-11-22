@@ -28,7 +28,8 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_log_models import Reply, UserMessage
+from app.models.conversation_models import StoredConversation
 from app.models.notification.details_models import MemoryReadyNotification
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -40,6 +41,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
     RedirectConfig,
+    notification_id,
 )
 from app.services.notification_service import notification_service
 from app.utils.redis_utils import RedisPoolManager
@@ -138,19 +140,23 @@ async def backfill_user_memories(ctx: Mapping[str, object], user_id: str) -> str
     return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
-def _conversation_to_messages(conversation: ConversationDocument) -> list[dict[str, str]]:
-    """Map a stored conversation's embedded messages to extraction format."""
-    role_map = {"user": "user", "bot": "assistant"}
+def _conversation_to_messages(conversation: StoredConversation) -> list[dict[str, str]]:
+    """Map a loaded conversation's user messages and replies to extraction format."""
     messages: list[dict[str, str]] = []
-    for msg in conversation.messages:
-        role = role_map.get(msg.type)
-        content = msg.response.strip()
-        if role and content:
+    for frame in conversation.entries:
+        match frame.entry:
+            case UserMessage(text=text):
+                role = "user"
+            case Reply(text=text):
+                role = "assistant"
+            case _:
+                continue
+        if content := text.strip():
             messages.append({"role": role, "content": content})
     return messages
 
 
-def _conversation_date(conversation: ConversationDocument) -> datetime:
+def _conversation_date(conversation: StoredConversation) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
     created_at = conversation.createdAt
     try:
@@ -163,8 +169,9 @@ def _conversation_date(conversation: ConversationDocument) -> datetime:
 async def _notify_memory_ready(user_id: str) -> None:
     """Tell the user their memory was just seeded, linking to the memory page."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(user_id, "memory_ready", user_id),
                 user_id=user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.INFO,

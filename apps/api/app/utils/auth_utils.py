@@ -11,6 +11,7 @@ from workos import AsyncWorkOSClient
 from app.config.settings import settings
 from app.config.workos import get_async_workos_client, with_shared_signing_keys
 from app.constants.auth import DEV_USER_HEADER, SESSION_HINT_COOKIE
+from app.constants.cache import BOT_USER_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
@@ -219,6 +220,11 @@ def build_user_context(
         feature_flags=user_doc.feature_flags,
         quiet_hours=user_doc.quiet_hours,
     )
+
+
+def bot_user_cache_key(platform: str, platform_user_id: str) -> str:
+    """Return the cache key holding a bot-platform account's resolved user context."""
+    return f"{BOT_USER_CACHE_PREFIX}:{platform}:{platform_user_id}"
 
 
 async def resolve_bot_user(platform: str, platform_user_id: str) -> AuthenticatedUser | None:

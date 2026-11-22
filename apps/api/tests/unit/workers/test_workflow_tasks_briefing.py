@@ -230,7 +230,7 @@ class TestAFailedBrief:
         harness.chat.side_effect = RuntimeError("the chat turn broke")
         notify = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             pytest.raises(raised),
         ):
             await _fire(harness, pipelines)

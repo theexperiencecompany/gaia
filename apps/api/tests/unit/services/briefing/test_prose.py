@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
-from tests.factories import make_user_id
+from tests.factories import make_briefing_payload, make_user_id
 from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -14,6 +14,7 @@ from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_no
 from app.config.settings import settings
 from app.constants.briefing import MAX_BRIEF_HEADLINE_CHARS, MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
+from app.models.brief_document_models import BriefingModel
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingItem, BriefingMood, BriefingSection, BriefVoice
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
@@ -100,6 +101,47 @@ class TestAVoiceThatBreaksItsFacts:
         )
         assert [call.kwargs["label"] for call in asked.await_args_list] == ["brief_voice"] * 2
         assert (voice, draft.message) == (mended, "Reply to Dan first.")
+
+    async def test_a_message_claiming_a_state_its_fact_does_not_hold_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        values = SlotValues(
+            facts={1: BriefFact(title="Stripe payout", kind=ItemState.FAILED)}, counts={}
+        )
+        claimed = _voice(message="[The payout](fact:1) is done.")
+        asked = AsyncMock(side_effect=[claimed, _voice(message="[The payout](fact:1) failed.")])
+        monkeypatch.setattr(checked_call, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        problem = (
+            "the message says fact 1 'done', but its state is failed; say where it stands as "
+            "its line does"
+        )
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note([problem], claimed.model_dump_json(indent=2))}"
+        )
+
+
+def test_recent_lines_lists_every_line_each_recent_brief_printed_newest_first() -> None:
+    briefs = [
+        BriefingModel(
+            user_id=_USER_ID,
+            date="2026-11-08",
+            payload=make_briefing_payload(
+                headline="H2", lede="L2", caption="C2", message="Open two.\nMore."
+            ),
+        ),
+        BriefingModel(
+            user_id=_USER_ID,
+            date="2026-11-07",
+            payload=make_briefing_payload(headline="H1", lede="", caption="", message=None),
+        ),
+    ]
+
+    assert prose.recent_lines(briefs) == RecentLines(
+        headlines=["H2", "H1"], ledes=["L2"], captions=["C2"], openings=["Open two."]
+    )
 
 
 class TestAVoiceThatRepeatsOrOverclaims:

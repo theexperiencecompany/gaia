@@ -431,6 +431,7 @@ async def test_connect_schedules_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         ok = await update_user_integration_status("u", "gmail", IntegrationStatus.CONNECTED)
@@ -443,6 +444,7 @@ async def test_created_status_does_not_schedule_sync():
     repo.set_status = AsyncMock(return_value=True)
     with (
         patch(f"{USTATUS}.user_integration_repository", repo),
+        patch(f"{USTATUS}.websocket_manager", announce=AsyncMock()),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         await update_user_integration_status("u", "gmail", IntegrationStatus.CREATED)

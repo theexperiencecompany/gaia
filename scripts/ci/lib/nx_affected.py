@@ -94,23 +94,29 @@ class NxFailedError(RuntimeError):
     """nx gave no answer: the workspace is not installed, or the command failed and says why."""
 
 
-def _nx(*args: str) -> str:
+def _nx(*args: str, stdin: str | None = None) -> str:
     if not PNPM_INSTALL_MARKER.is_file():
         raise NxFailedError(
             f"node_modules is not installed in {REPO_ROOT}, so nx cannot run. "
             "Run: pnpm install --frozen-lockfile"
         )
-    done = subprocess.run(
-        ["pnpm", "exec", "nx", *args],
-        cwd=REPO_ROOT,
-        env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # A file, not a pipe: nx exits before a macOS pipe drains and cut --explain at 512 bytes.
+    with tempfile.TemporaryFile(mode="w+") as stdout:
+        done = subprocess.run(
+            ["pnpm", "exec", "nx", *args],
+            input=stdin,
+            cwd=REPO_ROOT,
+            env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        stdout.seek(0)
+        out = stdout.read()
     if done.returncode == 0:
-        return done.stdout
-    said = (done.stderr + done.stdout).strip()
+        return out
+    said = (done.stderr + out).strip()
     raise NxFailedError(f"`nx {' '.join(args)}` exited {done.returncode}:\n{said}")
 
 
@@ -157,10 +163,10 @@ def tracked_files() -> list[str]:
     return [f for f in out.splitlines() if (REPO_ROOT / f).is_file()]
 
 
-def select(range_args: list[str]) -> Selection:
+def select(range_args: list[str], stdin: str | None = None) -> Selection:
     known = checks()
     targets = sorted({_target(task) for task in known} | {IMAGE_TARGET})
-    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args)
+    out = _nx("affected", "-t", *targets, "--explain=stdout", *range_args, stdin=stdin)
     explained = _json_after_banner(out, "{")
     assert isinstance(explained, dict)
     affected = explained["affected"]

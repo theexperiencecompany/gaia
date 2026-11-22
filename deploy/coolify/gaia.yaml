@@ -114,6 +114,18 @@ services:
       timeout: 10s
       retries: 5
 
+  gaia-migrate:
+    image: ghcr.io/theexperiencecompany/gaia:${GAIA_VERSION:-latest}
+    command: ["python", "-m", "scripts.migrate_conversations"]
+    environment:
+      <<: *backend_environment
+      WORKER_TYPE: main_app
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    exclude_from_hc: true
+
   gaia-backend:
     image: ghcr.io/theexperiencecompany/gaia:${GAIA_VERSION:-latest}
     environment:
@@ -135,6 +147,8 @@ services:
       rabbitmq:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      gaia-migrate:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -161,6 +175,8 @@ services:
       mongo:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      gaia-migrate:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "grep", "-aq", "arq", "/proc/1/cmdline"]

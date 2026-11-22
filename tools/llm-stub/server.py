@@ -8,11 +8,14 @@
 """Scripted, deterministic LLM stub — an OpenAI/OpenRouter-compatible server.
 
 Point GAIA's OpenRouter client at this process to drive the full stack with a
-scripted model instead of a real provider. Every chat-completions request is
-answered by parsing inline directives from the latest user message (see
-``directives.py``): ``[[tool:<name> <json-args>]]`` for scripted tool calls and
+scripted model instead of a real provider. An agent's own turn is answered by
+parsing inline directives from the latest user message (see ``directives.py``):
+``[[tool:<name> <json-args>]]`` for scripted tool calls and
 ``[[say:<text>]]`` for the final reply, ``[[fail:<message>]]`` to break the
-final call (after streaming any say text) — deterministic fault injection.
+final call (after streaming any say text) — deterministic fault injection —
+and ``[[wait:<ms>]]`` / ``[[pace:<ms>]]`` to hold a step or slow the reply.
+Every other call (memory extraction, follow-ups, titles) gets a neutral,
+schema-valid answer instead (see ``background.py``).
 
 Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env):
 
@@ -45,6 +48,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from background import answer_request
+from decisions import DecisionsScriptError, answer_decisions
 from directives import (
     ChatRequest,
     DirectiveError,
@@ -57,8 +62,8 @@ from directives import (
     parse_directives,
     parse_request,
     parse_responses_request,
-    resolve_response,
     resolve_text_response,
+    unanswered_tool_calls,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -68,6 +73,7 @@ from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
 SCRIPTED_FAULT_STATUS = 500
+UNANSWERED_TOOL_CALL_STATUS = 400
 
 # A per-response think-delay lets a sim test keep an agent genuinely busy across
 # its scripted steps — the wide, deterministic window the live-steer / inbox-drain
@@ -146,18 +152,32 @@ def _unstreamable_fault(response: Response, stream: bool) -> JSONResponse | None
     )
 
 
-async def _think() -> None:
-    delay_ms = _state["response_delay_ms"]
+async def _think(response: Response) -> None:
+    """Wait out the runtime think-delay, then the response's own scripted wait."""
+    delay_ms = _state["response_delay_ms"] + response.delay_ms
     if delay_ms:
         await asyncio.sleep(delay_ms / 1000)
 
 
 # evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
 async def _complete(request: Request) -> JSONResponse | StreamingResponse:
-    parsed = parse_request(await request.json())
+    body = await request.json()
+    parsed = parse_request(body)
     _log_request(parsed)
-    await _think()
-    response = resolve_response(parsed.messages, parsed.available_tools)
+    if open_calls := unanswered_tool_calls(parsed.messages):
+        # What a real provider answers a thread holding a call with no result.
+        return JSONResponse(
+            status_code=UNANSWERED_TOOL_CALL_STATUS,
+            content={
+                "error": {
+                    "message": f"No tool output found for function call {open_calls[0]}.",
+                    "type": "invalid_request_error",
+                    "code": UNANSWERED_TOOL_CALL_STATUS,
+                }
+            },
+        )
+    response = answer_request(body)
+    await _think(response)
     fault = _unstreamable_fault(response, parsed.stream)
     if fault is not None:
         return fault
@@ -171,12 +191,12 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
-# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; the PEP-723 header pins fastapi+uvicorn so it runs with no repo venv, putting shared.py.wide_events out of reach by design, and _log_request() already prints the per-request debug line
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; see _complete
 async def _respond(request: Request) -> JSONResponse | StreamingResponse:
     parsed = parse_responses_request(await request.json())
     _log_request(parsed)
-    await _think()
     response = resolve_text_response(parsed.messages, parsed.available_tools)
+    await _think(response)
     fault = _unstreamable_fault(response, parsed.stream)
     if fault is not None:
         return fault
@@ -190,10 +210,25 @@ async def _respond(request: Request) -> JSONResponse | StreamingResponse:
     return JSONResponse(content=build_response(parsed.model, response, request_tokens))
 
 
+# evlog-map-disable-next-line wide-event, error-handling -- dev-only stub, never deployed; see _complete
+async def _decisions(request: Request) -> JSONResponse:
+    """JEV's Decisions route (decisions.py): a scripted choice, else OpenRouter's no-credit 402."""
+    try:
+        answer = answer_decisions(await request.json())
+    except DecisionsScriptError as exc:
+        return JSONResponse(
+            status_code=500, content={"error": {"message": str(exc), "type": "directive_error"}}
+        )
+    print(f"[llm-stub] decisions status={answer.status}", flush=True)
+    return JSONResponse(status_code=answer.status, content=answer.body)
+
+
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)
 app.add_api_route("/api/v1/chat/completions", _complete, methods=["POST"], response_model=None)
 app.add_api_route("/responses", _respond, methods=["POST"], response_model=None)
 app.add_api_route("/api/v1/responses", _respond, methods=["POST"], response_model=None)
+# OpenRouter serves Decisions beside v1 under /api; GAIA derives it from OPENROUTER_BASE_URL.
+app.add_api_route("/api/alpha/decisions", _decisions, methods=["POST"], response_model=None)
 
 
 def main() -> None:

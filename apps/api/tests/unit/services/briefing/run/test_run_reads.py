@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import call
 
 from prometheus_client import REGISTRY
@@ -23,6 +22,7 @@ from tests.briefing_run_world import (
     delivered,
     held,
     idle_days,
+    notified,
     own,
     stored_brief,
     with_block,
@@ -55,7 +55,6 @@ class TestTheDailyRunReads:
         await run_brief(USER, BriefingKind.DAILY)
 
         assert world.approvals.calls_to("list_pending_for_user") == [call(USER)]
-        assert world.hil.calls_to("list_pending_for_user") == [call(USER, NOW)]
         executions = world.executions.calls_to("list_since")
         assert executions and {c.args for c in executions} == {(USER, DAY_START)}
         assert {c.args[0] for c in world.todos.calls_to("find_latest_by_external_ref")} == {USER}
@@ -161,11 +160,9 @@ class TestWhatARunRecords:
         assert (briefing["kind"], briefing["outcome"]) == ("daily", "sent")
 
     async def test_an_email_wanted_and_not_sent_is_a_warning(self, world: World) -> None:
-        world.notify.return_value = SimpleNamespace(
-            channels=[
-                delivered("inapp"),
-                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
-            ]
+        world.notify.return_value = notified(
+            delivered("inapp"),
+            ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
         )
 
         async with captured_wide_event() as event:
@@ -191,14 +188,12 @@ class TestWhatARunRecords:
         self, world: World
     ) -> None:
         world.chat = None
-        world.notify.return_value = SimpleNamespace(
-            channels=[
-                delivered("inapp"),
-                ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
-                ChannelDeliveryStatus(
-                    channel_type="telegram", status=NotificationStatus.DELIVERED, skipped=True
-                ),
-            ]
+        world.notify.return_value = notified(
+            delivered("inapp"),
+            ChannelDeliveryStatus(channel_type="email", status=NotificationStatus.FAILED),
+            ChannelDeliveryStatus(
+                channel_type="telegram", status=NotificationStatus.DELIVERED, skipped=True
+            ),
         )
 
         await run_brief(USER, BriefingKind.DAILY)
@@ -219,7 +214,7 @@ class TestWhatARunRecords:
         world.capture.assert_called_once_with(
             UserId(USER),
             BriefingSent(
-                kind=BriefingKind.DAILY,
+                kind=BriefingKind.DAILY.value,
                 form="edition",
                 family=payload.template_family,
                 mood=BriefingMood.PACKED,

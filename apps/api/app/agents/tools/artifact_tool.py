@@ -1,5 +1,6 @@
 """create_artifact: the executor's tool for reports, dashboards and other artifacts."""
 
+import asyncio
 import time
 from typing import Annotated
 import uuid
@@ -9,13 +10,13 @@ from langchain_core.tools import tool
 from langgraph.types import StreamWriter
 
 from app.constants.openui_artifacts import (
-    ARTIFACT_DELTA_EVENT,
     ARTIFACT_DELTA_FLUSH_CHARS,
     ARTIFACT_DELTA_FLUSH_SECONDS,
     ARTIFACT_DONE_EVENT,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
+from app.models.conversation_frame_models import StreamPayloadType
 from app.models.openui_artifact_models import (
     ArtifactCard,
     ArtifactDelta,
@@ -53,7 +54,7 @@ class _DeltaBatcher:
         if not self._pending:
             return
         delta = ArtifactDelta(**self._header.model_dump(mode="json"), delta="".join(self._pending))
-        self._writer({ARTIFACT_DELTA_EVENT: delta.model_dump(mode="json")})
+        self._writer({StreamPayloadType.ARTIFACT_DELTA: delta.model_dump(mode="json")})
         self._pending.clear()
         self._size = 0
         self._last_flush = time.monotonic()
@@ -77,7 +78,6 @@ async def create_artifact(
 ) -> str:
     writer = current_stream_writer()
     header = ArtifactStreamHeader(stream_id=uuid.uuid4().hex, kind=kind, title=title)
-    batcher = _DeltaBatcher(writer, header)
     request = ArtifactRequest(
         kind=kind,
         brief=brief,
@@ -86,6 +86,7 @@ async def create_artifact(
         today=home_timezone_from_config(config).now().date(),
         interactive=interactive,
     )
+    batcher = _DeltaBatcher(writer, header)
     try:
         artifact = await create_openui_artifact(request, title, batcher.push)
     except ArtifactCreationError as exc:
@@ -98,6 +99,13 @@ async def create_artifact(
         )
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
+    except asyncio.CancelledError:
+        # A stopped run never reaches its done frame; its streaming card ends here instead.
+        batcher.flush()
+        _write_card(
+            writer, ArtifactCard(**header.model_dump(mode="json"), status=ArtifactStatus.STOPPED)
+        )
+        raise
     except Exception:
         # The card is already on screen streaming; close it, then let the failure surface.
         batcher.flush()

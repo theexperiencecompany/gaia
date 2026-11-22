@@ -19,6 +19,7 @@ from app.models.brief_payload_models import BriefingPayload
 from app.services.briefing import editions
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
 from app.services.briefing.editions.artworks import artwork_art
+from app.services.briefing.editions.codes import family_codes
 from app.services.briefing.editions.explorer_render import (
     _TRANSPARENT_DESK_CSS,
     EXPLORER_CANVAS_PX,
@@ -315,6 +316,13 @@ class TestEmbeddedLiterals:
         assert ed["dateLong"] == "Sunday, 5 July 2026"
         assert ed["blocks"][0]["events"][0]["title"] == "Standup"
         assert ed["stats"]["done"] == 3
+
+    def test_a_family_that_prints_a_code_encodes_the_briefs_link(self) -> None:
+        link = "https://heygaia.io/b/brief-1"
+
+        ed = _embedded_const(_render(family="invoice", link=link), "ed")
+
+        assert ed["codes"] == json.loads(json.dumps(family_codes(EditionFamily.INVOICE, link)))
 
     @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
     def test_a_framed_family_hangs_the_drawn_artwork_inlined_from_its_file(

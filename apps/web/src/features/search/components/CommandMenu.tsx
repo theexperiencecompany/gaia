@@ -93,13 +93,13 @@ function MessageResults({
     <Command.Group heading="Messages">
       {messages.slice(0, 3).map((message) => (
         <Command.Item
-          key={`message-${message.message.message_id}`}
+          key={`message-${message.item.id}`}
           value={message.snippet}
           onSelect={() => {
             track("search:result_clicked", {
               result_type: "message",
               conversation_id: message.conversation_id,
-              message_id: message.message.message_id ?? undefined,
+              message_id: message.item.id,
             });
             onOpen(message.conversation_id);
           }}
@@ -114,9 +114,7 @@ function MessageResults({
               className={COMMAND_MENU_STYLES.resultSubtitle}
               suppressHydrationWarning
             >
-              {message.message.date
-                ? formatDate(message.message.date, "numeric")
-                : null}
+              {formatDate(message.item.at, "numeric")}
             </div>
           </div>
         </Command.Item>

@@ -12,7 +12,6 @@ import {
   formatRelativeDate,
   formatTime,
   formatTimeRange,
-  parseCronToHuman,
 } from "./dateUtils";
 
 const NOW = new Date(2026, 10, 16, 15, 45);
@@ -103,10 +102,5 @@ describe("dates and times written for a reader", () => {
     expect(formatDateUTC("2026-07-05")).toBe(
       formatDate(new Date(Date.UTC(2026, 6, 5)), "short", { timeZone: "UTC" }),
     );
-  });
-
-  it("writes a cron schedule's time the way a bot message always has", () => {
-    expect(parseCronToHuman("0 9 * * *")).toBe("Daily at 9 AM");
-    expect(parseCronToHuman("30 9 * * 1")).toBe("Every Monday at 9:30 AM");
   });
 });

@@ -1,5 +1,6 @@
-"""create_artifact: the real tool streams batched deltas, then one done frame, and reports in prose."""
+"""create_artifact: the real tool streams batched draft deltas, then one done frame, and reports in prose."""
 
+import asyncio
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any
@@ -13,11 +14,11 @@ import time_machine
 from app.agents.tools import artifact_tool
 from app.agents.tools.artifact_tool import _DeltaBatcher
 from app.constants.openui_artifacts import (
-    ARTIFACT_DELTA_EVENT,
     ARTIFACT_DELTA_FLUSH_CHARS,
     ARTIFACT_DELTA_FLUSH_SECONDS,
     ARTIFACT_DONE_EVENT,
 )
+from app.models.conversation_frame_models import StreamPayloadType
 from app.models.openui_artifact_models import (
     ArtifactFailureReason,
     ArtifactKind,
@@ -54,7 +55,7 @@ class TestDeltaBatcher:
 
         writer.assert_called_once_with(
             {
-                ARTIFACT_DELTA_EVENT: {
+                StreamPayloadType.ARTIFACT_DELTA: {
                     "stream_id": "s1",
                     "kind": "report",
                     "title": "Q3 plan",
@@ -127,12 +128,13 @@ class TestDeltaBatcher:
         batcher.flush()
 
         assert [
-            call.args[0][ARTIFACT_DELTA_EVENT]["delta"][:1] for call in writer.call_args_list
+            call.args[0][StreamPayloadType.ARTIFACT_DELTA]["delta"][:1]
+            for call in writer.call_args_list
         ] == [
             "a",
             "b",
         ]
-        assert writer.call_args_list[1].args[0][ARTIFACT_DELTA_EVENT]["delta"] == "b"
+        assert writer.call_args_list[1].args[0][StreamPayloadType.ARTIFACT_DELTA]["delta"] == "b"
 
 
 @pytest.fixture
@@ -257,6 +259,23 @@ class TestCreateArtifact:
         assert lines[0] == "The report could not be made (validation)."
         assert lines[1:] == [f"- problem {i}" for i in range(10)]
 
+    async def test_a_stopped_run_ends_its_streaming_card_as_stopped(
+        self, writer: MagicMock
+    ) -> None:
+        async def stopped(request: ArtifactRequest, title: str, sink) -> None:
+            await sink("root = Art")
+            raise asyncio.CancelledError
+
+        with (
+            patch(f"{_TOOL}.create_openui_artifact", stopped),
+            pytest.raises(asyncio.CancelledError),
+        ):
+            await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
+
+        delta, done = (c.args[0] for c in writer.call_args_list)
+        assert delta[StreamPayloadType.ARTIFACT_DELTA]["delta"] == "root = Art"
+        assert done[ARTIFACT_DONE_EVENT]["status"] == "stopped"
+
     async def test_an_unexpected_failure_closes_the_card_and_still_surfaces(
         self, writer: MagicMock
     ) -> None:
@@ -272,7 +291,7 @@ class TestCreateArtifact:
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
         delta, done = (c.args[0] for c in writer.call_args_list)
-        assert delta[ARTIFACT_DELTA_EVENT]["delta"] == "root = Art"
+        assert delta[StreamPayloadType.ARTIFACT_DELTA]["delta"] == "root = Art"
         assert done[ARTIFACT_DONE_EVENT]["status"] == "failed"
         assert "artifact_id" not in done[ARTIFACT_DONE_EVENT]
         link.assert_not_awaited()
@@ -289,9 +308,9 @@ class TestCreateArtifact:
             await artifact_tool.create_artifact.ainvoke(ARGS, config=CONFIG)
 
         delta, done = (c.args[0] for c in writer.call_args_list)
-        assert list(delta) == [ARTIFACT_DELTA_EVENT]
+        assert list(delta) == [StreamPayloadType.ARTIFACT_DELTA]
         assert list(done) == [ARTIFACT_DONE_EVENT]
-        header = {k: v for k, v in delta[ARTIFACT_DELTA_EVENT].items() if k != "delta"}
+        header = {k: v for k, v in delta[StreamPayloadType.ARTIFACT_DELTA].items() if k != "delta"}
         assert header == {
             k: v
             for k, v in done[ARTIFACT_DONE_EVENT].items()

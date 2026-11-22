@@ -1,9 +1,8 @@
 "use client";
 
-import { Badge, Popover, Spinner, Tabs } from "@heroui/react";
+import { Badge, Popover, Spinner, Tabs, Tooltip } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
-import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -74,18 +73,21 @@ export function NotificationCenter({
   return (
     <div className={`relative ${className}`}>
       <Popover>
-        <Popover.Trigger>
-          <div className="relative">
+        {/* The bell is the popover's trigger itself: wrapped in Popover.Trigger it
+            would be a second button with its own tab stop. */}
+        <Tooltip>
+          <GaiaButton
+            isIconOnly
+            variant="ghost"
+            aria-label="Notifications"
+            tone="muted"
+            hoverTone="accent"
+          >
             {/* pointer-events-none on the count lets the bell underneath
                 capture hover/press; select-none keeps it from being
                 text-selected. */}
             <Badge.Anchor>
-              <SidebarHeaderButton
-                aria-label="Notifications"
-                tooltip="Notifications"
-              >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
-              </SidebarHeaderButton>
+              <NotificationIcon className="min-h-[20px] min-w-[20px]" />
               {unreadCount > 0 && (
                 <Badge
                   color="accent"
@@ -97,8 +99,9 @@ export function NotificationCenter({
                 </Badge>
               )}
             </Badge.Anchor>
-          </div>
-        </Popover.Trigger>
+          </GaiaButton>
+          <Tooltip.Content>Notifications</Tooltip.Content>
+        </Tooltip>
 
         <Popover.Content
           className={overlayVariants({

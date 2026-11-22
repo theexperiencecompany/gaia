@@ -11,7 +11,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
 | Chromium render | `tests/integration/render/` | Playwright's Chromium shell (`playwright install chromium-headless-shell`; the integration slice installs it) | what a server-side render (edition image, PDF) draws, through the process browser its conftest shares across the package |
-| Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — otherwise the whole tier skips at collection (milliseconds, never a hang) | behavior only provable against real Postgres/Redis/Mongo |
+| Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — the `real_services` mark (`tests/real_services.py`) fails a test when opted in but Mongo/Redis is unreachable, and otherwise skips it with one summary line | behavior only provable against real Postgres/Redis/Mongo |
 | Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`), `OBSCURA_BIN` and the self-host Caddy (`CADDY_BIN` or `caddy`); a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
 | Contracts | `tests/contracts/` | real Mongo + Redis | repository contract changes (never mocks) |
 | E2E | `tests/e2e/` | real compiled graphs + fake LLM (`_harness/`), offline | user journey through the compiled graph |
@@ -19,7 +19,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Meta | `tests/meta/` | nothing | import fences, architecture invariants |
 | Live opt-in | `tests/composio/`, `tests/model_onboarding/` | real credentials | composio creds; model capability checks (bills tokens) |
 
-A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_stream_manager_4921.py`).
+A bug ships a failing-then-passing test in the *natural* file for the tier that catches it, named `test_<subject>_<issue>.py` (e.g. `test_run_stop_4921.py`).
 
 ## Quality bar
 
@@ -66,6 +66,11 @@ behavior belongs in `test:real`, not in the default run.
   rejects it). Tests for a brand-new module are gap-fill: leave them unmarked.
   The two cases look identical until CI fails, so check with
   `git cat-file -e origin/master:<path>` before reaching for the mark.
+  The same goes for the harness: the lane runs this branch's whole `tests/`
+  tree, so a conftest on the test's path, `tests/helpers.py` or
+  `tests/factories.py` importing a name new on this branch fails every marked
+  test under it at collection. Reproduce the lane with
+  `bash scripts/ci/pytest.sh regression-proof origin/master` before pushing a mark.
 - **Hermetic paths**: never hardcode `~` or absolute paths — the `_hermetic_environment` fence owns env (it blanks real credentials at session start); any env a test needs is provisioned by fixtures, not read from the developer's machine.
 - **Fixtures catalog** — search before you build:
   - `tests/conftest.py` — env fence, `client` / `unauthed_client` (ASGITransport), `fake_user` / `fake_user_2`, `fake_redis` (per-test fakeredis behind `redis_cache`; any tier whose code path touches Redis without a real-services fixture)

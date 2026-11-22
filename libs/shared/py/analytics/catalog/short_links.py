@@ -9,12 +9,14 @@ __all__ = [
     "ShortLinkContentPublished",
     "ShortLinkContentRestricted",
     "ShortLinkCreated",
+    "ShortLinkDenialReason",
     "ShortLinkDenied",
     "ShortLinkOpened",
     "ShortLinkPublishRejected",
     "ShortLinkReported",
     "ShortLinkRevoked",
     "ShortLinkRotated",
+    "ShortLinkSizeBucket",
     "ShortLinkTakenDown",
 ]
 
@@ -39,6 +41,7 @@ ShortLinkRenderMode = Literal[
 ShortLinkPublishRejection = Literal["too_large", "quota"]
 ShortLinkContentRestriction = Literal["executable", "credential_form", "repeat_takedowns"]
 ShortLinkReportReason = Literal["phishing", "malware", "harassment", "illegal", "other"]
+ShortLinkSizeBucket = Literal["lt_100kb", "lt_1mb", "lt_10mb", "gte_10mb"]
 
 
 class ShortLinkCreated(ServerEvent):
@@ -117,7 +120,7 @@ class ShortLinkContentPublished(ServerEvent):
 
     target_type: ShortLinkTarget
     render_mode: ShortLinkRenderMode
-    size_bucket: Literal["lt_100kb", "lt_1mb", "lt_10mb", "gte_10mb"]
+    size_bucket: ShortLinkSizeBucket
 
 
 class ShortLinkPublishRejected(ServerEvent):

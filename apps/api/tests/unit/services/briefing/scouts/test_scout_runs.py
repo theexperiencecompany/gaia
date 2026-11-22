@@ -226,10 +226,13 @@ def _ids(result: Any) -> list[str]:
 
 
 class TestReplayOrLearn:
-    async def test_a_new_integration_is_learned_and_its_watch_frozen(self, scouts: Scouts) -> None:
+    async def test_a_new_integration_is_learned_and_its_watch_frozen_with_its_criteria(
+        self, scouts: Scouts
+    ) -> None:
         [result] = await service.run_scouts(USER)
 
         assert (result.outcome, _ids(result)) == (ScoutOutcome.LEARNED, ["learned-1"])
+        assert result.criteria == CRITERIA
         assert scouts.stored["linear"] == _scout(LINEAR)
         scouts.watch.assert_not_awaited()
 

@@ -8,12 +8,16 @@ unregistered; one that was on is deactivated as TRIGGER_RETIRED, so switching it
 on registers the trigger the normal way. A type that is neither current nor retired
 stops the run: what it should become is a decision, not a default.
 
-    cd apps/api && uv run python -m scripts.retire_legacy_triggers [--apply]
+    cd apps/api && uv run python scripts/retire_legacy_triggers.py [--apply]
 """
 
 import asyncio
 from collections.abc import Mapping
+from pathlib import Path
+import sys
 from types import MappingProxyType
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
@@ -22,7 +26,6 @@ from app.models.trigger_configs import (
     GmailNewMessageConfig,
     TriggerConfigData,
 )
-from scripts._cli import apply_requested
 
 #: Each retired trigger type and the integration trigger that replaced it.
 RETIRED_TRIGGER_SUCCESSORS: Mapping[str, TriggerConfigData] = MappingProxyType(
@@ -62,4 +65,4 @@ async def migrate(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(migrate(apply=apply_requested(__doc__)))
+    asyncio.run(migrate(apply="--apply" in sys.argv))

@@ -187,6 +187,8 @@ services:
           condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      gaia-migrate:
+        condition: service_completed_successfully
     networks:
       - gaia_network
     healthcheck:
@@ -218,6 +220,24 @@ services:
     networks:
       - gaia_network
 
+  # One-shot, before the API and the worker start: moves conversations still in
+  # an older build's shape into this one's and verifies them, or exits 1 and
+  # keeps both stopped (the API refuses to boot on unmigrated data anyway).
+  # Compose recreates the old API and worker before running it, so no old build
+  # writes during the migration. With nothing to migrate it is a few reads.
+  gaia-migrate:
+    logging: *default_logging
+    image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
+    env_file: *backend_env_files
+    environment: *backend_environment
+    command: ["python", "-m", "scripts.migrate_conversations"]
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   arq_worker:
     logging: *default_logging
     image: ${GAIA_API_IMAGE:-ghcr.io/theexperiencecompany/gaia}:${GAIA_VERSION:-latest}
@@ -246,6 +266,8 @@ services:
       mongo:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      gaia-migrate:
         condition: service_completed_successfully
     networks:
       - gaia_network

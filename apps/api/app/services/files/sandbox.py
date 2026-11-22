@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.models.files_models import PageWiseSummary
-from app.services.artifact_events import publish_artifact_event, remove_event
 from app.services.files.summaries import render_summary_markdown
 from app.services.storage import (
     FsOps,
@@ -204,6 +203,4 @@ async def delete_upload(
         )
         return False
 
-    if removed:
-        await publish_artifact_event(user_id, remove_event(conversation_id, name))
     return removed

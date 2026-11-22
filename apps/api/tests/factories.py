@@ -1,5 +1,6 @@
 """Test data factories for GAIA API tests."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -12,10 +13,18 @@ from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
 from app.constants.briefing import DAILY_KICKER, BriefAction, BriefOutcome, EditionFamily
+from app.constants.chat import ConversationSource
 from app.models.brief_item_models import ItemState
 from app.models.brief_payload_models import BriefingMood, BriefingPayload
+from app.models.conversation_frame_models import EntryFrame, StateFrame
+from app.models.conversation_log_models import DisplayState, Entry
+from app.models.conversation_models import StoredConversation
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
+from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolTimeline
+
+#: The conversation a unit test projects its screen for.
+CONVERSATION_ID = "c1"
 
 
 def make_user_id() -> str:
@@ -87,6 +96,27 @@ def make_authenticated_user(**overrides: Any) -> AuthenticatedUser:
     return AuthenticatedUser(**defaults)
 
 
+def make_loaded_conversation(
+    conversation_id: str,
+    user_id: str,
+    entries: Sequence[Entry],
+    *,
+    created_at: str = "2026-01-01T10:00:00+00:00",
+) -> StoredConversation:
+    """Build a conversation as a load returns it: its entries in log order under a settled head."""
+    return StoredConversation(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        source=ConversationSource.WEB,
+        createdAt=created_at,
+        entries=[
+            EntryFrame(seq=seq, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)
+            for seq, entry in enumerate(entries, 1)
+        ],
+        state=StateFrame(head=len(entries), display=DisplayState.IDLE, work=()),
+    )
+
+
 def make_user(**overrides) -> dict:
     defaults = {
         "user_id": make_user_id(),
@@ -96,19 +126,6 @@ def make_user(**overrides) -> dict:
         "is_active": True,
         "plan": "free",
         "onboarding_completed": True,
-    }
-    defaults.update(overrides)
-    return defaults
-
-
-def make_conversation(user_id: str | None = None, **overrides) -> dict:
-    defaults = {
-        "conversation_id": str(uuid4()),
-        "user_id": user_id or make_user_id(),
-        "description": "Test conversation",
-        "messages": [],
-        "created_at": datetime.now(UTC).isoformat(),
-        "updated_at": datetime.now(UTC).isoformat(),
     }
     defaults.update(overrides)
     return defaults
@@ -245,4 +262,26 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
     return composio_client.NotFoundError(
         message, response=httpx.Response(404, request=request, json=body), body=body
+    )
+
+
+def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyItem:
+    """Build a settled reply's screen item carrying only its text, as one bubble."""
+    return ReplyItem(
+        id=reply_id,
+        seq=seq,
+        at=datetime.now(UTC),
+        bubbles=(text,),
+        tool_data=(),
+        timeline=ToolTimeline(),
+        follow_up_actions=(),
+        image=None,
+        pinned=False,
+        quote=None,
+        outcome=ReplyOutcome.ANSWERED,
+        failure=None,
+        failure_line=None,
+        narrates=(),
+        retry_target=None,
+        files=(),
     )

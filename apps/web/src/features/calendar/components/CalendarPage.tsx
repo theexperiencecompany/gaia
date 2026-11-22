@@ -38,11 +38,7 @@ export default function Calendar() {
     openForEvent,
     openForCreate,
     close,
-  } = useEventSidebar({
-    onEventUpdate: () => {
-      // Optional: trigger a background refresh without resetting the view
-    },
-  });
+  } = useEventSidebar();
 
   // Set the create event action so the header can trigger it
   useEffect(() => {

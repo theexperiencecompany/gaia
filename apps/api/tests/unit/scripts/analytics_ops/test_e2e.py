@@ -67,7 +67,6 @@ WORKFLOW_RUN: dict[str, object] = {
 COMPLETED = {
     "delegated": False,
     "queued": False,
-    "voice_mode": False,
     "ttft_ms": 44.0,
     "e2e_ack_ms": 4.0,
     "e2e_full_ms": 4.0,
@@ -88,7 +87,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("onboarding:phase_completed", {**WEB, "phase": "paywall_reached"}),
     ("onboarding:phase_completed", {**WEB, "phase": "paid_reveal_seen"}),
     ("onboarding:phase_completed", {**WEB, "phase": "first_chat_opened"}),
-    ("paywall:blocked", {**WEB, "feature": "/api/v1/chat-stream"}),
+    ("paywall:blocked", {**WEB, "feature": "/api/v1/conversations/{conversation_id}/messages"}),
     (
         "subscription:activated",
         {
@@ -128,6 +127,18 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "stream_id": "s-web",
             "source": "web",
             "is_new_conversation": True,
+        },
+    ),
+    # The journey presses Stop on the finished turn: nothing was left running.
+    (
+        "chat:work_stopped",
+        {
+            **WEB,
+            "executor_stopped": False,
+            "pending_tasks": 0,
+            "subagents": 0,
+            "approvals": 0,
+            "browser_jobs": 0,
         },
     ),
     (

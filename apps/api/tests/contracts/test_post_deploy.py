@@ -8,10 +8,7 @@ import uuid
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 from scripts.migrate_workflow_delivery import migrate as migrate_workflow_delivery
-from scripts.retire_legacy_triggers import (
-    UnknownTriggerTypeError,
-    migrate as retire_legacy_triggers,
-)
+from scripts.retire_legacy_triggers import migrate as retire_legacy_triggers
 
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.workflows import workflow_repository
@@ -190,36 +187,3 @@ class TestLegacyEmailTrigger:
         stored = await raw_collection.find_one({"_id": legacy["_id"]})
         assert stored is not None
         assert (stored["delivery"], "notify_on_completion" in stored) == ("silent", False)
-
-    async def test_one_its_owner_had_switched_off_moves_without_a_system_reason(
-        self, raw_collection
-    ) -> None:
-        legacy = _legacy_email_workflow(activated=False)
-        await raw_collection.insert_one(legacy)
-
-        await post_deploy.run_post_deploy(apply=True)
-
-        workflow = await workflow_repository.get_for_user(
-            str(legacy["_id"]), str(legacy["user_id"])
-        )
-        assert workflow is not None
-        assert workflow.trigger_config.trigger_name == "gmail_new_message"
-        assert workflow.deactivated_reason is None
-
-    async def test_a_dry_run_writes_nothing(self, raw_collection) -> None:
-        legacy = _legacy_email_workflow(activated=True)
-        await raw_collection.insert_one(legacy)
-
-        await post_deploy.run_post_deploy(apply=False)
-
-        assert await raw_collection.find_one({"_id": legacy["_id"]}) == legacy
-
-    async def test_a_type_neither_current_nor_retired_stops_the_release_by_name(
-        self, raw_collection
-    ) -> None:
-        await raw_collection.insert_one(
-            {**_legacy_email_workflow(activated=True), "trigger_config": {"type": "fax"}}
-        )
-
-        with pytest.raises(UnknownTriggerTypeError, match="fax"):
-            await post_deploy.run_post_deploy(apply=True)

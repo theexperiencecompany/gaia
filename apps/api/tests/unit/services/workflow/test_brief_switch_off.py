@@ -98,7 +98,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> _Seams:
     monkeypatch.setattr(workflow_repository, "deactivate", deactivate)
     monkeypatch.setattr(pending_brief_items_repository, "list_for_user", held_for)
     monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
-    monkeypatch.setattr(notification_service, "create_notification", s.notify)
+    monkeypatch.setattr(notification_service, "notify", s.notify)
     return s
 
 

@@ -92,7 +92,7 @@ def _record_sent(
     capture(
         UserId(user.id),
         BriefingSent(
-            kind=stored.kind,
+            kind=stored.kind.value,
             form=payload.form.value,
             family=payload.template_family,
             mood=payload.mood,

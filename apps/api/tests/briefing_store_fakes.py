@@ -31,12 +31,7 @@ from app.models.briefing_state_models import (
 )
 from app.models.conversation_models import BotReplyRow
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.hil_models import (
-    ApprovalLedgerDocument,
-    HILApprovalRecord,
-    HILApprovalStatus,
-    LedgerState,
-)
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.integration_models import UserIntegrationDocument
 from app.models.reminder_models import ReminderDocument
 from app.models.scout_models import Sighted, SignalMemoryDocument
@@ -481,25 +476,10 @@ class InMemoryApprovalLedger(Store):
         self.rows: list[ApprovalLedgerDocument] = []
 
     async def list_pending_for_user(self, user_id: str) -> list[ApprovalLedgerDocument]:
-        pending = [r for r in self.rows if r.user_id == user_id and r.state == LedgerState.PENDING]
+        pending = [r for r in self.rows if r.user_id == user_id and r.outcome is None]
         return sorted(
             pending, key=lambda r: as_utc(r.created_at) or datetime.min.replace(tzinfo=UTC)
         )
-
-
-class InMemoryHILApprovals(Store):
-    def __init__(self) -> None:
-        super().__init__()
-        self.rows: list[HILApprovalRecord] = []
-
-    async def list_pending_for_user(self, user_id: str, now: datetime) -> list[HILApprovalRecord]:
-        return [
-            r
-            for r in self.rows
-            if r.user_id == user_id
-            and r.status is HILApprovalStatus.PENDING
-            and (as_utc(r.expires_at) or now) > now
-        ]
 
 
 class InMemoryReminders(Store):

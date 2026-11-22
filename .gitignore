@@ -125,6 +125,8 @@ postman/
 .agents/prod-convos/
 .agents/recording/
 .agents/sim/
+# Per-process logs and pidfiles of `mise dev --sim` (scripts/dev/sim-stack.sh)
+.sim-stack/
 .agents/scratch/
 
 # whatsapp-web.js

@@ -11,15 +11,21 @@ from enum import StrEnum
 from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
+from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
+from shared.py.approvals import ApprovalOutcome, DecidedOutcome
 
-# The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
-# default mode is a HILPreferences field default, so it lives with the model).
+# What a user decides on a pending approval, and the outcome each decision ends it with.
+ApprovalDecision = Literal["approve", "deny"]
+DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
+    "approve": ApprovalOutcome.APPROVED,
+    "deny": ApprovalOutcome.DENIED,
+}
 
-# auto mode: what the intent judge is shown. Intent routinely spans turns
-# ("draft an email to Bob" ... "looks good, send it"), so the latest message
-# alone cannot be grounded against. Only USER turns are carried; bounded because these ride in `configurable`.
-HIL_JUDGE_MAX_USER_TURNS = 6
+# The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
+# HILPreferences field default, so it lives with the model).
+
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
 # The pending call's arguments, and the run's earlier tool calls (provenance for
@@ -27,13 +33,10 @@ HIL_JUDGE_MAX_TURN_CHARS = 800
 # an id minted by an earlier call is only traceable through that output.
 HIL_JUDGE_MAX_ARGS_CHARS = 1500
 HIL_JUDGE_MAX_PRIOR_CALLS = 8
-HIL_JUDGE_MAX_PRIOR_ARGS_CHARS = 200
 HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS = 300
 
-# The pending tool's arg schema and the run's recent assistant messages: both
-# provenance for JEV, never authorization (the schema explains an opaque id, the
+# The run's recent assistant messages: provenance for JEV, never authorization (the
 # assistant's words say what it told the user). Bounded — prompts are not free.
-HIL_JUDGE_MAX_SCHEMA_CHARS = 2000
 HIL_JUDGE_MAX_ASSISTANT_TURNS = 3
 HIL_JUDGE_MAX_ASSISTANT_CHARS = 500
 
@@ -51,18 +54,31 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, endpoint, decision lines. Lines come
+# JEV choice judge (auto mode v2): model, timeout, decision lines. Lines come
 # from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
 # scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
-HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
+#: The name auto mode's one Decisions question goes by, in the request and its answer.
+JEV_DECISION_QUESTION_KEY = "decision"
+
+
+class JevFailure(StrEnum):
+    """Why a JEV call gave no usable answer; the values are metric labels an alert rule reads."""
+
+    ERROR = "jev_error"
+    TIMEOUT = "jev_timeout"
+    # A body that is not JSON, fails validation, or names an answer the caller never offered.
+    MALFORMED = "jev_malformed"
+    # No OpenRouter key (self-host); not an outage, so callers leave it out of their error logs.
+    UNCONFIGURED = "jev_unconfigured"
+
+
 HIL_JEV_ACCEPT_LINE = 0.50
-HIL_JEV_REJECT_FLOOR = 0.50
 
-
-# The forbid double-check itself failed; the verdict asks rather than trusting either way.
-JEV_FORBID_CHECK_FAILED = "unclear-forbid"
+# The note on a card auto mode raised instead of running the call. The judge's own
+# reason names tool slugs and scores, so it stays model-facing; the user reads this.
+AUTO_ASK_NOTE = "GAIA isn't sure you asked for this, so it's checking with you first."
 
 
 class JevChoice(StrEnum):
@@ -71,7 +87,6 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
-    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.
@@ -85,28 +100,24 @@ HIL_JEV_REPLY_DECIDE_FLOOR = 0.50
 # Decisions question name per pending action: "action_1", "action_2", ...
 HIL_JEV_REPLY_QUESTION_PREFIX = "action_"
 
+# The bot approval prompt's own answer words (approval-prompt.ts): a reply that is
+# one of them, optionally followed by item numbers, decides without the classifier.
+HIL_PLAIN_REPLY_WORDS: Final[dict[str, ApprovalDecision]] = {
+    **dict.fromkeys(("yes", "y", "yep", "yeah", "ok", "okay", "sure", "approve"), "approve"),
+    **dict.fromkeys(("no", "n", "nope", "cancel", "deny"), "deny"),
+}
+
 
 class ReplyChoice(StrEnum):
     """What a chat reply means for one pending action: the JEV reply question's labels."""
 
     APPROVE = "approve"
+    # Accepted with a change: it approves, and the change goes to the work with it.
+    AMEND = "amend"
     DENY = "deny"
     LEAVE = "leave"
     UNRELATED = "unrelated"
 
-
-# The only statuses a `Command(resume=...)` payload may carry. Anything else
-# is treated as a denial. "abandoned" is absent: resolution.py maps it to a deny before sending.
-HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
-
-# Statuses meaning "decided, so the paused run must be re-dispatched" — the
-# sweep's crashed-resume pass matches on these. "auto_approved" is absent: it
-# never paused, so it has no run to resume.
-HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
-
-# How much of a call's arguments the deterministic one-line summary shows.
-HIL_SUMMARY_MAX_ARGS = 2
-HIL_SUMMARY_MAX_ARG_CHARS = 60
 
 # The classifier reading a chat reply to a pending approval gets richer context
 # than the card summary: recent turns + the full (bounded) args. TOTAL budget
@@ -118,45 +129,20 @@ HIL_CLASSIFIER_HISTORY_TURNS = 4  # recent {role, content} turns of context
 
 # Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
 HIL_STATUS_KWARG = "hil_status"
-HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran", "pending"]
+HILToolMessageStatus = Literal["denied", "error", "pending"]
 
 # How long an approval may sit unanswered before the sweep resolves it as a
 # timeout. Set by how long a human plausibly takes to answer a push
 # notification, NOT infrastructure — HIL gates irreversible, third-party-visible actions.
 HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
 
-# TTL the executor busy lock is re-armed to when a run parks on an approval. A
-# paused run's lock TTL started when the run BEGAN, not when it paused; if it
-# lapses first, the next call_executor discards the pending interrupt and orphans the user's card.
-HIL_PAUSED_LOCK_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
+# How long a decision's hand-off to the waiting work may take before the sweeper
+# treats it as failed and carries the logged decision out again.
+DECISION_HANDOFF_LEASE = timedelta(minutes=2)
 
-# How long unread executor inbox work lives: as long as the longest hold that can keep
-# a reader from it (a run parked on an approval), so nothing handed over during a park
-# lapses before the resumed run reads it. A park re-arms it from its own start.
-EXECUTOR_INBOX_TTL = HIL_PAUSED_LOCK_TTL_SECONDS
-
-# A decided record with no resumed_at stamp older than this is a crashed
-# resume dispatch; the sweep re-dispatches it from the record's resume_item.
-HIL_DECIDED_UNRESUMED_GRACE_SECONDS = 120
-
-# The key LangGraph puts a paused run's Interrupt objects under in an "updates"
-# stream event. Mirrored here because langgraph.constants.INTERRUPT went private
-# in v1 (deprecated, slated for removal in v2).
-LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
-
-# configurable flag set only on a resume re-dispatch. spawn_subagent probes
-# the spawn's thread checkpoint for a parked interrupt ONLY when this is
-# set, so fresh runs (the ~100% case) skip that per-spawn Postgres read.
-HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
-
-# configurable key a background subagent run carries its own rebuild recipe
-# under, so the gate files it on every approval the run raises and a decision
-# can resume the parked thread from any process.
-SUBAGENT_RESUME_CONFIG_KEY: Final = "subagent_resume"
-
-# Keyed by stream_id (unique per turn), so this only suppresses re-asks within
-# the same turn — a genuinely new request in a later turn still prompts.
-HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
+# How long unread executor inbox work lives: an approval ticket handed over waits
+# as long as the user may take to answer, plus one busy run.
+EXECUTOR_INBOX_TTL = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 
 # Background-dispatch claims (one per delegating tool call), keyed by conversation
 # (never stream_id — it changes on resume): a node replay after the executor's
@@ -164,18 +150,13 @@ HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
 HIL_BG_RESULTS_TTL_SECONDS = 7200
 
-# Debounce: at most one executor resume dispatch per conversation at a time —
-# two LangGraph runs on one thread would corrupt its checkpoint. TTL is crash
-# insurance only; the dispatched run deletes the flag when it finalizes.
-HIL_RESUME_ACTIVE_KEY_PREFIX = "hil:resume_active:"
-HIL_RESUME_ACTIVE_TTL_SECONDS = 1800
-
 # Orchestration/plumbing tools that must never be gated (they don't touch the
 # outside world; their inner calls are gated in the child graph). Ticket ops
 # (approve/revoke) are exempt too: the approval IS the gate, re-gating re-asks.
 HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
     {
         "retrieve_tools",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
         "call_executor",
         "cancel_executor",
         "browser_step_done",
@@ -189,12 +170,11 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "update_tasks",
         "add_memory",
         "search_memory",
+        REACT_TOOL_NAME,
+        STAY_SILENT_TOOL_NAME,
+        ANSWERED_TOOL_NAME,
     }
 )
-
-# Exempt tools that still PAUSE the run when called with background=False (they bubble
-# the child's gate up): a gated sibling must never auto-run, the replay would run it twice.
-HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"spawn_subagent"})
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"
@@ -204,9 +184,9 @@ APPROVAL_TOOL_CATEGORY = "hil"
 # starting a new turn.
 HIL_ACK_APPROVED = "Got it, going ahead."
 HIL_ACK_DENIED = "Understood, I will not do that."
-
-# Auto-deny reason when a bot user moves on without answering a pending approval.
-UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."
+# The same acks when the reply decided exactly one action, named in plain words.
+HIL_ACK_APPROVED_ONE = "Got it, I'll {action}."
+HIL_ACK_DENIED_ONE = "Understood, I won't {action}."
 
 # A read-only run (configurable read_only) may call a tool only when it is read-only: its
 # own metadata says so (MCP readOnlyHint, Composio tags), or, when the metadata is silent,

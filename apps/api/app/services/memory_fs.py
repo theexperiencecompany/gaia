@@ -93,7 +93,9 @@ async def _fetch_projections(user_id: str) -> list[MemoryFileProjection]:
             {
                 "id": f"journal:{day}",
                 "path": f"{JOURNAL_DIRNAME}/{day}.md",
-                "content": render_journal_page(episode.date, episode.entries, episode.summary),
+                "content": render_journal_page(
+                    episode.date, pg_store.journal_entries(episode), episode.summary
+                ),
             }
         )
 

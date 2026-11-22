@@ -1,110 +1,30 @@
-"""Unit tests for the artifact event wire contract (artifact_events).
+"""The artifact card payloads: a file in a session's artifacts/ appeared, changed, or went away."""
 
-Locks the exact Redis channel name + payload shapes shared by the sandbox
-watcher, the upload pipeline, and the chat stream forwarder — a shape drift
-here silently breaks artifact streaming in the UI.
-"""
-
-import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
-
-import pytest
-
-from app.services.artifact_events import (
-    artifact_channel,
-    publish_artifact_event,
-    remove_event,
-    upsert_event,
-)
+from app.services.artifact_events import remove_event, upsert_event
 from app.services.storage import ArtifactInfo
 
-_MOD = "app.services.artifact_events"
 
-USER_ID = "507f1f77bcf86cd799439011"
-SESSION_ID = "sess-1"
-
-
-def _artifact_info() -> ArtifactInfo:
-    return ArtifactInfo(
-        path="artifacts/notes.md", size_bytes=12, mtime=1234.5, content_type="text/markdown"
-    )
-
-
-class TestArtifactChannel:
-    def test_channel_is_prefixed_with_user_id(self):
-        assert artifact_channel(USER_ID) == f"artifacts:{USER_ID}"
-
-    def test_rejects_unsafe_user_id(self):
-        for bad in ["a:b", "a*b", "a?b", "", "x" * 65, "has space"]:
-            with pytest.raises(ValueError, match="unsafe user_id"):
-                artifact_channel(bad)
+def test_a_written_file_is_carded_with_what_the_listing_says_of_it() -> None:
+    info = ArtifactInfo(path="out/report.csv", size_bytes=3, mtime=1_000.0, content_type="text/csv")
+    assert upsert_event("c1", info) == {
+        "event": "upsert",
+        "session_id": "c1",
+        "path": "out/report.csv",
+        "size_bytes": 3,
+        "mtime": 1_000.0,
+        "content_type": "text/csv",
+    }
 
 
-SHORT_URL = "https://heygaia.link/abcdefghijk"
+def test_a_deleted_file_is_carded_for_removal_by_its_path() -> None:
+    assert remove_event("c1", "out/report.csv") == {
+        "event": "remove",
+        "session_id": "c1",
+        "path": "out/report.csv",
+    }
 
 
-class TestUpsertEvent:
-    def test_exact_shape_without_body_or_link(self):
-        event = upsert_event(SESSION_ID, _artifact_info())
-
-        assert event == {
-            "event": "upsert",
-            "session_id": SESSION_ID,
-            "path": "artifacts/notes.md",
-            "size_bytes": 12,
-            "mtime": 1234.5,
-            "content_type": "text/markdown",
-        }
-
-    def test_the_link_the_writing_tool_attached_is_carried(self):
-        event = upsert_event(SESSION_ID, _artifact_info(), short_url=SHORT_URL)
-
-        assert event["short_url"] == SHORT_URL
-
-    def test_body_inlined_when_provided(self):
-        event = upsert_event(SESSION_ID, _artifact_info(), body="hello")
-
-        assert event["body"] == "hello"
-
-    def test_no_body_key_when_omitted(self):
-        event = upsert_event(SESSION_ID, _artifact_info())
-
-        assert "body" not in event
-
-
-class TestRemoveEvent:
-    def test_exact_shape(self):
-        assert remove_event(SESSION_ID, "artifacts/gone.txt") == {
-            "event": "remove",
-            "session_id": SESSION_ID,
-            "path": "artifacts/gone.txt",
-        }
-
-
-class TestPublishArtifactEvent:
-    async def test_noop_when_redis_unavailable(self):
-        with patch(f"{_MOD}.redis_cache", SimpleNamespace(redis=None)):
-            await publish_artifact_event(USER_ID, remove_event(SESSION_ID, "artifacts/gone.txt"))
-
-    async def test_publishes_enriched_json_to_user_channel(self):
-        fake_redis = AsyncMock()
-        with patch(f"{_MOD}.redis_cache", SimpleNamespace(redis=fake_redis)):
-            await publish_artifact_event(USER_ID, remove_event(SESSION_ID, "artifacts/gone.txt"))
-
-        fake_redis.publish.assert_awaited_once()
-        channel, raw = fake_redis.publish.await_args.args
-        assert channel == f"artifacts:{USER_ID}"
-        payload = json.loads(raw)
-        assert payload["event"] == "remove"
-        assert payload["session_id"] == SESSION_ID
-        assert payload["path"] == "artifacts/gone.txt"
-        assert payload["user_id"] == USER_ID
-        assert isinstance(payload["ts"], float)
-
-    async def test_publish_failure_is_swallowed(self):
-        """Delivery is a latency optimization — a Redis error must never raise."""
-        fake_redis = AsyncMock()
-        fake_redis.publish.side_effect = RuntimeError("redis down")
-        with patch(f"{_MOD}.redis_cache", SimpleNamespace(redis=fake_redis)):
-            await publish_artifact_event(USER_ID, remove_event(SESSION_ID, "x.txt"))
+def test_the_link_the_writing_tool_attached_is_carried() -> None:
+    info = ArtifactInfo(path="out/report.csv", size_bytes=3, mtime=1_000.0, content_type="text/csv")
+    short_url = "https://heygaia.link/abcdefghijk"
+    assert upsert_event("c1", info, short_url=short_url)["short_url"] == short_url

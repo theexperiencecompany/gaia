@@ -267,6 +267,18 @@ async def test_a_disabled_limiter_never_refuses() -> None:
 
 
 @pytest.mark.usefixtures("small_limits")
+async def test_dev_unlimited_rate_limits_lifts_the_callers_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sim stack drives one dev user faster than any person; its e2e lanes 429'd at 300/min."""
+    monkeypatch.setattr(settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+    async with _client(_app()) as client:
+        for _ in range(3):
+            assert (await client.get(THING, headers={_USER_HEADER: "u1"})).status_code == 200
+            assert (await client.get(THING)).status_code == 200
+
+
+@pytest.mark.usefixtures("small_limits")
 async def test_an_unrouted_path_is_exempt_rather_than_counted() -> None:
     """With no handler there is no route to limit, and a 404 must not spend budget."""
     async with _client(_app()) as client:

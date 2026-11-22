@@ -21,9 +21,11 @@ from app.constants.memory import (
     MemorySourceType,
 )
 from app.constants.notifications import NotificationKind
-from app.models.chat_models import MessageModel
-from app.models.conversation_models import ConversationDocument
+from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
+from app.models.conversation_models import StoredConversation
 from app.models.notification.details_models import MemoryReadyNotification
+from app.models.notification.notification_models import notification_id
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -32,6 +34,7 @@ from app.workers.tasks.memory_backfill_tasks import (
     backfill_active_users,
     backfill_user_memories,
 )
+from tests.factories import make_loaded_conversation
 from tests.helpers import captured_wide_event
 
 MODULE = "app.workers.tasks.memory_backfill_tasks"
@@ -52,18 +55,20 @@ def _user(**overrides) -> UserDocument:
 def _conversation(
     conversation_id: str = "conv-1",
     *,
-    created_at: str | None = "2026-01-01T10:00:00+00:00",
-    messages: list[dict] | None = None,
-) -> ConversationDocument:
-    msgs = messages or [
-        {"type": "user", "response": "Remember I prefer morning meetings"},
-        {"type": "bot", "response": "Got it."},
-    ]
-    return ConversationDocument(
-        user_id=USER_ID,
-        conversation_id=conversation_id,
-        createdAt=created_at,
-        messages=[MessageModel(**m) for m in msgs],
+    created_at: str = "2026-01-01T10:00:00+00:00",
+    entries: list[Entry] | None = None,
+) -> StoredConversation:
+    return make_loaded_conversation(
+        conversation_id,
+        USER_ID,
+        entries
+        or [
+            UserMessage(
+                id="m1", text="Remember I prefer morning meetings", surface=ConversationSource.WEB
+            ),
+            Reply(id="r1", reply_id="r1", attempt_id="a1", text="Got it."),
+        ],
+        created_at=created_at,
     )
 
 
@@ -80,48 +85,51 @@ def _pool() -> MagicMock:
 
 class TestConversationToMessages:
     def test_maps_user_and_bot_roles(self):
-        conversation = _conversation(
-            messages=[
-                {"type": "user", "response": "hello"},
-                {"type": "bot", "response": "hi there"},
+        doc = _conversation(
+            entries=[
+                UserMessage(id="m1", text="hello", surface=ConversationSource.WEB),
+                Reply(id="r1", reply_id="r1", attempt_id="a1", text="hi there"),
             ]
         )
-        assert _conversation_to_messages(conversation) == [
+        assert _conversation_to_messages(doc) == [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi there"},
         ]
 
-    def test_drops_empty_and_unknown_message_types(self):
-        conversation = _conversation(
-            messages=[
-                {"type": "user", "response": "  "},
-                {"type": "system", "response": "not mapped"},
-                {"type": "user", "response": "kept"},
+    def test_drops_empty_messages_and_entries_that_are_not_messages(self):
+        doc = _conversation(
+            entries=[
+                UserMessage(id="m1", text="  ", surface=ConversationSource.WEB),
+                Notice(id="n1", text="not mapped", origin="todo"),
+                UserMessage(id="m2", text="kept", surface=ConversationSource.WEB),
             ]
         )
-        assert _conversation_to_messages(conversation) == [{"role": "user", "content": "kept"}]
+        assert _conversation_to_messages(doc) == [{"role": "user", "content": "kept"}]
 
-    def test_no_messages_yields_empty_list(self):
-        conversation = ConversationDocument(user_id=USER_ID, conversation_id="conv-empty")
-        assert _conversation_to_messages(conversation) == []
+    def test_no_entries_yields_empty_list(self):
+        assert _conversation_to_messages(_conversation().model_copy(update={"entries": []})) == []
 
 
 class TestConversationDate:
-    def test_iso_created_at_is_parsed(self):
-        assert _conversation_date(_conversation()) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    def test_iso_string_is_parsed(self):
+        assert _conversation_date(
+            _conversation(created_at="2026-01-01T10:00:00+00:00")
+        ) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+
+    def test_a_missing_created_at_reads_the_updated_at_as_utc(self):
+        conversation = _conversation().model_copy(
+            update={"createdAt": None, "updatedAt": datetime(2026, 1, 1, 10, 0)}
+        )
+        assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
     def test_naive_created_at_is_assumed_utc(self):
         conversation = _conversation(created_at="2026-01-01T10:00:00")
         assert _conversation_date(conversation) == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
 
     def test_unparseable_created_at_falls_back_to_naive_updated_at_as_utc(self):
-        conversation = _conversation(created_at="not-a-date")
-        conversation.updatedAt = datetime(2026, 2, 3, 4, 5)
-        assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
-
-    def test_a_missing_created_at_falls_back_to_updated_at(self):
-        conversation = _conversation(created_at=None)
-        conversation.updatedAt = datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
+        conversation = _conversation(created_at="not-a-date").model_copy(
+            update={"updatedAt": datetime(2026, 2, 3, 4, 5)}
+        )
         assert _conversation_date(conversation) == datetime(2026, 2, 3, 4, 5, tzinfo=UTC)
 
     def test_no_timestamp_falls_back_to_now(self):
@@ -314,7 +322,7 @@ class TestBackfillUserMemories:
     async def test_conversation_without_extractable_messages_is_a_no_op(self):
         with self._patches() as mocks:
             mocks["recent"].return_value = [
-                _conversation(messages=[{"type": "system", "response": "x"}])
+                _conversation(entries=[Notice(id="n1", text="x", origin="todo")])
             ]
             result = await backfill_user_memories({}, USER_ID)
 
@@ -337,10 +345,12 @@ class TestBackfillUserMemories:
 class TestNotifyMemoryReady:
     async def test_notification_redirects_to_the_memory_settings_page(self) -> None:
         create = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", create):
+        with patch(f"{MODULE}.notification_service.notify", create):
             await _notify_memory_ready(USER_ID)
 
         (request,) = create.await_args.args
+        # One id per user: a re-run backfill never tells them twice.
+        assert request.id == notification_id(USER_ID, "memory_ready", USER_ID)
         assert request.user_id == USER_ID
         assert request.details == MemoryReadyNotification(kind=NotificationKind.MEMORY_READY)
         (action,) = request.content.actions
@@ -351,7 +361,7 @@ class TestNotifyMemoryReady:
 
     async def test_a_failed_notification_is_warned_not_raised(self) -> None:
         create = AsyncMock(side_effect=RuntimeError("notification service down"))
-        with patch(f"{MODULE}.notification_service.create_notification", create):
+        with patch(f"{MODULE}.notification_service.notify", create):
             async with captured_wide_event() as event:
                 await _notify_memory_ready(USER_ID)
 

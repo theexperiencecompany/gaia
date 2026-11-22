@@ -26,6 +26,7 @@ from app.models.short_link_models import (
     LinkAccess,
     LinkDenial,
     LinkEnvelope,
+    LinkPreviewMeta,
     LinkSettings,
     LinkSnapshot,
     LinkViewer,
@@ -387,7 +388,61 @@ class TestSlugNeverLoggedInPlaintext:
         assert cid not in str(event)
 
 
+class TestPreviewMeta:
+    @pytest.mark.parametrize(
+        ("live", "cache_control"), [(True, "public, max-age=300"), (False, "public, max-age=60")]
+    )
+    async def test_a_dead_links_preview_is_cached_for_less_time(
+        self,
+        unauthed_client: AsyncClient,
+        known_slug: AsyncMock,
+        no_lockout: AsyncMock,
+        live: bool,
+        cache_control: str,
+    ) -> None:
+        meta = LinkPreviewMeta(
+            live=live,
+            target_type=TODO,
+            access=LinkAccess.UNLISTED,
+            indexable=False,
+            title="Plan",
+            description="Something GAIA worked on, shared with you.",
+            image_url=None,
+        )
+        with patch(f"{_ENDPOINT}.preview_meta", AsyncMock(return_value=meta)) as preview:
+            async with captured_wide_event() as event:
+                response = await unauthed_client.get(f"{BASE}/{SLUG}/meta")
+
+        assert response.status_code == 200
+        assert response.json() == meta.model_dump(mode="json")
+        assert response.headers["cache-control"] == cache_control
+        preview.assert_awaited_once_with(_LINK)
+        assert event["short_link"] == {"operation": "meta", "slug_hash": hash_short_link_slug(SLUG)}
+
+
 class TestDownload:
+    async def test_a_link_with_no_saved_file_has_nothing_to_download(
+        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+    ) -> None:
+        with patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=_LINK)):
+            response = await unauthed_client.get(f"{BASE}/{SLUG}/download")
+
+        assert (response.status_code, response.json()["code"]) == (404, "link_not_found")
+
+    async def test_a_signed_in_viewer_is_checked_as_themself(
+        self, client: AsyncClient, test_app: FastAPI, known_slug: AsyncMock
+    ) -> None:
+        test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
+        denied = LinkDeniedError.for_denial(LinkDenial.FORBIDDEN)
+        try:
+            with patch(f"{_ENDPOINT}.openable_link", AsyncMock(side_effect=denied)) as openable:
+                response = await client.get(f"{BASE}/{SLUG}/download")
+        finally:
+            del test_app.dependency_overrides[get_optional_user]
+
+        assert response.status_code == 403
+        assert openable.await_args.args[1].user_id == FAKE_USER.user_id
+
     async def test_a_link_the_viewer_may_open_saves_its_file_as_an_attachment(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
     ) -> None:
@@ -401,12 +456,21 @@ class TestDownload:
         # An expiry still ahead: the route reads the clock to know the link is live.
         link = _LINK.model_copy(update={"snapshot": snapshot, "expires_at": _EXPIRES})
         with (
-            patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=link)),
+            patch(f"{_ENDPOINT}.openable_link", AsyncMock(return_value=link)) as openable,
             patch(f"{_ENDPOINT}.read_snapshot", AsyncMock(return_value=b"a,b")) as read,
         ):
-            response = await unauthed_client.get(f"{BASE}/{SLUG}/download")
+            async with captured_wide_event() as event:
+                response = await unauthed_client.get(
+                    f"{BASE}/{SLUG}/download", headers={"user-agent": "Safari/605"}
+                )
 
         assert response.status_code == 200
+        known_slug.assert_awaited_once_with(SLUG)
+        openable.assert_awaited_once_with(_LINK, _SIGNED_OUT)
+        assert event["short_link"] == {
+            "operation": "download",
+            "slug_hash": hash_short_link_slug(SLUG),
+        }
         assert response.content == b"a,b"
         assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''q3.csv"
         read.assert_awaited_once_with("owner", "c" * 26)
@@ -435,11 +499,14 @@ class TestShortLinkPdf:
                 AsyncMock(return_value=(artifact, b"%PDF-1.7")),
             ) as export,
         ):
-            response = await unauthed_client.get(
-                f"{BASE}/{SLUG}/pdf", headers={"user-agent": "Safari/605"}
-            )
+            async with captured_wide_event() as event:
+                response = await unauthed_client.get(
+                    f"{BASE}/{SLUG}/pdf", headers={"user-agent": "Safari/605"}
+                )
 
         assert response.status_code == 200
+        assert event["short_link"] == {"operation": "pdf", "slug_hash": hash_short_link_slug(SLUG)}
+        assert "operation" not in event
         known_slug.assert_awaited_once_with(SLUG)
         assert openable.await_args.args == (_LINK, _SIGNED_OUT)
         assert response.content == b"%PDF-1.7"

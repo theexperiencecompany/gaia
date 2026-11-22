@@ -61,16 +61,6 @@ export interface BotMessageData extends BaseMessageData {
   animateParts?: boolean;
 }
 
-// Message type for conversations (combines user and bot data)
-export interface ConversationMessage extends Partial<BaseMessageData> {
-  type: "user" | "bot";
-  response: string; // The main content field for conversations
-  loading?: boolean;
-  queued?: boolean; // Held in the send queue (greyed-out user bubble)
-  failed?: boolean; // Send never reached the backend
-  disclaimer?: string;
-}
-
 // Re-export all tool data types for convenience
 export type {
   DeepResearchResults,

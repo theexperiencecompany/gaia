@@ -146,7 +146,7 @@ async def get_briefing(
     if briefing.opened_at is None:
         opened = await briefing_repository.mark_opened(user_id, briefing.id)
         if opened is not None:
-            capture(UserId(user_id), BriefingOpened(kind=briefing.kind))
+            capture(UserId(user_id), BriefingOpened(kind=briefing.kind.value))
             briefing = opened
     return await briefing_view(briefing)
 

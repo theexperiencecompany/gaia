@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, sentinel
 from pymongo.errors import PyMongoError
 import pytest
 
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, IntegrationStatus
 from app.constants.log_tags import LogTag
 from app.constants.scouts import LEARN_SCOUT_TASK
 from app.constants.waits import WaitCondition
@@ -16,6 +17,7 @@ from app.services.briefing.scouts.lifecycle import SCOUT_INTEGRATION_HOOKS
 from app.services.integrations.user_integration_status import (
     publish_connected,
     reconnect_or_unknown,
+    update_user_integration_status,
 )
 from app.utils.redis_utils import RedisPoolManager
 
@@ -111,3 +113,57 @@ class TestPublishConnected:
             await publish_connected("user-1", "gmail")
 
         report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")
+
+    async def test_a_connect_continues_the_conversations_waiting_on_it(self) -> None:
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync"),
+            patch(f"{MODULE}.websocket_manager.announce", AsyncMock()) as announce,
+            patch(f"{MODULE}.continue_after_connect", AsyncMock()) as carry_on,
+            patch(f"{MODULE}.report_wait_met", AsyncMock()),
+        ):
+            await publish_connected("user-1", "gmail")
+
+        carry_on.assert_awaited_once_with("user-1", "gmail")
+        announce.assert_awaited_once_with(
+            "user-1",
+            {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": "gmail"}},
+        )
+
+    async def test_a_failed_continue_is_logged_and_still_meets_the_wait(self) -> None:
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync"),
+            patch(f"{MODULE}.websocket_manager.announce", AsyncMock()),
+            patch(
+                f"{MODULE}.continue_after_connect", AsyncMock(side_effect=RuntimeError("log down"))
+            ),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()) as report,
+            patch(f"{MODULE}.log") as log,
+        ):
+            await publish_connected("user-1", "gmail")
+
+        log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Failed to continue conversations waiting on the connect",
+            integration_id="gmail",
+            error="log down",
+            error_type="RuntimeError",
+        )
+        report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")
+
+
+class TestUpdateUserIntegrationStatus:
+    async def test_a_status_other_than_connected_only_tells_open_clients(self) -> None:
+        with (
+            patch(f"{MODULE}.user_integration_repository.set_status", AsyncMock(return_value=True)),
+            patch(f"{MODULE}.websocket_manager.announce", AsyncMock()) as announce,
+            patch(f"{MODULE}.continue_after_connect", AsyncMock()) as carry_on,
+        ):
+            updated = await update_user_integration_status(
+                "user-1", "gmail", IntegrationStatus.EXPIRED
+            )
+
+        assert updated is True
+        announce.assert_awaited_once_with(
+            "user-1",
+            {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": "gmail"}},
+        )
+        carry_on.assert_not_awaited()

@@ -28,6 +28,7 @@ from app.models.briefing_state_models import (
     BriefingStateDocument,
     BriefingWindDown,
 )
+from app.models.notification.notification_models import notification_id
 from app.models.user_activity_models import UserActivityDates
 from app.models.user_models import UserDocument
 from app.services.briefing import held
@@ -104,7 +105,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[_Seams]:
 
     monkeypatch.setattr(pending_brief_items_repository, "list_for_user", list_for_user)
     monkeypatch.setattr(pending_brief_items_repository, "consume", s.consume)
-    monkeypatch.setattr(notification_service, "create_notification", s.notify)
+    monkeypatch.setattr(notification_service, "notify", s.notify)
     with time_machine.travel(_NOW, tick=False):
         yield s
 
@@ -212,3 +213,32 @@ class TestReleaseOnTellMeNow:
 
         seams.notify.assert_not_awaited()
         seams.consume.assert_not_awaited()
+
+
+class TestReleaseHeldItems:
+    async def test_everything_held_goes_out_oldest_first_as_one_notification_keyed_by_its_items(
+        self, seams: _Seams, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def doc(held_id: str, title: str, text: str) -> PendingBriefItemDocument:
+            return PendingBriefItemDocument(
+                id=held_id,
+                user_id=seams.user.id,
+                source=BriefItemSource.WORKFLOW,
+                source_id=f"wf-{held_id}",
+                source_title=title,
+                conversation_id=f"c-{held_id}",
+                text=text,
+            )
+
+        stored = AsyncMock(
+            return_value=[doc("h2", "Digest", "Three new leads"), doc("h1", "Invoices", "All paid")]
+        )
+        monkeypatch.setattr(pending_brief_items_repository, "list_for_user", stored)
+
+        await held.release_held_items(seams.user.id)
+
+        stored.assert_awaited_once_with(seams.user.id, sort=[("created_at", 1)])
+        request = seams.notify.await_args.args[0]
+        assert request.id == notification_id(seams.user.id, "held_release", "h1,h2")
+        assert request.content.body == "Digest: Three new leads\nInvoices: All paid"
+        seams.consume.assert_awaited_once_with(seams.user.id, ["h2", "h1"])

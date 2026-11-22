@@ -21,7 +21,6 @@ import filetype
 from PIL import Image
 import pymupdf
 
-from app.agents.workspace.paths import is_inlineable_content_type
 from app.config.settings import settings
 from app.constants.files import BlobKind
 from app.constants.short_links import (
@@ -65,6 +64,7 @@ from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
     ShortLinkContentRestricted,
     ShortLinkPublishRejected,
+    ShortLinkSizeBucket,
 )
 from shared.py.wide_events import log
 
@@ -86,6 +86,17 @@ _RENDER_BY_MIME: dict[str, RenderMode] = {
     "audio/wav": RenderMode.MEDIA,
     "audio/x-wav": RenderMode.MEDIA,
 }
+# Declared types outside text/* that are still text, so they are served as TEXT.
+_TEXT_APPLICATION_TYPES = frozenset(
+    {
+        "application/json",
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/javascript",
+        "application/x-sh",
+    }
+)
 # Types whose bytes are text: they must decode as UTF-8 and carry no binary signature.
 _TEXTUAL_RENDERS = frozenset({RenderMode.FRAME_ACTIVE, RenderMode.IMAGE_SVG, RenderMode.TEXT})
 # What filetype reports for a matching binary: webm and wav sniff under another name.
@@ -104,7 +115,11 @@ _SIZE_CAPS: dict[RenderMode, int] = {
 _LOOKS_LIKE_CREDENTIAL_FORM = re.compile(
     rb"""<input\b[^>]*\btype\s*=\s*["']?password|autocomplete\s*=\s*["']?cc-""", re.IGNORECASE
 )
-_SIZE_BUCKETS = ((100 * 1024, "lt_100kb"), (1024 * 1024, "lt_1mb"), (10 * 1024 * 1024, "lt_10mb"))
+_SIZE_BUCKETS: tuple[tuple[int, ShortLinkSizeBucket], ...] = (
+    (100 * 1024, "lt_100kb"),
+    (1024 * 1024, "lt_1mb"),
+    (10 * 1024 * 1024, "lt_10mb"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +145,9 @@ def _is_text(data: bytes) -> bool:
 def served_type(declared_mime: str, data: bytes) -> ServedType:
     """Decide what the bytes are served as: the declared type when the bytes agree, else a download."""
     render = _RENDER_BY_MIME.get(declared_mime)
-    if render is None and is_inlineable_content_type(declared_mime):
+    if render is None and (
+        declared_mime.startswith("text/") or declared_mime in _TEXT_APPLICATION_TYPES
+    ):
         render = RenderMode.TEXT
     if render is None:
         return ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
@@ -211,7 +228,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
     return None
 
 
-def _size_bucket(size: int) -> str:
+def _size_bucket(size: int) -> ShortLinkSizeBucket:
     return next((name for limit, name in _SIZE_BUCKETS if size < limit), "gte_10mb")
 
 

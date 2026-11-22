@@ -128,9 +128,9 @@ const gitLsFiles = (patterns) =>
 function sizeFiles(args) {
   const explicit = explicitFileList(args);
   if (explicit.length > 0) {
-    return explicit.filter(
-      (p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)) && !shouldIgnore(p),
-    );
+    return explicit
+      .filter((p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)))
+      .filter((p) => !shouldIgnore(p));
   }
   return gitLsFiles([
     "*.ts",
@@ -524,9 +524,9 @@ function cmdTypesLocation(argv) {
 
 function cmdDocComments(argv) {
   // existsSync: `git ls-files` still lists a file deleted but not yet staged.
-  const findings = sizeFiles(argv).flatMap((file) =>
-    existsSync(file) ? checkDocComments(file) : [],
-  );
+  const findings = sizeFiles(argv)
+    .filter((file) => existsSync(file))
+    .flatMap((file) => checkDocComments(file));
 
   if (findings.length > 0) {
     console.error(`\n❌ doc-comments gate FAILED — ${findings.length} finding(s):\n`);
@@ -984,6 +984,7 @@ function usage() {
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
       "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
+      "  skills-symlink                         .claude/skills is a symlink to .agents/skills, not a second copy",
     ].join("\n"),
   );
 }

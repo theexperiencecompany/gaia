@@ -3,10 +3,8 @@
 Anything GAIA sends on its own initiative to Telegram/WhatsApp/Discord/Slack/
 iMessage (a workflow result, a fired reminder, a notification, the morning
 brief with its edition image) goes through post_to_platform_chat, so it lands
-where the user will reply: saved into their DM conversation and recorded in
-that conversation's LangGraph thread.
-Without both, the user's reply reaches an agent that has no idea what it just
-said.
+where the user will reply: logged as a Notice in their DM conversation, which
+the bot's follower sends and the next comms step reads.
 
 Being the one path, it is also where quiet hours apply to a message: one sent
 inside the user's quiet hours (quiet_hours.quiet_hours_end), unless its class
@@ -14,14 +12,11 @@ is exempt, is scheduled as a durable job for their end instead of being sent,
 so no caller knows about quiet hours.
 """
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 import hashlib
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from app.agents.core.background.thread_record import record_platform_delivery
 from app.constants.log_tags import LogTag
 from app.constants.notifications import (
     CHAT_CAPTION_MAX_CHARS,
@@ -30,62 +25,36 @@ from app.constants.notifications import (
     QUIET_HOURS_EXEMPT,
     ProactiveMessageClass,
 )
-from app.models.chat_models import ConversationSource, MessageModel, UpdateMessagesRequest
+from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Notice
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
-from app.services.conversation_service import update_messages
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
 from app.services.delivery.chat_channel import ChatChannel, ChatChannelBasis
-from app.services.outbound_delivery import (
-    OutboundResult,
-    publish_outbound_message,
-    publish_outbound_photo,
-)
+from app.services.outbound_delivery import OutboundResult
 from app.services.quiet_hours import quiet_hours_end
 from app.utils.message_breaks import split_for_caption, split_message_bubbles
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import log
 
 
-@dataclass(frozen=True, slots=True)
-class PlatformImage:
-    """A hosted image sent as a photo, the message's first bubble as its caption."""
+class ProactiveMessage(BaseModel):
+    """One message GAIA sends on its own: the Notice it logs, and the quiet-hours class it obeys.
 
-    url: str
-    filename: str
-
-
-async def _publish(
-    channel: ChatChannel, user_id: str, bubbles: list[str], image: PlatformImage | None
-) -> OutboundResult:
-    """Publish the bubbles, or the image captioned with the first and the rest after it.
-
-    Captions are sent as raw text, so a short first bubble keeps the caption plain while
-    the bubbles after it go out as messages the bots render as markdown. A caption past
-    the platform limit continues as follow-up text in the same chat lane, so it arrives
-    after the photo; nothing follows a failed photo.
+    notice_id keys the Notice, so a retried send logs it once; with image_url the
+    follower sends the image captioned with the first bubble.
     """
-    source, platform_user_id = channel.source, channel.platform_user_id
-    if image is None:
-        return await publish_outbound_message(
-            source, user_id, bubbles, destination_override=platform_user_id
-        )
-    first, *later = bubbles
-    caption, *overflow = split_for_caption(first, limit=CHAT_CAPTION_MAX_CHARS)
-    rest = [*overflow, *later]
-    result = await publish_outbound_photo(
-        source,
-        user_id,
-        image.url,
-        image.filename,
-        caption=caption,
-        destination_override=platform_user_id,
-    )
-    if result is OutboundResult.PUBLISHED and rest:
-        return await publish_outbound_message(
-            source, user_id, rest, destination_override=platform_user_id
-        )
-    return result
+
+    model_config = ConfigDict(frozen=True)
+
+    notice_id: str
+    text: str
+    origin: str
+    message_class: ProactiveMessageClass
+    image_url: str | None = None
 
 
 class DeferredChatMessage(BaseModel):
@@ -97,10 +66,7 @@ class DeferredChatMessage(BaseModel):
     source: ConversationSource
     platform_user_id: str
     basis: ChatChannelBasis
-    text: str
-    origin: str
-    message_class: ProactiveMessageClass
-    image: PlatformImage | None = None
+    message: ProactiveMessage
 
     @property
     def channel(self) -> ChatChannel:
@@ -110,23 +76,24 @@ class DeferredChatMessage(BaseModel):
         )
 
 
-async def post_to_platform_chat(
-    *,
-    user: AuthenticatedUser,
-    channel: ChatChannel,
-    text: str,
-    origin: str,
-    message_class: ProactiveMessageClass,
-    image: PlatformImage | None = None,
-) -> OutboundResult:
-    """Save, send, and remember one proactive message in the user's DM on channel's platform.
+def _captioned(bubbles: list[str]) -> list[str]:
+    """Split the first bubble so it fits a photo caption; the rest follows the photo as text."""
+    first, *later = bubbles
+    return [*split_for_caption(first, limit=CHAT_CAPTION_MAX_CHARS), *later]
 
-    A message the user's quiet hours hold is scheduled for their end (DEFERRED).
-    Otherwise it is saved to the DM, published as bubbles (or as image captioned
-    with the first), and once published recorded in that conversation's checkpoint. Session, storage or scheduling
-    failures raise.
+
+async def post_to_platform_chat(
+    *, user: AuthenticatedUser, channel: ChatChannel, message: ProactiveMessage
+) -> OutboundResult:
+    """Log message as a Notice in the user's DM on channel's platform.
+
+    A message the user's quiet hours hold is scheduled for their end (DEFERRED);
+    one with nothing to say is SKIPPED.
     """
-    deliver_at = await _quiet_hours_end(user.user_id, message_class)
+    bubbles = split_message_bubbles(message.text)
+    if not bubbles:
+        return OutboundResult.SKIPPED
+    deliver_at = await _quiet_hours_end(user.user_id, message.message_class)
     if deliver_at is not None:
         await _schedule(
             DeferredChatMessage(
@@ -134,58 +101,37 @@ async def post_to_platform_chat(
                 source=channel.source,
                 platform_user_id=channel.platform_user_id,
                 basis=channel.basis,
-                text=text,
-                origin=origin,
-                message_class=message_class,
-                image=image,
+                message=message,
             ),
             deliver_at,
         )
         return OutboundResult.DEFERRED
 
-    source, platform_user_id = channel.source, channel.platform_user_id
-    # Comms splits its reply into bubbles with the break sentinel; the publish
-    # and the checkpoint record both need the split, not the raw control tokens.
-    bubbles = split_message_bubbles(text)
     conversation_id = await BotService.get_or_create_session(
-        platform=source.value,
-        platform_user_id=platform_user_id,
+        platform=channel.source.value,
+        platform_user_id=channel.platform_user_id,
         # No channel: this goes to the user's DM, the only destination the
         # platform link can name. See BotService.build_session_key.
         channel_id=None,
         user=user,
         is_dm=True,
     )
-    bot_message = MessageModel(type="bot", response=text, date=datetime.now(UTC).isoformat())
-    bot_message.message_id = str(uuid4())
-    await update_messages(
-        UpdateMessagesRequest(conversation_id=conversation_id, messages=[bot_message]),
-        user=user,
+    notice = Notice(
+        id=message.notice_id,
+        text=NEW_MESSAGE_BREAKER.join(_captioned(bubbles) if message.image_url else bubbles),
+        origin=message.origin,
+        image_url=message.image_url,
     )
-    # The channel already carries the account id; destination_override skips a
-    # second read of the user document to recompute it.
-    result = await _publish(channel, user.user_id, bubbles, image)
-    outcome: dict[str, object] = {
-        "platform": source.value,
-        "conversation_id": conversation_id,
-        "message_id": bot_message.message_id,
-        "bubbles": len(bubbles),
-    }
-    if result is OutboundResult.FAILED:
-        log.error(f"{LogTag.AGENT} proactive platform publish failed", **outcome)
-    else:
-        log.info(
-            f"{LogTag.AGENT} proactive message posted to platform chat",
-            result=result.value,
-            **outcome,
-        )
-    if result is OutboundResult.PUBLISHED:
-        delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
-        await record_platform_delivery(
-            conversation_id,
-            f"[Delivered to the user on {source.display_name} ({origin})]: {delivered_text}",
-        )
-    return result
+    await accept(runtime_ports(), conversation_id, user.user_id, notice)
+    log.info(
+        f"{LogTag.AGENT} proactive message logged in platform chat",
+        platform=channel.source.value,
+        conversation_id=conversation_id,
+        notice_id=message.notice_id,
+        bubbles=len(bubbles),
+        image=message.image_url is not None,
+    )
+    return OutboundResult.PUBLISHED
 
 
 async def _quiet_hours_end(user_id: str, message_class: ProactiveMessageClass) -> datetime | None:
@@ -215,6 +161,6 @@ async def _schedule(message: DeferredChatMessage, deliver_at: datetime) -> None:
     log.info(
         f"{LogTag.AGENT} proactive message held for quiet hours",
         platform=message.source.value,
-        message_class=message.message_class.value,
+        message_class=message.message.message_class.value,
         deliver_at=deliver_at.isoformat(),
     )

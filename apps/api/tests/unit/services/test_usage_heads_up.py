@@ -7,6 +7,7 @@ would store. The notification write is the boundary that is stubbed.
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import fakeredis.aioredis
 import pytest
@@ -39,7 +40,7 @@ def created() -> Iterator[AsyncMock]:
     """Stub the notification write and answer the allowance window for known users only."""
     notify = AsyncMock()
     with (
-        patch.object(notification_service, "create_notification", notify),
+        patch.object(notification_service, "notify", notify),
         patch.object(
             usage_heads_up,
             "monthly_allowance_window",
@@ -66,6 +67,9 @@ class TestMonthlyHeadsUp:
         await notify_monthly_heads_up_once(USER)
 
         request = created.await_args.args[0]
+        assert request.id == str(
+            uuid5(NAMESPACE_URL, "gaia-notification:u-heads-up:usage_heads_up:monthly:20990115")
+        )
         assert request.user_id == USER
         assert request.source == NotificationSourceEnum.USAGE_LIMIT
         assert request.content.title == "Most of this month's usage allowance is used"

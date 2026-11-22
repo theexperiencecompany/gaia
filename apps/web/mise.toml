@@ -6,9 +6,6 @@
 #   mise install         # Install dependencies
 #   mise tasks               # List all available commands
 
-[env]
-NEXT_PUBLIC_API_BASE_URL = "http://localhost:{{ env.API_PORT | default(value='8000') }}/api/v1/"
-
 [tasks.dev]
 description = "Run development server with Turbopack"
 run = "pnpm dev"
@@ -19,8 +16,7 @@ run = "pnpm build"
 
 [tasks.deploy]
 description = "Build + deploy to Cloudflare Workers (bakes the production API URL)"
-# Overrides the localhost [env] above so the production build points at the real
-# API. Task-level env takes precedence over the global [env] in mise.
+# Task env beats .env.worktree and apps/web/.env, so the production build points at the real API.
 env = { NEXT_PUBLIC_API_BASE_URL = "https://api.heygaia.io/api/v1/" }
 run = "pnpm run deploy"
 

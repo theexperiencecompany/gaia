@@ -1,11 +1,11 @@
-/** Parse boundaries for the artifact frames and cards, tied to the generated API types. */
+/** Parse boundary for the artifact_done tool card, tied to its declared type. */
 import { z } from "zod";
+import type { ArtifactKind } from "../api/generated";
 import type {
-  ArtifactDelta,
+  ArtifactCardData,
+  ArtifactCardStatus,
   ArtifactFailureReason,
-  ArtifactKind,
-} from "../api/generated";
-import type { ArtifactCardData, ArtifactCardStatus } from "./types";
+} from "./types";
 
 /** Every value of a union, each keyed by itself: a missing or an extra value fails to compile. */
 type EveryValue<Union extends string> = { readonly [Value in Union]: Value };
@@ -30,27 +30,18 @@ const ARTIFACT_FAILURE_REASONS = {
 } as const satisfies EveryValue<ArtifactFailureReason>;
 
 const ARTIFACT_CARD_STATUSES = {
+  streaming: "streaming",
   ready: "ready",
   failed: "failed",
-  streaming: "streaming",
   stopped: "stopped",
 } as const satisfies EveryValue<ArtifactCardStatus>;
 
-const header = {
+export const ArtifactCardDataSchema = z.object({
   stream_id: z.string(),
   kind: z.enum(ARTIFACT_KIND_VALUES),
   title: z.string(),
-};
-
-export const ArtifactDeltaSchema = z.object({
-  ...header,
-  delta: z.string(),
-}) satisfies z.ZodType<ArtifactDelta>;
-
-export const ArtifactCardDataSchema = z.object({
-  ...header,
   status: z.enum(ARTIFACT_CARD_STATUSES),
   artifact_id: z.string().nullish(),
   reason: z.enum(ARTIFACT_FAILURE_REASONS).nullish(),
-  program: z.string().optional(),
+  program: z.string().nullish(),
 }) satisfies z.ZodType<ArtifactCardData>;

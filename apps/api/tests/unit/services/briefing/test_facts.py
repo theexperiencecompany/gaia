@@ -245,6 +245,7 @@ class TestWhatTheVoiceMayLink:
         facts = _facts(_chosen(self._work(todo_id, url)), _sources(artifacts={"t1": art}))
 
         assert ("| linkable" in facts.block) is linked
+        assert facts.addresses == ({1: url} if url else {})
 
 
 class TestWhatProseMayQuote:
@@ -346,6 +347,20 @@ class TestTheCalendarAndTheCharts:
         assert facts.values.series["meetings"][SeriesField.TOTAL] == "7"
         assert facts.values.series["meetings"][SeriesField.PEAK] == "4"
         assert facts.values.series["focus"][SeriesField.LATEST] == "1"
+
+    @pytest.mark.parametrize(
+        "picked",
+        [[], [[]]],
+        ids=["a-section-with-no-picks", "an-item-with-no-pick"],
+    )
+    def test_sections_and_their_picks_must_pair_up(
+        self, picked: list[list[tuple[int, BriefCandidate]]]
+    ) -> None:
+        item = BriefingItem(text="Venue", kind=ItemState.YOU, action=BriefAction.REPLY)
+        section = BriefingSection(numeral="I", title="Waiting", items=[item])
+
+        with pytest.raises(ValueError, match="zip"):
+            _facts(Chosen(sections=[section], picked=picked), _sources())
 
     def test_events_and_their_ids_must_pair_up(self) -> None:
         event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")

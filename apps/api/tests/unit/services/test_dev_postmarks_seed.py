@@ -12,6 +12,7 @@ from app.config.settings import settings
 from app.constants.briefing import (
     DAILY_KICKER,
     SECTION_NUMERALS,
+    WEEKLY_KICKER,
     ArtFamily,
     BriefAction,
     BriefingKind,
@@ -22,7 +23,12 @@ from app.constants.briefing import (
 from app.constants.notifications import NotificationChannel
 from app.models.brief_composition_models import SectionBlock
 from app.models.brief_document_models import DeliveryStep, EditionRender
-from app.models.brief_payload_models import BriefingPayload
+from app.models.brief_payload_models import (
+    BriefingEvent,
+    BriefingMood,
+    BriefingPayload,
+    BriefingTallies,
+)
 from app.models.short_link_models import RecordTarget, ShortLink, ShortLinkTargetType
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
@@ -258,6 +264,29 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
     ]
     assert [(b.kind, b.section) for b in weekly.blocks] == [("items", 0), ("items", 1)]
     assert seeded.deliver.await_count == 5
+
+
+async def test_the_weekly_recap_reads_as_its_own_issue_with_the_week_ahead(user, seeded) -> None:
+    await seed_dev_editions(user, 1)
+
+    weekly = seeded.payloads()[-1]
+    recap_day = date(2026, 10, 11)
+    assert (weekly.kicker, weekly.date) == (WEEKLY_KICKER, recap_day.isoformat())
+    assert [s.numeral for s in weekly.sections] == [SECTION_NUMERALS[0], SECTION_NUMERALS[1]]
+    assert (weekly.mood, weekly.caption) == (
+        BriefingMood.CLEAR,
+        "Two decisions and the week is closed.",
+    )
+    assert weekly.hue == hue_for_day(recap_day.timetuple().tm_yday)
+    assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
+    # The lede's "closed 14 todos and I handled 22" is the tallies, read aloud.
+    assert weekly.tallies == BriefingTallies(done_by_you=14, done_by_gaia=22)
+    assert weekly.message == weekly.lede
+    assert weekly.week is not None
+    assert weekly.week.ahead == [
+        BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
+        BriefingEvent(date="2026-10-14", start="18:40", title="Flight to Lisbon"),
+    ]
 
 
 async def test_a_framed_family_is_seeded_hanging_a_painting_that_fits_it(user, seeded) -> None:

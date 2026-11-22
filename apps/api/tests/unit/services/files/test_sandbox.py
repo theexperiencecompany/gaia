@@ -88,7 +88,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", timer),
             patch.object(sandbox, "write_session_file", writer),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             path = await sandbox.mirror_upload(USER, CONV, _mirror())
 
@@ -111,9 +110,6 @@ class TestMirrorUpload:
             call(uploads / "f-1_table.png", 0o444),
             call(uploads / "f-1_table.png.summary.md", 0o444),
         ]
-        # Regression: the upload was published as an artifact event, so chat drew the
-        # user's own file as a GAIA card.
-        publish.assert_not_awaited()
 
     async def test_a_page_only_summary_reaches_the_sidecar(self, workspace):
         root, uploads = workspace
@@ -122,7 +118,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "write_session_file", _fake_writer(root)),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             await sandbox.mirror_upload(
                 USER,
@@ -143,7 +138,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "write_session_file", writer),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             await sandbox.mirror_upload(
                 USER, CONV, _mirror(description=None, page_wise_summary=None)
@@ -288,7 +282,6 @@ class TestDeleteUpload:
             patch.object(sandbox, "session_root", return_value=root) as session_root,
             patch.object(sandbox, "fs_timer", timer),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is True
 
@@ -300,12 +293,6 @@ class TestDeleteUpload:
         ]
         assert not (uploads / "f-1_a.png").exists()
         assert not (uploads / "f-1_a.png.summary.md").exists()
-        assert publish.await_args.args[0] == USER
-        assert publish.await_args.args[1] == {
-            "event": "remove",
-            "session_id": CONV,
-            "path": "f-1_a.png",
-        }
 
     async def test_removes_a_sidecar_whose_file_is_already_gone(self, workspace):
         _root, uploads = workspace
@@ -314,7 +301,6 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is True
 
@@ -324,12 +310,10 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             assert await sandbox.delete_upload(USER, CONV, "missing.png") is False
 
         chmod.assert_not_awaited()
-        publish.assert_not_awaited()
 
     async def test_returns_false_when_the_mount_is_unavailable(self, workspace):
         _root, uploads = workspace
@@ -340,12 +324,10 @@ class TestDeleteUpload:
             patch.object(
                 sandbox, "chmod_path", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
             ),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
             patch.object(sandbox, "log") as mock_log,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is False
 
-        publish.assert_not_awaited()
         mock_log.warning.assert_called_once_with(
             "[files] juicefs unavailable; not deleting upload",
             error="no mount",
@@ -361,12 +343,10 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock(side_effect=RuntimeError("io"))),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
             patch.object(sandbox, "log") as mock_log,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is False
 
-        publish.assert_not_awaited()
         mock_log.error.assert_called_once_with(
             "[files] failed to delete upload from sandbox",
             error="io",

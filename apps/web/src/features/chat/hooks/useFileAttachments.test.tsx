@@ -13,8 +13,8 @@ import {
   SUPPORTED_FILE_TYPES_LABEL,
 } from "@/features/chat/constants/files";
 import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
+import { useActiveLiveLoading } from "@/features/chat/live/useLiveChat";
 import { useComposerStore } from "@/stores/composerStore";
-import { useActiveLoading } from "@/stores/streamStore";
 
 const toastError = vi.fn();
 
@@ -136,8 +136,8 @@ describe("useFileAttachments", () => {
       `photos.zip: this file type isn't supported. ${SUPPORTED_FILE_TYPES_LABEL}.`,
     );
   });
-  // Regression: an upload set the stream store's aux loading, so GAIA's thinking
-  // line read "Uploading files..." for the user's own action.
+  // Regression: an upload set GAIA's loading row, so its thinking line read
+  // "Uploading files..." for the user's own action.
   it("keeps an upload on the user's chip and off GAIA's loading indicator", async () => {
     let finishUpload: () => void = () => undefined;
     uploadFile.mockImplementationOnce(
@@ -155,7 +155,7 @@ describe("useFileAttachments", () => {
     );
     const { result } = renderHook(() => ({
       attachments: useFileAttachments(),
-      loading: useActiveLoading(),
+      loading: useActiveLiveLoading(),
     }));
 
     let attaching: Promise<void> = Promise.resolve();

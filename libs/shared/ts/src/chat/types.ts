@@ -5,7 +5,11 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
-import type { ToolDataEntry, WorkflowDelivery } from "../api/generated";
+import type {
+  ToolDataEntry,
+  ToolProgress,
+  WorkflowDelivery,
+} from "../api/generated";
 import type { ArtifactCardData } from "../artifacts/types";
 
 export type {
@@ -687,10 +691,9 @@ export interface MCPAppData {
 // Tool calls data (progress entries)
 // ---------------------------------------------------------------------------
 
-export interface ToolCallEntry {
-  tool_name: string;
-  tool_category: string;
-  message: string;
+/** One tool call of a run: the progress line the server states for it, plus the call itself. */
+export interface ToolCallEntry
+  extends Pick<ToolProgress, "tool_name" | "tool_category" | "message"> {
   show_category?: boolean;
   tool_call_id?: string;
   inputs?: Record<string, unknown>;
@@ -714,16 +717,16 @@ export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 export const BROWSER_TASK_TOOL_NAME = "browser_task";
 export const BROWSER_TOOL_CATEGORY = "browser";
 
+/** A subagent's row as the client folds it from its start, tool calls and end frames. */
 export interface SubagentGroupData {
   subagent_id: string;
   subagent_name: string;
-  /** "handoff" = integration subagent (Gmail, GitHub etc); "spawned" = lightweight task agent */
   agent_type: "handoff" | "spawned";
+  started_at: string;
   /** Accumulated tool calls from this subagent, in order of emission */
   tool_calls: ToolCallEntry[];
   duration_ms: number | null;
   token_count: number | null;
-  started_at: string;
   completed_at: string | null;
   /** Integration icon URL forwarded from the backend */
   icon_url: string | null;
