@@ -25,12 +25,12 @@ from app.constants.agents import (
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
+from app.helpers import agent_helpers
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
     AgentTracing,
     AgentTurn,
-    recent_assistant_replies,
     recent_user_messages,
 )
 from app.models.agent_models import SilentRunResult, agent_user_context
@@ -1452,7 +1452,7 @@ class TestTheLaneTheRunResolves:
                 execution_mode="interactive",
                 source="web",
                 user_messages=recent_user_messages(request.messages, request.message),
-                assistant_turns=recent_assistant_replies(request.messages),
+                assistant_turns=agent_helpers.recent_assistant_replies(request.messages),
                 user_request=request.message,
                 user_preferences=None,
                 writing_style=None,

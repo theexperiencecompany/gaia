@@ -26,7 +26,11 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
-from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
+from app.constants.hil import (
+    HIL_JUDGE_MAX_ASSISTANT_TURNS,
+    HIL_JUDGE_MIN_QUOTE_WORDS,
+    HIL_LLM_TIMEOUT_SECONDS,
+)
 from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
@@ -226,6 +230,24 @@ def history_line(history: AutoHistory, tool_name: str) -> str:
     return line
 
 
+@dataclass(frozen=True)
+class AssistantTurns:
+    """The assistant's recent words: context for a shorthand, never authorization.
+
+    shown are the replies the user saw before their turn, the only ones that may
+    ground a pick from a listed result. run are this run's own messages, unseen.
+    """
+
+    shown: tuple[str, ...] = ()
+    run: tuple[str, ...] = ()
+
+    def context(self) -> list[str]:
+        """Return what the user saw first; this run's own messages fill only what is left."""
+        kept = list(self.shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:])
+        room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
+        return [*kept, *self.run[-room:]] if room else kept
+
+
 class IntentJudge(Protocol):
     """Decide one auto-mode call.
 
@@ -242,7 +264,7 @@ class IntentJudge(Protocol):
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision: ...
 
 
@@ -263,14 +285,13 @@ async def judge_intent(
     call: JudgedCall,
     prior_calls: list[PriorCall],
     judge: IntentJudge | None = None,
-    assistant_turns: list[str] | None = None,
+    assistant: AssistantTurns = AssistantTurns(),
 ) -> IntentDecision:
     """Decide whether the user's own words authorize this call; fails toward asking.
 
     No user turns and a tool on the never-auto list both ask without spending a
-    call. assistant_turns is recent assistant prose: context for what a shorthand
-    refers to ("send it" after "your draft to X is ready"), never authorization —
-    only user turns authorize.
+    call. assistant is recent assistant prose: context for what a shorthand refers
+    to ("send it" after "your draft to X is ready"), never authorization.
     """
     turns = [text for text in user_messages if text.strip()]
     if not turns:
@@ -294,7 +315,7 @@ async def judge_intent(
             call=call,
             prior_calls=prior_calls,
             history=auto.history,
-            assistant_turns=assistant_turns,
+            assistant=assistant,
         )
     except Exception as e:  # a judge failure must fall back to asking
         log.warning(
@@ -317,10 +338,10 @@ class _LLMIntentJudge:
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision:
         verdict = await _ask_judge(
-            user_id, user_messages, call, prior_calls, history, assistant_turns or []
+            user_id, user_messages, call, prior_calls, history, assistant.context()
         )
         # Grounded against EVERY user turn, not just the latest: "looks good, send
         # it" is authorized by the earlier "draft an email to Bob about the deck".
@@ -476,12 +497,16 @@ def _matches_any(turn: str, patterns: tuple[str, ...]) -> bool:
 
 
 def user_held_or_denied(user_messages: list[str], history: AutoHistory) -> bool:
-    """Whether an unlifted hold or recent denials ask for the user's go-ahead before any run.
+    """Whether an unlifted hold or any recent denial asks for the user's go-ahead first.
 
+    Stricter than _history_blocks on purpose: a call the user's words don't authorize
+    runs on containment alone, so even one recent "no" to this tool keeps it asking.
     Forbid words are not here: "can't" and "never" fill ordinary chat, so a forbid
     is the judge's call (the LLM judge's reject, JEV's focused forbid question).
     """
-    return _unlifted(user_messages, _HOLD_PATTERNS, _HOLD_LIFT_PATTERNS) or _history_blocks(history)
+    return (
+        _unlifted(user_messages, _HOLD_PATTERNS, _HOLD_LIFT_PATTERNS) or history.denied_recent > 0
+    )
 
 
 def _history_blocks(history: AutoHistory) -> bool:
@@ -573,7 +598,8 @@ def _entries_holding(output: str, target: str) -> list[str]:
     try:
         parsed: object = json.loads(output)
     except (json.JSONDecodeError, ValueError):
-        return [line for line in output.splitlines() if target in line]
+        holds = re.compile(rf"(?<![\w-]){re.escape(target)}(?![\w-])")
+        return [line for line in output.splitlines() if holds.search(line)]
     return [_own_fields(node) for node in _objects(parsed) if target in node.values()]
 
 

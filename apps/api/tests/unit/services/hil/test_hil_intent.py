@@ -15,10 +15,15 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.client import StructuredCallOptions, silent_metered_config
-from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
+from app.constants.hil import (
+    HIL_JUDGE_MAX_ASSISTANT_TURNS,
+    HIL_JUDGE_MIN_QUOTE_WORDS,
+    HIL_LLM_TIMEOUT_SECONDS,
+)
 from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoContext,
     AutoHistory,
     IntentDecision,
@@ -381,10 +386,10 @@ class TestTheOutcomeVocabulary:
             call=JudgedCall(tool_name="send_email", description="", args={}, summary="s"),
             prior_calls=[],
             judge=_Recording(),
-            assistant_turns=["Your draft to bob is ready."],
+            assistant=AssistantTurns(shown=("Your draft to bob is ready.",)),
         )
 
-        assert seen["assistant_turns"] == ["Your draft to bob is ready."]
+        assert seen["assistant"] == AssistantTurns(shown=("Your draft to bob is ready.",))
 
     async def test_the_tools_own_schema_is_rendered_into_the_prompt(self) -> None:
         schema: dict[str, object] = {"draft_id": {"type": "string", "title": "Draft Id"}}
@@ -559,6 +564,34 @@ class TestContainedActionsRunWithoutExplicitWords:
 
         assert decision.outcome == "accept"
 
+    @pytest.mark.parametrize(
+        ("history", "outcome"),
+        [
+            (AutoHistory(approved_recent=2, denied_recent=1), "ask"),
+            (AutoHistory(), "accept"),
+        ],
+    )
+    async def test_any_recent_denial_holds_it_and_blank_history_does_not(
+        self, history: AutoHistory, outcome: str
+    ) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=verdict(verdict="ask", risk_factors=[])),
+        ):
+            decision = await judge_intent(
+                AutoContext(user_id="u-hil", history=history),
+                user_messages=USER_TURNS,
+                call=JudgedCall(
+                    tool_name="NOTION_INSERT_MARKDOWN",
+                    description="Insert markdown into a page.",
+                    args={"page_id": "p1", "markdown": "notes"},
+                    summary="Insert into p1",
+                ),
+                prior_calls=[],
+            )
+
+        assert decision.outcome == outcome
+
     async def test_recent_denials_keep_it_asking(self) -> None:
         with patch(
             f"{MODULE}.ainvoke_structured",
@@ -577,6 +610,30 @@ class TestContainedActionsRunWithoutExplicitWords:
             )
 
         assert decision.outcome == "ask"
+
+
+class TestTheAssistantsWordsTheJudgeReads:
+    def test_a_runs_own_messages_never_push_out_what_the_user_saw(self) -> None:
+        shown = "Drafted the reply to Simonne with the invoice attached."
+        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS))
+
+        turns = AssistantTurns(shown=(shown,), run=internal).context()
+
+        assert turns == [shown, *internal[-(HIL_JUDGE_MAX_ASSISTANT_TURNS - 1) :]]
+
+    def test_with_nothing_shown_the_runs_latest_messages_fill_it(self) -> None:
+        internal = tuple(f"step {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 2))
+
+        assert AssistantTurns(run=internal).context() == list(
+            internal[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+        )
+
+    def test_a_full_set_of_shown_replies_leaves_no_room_for_the_run(self) -> None:
+        shown = tuple(f"reply {i}" for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS + 1))
+
+        assert AssistantTurns(shown=shown, run=("step",)).context() == list(
+            shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
+        )
 
 
 # The real shape: Composio's GMAIL_LIST_DRAFTS compacted into one line per draft.
@@ -626,6 +683,14 @@ class TestAPickFromAList:
         )
 
         assert missing == []
+
+    def test_an_id_is_matched_whole_never_as_part_of_a_longer_one(self) -> None:
+        listed = [
+            PriorCall(name="LIST", args={}, output="1. d-10 | simonne@x.com\n2. d-2 | bob@x.com")
+        ]
+
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]
+        assert ungrounded_targets({"id": "d-10"}, ["send simonne's"], listed) == []
 
     def test_a_record_nested_in_a_draft_is_not_the_drafts_recipient(self) -> None:
         listed = [

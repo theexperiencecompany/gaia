@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 
+import httpx
 import pytest
 from scripts.evals import sweep_hil_judge
 from scripts.evals.core.cost import EvalCostTracker
@@ -34,12 +35,13 @@ _CASE = Case(
 )
 
 
-async def _judge(monkeypatch: pytest.MonkeyPatch, backend: str) -> CaseRun:
+async def _judge(monkeypatch: pytest.MonkeyPatch, backend: str, case: Case = _CASE) -> CaseRun:
     monkeypatch.setenv("HIL_JUDGE_EVAL_BACKEND", backend)
+    monkeypatch.setenv("HIL_JUDGE_EVAL_TRANSPORT", "jev")
     cfg = eval_config()
     provider = cfg.providers["fake"]
     return await JudgeTransport().run(
-        _CASE, cfg, EvalCostTracker(cfg.providers, cfg.default_max_usd), provider
+        case, cfg, EvalCostTracker(cfg.providers, cfg.default_max_usd), provider
     )
 
 
@@ -158,14 +160,15 @@ _FORBID_SETUP = {
 
 def _fields(
     choice: str = JevChoice.UNCLEAR,
+    confidence: float = 0.6,
     contained: float = 0.75,
     forbid_choice: str | None = None,
     forbid_conf: float = 0.0,
 ) -> hil_judge.JevJournalFields:
     return hil_judge.JevJournalFields(
         choice=choice,
-        confidence=0.6,
-        probabilities={choice: 0.6},
+        confidence=confidence,
+        probabilities={JevChoice.FORBIDDEN: 0.0, choice: confidence},
         forbid_choice=forbid_choice,
         forbid_conf=forbid_conf,
         contained=contained,
@@ -180,14 +183,68 @@ def test_a_line_needing_a_focused_answer_the_journal_lacks_is_unresolved() -> No
 
 
 def test_a_focused_answer_counts_only_where_prod_would_have_asked_it() -> None:
+    """A stale FORBIDDEN on a case with no forbid words would turn this accept into a reject."""
     fields = _fields(
         choice=JevChoice.AUTHORIZED,
+        confidence=0.95,
         contained=0.1,
         forbid_choice=JevChoice.FORBIDDEN,
         forbid_conf=0.9,
     )
 
-    assert hil_judge._graded_outcome(fields, hil_judge._eval_case(_FORBID_SETUP)) == "ask"
+    assert hil_judge._graded_outcome(fields, hil_judge._eval_case(_CASE.setup)) == "accept"
+
+
+def test_a_decisive_reject_is_graded_without_the_focused_answer() -> None:
+    fields = _fields(choice=JevChoice.FORBIDDEN, confidence=0.99, contained=0.95)
+
+    outcome = hil_judge._graded_outcome(
+        fields, hil_judge._eval_case(_FORBID_SETUP), contained_line=0.70
+    )
+
+    assert outcome == "reject"
+
+
+async def test_a_row_from_before_containment_is_unresolved_where_it_would_ask(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    run = await _jev_run(monkeypatch)
+    legacy = {key: value for key, value in (run.end_state or {}).items() if key != "contained"}
+    legacy.update(choice=JevChoice.UNCLEAR, confidence=0.6)
+
+    report = sweep_journal(_journal(tmp_path, replace(run, end_state=legacy)))
+
+    assert "unresolved=1" in report
+    assert "unresolved=0" not in report
+
+
+async def test_a_failed_extra_focused_request_keeps_the_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prod would not ask the focused question here, so its failure costs only that answer."""
+
+    async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
+        return JevVerdict(choice=JevChoice.UNCLEAR, confidence=0.6, contained=0.1), 10, 2
+
+    async def _ask_jev_forbid(**kwargs: object) -> tuple[str, float, int, int]:
+        raise httpx.ConnectTimeout("slow")
+
+    monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
+    monkeypatch.setattr(hil_judge, "ask_jev_forbid", _ask_jev_forbid)
+
+    run = await _judge(monkeypatch, "jev", replace(_CASE, setup=_FORBID_SETUP))
+
+    end_state = run.end_state or {}
+    assert end_state["outcome"] == "ask"
+    assert end_state["forbid_choice"] is None
+
+
+async def test_a_blank_transport_setting_means_the_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIL_JUDGE_EVAL_TRANSPORT", "")
+
+    JudgeTransport()
 
 
 async def test_the_eval_asks_the_focused_question_whenever_forbid_words_appear(
@@ -201,12 +258,7 @@ async def test_the_eval_asks_the_focused_question_whenever_forbid_words_appear(
 
     monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
     monkeypatch.setattr(hil_judge, "ask_jev_forbid", _ask_jev_forbid)
-    monkeypatch.setenv("HIL_JUDGE_EVAL_BACKEND", "jev")
-    cfg = eval_config()
-    case = replace(_CASE, setup=_FORBID_SETUP)
 
-    run = await JudgeTransport().run(
-        case, cfg, EvalCostTracker(cfg.providers, cfg.default_max_usd), cfg.providers["fake"]
-    )
+    run = await _judge(monkeypatch, "jev", replace(_CASE, setup=_FORBID_SETUP))
 
     assert (run.end_state or {})["forbid_choice"] == JevChoice.PERMITTED

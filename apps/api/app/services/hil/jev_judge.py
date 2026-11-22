@@ -31,6 +31,7 @@ from app.constants.log_tags import LogTag
 from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
     CONTAINED_RUN_REASON,
+    AssistantTurns,
     AutoHistory,
     AutoOutcome,
     IntentDecision,
@@ -217,7 +218,7 @@ class JevIntentJudge:
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision:
         try:
             asked, _in, _out = await ask_jev(
@@ -225,7 +226,7 @@ class JevIntentJudge:
                 call=call,
                 prior_calls=prior_calls,
                 history=history,
-                assistant_turns=assistant_turns,
+                assistant_turns=assistant.context(),
                 transport=self._transport,
             )
         except Exception as e:
@@ -241,7 +242,7 @@ class JevIntentJudge:
                 call=call,
                 prior_calls=prior_calls,
                 history=history,
-                assistant_turns=assistant_turns,
+                assistant=assistant,
             )
         forbid = await self._forbid_verdict(asked, user_messages, call)
         return decide_from_verdict(
@@ -251,7 +252,7 @@ class JevIntentJudge:
                 user_messages=user_messages,
                 prior_calls=prior_calls,
                 history=history,
-                assistant_turns=tuple(assistant_turns or ()),
+                shown_turns=assistant.shown,
             ),
         )
 
@@ -313,15 +314,15 @@ class JevVerdict:
 class JevCase:
     """What a verdict is weighed against: the call, the user's words, the run's history.
 
-    assistant_turns are what the user was shown: they ground a pick from a list
-    the user was pointed at, never authorize anything.
+    shown_turns are the replies the user saw: they ground a pick from a list the
+    user was pointed at, never authorize anything.
     """
 
     call: JudgedCall
     user_messages: list[str]
     prior_calls: list[PriorCall]
     history: AutoHistory
-    assistant_turns: tuple[str, ...] = ()
+    shown_turns: tuple[str, ...] = ()
 
 
 def decide_from_verdict(
@@ -355,7 +356,8 @@ def decide_from_verdict(
         and verdict.contained is not None
         and verdict.contained >= contained_line
         and verdict.choice != JevChoice.FORBIDDEN
-        and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 0.0)
+        # An answer without P(forbidden) can't show the call is safe to run unasked.
+        and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 1.0)
         < HIL_JEV_CONTAINED_MAX_FORBIDDEN
         and (verdict.forbid == JevChoice.PERMITTED or not forbid_tripwire(case.user_messages))
         and not user_held_or_denied(case.user_messages, case.history)
@@ -413,7 +415,7 @@ def _authorization_decision(
             case.user_messages,
             case.prior_calls,
             frozenset(case.history.known_targets),
-            shown_turns=list(case.assistant_turns),
+            shown_turns=list(case.shown_turns),
         )
         if missing:
             return IntentDecision(

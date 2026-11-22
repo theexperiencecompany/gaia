@@ -10,7 +10,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
 
-from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_TURNS, HIL_STATUS_KWARG
+from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.hil_models import (
     ApprovalLedgerDocument,
@@ -21,7 +21,13 @@ from app.models.hil_models import (
 from app.services.hil import gate
 from app.services.hil.bridge import ApprovalOutcome, GatedApproval
 from app.services.hil.fingerprint import approval_fingerprint
-from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
+from app.services.hil.intent import (
+    AssistantTurns,
+    AutoContext,
+    IntentDecision,
+    JudgedCall,
+    summarize_history,
+)
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedCall
@@ -706,7 +712,7 @@ class TestLedgerAutoMode:
             summary=GATED_SUMMARY,
             tool_schema=gate_seams.tool.args,
         )
-        assert kwargs["assistant_turns"] == ["Your draft to b@x is ready."]
+        assert kwargs["assistant"] == AssistantTurns(run=("Your draft to b@x is ready.",))
         assert kwargs["judge"] is None
         assert kwargs["user_messages"] == ["send it to b@x"]
 
@@ -725,24 +731,11 @@ class TestLedgerAutoMode:
             )
         )
 
-        assert gate_seams.judge.await_args.kwargs["assistant_turns"] == [
-            "Drafted the reply to Simonne with the invoice attached.",
-            "Fetched both drafts.",
-        ]
-
-    async def test_a_child_runs_own_messages_never_push_out_what_the_user_saw(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        internal = [AIMessage(content=f"step {i}") for i in range(HIL_JUDGE_MAX_ASSISTANT_TURNS)]
-        shown = "Drafted the reply to Simonne with the invoice attached."
-
-        await gate.decide_tool_call(gated_request(messages=internal, assistant_turns=[shown]))
-
-        turns = gate_seams.judge.await_args.kwargs["assistant_turns"]
-        assert turns[0] == shown
-        assert len(turns) == HIL_JUDGE_MAX_ASSISTANT_TURNS
-        assert turns[-1] == f"step {HIL_JUDGE_MAX_ASSISTANT_TURNS - 1}"
+        # Kept apart: only what the user saw may ground a pick from a listed result.
+        assert gate_seams.judge.await_args.kwargs["assistant"] == AssistantTurns(
+            shown=("Drafted the reply to Simonne with the invoice attached.",),
+            run=("Fetched both drafts.",),
+        )
 
     async def test_the_judge_is_told_which_account_the_call_acts_as(
         self, gate_seams: GateSeams

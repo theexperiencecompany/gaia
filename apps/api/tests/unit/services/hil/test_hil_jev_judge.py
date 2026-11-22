@@ -26,6 +26,7 @@ from app.constants.hil import (
 from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoHistory,
     IntentDecision,
     JudgedCall,
@@ -780,7 +781,7 @@ class TestTheJudgeAroundTheWire:
                 call=_call(),
                 prior_calls=[],
                 history=AutoHistory(),
-                assistant_turns=["Your draft is ready."],
+                assistant=AssistantTurns(shown=("Your draft is ready.",)),
             )
 
         state = client.post.await_args.kwargs["json"]["state"]
@@ -801,7 +802,7 @@ class TestTheJudgeAroundTheWire:
                 call=_call(),
                 prior_calls=prior,
                 history=history,
-                assistant_turns=["ready"],
+                assistant=AssistantTurns(shown=("ready",)),
             )
 
         assert decision == IntentDecision("ask", "llm")
@@ -811,7 +812,7 @@ class TestTheJudgeAroundTheWire:
             call=_call(),
             prior_calls=prior,
             history=history,
-            assistant_turns=["ready"],
+            assistant=AssistantTurns(shown=("ready",)),
         )
         log.warning.assert_called_once()
         assert "JEV judge failed; falling back" in log.warning.call_args.args[0]
@@ -891,7 +892,14 @@ class TestAContainedCallWithForbidWordsAsksThroughItsOwnTransport:
     async def test_both_questions_go_through_the_transport_the_judge_was_given(self) -> None:
         transport = AsyncMock(
             side_effect=[
-                JevDecisionsResponse.model_validate(_answer("unclear", 0.6, contained=0.95)),
+                JevDecisionsResponse.model_validate(
+                    _answer(
+                        "unclear",
+                        0.6,
+                        {"unclear": 0.6, "authorized": 0.4, "forbidden": 0.0},
+                        contained=0.95,
+                    )
+                ),
                 JevDecisionsResponse.model_validate(_forbid_answer("permitted", 0.9)),
             ]
         )
@@ -974,7 +982,12 @@ def _contained_case(
         JevVerdict(
             choice=choice,
             confidence=confidence,
-            probabilities={choice: confidence},
+            # Real answers carry all three choices; the rest goes to the non-forbidden side.
+            probabilities={
+                **dict.fromkeys(("authorized", "unclear"), (1 - confidence) / 2),
+                "forbidden": 0.0,
+                choice: confidence,
+            },
             contained=contained,
         ),
         JevCase(
@@ -1016,7 +1029,6 @@ class TestContainedActionsRunWithoutExplicitWords:
     async def test_no_containment_answer_changes_nothing(self) -> None:
         assert _contained_case(contained=None).outcome == "ask"
 
-    @pytest.mark.regression
     async def test_a_contained_call_the_judge_sees_any_argument_against_asks(self) -> None:
         """A notification after "no notifications after 6pm" scored contained 0.96, P(forbidden) 0.25."""
         decision = decide_from_verdict(
@@ -1067,7 +1079,7 @@ class TestContainedActionsRunWithoutExplicitWords:
             JevVerdict(
                 choice="unclear",
                 confidence=0.6,
-                probabilities={"unclear": 0.6},
+                probabilities={"unclear": 0.6, "authorized": 0.4, "forbidden": 0.0},
                 contained=0.95,
                 forbid=JevChoice.PERMITTED,
             ),
@@ -1123,6 +1135,26 @@ class TestContainedActionsRunWithoutExplicitWords:
     async def test_a_confident_forbid_still_rejects(self) -> None:
         assert _contained_case(choice="forbidden", confidence=0.9).outcome == "reject"
 
+    async def test_one_recent_denial_holds_it_despite_more_approvals(self) -> None:
+        decision = _contained_case(history=AutoHistory(approved_recent=2, denied_recent=1))
+
+        assert decision.outcome == "ask"
+
+    async def test_an_answer_without_a_forbidden_probability_never_runs_on_containment(
+        self,
+    ) -> None:
+        decision = decide_from_verdict(
+            JevVerdict(choice="unclear", confidence=0.6, probabilities={}, contained=0.95),
+            JevCase(
+                call=_call(tool_name="exec", args={"command": "call query-run SELECT 1"}),
+                user_messages=["how many users signed up in the last 9 days?"],
+                prior_calls=[],
+                history=AutoHistory(),
+            ),
+        )
+
+        assert decision.outcome == "ask"
+
 
 class TestAConfirmationOfWhatTheUserWasShown:
     @pytest.mark.regression
@@ -1140,10 +1172,26 @@ class TestAConfirmationOfWhatTheUserWasShown:
                 user_messages=["Send"],
                 prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=listing)],
                 history=AutoHistory(),
-                assistant_turns=(
-                    "I drafted the reply to Simonne with the October invoice attached.",
-                ),
+                shown_turns=("I drafted the reply to Simonne with the October invoice attached.",),
             ),
         )
 
         assert decision.outcome == "accept"
+
+    async def test_only_what_the_user_saw_grounds_the_pick(self) -> None:
+        """The judge's context may hold a run's internal messages; they never ground a pick."""
+        listing = '1. r8807310570127663349 | simonne@intrinsicurlyme.co.za | "Re: Invoice" | pdf'
+        transport = AsyncMock(
+            return_value=JevDecisionsResponse.model_validate(_answer("authorized", 0.92))
+        )
+
+        decision = await JevIntentJudge(fallback=AsyncMock(), transport=transport).decide(
+            user_id="u",
+            user_messages=["Send"],
+            call=_call(tool_name="GMAIL_SEND_DRAFT", args={"draft_id": "r8807310570127663349"}),
+            prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=listing)],
+            history=AutoHistory(),
+            assistant=AssistantTurns(run=("Picked the draft for simonne.",)),
+        )
+
+        assert decision.outcome == "ask"

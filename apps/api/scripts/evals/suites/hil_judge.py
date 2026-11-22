@@ -40,6 +40,7 @@ from app.constants.hil import (
 # suite imports them so editing the judge text IS retuning, and every run
 # journals the questions version it graded.
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoContext,
     AutoHistory,
     JudgedCall,
@@ -156,7 +157,7 @@ def _eval_case(setup: Mapping[str, Any]) -> JevCase:
         user_messages=[str(t) for t in setup.get("turns", [])],
         prior_calls=_eval_priors(setup),
         history=_eval_history(setup),
-        assistant_turns=tuple(_eval_assistant_turns(setup)),
+        shown_turns=tuple(_eval_assistant_turns(setup)),
     )
 
 
@@ -167,7 +168,8 @@ def _settled_forbid(forbid: str | None, forbid_conf: float, reject_floor: float)
     return settle_forbid(forbid, forbid_conf, reject_floor=reject_floor)
 
 
-#: A sweep row whose candidate line needs a focused forbid answer its journal lacks.
+#: A sweep row its journal can't grade at a candidate line: the focused forbid answer or
+#: the containment score that line needs was never recorded.
 UNRESOLVED = "unresolved"
 
 
@@ -186,13 +188,12 @@ def _graded_outcome(
     a candidate that needs it.
     """
     choice, confidence = fields["choice"], fields["confidence"]
+    mapped = map_jev_choice(choice, confidence, accept_line=accept_line, reject_floor=reject_floor)
     needs_forbid = needs_forbid_check(
-        map_jev_choice(choice, confidence, accept_line=accept_line, reject_floor=reject_floor),
-        case.user_messages,
-        contained=fields["contained"],
-        contained_line=contained_line,
+        mapped, case.user_messages, contained=fields["contained"], contained_line=contained_line
     )
-    if needs_forbid and fields["forbid_choice"] is None:
+    # A decisive reject rejects whatever the focused answer would have said.
+    if needs_forbid and fields["forbid_choice"] is None and mapped != "reject":
         return UNRESOLVED
     forbid = (
         _settled_forbid(fields["forbid_choice"], fields["forbid_conf"], reject_floor)
@@ -232,8 +233,9 @@ class JudgeTransport:
 
     def __init__(self) -> None:
         self._backend = os.environ.get("HIL_JUDGE_EVAL_BACKEND", JudgeBackend.JEV)
+        # Blank means unset, so a shell exporting it empty still runs either backend.
         provider = DecisionsProvider(
-            os.environ.get("HIL_JUDGE_EVAL_TRANSPORT", DecisionsProvider.JEV)
+            os.environ.get("HIL_JUDGE_EVAL_TRANSPORT") or DecisionsProvider.JEV
         )
         self._decisions, self._decisions_model = _DECISIONS_PROVIDERS[provider]
 
@@ -294,7 +296,7 @@ class JudgeTransport:
             user_messages=turns,
             call=case.call,
             prior_calls=case.prior_calls,
-            assistant_turns=_eval_assistant_turns(setup),
+            assistant=AssistantTurns(shown=case.shown_turns),
         )
         # App-side metering owns LLM cost, so journal an openly-labelled
         # estimate (source=estimated, never priced) instead of zeros — zeros
@@ -325,6 +327,18 @@ class JudgeTransport:
         # Tripped forbid language earns the focused double-check at ANY line, so the
         # sweep can regrade every candidate line from the journal; prod asks it only
         # where the call may run, and _graded_outcome drops the answer everywhere else.
+        # A failed extra request prod would not have made leaves no answer (the sweep
+        # marks the lines that need one unresolved) rather than losing the verdict.
+        prod_asks_it = needs_forbid_check(
+            map_jev_choice(
+                choice,
+                confidence,
+                accept_line=HIL_JEV_ACCEPT_LINE,
+                reject_floor=HIL_JEV_REJECT_FLOOR,
+            ),
+            turns,
+            contained=asked.contained,
+        )
         forbid: str | None = None
         forbid_conf = 0.0
         forbid_in, forbid_out = 0, 0
@@ -334,9 +348,11 @@ class JudgeTransport:
                     user_messages=turns, call=call, transport=self._decisions
                 )
             except httpx.HTTPError as e:
-                raise ProviderError(provider.name, f"forbid double-check failed: {e}") from e
+                if prod_asks_it:
+                    raise ProviderError(provider.name, f"forbid double-check failed: {e}") from e
             except Exception:
-                forbid, forbid_conf = JEV_FORBID_CHECK_FAILED, 0.0
+                if prod_asks_it:
+                    forbid, forbid_conf = JEV_FORBID_CHECK_FAILED, 0.0
         verdict = JevJournalFields(
             choice=choice,
             confidence=confidence,
@@ -385,9 +401,13 @@ def sweep_journal(run_dir: Path) -> str:
         )
 
     def _regrade(row: dict[str, Any], accept: float, reject: float, contained: float) -> str:
-        """Full pipeline outcome for one journaled case: mapping + vetoes."""
+        """Full pipeline outcome for one journaled case: mapping + vetoes.
+
+        A row journaled before containment was asked can't say whether an "ask"
+        would have run on containment, so it is unresolved rather than graded.
+        """
         es = row["end_state"]
-        return _graded_outcome(
+        outcome = _graded_outcome(
             JevJournalFields(
                 choice=str(es["choice"]),
                 confidence=float(es["confidence"]),
@@ -401,6 +421,7 @@ def sweep_journal(run_dir: Path) -> str:
             reject_floor=reject,
             contained_line=contained,
         )
+        return UNRESOLVED if outcome == "ask" and es.get("contained") is None else outcome
 
     graded = sum(
         1

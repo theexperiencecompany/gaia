@@ -16,6 +16,7 @@ from app.models.hil_models import HILApprovalStatus, HILPreferences
 from app.services.hil import gate
 from app.services.hil.bridge import ApprovalOutcome
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoContext,
     AutoHistory,
     IntentDecision,
@@ -45,7 +46,7 @@ class FakeJudge(IntentJudge):
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
-        assistant_turns: list[str] | None = None,
+        assistant: AssistantTurns = AssistantTurns(),
     ) -> IntentDecision:
         self.calls += 1
         return self._decision

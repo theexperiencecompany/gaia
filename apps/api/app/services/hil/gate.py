@@ -30,7 +30,6 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
-    HIL_JUDGE_MAX_ASSISTANT_TURNS,
     HIL_STATUS_KWARG,
     SUBAGENT_RESUME_CONFIG_KEY,
     HILToolMessageStatus,
@@ -62,6 +61,7 @@ from app.services.hil.bridge import (
 )
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
+    AssistantTurns,
     AutoContext,
     AutoHistory,
     IntentDecision,
@@ -560,8 +560,8 @@ async def _judge(
         # Prior actions and recent assistant words are provenance for arguments,
         # never authorization — only the user's turns authorize.
         prior_calls=prior_tool_calls(request.state, call.id),
-        assistant_turns=_shown_first(
-            list(context.assistant_turns), recent_assistant_turns(request.state)
+        assistant=AssistantTurns(
+            shown=context.assistant_turns, run=tuple(recent_assistant_turns(request.state))
         ),
     )
     if decision.outcome != "ask":
@@ -575,17 +575,6 @@ async def _judge(
             ),
         )
     return decision
-
-
-def _shown_first(shown: list[str], run: list[str]) -> list[str]:
-    """Fit the replies the user saw before their turn first; this run's messages fill what is left.
-
-    A child run's internal messages were never shown to the user, so they must not push
-    out the reply a bare "send it" refers to.
-    """
-    kept = shown[-HIL_JUDGE_MAX_ASSISTANT_TURNS:]
-    room = HIL_JUDGE_MAX_ASSISTANT_TURNS - len(kept)
-    return [*kept, *run[-room:]] if room else kept
 
 
 async def _never_auto_tools(user_id: str) -> frozenset[str]:
