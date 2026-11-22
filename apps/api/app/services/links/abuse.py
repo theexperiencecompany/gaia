@@ -1,6 +1,7 @@
 """Guessing lockout, reports, automatic suspension and admin takedown of heygaia.link links."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from app.config.settings import settings
 from app.constants.email import SUPPORT_SENDER
@@ -96,14 +97,18 @@ async def _is_trusted(reporter_id: str | None) -> bool:
     return created is not None and created <= established
 
 
+def _announce_taken_down(link: ShortLink, reason: Literal["reports_threshold", "admin"]) -> None:
+    """Capture the link's removal: the one place short_link:taken_down is built."""
+    capture(
+        UserId(link.user_id), ShortLinkTakenDown(target_type=link.target.type.value, reason=reason)
+    )
+
+
 async def _suspend(link: ShortLink, reporters: int) -> None:
     await short_link_repository.update(
         link.slug, user_id=link.user_id, update=ShortLinkUpdate(suspended=True)
     )
-    capture(
-        UserId(link.user_id),
-        ShortLinkTakenDown(target_type=link.target.type.value, reason="reports_threshold"),
-    )
+    _announce_taken_down(link, "reports_threshold")
     log.error(
         "short_link.suspended",
         user_id=link.user_id,
@@ -176,10 +181,7 @@ async def take_down(link: ShortLink) -> None:
     await short_link_repository.revoke(link.user_id, link.slug, RevokeReason.TAKEDOWN)
     if link.snapshot is not None:
         await delete_snapshot(link.user_id, link.snapshot)
-    capture(
-        UserId(link.user_id),
-        ShortLinkTakenDown(target_type=link.target.type.value, reason="admin"),
-    )
+    _announce_taken_down(link, "admin")
 
 
 async def restore(link: ShortLink) -> None:

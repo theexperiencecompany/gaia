@@ -29,6 +29,8 @@ import uuid
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
+from arq.constants import result_key_prefix
+from arq.jobs import deserialize_result
 from bson import ObjectId
 from cryptography.fernet import Fernet
 import httpx
@@ -57,6 +59,7 @@ from app.services.browser.jobs import done_state, get_latest_job
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.tasks.conversation_sweep_tasks import conversation_sweep_cron
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import pick_free_port, worker_mongo_db_name, worker_redis_url
 from tests.integration.real.browser._stack.fake_models import FakeModels
@@ -456,6 +459,18 @@ class BrowserStack:
                 return
             await asyncio.sleep(1.0)
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
+
+    async def swept_since(self, since_ms: int) -> bool:
+        """Whether a conversation sweep due after since_ms (epoch milliseconds) has finished without failing."""
+        prefix = f"{result_key_prefix}{conversation_sweep_cron().name}:"
+        # ARQ pickles its results, which the stack's decoding client cannot read.
+        async with Redis.from_url(self.redis_url) as raw:
+            for key in await raw.keys(f"{prefix}*"):
+                due = int(key.decode().removeprefix(prefix))
+                result = await raw.get(key)
+                if due > since_ms and result is not None and deserialize_result(result).success:
+                    return True
+        return False
 
     async def handoff_waiting(self, user: BotUser) -> bool:
         """Whether a bot run of this user is waiting on the user right now."""

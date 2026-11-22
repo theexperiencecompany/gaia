@@ -23,7 +23,6 @@ from typing import Any, TypeVar, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
 
-from pymongo.errors import DuplicateKeyError, PyMongoError
 import pytest
 from redis.exceptions import RedisError
 
@@ -38,6 +37,7 @@ from app.constants.integrations import (
     IntegrationStatus,
 )
 from app.core.websocket_manager import websocket_manager
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.db.repositories.scouts import scouts_repository
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.helpers.mcp_helpers import get_api_base_url
@@ -76,6 +76,7 @@ from app.services.integrations.custom_crud import (
 )
 from app.services.integrations.integration_connection_service import (
     _handle_auth_required,
+    _invalidate_caches,
     _McpConnectTarget,
     _redirect_to_oauth,
     build_integrations_config,
@@ -1586,7 +1587,7 @@ class TestCreateCustomIntegration:
     async def test_create_race_returns_winner(self, mock_repo, mock_add_user):
         # Both racers pass the pre-check; the unique index rejects the loser,
         # which returns the winner instead of surfacing a 500.
-        mock_repo.create = AsyncMock(side_effect=DuplicateKeyError("dup key"))
+        mock_repo.create = AsyncMock(side_effect=AlreadyExistsError("dup key"))
         winner = _make_custom_integration(integration_id="int-winner")
         mock_repo.find_custom_by_server_url = AsyncMock(return_value=winner)
 
@@ -1606,12 +1607,12 @@ class TestCreateCustomIntegration:
     async def test_create_race_without_winner_raises(self, mock_repo, mock_add_user):
         # A duplicate-key error the re-lookup cannot explain (e.g. an
         # integration_id collision) must stay loud, not turn into a None.
-        mock_repo.create = AsyncMock(side_effect=DuplicateKeyError("dup key"))
+        mock_repo.create = AsyncMock(side_effect=AlreadyExistsError("dup key"))
         mock_repo.find_custom_by_server_url = AsyncMock(return_value=None)
 
         request = CreateCustomIntegrationRequest(name="Raced MCP", server_url=SERVER_URL)
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await create_custom_integration(USER_ID, request)
 
 
@@ -3234,9 +3235,9 @@ class TestDisconnectIntegration:
     ):
         mock_resolve.return_value = _composio_slack()
         mock_get_composio.return_value = AsyncMock()
-        forget.scout.side_effect = PyMongoError("down")
+        forget.scout.side_effect = RepositoryError("down")
 
-        with pytest.raises(PyMongoError, match="down"):
+        with pytest.raises(RepositoryError, match="down"):
             await disconnect_integration(USER_ID, "slack")
 
         forget.memory.assert_not_awaited()
@@ -3908,3 +3909,36 @@ class TestConnectMorePaths:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
+
+
+class TestInvalidateCachesWhenTheStoreFails:
+    """A failed record write on disconnect is logged and the per-user caches still bust."""
+
+    _MODULE = "app.services.integrations.integration_connection_service"
+
+    @pytest.mark.parametrize(
+        ("platform", "writer"),
+        [(True, "remove_user_integration"), (False, "update_user_integration_status")],
+    )
+    async def test_the_failure_is_logged_and_the_caches_still_bust(
+        self, platform: bool, writer: str
+    ) -> None:
+        with (
+            patch(
+                f"{self._MODULE}.get_integration_by_id",
+                return_value=MagicMock() if platform else None,
+            ),
+            patch(
+                f"{self._MODULE}.{writer}",
+                new_callable=AsyncMock,
+                side_effect=RepositoryError("down"),
+            ),
+            patch(
+                f"{self._MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock
+            ) as bust,
+            patch(f"{self._MODULE}.log") as log,
+        ):
+            await _invalidate_caches("user-1", "gmail", "composio")
+
+        bust.assert_awaited_once_with("user-1")
+        assert log.warning.call_args.kwargs["error_type"] == "RepositoryError"

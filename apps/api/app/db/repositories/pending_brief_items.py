@@ -20,7 +20,7 @@ class PendingBriefItemsRepository(
 
     async def consume(self, user_id: str, item_ids: list[str]) -> int:
         """Clear the items a delivered brief carried; return how many were cleared."""
-        return await self._bulk_delete(item_ids, scope=user_id)
+        return await self._bulk_delete(item_ids, user_id=user_id)
 
 
 pending_brief_items_repository = PendingBriefItemsRepository()

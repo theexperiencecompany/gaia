@@ -8,7 +8,6 @@ read it a few times a day, never per request.
 from datetime import UTC, datetime
 
 from app.constants.briefing import BriefingBag
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.briefing_state_models import (
     BriefingStateDocument,
@@ -34,15 +33,12 @@ class BriefingStateRepository(MongoRepository[BriefingStateDocument, BriefingSta
         return await self.get(user_id) or BriefingStateDocument(user_id=user_id)
 
     async def _set(self, user_id: str, fields: dict[str, object]) -> None:
-        await self._apply_raw_update_unfetched(  # pragma: no mutate — no cache to evict
-            {"user_id": user_id}, {"$set": fields}, scope=REPO_GLOBAL_SCOPE, upsert=True
-        )
+        await self._apply_raw_update_unfetched({"user_id": user_id}, {"$set": fields}, upsert=True)
 
     async def _unset(self, user_id: str, *fields: str) -> None:
-        await self._apply_raw_update_unfetched(  # pragma: no mutate — no cache to evict
+        await self._apply_raw_update_unfetched(
             {"user_id": user_id},
             {"$unset": dict.fromkeys(fields, _UNSET)},  # pragma: no mutate — $unset ignores values
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_bag(self, user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:

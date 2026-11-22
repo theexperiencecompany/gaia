@@ -3,6 +3,7 @@ import type { paths } from "@shared/api/generated";
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import createClient from "openapi-fetch";
 import pRetry from "p-retry";
+import { cache } from "react";
 import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 import { toApiOrigin } from "./origin";
@@ -11,12 +12,15 @@ import { toApiOrigin } from "./origin";
 const BUILD_FETCH_POLICY = { timeoutMs: 30_000, retries: 3 } as const;
 const REQUEST_FETCH_POLICY = { timeoutMs: 10_000, retries: 0 } as const;
 
+function isProductionBuild(): boolean {
+  return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
+}
+
 /** Fetch the API with the phase's per-attempt timeout and the server's token, retrying timeouts and network errors. */
 export function serverFetch(request: Request): Promise<Response> {
-  const { timeoutMs, retries } =
-    process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
-      ? BUILD_FETCH_POLICY
-      : REQUEST_FETCH_POLICY;
+  const { timeoutMs, retries } = isProductionBuild()
+    ? BUILD_FETCH_POLICY
+    : REQUEST_FETCH_POLICY;
   return pRetry(
     () => {
       const attempt = request.clone();
@@ -27,6 +31,31 @@ export function serverFetch(request: Request): Promise<Response> {
     },
     { retries },
   );
+}
+
+/**
+ * Share a server read across every page one build process prerenders, keyed by its arguments.
+ *
+ * A running server keeps one read per request (React cache), so ISR still sees fresh data.
+ * A failed read is dropped, so the next page that asks reads again instead of reusing the failure.
+ */
+export function sharedAcrossBuild<Args extends readonly unknown[], T>(
+  read: (...args: Args) => Promise<T>,
+): (...args: Args) => Promise<T> {
+  const perRequest = cache(read);
+  const buildReads = new Map<string, Promise<T>>();
+  return (...args) => {
+    if (!isProductionBuild()) return perRequest(...args);
+    const key = JSON.stringify(args);
+    const shared = buildReads.get(key);
+    if (shared) return shared;
+    const pending = read(...args);
+    buildReads.set(key, pending);
+    pending.catch(() => {
+      if (buildReads.get(key) === pending) buildReads.delete(key);
+    });
+    return pending;
+  };
 }
 
 /**

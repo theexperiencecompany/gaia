@@ -3,7 +3,7 @@ from datetime import UTC, datetime, time, timedelta
 from enum import Enum, StrEnum
 from typing import Annotated, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.todos import (
@@ -558,6 +558,12 @@ class TodoListParams(BaseModel):
 # Bulk operations
 class BulkOperationRequest(BaseModel):
     todo_ids: Annotated[list[str], Field(min_length=1, max_length=100)]
+
+    @field_validator("todo_ids")
+    @classmethod
+    def _each_todo_once(cls, todo_ids: list[str]) -> list[str]:
+        """Drop repeated ids, keeping first-seen order, so no consumer counts a todo twice."""
+        return list(dict.fromkeys(todo_ids))
 
 
 class BulkUpdateRequest(BulkOperationRequest):

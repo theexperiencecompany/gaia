@@ -56,9 +56,7 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
 
     async def delete_for_integration(self, user_id: str, integration_id: str) -> int:
         key = {"user_id": user_id, "integration_id": integration_id}
-        # pragma: no mutate start — with cache_policy None, scope addresses no cache.
-        return await self._delete_many(key, scope=user_id)
-        # pragma: no mutate end
+        return await self._delete_many(key)
 
 
 signal_memory_repository = SignalMemoryRepository()

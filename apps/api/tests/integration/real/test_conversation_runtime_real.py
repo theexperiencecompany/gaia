@@ -60,6 +60,7 @@ from app.agents.core.background.todo_run_delivery import report_form_of
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.core.nodes.memory_node import memory_node
 from app.agents.core.subagents.subagent_runner import prepare_executor_execution
 from app.agents.middleware.factory import create_comms_history_fold
 from app.agents.tools.core.registry import init_tool_registry
@@ -956,10 +957,10 @@ class _Budget:
 
 # Before the reply opens: accept 2, claim 1, unsettled 1, comms 1, pinned 2 (kept through summarization).
 # Redis includes one list-push PUBLISH per sync-clock advance (message, reply, settle), off the writer's path.
-# At the production tick (no hint read); after text, a pin-precompute read and the follow-up read (head, entries).
-PLAIN_TURN = _Budget(mongo=28, mongo_before_text=7, redis=32, redis_before_text=17)
+# Measured at the production tick, so no tick-driven hint read is counted; the memory node's side work is not counted.
+PLAIN_TURN = _Budget(mongo=25, mongo_before_text=7, redis=30, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text (its push too).
-WORK_TURN = _Budget(mongo=47, mongo_before_text=15, redis=34, redis_before_text=20)
+WORK_TURN = _Budget(mongo=44, mongo_before_text=15, redis=32, redis_before_text=20)
 
 
 @dataclass(frozen=True)
@@ -1047,20 +1048,26 @@ async def _measured_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> _Turn:
     """Submit a second message, settle, and count what its turn cost before its first text and in all."""
-    await rig.send("m1", "hi")
-    await rig.settle()
-    trips: list[float] = []
-    marks: list[int] = []
+    # The memory node's spawned retain and precompute are no turn's own: unawaited, so the first
+    # turn's lands in the second's window, and their cost depends on the process's Postgres and models.
+    with (
+        patch(f"{memory_node.__module__}._store_user_memory_background", new=AsyncMock()),
+        patch(f"{memory_node.__module__}._precompute_next_turn_background", new=AsyncMock()),
+    ):
+        await rig.send("m1", "hi")
+        await rig.settle()
+        trips: list[float] = []
+        marks: list[int] = []
 
-    async def turn() -> None:
-        counted = _count_redis_trips(monkeypatch)
-        with _marking_reply_opens(rig, mongo_db, counted, marks):
-            with patch("app.services.conversation.send.capture"):
-                await rig.submit("m2", "and again")
-            await rig.settle()
-        trips.extend(counted)
+        async def turn() -> None:
+            counted = _count_redis_trips(monkeypatch)
+            with _marking_reply_opens(rig, mongo_db, counted, marks):
+                with patch("app.services.conversation.send.capture"):
+                    await rig.submit("m2", "and again")
+                await rig.settle()
+            trips.extend(counted)
 
-    ops = await _profiled(mongo_db, turn)
+        ops = await _profiled(mongo_db, turn)
     [redis_before_text] = marks
     [boundary] = [i for i, op in enumerate(ops) if op.collection == _REPLY_OPENS_MARK]
     before_text, after_text = ops[:boundary], ops[boundary + 1 :]

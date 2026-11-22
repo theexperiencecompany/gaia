@@ -1162,6 +1162,7 @@ class TestDisconnectPlatformAccount:
         mock_log.audit.assert_called_once_with(
             "platform account unlinked",
             actor=sample_user_id,
+            resource="DISC999",
             provider="discord",
         )
         # The agent tool reaches this from an ARQ executor run with no request

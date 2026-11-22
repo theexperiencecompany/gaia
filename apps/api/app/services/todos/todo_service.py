@@ -8,8 +8,6 @@ import math
 from typing import NamedTuple, NoReturn
 import uuid
 
-from pymongo.errors import BulkWriteError, DuplicateKeyError
-
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     REOPENED_IN_THE_APP_DETAIL,
@@ -17,6 +15,7 @@ from app.constants.todos import (
     TodoCompleter,
 )
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
@@ -228,7 +227,7 @@ async def _refuse_a_bulk_bad_run_schedule(
 
 
 async def raise_ref_taken(
-    user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
+    user_id: str, ref: ExternalRef | None, error: AlreadyExistsError
 ) -> NoReturn:
     """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
     holder = await todo_repository.find_open_by_external_ref(user_id, ref) if ref else None
@@ -333,7 +332,7 @@ async def _persist_update(
         return await todo_repository.get(todo_id, user_id=user_id)
     try:
         return await todo_repository.update(todo_id, user_id=user_id, update=update)
-    except DuplicateKeyError as e:
+    except AlreadyExistsError as e:
         # Reopening a todo whose outside object another open todo now holds.
         reopened = await todo_repository.get(todo_id, user_id=user_id)
         await raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
@@ -368,6 +367,7 @@ class _TrackedCompletion(NamedTuple):
     completed: list[str]
     failed: list[str]
     plain: list[str]
+    already_completed: frozenset[str] = frozenset()
 
 
 async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _TrackedCompletion:
@@ -380,11 +380,15 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
         tracked_todo_service,
     )
 
-    tracked = {
-        doc.id for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
-    }
+    tracked_docs = [
+        doc for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
+    ]
+    tracked = {doc.id for doc in tracked_docs}
     completion = _TrackedCompletion(
-        completed=[], failed=[], plain=[todo_id for todo_id in todo_ids if todo_id not in tracked]
+        completed=[],
+        failed=[],
+        plain=[todo_id for todo_id in todo_ids if todo_id not in tracked],
+        already_completed=frozenset(doc.id for doc in tracked_docs if doc.completed),
     )
     for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
         try:
@@ -411,6 +415,27 @@ def _stamp_users_completion(update: TodoUpdate) -> None:
         return
     update.completed_at = datetime.now(UTC) if update.completed else None
     update.completed_by = TodoCompleter.USER if update.completed else None
+
+
+def _capture_bulk_update(
+    user_id: str, update: TodoUpdate, succeeded: list[str], already_completed: frozenset[str]
+) -> None:
+    """Capture a bulk update for the todos it changed; a bulk that changed none captures nothing.
+
+    An already-completed todo is a no-op only when completion was all the update asked for.
+    """
+    if _drop_completion_fields(update).model_fields_set:
+        already_completed = frozenset()
+    written = sum(1 for todo_id in succeeded if todo_id not in already_completed)
+    if not written:
+        return
+    # As in the single update: a completion either way is a toggle, anything else an edit.
+    capture(
+        UserId(user_id),
+        TodosToggled(completed=update.completed, bulk_count=written)
+        if update.completed is not None
+        else TodosUpdated(bulk_count=written),
+    )
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -522,7 +547,7 @@ class TodoService:
         )
         try:
             created = await todo_repository.create(document)
-        except DuplicateKeyError as e:
+        except AlreadyExistsError as e:
             # The open-ref unique index turned this insert away: the loser reads the winner.
             await raise_ref_taken(user_id, external_ref, e)
 
@@ -741,7 +766,7 @@ class TodoService:
             ):
                 try:
                     modified = await todo_repository.bulk_update(user_id, plain_ids, update)
-                except BulkWriteError:
+                except AlreadyExistsError:
                     # A create or reopen took a ref after the check above; the writes before it landed.
                     if reopening:
                         await _refuse_a_reopen_of_a_taken_ref(
@@ -761,6 +786,7 @@ class TodoService:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
             schedule_user_todos_sync(user_id)
             await release_on_tell_me_now(user_id, succeeded, request.updates.delivery)
+            _capture_bulk_update(user_id, update, succeeded, completion.already_completed)
 
         return BulkOperationResponse(
             success=succeeded,

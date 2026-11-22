@@ -18,8 +18,7 @@ from datetime import UTC, datetime
 import secrets
 from types import MappingProxyType
 
-from pymongo.errors import DuplicateKeyError, PyMongoError
-
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.db.repositories.short_links import (
     LIVE_TARGET_UNIQUE_INDEX,
     SLUG_UNIQUE_INDEX,
@@ -92,7 +91,7 @@ class ShortLinkExhaustedError(RuntimeError):
 
 
 # What failing to mint looks like; reading the target (a storage outage) is not one, and propagates.
-_MINT_ERRORS = (PyMongoError, ShortLinkExhaustedError)
+_MINT_ERRORS = (RepositoryError, ShortLinkExhaustedError)
 
 
 def _random_slug() -> str:
@@ -144,7 +143,7 @@ async def _insert(link_fields: ShortLink) -> ShortLink | None:
             minted = await short_link_repository.create(
                 link_fields.model_copy(update={"slug": _random_slug()})
             )
-        except DuplicateKeyError as e:
+        except AlreadyExistsError as e:
             violated = str(e)
             if f"index: {SLUG_UNIQUE_INDEX}" in violated:
                 continue
@@ -352,11 +351,13 @@ async def stop_sharing(user_id: str, target: LinkTarget) -> bool:
         return False
     await _release_snapshot(user_id, live.snapshot)
     log.set(short_link={"slug_hash": hash_short_link_slug(live.slug)})
-    capture(
-        UserId(user_id),
-        ShortLinkRevoked(target_type=target.type.value, reason=RevokeReason.OWNER.value),
-    )
+    _announce_revoked(user_id, target, RevokeReason.OWNER)
     return True
+
+
+def _announce_revoked(user_id: str, target: LinkTarget, reason: RevokeReason) -> None:
+    """Capture a link turned off by its owner or with their account: the one place short_link:revoked is built."""
+    capture(UserId(user_id), ShortLinkRevoked(target_type=target.type.value, reason=reason.value))
 
 
 async def revoke_deleted_targets(user_id: str, targets: list[LinkTarget]) -> int:
@@ -382,12 +383,7 @@ async def revoke_all_links_for_user(user_id: str) -> int:
     for link in await short_link_repository.live_for_owner(user_id):
         if await short_link_repository.revoke(user_id, link.slug, RevokeReason.ACCOUNT_REMOVED):
             await _release_snapshot(user_id, link.snapshot)
-            capture(
-                UserId(user_id),
-                ShortLinkRevoked(
-                    target_type=link.target.type.value, reason=RevokeReason.ACCOUNT_REMOVED.value
-                ),
-            )
+            _announce_revoked(user_id, link.target, RevokeReason.ACCOUNT_REMOVED)
             revoked += 1
     log.set(short_link={"revoked_for_account": revoked})
     return revoked

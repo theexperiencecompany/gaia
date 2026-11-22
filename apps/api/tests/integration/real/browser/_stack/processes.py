@@ -36,6 +36,8 @@ API_ROOT = Path(__file__).resolve().parents[5]
 SELFHOST_CADDYFILE = API_ROOT.parents[1] / "packages" / "cli" / "selfhost" / "Caddyfile"
 #: The health key the worker process's reaper (a main-queue ARQ worker) refreshes while it polls.
 REAPER_HEALTH_KEY = "browser-stack:reaper:health"
+#: How long the reaper keeps each conversation sweep's ARQ result: a test's proof that a sweep ran.
+SWEEP_RESULT_SECONDS = 600.0
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
 READY_SECONDS = 120.0
 _SERVE_MODULE = "tests.integration.real.browser._stack.serve"

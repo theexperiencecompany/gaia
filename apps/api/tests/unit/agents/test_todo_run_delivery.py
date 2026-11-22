@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.agents.core.background import todo_run_delivery as trd
@@ -27,6 +26,7 @@ from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationKind, ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
@@ -403,7 +403,7 @@ class TestARunThatFoundNothingForTheUser:
     async def test_the_durable_job_keeps_the_declaration(self) -> None:
         """A store failure hands the run to a job, which must not then ask comms about the note."""
         with _seams(todo=_thread_todo()) as seams, patch.object(trd, "enqueue_worker_job") as queue:
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+            seams.activity.side_effect = RepositoryError("primary stepped down")
             with patch.object(trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock())):
                 await deliver(seams, WATCHING, self.NOTE, nothing_for_user=True)
 
@@ -703,7 +703,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _job_seams() as enqueue,
         ):
             repo_read = seams.read_todo
-            repo_read.side_effect = PyMongoError("primary stepped down")
+            repo_read.side_effect = RepositoryError("primary stepped down")
             undone = await finish_todo_run(_finished())
             assert undone is not None
             await hand_unfinished_run_to_job(undone)
@@ -724,7 +724,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             _seams(todo=_todo(), sent_on=ConversationSource.TELEGRAM) as seams,
             _job_seams() as enqueue,
         ):
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+            seams.activity.side_effect = RepositoryError("primary stepped down")
             undone = await finish_todo_run(_finished())
             assert undone is not None
             await hand_unfinished_run_to_job(undone)
@@ -739,7 +739,7 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
     async def test_the_job_keeps_what_the_runs_reply_settled_to(self) -> None:
         """A retried job must not send a write-up its run's reply settled silent."""
         with _seams(todo=_todo()) as seams, _job_seams() as enqueue:
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+            seams.activity.side_effect = RepositoryError("primary stepped down")
             undone = await finish_todo_run(_finished(reply=ReplyOutcome.SILENT, write_up=""))
             assert undone is not None
             await hand_unfinished_run_to_job(undone)

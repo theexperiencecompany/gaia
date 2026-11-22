@@ -220,7 +220,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
                     "opened_at": None,
                 },
             },
-            scope=brief.user_id,
             upsert=True,
         )
         if doc is None:
@@ -232,7 +231,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         self, user_id: str, briefing_id: str, step: DeliveryStep, reached: list[str]
     ) -> None:
         """Record one delivery step done, and the channels it reached the user on."""
-        await self._apply_raw_update(  # pragma: no mutate — no cache_policy: scope is inert
+        await self._apply_raw_update(
             {"_id": briefing_id, "user_id": user_id},
             {
                 "$addToSet": {
@@ -240,15 +239,13 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
                     "delivered_channels": {"$each": reached},
                 }
             },
-            scope=user_id,
         )
 
     async def complete_delivery(self, user_id: str, briefing_id: str) -> None:
         """Mark the brief's delivery complete: every step is done and its held results consumed."""
-        await self._apply_raw_update(  # pragma: no mutate — no cache_policy: scope is inert
+        await self._apply_raw_update(
             {"_id": briefing_id, "user_id": user_id},
             {"$set": {"delivery.completed_at": datetime.now(UTC)}},
-            scope=user_id,
         )
 
     async def mark_opened(self, user_id: str, briefing_id: str) -> BriefingModel | None:
@@ -258,7 +255,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         """
         return await self._apply_update(
             briefing_id,
-            user_id,
             {"user_id": user_id, "opened_at": None},
             BriefingUpdate(opened_at=datetime.now(UTC)),
         )

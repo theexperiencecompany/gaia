@@ -21,7 +21,6 @@ class UserInstructionsRepository(
     document_model = UserInstructionsDocument
     update_model = UserInstructionsUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_record(self, user_id: str, scope: str) -> UserInstructionsDocument | None:
         return await self._find_one({"user_id": user_id, "scope": scope})
@@ -53,7 +52,6 @@ class UserInstructionsRepository(
                     "$set": {"content": content, "updated_by": updated_by.value},
                     "$inc": {"revision": 1},
                 },
-                scope=user_id,
                 upsert=expected_revision is None or expected_revision == 0,
             )
         except DuplicateKeyError:

@@ -100,7 +100,7 @@ def delivered() -> Iterator[Delivered]:
 
     real_client = httpx.AsyncClient
     tokens = MagicMock()
-    tokens.get_active_tokens = AsyncMock(return_value=[DEVICE_TOKEN])
+    tokens.list_active_tokens = AsyncMock(return_value=[DEVICE_TOKEN])
 
     async def broadcast(user_id: str, message: dict[str, object]) -> None:
         if message["type"] == CONVERSATION_LIST_CHANGED_EVENT:
@@ -117,10 +117,7 @@ def delivered() -> Iterator[Delivered]:
             "app.utils.notification.channels.push.httpx.AsyncClient",
             lambda **kw: real_client(transport=httpx.MockTransport(expo), **kw),
         ),
-        patch(
-            "app.utils.notification.channels.push.get_device_token_service",
-            return_value=tokens,
-        ),
+        patch("app.utils.notification.channels.push.device_token_repository", tokens),
         patch(
             "app.utils.notification.orchestrator.websocket_manager.broadcast_to_user",
             broadcast,

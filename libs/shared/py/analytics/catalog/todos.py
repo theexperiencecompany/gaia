@@ -80,7 +80,6 @@ class TodosToggled(ServerEvent):
     has_due_date: bool | None = None
     is_subtask: bool | None = None
     bulk_count: int | None = None
-    count: int | None = None
 
 
 class TodosDeleted(ServerEvent):

@@ -585,6 +585,18 @@ async def hand_off_stale_decision(row: ApprovalLedgerDocument, now: datetime) ->
     return True
 
 
+def _capture_revoked(row: ApprovalLedgerDocument, revoker: str, outcome: UndecidedOutcome) -> None:
+    capture(
+        UserId(row.user_id),
+        HilRevoked(
+            approval_id=row.approval_id,
+            ledger_version=row.v + 1,
+            revoker=revoker,
+            outcome=outcome,
+        ),
+    )
+
+
 async def revoke_ticket(
     approval_id: str, *, user_id: str, conversation_id: str, caller: str
 ) -> str:
@@ -612,15 +624,7 @@ async def revoke_ticket(
             f"Cannot revoke '{approval_id}': already {_standing(taken.stands)}. "
             "Report that to the user instead of retrying."
         )
-    capture(
-        UserId(user_id),
-        HilRevoked(
-            approval_id=approval_id,
-            ledger_version=row.v + 1,
-            revoker=caller,
-            outcome=ApprovalOutcome.WITHDRAWN,
-        ),
-    )
+    _capture_revoked(row, caller, ApprovalOutcome.WITHDRAWN)
     return f"Revoked '{approval_id}' ({row.summary}). It will never be asked."
 
 
@@ -641,15 +645,7 @@ async def cancel_ledger_approvals(
             continue
         if not (await _decide(row, outcome, None)).taken:
             continue
-        capture(
-            UserId(user_id),
-            HilRevoked(
-                approval_id=row.approval_id,
-                ledger_version=row.v + 1,
-                revoker="cancelled-run",
-                outcome=outcome,
-            ),
-        )
+        _capture_revoked(row, "cancelled-run", outcome)
         cancelled.append(row.approval_id)
     if cancelled:
         log.info(
@@ -667,15 +663,7 @@ async def expire_ledger_approval(row: ApprovalLedgerDocument) -> bool:
     """
     if not (await _decide(row, ApprovalOutcome.EXPIRED, None)).taken:
         return False
-    capture(
-        UserId(row.user_id),
-        HilRevoked(
-            approval_id=row.approval_id,
-            ledger_version=row.v + 1,
-            revoker="expired",
-            outcome=ApprovalOutcome.EXPIRED,
-        ),
-    )
+    _capture_revoked(row, "expired", ApprovalOutcome.EXPIRED)
     return True
 
 

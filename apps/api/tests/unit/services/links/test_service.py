@@ -15,11 +15,11 @@ from typing import Final
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from prometheus_client import REGISTRY as METRICS
-from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 import pytest
 import time_machine
 
 from app.config.settings import settings
+from app.db.repositories.errors import AlreadyExistsError, RepositoryError
 from app.db.repositories.short_links import LIVE_TARGET_UNIQUE_INDEX, SLUG_UNIQUE_INDEX
 from app.models.short_link_models import (
     ContentRestriction,
@@ -79,10 +79,10 @@ OWNER = "507f1f77bcf86cd799439011"
 SLUG_SHAPE = re.compile(r"[A-Za-z0-9]{11}")
 
 
-def _dup(index: str) -> DuplicateKeyError:
-    """Build a DuplicateKeyError shaped exactly like Mongo raises it for index."""
+def _dup(index: str) -> AlreadyExistsError:
+    """Build the AlreadyExistsError the repository raises for Mongo's duplicate key on index."""
     msg = f"E11000 duplicate key error collection: gaia.short_links index: {index} dup key: {{ x: 1 }}"
-    return DuplicateKeyError(msg, 11000, {"errmsg": msg, "code": 11000})
+    return AlreadyExistsError(f"DuplicateKeyError: {msg}")
 
 
 def _link(slug: str, **overrides: object) -> ShortLink:
@@ -170,7 +170,7 @@ class TestShare:
     async def test_an_unrecognised_unique_violation_propagates(self, repo):
         repo.create.side_effect = _dup("some_other_index")
 
-        with pytest.raises(DuplicateKeyError):
+        with pytest.raises(AlreadyExistsError):
             await _share()
 
     async def test_slug_exhaustion_fails_loudly(self, repo):
@@ -190,7 +190,10 @@ class TestShare:
 class TestGaiaAttachedLinks:
     @pytest.mark.parametrize(
         "failure",
-        [ServerSelectionTimeoutError("no primary"), ShortLinkExhaustedError("no slug")],
+        [
+            RepositoryError("ServerSelectionTimeoutError: no primary"),
+            ShortLinkExhaustedError("no slug"),
+        ],
     )
     async def test_a_failed_mint_costs_only_the_link(self, repo, failure):
         repo.get_latest_for_target.side_effect = failure
@@ -203,7 +206,7 @@ class TestGaiaAttachedLinks:
     @pytest.mark.regression
     async def test_a_failed_mint_is_counted_where_the_alert_reads_it(self, repo):
         """The link-mint alert reads gaia_link_mint_total{outcome="failed"}; nothing emitted it, so it could never fire."""
-        repo.create.side_effect = ServerSelectionTimeoutError("no primary")
+        repo.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
         before = _mints("failed")
 
         assert await attach_link(OWNER, TODO_T) is None
@@ -438,19 +441,19 @@ class TestMint:
     async def test_an_insert_failure_releases_the_published_snapshot_and_reraises(
         self, store: Store
     ) -> None:
-        store.links.create.side_effect = ServerSelectionTimeoutError("no primary")
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
 
-        with pytest.raises(ServerSelectionTimeoutError):
+        with pytest.raises(RepositoryError):
             await share(OWNER, FILE_T, LinkSettings())
 
         store.links.live_pins_content.assert_awaited_once_with(FRESH.content_id)
         store.delete_snapshot.assert_awaited_once_with(OWNER, FRESH)
 
     async def test_bytes_another_live_link_still_pins_are_kept(self, store: Store) -> None:
-        store.links.create.side_effect = ServerSelectionTimeoutError("no primary")
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
         store.links.live_pins_content.return_value = True
 
-        with pytest.raises(ServerSelectionTimeoutError):
+        with pytest.raises(RepositoryError):
             await share(OWNER, FILE_T, LinkSettings())
 
         store.delete_snapshot.assert_not_awaited()
@@ -459,9 +462,9 @@ class TestMint:
         self, store: Store
     ) -> None:
         store.publish.return_value = _snap(None)
-        store.links.create.side_effect = ServerSelectionTimeoutError("no primary")
+        store.links.create.side_effect = RepositoryError("ServerSelectionTimeoutError: no primary")
 
-        with pytest.raises(ServerSelectionTimeoutError):
+        with pytest.raises(RepositoryError):
             await share(OWNER, FILE_T, LinkSettings())
 
         store.links.live_pins_content.assert_not_awaited()
@@ -560,7 +563,9 @@ class TestGaiaAttachedSharingRules:
         store.links.create.assert_not_awaited()
 
     async def test_a_failed_mint_logs_what_failed_and_where(self, store: Store) -> None:
-        store.links.get_latest_for_target.side_effect = ServerSelectionTimeoutError("no primary")
+        store.links.get_latest_for_target.side_effect = RepositoryError(
+            "ServerSelectionTimeoutError: no primary"
+        )
 
         async with captured_wide_event() as event:
             assert await attach_link(OWNER, TODO_T) is None
@@ -570,8 +575,8 @@ class TestGaiaAttachedSharingRules:
                 "msg": "short_link.mint_failed",
                 "user_id": OWNER,
                 "target_type": TODO.value,
-                "error_type": "ServerSelectionTimeoutError",
-                "error": "no primary",
+                "error_type": "RepositoryError",
+                "error": "ServerSelectionTimeoutError: no primary",
             }
         ]
 

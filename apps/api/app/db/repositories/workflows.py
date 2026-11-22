@@ -21,7 +21,6 @@ import re
 from typing import Any
 
 from app.constants.cache import (
-    REPO_GLOBAL_SCOPE,
     WORKFLOW_LIMIT_NOTICE_PREFIX,
     WORKFLOW_LIMIT_NOTICE_TTL,
 )
@@ -82,7 +81,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     update_model = WorkflowUpdate
     uses_object_id = False
     identity_field = "_id"
-    cache_policy = None
 
     # ------------------------------------------------------------------ reads
 
@@ -481,15 +479,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self, workflow_id: str, user_id: str, update: WorkflowUpdate
     ) -> WorkflowDocument | None:
         """Apply a flat $set update to the user's workflow; None when no matching workflow exists."""
-        return await self._apply_update(
-            workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id}, update
-        )
+        return await self._apply_update(workflow_id, {"user_id": user_id}, update)
 
     async def touch(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
         """Bump only updated_at on the user's workflow (execute/generation heartbeat); None if not found."""
-        return await self._apply_raw_update(
-            {"_id": workflow_id, "user_id": user_id}, {}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update({"_id": workflow_id, "user_id": user_id}, {})
 
     async def mark_error(
         self, workflow_id: str, user_id: str, *, deactivate: bool = False
@@ -498,22 +492,16 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         ops: dict[str, dict[str, Any]] = {}
         if deactivate:
             ops["$set"] = {"activated": False}
-        return await self._apply_raw_update(
-            {"_id": workflow_id, "user_id": user_id}, ops, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update({"_id": workflow_id, "user_id": user_id}, ops)
 
     async def remember_gate_skip(
         self, workflow_id: str, user_id: str, skip: GateSkipRecord
     ) -> None:
         """Count skip on the user's workflow gate and keep it among the newest few."""
         pushed = {"$each": [skip.model_dump()], "$slice": -GATE_RECENT_SKIPS_KEPT}
-        # Workflows keep no entity cache (cache_policy is None), so the seam's cache knobs
-        # are inert here: no mutation of them could be observed.
-        await self._apply_raw_update(  # pragma: no mutate
+        await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id, "gate": {"$ne": None}},
             {"$push": {"gate.recent_skips": pushed}, "$inc": {"gate.skipped_count": 1}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
         )
 
     async def set_error_message(
@@ -523,7 +511,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {"$set": {"error_message": message}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_steps(
@@ -549,7 +536,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def record_execution(
@@ -562,7 +548,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         result = await self._apply_raw_update(
             {"_id": workflow_id, "user_id": user_id},
             {"$inc": inc_fields, "$set": {"last_executed_at": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return result is not None
 
@@ -591,7 +576,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "deactivated_reason": None,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def deactivate(
@@ -617,7 +601,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if blocked_on_integrations is not None:
             fields["blocked_on_integrations"] = blocked_on_integrations
         return await self._apply_raw_update(
-            {"_id": workflow_id, "user_id": user_id}, {"$set": fields}, scope=REPO_GLOBAL_SCOPE
+            {"_id": workflow_id, "user_id": user_id}, {"$set": fields}
         )
 
     async def mark_activated_with_triggers(
@@ -630,9 +614,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         set_fields: dict[str, Any] = {"activated": True, "trigger_config.enabled": True}
         if trigger_ids:
             set_fields["trigger_config.composio_trigger_ids"] = trigger_ids
-        return await self._apply_raw_update(
-            {"_id": workflow_id}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update({"_id": workflow_id}, {"$set": set_fields})
 
     async def claim_for_execution(
         self, workflow_id: str, *, expected_next_run: datetime | None = None
@@ -654,7 +636,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         result = await self._apply_raw_update(
             filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return result is not None
 
@@ -692,9 +673,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             "status": status.value,
             **self._rearm_set_fields(rearm or TaskRearm()),
         }
-        result = await self._apply_raw_update(
-            filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
-        )
+        result = await self._apply_raw_update(filter_, {"$set": set_fields})
         return result is not None
 
     async def set_composio_trigger_ids(
@@ -704,7 +683,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"trigger_config.composio_trigger_ids": trigger_ids}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def find_without_stored_delivery(self) -> list[UnstoredDeliveryRow]:
@@ -761,11 +739,9 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         }
         if reason is not None:
             fields["deactivated_reason"] = reason.value
-        # Workflows keep no entity cache (cache_policy is None), so the seam's scope is inert here.
-        matched = await self._apply_raw_update_unfetched(  # pragma: no mutate
+        matched = await self._apply_raw_update_unfetched(
             {"_id": workflow_id, "trigger_config.type": retired_type},
             {"$set": fields},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return matched > 0
 
@@ -782,8 +758,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 # $unset ignores the value: "" is only the conventional placeholder.
                 "$unset": {LEGACY_WORKFLOW_NOTIFY_KEY: ""},  # pragma: no mutate
             },
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=workflow_id,
         )
         return matched > 0
 
@@ -796,7 +770,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"slug": slug}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={"$or": [{"slug": None}, {"slug": ""}]},
         )
 
@@ -807,7 +780,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"is_public": True, "created_by": created_by, "slug": slug}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def unpublish(self, workflow_id: str) -> WorkflowDocument | None:
@@ -815,7 +787,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {"$set": {"is_public": False}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def reset_system_workflow(
@@ -844,12 +815,11 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                     "repeat": definition.trigger_config.cron_expression if is_scheduled else None,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def delete_for_user(self, workflow_id: str, user_id: str) -> bool:
         """Delete the user's workflow. Returns whether a document was removed."""
-        return await self._remove(workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id})
+        return await self._remove(workflow_id, {"user_id": user_id})
 
     async def distinct_users_with_activated_workflows(self) -> list[str]:
         """Every user id owning at least one activated workflow (the paid-only migration's candidate pool)."""

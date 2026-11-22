@@ -156,6 +156,18 @@ def test_allowlisted_service_is_clean(tmp_path: Path) -> None:
     assert no_service_classes.check([path]) == []
 
 
+def test_service_class_with_an_injected_mongo_handle_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "class DeviceTokenService:\n"
+        "    def __init__(self, mongodb):\n"
+        "        self.collection = mongodb.database.get_collection('device_tokens')\n"
+    )
+    path = _write(tmp_path, f"{_SERVICES_DIR}/device_token_service.py", src)
+    violations = no_service_classes.check([path])
+    assert len(violations) == 1
+    assert "DeviceTokenService" in violations[0].detail
+
+
 def test_non_service_named_class_is_ignored(tmp_path: Path) -> None:
     # Stateful infra not named *Service is intentionally out of scope.
     src = "class SandboxPool:\n    def __init__(self):\n        self._lock = Lock()\n"
@@ -226,6 +238,63 @@ def test_collections_import_inside_repositories_is_clean(tmp_path: Path) -> None
     assert repository_boundaries.check([path]) == []
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from app.db.mongodb.mongodb import MongoDB\n",
+        "from app.db.mongodb import mongodb\n",
+        "import app.db.mongodb.mongodb\n",
+        # The lazy-singleton shape: a function-scope import is still an import.
+        "def get_service():\n    from app.db.mongodb.mongodb import init_mongodb\n",
+    ],
+)
+def test_mongo_client_import_outside_db_is_flagged(tmp_path: Path, src: str) -> None:
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "imports the Mongo client outside app/db/" in violations[0].detail
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "app/db/mongodb/collections.py",
+        "app/scripts/migrate_integration_accounts.py",
+        # Startup is the one caller outside app/db/ that opens the connection.
+        "app/helpers/lifespan_helpers.py",
+    ],
+)
+def test_mongo_client_import_in_its_allowed_homes_is_clean(tmp_path: Path, rel: str) -> None:
+    path = _write(tmp_path, rel, "from app.db.mongodb.mongodb import init_mongodb\n")
+    assert repository_boundaries.check([path]) == []
+
+
+def test_get_collection_call_outside_db_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "class Tokens:\n"
+        "    def __init__(self, mongodb):\n"
+        "        self.collection = mongodb.database.get_collection('device_tokens')\n"
+    )
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert [v.line for v in violations] == [3]
+    assert "calls .get_collection() outside app/db/" in violations[0].detail
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "app/db/mongodb/mongodb.py",
+        "app/scripts/reset_admin_password.py",
+        # A Chroma client's get_collection, which the AST cannot tell from Mongo's.
+        "app/memory/chroma_store.py",
+    ],
+)
+def test_get_collection_call_in_its_allowed_homes_is_clean(tmp_path: Path, rel: str) -> None:
+    path = _write(tmp_path, rel, "handle = client.get_collection('name')\n")
+    assert repository_boundaries.check([path]) == []
+
+
 def test_bson_import_outside_db_is_flagged(tmp_path: Path) -> None:
     src = "from bson import ObjectId\n"
     path = _write(tmp_path, "app/services/brand_new_service.py", src)
@@ -244,6 +313,33 @@ def test_bson_import_in_scripts_is_exempt(tmp_path: Path) -> None:
     # Operational one-shot scripts work on raw documents across every store by
     # design (run manually, never on a request path) — the boundary is exempt.
     src = "from bson import ObjectId\n"
+    path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from pymongo.errors import PyMongoError\n",
+        "import pymongo.errors\n",
+        "from motor.motor_asyncio import AsyncIOMotorCollection\n",
+    ],
+)
+def test_driver_import_outside_db_is_flagged(tmp_path: Path, src: str) -> None:
+    path = _write(tmp_path, "app/services/brand_new_service.py", src)
+    violations = repository_boundaries.check([path])
+    assert len(violations) == 1
+    assert "pymongo/motor outside app/db/" in violations[0].detail
+
+
+def test_driver_import_inside_repositories_is_clean(tmp_path: Path) -> None:
+    src = "from pymongo.errors import DuplicateKeyError\n"
+    path = _write(tmp_path, "app/db/repositories/hil.py", src)
+    assert repository_boundaries.check([path]) == []
+
+
+def test_driver_import_in_scripts_is_exempt(tmp_path: Path) -> None:
+    src = "from pymongo import UpdateOne\n"
     path = _write(tmp_path, "app/scripts/delete_user_account.py", src)
     assert repository_boundaries.check([path]) == []
 

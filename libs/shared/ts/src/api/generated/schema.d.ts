@@ -7098,7 +7098,7 @@ export interface components {
         };
         /**
          * BlogPost
-         * @description Blog post response model with proper ID handling.
+         * @description Blog post response model.
          */
         BlogPost: {
             /** Author Details */

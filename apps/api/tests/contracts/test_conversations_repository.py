@@ -16,7 +16,6 @@ import pytest
 
 from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSource, SystemPurpose
@@ -232,27 +231,6 @@ class TestListSummaries:
             ids["mid-starred"],
             ids["old-starred"],
         ]
-
-
-class _CachedConversationRepository(ConversationRepository):
-    cache_policy = CachePolicy(prefix="contract:conversations")
-
-
-class TestInPlaceWritesUnderACachePolicy:
-    """The module promises a cache policy can be switched on with no call-site changes; these writes must then evict what get() cached."""
-
-    @pytest.fixture
-    def cached_repo(self, raw_collection) -> _CachedConversationRepository:
-        return _CachedConversationRepository()
-
-    async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
-        doc = _doc(todo_id="todo-1")
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.delete_for_todos(doc.user_id, ["todo-1"])
-
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is None
 
 
 class TestMessages:

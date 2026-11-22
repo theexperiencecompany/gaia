@@ -20,16 +20,11 @@ class ScoutsRepository(UserScopedRepository[ScoutDocument, ScoutUpdate]):
         """Store scout as the user's one scout for its integration, replacing any earlier one."""
         key = {"user_id": scout.user_id, "integration_id": scout.integration_id}
         update: dict[str, Mapping[str, object]] = {"$set": scout.model_dump(exclude={"id"})}
-        # pragma: no mutate start — with cache_policy None, scope addresses no cache;
-        # mutmut cannot pragma a single argument.
-        await self._apply_raw_update_unfetched(key, update, scope=scout.user_id, upsert=True)
-        # pragma: no mutate end
+        await self._apply_raw_update_unfetched(key, update, upsert=True)
 
     async def delete_for(self, user_id: str, integration_id: str) -> int:
         key = {"user_id": user_id, "integration_id": integration_id}
-        # pragma: no mutate start — with cache_policy None, scope addresses no cache.
-        return await self._delete_many(key, scope=user_id)
-        # pragma: no mutate end
+        return await self._delete_many(key)
 
 
 scouts_repository = ScoutsRepository()

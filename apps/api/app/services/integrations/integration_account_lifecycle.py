@@ -330,18 +330,17 @@ async def remove_account(
     record = await _require_record(user_id, integration_id)
     target = _require_account(record, account_id)
     remaining = [a for a in record.accounts if a.id != account_id]
-    capture(
-        UserId(user_id),
-        IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining)),
-    )
+    removed = IntegrationAccountRemoved(integration_id=integration_id, account_count=len(remaining))
     if not remaining:
         # The last account out is a full disconnect: every stale Composio account goes too.
         await disconnect_integration(user_id, integration_id)
+        capture(UserId(user_id), removed)
         return None
 
     await get_composio_service().delete_connected_account(target.connected_account_id)
     primary = pick_primary(remaining, record.primary_account_id)
     saved = await save_accounts(user_id, integration_id, remaining, primary)
+    capture(UserId(user_id), removed)
     if primary != record.primary_account_id:
         await resync_primary_bound_triggers(user_id, integration)
     return saved

@@ -11,10 +11,9 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 
 from collections.abc import Callable
 
-from pymongo.errors import DuplicateKeyError
-
 from app.constants.log_tags import LogTag
 from app.constants.notifications import NotificationKind
+from app.db.repositories.errors import AlreadyExistsError
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.entitlements import is_paid
@@ -122,7 +121,7 @@ async def _provision_entries(user_id: str, entries: WorkflowEntries) -> list[Cre
         request.trigger_config = trigger_config
         try:
             workflow = await WorkflowService.create_workflow(request, user_id)
-        except DuplicateKeyError:
+        except AlreadyExistsError:
             # A concurrent provisioning created it first; that one carries on.
             continue
         created.append(request)

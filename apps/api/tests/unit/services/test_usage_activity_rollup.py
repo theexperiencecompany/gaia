@@ -8,17 +8,21 @@ import os
 import time
 from unittest.mock import AsyncMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 import time_machine
 
 from app.db.redis import redis_cache
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.usage_daily import (
     UsageDailyDocument,
     UsageDailyIncrement,
     usage_daily_repository,
 )
-from app.services.usage_activity import count_daily_actions, get_activity, record_cost
+from app.services.usage_activity import (
+    count_daily_actions,
+    get_activity,
+    record_cost,
+)
 from shared.py.wide_events import log
 
 USER = "user-activity-1"
@@ -96,7 +100,7 @@ class TestCountDailyActions:
         increment.assert_not_awaited()
 
     async def test_a_mongo_failure_is_logged_never_raised(self, increment: AsyncMock) -> None:
-        increment.side_effect = PyMongoError("count write failed")
+        increment.side_effect = RepositoryError("count write failed")
 
         with patch.object(log, "warning") as warned:
             await count_daily_actions(USER)
@@ -105,7 +109,7 @@ class TestCountDailyActions:
         assert warned.call_args.kwargs == {
             "user": {"id": USER},
             "error": "count write failed",
-            "error_type": "PyMongoError",
+            "error_type": "RepositoryError",
         }
 
 
@@ -218,9 +222,9 @@ class TestRecordCost:
         # record_cost runs after a model call has already completed and been
         # billed by the provider; raising here would fail a request the user
         # has already paid for.
-        increment.side_effect = PyMongoError("rollup write failed")
+        increment.side_effect = RepositoryError("rollup write failed")
 
-        with patch.object(log, "warning") as warned:
+        with patch("app.services.usage_activity.log.warning") as warned:
             await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
@@ -229,7 +233,7 @@ class TestRecordCost:
         # missing and what actually failed — otherwise the loss is invisible.
         assert warned.call_args.kwargs["user"] == {"id": USER}
         assert warned.call_args.kwargs["error"] == "rollup write failed"
-        assert warned.call_args.kwargs["error_type"] == "PyMongoError"
+        assert warned.call_args.kwargs["error_type"] == "RepositoryError"
 
 
 @pytest.fixture

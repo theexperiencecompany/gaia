@@ -33,6 +33,7 @@ from app.models.conversation_log_models import (
     Reply,
     ReplySettled,
     UserMessage,
+    WorkFinished,
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
@@ -42,6 +43,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.screen import project_screen
+from app.services.conversation.sweeper import sweep_conversations
 from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
@@ -257,6 +259,27 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
     ]
     state = await mongo_log.state(conversation_id, user_id)
     assert (state.work, state.finished_work) == ((), ())
+
+
+async def test_a_detached_run_that_outlives_its_turn_is_not_reported_lost_while_it_runs(
+    mongo_log: MongoConversationLog,
+) -> None:
+    """Regression: a background browser run's work was logged lost by the first sweep after its turn ended."""
+    user_id = str(ObjectId())
+    conversation_id = await _chat(user_id, _turn("look it up"))
+    assert await open_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+    try:
+        report = await sweep_conversations()
+        state = await mongo_log.state(conversation_id, user_id)
+    finally:
+        await close_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+
+    assert report.lost_work == 0
+    assert [work.task_id for work in state.work] == ["job-1"]
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
+    assert [e.entry.outcome for e in entries or () if isinstance(e.entry, WorkFinished)] == [
+        WorkOutcome.DONE
+    ]
 
 
 async def test_a_stop_cancels_a_background_subagent_that_outlived_its_run(

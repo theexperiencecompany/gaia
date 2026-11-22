@@ -158,6 +158,18 @@ class TestIncrement:
         assert raw["aux_reasoning_tokens"] == 7
 
 
+class TestUserWindowTotals:
+    async def test_sums_each_users_counts_from_the_window_start_on(self, repo):
+        await repo.increment("u-a", "2026-03-02", UsageDailyIncrement(count=50))
+        await repo.increment("u-a", "2026-03-03", UsageDailyIncrement(count=2))
+        await repo.increment("u-a", "2026-03-04", UsageDailyIncrement(count=3))
+        await repo.increment("u-b", "2026-03-04", UsageDailyIncrement(count=7))
+
+        totals = await repo.user_window_totals("2026-03-03")
+
+        assert sorted(totals) == [("u-a", 5), ("u-b", 7)]
+
+
 class TestRollupsSince:
     async def test_returns_the_boundary_day_and_drops_the_one_before_it(self, repo):
         await repo.increment(USER, "2026-03-02", UsageDailyIncrement(count=1, input_tokens=1))

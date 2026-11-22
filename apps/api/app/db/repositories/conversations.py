@@ -7,9 +7,8 @@ head's outbox until a flush copies it into conversation_entries; every read
 unions the two through _union_for, head first. A conversation reads as pages of
 its entries (_page); only search and pins project entries into messages.
 
-Caching is disabled (cache_policy = None). createdAt (ISO string) and
-updatedAt (BSON date) are a legacy camelCase pair; each mutating method that
-must advance the sync clock bumps updatedAt explicitly.
+Uncached. createdAt (ISO string) and updatedAt (BSON date) are a legacy camelCase pair;
+each mutating method that must advance the sync clock bumps updatedAt explicitly.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
-from typing import ClassVar
 
 from pymongo import ReplaceOne, UpdateOne
 from pymongo.errors import BulkWriteError, DuplicateKeyError
@@ -29,7 +27,6 @@ from app.constants.chat import (
 from app.constants.conversation import CONVERSATION_LIST_CHANGED_EVENT
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.base import UserScopedRepository
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     AWAITING_APPROVAL,
     AWAITING_APPROVAL_STAGE,
@@ -140,7 +137,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     update_model = ConversationUpdate
     uses_object_id = True
     identity_field = "conversation_id"
-    cache_policy: ClassVar[CachePolicy | None] = None
 
     # ---- conversation-list reads (projected: no messages) ----
 
@@ -246,7 +242,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     },
                 }
             },
-            scope=user_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -298,8 +293,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Replace the conversation's artifact registry; its list row and updatedAt are untouched."""
         owned = {"conversation_id": conversation_id, "user_id": user_id}
         update = {"$set": {"artifacts": list(entries)}}
-        # The repository is uncached, so the scope keys no cache entry: its mutants are equivalent.
-        await self._apply_raw_update_unfetched(owned, update, scope=user_id)  # pragma: no mutate
+        await self._apply_raw_update_unfetched(owned, update)
 
     # ---- targeted / projected reads ----
 
@@ -931,7 +925,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             # Entries first: a delete that dies between the two leaves the head, which the user can
             # delete again, never entries a later head under the same id would inherit.
             await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(these)
-            # Conversations are uncached (cache_policy None): there is no cache entry to evict.
             await self._raw_collection().delete_many({**match, **these})
         return ids
 
@@ -978,7 +971,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         matched = await self._apply_raw_update_unfetched(
             {"conversation_id": conversation_id},
             update,
-            scope=user_id,
             extra_filter={"user_id": user_id},
         )
         if not matched:

@@ -40,8 +40,8 @@ from app.constants.onboarding import (
     HOLO_CONVERSATION_ID_FIELD,
 )
 from app.constants.user_activity import ActivityStatus
-from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedMongoRepository, cached_query
 from app.models.onboarding_models import (
     PersistedTriageSummary,
     SocialProfile,
@@ -70,7 +70,7 @@ _SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
 _UNSET = ""
 
 
-class UserRepository(MongoRepository[UserDocument, UserUpdate]):
+class UserRepository(CachedMongoRepository[UserDocument, UserUpdate]):
     """The users collection repository — see the module docstring for the caching contract."""
 
     collection_name = "users"
@@ -80,6 +80,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     cache_policy = CachePolicy(prefix=USER_CACHE_PREFIX)
 
     # ---------------------------------------------------------------- reads
+
+    def id_created_at(self, user_id: str) -> datetime:
+        """When user_id was minted, read from the timestamp its ObjectId carries."""
+        return ObjectId(user_id).generation_time
 
     @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
@@ -315,7 +319,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={"onboarding.completed": {"$ne": True}},
         )
 
@@ -326,16 +329,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         set_fields: dict[str, object] = {}
         for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
-        return await self._apply_raw_update(
-            {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
-        )
+        return await self._apply_raw_update({"_id": self._id_value(user_id)}, {"$set": set_fields})
 
     async def set_starting_jobs(self, user_id: str, jobs: StartingJobs) -> None:
         """Store the jobs drafted for the welcome thread and the paywall preview."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.starting_jobs": jobs.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_conversation_id(
@@ -351,7 +351,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {f"onboarding.{GETTING_STARTED_CONVERSATION_ID_FIELD}": conversation_id}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def reset_onboarding(self, user_id: str) -> None:
@@ -359,7 +358,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"onboarding": _UNSET}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -373,7 +371,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {field: reached_at}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={field: {"$exists": False}},
             return_document=False,
         )
@@ -396,7 +393,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -423,7 +419,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -462,7 +457,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={
                 "$or": [
                     {_SOCIAL_PROFILES_FIELD: {"$exists": False}},
@@ -494,7 +488,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -503,7 +496,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"quiet_hours": hours.model_dump()}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_chat_channel_priority(self, user_id: str, priority: list[str]) -> None:
@@ -511,7 +503,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"chat_channel_priority": priority}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -520,7 +511,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         before = await self._apply_raw_update(
             {"_id": self._id_value(user_id), "name": name},
             {"$unset": {"name": ""}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return before is not None
@@ -530,7 +520,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.bio_status": bio_status}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -539,7 +528,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.writing_style.user_edited_summary": summary}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -548,7 +536,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -561,7 +548,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -581,7 +567,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "inactive_email_count": count,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -598,7 +583,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 "$addToSet": {"nurture.completed_steps": step_key},
                 "$push": {"nurture.history": {"step": step_key, "at": at, "status": status}},
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -621,7 +605,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 ],
             },
             {"$set": {"last_limit_email_sent": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -634,7 +617,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"last_limit_email_sent": previous}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -668,7 +650,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "highest_activity_tier_at": datetime.now(UTC),
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def set_first_steps_collapsed(self, user_id: str, collapsed: bool) -> bool:
@@ -681,7 +662,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     FIRST_STEPS_COLLAPSED_AT_FIELD: datetime.now(UTC) if collapsed else None,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None
@@ -700,8 +680,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         matched = await self._apply_raw_update_unfetched(
             {"_id": self._id_value(user_id)},
             {"$set": {delivery.value: now for delivery in deliveries}},
-            scope=REPO_GLOBAL_SCOPE,
-            doc_id=user_id,
         )
         return matched > 0
 
@@ -710,7 +688,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"memory_backfilled": datetime.now(UTC)}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -721,7 +698,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"role": role.value}},
-            scope=REPO_GLOBAL_SCOPE,
             extra_filter={"role": None},
         )
         return updated is not None
@@ -740,7 +716,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -749,7 +724,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {f"feature_flags.{flag.value}": enabled}},
-            scope=REPO_GLOBAL_SCOPE,
         )
         return updated is not None
 
@@ -764,7 +738,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "email_memory_count": memory_count,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -773,7 +746,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"integration_scan_states.gmail.last_scan_timestamp": timestamp}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -782,7 +754,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"selected_voice_id": voice_id}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -791,7 +762,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"starred_voice_ids": voice_ids}},
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
 
@@ -807,7 +777,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     "onboarding.overlay_opacity": overlay_opacity,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
         return updated is not None
@@ -826,7 +795,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     f"platform_links_connected_at.{platform}": connected_at,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def unlink_platform(self, user_id: str, platform: str) -> UserDocument | None:
@@ -839,7 +807,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                     f"platform_links_connected_at.{platform}": _UNSET,
                 }
             },
-            scope=REPO_GLOBAL_SCOPE,
         )
 
 
