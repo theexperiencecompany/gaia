@@ -24,6 +24,7 @@ from arq.jobs import JobDef
 from arq.worker import Function
 from fastapi import BackgroundTasks
 from httpx import AsyncClient, Response
+from langchain_core.messages import ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 import time_machine
@@ -445,6 +446,41 @@ class TasksDriver:
         return _TASK_ID_IN_LINE.findall(
             await self.gaia_uses("search_tasks", query=query, **narrowing)
         )
+
+    async def ask_in_chat(
+        self, text: str, *, gaia_calls: Sequence[ToolCall], says: str
+    ) -> list[ToolMessage]:
+        """Send text in a new chat: comms hands it on, GAIA makes gaia_calls in turn, then says says.
+
+        Returns what each call GAIA made answered, in order, as the executor read it back.
+        """
+        self._comms.then(
+            [
+                call(
+                    "call_executor",
+                    {"task": text, "for_messages": [MESSAGE_FROM_PROMPT]},
+                    call_id="tc_chat",
+                ),
+                ON_IT,
+                says,
+            ]
+        )
+        self._executor.then([*([c] for c in gaia_calls), says])
+        before = len(self._executor.prompts)
+        await submit_message(
+            str(uuid4()),
+            await require_owner(self._user_id),
+            SendMessageRequest(message_id=str(uuid4()), text=text),
+            ConversationSource.WEB,
+        )
+        await drain_background_runs()
+        self._all_turns_taken()
+        answered: dict[str, ToolMessage] = {}
+        for prompt in self._executor.prompts[before:]:
+            for message in prompt:
+                if isinstance(message, ToolMessage):
+                    answered.setdefault(message.tool_call_id, message)
+        return [answered[c["id"]] for c in gaia_calls if c["id"] in answered]
 
     async def someone_elses_todo(self, title: str, *, body: str = "") -> str:
         """Put a to-do on another user's list; returns its id."""
@@ -872,7 +908,8 @@ class TasksDriver:
         instance = watched if on_watched_repo else f"{watched}_other_repo"
         data = {
             "connection_id": provider_account_id(APP_ACCOUNT),
-            "connection_nano_id": "nano-1",
+            # Composio names the account an event arrived on by its connected account id.
+            "connection_nano_id": provider_account_id(APP_ACCOUNT),
             "trigger_nano_id": instance,
             "trigger_id": instance,
             "user_id": self._user_id,
@@ -951,7 +988,8 @@ class TasksDriver:
         message_id = f"msg-{delivery_id}"
         data = {
             "connection_id": provider_account_id(APP_ACCOUNT),
-            "connection_nano_id": "nano-1",
+            # Composio names the account an event arrived on by its connected account id.
+            "connection_nano_id": provider_account_id(APP_ACCOUNT),
             "trigger_nano_id": "ti_nano",
             "trigger_id": "ti-gmail",
             "user_id": self._user_id,
