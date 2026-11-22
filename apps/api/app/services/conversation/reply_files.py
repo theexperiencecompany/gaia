@@ -24,7 +24,7 @@ def reply_files(cards: Iterable[ToolDataEntry], opens_at: str) -> tuple[ReplyFil
                 opens_at=opens_at,
                 short_url=written.short_url,
             )
-        elif held.short_url is None and written.short_url is not None:
-            # A reconcile card carries no link; the write that attached one does.
+        elif written.short_url is not None:
+            # A reconcile card carries no link; the newest write that attached one names it.
             files[written.path] = held.model_copy(update={"short_url": written.short_url})
     return tuple(files.values())

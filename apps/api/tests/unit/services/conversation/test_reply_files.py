@@ -50,3 +50,34 @@ def test_a_file_carries_the_link_its_writing_tool_attached() -> None:
             short_url="https://heygaia.link/ab12cd",
         ),
     )
+
+
+def test_a_files_link_survives_a_later_card_that_carries_none() -> None:
+    linked: ToolDataEntry = {
+        "tool_name": ARTIFACT_CARD,
+        "data": {
+            "event": "upsert",
+            "path": "report.pdf",
+            "short_url": "https://heygaia.link/ab12cd",
+        },
+    }
+    page = "https://app.test/c/c1"
+
+    [file] = reply_files([linked, _artifact("upsert", "report.pdf")], page)
+
+    assert file.short_url == "https://heygaia.link/ab12cd"
+
+
+def test_a_file_written_twice_carries_its_newest_link() -> None:
+    def linked(url: str) -> ToolDataEntry:
+        return {
+            "tool_name": ARTIFACT_CARD,
+            "data": {"event": "upsert", "path": "report.pdf", "short_url": url},
+        }
+
+    [file] = reply_files(
+        [linked("https://heygaia.link/old"), linked("https://heygaia.link/new")],
+        "https://app.test/c/c1",
+    )
+
+    assert file.short_url == "https://heygaia.link/new"
