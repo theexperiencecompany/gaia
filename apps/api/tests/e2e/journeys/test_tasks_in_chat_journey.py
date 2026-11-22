@@ -15,6 +15,35 @@ from tests.e2e._harness.tasks_driver import TasksDriver
 
 pytestmark = pytest.mark.e2e
 
+#: The todo and tracked-todo tools the task tools replaced; none may reach the model.
+REMOVED_TOOLS = frozenset(
+    {
+        "create_tracked_todo",
+        "update_tracked_todo",
+        "complete_tracked_todo",
+        "list_tracked_todos",
+        "search_todo_context",
+        "subscribe_todo_to_trigger",
+        "unsubscribe_todo_from_trigger",
+        "list_trigger_fields",
+        "create_todo",
+        "list_todos",
+        "update_todo",
+        "delete_todo",
+        "search_todos",
+        "semantic_search_todos",
+        "bulk_complete_todos",
+        "bulk_delete_todos",
+        "get_today_todos",
+        "get_upcoming_todos",
+        "get_todos_summary",
+        "get_todo_statistics",
+        "add_checklist_item",
+        "update_checklist_item",
+        "delete_checklist_item",
+    }
+)
+
 
 def _later_today() -> str:
     now = datetime.now(UTC)
@@ -90,3 +119,18 @@ class TestTasksInChat:
         assert str(found[0].content).index(checkup.id) < str(found[0].content).index(milk.id)
         done = await tasks.get(milk.id)
         assert done is not None and done.done is True
+
+    async def test_gaia_is_offered_only_the_task_tools(self, tasks: TasksDriver) -> None:
+        await tasks.ask_in_chat(
+            "What's on my list today?",
+            gaia_calls=[call("list_tasks", {"view": "today"}, call_id="tc_today")],
+            says="Nothing is due today.",
+        )
+
+        offered = tasks.tools_offered_to_gaia()
+        assert {"create_task", "update_task", "complete_task", "list_tasks", "search_tasks"} <= (
+            offered
+        )
+        assert offered.isdisjoint(REMOVED_TOOLS), sorted(offered & REMOVED_TOOLS)
+        reachable = await tasks.tools_gaia_can_retrieve()
+        assert reachable.isdisjoint(REMOVED_TOOLS), sorted(reachable & REMOVED_TOOLS)

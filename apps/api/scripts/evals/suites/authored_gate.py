@@ -18,7 +18,7 @@ from typing import Final, NotRequired, TypedDict
 from langchain_core.utils.function_calling import convert_to_openai_tool
 import yaml
 
-from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
+from app.agents.tools.task_tools import subscribe_task
 from app.agents.tools.workflow_shared_tools import search_triggers
 from app.constants.trigger_gates import GateAuthor
 from app.models.trigger_gate_models import AuthoredGate
@@ -119,7 +119,7 @@ class LabelledMail(TypedDict):
 
 def authoring_tools(path: AuthoringPath) -> list[dict[str, object]]:
     """Return the real tool schemas the authoring call binds."""
-    tool = subscribe_todo_to_trigger if path is AuthoringPath.TODO else search_triggers
+    tool = subscribe_task if path is AuthoringPath.TODO else search_triggers
     return [convert_to_openai_tool(tool)]
 
 

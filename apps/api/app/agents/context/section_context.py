@@ -59,7 +59,7 @@ class SectionContext:
     request_query: str | None = None
     subagent_id: str | None = None
     vfs_session_id: str | None = None
-    active_todo_id: str | None = None
+    active_task_id: str | None = None
     execution_mode: ExecutionMode = "interactive"
     #: Conversation channel. Read by the comms platform banner, which names the
     #: messaging app so replies read native to it.
@@ -93,7 +93,7 @@ class SectionContext:
             request_query=scope.request_query,
             subagent_id=scope.subagent_id,
             vfs_session_id=configurable.get("vfs_session_id"),
-            active_todo_id=configurable.get("active_todo_id"),
+            active_task_id=configurable.get("active_task_id"),
             execution_mode="background" if mode == "background" else "interactive",
             source=configurable.get("conversation_source"),
         )

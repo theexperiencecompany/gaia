@@ -18,7 +18,6 @@ import time_machine
 
 from app.constants import todos as todo_constants
 from app.constants.todos import (
-    ACTIVE_TRACKED_SUMMARY_LIMIT,
     CANVAS_CURRENT_STATE_SECTION,
     CANVAS_DONE_WHEN_SECTION,
     CANVAS_EVIDENCE_SECTION,
@@ -1333,84 +1332,6 @@ class TestACompletedSubTodoWakesAParentThatWaitsOnIt:
         armed.assert_not_awaited()
 
 
-class TestTheSummaryCollapsesSubTodos:
-    """Sub-todos would push every other todo out of the 15 the agent sees; they fold under a count."""
-
-    async def test_only_top_level_todos_are_listed_each_with_its_open_sub_todo_count(
-        self, mock_repo
-    ):
-        mock_repo.list_active_tracked.return_value = [_parent()]
-        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 12}
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        mock_repo.list_active_tracked.assert_awaited_once_with(
-            USER_ID, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
-        )
-        mock_repo.count_open_sub_todos.assert_awaited_once_with(USER_ID, [_PARENT_ID])
-        assert f"ID: {_PARENT_ID}" in summary
-        assert "12 open sub-todos" in summary
-
-    async def test_the_running_sub_todo_is_shown_even_though_sub_todos_are_folded(self, mock_repo):
-        mock_repo.list_active_tracked.return_value = [_parent()]
-        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 1}
-        mock_repo.get.return_value = _child()
-
-        summary = await TrackedTodoService.get_active_tracked_summary(
-            USER_ID, active_todo_id=_CHILD_ID
-        )
-
-        lines = summary.split("\n")
-        assert lines[1].startswith('  ⭐ ACTIVE "Reply to Sam"')
-        assert f"sub-todo of {_PARENT_ID}" in lines[1]
-        mock_repo.get.assert_awaited_once_with(_CHILD_ID, user_id=USER_ID)
-
-    async def test_a_todo_without_sub_todos_shows_no_count(self, mock_repo):
-        doc = _todo_doc(
-            waiting_on=WaitingOn.TIME, scheduled_at=datetime.now(UTC) + timedelta(days=3, hours=1)
-        )
-        mock_repo.list_active_tracked.return_value = [doc]
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        assert "sub-todo" not in summary
-        assert summary.split("\n")[1] == (
-            '  "Prepare Q3 report" [work] (2d old, updated 0d ago)'
-            " | next check in 3d"
-            " | ID: todo-1 | files: /workspace/gaia-tasks/prepare-q3-report-todo-1/"
-        )
-
-    async def test_a_todo_waiting_on_the_user_shows_the_question_and_what_happens_if_unanswered(
-        self, mock_repo
-    ):
-        """The model reads this block on every turn: it must see why each todo is still open."""
-        doc = _todo_doc(
-            waiting_on=WaitingOn.USER,
-            question="Keep newsletters out?",
-            if_no_reply=NoReplyPlan.PROCEED,
-            default_action="skip them",
-            scheduled_at=datetime.now(UTC) + timedelta(days=2, hours=1),
-        )
-        mock_repo.list_active_tracked.return_value = [doc]
-
-        line = (await TrackedTodoService.get_active_tracked_summary(USER_ID)).split("\n")[1]
-
-        assert (
-            'waiting on the user: "Keep newsletters out?" (expires in 2d, then proceed: skip them)'
-            in line
-        )
-
-    async def test_a_completed_running_todo_is_not_pinned(self, mock_repo):
-        mock_repo.list_active_tracked.return_value = [_parent()]
-        mock_repo.get.return_value = _child(completed=True)
-
-        summary = await TrackedTodoService.get_active_tracked_summary(
-            USER_ID, active_todo_id=_CHILD_ID
-        )
-
-        assert [line.split('"')[1] for line in summary.split("\n")[1:]] == ["Inbox desk"]
-
-
 def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:
     canvas = CANVAS_TEMPLATE.format(title="Inbox desk")
 
@@ -1515,75 +1436,6 @@ class TestCompleteTrackedTodo:
         assert ok is True
         update = mock_repo.update.await_args.kwargs["update"]
         assert update.vfs_path == f"/workspace/gaia-tasks/{TODO_ID}"
-
-
-class TestGetActiveTrackedSummary:
-    async def test_empty_string_without_docs(self, mock_repo):
-        assert await TrackedTodoService.get_active_tracked_summary(USER_ID) == ""
-
-    @pytest.mark.regression
-    async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(
-        self, mock_repo: MagicMock, mock_deps: SimpleNamespace
-    ) -> None:
-        """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side path must never reach the LLM."""
-        stale_doc = _todo_doc(vfs_path=f"/users/{USER_ID}/todos/{TODO_ID}")
-        mock_repo.list_active_tracked.return_value = [stale_doc]
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        assert USER_ID not in summary
-        assert "/users/" not in summary
-
-    async def test_summary_names_the_absolute_notes_folder(self, mock_repo):
-        """A real model read gaia-tasks/<folder>/canvas.md relative and got file not found before retrying with the absolute path."""
-        mock_repo.list_active_tracked.return_value = [
-            _todo_doc(id="66f838cc8829054e5f10e407", title="Fix the thing")
-        ]
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        assert "files: /workspace/gaia-tasks/fix-the-thing-5f10e407/" in summary
-
-    async def test_renders_summary_lines(self, mock_repo):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        lines = summary.split("\n")
-        assert lines[0] == "ACTIVE TRACKED TODOS:"
-        assert '"Prepare Q3 report" [work]' in lines[1]
-        assert "ID: todo-1" in lines[1]
-        assert "VFS" not in lines[1]
-        assert USER_ID not in lines[1]
-        assert lines[1].endswith("2d old, updated 0d ago") or "d old" in lines[1]
-
-    async def test_active_todo_pinned_with_star(self, mock_repo):
-        docs = [
-            _todo_doc(id="todo-2", title="Second"),
-            _todo_doc(id="todo-3", title="Third"),
-        ]
-        mock_repo.list_active_tracked.return_value = docs
-
-        summary = await TrackedTodoService.get_active_tracked_summary(
-            USER_ID, active_todo_id="todo-3"
-        )
-
-        lines = summary.split("\n")
-        assert lines[1].startswith('  ⭐ ACTIVE "Third"')
-        assert lines[2].startswith('  "Second"')
-
-    async def test_due_and_overdue_suffixes(self, mock_repo):
-        now = datetime.now(UTC)
-        docs = [
-            _todo_doc(id="todo-due", title="Due soon", due_date=now + timedelta(days=3, hours=1)),
-            _todo_doc(id="todo-late", title="Late", due_date=now - timedelta(days=3, hours=23)),
-        ]
-        mock_repo.list_active_tracked.return_value = docs
-
-        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-
-        assert " due(3d)" in summary.split("\n")[1]
-        assert " OVERDUE(4d)" in summary.split("\n")[2]
 
 
 class TestSystemLog:

@@ -202,7 +202,7 @@ class TestConstructLangchainMessages:
                     user_id="uid-1",
                     user_name="Alice",
                     user_dict=user_dict,
-                    active_todo_id="todo-7",
+                    active_task_id="todo-7",
                     execution_mode="background",
                     source=ConversationSource.SLACK,
                 ),
@@ -210,7 +210,7 @@ class TestConstructLangchainMessages:
 
         ctx = mock_dyn.call_args.args[0]
         assert ctx.writing_style == {"case": "lower"}
-        assert ctx.active_todo_id == "todo-7"
+        assert ctx.active_task_id == "todo-7"
         assert ctx.execution_mode == "background"
         assert ctx.source == "slack"
 

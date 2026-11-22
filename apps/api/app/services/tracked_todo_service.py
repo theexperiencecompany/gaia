@@ -21,7 +21,6 @@ from datetime import UTC, datetime
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.todos import (
-    ACTIVE_TRACKED_SUMMARY_LIMIT,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     REOPEN_CLEARED_SCHEDULE_FIELDS,
@@ -48,7 +47,6 @@ from app.services.canvas_markdown import (
     normalize_canvas,
 )
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
-from app.services.storage._vfs_common import folder_name
 from app.services.tasks.notes import CANVAS_TEMPLATE, with_ownership
 from app.services.todo_activity import (
     activity_line,
@@ -73,7 +71,6 @@ from app.services.todos.errors import (
 )
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.open_state import (
-    describe_open_state,
     require_open_state,
     with_waiting_normalized,
 )
@@ -170,56 +167,6 @@ async def _reconcile_parent_completion(user_id: str, parent_todo_id: str, child_
             user_id,
             summary="Parent completed while this sub-todo was being created.",
         )
-
-
-async def _active_todo_first(
-    docs: list[TodoDocument], user_id: str, active_todo_id: str | None
-) -> None:
-    """Put the run's own todo first in docs, fetching it when the listing left it out.
-
-    A sub-todo is never in the top-level listing, and neither is a todo past its limit.
-    """
-    if not active_todo_id:
-        return
-    for i, d in enumerate(docs):
-        if d.id == active_todo_id:
-            docs.insert(0, docs.pop(i))
-            return
-    active = await todo_repository.get(active_todo_id, user_id=user_id)
-    if active is not None and not active.completed:
-        docs.insert(0, active)
-
-
-def _format_due_string(due_date: datetime | None, now: datetime) -> str:
-    """Render the due-date suffix:  due(Nd),  OVERDUE(Nd), or empty."""
-    if not due_date:
-        return ""
-    days_until = (due_date - now).days
-    if days_until < 0:
-        return f" OVERDUE({-days_until}d)"
-    return f" due({days_until}d)"
-
-
-def _format_tracked_todo_line(
-    doc: TodoDocument, now: datetime, active_todo_id: str | None, sub_todo_counts: dict[str, int]
-) -> str:
-    """Format one tracked-todo doc as a context-injection summary line."""
-    age_days = (now - (doc.created_at or now)).days
-    last_update = (now - (doc.updated_at or now)).days
-    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
-    labels_str = f" [{', '.join(labels)}]" if labels else ""
-    prefix = "⭐ ACTIVE " if doc.id == active_todo_id else ""
-    family = ""
-    if doc.parent_todo_id:
-        family = f" | sub-todo of {doc.parent_todo_id}"
-    elif open_sub_todos := sub_todo_counts.get(doc.id):
-        family = f" | {open_sub_todos} open sub-todos"
-    return (
-        f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
-        f" ({age_days}d old, updated {last_update}d ago){family}"
-        f" | {describe_open_state(doc, now)}"
-        f" | ID: {doc.id} | files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/"
-    )
 
 
 class TrackedTodoService:
@@ -551,26 +498,6 @@ class TrackedTodoService:
                     parent.user_id,
                     summary=f'Parent "{parent.title}" completed: {summary}',
                 )
-
-    @staticmethod
-    async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:
-        """Format active top-level tracked todos, each with its open sub-todo count.
-
-        When active_todo_id is provided, that todo (a sub-todo included) is pinned at
-        the top with an ⭐ ACTIVE marker so the agent can identify the run's bound canvas.
-        """
-        docs = await todo_repository.list_active_tracked(
-            user_id, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
-        )
-        await _active_todo_first(docs, user_id, active_todo_id)
-        if not docs:
-            return ""
-
-        counts = await todo_repository.count_open_sub_todos(user_id, [doc.id for doc in docs])
-        now = datetime.now(UTC)
-        lines = ["ACTIVE TRACKED TODOS:"]
-        lines.extend(_format_tracked_todo_line(doc, now, active_todo_id, counts) for doc in docs)
-        return "\n".join(lines)
 
     @staticmethod
     async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:

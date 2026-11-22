@@ -137,14 +137,13 @@ async def call_executor(
         "bulk change, send or post this task performs. False makes the executor "
         "prepare it and ask.",
     ] = False,
-    active_todo_id: Annotated[
+    active_task_id: Annotated[
         str | None,
-        "Optional tracked-todo ID to BIND this executor run to. When set, "
-        "the executor's canvas writes default to this todo's canvas and a "
-        "🎯 ACTIVE TODO banner is added to its context. Use when delegating "
-        "work that's clearly about a specific existing tracked todo (e.g. "
-        "'update progress on todo X', 'continue working on Y'). Omit for "
-        "general tasks.",
+        "Optional id of one of GAIA's tasks to BIND this executor run to. When set, "
+        "the executor's note writes default to that task and a 🎯 ACTIVE TASK banner "
+        "is added to its context. Use when delegating work that's clearly about a "
+        "specific existing task (e.g. 'update progress on task X', 'continue working "
+        "on Y'). Omit for general work.",
     ] = None,
 ) -> str:
     """Delegate a task to the executor agent for background execution.
@@ -161,8 +160,8 @@ async def call_executor(
     # comms agent's live RunnableConfig. The model is inherited from the comms
     # configurable (set by per-plan routing).
     configurable: AgentConfigurable = {**base_configurable}
-    if active_todo_id:
-        configurable["active_todo_id"] = active_todo_id
+    if active_task_id:
+        configurable["active_task_id"] = active_task_id
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:

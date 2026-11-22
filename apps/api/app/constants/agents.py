@@ -168,14 +168,12 @@ class OutcomeState(StrEnum):
 
 
 #: The calls whose success backs a declared outcome (outcome_review.review_outcome).
-#: Only a tracked todo with a schedule or a recurrence wakes GAIA again; a
+#: Only a GAIA task with a next check or a repeat wakes GAIA again; a
 #: reminder just notifies the user, so it backs done, never schedule.
-OUTCOME_TRACKED_TODO_TOOLS = frozenset(
-    {"create_tracked_todo", "update_tracked_todo", "create_task", "update_task"}
-)
-OUTCOME_SCHEDULE_ARGS = ("scheduled_at", "recurrence", "next_check", "repeat")
-OUTCOME_SUBSCRIBE_TOOLS = frozenset({"subscribe_todo_to_trigger", "subscribe_task"})
-OUTCOME_COMPLETE_TOOLS = frozenset({"complete_tracked_todo", "complete_task"})
+OUTCOME_TASK_TOOLS = frozenset({"create_task", "update_task"})
+OUTCOME_SCHEDULE_ARGS = ("next_check", "repeat")
+OUTCOME_SUBSCRIBE_TOOLS = frozenset({"subscribe_task"})
+OUTCOME_COMPLETE_TOOLS = frozenset({"complete_task"})
 
 #: Opens a scheduled tracked todo run's brief: the run spent the check that woke
 #: it and must close the todo or set a new one. outcome_review reads it off the

@@ -133,6 +133,14 @@ class _SourceRow(BaseModel):
     source: ConversationSource
 
 
+class _TaskBindingRow(BaseModel):
+    """Projection of just the GAIA task a conversation belongs to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    task_id: str | None = None
+
+
 class _TodoBindingRow(BaseModel):
     """Projection of just the tracked todo a conversation belongs to."""
 

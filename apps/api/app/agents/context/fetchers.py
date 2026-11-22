@@ -36,14 +36,14 @@ from app.constants.log_tags import LogTag
 from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
 from app.db.repositories.conversations import conversation_repository
-from app.db.repositories.todos import todo_repository
+from app.db.repositories.tasks import task_repository
 from app.memory import fast_recall
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.memory_models import MemorySearchResult
 from app.models.onboarding_models import PersistedTriageSummary
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.models.user_models import BioStatus, OnboardingNeed, OnboardingSubdocument
 from app.services.device.device_service import (
     get_device_manifest,
@@ -57,9 +57,8 @@ from app.services.integrations.integration_accounts import (
 )
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.onboarding.first_question import seeded_chips
-from app.services.storage._vfs_common import folder_name
+from app.services.tasks.context_summary import open_tasks_summary
 from app.services.tools.tools_service import get_integration_tool_list
-from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import FILE_LINKS
 from app.utils.request_coalescing import coalesce_request
 from app.utils.user_preferences_utils import OnboardingPreferencesRecord
@@ -242,25 +241,17 @@ async def build_gaia_knowledge_block(ctx: SectionContext) -> str:
     return f"{GAIA_KNOWLEDGE_HEADER}\n{lines}"
 
 
-async def build_tracked_todos_block(ctx: SectionContext) -> str:
-    """Active tracked-todo summary, with this run's bound todo pinned.
-
-    Rendered from the list the repository caches under the user's generation, so
-    it is never staler than the last write. The pin is applied here because it is
-    per-run binding; a user-keyed cache of the pinned form would leak across turns.
-    """
+async def build_open_tasks_block(ctx: SectionContext) -> str:
+    """GAIA's open top-level tasks, with this run's bound task pinned first."""
     if not ctx.user_id:
         return ""
     try:
-        return await tracked_todo_service.get_active_tracked_summary(
-            ctx.user_id, active_todo_id=ctx.active_todo_id
-        )
+        return await open_tasks_summary(ctx.user_id, active_task_id=ctx.active_task_id)
     except Exception as e:
         log.warning(
-            "Error retrieving tracked todos",
+            "Error retrieving open GAIA tasks",
             error=str(e),
             error_type=type(e).__name__,
-            user_id=ctx.user_id,
         )
         return ""
 
@@ -386,37 +377,33 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
     )
 
 
-def format_active_todo_banner(todo: TodoDocument) -> str:
-    folder = f"/workspace/gaia-tasks/{folder_name(todo.id, todo.title)}"
-    files = f"{folder}/canvas.md, {folder}/activity.md"
-    if todo.observations_content:
-        files += f", {folder}/observations.md"
+def format_active_task_banner(task: TaskDocument) -> str:
     return (
-        "🎯 ACTIVE TODO (this run is bound to this todo)\n"
-        f"   id: {todo.id}\n"
-        f"   title: {todo.title or 'Untitled'}\n"
-        f"   files: {files}\n"
+        "🎯 ACTIVE TASK (this run is bound to this task)\n"
+        f"   id: {task.id}\n"
+        f"   title: {task.title or 'Untitled'}\n"
         "\n"
-        "   Default write target for this turn: this todo's files.\n"
-        "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
-        "todo: obey every one over your own defaults.\n"
-        "   - Record progress and outcomes as a dated entry at the end "
-        "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
+        "   Default write target for this turn: this task's notes (get_task shows them; "
+        "update_task notes writes them back whole).\n"
+        "   - Its Standing rules are the user's instructions for this task: obey every one "
+        "over your own defaults.\n"
+        "   - Keep Current State true after every action; learnings go in Learnings. GAIA "
+        "writes the task's log itself.\n"
         "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
-        "todo (rare).\n"
-        "   - To work on a different todo, you must reference it explicitly by id."
+        "task (rare).\n"
+        "   - To work on a different task, you must reference it explicitly by id."
     )
 
 
-async def build_active_todo_banner(ctx: SectionContext) -> str:
-    if not (ctx.user_id and ctx.active_todo_id):
+async def build_active_task_banner(ctx: SectionContext) -> str:
+    if not (ctx.user_id and ctx.active_task_id):
         return ""
     try:
-        doc = await todo_repository.get(ctx.active_todo_id, user_id=ctx.user_id)
+        task = await task_repository.get(ctx.active_task_id, user_id=ctx.user_id)
     except Exception as e:
-        log.warning("active_todo_banner_fetch_failed", error=str(e))
+        log.warning("active_task_banner_fetch_failed", error=str(e))
         return ""
-    return format_active_todo_banner(doc) if doc else ""
+    return format_active_task_banner(task) if task else ""
 
 
 class _ConnectedIntegration(TypedDict):
@@ -453,7 +440,7 @@ def _builtin_overlap_lines(items: list[_ConnectedIntegration]) -> list[str]:
                 BUILTIN_OVERLAP_LINE.format(
                     description=overlap.description,
                     providers=" or ".join(rivals),
-                    subagent_id=overlap.subagent_id,
+                    reached_with=overlap.reached_with,
                 )
             )
     return lines

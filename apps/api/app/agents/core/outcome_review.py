@@ -18,7 +18,7 @@ from app.constants.agents import (
     OUTCOME_COMPLETE_TOOLS,
     OUTCOME_SCHEDULE_ARGS,
     OUTCOME_SUBSCRIBE_TOOLS,
-    OUTCOME_TRACKED_TODO_TOOLS,
+    OUTCOME_TASK_TOOLS,
     TODO_REARM_TAG,
     TODO_WAKES_AGAIN_TAG,
     OutcomeState,
@@ -64,7 +64,7 @@ def _effective_call(call: ToolCall) -> tuple[str, Mapping[str, object]]:
 def _wakes_later(call: ToolCall) -> bool:
     """Return whether this successful call leaves something that wakes GAIA again."""
     name, args = _effective_call(call)
-    if name in OUTCOME_TRACKED_TODO_TOOLS:
+    if name in OUTCOME_TASK_TOOLS:
         return any(args.get(key) for key in OUTCOME_SCHEDULE_ARGS)
     return False
 

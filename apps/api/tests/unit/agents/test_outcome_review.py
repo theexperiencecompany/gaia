@@ -102,9 +102,7 @@ class TestReviewOutcome:
         review = review_outcome(
             [
                 _task(),
-                *_call(
-                    "create_tracked_todo", {"title": "visa", "scheduled_at": "2026-10-30"}, "c1"
-                ),
+                *_call("create_task", {"title": "visa", "next_check": "2026-10-30"}, "c1"),
                 *_finish("schedule"),
             ]
         )
@@ -116,7 +114,7 @@ class TestReviewOutcome:
         review = review_outcome(
             [
                 _task(),
-                *_call("create_tracked_todo", {"title": "tax", "due_date": "2026-11-20"}, "c1"),
+                *_call("create_task", {"title": "tax", "due": "2026-11-20"}, "c1"),
                 *_finish("schedule"),
             ]
         )
@@ -129,7 +127,7 @@ class TestReviewOutcome:
                 _task(),
                 *_call(
                     "execute",
-                    {"tool_name": "create_tracked_todo", "data": {"recurrence": "weekly"}},
+                    {"tool_name": "create_task", "data": {"repeat": "weekly"}},
                     "c1",
                 ),
                 *_finish("schedule"),
@@ -145,7 +143,7 @@ class TestReviewOutcome:
                 _task(),
                 *_call(
                     "execute",
-                    {"tool_name": "create_tracked_todo", "data": '{"recurrence": "weekly"}'},
+                    {"tool_name": "create_task", "data": '{"repeat": "weekly"}'},
                     "c1",
                 ),
                 *_finish("schedule"),
@@ -155,11 +153,9 @@ class TestReviewOutcome:
         assert review.verified
 
     def test_subscribe_needs_a_trigger_watch(self) -> None:
-        unbacked = review_outcome(
-            [_task(), *_call("create_tracked_todo", {}, "c1"), *_finish("subscribe")]
-        )
+        unbacked = review_outcome([_task(), *_call("create_task", {}, "c1"), *_finish("subscribe")])
         backed = review_outcome(
-            [_task(), *_call("subscribe_todo_to_trigger", {}, "c1"), *_finish("subscribe")]
+            [_task(), *_call("subscribe_task", {}, "c1"), *_finish("subscribe")]
         )
 
         assert unbacked == OutcomeReview(
@@ -223,7 +219,7 @@ class TestReviewRun:
     def test_a_previous_delegation_s_work_does_not_back_this_one(self) -> None:
         thread: list[AnyMessage] = [
             HumanMessage(content="first task"),
-            *_call("create_tracked_todo", {"scheduled_at": "2026-10-30"}, "c1"),
+            *_call("create_task", {"next_check": "2026-10-30"}, "c1"),
             AIMessage(content="first done"),
             HumanMessage(content="second task"),
             *_finish("schedule"),
@@ -249,9 +245,9 @@ class TestATodoIsNeverLeftAsleep:
     @pytest.mark.parametrize(
         "ending",
         [
-            ("update_tracked_todo", {"todo_id": "t", "scheduled_at": "3d", "waiting_on": "time"}),
-            ("update_tracked_todo", {"todo_id": "t", "recurrence": "daily"}),
-            ("complete_tracked_todo", {"todo_id": "t", "summary": "done"}),
+            ("update_task", {"task_id": "t", "next_check": "3d", "waiting_on": "time"}),
+            ("update_task", {"task_id": "t", "repeat": "daily"}),
+            ("complete_task", {"task_id": "t", "summary": "done"}),
         ],
     )
     def test_closing_it_or_setting_its_next_check_ends_the_run_cleanly(
@@ -265,9 +261,9 @@ class TestATodoIsNeverLeftAsleep:
     @pytest.mark.parametrize(
         "not_a_next_check",
         [
-            ("subscribe_todo_to_trigger", {"todo_id": "t", "trigger_name": "x"}),
+            ("subscribe_task", {"task_id": "t", "trigger_name": "x"}),
             ("bash", {"command": "run", "run_todo_id": "t"}),
-            ("update_tracked_todo", {"todo_id": "t", "priority": "high"}),
+            ("update_task", {"task_id": "t", "priority": "high"}),
         ],
     )
     def test_a_watch_or_an_unrelated_edit_is_not_a_next_check(
@@ -282,7 +278,7 @@ class TestATodoIsNeverLeftAsleep:
     def test_a_failed_next_check_does_not_count(self) -> None:
         delegation = [
             self.BRIEFED,
-            *_call("update_tracked_todo", {"todo_id": "t", "scheduled_at": "3d"}, "c1", error=True),
+            *_call("update_task", {"task_id": "t", "next_check": "3d"}, "c1", error=True),
             *_finish("ask"),
         ]
 
@@ -295,9 +291,7 @@ class TestATodoIsNeverLeftAsleep:
     def test_an_unbriefed_run_is_never_flagged(self) -> None:
         """Creating a todo with no next step is refused by the tool itself, not judged here."""
         assert todo_left_asleep([_task(), *_call("create_todo", {}, "c1")]) is None
-        assert (
-            todo_left_asleep([_task(), *_call("create_tracked_todo", {"title": "t"}, "c1")]) is None
-        )
+        assert todo_left_asleep([_task(), *_call("create_task", {"title": "t"}, "c1")]) is None
 
     def test_a_plain_text_ending_that_strands_a_todo_still_reports_why(self) -> None:
         review = review_outcome([self.BRIEFED, *_call("read", {"path": "canvas.md"}, "c1")])

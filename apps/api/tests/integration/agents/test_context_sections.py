@@ -1,6 +1,5 @@
 """The two context sections with real behaviour behind them, un-mocked."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -11,7 +10,6 @@ from app.agents.context.sections import SECTIONS, Section
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER
 from app.agents.context.tiers import AgentTier
-from app.models.todo_models import TodoDocument
 
 
 @pytest.fixture
@@ -79,75 +77,3 @@ class TestConnectedIntegrationsManifest:
     async def test_the_manifest_is_a_stable_section(self) -> None:
         """It changes on connect/disconnect, never per turn, so it belongs in the cacheable prefix."""
         assert _section("integrations_manifest").slot is PromptSlot.DYNAMIC_STABLE
-
-
-@pytest.mark.integration
-class TestTrackedTodosSummary:
-    """Runs the real get_active_tracked_summary over mocked todo documents."""
-
-    @staticmethod
-    def _todos(*docs: TodoDocument):
-        return patch.multiple(
-            "app.db.repositories.todos.todo_repository",
-            list_active_tracked=AsyncMock(return_value=list(docs)),
-            count_open_sub_todos=AsyncMock(return_value={}),
-        )
-
-    @staticmethod
-    def _todo(todo_id: str, title: str, user_id: str) -> TodoDocument:
-        return TodoDocument(
-            id=todo_id,
-            user_id=user_id,
-            title=title,
-            created_at=datetime.now(UTC) - timedelta(days=1),
-        )
-
-    async def test_every_active_todo_is_listed(self, user: str) -> None:
-        with self._todos(
-            self._todo("t1", "Ship the refactor", user), self._todo("t2", "Review the PR", user)
-        ):
-            block = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user)
-            )
-
-        assert "Ship the refactor" in block
-        assert "Review the PR" in block
-
-    async def test_the_bound_todo_is_pinned_to_the_top(self, user: str) -> None:
-        """The bound todo must be the one the agent sees first, not buried in a longer list."""
-        with self._todos(
-            self._todo("t1", "Unrelated work", user), self._todo("t2", "The bound one", user)
-        ):
-            block = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user, active_todo_id="t2")
-            )
-
-        assert block.index("The bound one") < block.index("Unrelated work")
-
-    async def test_no_active_todos_yields_nothing(self, user: str) -> None:
-        with self._todos():
-            block = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user)
-            )
-
-        assert block == ""
-
-    async def test_the_summary_reads_the_current_list_each_turn(self, user: str) -> None:
-        """The summary renders from the active list each turn, with no user-keyed cache over it."""
-        with self._todos(self._todo("t1", "First state", user)):
-            first = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user)
-            )
-        with self._todos(self._todo("t2", "Second state", user)):
-            second = await _section("tracked_todos").fetch(
-                SectionContext(tier=AgentTier.COMMS, user_id=user)
-            )
-
-        assert "First state" in first
-        assert "Second state" not in first
-        assert "Second state" in second
-        assert "First state" not in second
-
-    async def test_the_summary_is_a_volatile_section(self) -> None:
-        """It changes as the agent works, so it must not sit in the prefix."""
-        assert _section("tracked_todos").slot is PromptSlot.MEMORY_RECALL

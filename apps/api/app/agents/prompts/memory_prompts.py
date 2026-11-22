@@ -1471,38 +1471,6 @@ OUTPUT PREFERENCES:
 
 
 # =============================================================================
-# INTERNAL TODO MEMORY PROMPT
-# =============================================================================
-
-TODO_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Todo",
-    entity_instructions="""
-## TODO-SPECIFIC EXTRACTION:
-
-1. PROJECT MAPPINGS:
-   - Project IDs and names
-   - "project_work is 'Work Tasks'"
-
-2. LABEL TAXONOMY:
-   - Labels and meanings
-   - Priority conventions
-""",
-    provider_specific_instructions="""
-## TODO-SPECIFIC MEMORIES:
-
-TASK PATTERNS:
-- Creation conventions
-- Organization preferences
-- Due date patterns
-
-WORKFLOW:
-- Completion patterns
-- Review cadence
-""",
-)
-
-
-# =============================================================================
 # MCP INTEGRATIONS MEMORY PROMPTS
 # =============================================================================
 

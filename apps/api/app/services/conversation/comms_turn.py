@@ -67,7 +67,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     )
     if said:
         schedule_last_active_touch(claim.user_id, claim.conversation_id)
-    todo_id = await conversation_repository.get_todo_id(
+    task_id = await conversation_repository.get_task_id(
         claim.conversation_id, user_id=claim.user_id
     )
     context = await build_turn_context(
@@ -78,7 +78,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             user_dict=user,
             conversation_id=claim.conversation_id,
             source=source,
-            active_todo_id=todo_id,
+            active_task_id=task_id,
             execution_mode=mode,
             presence=presence,
             opens_thread=batch.start == 1,
@@ -95,7 +95,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
         turn=AgentTurn(
             selected_tool=pinned.selected_tool if pinned else None,
             tool_category=pinned.tool_category if pinned else None,
-            active_todo_id=todo_id,
+            active_task_id=task_id,
             execution_mode=mode,
             source=source.value,
             user_messages=_workflow_authorization(fired) if fired else texts,
@@ -132,7 +132,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             "memory_user_id": claim.user_id,
             "conversation_id": claim.conversation_id,
             "integration_usernames": {},
-            **({"active_todo_id": todo_id} if todo_id else {}),
+            **({"active_task_id": task_id} if task_id else {}),
         },
     )
 

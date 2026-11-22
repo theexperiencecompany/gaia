@@ -18,7 +18,7 @@ from app.models.executor_activity_models import ExecutorActivity, ExecutorActivi
 from app.models.integration_models import UserIntegrationDocument
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.presence_models import PresenceSnapshot
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.services.browser.chat_task import ChatBrowserTasks
 from app.services.delivery.chat_channel import InApp, ProactiveTarget
 from app.services.gaia_knowledge_service import KnowledgeResult
@@ -43,7 +43,7 @@ class ContextSources:
     core_memory: str = ""
     memories: list[MemoryEntry] = field(default_factory=list)
     gaia_knowledge: list[KnowledgeResult] = field(default_factory=list)
-    tracked_todos: str = ""
+    open_tasks: str = ""
     skills: str = ""
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
@@ -51,7 +51,7 @@ class ContextSources:
     multi_account_records: list[UserIntegrationDocument] = field(default_factory=list)
     #: The user's "global" standing instructions, the only scope a context section reads.
     global_instructions: str = ""
-    active_todo: TodoDocument | None = None
+    active_task: TaskDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
     workflow_integrations_hint: str = ""
     #: Task id of a live background executor run, or ``None`` for "not busy".
@@ -125,14 +125,14 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
-                AsyncMock(return_value=sources.tracked_todos),
+                "app.agents.context.fetchers.open_tasks_summary",
+                AsyncMock(return_value=sources.open_tasks),
             )
         )
         enter(
             patch(
-                "app.db.repositories.todos.todo_repository.get",
-                AsyncMock(return_value=sources.active_todo),
+                "app.db.repositories.tasks.task_repository.get",
+                AsyncMock(return_value=sources.active_task),
             )
         )
         enter(

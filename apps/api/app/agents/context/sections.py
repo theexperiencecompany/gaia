@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.agents.context.fetchers import (
-    build_active_todo_banner,
+    build_active_task_banner,
     build_agenda_and_activity_block,
     build_background_banner,
     build_connected_devices_manifest,
@@ -27,7 +27,7 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
-    build_tracked_todos_block,
+    build_open_tasks_block,
     build_workspace_session_banner,
 )
 from app.agents.context.live_work import build_browser_task_block, build_executor_status_block
@@ -78,11 +78,11 @@ class SectionId(StrEnum):
     MEMORY_RECALL = "memory_recall"
     FAST_MEMORY_RECALL = "fast_memory_recall"
     GAIA_KNOWLEDGE = "gaia_knowledge"
-    TRACKED_TODOS = "tracked_todos"
+    OPEN_TASKS = "open_tasks"
     EXECUTOR_STATUS = "executor_status"
     BROWSER_TASK = "browser_task"
     BG_BANNER = "bg_banner"
-    ACTIVE_TODO_BANNER = "active_todo_banner"
+    ACTIVE_TASK_BANNER = "active_task_banner"
 
 
 @dataclass(frozen=True)
@@ -355,9 +355,7 @@ SECTIONS: tuple[Section, ...] = (
         30,
         build_gaia_knowledge_block,
     ),
-    Section(
-        SectionId.TRACKED_TODOS, PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_tracked_todos_block
-    ),
+    Section(SectionId.OPEN_TASKS, PromptSlot.MEMORY_RECALL, ALL_TIERS, 50, build_open_tasks_block),
     # Live state of work running beside the chat, read once as the turn starts.
     Section(
         SectionId.EXECUTOR_STATUS,
@@ -375,11 +373,11 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section(SectionId.BG_BANNER, PromptSlot.MEMORY_RECALL, ALL_TIERS, 60, build_background_banner),
     Section(
-        SectionId.ACTIVE_TODO_BANNER,
+        SectionId.ACTIVE_TASK_BANNER,
         PromptSlot.MEMORY_RECALL,
         ALL_TIERS,
         70,
-        build_active_todo_banner,
+        build_active_task_banner,
     ),
 )
 

@@ -18,7 +18,8 @@ from tests._harness.context_snapshot import assert_snapshot
 from tests._harness.context_sources import ContextSources, knowledge, memory
 
 from app.agents.context.tiers import AgentTier
-from app.models.todo_models import TodoDocument
+from app.constants.tasks import Assignee
+from app.models.task_models import TaskDocument
 
 #: One fixture across every tier, so a difference between two snapshots is a
 #: difference between the tiers rather than between their inputs.
@@ -34,28 +35,29 @@ COMMON_SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     gaia_knowledge=[knowledge("GAIA can run scheduled workflows.")],
-    tracked_todos="Tracked: ship the context refactor",
+    open_tasks="Open: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
     global_instructions="Reply in plain English.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
-ACTIVE_TODO = TodoDocument(
-    id="todo-7",
+ACTIVE_TASK = TaskDocument(
+    id="task_7c0e7e57a5c1",
     user_id="user-alpha",
     title="Ship the context refactor",
+    assignee=Assignee.GAIA,
 )
 
 BOUND_RUN_SOURCES = ContextSources(
     core_memory=COMMON_SOURCES.core_memory,
     memories=COMMON_SOURCES.memories,
     gaia_knowledge=COMMON_SOURCES.gaia_knowledge,
-    tracked_todos=COMMON_SOURCES.tracked_todos,
+    open_tasks=COMMON_SOURCES.open_tasks,
     skills=COMMON_SOURCES.skills,
     connected_integrations=COMMON_SOURCES.connected_integrations,
     global_instructions=COMMON_SOURCES.global_instructions,
-    active_todo=ACTIVE_TODO,
+    active_task=ACTIVE_TASK,
 )
 
 QUERY = "summarise my unread mail"
@@ -79,7 +81,7 @@ class TestTierSnapshots:
                 query=QUERY,
                 sources=BOUND_RUN_SOURCES,
                 configurable_overrides={
-                    "active_todo_id": ACTIVE_TODO.id,
+                    "active_task_id": ACTIVE_TASK.id,
                     "execution_mode": "background",
                 },
             ),

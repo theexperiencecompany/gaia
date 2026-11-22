@@ -140,7 +140,7 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
             ),
             "has_gaia_knowledge": bool(rendered.get(SectionId.GAIA_KNOWLEDGE)),
             "has_skills": bool(rendered.get(SectionId.SKILLS)),
-            "has_active_todo": bool(ctx.active_todo_id),
+            "has_active_task": bool(ctx.active_task_id),
             "execution_mode": ctx.execution_mode,
             "stable_chars": len(stable_text),
             "memory_recall_chars": len(volatile_text),

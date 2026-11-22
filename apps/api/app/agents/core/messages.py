@@ -40,7 +40,7 @@ class MessageScope:
     #: The surface the reply is read on; a comms turn cannot be built without one.
     source: ConversationSource | None = None
     agent_type: Literal["comms", "executor"] = "comms"
-    active_todo_id: str | None = None
+    active_task_id: str | None = None
     execution_mode: Literal["interactive", "background"] = "interactive"
     presence: PresenceSnapshot | None = None
     #: The turn starts a conversation, so its thread has never been told where the user is.
@@ -111,7 +111,7 @@ async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
                 writing_style=writing_style,
                 onboarding=user_dict.onboarding if user_dict else None,
                 query=query,
-                active_todo_id=scope.active_todo_id,
+                active_task_id=scope.active_task_id,
                 execution_mode=scope.execution_mode,
                 source=source,
             )

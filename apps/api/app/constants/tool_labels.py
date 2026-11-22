@@ -151,7 +151,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     # ── Native: memory ─────────────────────────────────────────────────
     "add_memory": "Remembering that",
     "search_memory": "Searching memory",
-    # ── Native: tracked todos (GAIA working memory) ────────────────────
+    # ── Native: tasks (GAIA working memory) ────────────────────────────
     "create_task": "Taking this on",
     "update_task": "Updating the task",
     "complete_task": "Wrapping that up",
@@ -165,11 +165,6 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "reopen_task": "Reopening the task",
     "complete_tasks": "Ticking those off",
     "delete_tasks": "Deleting the tasks",
-    "create_tracked_todo": "Tracking this",
-    "update_tracked_todo": "Updating what I'm tracking",
-    "search_todo_context": "Checking what I'm tracking",
-    "list_tracked_todos": "Reviewing tracked work",
-    "complete_tracked_todo": "Wrapping that up",
     # ── Native: billing ────────────────────────────────────────────────
     "get_subscription_details": "Checking your subscription",
     "create_upgrade_link": "Getting your upgrade link",

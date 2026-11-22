@@ -1,8 +1,9 @@
-"""The user's actions on tasks: to-dos on /tasks, GAIA's work still on /todos and /workflows.
+"""The user's actions on tasks: to-dos and GAIA's one-off and system tasks on /tasks, repeating work on /workflows.
 
 Journeys speak only through this driver and tasks_views, so the same journey files run
-whichever system holds a task. A to-do lives in tasks (its id starts task_); a GAIA
-one-off is still a tracked todo, and a repeating task a workflow, until they move.
+whichever system holds a task. A task's id starts task_; a repeating task is still a
+workflow (wf_) until it moves. A legacy todo id only reaches the old /todos API, which the
+legacy builder's test drives to hold its shapes to what that API writes.
 """
 
 from __future__ import annotations
@@ -30,8 +31,8 @@ from pydantic import BaseModel
 import time_machine
 
 from app.agents.tools import task_edit_tools, task_list_tools, task_tools
+from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.task_tools import create_task, subscribe_task, update_task
-from app.agents.tools.tracked_todo_tools import subscribe_todo_to_trigger
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.oauth_config import get_integration_by_id
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan
@@ -44,7 +45,6 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
-    TodoActivityEvent,
 )
 from app.constants.triggers import DISPATCH_TO_SUBSCRIBERS_JOB
 from app.db.redis import redis_cache
@@ -164,11 +164,6 @@ _WORKFLOW_RUN_STATUS = {
     "success": RunOutcome.SUCCEEDED,
     "failed": RunOutcome.FAILED,
     "skipped": RunOutcome.SKIPPED,
-}
-_RUN_EVENTS = {
-    TodoActivityEvent.RUN_FINISHED.value: RunOutcome.SUCCEEDED,
-    TodoActivityEvent.RUN_FAILED.value: RunOutcome.FAILED,
-    TodoActivityEvent.RUN_SKIPPED.value: RunOutcome.SKIPPED,
 }
 #: The worker's own job functions, wrapped as the worker registers them.
 _JOBS: Mapping[str, Callable[..., Awaitable[object]]] = {
@@ -498,6 +493,15 @@ class TasksDriver:
                     answered.setdefault(message.tool_call_id, message)
         return [answered[c["id"]] for c in gaia_calls if c["id"] in answered]
 
+    def tools_offered_to_gaia(self) -> set[str]:
+        """Return every tool the executor was handed in this journey, across retrieval rounds."""
+        return {name for batch in self._executor.bound for name in batch}
+
+    async def tools_gaia_can_retrieve(self) -> set[str]:
+        """Return every tool retrieval can hand GAIA, delegated ones included."""
+        registry = await get_tool_registry()
+        return {tool.name for tool in registry.get_all_tools_for_search(include_delegated=True)}
+
     async def someone_elses_todo(self, title: str, *, body: str = "") -> str:
         """Put a to-do on another user's list; returns its id."""
         created = await task_service.create_task(
@@ -544,15 +548,12 @@ class TasksDriver:
 
     async def woken_by_events(self, task_id: str) -> int:
         """Count the app events the task's history shows woke it."""
-        if _is_task(task_id):
-            log = _ok(await self._client.get(f"{TASKS}/{task_id}/notes"))["log"]
-            return sum(
-                m["event"] == TaskLogEvent.APP_EVENT.value
-                for line in log.splitlines()
-                if (m := _ACTIVITY_LINE.match(line))
-            )
-        events = await self._activity(task_id)
-        return sum(event == TodoActivityEvent.TRIGGER_FIRED.value for event, _ in events)
+        log = _ok(await self._client.get(f"{TASKS}/{task_id}/notes"))["log"]
+        return sum(
+            m["event"] == TaskLogEvent.APP_EVENT.value
+            for line in log.splitlines()
+            if (m := _ACTIVITY_LINE.match(line))
+        )
 
     async def armed_times(self, task_id: str) -> list[datetime]:
         """Return when each run waiting to fire for the task is due, soonest first."""
@@ -681,110 +682,6 @@ class TasksDriver:
             case _:
                 raise NotImplementedError(f"a GAIA task cannot be scripted to {run} yet")
 
-    async def _queue_tracked(self, task_id: str, run: GaiaRun) -> None:
-        """Queue GAIA's turns for one run of a tracked todo, and comms' write-up when it is delivered."""
-        if _is_task(task_id):
-            await self._queue_task_run(task_id, run)
-            return
-        todo = _ok(await self._client.get(f"{TODOS}/{task_id}"))
-        delivered = todo["notify_on_run"]
-        # A one-off run that neither closes nor re-arms its todo is nudged once to.
-        one_off = not todo["recurrence"] and not todo["trigger_subscriptions"]
-
-        def tell(text: str) -> None:
-            if delivered:
-                self._comms.then([text])
-
-        match run:
-            case Finishes(report):
-                self._executor.then(
-                    [call("complete_tracked_todo", {"todo_id": task_id, "summary": report}), report]
-                )
-                tell(report)
-            case KeepsWaiting(report):
-                self._executor.then(
-                    [
-                        call(
-                            "update_tracked_todo",
-                            {"todo_id": task_id, "scheduled_at": QUESTION_EXPIRES},
-                        ),
-                        report,
-                    ]
-                )
-                tell(report)
-            case Reports(report):
-                self._executor.then([report, report] if one_off else [report])
-                tell(report)
-            case Asks(question, if_no_reply, default):
-                ask: dict[str, Any] = {
-                    "todo_id": task_id,
-                    "waiting_on": "user",
-                    "question": question,
-                    "if_no_reply": if_no_reply.value,
-                    "scheduled_at": QUESTION_EXPIRES,
-                }
-                if default is not None:
-                    ask["default_action"] = default
-                self._executor.then([call("update_tracked_todo", ask), question])
-                tell(question)
-            case OpensSubtasks(titles, report):
-                self._executor.then(
-                    [
-                        *(
-                            call(
-                                "create_tracked_todo",
-                                {
-                                    "title": title,
-                                    "parent_todo_id": task_id,
-                                    "waiting_on": "time",
-                                    "scheduled_at": FIRST_LOOK,
-                                },
-                                call_id=f"tc_sub_{i}",
-                            )
-                            for i, title in enumerate(titles)
-                        ),
-                        call(
-                            "update_tracked_todo",
-                            {"todo_id": task_id, "waiting_on": "sub_todos", "scheduled_at": "3d"},
-                        ),
-                        report,
-                    ]
-                )
-                tell(report)
-            case NeedsApproval(asking):
-                self._executor.then(
-                    [
-                        call(
-                            "retrieve_tools",
-                            {"exact_tool_names": [GATED_ACTION]},
-                            call_id="tc_find",
-                        ),
-                        call(GATED_ACTION, GATED_ACTION_ARGS, call_id="tc_gated"),
-                        *([asking, asking] if one_off else [asking]),
-                    ]
-                )
-                tell(asking)
-            case OpensReplyTask(thread_id, title, report):
-                self._executor.then(
-                    [
-                        call(
-                            "create_tracked_todo",
-                            {
-                                "title": title,
-                                "parent_todo_id": task_id,
-                                "gmail_thread_id": thread_id,
-                                "waiting_on": "time",
-                                "scheduled_at": FIRST_LOOK,
-                            },
-                            call_id="tc_reply_task",
-                        ),
-                        report,
-                    ]
-                )
-                tell(report)
-            case Breaks():
-                pass
-
     async def answer(self, task_id: str, reply: str, then: GaiaRun) -> None:
         """Reply in the task's chat, GAIA picking the task up from the reply."""
         conversation_id = _ok(await self._client.post(f"{_base(task_id)}/{task_id}/conversation"))[
@@ -800,7 +697,7 @@ class TasksDriver:
                 ON_IT,
             ]
         )
-        await self._queue_tracked(task_id, then)
+        await self._queue_task_run(task_id, then)
         await submit_message(
             conversation_id,
             await require_owner(self._user_id),
@@ -887,31 +784,17 @@ class TasksDriver:
         """
         from_sender = [{"field_name": "sender", "operator": "contains", "value": sender}]
         config: RunnableConfig = {"configurable": {"user_id": self._user_id}}
-        if _is_task(task_id):
-            args: dict[str, Any] = {
-                "task_id": task_id,
-                "trigger_name": "gmail_new_message",
-                "action": then.value,
-                "conditions": from_sender,
-                "cooldown_seconds": int(batch_for.total_seconds()),
-            }
-            if only_when is not None:
-                args["runs_only_when"] = only_when
-            said = await subscribe_task.ainvoke(args, config=config)
-            assert "Subscription id" in said, said
-            return
-        # A tracked todo the migration journey builds as legacy data.
-        said = await subscribe_todo_to_trigger.ainvoke(
-            {
-                "todo_id": task_id,
-                "trigger_name": "gmail_new_message",
-                "action": "execute",
-                "conditions": from_sender,
-                "cooldown_seconds": 0,
-            },
-            config=config,
-        )
-        assert "is now watching" in said, said
+        args: dict[str, Any] = {
+            "task_id": task_id,
+            "trigger_name": "gmail_new_message",
+            "action": then.value,
+            "conditions": from_sender,
+            "cooldown_seconds": int(batch_for.total_seconds()),
+        }
+        if only_when is not None:
+            args["runs_only_when"] = only_when
+        said = await subscribe_task.ainvoke(args, config=config)
+        assert "Subscription id" in said, said
 
     async def turn_off_only_when(self, task_id: str) -> TaskView:
         """Switch off the "only when" check on the task's gated subscription, from its panel."""
@@ -1135,7 +1018,7 @@ class TasksDriver:
 
     async def _queue_run(self, task_id: str, run: GaiaRun) -> None:
         if not _is_workflow(task_id):
-            await self._queue_tracked(task_id, run)
+            await self._queue_task_run(task_id, run)
             return
         hand_off = [
             call(
@@ -1259,13 +1142,13 @@ class TasksDriver:
 
     async def open_list(self) -> list[TaskView]:
         """Return the open tasks list, in the order the list API returns it."""
-        return [*await self._tasks(completed="false"), *await self._list(completed="false")]
+        return await self._tasks(completed="false")
 
     async def overdue(self) -> list[TaskView]:
-        return [*await self._tasks(overdue="true"), *await self._list(overdue="true")]
+        return await self._tasks(overdue="true")
 
     async def completed_list(self) -> list[TaskView]:
-        return [*await self._tasks(completed="true"), *await self._list(completed="true")]
+        return await self._tasks(completed="true")
 
     async def counts(self) -> Counts:
         body = _ok(await self._client.get(f"{TASKS}/counts"))
@@ -1273,9 +1156,7 @@ class TasksDriver:
 
     async def subtasks_of(self, task_id: str) -> list[TaskView]:
         """Return the sub-tasks listed under a task, open and done."""
-        if _is_task(task_id):
-            return await self._tasks(parent_id=task_id)
-        return await self._list(parent_todo_id=task_id)
+        return await self._tasks(parent_id=task_id)
 
     async def runs(self, task_id: str) -> list[RunView]:
         """Return the task's run history, oldest first, as its page lists each run."""
@@ -1289,21 +1170,15 @@ class TasksDriver:
                 )
                 for e in reversed(body["executions"])
             ]
-        if _is_task(task_id):
-            body = _ok(await self._client.get(f"{TASKS}/{task_id}/runs"))
-            return [
-                RunView(
-                    outcome=_WORKFLOW_RUN_STATUS[r["status"]],
-                    reason=r["summary"] or r["error_message"],
-                    by_event=r["trigger_type"] == TaskRunTrigger.APP_EVENT.value,
-                )
-                for r in reversed(body["runs"])
-                if r["status"] in _WORKFLOW_RUN_STATUS
-            ]
+        body = _ok(await self._client.get(f"{TASKS}/{task_id}/runs"))
         return [
-            RunView(outcome=_RUN_EVENTS[event], reason=detail or None)
-            for event, detail in await self._activity(task_id)
-            if event in _RUN_EVENTS
+            RunView(
+                outcome=_WORKFLOW_RUN_STATUS[r["status"]],
+                reason=r["summary"] or r["error_message"],
+                by_event=r["trigger_type"] == TaskRunTrigger.APP_EVENT.value,
+            )
+            for r in reversed(body["runs"])
+            if r["status"] in _WORKFLOW_RUN_STATUS
         ]
 
     async def delivered(self) -> list[Delivered]:
@@ -1341,24 +1216,12 @@ class TasksDriver:
         """Count the approved actions the task's chat shows GAIA took, one card each."""
         return sum(line.cards.count(APPROVED_ACTION_CARD) for line in await self.chat(task_id))
 
-    async def _activity(self, task_id: str) -> list[tuple[str, str]]:
-        body = _ok(await self._client.get(f"{TODOS}/{task_id}/canvas"))
-        return [
-            (m["event"], m["detail"])
-            for line in body["activity"].splitlines()
-            if (m := _ACTIVITY_LINE.match(line))
-        ]
-
     async def _gaia_tasks(self) -> list[TaskView]:
-        return [*await self._tasks(assignee="gaia"), *await self._list(labels=GAIA_TRACKED_LABEL)]
+        return await self._tasks(assignee="gaia")
 
     async def _tasks(self, **params: str) -> list[TaskView]:
         body = _ok(await self._client.get(TASKS, params=params))
         return [_task_view(item) for item in body["tasks"]]
-
-    async def _list(self, **params: str) -> list[TaskView]:
-        body = _ok(await self._client.get(TODOS, params={"mode": "text", **params}))
-        return [_todo_view(item) for item in body["data"]]
 
 
 def _card_names(cards: Sequence[ToolDataEntry]) -> tuple[str, ...]:

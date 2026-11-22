@@ -481,15 +481,9 @@ class TestBuildCommsGraph:
             assert "call_executor" in tool_registry
             assert "add_memory" in tool_registry
             assert "search_memory" in tool_registry
-            # Comms stays a thin front door: tracked-todo work is delegated to
-            # the executor, which owns the lifecycle tools and their rules.
-            for name in (
-                "create_tracked_todo",
-                "update_tracked_todo",
-                "complete_tracked_todo",
-                "search_todo_context",
-                "list_tracked_todos",
-            ):
+            # Comms stays a thin front door: task work is delegated to the
+            # executor, which owns the task tools and their rules.
+            for name in ("create_task", "update_task", "complete_task", "list_tasks"):
                 assert name not in tool_registry, f"{name} must stay executor-only"
             # Comms runs open-web lookups itself instead of delegating to the executor.
             assert "web_search_tool" in tool_registry
@@ -680,14 +674,15 @@ class TestBuildExecutorGraph:
                 "message_subagent",
                 "cancel_subagent",
                 "read_manual",
-                "create_tracked_todo",
-                "update_tracked_todo",
-                "complete_tracked_todo",
-                "search_todo_context",
-                "list_tracked_todos",
-                "list_trigger_fields",
-                "subscribe_todo_to_trigger",
-                "unsubscribe_todo_from_trigger",
+                "create_task",
+                "update_task",
+                "complete_task",
+                "list_tasks",
+                "search_tasks",
+                "get_task",
+                "list_event_fields",
+                "subscribe_task",
+                "unsubscribe_task",
                 "save_learned_skill",
                 "update_skill",
                 "get_user_instructions",

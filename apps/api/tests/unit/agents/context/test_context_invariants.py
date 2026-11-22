@@ -56,7 +56,7 @@ RICH_SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
     memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
     gaia_knowledge=[knowledge("GAIA can run scheduled workflows.")],
-    tracked_todos="Tracked: ship the context refactor",
+    open_tasks="Open: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
     global_instructions="Reply in plain English.",
@@ -281,7 +281,7 @@ FALLIBLE_SOURCES = [
         "GAIA can run scheduled workflows",
     ),
     (
-        "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+        "app.agents.context.fetchers.open_tasks_summary",
         "ship the context refactor",
     ),
     ("app.agents.context.fetchers.get_connected_integrations_named", "Gmail"),
@@ -300,7 +300,7 @@ COMMS_CONTEXT = SectionContext(
 class TestOneFailingSourceCostsOnlyItsOwnSection:
     """Sections are gathered concurrently, so one raising instead of degrading takes the whole gather down and serves an empty stable block.
 
-    build_tracked_todos_block was the one fetcher that left its service call unguarded, costing a comms turn every other piece of context on a Mongo blip.
+    build_open_tasks_block was the one fetcher that left its service call unguarded, costing a comms turn every other piece of context on a Mongo blip.
     """
 
     @pytest.mark.parametrize(("target", "own_text"), FALLIBLE_SOURCES)
@@ -445,7 +445,7 @@ class TestTheGatherSlotsEachSectionWhereItDeclared:
     @staticmethod
     async def _volatile_driven_by_todos(text: str) -> str:
         """Drive the volatile block through the tracked-todo summary, one of the sections the cap below exists for (skills used to play this role and no longer can)."""
-        with fake_context_sources(ContextSources(tracked_todos=text)):
+        with fake_context_sources(ContextSources(open_tasks=text)):
             assembled = await assemble_context(replace(COMMS_CONTEXT, tier=AgentTier.EXECUTOR))
         return text_of(assembled.volatile)
 
@@ -512,7 +512,7 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
             "has_gaia_knowledge": True,
             # Comms holds no file or shell tools, so it is given no skills.
             "has_skills": False,
-            "has_active_todo": False,
+            "has_active_task": False,
             "execution_mode": "interactive",
             "stable_chars": len(text_of(assembled.stable)),
             "memory_recall_chars": len(text_of(assembled.volatile)),
@@ -544,12 +544,12 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
         async with captured_wide_event() as event:
             with fake_context_sources(ContextSources()):
                 await assemble_context(
-                    replace(COMMS_CONTEXT, execution_mode="background", active_todo_id="todo-7")
+                    replace(COMMS_CONTEXT, execution_mode="background", active_task_id="task-7")
                 )
 
         record = event["dynamic_context"]
         assert record["execution_mode"] == "background"
-        assert record["has_active_todo"] is True
+        assert record["has_active_task"] is True
 
 
 @pytest.mark.unit

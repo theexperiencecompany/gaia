@@ -79,7 +79,8 @@ EXECUTOR_CONNECTED_DEVICES_HEADER = (
 class BuiltinOverlap(NamedTuple):
     """A built-in capability whose job a connected provider gets mistaken for."""
 
-    subagent_id: str
+    #: How GAIA reaches the built-in instead.
+    reached_with: str
     description: str
     provider_ids: frozenset[str]
 
@@ -89,14 +90,14 @@ class BuiltinOverlap(NamedTuple):
 #: "8 tasks created (Todoist)".
 BUILTIN_CAPABILITY_OVERLAPS: Final[tuple[BuiltinOverlap, ...]] = (
     BuiltinOverlap(
-        subagent_id="todos",
-        description="Todos: GAIA's own todo list",
+        reached_with="the task tools",
+        description="Tasks: GAIA's own task list",
         provider_ids=frozenset({"todoist", "googletasks"}),
     ),
 )
 
-#: Renders to ``- Todos: GAIA's own todo list, not Todoist (todos)``.
-BUILTIN_OVERLAP_LINE: Final[str] = "- {description}, not {providers} ({subagent_id})"
+#: Renders to ``- Tasks: GAIA's own task list, not Todoist (use the task tools)``.
+BUILTIN_OVERLAP_LINE: Final[str] = "- {description}, not {providers} (use {reached_with})"
 
 #: The activation variant of the header above. Same guarantee (call the tool even
 #: for an unlisted integration, because the call is what renders the connect card),

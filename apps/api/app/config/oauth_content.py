@@ -1527,48 +1527,6 @@ DROPBOX_CONTENT = IntegrationContent(
     ],
 )
 
-TODOS_CONTENT = IntegrationContent(
-    use_cases=[
-        "Capture a task the moment you think of it, GAIA files it with the right project and due date",
-        "See everything due today across all your projects in one morning briefing",
-        "Turn action items from emails and meetings into tracked todos automatically",
-        "Prioritise your day by asking GAIA what matters most right now",
-        "Bulk-organise tasks by project, label, or priority with a single instruction",
-    ],
-    how_it_works=[
-        IntegrationHowItWorksStep(
-            title="Todos are built into GAIA",
-            body='There is nothing to connect. Just say "remind me to call the accountant tomorrow at 10 AM" or "add renew passports to my personal project" and the todo is created instantly.',
-        ),
-        IntegrationHowItWorksStep(
-            title="Manage tasks in plain English",
-            body='Say "show me everything due this week" or "move the launch tasks to Friday". GAIA lists, updates, completes, and searches your todos conversationally.',
-        ),
-        IntegrationHowItWorksStep(
-            title="GAIA keeps them current on its own",
-            body="Todos surface in your daily briefings, renewal reminders fire on schedule, and overdue items get flagged before they slip.",
-        ),
-    ],
-    faqs=[
-        IntegrationFAQ(
-            question="Do I need to connect anything to use Todos?",
-            answer="No. Todos are GAIA's built-in task system, so they work from your first conversation with no setup or OAuth required.",
-        ),
-        IntegrationFAQ(
-            question="Can GAIA remind me about a todo at a specific time?",
-            answer="Yes. Ask GAIA to remind you about a todo at a set time and it schedules a reminder that arrives in your GAIA chat when it fires.",
-        ),
-        IntegrationFAQ(
-            question="How are Todos different from Todoist or Google Tasks?",
-            answer="Todos live inside GAIA, so the assistant itself creates, tracks, and follows up on them as part of any workflow. You can also connect Todoist or Google Tasks if you want GAIA to manage those instead.",
-        ),
-        IntegrationFAQ(
-            question="Can I organise todos into projects?",
-            answer="Yes. Todos support projects, labels, priorities, and due dates, and you can reorganise them in bulk just by asking.",
-        ),
-    ],
-)
-
 REMINDERS_CONTENT = IntegrationContent(
     use_cases=[
         "Get nudged about anything at the right time, without setting phone alarms",

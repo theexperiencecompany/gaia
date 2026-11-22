@@ -114,12 +114,12 @@ class TestTheTableIsWellFormed:
             # Comms reads memories from the fast lane; deep recall is worker-tier only.
             "fast_memory_recall",
             "gaia_knowledge",
-            "tracked_todos",
+            "open_tasks",
             # Live work beside the chat, comms-only: the executor IS that work.
             "executor_status",
             "browser_task",
             "bg_banner",
-            "active_todo_banner",
+            "active_task_banner",
         ]
 
     def test_comms_memories_wait_no_longer_than_the_fast_lane_budget(self) -> None:
@@ -149,9 +149,9 @@ class TestTheTableIsWellFormed:
             "agenda_activity",
             "memory_recall",
             "gaia_knowledge",
-            "tracked_todos",
+            "open_tasks",
             "bg_banner",
-            "active_todo_banner",
+            "active_task_banner",
         ]
 
     def test_a_section_excludes_the_tiers_it_was_not_registered_against(self) -> None:

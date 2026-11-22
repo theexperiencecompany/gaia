@@ -264,7 +264,7 @@ async def _seed_comms(
             user_dict=user_dict,
             conversation_id="conv-1",
             source=ConversationSource(configurable.get("conversation_source")),
-            active_todo_id=configurable.get("active_todo_id"),
+            active_task_id=configurable.get("active_task_id"),
             execution_mode=configurable.get("execution_mode") or "interactive",
             presence=configurable.get("presence"),
         ),

@@ -25,7 +25,7 @@ from app.agents.context.fetchers import (
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
-    build_active_todo_banner,
+    build_active_task_banner,
     build_agenda_and_activity_block,
     build_background_banner,
     build_connected_integrations_manifest,
@@ -35,10 +35,10 @@ from app.agents.context.fetchers import (
     build_memory_recall_block,
     build_new_user_guidance_block,
     build_open_pendings_block,
+    build_open_tasks_block,
     build_provider_metadata_block,
-    build_tracked_todos_block,
     build_workspace_session_banner,
-    format_active_todo_banner,
+    format_active_task_banner,
 )
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
@@ -59,12 +59,11 @@ from app.agents.prompts.new_user_prompts import (
 )
 from app.agents.workspace.paths import session_dir
 from app.constants.log_tags import LogTag
-from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.repositories.todos import todo_repository
+from app.constants.tasks import Assignee
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
-from app.models.todo_models import TodoDocument
+from app.models.task_models import TaskDocument
 from app.models.user_models import (
     NEEDS_MAX_SELECTION,
     BioStatus,
@@ -80,7 +79,7 @@ def ctx(
     *,
     user_id: str | None = "user1",
     query: str | None = "q",
-    active_todo_id: str | None = None,
+    active_task_id: str | None = None,
     execution_mode: ExecutionMode = "interactive",
     user_preferences: dict[str, Any] | None = None,
     source: str | None = None,
@@ -90,7 +89,7 @@ def ctx(
         tier=AgentTier.COMMS,
         user_id=user_id,
         query=query,
-        active_todo_id=active_todo_id,
+        active_task_id=active_task_id,
         execution_mode=execution_mode,
         user_preferences=user_preferences,
         source=source,
@@ -594,7 +593,7 @@ class TestConnectedIntegrationsManifest:
             )
 
         assert manifest == (
-            "HEADER:\n- Todos: GAIA's own todo list, not Todoist (todos)\n- Todoist (todoist)"
+            "HEADER:\n- Tasks: GAIA's own task list, not Todoist (use the task tools)\n- Todoist (todoist)"
         )
 
     async def test_the_builtin_row_names_every_provider_it_is_confused_with(self) -> None:
@@ -611,7 +610,10 @@ class TestConnectedIntegrationsManifest:
                 "u1", header="HEADER:", account_guidance="GUIDE"
             )
 
-        assert "- Todos: GAIA's own todo list, not Google Tasks or Todoist (todos)" in manifest
+        assert (
+            "- Tasks: GAIA's own task list, not Google Tasks or Todoist (use the task tools)"
+            in manifest
+        )
 
     async def test_no_overlapping_provider_means_no_builtin_row(self) -> None:
         """A built-in is spelled out only where something connected could be mistaken for it."""
@@ -768,120 +770,32 @@ class TestProviderMetadataBlock:
 
 
 @pytest.mark.unit
-class TestTrackedTodosBlock:
+class TestOpenTasksBlock:
     async def test_the_requesting_user_and_bound_todo_reach_the_summary(self) -> None:
-        """The user and this run's bound todo reach the summary; a dropped id pins nothing."""
+        """The user and this run's bound task reach the summary."""
         summary = AsyncMock(return_value="Tracked: ship the refactor")
         with patch(
-            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            "app.agents.context.fetchers.open_tasks_summary",
             summary,
         ):
-            block = await build_tracked_todos_block(ctx(user_id="user-7", active_todo_id="todo-7"))
+            block = await build_open_tasks_block(ctx(user_id="user-7", active_task_id="todo-7"))
 
         assert block == "Tracked: ship the refactor"
-        summary.assert_awaited_once_with("user-7", active_todo_id="todo-7")
+        summary.assert_awaited_once_with("user-7", active_task_id="todo-7")
 
     async def test_failure_yields_no_block(self) -> None:
         with patch(
-            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            "app.agents.context.fetchers.open_tasks_summary",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
-            assert await build_tracked_todos_block(ctx()) == ""
+            assert await build_open_tasks_block(ctx()) == ""
 
     async def test_a_pinned_view_failing_yields_no_block(self) -> None:
         with patch(
-            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            "app.agents.context.fetchers.open_tasks_summary",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
-            assert await build_tracked_todos_block(ctx(active_todo_id="todo-7")) == ""
-
-
-def _tracked_doc(todo_id: str, title: str) -> TodoDocument:
-    now = datetime.now(UTC)
-    return TodoDocument(
-        id=todo_id,
-        user_id="user1",
-        title=title,
-        labels=[GAIA_TRACKED_LABEL],
-        created_at=now - timedelta(days=2),
-        updated_at=now - timedelta(hours=1),
-    )
-
-
-@pytest.fixture
-def repo_reads() -> Iterator[AsyncMock]:
-    """Fake the repository's Mongo read with the cached_query cache seams faked.
-
-    The active-tracked finder is generation-cached; these fakes stand in for the
-    two Redis round trips (generation + query store) so the real decorator runs
-    without Redis. Returns the _find spy, whose await count is the Mongo reads.
-    """
-    find = AsyncMock(return_value=[])
-    generation = {"value": 1}
-    store: dict[str, object] = {}
-
-    async def _read_generation(_policy: object, _scope: str) -> int:
-        return generation["value"]
-
-    async def _get(key: str, model: object = None) -> object:
-        return store.get(key)
-
-    async def _set(key: str, value: object, ttl: int = 0, model: object = None) -> None:
-        store[key] = value
-
-    async def _bump(_policy: object, _scope: str) -> None:
-        generation["value"] += 1
-
-    with (
-        patch.object(todo_repository, "_find", find),
-        # The open sub-todo counts are an aggregation: no sub-todos here.
-        patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
-        patch("app.db.repositories.base.read_generation", _read_generation),
-        patch("app.db.repositories.base.get_cache", _get),
-        patch("app.db.repositories.base.set_cache", _set),
-        patch("app.db.repositories.base.bump_generation", _bump),
-    ):
-        yield find
-
-
-@pytest.mark.unit
-class TestTrackedTodosListIsTheCachedRead:
-    """Pin that the active-tracked list is the cached read.
-
-    A bound turn reads Mongo once per generation instead of once per assembly, and
-    the bound todo is still pinned in memory after the (possibly cached) fetch.
-    """
-
-    async def test_two_bound_turns_read_mongo_once_and_still_pin(
-        self, repo_reads: AsyncMock
-    ) -> None:
-        repo_reads.return_value = [
-            _tracked_doc("todo-2", "Second"),
-            _tracked_doc("todo-7", "Bound"),
-        ]
-
-        first = await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
-        second = await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
-
-        assert repo_reads.await_count == 1
-        assert first == second
-        lines = second.split("\n")
-        assert lines[0] == "ACTIVE TRACKED TODOS:"
-        assert lines[1].startswith('  ⭐ ACTIVE "Bound"')
-
-    async def test_a_write_bumps_the_generation_and_the_next_turn_requeries(
-        self, repo_reads: AsyncMock
-    ) -> None:
-        repo_reads.return_value = [_tracked_doc("todo-7", "Bound")]
-
-        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
-        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))  # cached — no Mongo
-        assert repo_reads.await_count == 1
-
-        await todo_repository._invalidate("user1")  # what every todo write does
-        await build_tracked_todos_block(ctx(active_todo_id="todo-7"))
-
-        assert repo_reads.await_count == 2
+            assert await build_open_tasks_block(ctx(active_task_id="todo-7")) == ""
 
 
 @pytest.mark.unit
@@ -1353,50 +1267,42 @@ class TestWorkspaceSessionBanner:
 
 
 @pytest.mark.unit
-class TestActiveTodoBanner:
+class TestActiveTaskBanner:
     async def test_it_states_the_binding_the_write_target_and_the_escape_hatch(self) -> None:
         """Asserting only two substrings let the rest rot into nonsense unnoticed."""
-        todo = TodoDocument(
-            id="66f838cc8829054e5f10e407", user_id="user1", title="Ship the refactor"
-        )
-        with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            banner = await build_active_todo_banner(ctx(active_todo_id=todo.id))
-
-        assert banner == format_active_todo_banner(todo)
-        assert banner == (
-            "🎯 ACTIVE TODO (this run is bound to this todo)\n"
-            "   id: 66f838cc8829054e5f10e407\n"
-            "   title: Ship the refactor\n"
-            "   files: /workspace/gaia-tasks/ship-the-refactor-5f10e407/canvas.md, "
-            "/workspace/gaia-tasks/ship-the-refactor-5f10e407/activity.md\n"
-            "\n"
-            "   Default write target for this turn: this todo's files.\n"
-            "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
-            "todo: obey every one over your own defaults.\n"
-            "   - Record progress and outcomes as a dated entry at the end "
-            "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
-            "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
-            "todo (rare).\n"
-            "   - To work on a different todo, you must reference it explicitly by id."
-        )
-
-    def test_a_todo_keeping_observations_names_that_file_too(self) -> None:
-        todo = TodoDocument(
-            id="66f838cc8829054e5f10e407",
+        todo = TaskDocument(
+            id="task_5f10e4070001",
             user_id="user1",
-            title="Inbox desk",
-            observations_content="# Observations\n",
+            title="Ship the refactor",
+            assignee=Assignee.GAIA,
         )
+        with patch("app.db.repositories.tasks.task_repository.get", AsyncMock(return_value=todo)):
+            banner = await build_active_task_banner(ctx(active_task_id=todo.id))
 
-        assert (
-            "   files: /workspace/gaia-tasks/inbox-desk-5f10e407/canvas.md, "
-            "/workspace/gaia-tasks/inbox-desk-5f10e407/activity.md, "
-            "/workspace/gaia-tasks/inbox-desk-5f10e407/observations.md\n"
-        ) in format_active_todo_banner(todo)
+        assert banner == format_active_task_banner(todo)
+        assert banner == (
+            "🎯 ACTIVE TASK (this run is bound to this task)\n"
+            "   id: task_5f10e4070001\n"
+            "   title: Ship the refactor\n"
+            "\n"
+            "   Default write target for this turn: this task's notes (get_task shows them; "
+            "update_task notes writes them back whole).\n"
+            "   - Its Standing rules are the user's instructions for this task: obey every one "
+            "over your own defaults.\n"
+            "   - Keep Current State true after every action; learnings go in Learnings. GAIA "
+            "writes the task's log itself.\n"
+            "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
+            "task (rare).\n"
+            "   - To work on a different task, you must reference it explicitly by id."
+        )
 
     def test_an_untitled_todo_still_renders_a_usable_banner(self) -> None:
         """A blank title would leave the line dangling; the agent still needs the id, the part it acts on."""
-        banner = format_active_todo_banner(TodoDocument(id="todo-9", user_id="user1", title=""))
+        banner = format_active_task_banner(
+            TaskDocument(
+                id="todo-9", user_id="user1", title="x", assignee=Assignee.GAIA
+            ).model_copy(update={"title": ""})
+        )
 
         assert "   id: todo-9\n" in banner
         assert "   title: Untitled\n" in banner
@@ -1404,32 +1310,32 @@ class TestActiveTodoBanner:
     async def test_it_reads_the_bound_todo_scoped_to_its_owner(self) -> None:
         """Unscoped, a guessed id would surface another user's todo."""
         get = AsyncMock(return_value=None)
-        with patch("app.db.repositories.todos.todo_repository.get", get):
-            await build_active_todo_banner(ctx(user_id="user-7", active_todo_id="todo-7"))
+        with patch("app.db.repositories.tasks.task_repository.get", get):
+            await build_active_task_banner(ctx(user_id="user-7", active_task_id="todo-7"))
 
         get.assert_awaited_once_with("todo-7", user_id="user-7")
 
     async def test_a_missing_todo_yields_no_banner(self) -> None:
-        with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=None)):
-            assert await build_active_todo_banner(ctx(active_todo_id="gone")) == ""
+        with patch("app.db.repositories.tasks.task_repository.get", AsyncMock(return_value=None)):
+            assert await build_active_task_banner(ctx(active_task_id="gone")) == ""
 
     async def test_failure_yields_no_banner(self) -> None:
         with patch(
-            "app.db.repositories.todos.todo_repository.get",
+            "app.db.repositories.tasks.task_repository.get",
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
-            assert await build_active_todo_banner(ctx(active_todo_id="todo-7")) == ""
+            assert await build_active_task_banner(ctx(active_task_id="todo-7")) == ""
 
     async def test_failure_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.db.repositories.todos.todo_repository.get",
+                "app.db.repositories.tasks.task_repository.get",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ):
-                await build_active_todo_banner(ctx(active_todo_id="todo-7"))
+                await build_active_task_banner(ctx(active_task_id="todo-7"))
 
         assert event["warnings"] == [
-            {"msg": "active_todo_banner_fetch_failed", "error": "mongo down"}
+            {"msg": "active_task_banner_fetch_failed", "error": "mongo down"}
         ]
 
 
@@ -1470,18 +1376,20 @@ class TestASectionDeclinesWhenItsContextIsAbsent:
 
     async def test_no_user_means_no_tracked_todos(self) -> None:
         with patch(
-            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            "app.agents.context.fetchers.open_tasks_summary",
             AsyncMock(return_value="Tracked: ship the refactor"),
         ):
-            assert await build_tracked_todos_block(ctx(user_id=None)) == ""
+            assert await build_open_tasks_block(ctx(user_id=None)) == ""
 
-    @pytest.mark.parametrize("missing", ["user_id", "active_todo_id"])
-    async def test_the_active_todo_banner_needs_both_ids(self, missing: str) -> None:
-        todo = TodoDocument(id="todo-7", user_id="user1", title="Ship the refactor")
-        ids: dict[str, str | None] = {"user_id": "user1", "active_todo_id": "todo-7", missing: None}
-        with patch("app.db.repositories.todos.todo_repository.get", AsyncMock(return_value=todo)):
-            banner = await build_active_todo_banner(
-                ctx(user_id=ids["user_id"], active_todo_id=ids["active_todo_id"])
+    @pytest.mark.parametrize("missing", ["user_id", "active_task_id"])
+    async def test_the_active_task_banner_needs_both_ids(self, missing: str) -> None:
+        todo = TaskDocument(
+            id="todo-7", user_id="user1", title="Ship the refactor", assignee=Assignee.GAIA
+        )
+        ids: dict[str, str | None] = {"user_id": "user1", "active_task_id": "todo-7", missing: None}
+        with patch("app.db.repositories.tasks.task_repository.get", AsyncMock(return_value=todo)):
+            banner = await build_active_task_banner(
+                ctx(user_id=ids["user_id"], active_task_id=ids["active_task_id"])
             )
             assert banner == ""
 
@@ -1638,10 +1546,10 @@ class TestNoVolatileSectionIsClipped:
 
     async def test_a_long_todo_summary_is_rendered_whole(self) -> None:
         with patch(
-            "app.services.tracked_todo_service.tracked_todo_service.get_active_tracked_summary",
+            "app.agents.context.fetchers.open_tasks_summary",
             AsyncMock(return_value="t" * 400),
         ):
-            block = await build_tracked_todos_block(ctx(active_todo_id="todo-1"))
+            block = await build_open_tasks_block(ctx(active_task_id="todo-1"))
 
         assert block == "t" * 400
 

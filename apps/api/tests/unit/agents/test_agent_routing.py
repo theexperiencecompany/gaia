@@ -528,13 +528,13 @@ class TestCompletionNudgeWiring:
                 content="",
                 tool_calls=[
                     {
-                        "name": "update_tracked_todo",
-                        "args": {"todo_id": "t", "waiting_on": "time", "scheduled_at": "3d"},
+                        "name": "update_task",
+                        "args": {"task_id": "t", "waiting_on": "time", "next_check": "3d"},
                         "id": "c1",
                     }
                 ],
             ),
-            ToolMessage(content="Updated", tool_call_id="c1", name="update_tracked_todo"),
+            ToolMessage(content="Updated", tool_call_id="c1", name="update_task"),
         ]
         graph = self._compile_executor(
             BindableToolsFakeModel(responses=[AIMessage(content="Checked again in 3 days.")])

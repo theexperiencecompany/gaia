@@ -404,8 +404,6 @@ _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]]
     "notifications": ("general", False, None, False, False),
     "account": ("general", False, None, False, False),
     "tasks": ("tasks", False, None, False, False),
-    "tracked_todos": ("tasks", False, None, False, False),
-    "todos": ("todos", False, "todos", True, False),
     "reminders": ("general", False, None, False, False),
     "skills": ("skills", False, "skills", True, False),
     "workflows": ("general", False, None, False, False),
@@ -488,8 +486,6 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         task_edit_tools,
         task_list_tools,
         task_tools,
-        todo_tool,
-        tracked_todo_tools,
         weather_tool,
         webpage_tool,
         workflow_tool,
@@ -509,8 +505,6 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "tasks": {
             t.name for t in (*task_tools.tools, *task_list_tools.tools, *task_edit_tools.tools)
         },
-        "tracked_todos": {t.name for t in tracked_todo_tools.tools},
-        "todos": {t.name for t in todo_tool.tools},
         "reminders": {t.name for t in reminder_tool.tools},
         "skills": {t.name for t in skill_tools.tools},
         "workflows": {t.name for t in workflow_tool.tools},
@@ -627,7 +621,6 @@ _CORE_CATEGORY_NAMES = [
     "search",
     "documents",
     "notifications",
-    "todos",
     "reminders",
     "skills",
     "workflows",
@@ -945,7 +938,7 @@ class TestInitializeCategories:
         "read_playbook": "playbooks",
         "decline_playbook": "playbooks",
         "disable_playbook": "playbooks",
-        "create_tracked_todo": "tracked_todos",
+        "create_task": "tasks",
         "finish_task": "control",
     }
 
@@ -994,8 +987,6 @@ class TestInitializedCategoryContract:
         "notifications": {},
         "account": {},
         "tasks": {"space": "tasks"},
-        "tracked_todos": {"space": "tasks"},
-        "todos": {"space": "todos", "integration_name": "todos", "is_delegated": True},
         "reminders": {},
         "skills": {"space": "skills", "integration_name": "skills", "is_delegated": True},
         "workflows": {},

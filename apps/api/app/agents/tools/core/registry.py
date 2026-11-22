@@ -379,8 +379,6 @@ class ToolRegistry:
             task_edit_tools,
             task_list_tools,
             task_tools,
-            todo_tool,
-            tracked_todo_tools,
             weather_tool,
             webpage_tool,
             workflow_tool,
@@ -426,22 +424,6 @@ class ToolRegistry:
             "tasks",
             tools=[*task_tools.tools, *task_list_tools.tools, *task_edit_tools.tools],
             options=CategoryOptions(space="tasks"),
-            risk=CategoryRisk(destructive_tools=set()),
-        )
-        self._add_category(
-            "tracked_todos",
-            tools=[*tracked_todo_tools.tools],
-            options=CategoryOptions(space="tasks"),
-            risk=CategoryRisk(destructive_tools=set()),
-        )
-        self._add_category(
-            "todos",
-            tools=[*todo_tool.tools],
-            options=CategoryOptions(
-                is_delegated=True,
-                integration_name="todos",
-                space="todos",
-            ),
             risk=CategoryRisk(destructive_tools=set()),
         )
         # Reminder tools are executor-direct (no reminders subagent): a non-delegated

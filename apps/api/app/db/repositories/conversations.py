@@ -89,6 +89,7 @@ from app.models.conversation_models import (
     _ConversationOwnerRow,
     _SourceRow,
     _SystemGeneratedRow,
+    _TaskBindingRow,
     _TodoBindingRow,
 )
 from app.services.conversation.screen import RELATED_KINDS, needed_beside, text_item
@@ -436,6 +437,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
+
+    async def get_task_id(self, conversation_id: str, *, user_id: str) -> str | None:
+        """Return the GAIA task this conversation belongs to, or None for any other chat."""
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "task_id": 1},  # pragma: no mutate
+            _TaskBindingRow,
+        )
+        return None if row is None else row.task_id
 
     async def get_todo_id(self, conversation_id: str, *, user_id: str) -> str | None:
         """Return the tracked todo this conversation belongs to, or None for any other chat."""

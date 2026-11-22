@@ -499,11 +499,11 @@ class TestCallExecutorDispatch:
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
     ) -> None:
         config = await turn_config()
-        await call_executor_with(config=config, task="continue todo", active_todo_id="todo-9")
+        await call_executor_with(config=config, task="continue todo", active_task_id="todo-9")
         await drain_background_tasks()
 
-        assert spawned_runs[0]["configurable"]["active_todo_id"] == "todo-9"
-        assert "active_todo_id" not in config["configurable"]
+        assert spawned_runs[0]["configurable"]["active_task_id"] == "todo-9"
+        assert "active_task_id" not in config["configurable"]
 
     async def test_without_active_todo_no_binding_is_injected(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
@@ -511,7 +511,7 @@ class TestCallExecutorDispatch:
         await call_executor_with(config=await turn_config(), task="generic")
         await drain_background_tasks()
 
-        assert "active_todo_id" not in spawned_runs[0]["configurable"]
+        assert "active_task_id" not in spawned_runs[0]["configurable"]
 
     async def test_missing_thread_id_refuses_instead_of_running_unanchored(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
@@ -572,7 +572,7 @@ class TestCallExecutorLockContention:
             config=await turn_config("stream-2"),
             task="second",
             acceptance_criteria=["the draft is saved"],
-            active_todo_id="todo-3",
+            active_task_id="todo-3",
         )
         await drain_background_tasks()
 

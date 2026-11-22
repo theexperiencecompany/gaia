@@ -39,7 +39,7 @@ SOURCES = ContextSources(
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
     global_instructions="Reply in plain English.",
-    tracked_todos="Tracked: ship the context refactor",
+    open_tasks="Tracked: ship the context refactor",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
 
@@ -177,7 +177,7 @@ class TestTheFloorCanFail:
 
 #: One tool turn of a run: what the checkpoint holds after the first model call acted.
 TOOL_TURN: list[AnyMessage] = [
-    AIMessage(content="", tool_calls=[{"name": "list_tracked_todos", "args": {}, "id": "call-1"}]),
+    AIMessage(content="", tool_calls=[{"name": "list_tasks", "args": {}, "id": "call-1"}]),
     ToolMessage(content="No tracked todos.", tool_call_id="call-1"),
 ]
 
