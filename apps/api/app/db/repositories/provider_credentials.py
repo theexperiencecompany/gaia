@@ -19,7 +19,6 @@ class ProviderCredentialsRepository(
     update_model = ProviderCredentialUpdate
     uses_object_id = False
     identity_field = "provider"
-    cache_policy = None
 
     async def find_by_provider(self, provider: str) -> ProviderCredentialDocument | None:
         """Return the stored credential for provider, or None when unconfigured."""

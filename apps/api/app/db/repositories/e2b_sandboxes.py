@@ -7,7 +7,6 @@ transitions (pause/dead/touch) are fire-and-forget raw writes.
 
 from datetime import datetime
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxUpdate, SandboxAcquisition
 
@@ -17,7 +16,6 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
     document_model = E2bSandboxDocument
     update_model = E2bSandboxUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_for_user(self, user_id: str) -> E2bSandboxDocument | None:
         return await self._find_one({"user_id": user_id})
@@ -42,7 +40,6 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
                 "$setOnInsert": {"created_at": acquisition.timestamp},
                 "$inc": {"total_invocations": 1},
             },
-            scope=REPO_GLOBAL_SCOPE,
             upsert=True,
         )
 
@@ -50,7 +47,6 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         await self._apply_raw_update_unfetched(
             {"user_id": user_id},
             {"$set": {"state": "paused", "paused_at": timestamp}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def mark_dead(self, user_id: str, *, sandbox_id: str | None, timestamp: datetime) -> None:
@@ -61,14 +57,12 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
         await self._apply_raw_update_unfetched(
             filter_,
             {"$set": {"state": "dead", "last_used_at": timestamp}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def touch_last_used(self, user_id: str, *, timestamp: datetime) -> None:
         await self._apply_raw_update_unfetched(
             {"user_id": user_id},
             {"$set": {"last_used_at": timestamp}},
-            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def find_idle_user_ids(self, *, cutoff: datetime) -> list[str]:

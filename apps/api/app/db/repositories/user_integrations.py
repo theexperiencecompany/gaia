@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PREFIX
 from app.constants.integrations import ToolsSetup
-from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.cached_base import CachedUserScopedRepository, cached_query
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
@@ -21,7 +21,7 @@ from app.models.integration_models import (
 
 
 class UserIntegrationsRepository(
-    UserScopedRepository[UserIntegrationDocument, UserIntegrationUpdate]
+    CachedUserScopedRepository[UserIntegrationDocument, UserIntegrationUpdate]
 ):
     collection_name = "user_integrations"
     document_model = UserIntegrationDocument
@@ -104,7 +104,6 @@ class UserIntegrationsRepository(
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": datetime.now(UTC)}},
-            scope=user_id,
             upsert=True,
         )
         return doc is not None
@@ -121,7 +120,7 @@ class UserIntegrationsRepository(
         query: dict[str, object] = {"user_id": user_id, "integration_id": integration_id}
         if only_from is not None:
             query["tools_setup"] = only_from
-        doc = await self._apply_raw_update(query, {"$set": {"tools_setup": state}}, scope=user_id)
+        doc = await self._apply_raw_update(query, {"$set": {"tools_setup": state}})
         return doc is not None
 
     async def save_accounts(
@@ -156,7 +155,6 @@ class UserIntegrationsRepository(
         doc = await self._apply_raw_update(
             {"user_id": user_id, "integration_id": integration_id},
             {"$set": set_fields, "$setOnInsert": {"created_at": now}},
-            scope=user_id,
             upsert=True,
         )
         if doc is None:
@@ -174,7 +172,6 @@ class UserIntegrationsRepository(
                 "accounts.id": account_id,
             },
             {"$set": {"accounts.$[account].nickname": nickname}},
-            scope=user_id,
             array_filters=[{"account.id": account_id}],
         )
 
@@ -198,7 +195,6 @@ class UserIntegrationsRepository(
                 },
                 "$unset": {"connected_account_id": ""},
             },
-            scope=user_id,
         )
 
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:

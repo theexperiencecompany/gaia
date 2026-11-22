@@ -46,11 +46,25 @@ is harmless (e.g. `last_active_at`). Every use must be justified in the calling
 method's docstring. If you are not certain a stale value is harmless, use the
 normal `update` path.
 
+**Errors are the repository's, not the driver's.** A driver error escaping a
+public repository method is raised as `RepositoryError`, or `AlreadyExistsError`
+when a unique index refused the write (`errors.py`). The base wraps every public
+coroutine method in `__init_subclass__`, and only the outermost repository call
+translates, so a repository body still catches `DuplicateKeyError` from its own
+nested calls. The translation stamps `repository_error.cause_type` (the driver class)
+on the wide event. A public async generator or static/class coroutine is refused at
+class creation, because the wrapper cannot cover it. Callers catch the repository
+types; `TRANSIENT_MONGO_RETRY` retries `RepositoryError`.
+
 ## Caching (automatic — do not reimplement)
 
-Each cache-enabled repository declares a `CachePolicy(prefix, entity_ttl,
-query_ttl)`. Three key families per scope (`user_id` for user-scoped repos, the
-literal `"global"` otherwise):
+Only a cached repository knows a cache exists. It subclasses a base from
+`cached_base.py` and declares a `CachePolicy(prefix, entity_ttl, query_ttl)`; the
+base it picks is its scope rule. `CachedMongoRepository` caches under the literal
+`"global"`; `CachedUserScopedRepository` under the `user_id` of the document, or of
+the write's filter, which every cached user-scoped write must pin. The plain
+`MongoRepository` / `UserScopedRepository` have no cache, and their write primitives
+take no scope. Three key families per scope:
 
 ```
 {prefix}:{scope}:{id}            entity cache  — read-through on get, write-through on create/update, evicted on delete
@@ -83,7 +97,7 @@ layers hold it, each catching what the others cannot:
 
 2. **The `repository-boundaries` lint** (`tools/lints/`), because mypy strictness
    can be satisfied while types still leak. It bans `collections` imports outside
-   this directory, `bson`/`ObjectId` outside `app/db/`, and `Any`/`dict[str, Any]`
+   this directory, `bson`/`ObjectId` and `pymongo`/`motor` outside `app/db/`, and `Any`/`dict[str, Any]`
    /missing annotations in **public** repository signatures (underscore-prefixed
    subclass primitives are the exempt internal seam). Its allowlist is a ratchet:
    entries are removed as each domain is migrated, never added.
@@ -107,7 +121,7 @@ read); update models use `extra="forbid"` on write (writes are fully controlled)
 2. Add `XDocument` (`extra="ignore"`) and `XUpdate` (all-optional, `extra="forbid"`)
    to the existing `app/models/<domain>_models.py`.
 3. Add `app/db/repositories/<domain>.py`: subclass `MongoRepository` /
-   `UserScopedRepository`, set the ClassVars and `CachePolicy`, turn every query in
+   `UserScopedRepository` (or a cached base with a `CachePolicy`), set the ClassVars, turn every query in
    the domain's services into a named finder and every aggregation into a named
    typed method, and export a module-level singleton `x_repository = XRepository()`.
 4. Write contract tests: inherit the base contract, add a per-finder test with

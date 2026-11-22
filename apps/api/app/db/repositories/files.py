@@ -16,7 +16,6 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
     document_model = FileDocument
     update_model = FileUpdate
     uses_object_id = True
-    cache_policy = None
 
     async def get_by_file_id(self, file_id: str, user_id: str) -> FileDocument | None:
         """Return one file the user owns, or None."""
@@ -61,13 +60,11 @@ class FilesRepository(UserScopedRepository[FileDocument, FileUpdate]):
         behaviour of a $set that only carried the timestamp)."""
         set_fields = update.model_dump(exclude_unset=True)
         ops: dict[str, dict[str, object]] = {"$set": set_fields} if set_fields else {}
-        return await self._apply_raw_update(
-            {"file_id": file_id, "user_id": user_id}, ops, scope=user_id
-        )
+        return await self._apply_raw_update({"file_id": file_id, "user_id": user_id}, ops)
 
     async def delete_by_file_id(self, file_id: str, user_id: str) -> bool:
         """Delete one file the user owns; False when nothing matched."""
-        deleted = await self._delete_many({"file_id": file_id, "user_id": user_id}, scope=user_id)
+        deleted = await self._delete_many({"file_id": file_id, "user_id": user_id})
         return deleted > 0
 
     async def find_mimetype_rows(self) -> list[FileMimetypeRow]:

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
 from app.constants.waits import WaitCondition
+from app.db.repositories.errors import RepositoryError
 from app.services.integrations import user_integration_status
 from app.services.integrations.user_integration_status import reconnect_or_unknown
 
@@ -31,7 +31,7 @@ class TestReconnectOrUnknown:
 
     async def test_a_mongo_failure_is_unknown_and_names_the_integration(self) -> None:
         with patch(f"{MODULE}.log") as log:
-            result = await reconnect_or_unknown(_raise(PyMongoError("down")), "gmail")
+            result = await reconnect_or_unknown(_raise(RepositoryError("down")), "gmail")
 
         assert result is None
         log.warning.assert_called_once()
@@ -40,7 +40,7 @@ class TestReconnectOrUnknown:
         )
         assert log.warning.call_args.kwargs == {
             "integration_id": "gmail",
-            "error_type": "PyMongoError",
+            "error_type": "RepositoryError",
         }
 
     async def test_any_other_failure_still_raises(self) -> None:

@@ -2,13 +2,20 @@
 
 A background subagent and a background browser job each stream on a stream of
 their own, which outlives the turn that started them. Opening one logs a detached
-WorkStarted keyed by the stream, so a Stop cancels it and state shows it; closing
+WorkStarted keyed by the stream, so a Stop cancels it and state shows it, and
+holds that work's liveness, so the sweep never logs it lost while it runs; closing
 it logs the cards its work recorded on that work's WorkFinished, then drops its session.
 """
 
 from app.agents.core.background.executor_capture import session_approval_cards
+from app.agents.core.background.executor_queue import build_lock_value, keep_alive
 from app.agents.core.background.run_stop import stop_requested
-from app.agents.core.background.session import RunKind, create_session, teardown_session
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    get_session,
+    teardown_session,
+)
 from app.constants.log_tags import LogTag
 from app.models.conversation_frame_models import ToolDataEvent
 from app.models.conversation_log_models import WorkOutcome
@@ -23,10 +30,20 @@ from shared.py.wide_events import log
 
 
 async def open_folded_stream(stream_id: str, *, conversation_id: str, user_id: str) -> bool:
-    """Log the run as detached work and open its stream; False when a Stop refuses it, so it must not run."""
-    if not await record_work_carried(conversation_id, user_id, stream_id, detached=True):
+    """Hold the run's liveness, log it as detached work and open its stream; False when a Stop refuses it.
+
+    The beat starts first, so no sweep ever reads the logged work before its first beat.
+    """
+    alive = await keep_alive(conversation_id, build_lock_value(None, stream_id))
+    try:
+        carried = await record_work_carried(conversation_id, user_id, stream_id, detached=True)
+    except Exception:
+        alive.cancel()
+        raise
+    if not carried:
+        alive.cancel()
         return False
-    create_session(stream_id, RunKind.QUEUED)
+    create_session(stream_id, RunKind.QUEUED).alive = alive
     return True
 
 
@@ -55,4 +72,7 @@ async def close_folded_stream(stream_id: str, *, conversation_id: str, user_id: 
             error=str(e),
         )
     finally:
+        session = get_session(stream_id)
+        if session is not None and session.alive is not None:
+            session.alive.cancel()
         teardown_session(stream_id)

@@ -12,7 +12,6 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from pymongo.errors import DuplicateKeyError
 import pytest
 import time_machine
 
@@ -32,6 +31,7 @@ from app.constants.todos import (
     WaitingOn,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.db.repositories.errors import AlreadyExistsError
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import (
     ExternalRef,
@@ -578,7 +578,7 @@ class TestReopenForItsRef:
 
     async def test_a_ref_another_create_took_meanwhile_is_a_named_conflict(self, mock_repo, seams):
         holder = _todo_doc(id="66f838cc8829054e5f10e40a", title="Reply to Sam")
-        mock_repo.update_if_completed.side_effect = DuplicateKeyError("E11000")
+        mock_repo.update_if_completed.side_effect = AlreadyExistsError("E11000")
         mock_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
 
         with (
@@ -591,7 +591,7 @@ class TestReopenForItsRef:
             await self._reopen()
 
         assert taken.value.existing is holder
-        assert isinstance(taken.value.__cause__, DuplicateKeyError)
+        assert isinstance(taken.value.__cause__, AlreadyExistsError)
         mock_repo.find_open_by_external_ref.assert_awaited_once_with(USER_ID, _THREAD)
         seams.fields.assert_not_awaited()
 

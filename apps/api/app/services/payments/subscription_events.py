@@ -21,14 +21,13 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from functools import partial
 
-from pymongo.errors import PyMongoError
-
 from app.constants.log_tags import LogTag
 from app.constants.payments import (
     PAID_PERSON_SYNC_TASK,
     SUBSCRIPTION_WORKFLOW_SYNC_TASK,
     SubscriptionWorkflowSync,
 )
+from app.db.repositories.errors import RepositoryError
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
@@ -438,7 +437,7 @@ async def sync_paid_person_properties(user_id: str, dodo_subscription_id: str) -
     """Set the person's paid state as it stands now: the user's active subscription, else the changed row.
 
     The person is the user, so another subscription still active outranks the
-    one this change lapsed. Raises PyMongoError when a read fails, for the
+    one this change lapsed. Raises RepositoryError when a read fails, for the
     caller to retry; a changed row that is gone is logged, since no retry brings it back.
     """
     current = await subscription_repository.get_active_for_user(
@@ -473,7 +472,7 @@ async def _sync_paid_person_properties(
         return
     try:
         await sync_paid_person_properties(user_id, dodo_subscription_id)
-    except PyMongoError:
+    except RepositoryError:
         await _queue_retry(
             PAID_PERSON_SYNC_TASK,
             user_id,
